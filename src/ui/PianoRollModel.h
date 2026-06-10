@@ -56,7 +56,7 @@ public:
         }
     }
 
-    juce::Array<juce::ValueTree> getSelectedNotes() const { return selectedNotes; }
+    const juce::Array<juce::ValueTree>& getSelectedNotes() const { return selectedNotes; }
     void selectNote(juce::ValueTree note, bool addToSelection = false)
     {
         if (!addToSelection)

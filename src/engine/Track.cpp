@@ -22,17 +22,18 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
     fxSpec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
     fxSpec.numChannels = 2;
 
-    for (auto& slot : fxChain)
+    for (const auto& slot : fxChain)
         if (slot)
             slot->prepare(fxSpec);
 
-    for (auto& am : automationManagers)
+    for (const auto& am : automationManagers)
         if (am)
             am->rebuildCache();
 }
 
 void Track::setAutomationTrees(const juce::ValueTree& automationList)
 {
+    juce::SpinLock::ScopedLockType lock(stateLock);
     automationManagers.clear();
     if (!automationList.isValid()) return;
 
@@ -49,15 +50,17 @@ void Track::setAutomationTrees(const juce::ValueTree& automationList)
 
 void Track::releaseResources()
 {
-    for (auto& slot : fxChain)
+    for (const auto& slot : fxChain)
         if (slot)
             slot->reset();
 }
 
 void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 {
+    juce::SpinLock::ScopedLockType lock(stateLock);
+
     // Save plugin state from existing slots before clearing
-    for (auto& slot : fxChain)
+    for (const auto& slot : fxChain)
     {
         if (slot && slot->isPlugin() && slot->getPluginInstance())
         {
@@ -82,7 +85,7 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
     }
 
     // Close all open editors before clearing
-    for (auto& slot : fxChain)
+    for (const auto& slot : fxChain)
         if (slot)
             slot->closeEditor();
 
@@ -136,6 +139,10 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 
                 fxChain.push_back(std::move(slot));
             }
+            else if (error.isNotEmpty())
+            {
+                juce::Logger::writeToLog("HDAW: Failed to load plugin " + pluginID + ": " + error);
+            }
             continue;
         }
 
@@ -165,26 +172,34 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         if (pos && pos->getIsPlaying())
         {
             double timeSec = pos->getTimeInSeconds().orFallback(0.0);
-            for (auto& am : automationManagers)
+            if (stateLock.tryEnter())
             {
-                if (!am) continue;
-                double value = am->getValueAtTime(timeSec);
-                if (value >= 0.0)
+                for (const auto& am : automationManagers)
                 {
-                    int pid = am->getParamID();
-                    if (pid == 1)
-                        volumeGain.setTargetValue(static_cast<float>(value));
-                    else if (pid == 2)
-                        panPosition.setTargetValue(static_cast<float>(value));
+                    if (!am) continue;
+                    double value = am->getValueAtTime(timeSec);
+                    if (value >= 0.0)
+                    {
+                        int pid = am->getParamID();
+                        if (pid == 1)
+                            volumeGain.setTargetValue(static_cast<float>(value));
+                        else if (pid == 2)
+                            panPosition.setTargetValue(static_cast<float>(value));
+                    }
                 }
+                stateLock.exit();
             }
         }
     }
 
     // Apply FX chain (DSP + plugins)
-    for (auto& slot : fxChain)
-        if (slot)
-            slot->process(buffer, midiMessages);
+    if (stateLock.tryEnter())
+    {
+        for (const auto& slot : fxChain)
+            if (slot)
+                slot->process(buffer, midiMessages);
+        stateLock.exit();
+    }
 
     // Volume and pan
     const int numSamples = buffer.getNumSamples();

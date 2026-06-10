@@ -69,7 +69,17 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
         });
     }
 
-    graph.processBlock(buffer, midiMessages);
+    if (graphLock.tryEnter())
+    {
+        graphRebuildPending.store(false, std::memory_order_release);
+        graph.processBlock(buffer, midiMessages);
+        graphLock.exit();
+    }
+    else
+    {
+        buffer.clear();
+        midiMessages.clear();
+    }
 
     if (transportManager != nullptr)
         transportManager->advance(buffer.getNumSamples());
@@ -165,20 +175,6 @@ bool MainAudioProcessor::isRecording() const
     return audioRecorder && audioRecorder->isRecording();
 }
 
-void MainAudioProcessor::addTrack(HDAW::Track* newTrack)
-{
-    juce::ignoreUnused(newTrack);
-}
-
-void MainAudioProcessor::removeTrack(int index)
-{
-    juce::ignoreUnused(index);
-}
-
-void MainAudioProcessor::clearTracks()
-{
-}
-
 HDAW::Track* MainAudioProcessor::getTrack(int index) const
 {
     return routingManager ? routingManager->getTrackNode(index) : nullptr;
@@ -204,6 +200,8 @@ void MainAudioProcessor::rebuildRoutingGraph()
 {
     if (routingManager != nullptr && projectModel != nullptr)
     {
+        graphRebuildPending.store(true, std::memory_order_release);
+        graphLock.enter();
         graph.clear();
         routingManager = std::make_unique<HDAW::RoutingManager>(
             graph, *projectModel, *formatManager, *transportManager, pluginManager);
@@ -211,6 +209,8 @@ void MainAudioProcessor::rebuildRoutingGraph()
         graph.setPlayHead(internalPlayHead.get());
         if (getSampleRate() > 0)
             graph.prepareToPlay(getSampleRate(), getBlockSize());
+        graphLock.exit();
+        graphRebuildPending.store(false, std::memory_order_release);
     }
 }
 

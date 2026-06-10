@@ -1,4 +1,5 @@
 #include "ProjectModel.h"
+#include <atomic>
 
 ProjectModel::ProjectModel()
     : projectTree(IDs::PROJECT)
@@ -49,11 +50,36 @@ static juce::ValueTree createAutomationList()
     return list;
 }
 
-static int nextClipID = 1;
+static std::atomic<int> nextClipID{1};
 
 int ProjectModel::allocateClipID()
 {
-    return nextClipID++;
+    return nextClipID.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ProjectModel::resetClipIDCounter()
+{
+    nextClipID.store(1, std::memory_order_relaxed);
+}
+
+void ProjectModel::scanAndSyncClipIDs()
+{
+    int maxID = 0;
+    auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    if (trackList.isValid())
+    {
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+        {
+            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+            if (!clipList.isValid()) continue;
+            for (int c = 0; c < clipList.getNumChildren(); ++c)
+            {
+                int id = clipList.getChild(c).getProperty(IDs::clipID, 0);
+                if (id > maxID) maxID = id;
+            }
+        }
+    }
+    nextClipID.store(maxID + 1, std::memory_order_relaxed);
 }
 
 static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file)
@@ -123,6 +149,7 @@ static juce::ValueTree createTempoPointList()
 
 void ProjectModel::createDefaultProject()
 {
+    resetClipIDCounter();
     projectTree.removeAllChildren(&undoManager);
     projectTree.removeAllProperties(&undoManager);
 

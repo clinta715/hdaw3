@@ -72,9 +72,8 @@ void TimelineView::setupUI()
     graphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     graphicsView->setRenderHint(QPainter::Antialiasing, true);
-    graphicsView->setRenderHint(QPainter::SmoothPixmapTransform, true);
     graphicsView->setDragMode(QGraphicsView::NoDrag);
-    graphicsView->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    graphicsView->setViewportUpdateMode(QGraphicsView::MinimalViewportUpdate);
     graphicsView->setBackgroundBrush(ThemeColors::bgWindow());
     graphicsView->setFrameStyle(QFrame::NoFrame);
     graphicsView->setAcceptDrops(true);
@@ -142,6 +141,8 @@ void TimelineView::connectSignals()
     });
 
     connect(toolbar, &TimelineToolbar::addTrackClicked, this, &TimelineView::addTrackClicked);
+    connect(toolbar, &TimelineToolbar::addTrackWithFX, this, &TimelineView::addTrackWithFX);
+    connect(toolbar, &TimelineToolbar::addTrackWithPlugin, this, &TimelineView::addTrackWithPlugin);
     connect(toolbar, &TimelineToolbar::bpmChanged, this, &TimelineView::bpmChanged);
     connect(toolbar, &TimelineToolbar::metronomeToggled, this, &TimelineView::metronomeToggled);
 
@@ -173,6 +174,10 @@ void TimelineView::connectSignals()
     connect(timelineScene, &TimelineScene::trackCountChanged, this, [this](int) {
         trackHeaders->rebuild();
     });
+
+    connect(trackHeaders, &TrackHeaderWidget::addTrackRequested, this, &TimelineView::addTrackClicked);
+    connect(trackHeaders, &TrackHeaderWidget::addTrackWithFX, this, &TimelineView::addTrackWithFX);
+    connect(trackHeaders, &TrackHeaderWidget::addTrackWithPlugin, this, &TimelineView::addTrackWithPlugin);
 
     // Automation toggle
     connect(trackHeaders, &TrackHeaderWidget::automationToggled, this,
@@ -235,7 +240,7 @@ void TimelineView::syncRulerWithScene()
 {
     double sceneHeight = timelineScene->sceneRect().height();
     double viewportHeight = graphicsView->viewport()->height();
-    double maxScrollY = std::max(0.0, sceneHeight - viewportHeight);
+    double maxScrollY = (std::max)(0.0, sceneHeight - viewportHeight);
     double scrollY = std::clamp(
         static_cast<double>(graphicsView->verticalScrollBar()->value()),
         0.0, maxScrollY);
@@ -430,7 +435,7 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
                     juce::ValueTree clip(IDs::CLIP);
                     clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
                     clip.setProperty(IDs::name, "MIDI Clip", &model.getUndoManager());
-                    clip.setProperty(IDs::startTime, std::max(0.0, timeSeconds), &model.getUndoManager());
+                    clip.setProperty(IDs::startTime, (std::max)(0.0, timeSeconds), &model.getUndoManager());
                     clip.setProperty(IDs::duration, 4.0, &model.getUndoManager());
                     clip.setProperty(IDs::offset, 0.0, &model.getUndoManager());
                     clip.setProperty(IDs::clipType, "midi", &model.getUndoManager());
@@ -507,7 +512,7 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
     clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &model.getUndoManager());
-    clip.setProperty(IDs::startTime, std::max(0.0, timeSeconds), &model.getUndoManager());
+    clip.setProperty(IDs::startTime, (std::max)(0.0, timeSeconds), &model.getUndoManager());
     clip.setProperty(IDs::duration, duration, &model.getUndoManager());
     clip.setProperty(IDs::offset, 0.0, &model.getUndoManager());
     clip.setProperty(IDs::clipType, "audio", &model.getUndoManager());

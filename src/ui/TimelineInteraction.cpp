@@ -19,7 +19,7 @@ double TimelineInteraction::snapToGrid(double timeSeconds) const
     if (!snapEnabled || snapDivision == Off)
         return timeSeconds;
 
-    double bpm = std::max(1.0, scene->getEngine().getTransportManager().getBPM());
+    double bpm = (std::max)(1.0, scene->getEngine().getTransportManager().getBPM());
     double secondsPerBeat = 60.0 / bpm;
 
     double division;
@@ -137,7 +137,7 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
         QPointF delta = e->scenePos() - dragStartPos;
         double newTime = dragStartValue + delta.x() / pps;
         newTime = snapToGrid(newTime);
-        newTime = std::max(0.0, newTime);
+        newTime = (std::max)(0.0, newTime);
 
         dragItem->getClipTree().setProperty(IDs::startTime, newTime, undoManager);
         dragItem->setPos(newTime * pps, dragItem->pos().y());
@@ -156,17 +156,17 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
             double oldDur = dragItem->getDuration();
             double newStart = dragStartValue + timeOffset;
             newStart = snapToGrid(newStart);
-            newStart = std::max(0.0, std::min(newStart, oldStart + oldDur - 0.1));
+            newStart = (std::max)(0.0, (std::min)(newStart, oldStart + oldDur - 0.1));
             double newDur = oldDur - (newStart - oldStart);
-            newDur = std::min(newDur, 3600.0);
+            newDur = (std::min)(newDur, 3600.0);
             dragItem->getClipTree().setProperty(IDs::startTime, newStart, undoManager);
             dragItem->getClipTree().setProperty(IDs::duration, newDur, undoManager);
         }
         else // TrimRight
         {
-            double newDur = std::max(0.1, dragStartValue + timeOffset);
+            double newDur = (std::max)(0.1, dragStartValue + timeOffset);
             newDur = snapToGrid(dragItem->getStartTime() + newDur) - dragItem->getStartTime();
-            newDur = std::max(0.1, newDur);
+            newDur = (std::max)(0.1, newDur);
             dragItem->getClipTree().setProperty(IDs::duration, newDur, undoManager);
             lastClipDuration = newDur;
         }
@@ -185,14 +185,14 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
 
         if (dragMode == FadeIn)
         {
-            newFade = std::max(0.0, localPos.x() / pps);
-            newFade = std::min(newFade, maxFade);
+            newFade = (std::max)(0.0, localPos.x() / pps);
+            newFade = (std::min)(newFade, maxFade);
             dragItem->getClipTree().setProperty(IDs::fadeIn, newFade, undoManager);
         }
         else
         {
-            newFade = std::max(0.0, dragItem->getDuration() - localPos.x() / pps);
-            newFade = std::min(newFade, maxFade);
+            newFade = (std::max)(0.0, dragItem->getDuration() - localPos.x() / pps);
+            newFade = (std::min)(newFade, maxFade);
             dragItem->getClipTree().setProperty(IDs::fadeOut, newFade, undoManager);
         }
         dragItem->update();
@@ -268,7 +268,7 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     // Double-click on empty track area → create empty MIDI clip
     double pps = scene->getPixelsPerSecond();
     double clickTime = e->scenePos().x() / pps;
-    double snappedTime = snapToGrid(std::max(0.0, clickTime));
+    double snappedTime = snapToGrid((std::max)(0.0, clickTime));
     double clickY = e->scenePos().y();
 
     // Find which track the Y position falls on
@@ -302,9 +302,9 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
         trackTree.addChild(clipList, -1, &model.getUndoManager());
     }
 
-    double duration = std::max(lastClipDuration, defaultClipDuration);
+    double duration = (std::max)(lastClipDuration, defaultClipDuration);
     duration = snapToGrid(snappedTime + duration) - snappedTime;
-    duration = std::max(0.5, duration);
+    duration = (std::max)(0.5, duration);
 
     juce::ValueTree clipTree(IDs::CLIP);
     clipTree.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);

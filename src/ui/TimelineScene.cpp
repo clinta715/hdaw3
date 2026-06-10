@@ -6,7 +6,7 @@ TimelineScene::TimelineScene(AudioEngine& ae, QObject* parent)
     : QGraphicsScene(parent), engine(ae)
 {
     rebuildFromValueTree();
-    setSceneRect(0, 0, 4000, std::max(sceneRect().height(), 2000.0));
+    setSceneRect(0, 0, 4000, (std::max)(sceneRect().height(), 2000.0));
     HDAW_LOG("TSCtor", QString("sceneRect=(%1,%2) items=%3")
         .arg(sceneRect().width()).arg(sceneRect().height()).arg(items().size()));
 }
@@ -30,7 +30,7 @@ void TimelineScene::rebuildFromValueTree()
     HDAW_LOG("TSRebuild", QString("START - tracks=%1").arg(engine.getProjectModel().getTrackListTree().getNumChildren()));
     detachListener();
 
-    for (auto& [id, item] : clipItemMap)
+    for (const auto& [id, item] : clipItemMap)
     {
         removeItem(item);
         delete item;
@@ -88,7 +88,7 @@ void TimelineScene::setPixelsPerSecond(double pps)
     if (pixelsPerSecond == pps) return;
     pixelsPerSecond = pps;
 
-    for (auto& [id, item] : clipItemMap)
+    for (const auto& [id, item] : clipItemMap)
     {
         if (item != nullptr)
         {

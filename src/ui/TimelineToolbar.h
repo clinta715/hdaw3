@@ -1,10 +1,14 @@
 #pragma once
 #include <QWidget>
 #include <QPushButton>
+#include <QToolButton>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QLabel>
 #include <QTimer>
+#include <juce_core/juce_core.h>
+
+namespace HDAW { class PluginManager; }
 
 class TimelineToolbar : public QWidget
 {
@@ -19,9 +23,13 @@ public slots:
     void setBPM(double bpm);
     void setMetronomeEnabled(bool enabled);
     void setDefaultClipLen(double beats);
+    void setSnap(bool enabled);
+    void setSnapDivision(int index);
 
 signals:
     void addTrackClicked();
+    void addTrackWithFX(const juce::String& fxType);
+    void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
     void snapToggleChanged(bool enabled);
     void snapDivisionChanged(int index);
     void zoomInClicked();
@@ -37,8 +45,11 @@ signals:
     void metronomeToggled(bool enabled);
     void defaultClipLenChanged(double beats);
 
+public:
+    void addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager);
+
 private:
-    QPushButton* addTrackBtn;
+    QToolButton* addTrackBtn;
     QPushButton* snapBtn;
     QComboBox* snapCombo;
     QPushButton* zoomInBtn;
@@ -55,4 +66,5 @@ private:
     QLabel* timeSigLabel;
     QPushButton* metronomeBtn;
     QDoubleSpinBox* defaultClipLenSpinBox;
+    QMenu* trackMenu;
 };

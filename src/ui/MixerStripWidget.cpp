@@ -59,6 +59,17 @@ void MixerStripWidget::updateVU()
 
 void MixerStripWidget::paintEvent(QPaintEvent*)
 {
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < trackList.getNumChildren())
+    {
+        auto tree = trackList.getChild(trackIndex);
+        name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+        volume = tree.getProperty(IDs::volume);
+        pan = tree.getProperty(IDs::pan);
+        muted = tree.getProperty(IDs::isMuted);
+        soloed = tree.getProperty(IDs::isSoloed);
+    }
+
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
@@ -85,9 +96,9 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
     int vuW = (w - vuSpacing * 3) / 2;
 
     auto drawVUBar = [&](int x, float level) {
-        float db = 20.0f * std::log10(std::max(level, 0.0001f));
+        float db = 20.0f * std::log10((std::max)(level, 0.0001f));
         float normalized = (db + 60.0f) / 60.0f;
-        normalized = std::max(0.0f, std::min(1.0f, normalized));
+        normalized = (std::max)(0.0f, (std::min)(1.0f, normalized));
         int barH = static_cast<int>(normalized * vuH);
 
         QColor color;
@@ -152,7 +163,7 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
     painter.drawRoundedRect(QRect(faderX - 2, faderY + static_cast<int>(volPos), 12, 8), 2, 2);
 
     // Volume db label
-    int db = static_cast<int>(20.0 * std::log10(std::max(volume, 0.001f)));
+    int db = static_cast<int>(20.0 * std::log10((std::max)(volume, 0.001f)));
     painter.setPen(ThemeColors::textSecondary());
     f.setPointSize(6);
     painter.setFont(f);
@@ -241,7 +252,7 @@ void MixerStripWidget::mouseMoveEvent(QMouseEvent* event)
         if (range > 0)
         {
             float newVol = 1.0f - (static_cast<float>(y - faderY) / range);
-            newVol = std::max(0.0f, std::min(1.0f, newVol));
+            newVol = (std::max)(0.0f, (std::min)(1.0f, newVol));
             volume = newVol;
             emit volumeChanged(trackIndex, newVol);
             update();
@@ -253,7 +264,7 @@ void MixerStripWidget::mouseMoveEvent(QMouseEvent* event)
         float range = static_cast<float>(panRect.width() - 6);
         if (range > 0)
         {
-            float newPan = std::max(-1.0f, std::min(1.0f,
+            float newPan = (std::max)(-1.0f, (std::min)(1.0f,
                 (static_cast<float>(x - panRect.x() - 3) / range) * 2.0f - 1.0f));
             pan = newPan;
             emit panChanged(trackIndex, newPan);

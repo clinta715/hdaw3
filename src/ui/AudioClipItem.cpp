@@ -36,7 +36,17 @@ void AudioClipItem::loadThumbnail()
 void AudioClipItem::changeListenerCallback(juce::ChangeBroadcaster* source)
 {
     if (source == thumbnail.get())
+    {
+        invalidateCache();
         update();
+    }
+}
+
+void AudioClipItem::invalidateCache()
+{
+    cacheWidth = 0;
+    cacheHeight = 0;
+    cachedWaveform = QPixmap();
 }
 
 void AudioClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
@@ -49,6 +59,14 @@ void AudioClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
 
         double offset = clipTree.getProperty(IDs::offset);
         double duration = getDuration();
+
+        if (w == cacheWidth && h == cacheHeight
+            && offset == cacheOffset && duration == cacheDuration
+            && !cachedWaveform.isNull())
+        {
+            painter.drawPixmap(contentRect.topLeft(), cachedWaveform);
+            return;
+        }
 
         juce::Image juceImg(juce::Image::ARGB, w, h, true);
         juce::Graphics g(juceImg);
@@ -64,7 +82,14 @@ void AudioClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
                     w, h,
                     static_cast<int>(bitmapData.lineStride),
                     QImage::Format_ARGB32_Premultiplied);
-        painter.drawImage(contentRect.topLeft(), qimg);
+
+        cachedWaveform = QPixmap::fromImage(qimg);
+        cacheWidth = w;
+        cacheHeight = h;
+        cacheOffset = offset;
+        cacheDuration = duration;
+
+        painter.drawPixmap(contentRect.topLeft(), cachedWaveform);
         return;
     }
 

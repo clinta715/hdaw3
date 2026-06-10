@@ -82,7 +82,12 @@ ExportDialog::ExportDialog(AudioEngine& ae, QWidget* parent)
     mainLayout->addLayout(buttonLayout);
 }
 
-ExportDialog::~ExportDialog() = default;
+ExportDialog::~ExportDialog()
+{
+    auto& exportMgr = engine.getMainProcessor()->getExportManager();
+    exportMgr.onProgress = nullptr;
+    exportMgr.onComplete = nullptr;
+}
 
 QString ExportDialog::defaultExtension() const
 {

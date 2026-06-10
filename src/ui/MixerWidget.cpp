@@ -56,7 +56,8 @@ void MixerWidget::rebuild()
     QLayoutItem* item;
     while ((item = stripLayout->takeAt(0)) != nullptr)
     {
-        delete item->widget();
+        if (item->widget())
+            item->widget()->deleteLater();
         delete item;
     }
 

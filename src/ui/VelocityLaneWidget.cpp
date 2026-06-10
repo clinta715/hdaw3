@@ -31,7 +31,7 @@ void VelocityLaneWidget::setVelocityAtPos(const QPoint& pos, float vel)
     if (idx >= 0)
     {
         auto note = model.getNote(idx);
-        note.setProperty(IDs::velocity, std::max(0.0f, std::min(127.0f, vel)), model.getUndoManager());
+        note.setProperty(IDs::velocity, (std::max)(0.0f, (std::min)(127.0f, vel)), model.getUndoManager());
         emit velocityChanged();
         update();
     }
@@ -72,6 +72,7 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
     painter.drawText(2, 2, 30, h, Qt::AlignLeft | Qt::AlignVCenter, "127");
 
     // Velocity bars
+    const auto& selectedNotes = model.getSelectedNotes();
     for (int i = 0; i < model.getNumNotes(); ++i)
     {
         auto note = model.getNote(i);
@@ -80,7 +81,7 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
         float vel = note.getProperty(IDs::velocity);
 
         double x = startBeat * pixelsPerBeat - scrollX;
-        double barW = std::max(durBeats * pixelsPerBeat, 2.0);
+        double barW = (std::max)(durBeats * pixelsPerBeat, 2.0);
         double barH = (vel / 127.0) * (h - 8);
         if (barH < 1.0) barH = 1.0;
 
@@ -93,7 +94,7 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
         painter.drawRect(QRectF(x, h - 4 - barH, barW, barH));
 
         // Velocity value label for selected notes
-        if (model.getSelectedNotes().contains(note))
+        if (selectedNotes.contains(note))
         {
             painter.setPen(ThemeColors::warning());
             f.setPointSize(6);
@@ -114,7 +115,7 @@ void VelocityLaneWidget::mousePressEvent(QMouseEvent* event)
         if (idx >= 0)
         {
             float vel = 127.0f * (1.0f - static_cast<float>(event->pos().y()) / laneHeight);
-            vel = std::max(1.0f, std::min(127.0f, vel));
+            vel = (std::max)(1.0f, (std::min)(127.0f, vel));
             auto note = model.getNote(idx);
             note.setProperty(IDs::velocity, vel, model.getUndoManager());
             model.deselectAll();
@@ -134,7 +135,7 @@ void VelocityLaneWidget::mouseMoveEvent(QMouseEvent* event)
         if (idx >= 0)
         {
             float vel = 127.0f * (1.0f - static_cast<float>(event->pos().y()) / laneHeight);
-            vel = std::max(1.0f, std::min(127.0f, vel));
+            vel = (std::max)(1.0f, (std::min)(127.0f, vel));
             auto note = model.getNote(idx);
             note.setProperty(IDs::velocity, vel, model.getUndoManager());
             model.deselectAll();

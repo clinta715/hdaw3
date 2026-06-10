@@ -215,7 +215,7 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
     // Filled curve
     QPainterPath fillPath;
     fillPath.moveTo(xFromTime(pts.front().time), yFromValue(0.5));
-    for (auto& p : pts)
+    for (const auto& p : pts)
     {
         int px = xFromTime(p.time);
         int py = yFromValue(p.value);
@@ -233,7 +233,7 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
     painter.setBrush(Qt::NoBrush);
     QPainterPath path;
     bool hasPrev = false;
-    for (auto& p : pts)
+    for (const auto& p : pts)
     {
         int px = xFromTime(p.time);
         int py = yFromValue(p.value);
@@ -292,7 +292,7 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
         {
             double t = timeFromX(event->pos().x());
             double v = valueFromY(event->pos().y());
-            v = std::max(0.0, std::min(1.0, v));
+            v = (std::max)(0.0, (std::min)(1.0, v));
 
             auto autoTree = currentAutoTree();
             if (autoTree.isValid())
@@ -339,7 +339,7 @@ void AutomationLaneWidget::mouseMoveEvent(QMouseEvent* event)
     {
         double t = timeFromX(event->pos().x());
         double v = valueFromY(event->pos().y());
-        v = std::max(0.0, std::min(1.0, v));
+        v = (std::max)(0.0, (std::min)(1.0, v));
 
         auto autoTree = currentAutoTree();
         if (autoTree.isValid())
@@ -348,7 +348,7 @@ void AutomationLaneWidget::mouseMoveEvent(QMouseEvent* event)
             if (pointList.isValid() && dragPoint >= 0 && dragPoint < pointList.getNumChildren())
             {
                 auto p = pointList.getChild(dragPoint);
-                p.setProperty(IDs::startTime, std::max(0.0, t), &engine.getProjectModel().getUndoManager());
+                p.setProperty(IDs::startTime, (std::max)(0.0, t), &engine.getProjectModel().getUndoManager());
                 p.setProperty(IDs::gain, v, &engine.getProjectModel().getUndoManager());
                 emit automationChanged();
                 update();
@@ -373,13 +373,13 @@ void AutomationLaneWidget::wheelEvent(QWheelEvent* event)
     if (event->modifiers() & Qt::ControlModifier)
     {
         double factor = (event->angleDelta().y() > 0) ? 1.3 : 1.0 / 1.3;
-        pixelsPerSecond = std::max(5.0, std::min(200.0, pixelsPerSecond * factor));
+        pixelsPerSecond = (std::max)(5.0, (std::min)(200.0, pixelsPerSecond * factor));
         update();
         event->accept();
     }
     else
     {
-        scrollX = std::max(0, scrollX - event->angleDelta().y());
+        scrollX = (std::max)(0, scrollX - event->angleDelta().y());
         update();
         event->accept();
     }

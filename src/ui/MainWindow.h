@@ -48,10 +48,16 @@ private:
     void onRewind();
     void onExport();
     void onAddTrack();
+    void onAddTrackWithFX(const juce::String& fxType);
+    void onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
+    void onDeleteTrack();
+    void onRenameTrack();
+    void onDuplicateTrack();
     void onImportAudio();
     void onImportMIDI();
     void onBPMChanged(double bpm);
     void onMetronomeToggled(bool enabled);
+    void onToggleBrowserPanel();
 
     void updateTimecode();
 

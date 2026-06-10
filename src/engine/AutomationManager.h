@@ -28,24 +28,36 @@ public:
 
     double getValueAtTime(double timeSeconds) const
     {
-        if (!enabled || points.empty())
+        if (!enabled)
             return -1.0;
 
-        if (timeSeconds <= points.front().first)
-            return points.front().second;
-        if (timeSeconds >= points.back().first)
-            return points.back().second;
-
-        for (size_t i = 0; i < points.size() - 1; ++i)
+        double result = -1.0;
+        if (cacheLock.tryEnter())
         {
-            if (timeSeconds >= points[i].first && timeSeconds <= points[i + 1].first)
+            if (!points.empty())
             {
-                double t = (timeSeconds - points[i].first) / (points[i + 1].first - points[i].first);
-                return points[i].second + t * (points[i + 1].second - points[i].second);
+                if (timeSeconds <= points.front().first)
+                    result = points.front().second;
+                else if (timeSeconds >= points.back().first)
+                    result = points.back().second;
+                else
+                {
+                    for (size_t i = 0; i < points.size() - 1; ++i)
+                    {
+                        if (timeSeconds >= points[i].first && timeSeconds <= points[i + 1].first)
+                        {
+                            double t = (timeSeconds - points[i].first) / (points[i + 1].first - points[i].first);
+                            result = points[i].second + t * (points[i + 1].second - points[i].second);
+                            break;
+                        }
+                    }
+                    if (result < 0.0)
+                        result = points.back().second;
+                }
             }
+            cacheLock.exit();
         }
-
-        return points.back().second;
+        return result;
     }
 
     int getNumPoints() const { return static_cast<int>(points.size()); }
@@ -93,28 +105,35 @@ public:
 
     void rebuildCache()
     {
-        points.clear();
-        if (!automationTree.isValid()) return;
-
-        auto pointList = automationTree.getChildWithName(IDs::POINT_LIST);
-        if (!pointList.isValid()) return;
-
-        for (int i = 0; i < pointList.getNumChildren(); ++i)
+        std::vector<std::pair<double, double>> newPoints;
+        if (automationTree.isValid())
         {
-            auto p = pointList.getChild(i);
-            double t = p.getProperty(IDs::startTime);
-            double v = p.getProperty(IDs::gain);
-            points.push_back({t, v});
+            auto pointList = automationTree.getChildWithName(IDs::POINT_LIST);
+            if (pointList.isValid())
+            {
+                for (int i = 0; i < pointList.getNumChildren(); ++i)
+                {
+                    auto p = pointList.getChild(i);
+                    double t = p.getProperty(IDs::startTime);
+                    double v = p.getProperty(IDs::gain);
+                    newPoints.push_back({t, v});
+                }
+
+                std::sort(newPoints.begin(), newPoints.end(),
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+            }
         }
 
-        std::sort(points.begin(), points.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-
-        enabled = automationTree.getProperty(IDs::automationEnabled);
+        juce::SpinLock::ScopedLockType lock(cacheLock);
+        points.swap(newPoints);
+        enabled = automationTree.isValid()
+            ? static_cast<bool>(automationTree.getProperty(IDs::automationEnabled))
+            : false;
     }
 
 private:
     juce::ValueTree automationTree;
+    mutable juce::SpinLock cacheLock;
     std::vector<std::pair<double, double>> points;
     bool enabled = false;
     int paramID = 1;

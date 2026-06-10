@@ -56,11 +56,11 @@ double ExportManager::calculateProjectDuration(ProjectModel& model)
             auto clip = clipList.getChild(c);
             double start = clip.getProperty(IDs::startTime);
             double dur = clip.getProperty(IDs::duration);
-            maxEnd = std::max(maxEnd, start + dur);
+            maxEnd = (std::max)(maxEnd, start + dur);
         }
     }
 
-    return std::max(maxEnd + 3.0, 4.0); // at least 4 seconds, add 3s tail
+    return (std::max)(maxEnd + 3.0, 4.0); // at least 4 seconds, add 3s tail
 }
 
 void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
@@ -131,14 +131,21 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
         while (samplesRendered < totalSamples && !cancelFlag.load())
         {
-            int numThisBlock = static_cast<int>(std::min(static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
+            int numThisBlock = static_cast<int>((std::min)(static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
             buffer.clear();
             midiBuffer.clear();
 
             renderGraph.processBlock(buffer, midiBuffer);
             renderTransport.advance(numThisBlock);
 
-            writer->writeFromAudioSampleBuffer(buffer, 0, numThisBlock);
+            if (!writer->writeFromAudioSampleBuffer(buffer, 0, numThisBlock))
+            {
+                success = false;
+                message = "Disk write failed during export.";
+                delete writer;
+                delete outStream;
+                goto finish;
+            }
 
             samplesRendered += numThisBlock;
             ++blocksDone;
@@ -150,6 +157,7 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
         }
 
         delete writer;
+        delete outStream;
 
         if (cancelFlag.load())
         {

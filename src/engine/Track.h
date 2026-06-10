@@ -63,6 +63,7 @@ private:
     juce::LinearSmoothedValue<float> panPosition;
     std::atomic<bool> isMuted{ false };
 
+    juce::SpinLock stateLock;
     std::vector<std::unique_ptr<TrackFXSlot>> fxChain;
     juce::dsp::ProcessSpec fxSpec;
 

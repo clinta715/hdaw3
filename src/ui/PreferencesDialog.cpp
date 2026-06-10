@@ -59,6 +59,10 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     connect(saveBtn, &QPushButton::clicked, this, &PreferencesDialog::onSave);
     btnLayout->addWidget(saveBtn);
 
+    auto* applyBtn = new QPushButton("Apply", this);
+    connect(applyBtn, &QPushButton::clicked, this, &PreferencesDialog::onApply);
+    btnLayout->addWidget(applyBtn);
+
     auto* cancelBtn = new QPushButton("Cancel", this);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     btnLayout->addWidget(cancelBtn);
@@ -78,11 +82,17 @@ void PreferencesDialog::loadSettings()
 
 void PreferencesDialog::onSave()
 {
+    onApply();
+    accept();
+}
+
+void PreferencesDialog::onApply()
+{
     QSettings settings(kSettingsOrg, kSettingsApp);
     settings.setValue(kKeyClipDur, clipDurSpinBox->value());
     settings.setValue(kKeySnap, snapCheckBox->isChecked());
     settings.setValue(kKeySnapDiv, snapDivisionCombo->currentIndex());
-    accept();
+    emit preferencesApplied();
 }
 
 // Static accessors

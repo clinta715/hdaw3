@@ -1,6 +1,7 @@
 #pragma once
 #include "BusProcessorBase.h"
 #include <juce_dsp/juce_dsp.h>
+#include <atomic>
 
 namespace HDAW {
 
@@ -118,10 +119,10 @@ private:
     juce::AudioBuffer<float> scratchBuffer;
     juce::dsp::ProcessSpec spec;
 
-    bool reverbEnabled = false;
-    bool delayEnabled = false;
-    bool eqEnabled = false;
-    bool compEnabled = false;
+    std::atomic<bool> reverbEnabled{ false };
+    std::atomic<bool> delayEnabled{ false };
+    std::atomic<bool> eqEnabled{ false };
+    std::atomic<bool> compEnabled{ false };
 
     juce::dsp::Reverb reverbProcess;
     juce::dsp::DelayLine<float> delayProcess{ 44100 };

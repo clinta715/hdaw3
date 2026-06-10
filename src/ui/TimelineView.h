@@ -26,6 +26,8 @@ public:
 
 signals:
     void addTrackClicked();
+    void addTrackWithFX(const juce::String& fxType);
+    void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
     void automationToggled(int trackIndex);
     void recordToggled();
     void playToggled();

@@ -21,8 +21,12 @@ public:
     static int getSnapDivision();
     static void setSnapDivision(int idx);
 
+signals:
+    void preferencesApplied();
+
 private slots:
     void onSave();
+    void onApply();
 
 private:
     void loadSettings();

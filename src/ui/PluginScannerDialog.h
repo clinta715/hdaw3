@@ -4,6 +4,8 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QProgressBar>
+#include <QCheckBox>
+#include <QWidget>
 #include <thread>
 #include <atomic>
 #include "../engine/AudioEngine.h"
@@ -18,6 +20,9 @@ public:
 private slots:
     void onRescan();
     void onScanFinished();
+    void onSelectionChanged();
+    void onToggleBlacklist();
+    void onShowBlacklistedToggled(bool show);
 
 private:
     void refreshList();
@@ -25,9 +30,11 @@ private:
     AudioEngine& engine;
     QListWidget* pluginList;
     QPushButton* rescanBtn;
+    QPushButton* toggleBlacklistBtn;
     QPushButton* closeBtn;
     QLabel* statusLabel;
     QProgressBar* progressBar;
+    QCheckBox* showBlacklistedCheck;
 
     std::thread scanThread;
     std::atomic<bool> dialogAlive{true};

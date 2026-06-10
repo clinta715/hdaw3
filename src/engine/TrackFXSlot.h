@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <atomic>
 #include <memory>
 
 namespace HDAW {
@@ -38,8 +39,8 @@ public:
 
     juce::String getType() const { return slotType; }
     bool isPlugin() const { return isExternal; }
-    bool isBypassed() const { return bypassed; }
-    void setBypassed(bool b) { bypassed = b; }
+    bool isBypassed() const { return bypassed.load(std::memory_order_relaxed); }
+    void setBypassed(bool b) { bypassed.store(b, std::memory_order_relaxed); }
 
     const juce::String& getPluginID() const { return pluginIdentifier; }
 
@@ -95,7 +96,7 @@ public:
 
     void process(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
     {
-        if (bypassed) return;
+        if (bypassed.load(std::memory_order_relaxed)) return;
 
         if (isExternal && pluginInstance)
         {
@@ -161,7 +162,7 @@ private:
     enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Plugin };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
-    bool bypassed = false;
+    std::atomic<bool> bypassed{ false };
 
     bool isExternal = false;
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;

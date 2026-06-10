@@ -22,7 +22,7 @@ void PianoRollRuler::paintEvent(QPaintEvent*)
     painter.drawLine(0, h - 1, w, h - 1);
 
     // Beat markers
-    double startBeat = std::max(0.0, static_cast<double>(scrollOffset) / pixelsPerBeat);
+    double startBeat = (std::max)(0.0, static_cast<double>(scrollOffset) / pixelsPerBeat);
     double endBeat = startBeat + static_cast<double>(w) / pixelsPerBeat + 1;
 
     painter.setPen(ThemeColors::textSecondary());

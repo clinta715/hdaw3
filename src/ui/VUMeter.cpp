@@ -48,9 +48,9 @@ void VUMeter::paintEvent(QPaintEvent* event)
 
     auto drawBar = [&](int x, float level) {
         // Logarithmic scale roughly
-        float db = 20.0f * std::log10(std::max(level, 0.0001f));
+        float db = 20.0f * std::log10((std::max)(level, 0.0001f));
         float normalized = (db + 60.0f) / 60.0f; // -60dB to 0dB range
-        normalized = std::max(0.0f, std::min(1.0f, normalized));
+        normalized = (std::max)(0.0f, (std::min)(1.0f, normalized));
 
         int barH = static_cast<int>(normalized * h);
         

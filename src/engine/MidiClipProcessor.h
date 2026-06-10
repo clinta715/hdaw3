@@ -8,9 +8,18 @@
 
 namespace HDAW {
 
+struct NoteData {
+    int noteNumber;
+    float velocity;
+    double startBeat;
+    double durationBeats;
+};
+
 class MidiClipProcessor : public juce::AudioProcessor
 {
 public:
+    static constexpr int MAX_NOTES = 512;
+
     MidiClipProcessor(HDAW::TransportManager& tm)
         : AudioProcessor(BusesProperties()
               .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
@@ -23,7 +32,7 @@ public:
     void setClipTree(juce::ValueTree tree)
     {
         clipTree = tree;
-        noteList = tree.getChildWithName(IDs::MIDI_NOTE_LIST);
+        rebuildNoteCache();
     }
 
     juce::ValueTree getClipTree() const { return clipTree; }
@@ -48,13 +57,12 @@ public:
     {
         const int numSamples = buffer.getNumSamples();
 
-        // Clear audio output
         buffer.clear();
 
-        if (!noteList.isValid() || numSamples <= 0)
+        int count = noteCount.load(std::memory_order_acquire);
+        if (count <= 0 || numSamples <= 0)
             return;
 
-        // Calculate current beat position
         int64_t transportSample = transportManager.getCurrentSample();
         double sr = transportManager.getSampleRate();
         double bpm = transportManager.getBPM();
@@ -64,10 +72,8 @@ public:
         double currentTimeSec = static_cast<double>(transportSample) / sr;
         double clipLocalSec = currentTimeSec - startSec;
 
-        // Clip bounds
         if (clipLocalSec < 0.0 || clipLocalSec > durSec)
         {
-            // Send note-offs for all active notes
             for (int note = 0; note < 128; ++note)
             {
                 if (!activeNotes[note]) continue;
@@ -81,44 +87,37 @@ public:
         double secondsPerBeat = 60.0 / bpm;
         double currentBeat = clipLocalSec / secondsPerBeat;
 
-        // Iterate MIDI notes in the clip
-        for (int i = 0; i < noteList.getNumChildren(); ++i)
+        for (int i = 0; i < count; ++i)
         {
-            auto note = noteList.getChild(i);
-            int noteNumber = note.getProperty(IDs::noteNumber);
-            float velocity = note.getProperty(IDs::velocity);
-            double noteStart = note.getProperty(IDs::startBeat);
-            double noteDur = note.getProperty(IDs::durationBeats);
-            double noteEnd = noteStart + noteDur;
+            const NoteData& note = noteCache[i];
+            double noteEnd = note.startBeat + note.durationBeats;
 
-            if (currentBeat >= noteStart && currentBeat < noteEnd)
+            if (currentBeat >= note.startBeat && currentBeat < noteEnd)
             {
-                if (!activeNotes[noteNumber])
+                if (!activeNotes[note.noteNumber])
                 {
-                    float vel = velocity * gain.load();
-                    vel = std::max(0.0f, std::min(1.0f, vel));
+                    float vel = note.velocity * gain.load();
+                    vel = (std::max)(0.0f, (std::min)(1.0f, vel));
                     uint8_t velByte = static_cast<uint8_t>(vel * 127.0f);
-                    midiMessages.addEvent(juce::MidiMessage::noteOn(midiChannel, noteNumber, velByte),
+                    midiMessages.addEvent(juce::MidiMessage::noteOn(midiChannel, note.noteNumber, velByte),
                                           0);
-                    activeNotes[noteNumber] = true;
+                    activeNotes[note.noteNumber] = true;
                 }
             }
-            else if (activeNotes[noteNumber])
+            else if (activeNotes[note.noteNumber])
             {
                 uint8_t velByte = static_cast<uint8_t>(gain.load() * 127.0f);
-                midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, noteNumber, 0.0f),
+                midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, note.noteNumber, 0.0f),
                                       0);
-                activeNotes[noteNumber] = false;
+                activeNotes[note.noteNumber] = false;
             }
         }
 
-        // Apply CC7 for clip gain
         float ccVal = gain.load();
-        uint8_t ccByte = static_cast<uint8_t>(std::max(0.0f, std::min(1.0f, ccVal)) * 127.0f);
+        uint8_t ccByte = static_cast<uint8_t>((std::max)(0.0f, (std::min)(1.0f, ccVal)) * 127.0f);
         midiMessages.addEvent(juce::MidiMessage::controllerEvent(midiChannel, 7, ccByte), 0);
     }
 
-    // AudioProcessor boilerplate
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
     bool hasEditor() const override { return false; }
     const juce::String getName() const override { return "MidiClip"; }
@@ -134,9 +133,36 @@ public:
     void setStateInformation(const void*, int) override {}
 
 private:
+    void rebuildNoteCache()
+    {
+        auto nl = clipTree.getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!nl.isValid())
+        {
+            noteCacheLock.enter();
+            noteCount.store(0, std::memory_order_release);
+            noteCacheLock.exit();
+            return;
+        }
+
+        int count = (std::min)(nl.getNumChildren(), MAX_NOTES);
+        std::array<NoteData, MAX_NOTES> newCache{};
+        for (int i = 0; i < count; ++i)
+        {
+            auto n = nl.getChild(i);
+            newCache[i].noteNumber = n.getProperty(IDs::noteNumber);
+            newCache[i].velocity = n.getProperty(IDs::velocity);
+            newCache[i].startBeat = n.getProperty(IDs::startBeat);
+            newCache[i].durationBeats = n.getProperty(IDs::durationBeats);
+        }
+
+        noteCacheLock.enter();
+        noteCache = newCache;
+        noteCount.store(count, std::memory_order_release);
+        noteCacheLock.exit();
+    }
+
     HDAW::TransportManager& transportManager;
     juce::ValueTree clipTree;
-    juce::ValueTree noteList;
 
     std::atomic<double> startTime{ 0.0 };
     std::atomic<double> duration{ 1.0 };
@@ -144,6 +170,10 @@ private:
 
     int midiChannel = 1;
     std::array<bool, 128> activeNotes{};
+
+    juce::SpinLock noteCacheLock;
+    std::array<NoteData, MAX_NOTES> noteCache{};
+    std::atomic<int> noteCount{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiClipProcessor)
 };

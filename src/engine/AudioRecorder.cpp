@@ -21,7 +21,7 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
     outputFile.getParentDirectory().createDirectory();
     numChannels = numInputChannels;
 
-    auto* wavFormat = new juce::WavAudioFormat();
+    auto wavFormat = std::make_unique<juce::WavAudioFormat>();
     auto* outStream = file.createOutputStream().release();
 
     if (outStream == nullptr)
@@ -36,10 +36,13 @@ bool AudioRecorder::startRecording(const juce::File& file, double sampleRate, in
         return false;
     }
 
+    wavFormat.release();
+
     threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
         wavWriter, backgroundThread, 65536);
 
-    channelBuffer.setSize(numChannels, 4096);
+    channelBuffer.setSize(numChannels, 16384);
+    channelBuffer.clear();
     active = true;
 
     return true;
@@ -52,6 +55,13 @@ juce::File AudioRecorder::stopRecording()
 
     active = false;
 
+    int waitMs = 0;
+    while (inProcessBlock.load() && waitMs < 200)
+    {
+        juce::Thread::sleep(1);
+        ++waitMs;
+    }
+
     threadedWriter.reset();
 
     return outputFile;
@@ -62,21 +72,27 @@ void AudioRecorder::processBlock(const juce::AudioBuffer<float>& buffer)
     if (!active.load())
         return;
 
+    inProcessBlock.store(true);
+
     int samples = buffer.getNumSamples();
     int chans = juce::jmin(buffer.getNumChannels(), numChannels);
 
-    if (samples <= 0) return;
-
-    channelBuffer.setSize(chans, samples, false, false, true);
+    if (samples <= 0)
+    {
+        inProcessBlock.store(false);
+        return;
+    }
 
     for (int ch = 0; ch < chans; ++ch)
         channelBuffer.copyFrom(ch, 0, buffer, ch, 0, samples);
 
-    std::vector<const float*> channelPtrs(chans);
     for (int ch = 0; ch < chans; ++ch)
         channelPtrs[ch] = channelBuffer.getReadPointer(ch);
 
-    threadedWriter->write(channelPtrs.data(), samples);
+    if (threadedWriter != nullptr)
+        threadedWriter->write(channelPtrs.data(), samples);
+
+    inProcessBlock.store(false);
 }
 
 } // namespace HDAW

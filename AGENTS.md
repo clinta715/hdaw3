@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.2.0**. The core engine (project model, transport, routing,
+**0.2.1**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the basic UI shell
 (track headers, timeline, mixer, piano roll, FX chain,
 automation) work end-to-end. The project is pre-1.0, pre-test-suite,

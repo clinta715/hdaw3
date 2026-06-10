@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.2.0 LANGUAGES CXX)
+project(HDAW VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,6 +87,12 @@ add_executable(HDAW
     src/engine/Track.cpp
     src/engine/ProjectPool.h
     src/engine/SendProcessor.h
+    src/engine/CLAPPluginFormat.h
+    src/engine/CLAPPluginFormat.cpp
+    src/engine/CLAPPluginInstance.h
+    src/engine/CLAPPluginInstance.cpp
+    src/engine/CLAPPluginEditor.h
+    src/engine/CLAPPluginEditor.cpp
     src/engine/BusProcessorBase.h
     src/engine/MasterBusProcessor.h
     src/engine/GroupBusProcessor.h
@@ -106,6 +112,7 @@ target_link_libraries(HDAW
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_basics
+    clap_juce_extensions
 )
 
 # Enable VST3 plugin hosting

@@ -18,10 +18,10 @@ public:
 
     void setSendLevel(float level)
     {
-        sendLevel = level;
+        sendLevel.store(level, std::memory_order_relaxed);
     }
 
-    float getSendLevel() const { return sendLevel; }
+    float getSendLevel() const { return sendLevel.load(std::memory_order_relaxed); }
 
     void setSendMode(bool isPreFader)
     {
@@ -39,7 +39,7 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
-        buffer.applyGain(sendLevel);
+        buffer.applyGain(sendLevel.load(std::memory_order_relaxed));
     }
 
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -57,8 +57,8 @@ public:
     void setStateInformation(const void*, int) override {}
 
 private:
-    float sendLevel = 0.0f;
-    bool preFader = false;
+    std::atomic<float> sendLevel{ 0.0f };
+    std::atomic<bool> preFader{ false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SendProcessor)
 };

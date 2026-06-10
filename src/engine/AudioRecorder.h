@@ -2,6 +2,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <atomic>
+#include <array>
 #include <memory>
 
 namespace HDAW {
@@ -25,7 +26,10 @@ private:
     int numChannels = 0;
 
     std::atomic<bool> active{ false };
+    std::atomic<bool> inProcessBlock{ false };
     juce::File outputFile;
+
+    std::array<const float*, 2> channelPtrs{};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioRecorder)
 };

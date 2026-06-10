@@ -24,7 +24,7 @@ void ClipItem::setPixelsPerSecond(double pps)
 
 QRectF ClipItem::boundingRect() const
 {
-    double w = std::max(getDuration() * pixelsPerSecond, minClipWidth);
+    double w = (std::max)(getDuration() * pixelsPerSecond, minClipWidth);
     return QRectF(0, 0, w, trackHeight).adjusted(-1, -1, 1, 1);
 }
 
@@ -33,7 +33,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     Q_UNUSED(option);
     painter->setRenderHint(QPainter::Antialiasing);
 
-    double w = std::max(getDuration() * pixelsPerSecond, minClipWidth);
+    double w = (std::max)(getDuration() * pixelsPerSecond, minClipWidth);
     double h = trackHeight;
     if (h <= 0) return;
 
@@ -73,7 +73,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     {
         painter->setPen(Qt::white);
         QFont f = painter->font();
-        f.setPointSize(std::max(7, std::min(10, static_cast<int>(h / 6))));
+        f.setPointSize((std::max)(7, (std::min)(10, static_cast<int>(h / 6))));
         painter->setFont(f);
         QString clipName = QString::fromUtf8(
             clipTree.getProperty(IDs::name).toString().toRawUTF8());
@@ -86,7 +86,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     double fadeOut = getFadeOut();
     if (fadeIn > 0.001 && w > 10)
     {
-        double fw = std::min(fadeIn * pixelsPerSecond, w * 0.5);
+        double fw = (std::min)(fadeIn * pixelsPerSecond, w * 0.5);
         QPolygonF tri;
         tri << QPointF(0, 0) << QPointF(fw, 0) << QPointF(0, h);
         painter->setPen(Qt::NoPen);
@@ -95,7 +95,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     }
     if (fadeOut > 0.001 && w > 10)
     {
-        double fw = std::min(fadeOut * pixelsPerSecond, w * 0.5);
+        double fw = (std::min)(fadeOut * pixelsPerSecond, w * 0.5);
         QPolygonF tri;
         tri << QPointF(w, 0) << QPointF(w - fw, 0) << QPointF(w, h);
         painter->setPen(Qt::NoPen);

@@ -28,15 +28,15 @@ void TimeRuler::setPixelsPerSecond(double pps)
 
 void TimeRuler::setLoopBounds(double start, double end)
 {
-    loopStart = std::min(start, end);
-    loopEnd = std::max(start, end);
+    loopStart = (std::min)(start, end);
+    loopEnd = (std::max)(start, end);
     update();
 }
 
 QRectF TimeRuler::boundingRect() const
 {
     double projectDuration = 300.0;
-    return QRectF(0, 0, std::max(projectDuration * pixelsPerSecond + 200, 10000.0), height);
+    return QRectF(0, 0, (std::max)(projectDuration * pixelsPerSecond + 200, 10000.0), height);
 }
 
 double TimeRuler::timeFromX(double x) const
@@ -128,7 +128,7 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
 
     // Bars:Beats display
     double bpm = engine.getTransportManager().getBPM();
-    double secondsPerBeat = 60.0 / std::max(1.0, bpm);
+    double secondsPerBeat = 60.0 / (std::max)(1.0, bpm);
     double visibleDuration = boundingRect().width() / pixelsPerSecond;
 
     double beatsPerDivision;
@@ -203,7 +203,7 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
 void TimeRuler::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     double x = event->pos().x();
-    double t = timeFromX(std::max(0.0, x));
+    double t = timeFromX((std::max)(0.0, x));
 
     if (dragMode == DragLoopStart)
     {

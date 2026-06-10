@@ -21,16 +21,16 @@ void MidiClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
     for (int i = 0; i < midiNotes.getNumChildren(); ++i)
     {
         int n = midiNotes.getChild(i).getProperty(IDs::noteNumber);
-        localMinNote = std::min(localMinNote, n);
-        localMaxNote = std::max(localMaxNote, n);
+        localMinNote = (std::min)(localMinNote, n);
+        localMaxNote = (std::max)(localMaxNote, n);
     }
     if (localMinNote > localMaxNote)
     {
         localMinNote = minNote;
         localMaxNote = maxNote;
     }
-    localMinNote = std::max(0, localMinNote - 2);
-    localMaxNote = std::min(127, localMaxNote + 2);
+    localMinNote = (std::max)(0, localMinNote - 2);
+    localMaxNote = (std::min)(127, localMaxNote + 2);
 
     int noteRange = localMaxNote - localMinNote;
     if (noteRange <= 0) return;
@@ -53,7 +53,7 @@ void MidiClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
         QFont f = painter.font();
         f.setPointSize(6);
         painter.setFont(f);
-        int labelInterval = std::max(1, noteRange / 5);
+        int labelInterval = (std::max)(1, noteRange / 5);
         for (int n = localMinNote; n <= localMaxNote; n += labelInterval)
         {
             double y = contentRect.bottom() - (n - localMinNote + 0.5) * noteHeight;
@@ -75,14 +75,14 @@ void MidiClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
         double durBeats = note.getProperty(IDs::durationBeats);
 
         double x = startBeat * pixelsPerSecond / beatsPerSecond;
-        double nw = std::max(durBeats * pixelsPerSecond / beatsPerSecond, 2.0);
+        double nw = (std::max)(durBeats * pixelsPerSecond / beatsPerSecond, 2.0);
         double y = contentRect.bottom() - (noteNum - localMinNote + 1) * noteHeight;
-        double nh = std::max(noteHeight - 1.0, 1.0);
+        double nh = (std::max)(noteHeight - 1.0, 1.0);
 
         QRectF nr(contentRect.x() + x, y, nw, nh);
 
         int alpha = static_cast<int>(velocity * 220.0f + 35.0f);
-        QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), std::min(255, alpha));
+        QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), (std::min)(255, alpha));
 
         painter.setPen(QPen(noteColor.darker(130), 0.5));
         painter.setBrush(noteColor);

@@ -16,7 +16,7 @@ NoteGridWidget::NoteGridWidget(PianoRollModel& m, AudioEngine& ae, QWidget* pare
 
 void NoteGridWidget::setPixelsPerBeat(double ppb)
 {
-    pixelsPerBeat = std::max(10.0, std::min(200.0, ppb));
+    pixelsPerBeat = (std::max)(10.0, (std::min)(200.0, ppb));
     update();
 }
 
@@ -24,8 +24,8 @@ void NoteGridWidget::setScrollOffset(int x, int y)
 {
     // 128 keys * keyHeight defines the vertical extent. Clamp scrollY to it so
     // the user can't scroll past the end of the piano range.
-    int maxScrollY = std::max(0, static_cast<int>(128 * keyHeight) - height());
-    scrollX = std::max(0, x);
+    int maxScrollY = (std::max)(0, static_cast<int>(128 * keyHeight) - height());
+    scrollX = (std::max)(0, x);
     scrollY = std::clamp(y, 0, maxScrollY);
     update();
 }
@@ -57,7 +57,7 @@ QRectF NoteGridWidget::noteRect(int noteIndex) const
     double durBeats = note.getProperty(IDs::durationBeats);
 
     double x = startBeat * pixelsPerBeat - scrollX;
-    double w = std::max(durBeats * pixelsPerBeat, 3.0);
+    double w = (std::max)(durBeats * pixelsPerBeat, 3.0);
     int idx = 96 - 1 - noteNum;
     double y = idx * keyHeight - scrollY;
 
@@ -68,7 +68,7 @@ void NoteGridWidget::createNoteAtPos(const QPoint& pos, float velocity, double d
 {
     int noteNum = noteNumberAtPos(pos.y());
     double beat = (pos.x() + scrollX) / pixelsPerBeat;
-    beat = std::max(0.0, beat);
+    beat = (std::max)(0.0, beat);
     model.addNote(noteNum, velocity, beat, durationBeats);
     emit notesChanged();
     update();
@@ -124,7 +124,7 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
 
         float vel = note.getProperty(IDs::velocity);
         int alpha = static_cast<int>(vel / 127.0f * 200.0f + 55.0f);
-        alpha = std::min(255, alpha);
+        alpha = (std::min)(255, alpha);
 
         QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), alpha);
 
@@ -135,7 +135,7 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
 
     // Draw selection
     auto sel = model.getSelectedNotes();
-    for (auto& s : sel)
+    for (const auto& s : sel)
     {
         for (int i = 0; i < model.getNumNotes(); ++i)
         {
@@ -213,7 +213,7 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
             // Create note
             int noteNum = noteNumberAtPos(pos.y());
             double beat = (pos.x() + scrollX) / pixelsPerBeat;
-            beat = std::max(0.0, beat);
+            beat = (std::max)(0.0, beat);
 
             auto newNote = model.addNote(noteNum, 100.0f, beat, 1.0);
             model.deselectAll();
@@ -252,8 +252,8 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
         int noteDelta = -(delta.y() / static_cast<int>(keyHeight));
 
         auto note = model.getNote(dragNoteIndex);
-        double newBeat = std::max(0.0, dragStartBeat + beatDelta);
-        int newNoteNum = std::max(0, std::min(127, dragStartNoteNumber + noteDelta));
+        double newBeat = (std::max)(0.0, dragStartBeat + beatDelta);
+        int newNoteNum = (std::max)(0, (std::min)(127, dragStartNoteNumber + noteDelta));
 
         note.setProperty(IDs::startBeat, newBeat, &engine.getProjectModel().getUndoManager());
         note.setProperty(IDs::noteNumber, newNoteNum, &engine.getProjectModel().getUndoManager());
@@ -263,7 +263,7 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
     else if (dragMode == ResizeRight && dragNoteIndex >= 0)
     {
         QPoint delta = pos - dragStart;
-        double newDur = std::max(0.25, dragStartDuration + delta.x() / pixelsPerBeat);
+        double newDur = (std::max)(0.25, dragStartDuration + delta.x() / pixelsPerBeat);
         auto note = model.getNote(dragNoteIndex);
         note.setProperty(IDs::durationBeats, newDur, &engine.getProjectModel().getUndoManager());
         emit notesChanged();
@@ -279,7 +279,7 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
             newStart = dragStartBeat + dragStartDuration - 0.25;
             newDur = 0.25;
         }
-        newStart = std::max(0.0, newStart);
+        newStart = (std::max)(0.0, newStart);
         auto note = model.getNote(dragNoteIndex);
         note.setProperty(IDs::startBeat, newStart, &engine.getProjectModel().getUndoManager());
         note.setProperty(IDs::durationBeats, newDur, &engine.getProjectModel().getUndoManager());
@@ -341,14 +341,14 @@ void NoteGridWidget::wheelEvent(QWheelEvent* event)
     else if (event->modifiers() & Qt::ShiftModifier)
     {
         // Horizontal scroll
-        scrollX = std::max(0, scrollX + event->angleDelta().y());
+        scrollX = (std::max)(0, scrollX + event->angleDelta().y());
         update();
         event->accept();
     }
     else
     {
         // Vertical scroll
-        scrollY = std::max(0, scrollY - event->angleDelta().y());
+        scrollY = (std::max)(0, scrollY - event->angleDelta().y());
         update();
         event->accept();
     }

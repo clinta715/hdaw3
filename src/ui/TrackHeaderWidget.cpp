@@ -1,6 +1,7 @@
 #include "TrackHeaderWidget.h"
 #include "Theme.h"
 #include "../engine/LevelMeter.h"
+#include "../engine/PluginManager.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QVBoxLayout>
@@ -61,7 +62,7 @@ void TrackHeaderWidget::setTrackHeight(int index, double height)
     if (index >= 0 && index < trackList.getNumChildren())
     {
         trackList.getChild(index).setProperty(IDs::trackHeight,
-            std::max(40.0, height), &engine.getProjectModel().getUndoManager());
+            (std::max)(40.0, height), &engine.getProjectModel().getUndoManager());
         update();
     }
 }
@@ -72,7 +73,7 @@ double TrackHeaderWidget::getTrackHeight(int index) const
     if (index >= 0 && index < trackList.getNumChildren())
     {
         double h = trackList.getChild(index).getProperty(IDs::trackHeight, defaultTrackHeight);
-        return std::max(40.0, h);
+        return (std::max)(40.0, h);
     }
     return defaultTrackHeight;
 }
@@ -119,8 +120,8 @@ int TrackHeaderWidget::hitTest(const QPoint& pos, int& outTrackIndex) const
 
 TrackHeaderWidget::TrackHeader& TrackHeaderWidget::headerFor(int trackIndex)
 {
-    for (auto& h : tracks)
-        if (h.trackIndex == trackIndex) return h;
+    if (trackIndex >= 0 && trackIndex < static_cast<int>(tracks.size()))
+        return tracks[trackIndex];
     static TrackHeader dummy;
     return dummy;
 }
@@ -168,7 +169,7 @@ QSize TrackHeaderWidget::sizeHint() const
         totalH += getTrackHeight(i);
     int hintH = static_cast<int>(totalH) + 20;
     int hintW = static_cast<int>(headerWidth);
-    return QSize(hintW, std::max(hintH, minimumHeight()));
+    return QSize(hintW, (std::max)(hintH, minimumHeight()));
 }
 
 QSize TrackHeaderWidget::minimumSizeHint() const
@@ -286,7 +287,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         QFont sf2 = painter.font();
         sf2.setPointSize(6);
         painter.setFont(sf2);
-        int db = static_cast<int>(20.0 * std::log10(std::max(vol, 0.001f)));
+        int db = static_cast<int>(20.0 * std::log10((std::max)(vol, 0.001f)));
         painter.drawText(header.volRect.adjusted(2, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number(db) + "dB");
 
@@ -324,8 +325,8 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
             int rx = lx + barW + 1;
 
             auto drawVU = [&](int x, float level) {
-                float db = 20.0f * std::log10(std::max(level, 0.0001f));
-                float norm = std::max(0.0f, std::min(1.0f, (db + 60.0f) / 60.0f));
+                float db = 20.0f * std::log10((std::max)(level, 0.0001f));
+                float norm = (std::max)(0.0f, (std::min)(1.0f, (db + 60.0f) / 60.0f));
                 int barH = static_cast<int>(norm * vh);
                 int by = header.vuRect.y() + 1 + vh - barH;
                 QColor color = (db > -3.0f) ? ThemeColors::vuRed()
@@ -345,13 +346,59 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     // Bottom fill
     int totalH = static_cast<int>(trackY);
     if (totalH < height())
-        painter.fillRect(QRect(0, std::max(totalH, static_cast<int>(rulerHeight)), w, height() - std::max(totalH, static_cast<int>(rulerHeight))), ThemeColors::bgWindow());
+        painter.fillRect(QRect(0, (std::max)(totalH, static_cast<int>(rulerHeight)), w, height() - (std::max)(totalH, static_cast<int>(rulerHeight))), ThemeColors::bgWindow());
 
     // Draw top ruler header background overlay
     QRect topRulerHeader(0, 0, w, static_cast<int>(rulerHeight));
     painter.fillRect(topRulerHeader, ThemeColors::bgWindow());
     painter.setPen(QPen(ThemeColors::border(), 1));
     painter.drawLine(0, static_cast<int>(rulerHeight) - 1, w, static_cast<int>(rulerHeight) - 1);
+}
+
+void TrackHeaderWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    int trackIdx = -1;
+    int type = hitTest(event->pos(), trackIdx);
+
+    // Double-click on empty area below all tracks -> add track
+    if (trackIdx < 0 || trackIdx >= static_cast<int>(tracks.size()))
+    {
+        emit addTrackRequested();
+        return;
+    }
+
+    // Double-click on a track name -> rename inline
+    if (type == 6)
+    {
+        auto& header = headerFor(trackIdx);
+        if (header.nameEdit == nullptr)
+        {
+            auto trackList = engine.getProjectModel().getTrackListTree();
+            auto tree = trackList.getChild(trackIdx);
+            header.nameEdit = new QLineEdit(
+                QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8()), this);
+            header.nameEdit->setGeometry(header.nameRect);
+            header.nameEdit->selectAll();
+            header.nameEdit->show();
+            header.nameEdit->setFocus();
+            connect(header.nameEdit, &QLineEdit::editingFinished, this, [this, trackIdx]() {
+                auto& hdr = headerFor(trackIdx);
+                if (hdr.nameEdit)
+                {
+                    QString newName = hdr.nameEdit->text();
+                    auto trackList = engine.getProjectModel().getTrackListTree();
+                    if (trackIdx < trackList.getNumChildren())
+                        trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
+                    hdr.nameEdit->deleteLater();
+                    hdr.nameEdit = nullptr;
+                    update();
+                }
+            });
+        }
+        return;
+    }
+
+    QWidget::mouseDoubleClickEvent(event);
 }
 
 void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
@@ -487,7 +534,7 @@ void TrackHeaderWidget::mouseMoveEvent(QMouseEvent* event)
         float range = static_cast<float>(header.volRect.width() - 8);
         if (range > 0)
         {
-            float newVol = std::max(0.0f, std::min(1.0f,
+            float newVol = (std::max)(0.0f, (std::min)(1.0f,
                 dragStartValue + static_cast<float>(delta.x()) / range));
             commitVolume(dragTrack, newVol);
         }
@@ -497,7 +544,7 @@ void TrackHeaderWidget::mouseMoveEvent(QMouseEvent* event)
         float range = static_cast<float>(header.panRect.width() - 4);
         if (range > 0)
         {
-            float newPan = std::max(-1.0f, std::min(1.0f,
+            float newPan = (std::max)(-1.0f, (std::min)(1.0f,
                 dragStartValue + static_cast<float>(delta.x()) / (range * 0.5f)));
             commitPan(dragTrack, newPan);
         }
@@ -517,9 +564,47 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
 {
     int trackIdx = -1;
     hitTest(event->pos(), trackIdx);
+
+    // Right-click on empty area -> "Add Track" context menu
     if (trackIdx < 0 || trackIdx >= static_cast<int>(tracks.size()))
     {
-        QWidget::contextMenuEvent(event);
+        QMenu menu;
+        auto* addAction = menu.addAction("Add Track");
+        connect(addAction, &QAction::triggered, this, &TrackHeaderWidget::addTrackRequested);
+
+        auto* addFxs = menu.addMenu("Add Track with FX");
+        auto* eqTrk = addFxs->addAction("EQ");
+        connect(eqTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("eq"); });
+        auto* compTrk = addFxs->addAction("Compressor");
+        connect(compTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("compressor"); });
+        auto* revTrk = addFxs->addAction("Reverb");
+        connect(revTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("reverb"); });
+        auto* delTrk = addFxs->addAction("Delay");
+        connect(delTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("delay"); });
+
+        auto& pluginManager = engine.getPluginManager();
+        const auto& plugins = pluginManager.getPlugins();
+        if (!plugins.empty())
+        {
+            auto* pluginTrk = addFxs->addMenu("Plugin");
+            for (const auto& desc : plugins)
+            {
+                if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+                    continue;
+
+                QString label = QString("[%1] %2")
+                    .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
+                    .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+                auto* act = pluginTrk->addAction(label);
+                connect(act, &QAction::triggered, this,
+                    [this, desc]() {
+                        emit addTrackWithPlugin(desc.fileOrIdentifier, desc.pluginFormatName);
+                    });
+            }
+        }
+
+        menu.exec(event->globalPos());
+        event->accept();
         return;
     }
 
@@ -562,6 +647,43 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
 
     menu.addSeparator();
 
+    // Add FX Slot submenu
+    auto* fxMenu = menu.addMenu("Add FX Slot");
+    auto* eqAction = fxMenu->addAction("EQ");
+    connect(eqAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "eq"); });
+    auto* compAction = fxMenu->addAction("Compressor");
+    connect(compAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "compressor"); });
+    auto* reverbAction = fxMenu->addAction("Reverb");
+    connect(reverbAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "reverb"); });
+    auto* delayAction = fxMenu->addAction("Delay");
+    connect(delayAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "delay"); });
+
+    // Plugin submenu (skip blacklisted)
+    auto& pluginManager = engine.getPluginManager();
+    const auto& plugins = pluginManager.getPlugins();
+    if (!plugins.empty())
+    {
+        fxMenu->addSeparator();
+        for (const auto& desc : plugins)
+        {
+            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+                continue;
+
+            QString label = QString("[%1] %2")
+                .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
+                .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+            auto* pluginAction = fxMenu->addAction(label);
+            connect(pluginAction, &QAction::triggered, this,
+                [this, trackIdx, desc]() {
+                    addPluginToTrack(trackIdx,
+                        desc.fileOrIdentifier,
+                        desc.pluginFormatName);
+                });
+        }
+    }
+
+    menu.addSeparator();
+
     auto* deleteAction = menu.addAction("Delete Track");
     connect(deleteAction, &QAction::triggered, this, [this, trackIdx]() {
         auto& model = engine.getProjectModel();
@@ -577,4 +699,54 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
 
     menu.exec(event->globalPos());
     event->accept();
+}
+
+void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)
+{
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
+
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
+    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+
+    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
+    rebuild();
+    emit fxSlotAdded(trackIndex);
+}
+
+void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat)
+{
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
+
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
+    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+
+    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
+    rebuild();
+    emit fxSlotAdded(trackIndex);
 }

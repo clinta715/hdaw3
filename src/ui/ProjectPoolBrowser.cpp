@@ -148,7 +148,7 @@ void ProjectPoolBrowser::importFile(const QString& path)
             auto c = clipList.getChild(i);
             double end = static_cast<double>(c.getProperty(IDs::startTime))
                        + static_cast<double>(c.getProperty(IDs::duration));
-            startTime = std::max(startTime, end);
+            startTime = (std::max)(startTime, end);
         }
 
         juce::ValueTree clip(IDs::CLIP);

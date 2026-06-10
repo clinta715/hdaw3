@@ -21,9 +21,14 @@ public:
 signals:
     void trackSelectionChanged(int trackIndex);
     void automationToggled(int trackIndex);
+    void addTrackRequested();
+    void addTrackWithFX(const juce::String& fxType);
+    void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
+    void fxSlotAdded(int trackIndex);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -61,6 +66,8 @@ private:
     TrackHeader& headerFor(int trackIndex);
     void commitVolume(int trackIndex, float vol);
     void commitPan(int trackIndex, float pan);
+    void addFXToTrack(int trackIndex, const juce::String& type);
+    void addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat);
 
     AudioEngine& engine;
     QTimer vuTimer;

@@ -160,7 +160,7 @@ void PianoRollWidget::clear()
 void PianoRollWidget::updateZoom(double factor)
 {
     double ppb = noteGrid->getPixelsPerBeat() * factor;
-    ppb = std::max(10.0, std::min(200.0, ppb));
+    ppb = (std::max)(10.0, (std::min)(200.0, ppb));
     noteGrid->setPixelsPerBeat(ppb);
     velocityLane->setPixelsPerBeat(ppb);
     ruler->setPixelsPerBeat(ppb);

@@ -15,7 +15,8 @@ namespace DebugLog {
             QString path = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
             QDir().mkpath(path);
             f.setFileName(path + "/hdaw_debug.log");
-            f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text);
+            if (!f.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text))
+                fputs("HDAW: Failed to open debug log file\n", stderr);
             initialized = true;
         }
         return f;
@@ -31,7 +32,7 @@ namespace DebugLog {
         QFile& f = logFile();
         if (f.isOpen()) {
             QTextStream ts(&f);
-            ts << QDateTime::currentDateTime().toString("hh:mm:ss.zzz")
+            ts << QDateTime::currentDateTimeUtc().toString("hh:mm:ss.zzz")
                << " [" << tag << "] " << message << "\n";
             (void)ts.flush();
         }

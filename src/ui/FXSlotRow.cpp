@@ -117,6 +117,9 @@ void FXSlotRow::populateTypeCombo()
         typeCombo->insertSeparator(typeCombo->count());
         for (const auto& desc : plugins)
         {
+            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+                continue;
+
             QString label = QString("[%1] %2")
                 .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
                 .arg(QString::fromUtf8(desc.name.toRawUTF8()));
@@ -182,7 +185,7 @@ void FXSlotRow::rebuildParamUI()
 
     // Find the matching slot in the track's FX chain
     auto& fxChain = track->getFXChain();
-    for (auto& slot : fxChain)
+    for (const auto& slot : fxChain)
     {
         if (slot && slot->isPlugin() && slot->getPluginID() == slotTree.getProperty(IDs::pluginID).toString())
         {
@@ -231,7 +234,7 @@ void FXSlotRow::rebuildParamUI()
                         p->beginChangeGesture();
                         p->setValueNotifyingHost(normalized);
                         p->endChangeGesture();
-                        for (auto& ps : paramSliders)
+                        for (const auto& ps : paramSliders)
                         {
                             if (ps.paramIdx == idx)
                                 ps.valueLabel->setText(QString::number(normalized, 'f', 2));

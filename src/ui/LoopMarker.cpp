@@ -66,7 +66,7 @@ void LoopMarker::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
     double x = event->scenePos().x();
     double t = ruler.mapFromScene(QPointF(x, 0)).x();
     double seconds = t / ruler.getPixelsPerSecond();
-    seconds = std::max(0.0, seconds);
+    seconds = (std::max)(0.0, seconds);
 
     time = seconds;
     setPos(t, y());

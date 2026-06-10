@@ -8,7 +8,9 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file)
     if (xml.isEmpty())
         return false;
 
-    file.replaceWithText(xml);
+    if (!file.replaceWithText(xml))
+        return false;
+
     model.markAsSaved();
     return true;
 }
@@ -26,6 +28,12 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
     if (!newTree.isValid())
         return false;
 
+    if (!newTree.hasType(IDs::PROJECT))
+        return false;
+
+    if (!newTree.getChildWithName(IDs::TRACK_LIST).isValid())
+        return false;
+
     auto& undoManager = model.getUndoManager();
 
     model.getTree().removeAllProperties(&undoManager);
@@ -36,6 +44,7 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
         model.getTree().addChild(newTree.getChild(i).createCopy(), -1, &undoManager);
 
     model.getUndoManager().clearUndoHistory();
+    model.scanAndSyncClipIDs();
     model.markAsSaved();
     return true;
 }

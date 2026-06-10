@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_core/juce_core.h>
+#include "CLAPPluginFormat.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -26,6 +27,14 @@ public:
     void loadCache();
     void saveCache();
 
+    // Blacklist
+    bool isBlacklisted(const juce::String& pluginID) const;
+    void blacklistPlugin(const juce::String& pluginID);
+    void unblacklistPlugin(const juce::String& pluginID);
+    const std::vector<juce::String>& getBlacklistedIDs() const { return blacklistedIDs; }
+    void loadBlacklist();
+    void saveBlacklist();
+
     using ScanCallback = std::function<void()>;
     void setScanCompleteCallback(ScanCallback cb) { scanCallback = cb; }
     ScanCallback getScanCompleteCallback() const { return scanCallback; }
@@ -39,6 +48,9 @@ private:
     std::atomic<bool> scanning{false};
     ScanCallback scanCallback;
     juce::File cacheFile;
+
+    std::vector<juce::String> blacklistedIDs;
+    juce::File blacklistFile;
 };
 
 } // namespace HDAW

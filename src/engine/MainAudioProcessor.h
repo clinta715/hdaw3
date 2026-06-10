@@ -25,9 +25,6 @@ public:
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager = pm; }
 
     // Track Management (delegated to RoutingManager)
-    void addTrack(HDAW::Track* newTrack);
-    void removeTrack(int index);
-    void clearTracks();
     HDAW::Track* getTrack(int index) const;
     int getNumTracks() const { return routingManager != nullptr ? routingManager->getNumTracks() : 0; }
 
@@ -81,6 +78,9 @@ private:
     std::unique_ptr<HDAW::RoutingManager> routingManager;
     std::unique_ptr<HDAW::AudioRecorder> audioRecorder;
     HDAW::ExportManager exportManager;
+
+    juce::SpinLock graphLock;
+    std::atomic<bool> graphRebuildPending{ false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainAudioProcessor)
 };

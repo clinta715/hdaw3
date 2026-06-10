@@ -112,6 +112,8 @@ public:
     void markAsSaved() { dirty = false; }
 
     static int allocateClipID();
+    static void resetClipIDCounter();
+    void scanAndSyncClipIDs();
 
     void createDefaultProject();
 

@@ -39,6 +39,12 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     double clipDur = PreferencesDialog::getDefaultClipDuration();
     timelineView->getToolbar()->setDefaultClipLen(clipDur);
     timelineView->getInteraction()->setDefaultClipDuration(clipDur);
+
+    auto* toolbar = timelineView->getToolbar();
+    toolbar->addTrackPluginMenu(nullptr, engine.getPluginManager());
+
+    toolbar->setSnap(PreferencesDialog::getSnapEnabled());
+    toolbar->setSnapDivision(PreferencesDialog::getSnapDivision());
 }
 
 MainWindow::~MainWindow() = default;
@@ -57,6 +63,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
 
 void MainWindow::setupMenuBar()
 {
+    // ── File ──
     auto* fileMenu = menuBar()->addMenu(tr("&File"));
 
     auto* newAction = fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNew);
@@ -91,6 +98,7 @@ void MainWindow::setupMenuBar()
     auto* exitAction = fileMenu->addAction(tr("E&xit"), this, &QWidget::close);
     exitAction->setShortcut(QKeySequence::Quit);
 
+    // ── Edit ──
     auto* editMenu = menuBar()->addMenu(tr("&Edit"));
 
     undoAction = editMenu->addAction(tr("&Undo"), this, &MainWindow::onUndo);
@@ -99,9 +107,70 @@ void MainWindow::setupMenuBar()
     redoAction = editMenu->addAction(tr("&Redo"), this, &MainWindow::onRedo);
     redoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z));
 
-    editMenu->addSeparator();
+    // ── Transport ──
+    auto* transportMenu = menuBar()->addMenu(tr("&Transport"));
 
-    auto* prefAction = editMenu->addAction(tr("&Preferences..."));
+    auto* playAction = transportMenu->addAction(tr("&Play / Stop"));
+    playAction->setShortcut(QKeySequence(Qt::Key_Space));
+    connect(playAction, &QAction::triggered, this, &MainWindow::onPlayToggle);
+
+    auto* stopAction = transportMenu->addAction(tr("Sto&p"), this, &MainWindow::onStop);
+    stopAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_Space));
+
+    auto* recordAction = transportMenu->addAction(tr("&Record"));
+    recordAction->setShortcut(QKeySequence(Qt::Key_R));
+    connect(recordAction, &QAction::triggered, this, &MainWindow::onRecordToggle);
+
+    transportMenu->addSeparator();
+
+    auto* rewindAction = transportMenu->addAction(tr("&Rewind to Start"), this, &MainWindow::onRewind);
+    rewindAction->setShortcut(QKeySequence(Qt::Key_Home));
+
+    // ── Track ──
+    auto* trackMenu = menuBar()->addMenu(tr("&Track"));
+
+    auto* addTrackAction = trackMenu->addAction(tr("&Add Track"), this, &MainWindow::onAddTrack);
+    addTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+
+    auto* deleteTrackAction = trackMenu->addAction(tr("&Delete Track"), this, &MainWindow::onDeleteTrack);
+    deleteTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D));
+
+    auto* renameTrackAction = trackMenu->addAction(tr("&Rename Track"), this, &MainWindow::onRenameTrack);
+    renameTrackAction->setShortcut(QKeySequence(Qt::Key_F2));
+
+    auto* dupTrackAction = trackMenu->addAction(tr("&Duplicate Track"), this, &MainWindow::onDuplicateTrack);
+    dupTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+
+    // ── View ──
+    auto* viewMenu = menuBar()->addMenu(tr("&View"));
+
+    auto* toggleBrowserAction = viewMenu->addAction(tr("Toggle &Project Pool"),
+        this, &MainWindow::onToggleBrowserPanel);
+    toggleBrowserAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_B));
+
+    viewMenu->addSeparator();
+
+    auto* zoomInViewAction = viewMenu->addAction(tr("Zoom &In"));
+    zoomInViewAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Equal));
+    connect(zoomInViewAction, &QAction::triggered, timelineView, &TimelineView::zoomIn);
+
+    auto* zoomOutViewAction = viewMenu->addAction(tr("Zoom &Out"));
+    zoomOutViewAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    connect(zoomOutViewAction, &QAction::triggered, timelineView, &TimelineView::zoomOut);
+
+    // ── Tools ──
+    auto* toolsMenu = menuBar()->addMenu(tr("&Tools"));
+
+    auto* pluginMgrAction = toolsMenu->addAction(tr("Plugin &Manager..."));
+    pluginMgrAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    connect(pluginMgrAction, &QAction::triggered, this, [this]() {
+        PluginScannerDialog dialog(engine, this);
+        dialog.exec();
+    });
+
+    toolsMenu->addSeparator();
+
+    auto* prefAction = toolsMenu->addAction(tr("&Preferences..."));
     prefAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
     connect(prefAction, &QAction::triggered, this, [this]() {
         PreferencesDialog dialog(this);
@@ -111,20 +180,6 @@ void MainWindow::setupMenuBar()
             timelineView->getToolbar()->setDefaultClipLen(clipDur);
             timelineView->getInteraction()->setDefaultClipDuration(clipDur);
         }
-    });
-
-    auto* trackMenu = menuBar()->addMenu(tr("&Track"));
-
-    auto* addTrackAction = trackMenu->addAction(tr("&Add Track"), this, &MainWindow::onAddTrack);
-    addTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
-
-    trackMenu->addSeparator();
-
-    auto* pluginMgrAction = trackMenu->addAction(tr("Plugin &Manager..."));
-    pluginMgrAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
-    connect(pluginMgrAction, &QAction::triggered, this, [this]() {
-        PluginScannerDialog dialog(engine, this);
-        dialog.exec();
     });
 }
 
@@ -250,6 +305,8 @@ void MainWindow::setupLayout()
         });
 
     connect(timelineView, &TimelineView::addTrackClicked, this, &MainWindow::onAddTrack);
+    connect(timelineView, &TimelineView::addTrackWithFX, this, &MainWindow::onAddTrackWithFX);
+    connect(timelineView, &TimelineView::addTrackWithPlugin, this, &MainWindow::onAddTrackWithPlugin);
     connect(timelineView, &TimelineView::bpmChanged, this, &MainWindow::onBPMChanged);
     connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
 
@@ -274,7 +331,7 @@ void MainWindow::setupLayout()
             auto trackList = engine.getProjectModel().getTrackListTree();
             auto* routing = engine.getMainProcessor()->getRoutingManager();
             if (routing == nullptr) return;
-            int numTracks = std::min(trackList.getNumChildren(), routing->getNumTracks());
+            int numTracks = (std::min)(trackList.getNumChildren(), routing->getNumTracks());
             for (int i = 0; i < numTracks; ++i)
                 engine.getMainProcessor()->rebuildTrackFX(i);
         });
@@ -285,6 +342,8 @@ void MainWindow::rebuildAllUI()
     timelineView->getScene()->rebuildFromValueTree();
     mixerWidget->rebuild();
     fxChainWidget->clear();
+    pianoRollWidget->clear();
+    automationWidget->clear();
     statusBar()->showMessage("Project loaded", 3000);
 }
 
@@ -495,6 +554,111 @@ void MainWindow::onAddTrack()
     HDAW_LOG("MWAddTrk", "EXIT");
 }
 
+void MainWindow::onAddTrackWithFX(const juce::String& fxType)
+{
+    onAddTrack();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int last = trackList.getNumChildren() - 1;
+    if (last < 0) return;
+
+    auto trackTree = trackList.getChild(last);
+    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
+
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, fxType, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
+    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+
+    engine.getMainProcessor()->rebuildTrackFX(last);
+    rebuildAllUI();
+}
+
+void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat)
+{
+    onAddTrack();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int last = trackList.getNumChildren() - 1;
+    if (last < 0) return;
+
+    auto trackTree = trackList.getChild(last);
+    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
+
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
+    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
+    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+
+    engine.getMainProcessor()->rebuildTrackFX(last);
+    rebuildAllUI();
+}
+
+void MainWindow::onDeleteTrack()
+{
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    if (trackList.getNumChildren() <= 0) return;
+
+    int last = trackList.getNumChildren() - 1;
+    trackList.removeChild(trackList.getChild(last), &model.getUndoManager());
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+}
+
+void MainWindow::onRenameTrack()
+{
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    if (trackList.getNumChildren() <= 0) return;
+
+    int last = trackList.getNumChildren() - 1;
+    auto tree = trackList.getChild(last);
+    QString current = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+    bool ok = false;
+    QString newName = QInputDialog::getText(this, "Rename Track", "Track name:",
+        QLineEdit::Normal, current, &ok);
+    if (ok && !newName.isEmpty())
+    {
+        tree.setProperty(IDs::name, newName.toUtf8().constData(), &model.getUndoManager());
+        rebuildAllUI();
+    }
+}
+
+void MainWindow::onDuplicateTrack()
+{
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    if (trackList.getNumChildren() <= 0) return;
+
+    int last = trackList.getNumChildren() - 1;
+    auto source = trackList.getChild(last);
+    auto copy = source.createCopy();
+    trackList.addChild(copy, -1, &model.getUndoManager());
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+}
+
+void MainWindow::onToggleBrowserPanel()
+{
+    if (browserPanel == nullptr) return;
+    browserPanel->setVisible(!browserPanel->isVisible());
+}
+
 void MainWindow::onImportAudio()
 {
     auto path = QFileDialog::getOpenFileName(this, "Import Audio",
@@ -548,7 +712,7 @@ void MainWindow::onImportAudio()
         auto c = clipList.getChild(i);
         double end = static_cast<double>(c.getProperty(IDs::startTime))
                    + static_cast<double>(c.getProperty(IDs::duration));
-        startTime = std::max(startTime, end);
+        startTime = (std::max)(startTime, end);
     }
 
     juce::ValueTree clip(IDs::CLIP);
@@ -670,7 +834,7 @@ void MainWindow::onImportMIDI()
             auto c = clipList.getChild(i);
             double end = static_cast<double>(c.getProperty(IDs::startTime))
                        + static_cast<double>(c.getProperty(IDs::duration));
-            clipStartTime = std::max(clipStartTime, end);
+            clipStartTime = (std::max)(clipStartTime, end);
         }
 
         juce::ValueTree clip(IDs::CLIP);

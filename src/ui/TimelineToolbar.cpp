@@ -1,6 +1,8 @@
 #include "TimelineToolbar.h"
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMenu>
+#include "../engine/PluginManager.h"
 
 TimelineToolbar::TimelineToolbar(QWidget* parent)
     : QWidget(parent)
@@ -11,14 +13,33 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     layout->setContentsMargins(4, 2, 4, 2);
     layout->setSpacing(4);
 
-    // Add Track button
-    addTrackBtn = new QPushButton("+", this);
+    // Add Track button with template dropdown
+    addTrackBtn = new QToolButton(this);
+    addTrackBtn->setText("+");
     addTrackBtn->setFixedSize(22, 22);
     addTrackBtn->setToolTip("Add Track");
     addTrackBtn->setStyleSheet(
-        "QPushButton { font-weight: bold; font-size: 11pt; }"
-        "QPushButton:hover { border-color: #06b6d4; }");
-    connect(addTrackBtn, &QPushButton::clicked, this, &TimelineToolbar::addTrackClicked);
+        "QToolButton { font-weight: bold; font-size: 11pt; }"
+        "QToolButton:hover { border-color: #06b6d4; }");
+    addTrackBtn->setPopupMode(QToolButton::MenuButtonPopup);
+
+    trackMenu = new QMenu(addTrackBtn);
+
+    auto* emptyAction = trackMenu->addAction("Empty Track");
+    connect(emptyAction, &QAction::triggered, this, &TimelineToolbar::addTrackClicked);
+
+    trackMenu->addSeparator();
+    auto* withEqAction = trackMenu->addAction("Track with EQ");
+    connect(withEqAction, &QAction::triggered, this, [this]() { emit addTrackWithFX("eq"); });
+    auto* withCompAction = trackMenu->addAction("Track with Compressor");
+    connect(withCompAction, &QAction::triggered, this, [this]() { emit addTrackWithFX("compressor"); });
+    auto* withRevAction = trackMenu->addAction("Track with Reverb");
+    connect(withRevAction, &QAction::triggered, this, [this]() { emit addTrackWithFX("reverb"); });
+    auto* withDelAction = trackMenu->addAction("Track with Delay");
+    connect(withDelAction, &QAction::triggered, this, [this]() { emit addTrackWithFX("delay"); });
+
+    addTrackBtn->setMenu(trackMenu);
+    connect(addTrackBtn, &QToolButton::clicked, this, &TimelineToolbar::addTrackClicked);
     layout->addWidget(addTrackBtn);
 
     layout->addSpacing(4);
@@ -220,4 +241,45 @@ void TimelineToolbar::setDefaultClipLen(double beats)
     defaultClipLenSpinBox->blockSignals(true);
     defaultClipLenSpinBox->setValue(beats);
     defaultClipLenSpinBox->blockSignals(false);
+}
+
+void TimelineToolbar::setSnap(bool enabled)
+{
+    snapBtn->blockSignals(true);
+    snapBtn->setChecked(enabled);
+    snapBtn->blockSignals(false);
+}
+
+void TimelineToolbar::setSnapDivision(int index)
+{
+    snapCombo->blockSignals(true);
+    snapCombo->setCurrentIndex(index);
+    snapCombo->blockSignals(false);
+}
+
+void TimelineToolbar::addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager)
+{
+    if (parentMenu == nullptr)
+        parentMenu = trackMenu;
+
+    const auto& plugins = pluginManager.getPlugins();
+    if (plugins.empty()) return;
+
+    auto* pluginMenu = parentMenu->addMenu("Track with Plugin");
+    for (const auto& desc : plugins)
+    {
+        if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+            continue;
+
+        QString label = QString("[%1] %2")
+            .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
+            .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+        auto* act = pluginMenu->addAction(label);
+        juce::String id = desc.fileOrIdentifier;
+        juce::String fmt = desc.pluginFormatName;
+        connect(act, &QAction::triggered, this,
+            [this, id, fmt]() {
+                emit addTrackWithPlugin(id, fmt);
+            });
+    }
 }
