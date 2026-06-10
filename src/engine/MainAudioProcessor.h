@@ -1,0 +1,86 @@
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_utils/juce_audio_utils.h>
+#include "SPSCBridge.h"
+#include "Track.h"
+#include "TransportManager.h"
+#include "RoutingManager.h"
+#include "MasterBusProcessor.h"
+#include "PluginManager.h"
+#include "AudioRecorder.h"
+#include "ExportManager.h"
+#include "../model/ProjectModel.h"
+#include <memory>
+
+class MainAudioProcessor : public juce::AudioProcessor
+{
+public:
+    MainAudioProcessor();
+    ~MainAudioProcessor() override;
+
+    void setBridge(SPSCBridge* bridge) { spscBridge = bridge; }
+    void setTransportManager(HDAW::TransportManager* tm);
+    void setProjectModel(ProjectModel* model) { projectModel = model; }
+    void setFormatManager(juce::AudioFormatManager& fm) { formatManager = &fm; }
+    void setPluginManager(HDAW::PluginManager* pm) { pluginManager = pm; }
+
+    // Track Management (delegated to RoutingManager)
+    void addTrack(HDAW::Track* newTrack);
+    void removeTrack(int index);
+    void clearTracks();
+    HDAW::Track* getTrack(int index) const;
+    int getNumTracks() const { return routingManager != nullptr ? routingManager->getNumTracks() : 0; }
+
+    HDAW::LevelMeter& getMasterMeter();
+    HDAW::RoutingManager* getRoutingManager() const { return routingManager.get(); }
+    void rebuildTrackFX(int trackIndex);
+    void toggleFXEditor(int trackIndex, int slotIndex);
+    void rebuildRoutingGraph();
+
+    void prepareToPlay(double sampleRate, int samplesPerBlock) override;
+    void releaseResources() override;
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+    // Recording
+    bool startRecording();
+    void stopRecording();
+    bool isRecording() const;
+    HDAW::AudioRecorder& getRecorder() { return *audioRecorder; }
+
+    // Export
+    HDAW::ExportManager& getExportManager() { return exportManager; }
+    bool isExporting() const { return exportManager.isExporting(); }
+
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+
+    const juce::String getName() const override { return "HDAW Engine"; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return true; }
+    bool isMidiEffect() const override { return false; }
+    double getTailLengthSeconds() const override { return 0.0; }
+
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+
+private:
+    SPSCBridge* spscBridge = nullptr;
+    HDAW::TransportManager* transportManager = nullptr;
+    ProjectModel* projectModel = nullptr;
+    juce::AudioFormatManager* formatManager = nullptr;
+    HDAW::PluginManager* pluginManager = nullptr;
+    std::unique_ptr<HDAW::InternalPlayHead> internalPlayHead;
+
+    juce::AudioProcessorGraph graph;
+    std::unique_ptr<HDAW::RoutingManager> routingManager;
+    std::unique_ptr<HDAW::AudioRecorder> audioRecorder;
+    HDAW::ExportManager exportManager;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainAudioProcessor)
+};

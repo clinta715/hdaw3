@@ -1,0 +1,79 @@
+# Build output
+build/
+cmake-build-*/
+out/
+
+# IDE
+.vs/
+*.sln
+*.suo
+*.vcxproj.user
+*.vcxproj.filters
+*.vcxproj
+*.vcxproj.*
+*.opendb
+*.db
+*.db-wal
+*.db-shm
+Debug/
+Release/
+x64/
+Win32/
+
+# Qt / MOC
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.moc
+ui_*.py
+_autogen/
+*/_autogen/
+MOC/
+RCC/
+UIC/
+HDAW_autogen/
+
+# JUCE
+JUCELibraryCode/
+JUCE/modules/
+*JuceHeader.h
+JuceLibraryCode/
+
+# Compiler artifacts
+*.o
+*.obj
+*.exe
+*.lib
+*.dll
+*.a
+*.so
+*.dylib
+*.pdb
+*.ilk
+*.exp
+*.res
+*.rsp
+*.manifest
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.log
+
+# Environment
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

@@ -1,0 +1,769 @@
+#include "MainWindow.h"
+#include "TimelineView.h"
+#include "MixerWidget.h"
+#include "PianoRollWidget.h"
+#include "FXChainWidget.h"
+#include "AutomationLaneWidget.h"
+#include "ProjectPoolBrowser.h"
+#include "VUMeter.h"
+#include "../engine/ProjectSerializer.h"
+#include "ExportDialog.h"
+#include "PluginScannerDialog.h"
+#include "PreferencesDialog.h"
+#include "DebugLog.h"
+#include <QStatusBar>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QApplication>
+#include <QCloseEvent>
+#include <QMenuBar>
+#include <QShortcut>
+#include <QInputDialog>
+
+// Keep this in sync with VERSION in CMakeLists.txt.
+static constexpr const char* APP_VERSION = "0.2.0";
+
+MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
+    : QMainWindow(parent), engine(ae)
+{
+    setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
+    resize(1200, 800);
+    setupMenuBar();
+    setupLayout();
+
+    // Load saved preferences
+    double clipDur = PreferencesDialog::getDefaultClipDuration();
+    timelineView->getToolbar()->setDefaultClipLen(clipDur);
+    timelineView->getInteraction()->setDefaultClipDuration(clipDur);
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    timecodeTimer.stop();
+    if (checkSaveBeforeAction())
+        event->accept();
+    else
+    {
+        timecodeTimer.start(33);
+        event->ignore();
+    }
+}
+
+void MainWindow::setupMenuBar()
+{
+    auto* fileMenu = menuBar()->addMenu(tr("&File"));
+
+    auto* newAction = fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNew);
+    newAction->setShortcut(QKeySequence::New);
+
+    auto* openAction = fileMenu->addAction(tr("&Open..."), this, &MainWindow::onOpen);
+    openAction->setShortcut(QKeySequence::Open);
+
+    fileMenu->addSeparator();
+
+    auto* saveAction = fileMenu->addAction(tr("&Save"), this, &MainWindow::onSave);
+    saveAction->setShortcut(QKeySequence::Save);
+
+    auto* saveAsAction = fileMenu->addAction(tr("Save &As..."), this, &MainWindow::onSaveAs);
+    saveAsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
+
+    fileMenu->addSeparator();
+
+    auto* importAudioAction = fileMenu->addAction(tr("Import &Audio..."), this, &MainWindow::onImportAudio);
+    importAudioAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_I));
+
+    auto* importMidiAction = fileMenu->addAction(tr("Import &MIDI..."), this, &MainWindow::onImportMIDI);
+    importMidiAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M));
+
+    fileMenu->addSeparator();
+
+    auto* exportAction = fileMenu->addAction(tr("Export &Audio..."), this, &MainWindow::onExport);
+    exportAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
+
+    fileMenu->addSeparator();
+
+    auto* exitAction = fileMenu->addAction(tr("E&xit"), this, &QWidget::close);
+    exitAction->setShortcut(QKeySequence::Quit);
+
+    auto* editMenu = menuBar()->addMenu(tr("&Edit"));
+
+    undoAction = editMenu->addAction(tr("&Undo"), this, &MainWindow::onUndo);
+    undoAction->setShortcut(QKeySequence::Undo);
+
+    redoAction = editMenu->addAction(tr("&Redo"), this, &MainWindow::onRedo);
+    redoAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z));
+
+    editMenu->addSeparator();
+
+    auto* prefAction = editMenu->addAction(tr("&Preferences..."));
+    prefAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    connect(prefAction, &QAction::triggered, this, [this]() {
+        PreferencesDialog dialog(this);
+        if (dialog.exec() == QDialog::Accepted)
+        {
+            double clipDur = PreferencesDialog::getDefaultClipDuration();
+            timelineView->getToolbar()->setDefaultClipLen(clipDur);
+            timelineView->getInteraction()->setDefaultClipDuration(clipDur);
+        }
+    });
+
+    auto* trackMenu = menuBar()->addMenu(tr("&Track"));
+
+    auto* addTrackAction = trackMenu->addAction(tr("&Add Track"), this, &MainWindow::onAddTrack);
+    addTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+
+    trackMenu->addSeparator();
+
+    auto* pluginMgrAction = trackMenu->addAction(tr("Plugin &Manager..."));
+    pluginMgrAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    connect(pluginMgrAction, &QAction::triggered, this, [this]() {
+        PluginScannerDialog dialog(engine, this);
+        dialog.exec();
+    });
+}
+
+void MainWindow::setupLayout()
+{
+    setStatusBar(new QStatusBar(this));
+    statusBar()->showMessage("Ready");
+
+    timelineView = new TimelineView(engine, this);
+
+    browserPanel = new ProjectPoolBrowser(engine, this);
+
+    auto* bottomContainer = new QFrame(this);
+    bottomContainer->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
+
+    auto* bottomLayout = new QVBoxLayout(bottomContainer);
+    bottomLayout->setContentsMargins(0, 0, 0, 0);
+    bottomLayout->setSpacing(0);
+
+    // Tab bar
+    auto* tabBar = new QWidget(bottomContainer);
+    tabBar->setFixedHeight(24);
+    auto* tabLayout = new QHBoxLayout(tabBar);
+    tabLayout->setContentsMargins(4, 2, 4, 2);
+    tabLayout->setSpacing(2);
+
+    tabGroup = new QButtonGroup(this);
+    tabGroup->setExclusive(true);
+
+    auto makeTab = [&](const QString& label, int index) {
+        auto* btn = new QPushButton(label, tabBar);
+        btn->setFixedHeight(20);
+        btn->setCheckable(true);
+        tabGroup->addButton(btn, index);
+        tabButtons.append(btn);
+        tabLayout->addWidget(btn);
+        return btn;
+    };
+
+    auto* mixerTab = makeTab("Mixer", 0);
+    auto* pianoTab = makeTab("Piano Roll", 1);
+    auto* fxTab = makeTab("FX Chain", 2);
+    auto* autoTab = makeTab("Automation", 3);
+    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab);
+
+    tabLayout->addStretch();
+    bottomLayout->addWidget(tabBar);
+
+    bottomStack = new QStackedWidget(bottomContainer);
+
+    mixerWidget = new MixerWidget(engine, bottomStack);
+    bottomStack->addWidget(mixerWidget);
+
+    pianoRollWidget = new PianoRollWidget(engine, bottomStack);
+    bottomStack->addWidget(pianoRollWidget);
+
+    fxChainWidget = new FXChainWidget(engine, bottomStack);
+    bottomStack->addWidget(fxChainWidget);
+
+    automationWidget = new AutomationLaneWidget(engine, bottomStack);
+    bottomStack->addWidget(automationWidget);
+
+    // Keep tab button checked-state in sync with the stack — covers both
+    // user clicks on the tab and programmatic setCurrentIndex (e.g. from clipSelected).
+    connect(bottomStack, &QStackedWidget::currentChanged, this, [this](int index) {
+        if (index < 0 || index >= tabButtons.size()) return;
+        for (int i = 0; i < tabButtons.size(); ++i)
+            tabButtons[i]->setChecked(i == index);
+    });
+    // Set the initial checked state to match the stack's starting index.
+    if (bottomStack->currentIndex() >= 0 && bottomStack->currentIndex() < tabButtons.size())
+        tabButtons[bottomStack->currentIndex()]->setChecked(true);
+
+    bottomStack->setCurrentIndex(0);
+
+    bottomLayout->addWidget(bottomStack);
+
+    mainVerticalSplitter = new QSplitter(Qt::Vertical, this);
+    mainVerticalSplitter->addWidget(timelineView);
+    mainVerticalSplitter->addWidget(bottomContainer);
+    mainVerticalSplitter->setStretchFactor(0, 3);
+    mainVerticalSplitter->setStretchFactor(1, 1);
+
+    mainHorizontalSplitter = new QSplitter(Qt::Horizontal, this);
+    mainHorizontalSplitter->addWidget(mainVerticalSplitter);
+    mainHorizontalSplitter->addWidget(browserPanel);
+    mainHorizontalSplitter->setStretchFactor(0, 4);
+    mainHorizontalSplitter->setStretchFactor(1, 1);
+
+    setCentralWidget(mainHorizontalSplitter);
+
+    auto* scene = timelineView->getScene();
+    connect(scene, &TimelineScene::clipSelected, this,
+        [this](juce::ValueTree clipTree) {
+            juce::String type = clipTree.getProperty(IDs::clipType).toString();
+            if (type == "midi")
+            {
+                pianoRollWidget->loadClip(clipTree);
+                bottomStack->setCurrentIndex(1);
+            }
+            else
+            {
+                bottomStack->setCurrentIndex(0);
+            }
+        });
+
+    connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
+        [this]() {
+            pianoRollWidget->clear();
+            bottomStack->setCurrentIndex(0);
+        });
+
+    connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
+        [this](int trackIndex) {
+            fxChainWidget->loadTrack(trackIndex);
+            bottomStack->setCurrentIndex(2);
+        });
+
+    connect(timelineView, &TimelineView::automationToggled, this,
+        [this](int trackIndex) {
+            automationWidget->loadTrack(trackIndex);
+            bottomStack->setCurrentIndex(3);
+        });
+
+    connect(timelineView, &TimelineView::addTrackClicked, this, &MainWindow::onAddTrack);
+    connect(timelineView, &TimelineView::bpmChanged, this, &MainWindow::onBPMChanged);
+    connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
+
+    connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
+    connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
+    connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
+    connect(timelineView, &TimelineView::rewindRequested, this, &MainWindow::onRewind);
+
+    // Timecode timer
+    connect(&timecodeTimer, &QTimer::timeout, this, &MainWindow::updateTimecode);
+    timecodeTimer.start(33);
+
+    // Keyboard shortcuts
+    auto* recordShortcut = new QShortcut(QKeySequence(Qt::Key_R), this);
+    connect(recordShortcut, &QShortcut::activated, this, &MainWindow::onRecordToggle);
+
+    auto* playShortcut = new QShortcut(QKeySequence(Qt::Key_Space), this);
+    connect(playShortcut, &QShortcut::activated, this, &MainWindow::onPlayToggle);
+
+    connect(fxChainWidget, &FXChainWidget::chainChanged, this,
+        [this]() {
+            auto trackList = engine.getProjectModel().getTrackListTree();
+            auto* routing = engine.getMainProcessor()->getRoutingManager();
+            if (routing == nullptr) return;
+            int numTracks = std::min(trackList.getNumChildren(), routing->getNumTracks());
+            for (int i = 0; i < numTracks; ++i)
+                engine.getMainProcessor()->rebuildTrackFX(i);
+        });
+}
+
+void MainWindow::rebuildAllUI()
+{
+    timelineView->getScene()->rebuildFromValueTree();
+    mixerWidget->rebuild();
+    fxChainWidget->clear();
+    statusBar()->showMessage("Project loaded", 3000);
+}
+
+bool MainWindow::checkSaveBeforeAction()
+{
+    if (!engine.getProjectModel().isDirty())
+        return true;
+
+    auto result = QMessageBox::question(this, "Unsaved Changes",
+        "Do you want to save changes before continuing?",
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+
+    if (result == QMessageBox::Save)
+        return onSave();
+    if (result == QMessageBox::Discard)
+        return true;
+    return false;
+}
+
+void MainWindow::onNew()
+{
+    if (!checkSaveBeforeAction()) return;
+
+    HDAW::ProjectSerializer::createNew(engine.getProjectModel());
+    currentFile = {};
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+    setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
+}
+
+void MainWindow::onOpen()
+{
+    if (!checkSaveBeforeAction()) return;
+
+    auto path = QFileDialog::getOpenFileName(this, "Open Project",
+        {}, "HDAW Projects (*.hdaw)");
+    if (path.isEmpty()) return;
+
+    juce::File file(path.toUtf8().constData());
+    if (!HDAW::ProjectSerializer::load(engine.getProjectModel(), file))
+    {
+        QMessageBox::warning(this, "Error", "Failed to load project file.");
+        return;
+    }
+
+    currentFile = file;
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+    setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
+        .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
+}
+
+bool MainWindow::onSave()
+{
+    if (currentFile.existsAsFile())
+        return HDAW::ProjectSerializer::save(engine.getProjectModel(), currentFile);
+
+    onSaveAs();
+    return currentFile.existsAsFile();
+}
+
+void MainWindow::onSaveAs()
+{
+    auto path = QFileDialog::getSaveFileName(this, "Save Project As",
+        {}, "HDAW Projects (*.hdaw)");
+    if (path.isEmpty()) return;
+
+    juce::File file(path.toUtf8().constData());
+    if (!HDAW::ProjectSerializer::save(engine.getProjectModel(), file))
+    {
+        QMessageBox::warning(this, "Error", "Failed to save project file.");
+        return;
+    }
+
+    currentFile = file;
+    setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
+        .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
+    statusBar()->showMessage("Project saved", 3000);
+}
+
+void MainWindow::onUndo()
+{
+    auto& um = engine.getProjectModel().getUndoManager();
+    if (um.canUndo())
+    {
+        um.undo();
+        rebuildAllUI();
+    }
+}
+
+void MainWindow::onRedo()
+{
+    auto& um = engine.getProjectModel().getUndoManager();
+    if (um.canRedo())
+    {
+        um.redo();
+        rebuildAllUI();
+    }
+}
+
+void MainWindow::onPlayToggle()
+{
+    auto& tm = engine.getTransportManager();
+    if (tm.isPlayingNow())
+    {
+        tm.setPlaying(false);
+        statusBar()->showMessage("Stopped", 3000);
+    }
+    else
+    {
+        tm.setPlaying(true);
+        statusBar()->showMessage("Playing", 3000);
+    }
+}
+
+void MainWindow::onStop()
+{
+    auto& tm = engine.getTransportManager();
+    if (engine.getMainProcessor()->isRecording())
+        engine.getMainProcessor()->stopRecording();
+    tm.setPlaying(false);
+    statusBar()->showMessage("Stopped", 3000);
+}
+
+void MainWindow::onRewind()
+{
+    auto& tm = engine.getTransportManager();
+    tm.setCurrentSample(0);
+}
+
+void MainWindow::updateTimecode()
+{
+    auto& tm = engine.getTransportManager();
+    int64_t samples = tm.getCurrentSample();
+    double sr = tm.getSampleRate();
+    double seconds = static_cast<double>(samples) / sr;
+
+    int mins = static_cast<int>(seconds) / 60;
+    int secs = static_cast<int>(seconds) % 60;
+    int millis = static_cast<int>((seconds - static_cast<double>(static_cast<int>(seconds))) * 1000.0);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%02d:%02d:%03d", mins, secs, millis);
+
+    timelineView->getToolbar()->setTimecode(QString::fromUtf8(buf));
+    timelineView->getToolbar()->setPlaying(tm.isPlayingNow());
+    timelineView->getToolbar()->setBPM(tm.getBPM());
+    timelineView->scrollToPlayhead();
+}
+
+void MainWindow::onExport()
+{
+    ExportDialog dialog(engine, this);
+    dialog.exec();
+}
+
+void MainWindow::onAddTrack()
+{
+    HDAW_LOG("MWAddTrk", "ENTER");
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    int before = trackList.getNumChildren();
+    HDAW_LOG("MWAddTrk", QString("before count=%1").arg(before));
+
+    int trackNum = trackList.getNumChildren() + 1;
+
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, ("Track " + juce::String(trackNum)).toRawUTF8(), &model.getUndoManager());
+    track.setProperty(IDs::volume, 0.85, &model.getUndoManager());
+    track.setProperty(IDs::pan, 0.0, &model.getUndoManager());
+    track.setProperty(IDs::isMuted, false, &model.getUndoManager());
+    track.setProperty(IDs::isSoloed, false, &model.getUndoManager());
+    track.setProperty(IDs::parentBus, 0, &model.getUndoManager());
+
+    juce::ValueTree clipList(IDs::CLIP_LIST);
+    track.addChild(clipList, -1, &model.getUndoManager());
+
+    juce::ValueTree fxChain(IDs::FX_CHAIN);
+    track.addChild(fxChain, -1, &model.getUndoManager());
+
+    juce::ValueTree autoList(IDs::AUTOMATION_LIST);
+    juce::ValueTree autoTree(IDs::AUTOMATION);
+    autoTree.setProperty(IDs::name, "Volume", nullptr);
+    autoTree.setProperty(IDs::paramID, 1, nullptr);
+    autoTree.setProperty(IDs::curveType, "linear", nullptr);
+    autoTree.setProperty(IDs::automationEnabled, false, nullptr);
+    juce::ValueTree pointList(IDs::POINT_LIST);
+    juce::ValueTree point1(IDs::POINT);
+    point1.setProperty(IDs::startTime, 0.0, nullptr);
+    point1.setProperty(IDs::gain, 1.0, nullptr);
+    pointList.addChild(point1, -1, nullptr);
+    juce::ValueTree point2(IDs::POINT);
+    point2.setProperty(IDs::startTime, 16.0, nullptr);
+    point2.setProperty(IDs::gain, 1.0, nullptr);
+    pointList.addChild(point2, -1, nullptr);
+    autoTree.addChild(pointList, -1, nullptr);
+    autoList.addChild(autoTree, -1, nullptr);
+    track.addChild(autoList, -1, &model.getUndoManager());
+
+    trackList.addChild(track, -1, &model.getUndoManager());
+
+    int after = trackList.getNumChildren();
+    HDAW_LOG("MWAddTrk", QString("after count=%1 (expected %2)")
+        .arg(after).arg(before + 1));
+
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+    HDAW_LOG("MWAddTrk", "EXIT");
+}
+
+void MainWindow::onImportAudio()
+{
+    auto path = QFileDialog::getOpenFileName(this, "Import Audio",
+        {}, "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
+    if (path.isEmpty()) return;
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0)
+        onAddTrack();
+
+    trackList = engine.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0) return;
+
+    QStringList trackNames;
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    {
+        auto name = QString::fromUtf8(
+            trackList.getChild(i).getProperty(IDs::name).toString().toRawUTF8());
+        trackNames << QString("Track %1: %2").arg(i + 1).arg(name);
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(this, "Select Track",
+        "Import to which track?", trackNames, 0, false, &ok);
+    if (!ok || selected.isEmpty()) return;
+
+    int trackIndex = trackNames.indexOf(selected);
+    if (trackIndex < 0) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        trackTree.addChild(clipList, -1, &engine.getProjectModel().getUndoManager());
+    }
+
+    QFileInfo fi(path);
+    double duration = 4.0;
+    auto& pool = engine.getProjectPool();
+    auto* reader = pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData()));
+    if (reader != nullptr)
+    {
+        duration = reader->lengthInSamples / reader->sampleRate;
+        delete reader;
+    }
+
+    double startTime = 0.0;
+    for (int i = 0; i < clipList.getNumChildren(); ++i)
+    {
+        auto c = clipList.getChild(i);
+        double end = static_cast<double>(c.getProperty(IDs::startTime))
+                   + static_cast<double>(c.getProperty(IDs::duration));
+        startTime = std::max(startTime, end);
+    }
+
+    juce::ValueTree clip(IDs::CLIP);
+    clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
+    clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::startTime, startTime, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::duration, duration, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::clipType, "audio", &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::sourceFile, path.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
+    clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), &engine.getProjectModel().getUndoManager());
+    clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
+
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+}
+
+void MainWindow::onImportMIDI()
+{
+    auto path = QFileDialog::getOpenFileName(this, "Import MIDI",
+        {}, "MIDI Files (*.mid *.midi)");
+    if (path.isEmpty()) return;
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0)
+        onAddTrack();
+
+    trackList = engine.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0) return;
+
+    juce::File midiFile(path.toUtf8().constData());
+    juce::FileInputStream stream(midiFile);
+    if (!stream.openedOk())
+    {
+        QMessageBox::warning(this, "Error", "Could not open MIDI file.");
+        return;
+    }
+
+    juce::MidiFile midiData;
+    if (!midiData.readFrom(stream))
+    {
+        QMessageBox::warning(this, "Error", "Failed to read MIDI file.");
+        return;
+    }
+
+    int midiTimeFormat = static_cast<int>(midiData.getTimeFormat());
+    if (midiTimeFormat <= 0)
+    {
+        QMessageBox::warning(this, "Error", "SMPTE timecode MIDI files are not supported.");
+        return;
+    }
+    int midiTicksPerQuarterNote = midiTimeFormat;
+    double bpm = 120.0;
+
+    // Read tempo from MIDI file's first track (usually tempo track)
+    if (midiData.getNumTracks() > 0)
+    {
+        auto* tempoTrack = midiData.getTrack(0);
+        for (int e = 0; e < tempoTrack->getNumEvents(); ++e)
+        {
+            auto* ev = tempoTrack->getEventPointer(e);
+            if (ev != nullptr && ev->message.isTempoMetaEvent())
+            {
+                double secPerQuarter = ev->message.getTempoSecondsPerQuarterNote();
+                if (secPerQuarter > 0.0)
+                    bpm = 60.0 / secPerQuarter;
+                break;
+            }
+        }
+    }
+
+    double secondsPerTick = (60.0 / bpm) / static_cast<double>(midiTicksPerQuarterNote);
+
+    // Ask which track to import to
+    QStringList trackNames;
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    {
+        auto name = QString::fromUtf8(
+            trackList.getChild(i).getProperty(IDs::name).toString().toRawUTF8());
+        trackNames << QString("Track %1: %2").arg(i + 1).arg(name);
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(this, "Select Track",
+        "Import to which track?", trackNames, 0, false, &ok);
+    if (!ok || selected.isEmpty()) return;
+
+    int trackIndex = trackNames.indexOf(selected);
+    if (trackIndex < 0) return;
+
+    // Import each MIDI track as a separate clip
+    for (int mt = 0; mt < midiData.getNumTracks(); ++mt)
+    {
+        auto* midiTrack = midiData.getTrack(mt);
+        if (midiTrack == nullptr || midiTrack->getNumEvents() == 0)
+            continue;
+
+        // Calculate clip duration from last event
+        double clipDuration = 4.0;
+        auto* lastEventHolder = midiTrack->getEventPointer(midiTrack->getNumEvents() - 1);
+        if (lastEventHolder != nullptr)
+            clipDuration = lastEventHolder->message.getTimeStamp() * secondsPerTick + 1.0;
+
+        auto trackTree = trackList.getChild(trackIndex);
+        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid())
+        {
+            clipList = juce::ValueTree(IDs::CLIP_LIST);
+            trackTree.addChild(clipList, -1, &engine.getProjectModel().getUndoManager());
+        }
+
+        double clipStartTime = 0.0;
+        for (int i = 0; i < clipList.getNumChildren(); ++i)
+        {
+            auto c = clipList.getChild(i);
+            double end = static_cast<double>(c.getProperty(IDs::startTime))
+                       + static_cast<double>(c.getProperty(IDs::duration));
+            clipStartTime = std::max(clipStartTime, end);
+        }
+
+        juce::ValueTree clip(IDs::CLIP);
+        clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
+        clip.setProperty(IDs::name, ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
+            &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::startTime, clipStartTime, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::duration, clipDuration, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::clipType, "midi", &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
+        clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &engine.getProjectModel().getUndoManager());
+
+        juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
+
+        for (int e = 0; e < midiTrack->getNumEvents(); ++e)
+        {
+            auto* eventHolder = midiTrack->getEventPointer(e);
+            if (eventHolder == nullptr) continue;
+
+            auto& msg = eventHolder->message;
+            if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                double tickTime = msg.getTimeStamp();
+                double beatTime = tickTime / static_cast<double>(midiTicksPerQuarterNote);
+
+                double noteDurBeats = 0.25;
+                int noteNum = msg.getNoteNumber();
+                for (int e2 = e + 1; e2 < midiTrack->getNumEvents(); ++e2)
+                {
+                    auto* ev2 = midiTrack->getEventPointer(e2);
+                    if (ev2 != nullptr && ev2->message.isNoteOff() &&
+                        ev2->message.getNoteNumber() == noteNum)
+                    {
+                        double offTick = ev2->message.getTimeStamp();
+                        noteDurBeats = (offTick - tickTime) / static_cast<double>(midiTicksPerQuarterNote);
+                        break;
+                    }
+                }
+
+                juce::ValueTree noteNode(IDs::MIDI_NOTE);
+                noteNode.setProperty(IDs::noteNumber, noteNum, nullptr);
+                noteNode.setProperty(IDs::velocity, static_cast<float>(msg.getVelocity()) / 127.0f, nullptr);
+                noteNode.setProperty(IDs::startBeat, beatTime, nullptr);
+                noteNode.setProperty(IDs::durationBeats, noteDurBeats, nullptr);
+                midiNotes.addChild(noteNode, -1, nullptr);
+            }
+        }
+
+        if (midiNotes.getNumChildren() > 0)
+        {
+            clip.addChild(midiNotes, -1, nullptr);
+            clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
+        }
+    }
+
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    rebuildAllUI();
+}
+
+void MainWindow::onBPMChanged(double bpm)
+{
+    auto& model = engine.getProjectModel();
+    model.getTree().setProperty(IDs::tempo, bpm, &model.getUndoManager());
+}
+
+void MainWindow::onMetronomeToggled(bool enabled)
+{
+    auto& model = engine.getProjectModel();
+    auto transport = model.getTransportTree();
+    transport.setProperty(IDs::metronomeEnabled, enabled, &model.getUndoManager());
+    Q_UNUSED(enabled);
+}
+
+void MainWindow::onRecordToggle()
+{
+    auto* proc = engine.getMainProcessor();
+    if (proc->isRecording())
+    {
+        proc->stopRecording();
+        engine.getTransportManager().setPlaying(false);
+        rebuildAllUI();
+        statusBar()->showMessage("Recording stopped", 3000);
+    }
+    else
+    {
+        if (proc->startRecording())
+        {
+            engine.getTransportManager().setPlaying(true);
+            statusBar()->showMessage("Recording...", 0);
+        }
+    }
+}
