@@ -1,7 +1,6 @@
 #include "TimelineInteraction.h"
 #include "TimelineScene.h"
 #include "ClipItem.h"
-#include "Theme.h"
 #include "DebugLog.h"
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
@@ -112,22 +111,14 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
         return true;
     }
 
-    // Rubber band on empty space
-    dragMode = RubberBand;
-    rubberBandOrigin = e->scenePos();
-    rubberBandRect = new QGraphicsRectItem();
-    rubberBandRect->setPen(QPen(ThemeColors::accent(), 1, Qt::DashLine));
-    rubberBandRect->setBrush(QColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), 30));
-    rubberBandRect->setZValue(1000);
-    scene->addItem(rubberBandRect);
-    scene->clearSelection();
-    e->accept();
-    return true;
+    // Not a ClipItem — let QGraphicsScene dispatch to the actual item
+    // underneath (LoopMarker, TimeRuler, etc.)
+    return false;
 }
 
 bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
 {
-    if (dragItem == nullptr && dragMode != RubberBand)
+    if (dragMode == None)
         return false;
 
     double pps = dragPPS;
@@ -200,51 +191,18 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
         return true;
     }
 
-    if (dragMode == RubberBand && rubberBandRect != nullptr)
-    {
-        QRectF rect(rubberBandOrigin, e->scenePos());
-        rubberBandRect->setRect(rect.normalized());
-
-        scene->clearSelection();
-        QPainterPath selectionPath;
-        selectionPath.addRect(rect.normalized());
-
-        for (auto* item : scene->items(selectionPath))
-        {
-            auto* clip = dynamic_cast<ClipItem*>(item);
-            if (clip != nullptr)
-                clip->setSelected(true);
-        }
-        e->accept();
-        return true;
-    }
-
     return false;
 }
 
 bool TimelineInteraction::handleMouseRelease(QGraphicsSceneMouseEvent* e)
 {
-    if (dragMode == RubberBand && rubberBandRect != nullptr)
+    if (dragMode != None)
     {
-        QRectF rect(rubberBandOrigin, e->scenePos());
-        QPainterPath selectionPath;
-        selectionPath.addRect(rect.normalized());
-
-        for (auto* item : scene->items(selectionPath))
-        {
-            auto* clip = dynamic_cast<ClipItem*>(item);
-            if (clip != nullptr)
-                clip->setSelected(true);
-        }
-
-        scene->removeItem(rubberBandRect);
-        delete rubberBandRect;
-        rubberBandRect = nullptr;
+        dragMode = None;
+        dragItem = nullptr;
+        return true;
     }
-
-    dragMode = None;
-    dragItem = nullptr;
-    return true;
+    return false;
 }
 
 bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)

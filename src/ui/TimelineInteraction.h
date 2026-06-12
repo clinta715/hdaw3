@@ -1,7 +1,6 @@
 #pragma once
 #include <QObject>
 #include <QPointF>
-#include <QGraphicsRectItem>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
 
@@ -34,7 +33,7 @@ public:
     bool handleMouseDoubleClick(QGraphicsSceneMouseEvent* e);
 
 private:
-    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut, RubberBand };
+    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut };
 
 public:
     void setUndoManager(juce::UndoManager* um) { undoManager = um; }
@@ -52,9 +51,6 @@ private:
     QPointF dragStartPos;
     double dragStartValue = 0.0;
     double dragPPS = 10.0;
-    QPointF rubberBandOrigin;
-    QGraphicsRectItem* rubberBandRect = nullptr;
-
     double lastClipDuration = 4.0;
     double defaultClipDuration = 4.0;
 };
