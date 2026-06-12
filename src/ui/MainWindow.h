@@ -22,6 +22,7 @@ class StepEditorWidget;
 class ProjectPoolBrowser;
 
 class MainWindow : public QMainWindow
+                 , private juce::ValueTree::Listener
 {
     Q_OBJECT
 public:
@@ -67,6 +68,8 @@ private:
 
     void updateTimecode();
     void pumpJuceMessages();
+
+    void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
 
     AudioEngine& engine;
 

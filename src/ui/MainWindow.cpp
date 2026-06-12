@@ -49,9 +49,17 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
     toolbar->setSnap(PreferencesDialog::getSnapEnabled());
     toolbar->setSnapDivision(PreferencesDialog::getSnapDivision());
+
+    // Listen for transport property changes (loop toggle, etc.)
+    engine.getProjectModel().getTransportTree().addListener(this);
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    auto transportTree = engine.getProjectModel().getTransportTree();
+    if (transportTree.isValid())
+        transportTree.removeListener(this);
+}
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
@@ -747,16 +755,22 @@ void MainWindow::updateTimecode()
     timelineView->getToolbar()->setPlaying(tm.isPlayingNow());
     timelineView->getToolbar()->setBPM(tm.getBPM());
 
-    bool looping = tm.isLoopingNow();
-    timelineView->getToolbar()->setLoopEnabled(looping);
-    if (loopAction)
-    {
-        loopAction->blockSignals(true);
-        loopAction->setChecked(looping);
-        loopAction->blockSignals(false);
-    }
-
     timelineView->scrollToPlayhead();
+}
+
+void MainWindow::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (tree.hasType(IDs::TRANSPORT) && property == IDs::isLooping)
+    {
+        bool looping = tree.getProperty(IDs::isLooping);
+        timelineView->getToolbar()->setLoopEnabled(looping);
+        if (loopAction)
+        {
+            loopAction->blockSignals(true);
+            loopAction->setChecked(looping);
+            loopAction->blockSignals(false);
+        }
+    }
 }
 
 void MainWindow::onExport()
