@@ -160,6 +160,15 @@ void TrackHeaderWidget::setScrollOffset(double yOffset)
     }
 }
 
+void TrackHeaderWidget::setSelectedTrack(int index)
+{
+    if (selectedTrack != index)
+    {
+        selectedTrack = index;
+        update();
+    }
+}
+
 QSize TrackHeaderWidget::sizeHint() const
 {
     auto trackList = engine.getProjectModel().getTrackListTree();
@@ -211,11 +220,21 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         QColor bg = (i % 2 == 0) ? ThemeColors::trackFill1() : ThemeColors::trackFill2();
         painter.fillRect(row, bg);
 
-        // Color strip
+        // Selection highlight
+        bool isSelected = (i == selectedTrack);
+        if (isSelected)
+        {
+            painter.fillRect(row, QColor(80, 160, 255, 60));
+            painter.setPen(QPen(QColor(80, 160, 255), 2));
+            painter.drawRect(row.adjusted(2, 1, -1, -1));
+        }
+
+        // Color strip — wider when selected
         {
             int tc = tree.getProperty(IDs::color, static_cast<int>(0xFF4488CC));
             QColor trackColor((tc >> 16) & 0xFF, (tc >> 8) & 0xFF, tc & 0xFF);
-            painter.fillRect(QRect(0, y, 3, h), trackColor);
+            int stripW = isSelected ? 6 : 3;
+            painter.fillRect(QRect(0, y, stripW, h), isSelected ? trackColor.lighter(140) : trackColor);
         }
 
         // Name
@@ -465,6 +484,12 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
         {
             resizeTrack = trackIdx;
             dragStart = event->pos();
+        }
+        else
+        {
+            selectedTrack = trackIdx;
+            emit trackSelectionChanged(trackIdx);
+            update();
         }
     }
     else if (type == 6) // Name

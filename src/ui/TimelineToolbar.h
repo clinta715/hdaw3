@@ -24,6 +24,7 @@ public slots:
     void setMetronomeEnabled(bool enabled);
     void setDefaultClipLen(double beats);
     void setSnap(bool enabled);
+    void setLoopEnabled(bool enabled);
     void setSnapDivision(int index);
 
 signals:

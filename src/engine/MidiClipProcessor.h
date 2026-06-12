@@ -59,6 +59,7 @@ public:
 
         buffer.clear();
 
+        int idx = activeCacheIndex.load(std::memory_order_acquire);
         int count = noteCount.load(std::memory_order_acquire);
         if (count <= 0 || numSamples <= 0)
             return;
@@ -78,7 +79,7 @@ public:
             {
                 if (!activeNotes[note]) continue;
                 midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, note, 0.0f),
-                                      juce::jmin(numSamples - 1, 0));
+                                       juce::jmin(numSamples - 1, 0));
             }
             std::fill(activeNotes.begin(), activeNotes.end(), false);
             return;
@@ -89,7 +90,7 @@ public:
 
         for (int i = 0; i < count; ++i)
         {
-            const NoteData& note = noteCache[i];
+            const NoteData& note = noteCaches[idx][i];
             double noteEnd = note.startBeat + note.durationBeats;
 
             if (currentBeat >= note.startBeat && currentBeat < noteEnd)
@@ -135,30 +136,29 @@ public:
 private:
     void rebuildNoteCache()
     {
+        int inactiveIdx = 1 - activeCacheIndex.load(std::memory_order_relaxed);
+        auto& inactive = noteCaches[inactiveIdx];
+
         auto nl = clipTree.getChildWithName(IDs::MIDI_NOTE_LIST);
         if (!nl.isValid())
         {
-            noteCacheLock.enter();
             noteCount.store(0, std::memory_order_release);
-            noteCacheLock.exit();
+            activeCacheIndex.store(inactiveIdx, std::memory_order_release);
             return;
         }
 
         int count = (std::min)(nl.getNumChildren(), MAX_NOTES);
-        std::array<NoteData, MAX_NOTES> newCache{};
         for (int i = 0; i < count; ++i)
         {
             auto n = nl.getChild(i);
-            newCache[i].noteNumber = n.getProperty(IDs::noteNumber);
-            newCache[i].velocity = n.getProperty(IDs::velocity);
-            newCache[i].startBeat = n.getProperty(IDs::startBeat);
-            newCache[i].durationBeats = n.getProperty(IDs::durationBeats);
+            inactive[i].noteNumber = n.getProperty(IDs::noteNumber);
+            inactive[i].velocity = n.getProperty(IDs::velocity);
+            inactive[i].startBeat = n.getProperty(IDs::startBeat);
+            inactive[i].durationBeats = n.getProperty(IDs::durationBeats);
         }
 
-        noteCacheLock.enter();
-        noteCache = newCache;
         noteCount.store(count, std::memory_order_release);
-        noteCacheLock.exit();
+        activeCacheIndex.store(inactiveIdx, std::memory_order_release);
     }
 
     HDAW::TransportManager& transportManager;
@@ -171,8 +171,8 @@ private:
     int midiChannel = 1;
     std::array<bool, 128> activeNotes{};
 
-    juce::SpinLock noteCacheLock;
-    std::array<NoteData, MAX_NOTES> noteCache{};
+    std::array<std::array<NoteData, MAX_NOTES>, 2> noteCaches{};
+    std::atomic<int> activeCacheIndex{0};
     std::atomic<int> noteCount{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiClipProcessor)

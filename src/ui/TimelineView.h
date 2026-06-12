@@ -25,6 +25,7 @@ public:
     TimelineInteraction* getInteraction() const { return interaction; }
 
 signals:
+    void trackSelectionChanged(int trackIndex);
     void addTrackClicked();
     void addTrackWithFX(const juce::String& fxType);
     void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
@@ -43,6 +44,7 @@ public slots:
     void zoomOut();
     void setFollowPlayhead(bool follow);
     void scrollToPlayhead();
+    void selectTrack(int index);
 
 private:
     void setupUI();

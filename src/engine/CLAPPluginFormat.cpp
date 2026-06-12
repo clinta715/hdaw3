@@ -245,7 +245,7 @@ void CLAPPluginFormat::createPluginInstance(
     for (uint32_t i = 0; i < count; ++i)
     {
         const auto* d = factory->get_plugin_descriptor(factory, i);
-        if (d != nullptr && desc.name == juce::String(d->name))
+        if (d != nullptr && (desc.name.isEmpty() || desc.name == juce::String(d->name)))
         {
             pluginID = d->id;
             break;

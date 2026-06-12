@@ -31,6 +31,7 @@ void TimeRuler::setLoopBounds(double start, double end)
     loopStart = (std::min)(start, end);
     loopEnd = (std::max)(start, end);
     update();
+    emit loopBoundsChanged(loopStart, loopEnd);
 }
 
 QRectF TimeRuler::boundingRect() const
@@ -65,19 +66,29 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
     double rx = xFromTime(loopEnd);
     if (rx > lx)
     {
-        painter->fillRect(QRectF(lx, 0, rx - lx, height), QColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), 40));
-        painter->setPen(QPen(ThemeColors::accent(), 1));
+        painter->fillRect(QRectF(lx, 0, rx - lx, height), QColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), 60));
+        painter->setPen(QPen(ThemeColors::accent(), 2));
         painter->drawLine(QPointF(lx, 0), QPointF(lx, height));
         painter->drawLine(QPointF(rx, 0), QPointF(rx, height));
         painter->setBrush(ThemeColors::success());
         painter->setPen(Qt::NoPen);
         QPolygonF flagL;
-        flagL << QPointF(lx, 0) << QPointF(lx + 8, 4) << QPointF(lx, 8);
+        flagL << QPointF(lx, 0) << QPointF(lx + 10, 5) << QPointF(lx, 10);
         painter->drawPolygon(flagL);
         painter->setBrush(ThemeColors::warning());
         QPolygonF flagR;
-        flagR << QPointF(rx, 0) << QPointF(rx - 8, 4) << QPointF(rx, 8);
+        flagR << QPointF(rx, 0) << QPointF(rx - 10, 5) << QPointF(rx, 10);
         painter->drawPolygon(flagR);
+
+        QFont f = painter->font();
+        f.setPointSize(7);
+        f.setBold(true);
+        painter->setFont(f);
+        painter->setPen(ThemeColors::accent());
+        QString loopLabel = QString("L %1-%2s").arg(loopStart, 0, 'f', 1).arg(loopEnd, 0, 'f', 1);
+        double labelX = lx + (rx - lx) / 2 - 30;
+        if (rx - lx > 80)
+            painter->drawText(QPointF(labelX, height - 2), loopLabel);
     }
 
     // Draw tempo change points
@@ -174,7 +185,8 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
     if (event->button() == Qt::RightButton)
     {
-        event->ignore();
+        // Right-click is handled in contextMenuEvent
+        event->accept();
         return;
     }
 
@@ -183,7 +195,7 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
     double lx = xFromTime(loopStart);
     double rx = xFromTime(loopEnd);
-    double threshold = 5.0;
+    double threshold = 10.0;
 
     if (std::abs(x - lx) < threshold)
         dragMode = DragLoopStart;
@@ -224,10 +236,48 @@ void TimeRuler::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 void TimeRuler::mouseReleaseEvent(QGraphicsSceneMouseEvent*)
 {
     if (dragMode != Seek)
-    {
-        auto transportTree = engine.getProjectModel().getTransportTree();
-        transportTree.setProperty(IDs::loopStart, loopStart, &engine.getProjectModel().getUndoManager());
-        transportTree.setProperty(IDs::loopEnd, loopEnd, &engine.getProjectModel().getUndoManager());
-    }
+        commitLoopBounds();
     dragMode = None;
+}
+
+void TimeRuler::commitLoopBounds()
+{
+    auto transportTree = engine.getProjectModel().getTransportTree();
+    transportTree.setProperty(IDs::loopStart, loopStart, &engine.getProjectModel().getUndoManager());
+    transportTree.setProperty(IDs::loopEnd, loopEnd, &engine.getProjectModel().getUndoManager());
+}
+
+void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
+{
+    double t = timeFromX(event->pos().x());
+
+    QMenu menu;
+
+    auto* setStart = menu.addAction("Set Loop Start Here");
+    connect(setStart, &QAction::triggered, this, [this, t]() {
+        setLoopBounds(t, (std::max)(t, loopEnd));
+        commitLoopBounds();
+        emit loopBoundsChanged(loopStart, loopEnd);
+    });
+
+    auto* setEnd = menu.addAction("Set Loop End Here");
+    connect(setEnd, &QAction::triggered, this, [this, t]() {
+        setLoopBounds((std::min)(loopStart, t), t);
+        commitLoopBounds();
+        emit loopBoundsChanged(loopStart, loopEnd);
+    });
+
+    menu.addSeparator();
+
+    auto* toggleLoop = menu.addAction("Toggle Loop");
+    toggleLoop->setCheckable(true);
+    toggleLoop->setChecked(engine.getTransportManager().isLoopingNow());
+    connect(toggleLoop, &QAction::triggered, this, [this](bool checked) {
+        auto transportTree = engine.getProjectModel().getTransportTree();
+        transportTree.setProperty(IDs::isLooping, checked,
+            &engine.getProjectModel().getUndoManager());
+    });
+
+    menu.exec(event->screenPos());
+    event->accept();
 }

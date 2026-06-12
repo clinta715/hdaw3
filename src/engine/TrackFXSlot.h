@@ -1,10 +1,62 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <juce_gui_basics/juce_gui_basics.h>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 namespace HDAW {
+
+class PluginEditorWindow : public juce::DocumentWindow
+{
+public:
+PluginEditorWindow(juce::AudioProcessorEditor* editor,
+                   const juce::String& pluginName,
+                   std::function<void()> onClose)
+    : juce::DocumentWindow(pluginName,
+                           juce::Colour::fromRGB(40, 40, 40),
+                           juce::DocumentWindow::closeButton),
+      onCloseCallback(std::move(onClose))
+{
+    setUsingNativeTitleBar(true);
+    setContentOwned(editor, true);
+    setResizable(true, false);
+
+    int editorW = editor->getWidth();
+    int editorH = editor->getHeight();
+    juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: editor size=" +
+        juce::String(editorW) + "x" + juce::String(editorH));
+
+    if (auto* peer = getPeer())
+    {
+        juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: peer HWND=" +
+            juce::String::toHexString((juce::pointer_sized_int)peer->getNativeHandle()));
+    }
+    else
+    {
+        juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: peer=null after setContentOwned!");
+    }
+
+    centreWithSize(editorW, editorH);
+    juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: bounds=" +
+        getBounds().toString());
+
+    setVisible(true);
+    toFront(true);
+    juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: setVisible(true) called, isVisible=" +
+        juce::String(isVisible() ? "true" : "false"));
+}
+
+    void closeButtonPressed() override
+    {
+        if (onCloseCallback)
+            onCloseCallback();
+    }
+
+private:
+    std::function<void()> onCloseCallback;
+};
 
 class TrackFXSlot
 {
@@ -139,24 +191,35 @@ public:
 
     void showEditor()
     {
-        if (editor != nullptr || pluginInstance == nullptr)
+        juce::Logger::writeToLog("HDAW: TrackFXSlot::showEditor entry: editorWindow=" +
+            juce::String(editorWindow != nullptr ? "exists" : "null") +
+            " pluginInstance=" + juce::String(pluginInstance != nullptr ? "ok" : "null") +
+            " isPlugin=" + juce::String(isPlugin() ? "true" : "false"));
+
+        if (editorWindow != nullptr || pluginInstance == nullptr)
             return;
 
-        editor.reset(pluginInstance->createEditor());
-        if (editor != nullptr)
-            editor->setVisible(true);
+        auto* ed = pluginInstance->createEditor();
+        juce::Logger::writeToLog("HDAW: TrackFXSlot::showEditor: createEditor=" +
+            juce::String(ed != nullptr ? "ok" : "null"));
+        if (ed == nullptr)
+            return;
+
+        auto onClose = [this]() { closeEditor(); };
+        editorWindow = std::make_unique<PluginEditorWindow>(
+            ed, pluginInstance->getName(), std::move(onClose));
+        juce::Logger::writeToLog("HDAW: TrackFXSlot::showEditor: editorWindow created, isEditorOpen=" +
+            juce::String(isEditorOpen() ? "true" : "false"));
     }
 
     void closeEditor()
     {
-        if (editor == nullptr)
-            return;
-
-        editor->setVisible(false);
-        editor.reset();
+        juce::MessageManager::callAsync([this]() {
+            editorWindow = nullptr;
+        });
     }
 
-    bool isEditorOpen() const { return editor != nullptr; }
+    bool isEditorOpen() const { return editorWindow != nullptr; }
 
 private:
     enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Plugin };
@@ -166,7 +229,7 @@ private:
 
     bool isExternal = false;
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;
-    std::unique_ptr<juce::AudioProcessorEditor> editor;
+    std::unique_ptr<juce::DocumentWindow> editorWindow;
     juce::String pluginIdentifier;
 
     using EQProcessor = juce::dsp::ProcessorDuplicator<

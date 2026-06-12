@@ -1,8 +1,10 @@
 #include "ProjectPoolBrowser.h"
+#include "PreferencesDialog.h"
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QHeaderView>
 #include <QFileDialog>
+#include <QSettings>
 #include <QMessageBox>
 
 ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
@@ -76,8 +78,10 @@ void ProjectPoolBrowser::setupUI()
 
     addBtn = new QPushButton("Add File to Pool", poolContainer);
     connect(addBtn, &QPushButton::clicked, this, [this]() {
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
         QString file = QFileDialog::getOpenFileName(this, "Import Audio",
-            QString(), "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
+            settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+            "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
         if (!file.isEmpty())
             importFile(file);
     });

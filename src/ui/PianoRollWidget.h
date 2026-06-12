@@ -5,8 +5,12 @@
 #include "PianoKeysWidget.h"
 #include "NoteGridWidget.h"
 #include "VelocityLaneWidget.h"
+#include "CCLaneWidget.h"
 #include "PianoRollRuler.h"
 #include "../engine/AudioEngine.h"
+
+class QPushButton;
+class QComboBox;
 
 class PianoRollWidget : public QWidget
 {
@@ -36,6 +40,12 @@ private:
     VelocityLaneWidget* velocityLane;
     QScrollBar* hScrollBar;
     QScrollBar* vScrollBar;
+
+    QPushButton* snapBtn;
+    QComboBox* snapCombo;
+
+    CCLaneWidget* ccLane;
+    QComboBox* ccCombo;
 
     bool isLoaded = false;
 };

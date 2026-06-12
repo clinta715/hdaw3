@@ -19,8 +19,8 @@ public:
     QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
 
-    static constexpr double markerWidth = 10.0;
-    static constexpr double markerHeight = 16.0;
+    static constexpr double markerWidth = 14.0;
+    static constexpr double markerHeight = 22.0;
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;

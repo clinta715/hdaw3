@@ -175,6 +175,10 @@ void TimelineView::connectSignals()
         trackHeaders->rebuild();
     });
 
+    // Track selection
+    connect(trackHeaders, &TrackHeaderWidget::trackSelectionChanged, this,
+        &TimelineView::trackSelectionChanged);
+
     connect(trackHeaders, &TrackHeaderWidget::addTrackRequested, this, &TimelineView::addTrackClicked);
     connect(trackHeaders, &TrackHeaderWidget::addTrackWithFX, this, &TimelineView::addTrackWithFX);
     connect(trackHeaders, &TrackHeaderWidget::addTrackWithPlugin, this, &TimelineView::addTrackWithPlugin);
@@ -221,6 +225,11 @@ void TimelineView::zoomOut()
 void TimelineView::setFollowPlayhead(bool follow)
 {
     playheadCursor->setFollowPlayhead(follow);
+}
+
+void TimelineView::selectTrack(int index)
+{
+    trackHeaders->setSelectedTrack(index);
 }
 
 void TimelineView::scrollToPlayhead()

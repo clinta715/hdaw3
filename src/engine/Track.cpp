@@ -98,22 +98,34 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
     {
         auto slotTree = fxChainTree.getChild(i);
         juce::String type = slotTree.getProperty(IDs::fxType).toString();
+        
         if (type == "none" || type.isEmpty())
+        {
+            fxChain.push_back(std::make_unique<TrackFXSlot>("none"));
             continue;
+        }
 
         if (type == "plugin")
         {
             juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
             juce::String pluginFormat = slotTree.getProperty(IDs::pluginFormat).toString();
             if (pluginID.isEmpty())
+            {
+                fxChain.push_back(std::make_unique<TrackFXSlot>("none"));
                 continue;
+            }
 
             juce::PluginDescription desc;
             desc.fileOrIdentifier = pluginID;
             if (pluginFormat == "VST3")
                 desc.pluginFormatName = "VST3";
+            else if (pluginFormat == "CLAP")
+                desc.pluginFormatName = "CLAP";
             else
+            {
+                fxChain.push_back(std::make_unique<TrackFXSlot>("none"));
                 continue;
+            }
 
             juce::String error;
             auto plugin = pluginManager != nullptr
@@ -139,9 +151,11 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 
                 fxChain.push_back(std::move(slot));
             }
-            else if (error.isNotEmpty())
+            else
             {
-                juce::Logger::writeToLog("HDAW: Failed to load plugin " + pluginID + ": " + error);
+                if (error.isNotEmpty())
+                    juce::Logger::writeToLog("HDAW: Failed to load plugin " + pluginID + ": " + error);
+                fxChain.push_back(std::make_unique<TrackFXSlot>("none"));
             }
             continue;
         }

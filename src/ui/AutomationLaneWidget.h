@@ -14,6 +14,7 @@ public:
 
     void loadTrack(int trackIndex);
     void clear();
+    int currentTrackIndex() const { return currentTrack; }
 
 signals:
     void automationChanged();

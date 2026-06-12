@@ -4,6 +4,7 @@
 #include "PianoRollWidget.h"
 #include "FXChainWidget.h"
 #include "AutomationLaneWidget.h"
+#include "AudioClipEditorWidget.h"
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
@@ -18,6 +19,8 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QSettings>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QMenuBar>
@@ -32,8 +35,8 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 {
     setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
     resize(1200, 800);
-    setupMenuBar();
     setupLayout();
+    setupMenuBar();
 
     // Load saved preferences
     double clipDur = PreferencesDialog::getDefaultClipDuration();
@@ -71,6 +74,9 @@ void MainWindow::setupMenuBar()
 
     auto* openAction = fileMenu->addAction(tr("&Open..."), this, &MainWindow::onOpen);
     openAction->setShortcut(QKeySequence::Open);
+
+    recentProjectsMenu = fileMenu->addMenu(tr("Open &Recent"));
+    rebuildRecentProjectsMenu();
 
     fileMenu->addSeparator();
 
@@ -125,6 +131,10 @@ void MainWindow::setupMenuBar()
 
     auto* rewindAction = transportMenu->addAction(tr("&Rewind to Start"), this, &MainWindow::onRewind);
     rewindAction->setShortcut(QKeySequence(Qt::Key_Home));
+
+    loopAction = transportMenu->addAction(tr("&Loop"), this, &MainWindow::onLoopToggle);
+    loopAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+    loopAction->setCheckable(true);
 
     // ── Track ──
     auto* trackMenu = menuBar()->addMenu(tr("&Track"));
@@ -223,7 +233,8 @@ void MainWindow::setupLayout()
     auto* pianoTab = makeTab("Piano Roll", 1);
     auto* fxTab = makeTab("FX Chain", 2);
     auto* autoTab = makeTab("Automation", 3);
-    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab);
+    auto* audioTab = makeTab("Audio Editor", 4);
+    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab);
 
     tabLayout->addStretch();
     bottomLayout->addWidget(tabBar);
@@ -241,6 +252,18 @@ void MainWindow::setupLayout()
 
     automationWidget = new AutomationLaneWidget(engine, bottomStack);
     bottomStack->addWidget(automationWidget);
+
+    audioEditorWidget = new AudioClipEditorWidget(engine, bottomStack);
+    bottomStack->addWidget(audioEditorWidget);
+
+    // Connect tab button clicks to stack switching
+    connect(tabGroup, &QButtonGroup::idClicked, this, [this](int id) {
+        if (id == 2 && selectedTrack >= 0)
+            fxChainWidget->loadTrack(selectedTrack);
+        if (id == 3 && selectedTrack >= 0)
+            automationWidget->loadTrack(selectedTrack);
+        bottomStack->setCurrentIndex(id);
+    });
 
     // Keep tab button checked-state in sync with the stack — covers both
     // user clicks on the tab and programmatic setCurrentIndex (e.g. from clipSelected).
@@ -274,6 +297,18 @@ void MainWindow::setupLayout()
     auto* scene = timelineView->getScene();
     connect(scene, &TimelineScene::clipSelected, this,
         [this](juce::ValueTree clipTree) {
+            auto trackTree = clipTree.getParent().getParent();
+            if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
+            {
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                int trackIdx = trackList.indexOf(trackTree);
+                if (trackIdx >= 0)
+                {
+                    selectedTrack = trackIdx;
+                    timelineView->selectTrack(trackIdx);
+                }
+            }
+
             juce::String type = clipTree.getProperty(IDs::clipType).toString();
             if (type == "midi")
             {
@@ -282,7 +317,8 @@ void MainWindow::setupLayout()
             }
             else
             {
-                bottomStack->setCurrentIndex(0);
+                audioEditorWidget->loadClip(clipTree);
+                bottomStack->setCurrentIndex(4);
             }
         });
 
@@ -292,16 +328,34 @@ void MainWindow::setupLayout()
             bottomStack->setCurrentIndex(0);
         });
 
+    connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
+        [this]() {
+            audioEditorWidget->clear();
+            bottomStack->setCurrentIndex(0);
+        });
+
     connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
         [this](int trackIndex) {
+            selectedTrack = trackIndex;
             fxChainWidget->loadTrack(trackIndex);
             bottomStack->setCurrentIndex(2);
         });
 
     connect(timelineView, &TimelineView::automationToggled, this,
         [this](int trackIndex) {
+            selectedTrack = trackIndex;
             automationWidget->loadTrack(trackIndex);
             bottomStack->setCurrentIndex(3);
+        });
+
+    connect(timelineView, &TimelineView::trackSelectionChanged, this,
+        [this](int trackIndex) {
+            selectedTrack = trackIndex;
+            int idx = bottomStack->currentIndex();
+            if (idx == 2 && selectedTrack >= 0)
+                fxChainWidget->loadTrack(trackIndex);
+            if (idx == 3 && selectedTrack >= 0)
+                automationWidget->loadTrack(trackIndex);
         });
 
     connect(timelineView, &TimelineView::addTrackClicked, this, &MainWindow::onAddTrack);
@@ -319,6 +373,10 @@ void MainWindow::setupLayout()
     connect(&timecodeTimer, &QTimer::timeout, this, &MainWindow::updateTimecode);
     timecodeTimer.start(33);
 
+    // JUCE message pump (needed to drive JUCE timers/async updates in a Qt app)
+    connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
+    jucePumpTimer.start(10);
+
     // Keyboard shortcuts
     auto* recordShortcut = new QShortcut(QKeySequence(Qt::Key_R), this);
     connect(recordShortcut, &QShortcut::activated, this, &MainWindow::onRecordToggle);
@@ -335,6 +393,13 @@ void MainWindow::setupLayout()
             for (int i = 0; i < numTracks; ++i)
                 engine.getMainProcessor()->rebuildTrackFX(i);
         });
+
+    connect(automationWidget, &AutomationLaneWidget::automationChanged, this,
+        [this]() {
+            int track = automationWidget->currentTrackIndex();
+            if (track >= 0)
+                engine.getMainProcessor()->rebuildAutomationCache(track);
+        });
 }
 
 void MainWindow::rebuildAllUI()
@@ -343,7 +408,28 @@ void MainWindow::rebuildAllUI()
     mixerWidget->rebuild();
     fxChainWidget->clear();
     pianoRollWidget->clear();
+    audioEditorWidget->clear();
     automationWidget->clear();
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int numTracks = trackList.getNumChildren();
+
+    // Ensure all track FX are built in the engine
+    for (int i = 0; i < numTracks; ++i)
+        engine.getMainProcessor()->rebuildTrackFX(i);
+
+    if (selectedTrack >= numTracks)
+        selectedTrack = numTracks - 1;
+
+    if (selectedTrack >= 0)
+    {
+        int idx = bottomStack->currentIndex();
+        if (idx == 2)
+            fxChainWidget->loadTrack(selectedTrack);
+        else if (idx == 3)
+            automationWidget->loadTrack(selectedTrack);
+    }
+
     statusBar()->showMessage("Project loaded", 3000);
 }
 
@@ -378,9 +464,32 @@ void MainWindow::onOpen()
 {
     if (!checkSaveBeforeAction()) return;
 
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     auto path = QFileDialog::getOpenFileName(this, "Open Project",
-        {}, "HDAW Projects (*.hdaw)");
+        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        "HDAW Projects (*.hdaw)");
     if (path.isEmpty()) return;
+
+    openProjectFile(path);
+}
+
+void MainWindow::openProjectFile(const QString& path)
+{
+    if (path.isEmpty()) return;
+
+    if (!QFileInfo(path).exists())
+    {
+        QMessageBox::warning(this, "File Not Found",
+            QString("The file no longer exists:\n%1").arg(path));
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
+        if (list.removeAll(path) > 0)
+        {
+            settings.setValue(PreferencesDialog::kKeyRecentProjects, list);
+            rebuildRecentProjectsMenu();
+        }
+        return;
+    }
 
     juce::File file(path.toUtf8().constData());
     if (!HDAW::ProjectSerializer::load(engine.getProjectModel(), file))
@@ -389,11 +498,59 @@ void MainWindow::onOpen()
         return;
     }
 
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    settings.setValue(PreferencesDialog::kKeyLastProjectDir, QFileInfo(path).absolutePath());
     currentFile = file;
     engine.getMainProcessor()->rebuildRoutingGraph();
     rebuildAllUI();
     setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
         .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
+
+    addToRecentProjects(path);
+}
+
+void MainWindow::addToRecentProjects(const QString& path)
+{
+    if (path.isEmpty()) return;
+
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
+    list.removeAll(path);
+    list.prepend(path);
+    while (list.size() > 8) list.removeLast();
+    settings.setValue(PreferencesDialog::kKeyRecentProjects, list);
+    rebuildRecentProjectsMenu();
+}
+
+void MainWindow::rebuildRecentProjectsMenu()
+{
+    if (recentProjectsMenu == nullptr) return;
+
+    recentProjectsMenu->clear();
+
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
+
+    if (list.isEmpty())
+    {
+        auto* empty = recentProjectsMenu->addAction(tr("(No recent projects)"));
+        empty->setEnabled(false);
+        return;
+    }
+
+    for (const auto& path : list)
+    {
+        recentProjectsMenu->addAction(path, this, [this, path]() {
+            openProjectFile(path);
+        });
+    }
+
+    recentProjectsMenu->addSeparator();
+    recentProjectsMenu->addAction(tr("&Clear Recent"), this, [this]() {
+        QSettings s(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        s.remove(PreferencesDialog::kKeyRecentProjects);
+        rebuildRecentProjectsMenu();
+    });
 }
 
 bool MainWindow::onSave()
@@ -407,8 +564,10 @@ bool MainWindow::onSave()
 
 void MainWindow::onSaveAs()
 {
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     auto path = QFileDialog::getSaveFileName(this, "Save Project As",
-        {}, "HDAW Projects (*.hdaw)");
+        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        "HDAW Projects (*.hdaw)");
     if (path.isEmpty()) return;
 
     juce::File file(path.toUtf8().constData());
@@ -418,6 +577,8 @@ void MainWindow::onSaveAs()
         return;
     }
 
+    settings.setValue(PreferencesDialog::kKeyLastProjectDir,
+        QFileInfo(path).absolutePath());
     currentFile = file;
     setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
         .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
@@ -474,6 +635,22 @@ void MainWindow::onRewind()
     tm.setCurrentSample(0);
 }
 
+void MainWindow::onLoopToggle()
+{
+    auto transportTree = engine.getProjectModel().getTransportTree();
+    bool current = transportTree.getProperty(IDs::isLooping);
+    bool next = !current;
+    transportTree.setProperty(IDs::isLooping, next,
+        &engine.getProjectModel().getUndoManager());
+
+    if (loopAction)
+    {
+        loopAction->blockSignals(true);
+        loopAction->setChecked(next);
+        loopAction->blockSignals(false);
+    }
+}
+
 void MainWindow::updateTimecode()
 {
     auto& tm = engine.getTransportManager();
@@ -491,6 +668,16 @@ void MainWindow::updateTimecode()
     timelineView->getToolbar()->setTimecode(QString::fromUtf8(buf));
     timelineView->getToolbar()->setPlaying(tm.isPlayingNow());
     timelineView->getToolbar()->setBPM(tm.getBPM());
+
+    bool looping = tm.isLoopingNow();
+    timelineView->getToolbar()->setLoopEnabled(looping);
+    if (loopAction)
+    {
+        loopAction->blockSignals(true);
+        loopAction->setChecked(looping);
+        loopAction->blockSignals(false);
+    }
+
     timelineView->scrollToPlayhead();
 }
 
@@ -661,8 +848,10 @@ void MainWindow::onToggleBrowserPanel()
 
 void MainWindow::onImportAudio()
 {
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     auto path = QFileDialog::getOpenFileName(this, "Import Audio",
-        {}, "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
+        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
     if (path.isEmpty()) return;
 
     auto trackList = engine.getProjectModel().getTrackListTree();
@@ -736,8 +925,10 @@ void MainWindow::onImportAudio()
 
 void MainWindow::onImportMIDI()
 {
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     auto path = QFileDialog::getOpenFileName(this, "Import MIDI",
-        {}, "MIDI Files (*.mid *.midi)");
+        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        "MIDI Files (*.mid *.midi)");
     if (path.isEmpty()) return;
 
     auto trackList = engine.getProjectModel().getTrackListTree();
@@ -930,4 +1121,9 @@ void MainWindow::onRecordToggle()
             statusBar()->showMessage("Recording...", 0);
         }
     }
+}
+
+void MainWindow::pumpJuceMessages()
+{
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(0);
 }

@@ -42,6 +42,13 @@ namespace IDs {
     DECLARE_ID(startBeat)
     DECLARE_ID(durationBeats)
 
+    // CC lane
+    DECLARE_ID(CC_LIST)
+    DECLARE_ID(CC_POINT)
+    DECLARE_ID(controllerNumber)
+    DECLARE_ID(beat)
+    DECLARE_ID(value)
+
     // Transport / loop
     DECLARE_ID(loopStart)
     DECLARE_ID(loopEnd)

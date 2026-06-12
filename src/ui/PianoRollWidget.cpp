@@ -4,6 +4,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QComboBox>
 
 PianoRollWidget::PianoRollWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -35,6 +36,30 @@ void PianoRollWidget::setupUI()
     auto* titleLabel = new QLabel("Piano Roll", header);
     titleLabel->setObjectName("pianoRollTitle");
     headerLayout->addWidget(titleLabel);
+
+    headerLayout->addSpacing(16);
+
+    snapBtn = new QPushButton("Snap", header);
+    snapBtn->setCheckable(true);
+    snapBtn->setChecked(true);
+    snapBtn->setFixedHeight(22);
+    headerLayout->addWidget(snapBtn);
+
+    snapCombo = new QComboBox(header);
+    snapCombo->addItems({"1/1", "1/2", "1/4", "1/8", "1/16", "1/32",
+                         "1/3", "1/6", "1/12", "1/24"});
+    snapCombo->setCurrentIndex(4); // 1/16
+    snapCombo->setFixedHeight(22);
+    headerLayout->addWidget(snapCombo);
+
+    headerLayout->addSpacing(16);
+
+    ccCombo = new QComboBox(header);
+    for (int c = 1; c <= 127; ++c)
+        ccCombo->addItem(QString("CC%1").arg(c));
+    ccCombo->setCurrentIndex(0); // CC1
+    ccCombo->setFixedHeight(22);
+    headerLayout->addWidget(ccCombo);
 
     headerLayout->addStretch();
 
@@ -84,6 +109,10 @@ void PianoRollWidget::setupUI()
     velocityLane = new VelocityLaneWidget(model, this);
     mainLayout->addWidget(velocityLane);
 
+    // CC lane
+    ccLane = new CCLaneWidget(model, this);
+    mainLayout->addWidget(ccLane);
+
     // Horizontal scroll bar
     hScrollBar = new QScrollBar(Qt::Horizontal, this);
     hScrollBar->setRange(0, 2000);
@@ -101,6 +130,7 @@ void PianoRollWidget::connectSignals()
         ruler->setScrollOffset(val);
         noteGrid->setScrollOffset(val, noteGrid->getScrollY());
         velocityLane->setScrollOffset(val);
+        ccLane->setScrollOffset(val);
     });
 
     connect(vScrollBar, &QScrollBar::valueChanged, this, [this](int val) {
@@ -118,6 +148,23 @@ void PianoRollWidget::connectSignals()
 
     connect(noteGrid, &NoteGridWidget::noteSelected, this, [this](int) {
         velocityLane->update();
+    });
+
+    connect(snapBtn, &QPushButton::toggled, noteGrid, &NoteGridWidget::setSnapEnabled);
+
+    connect(snapCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        double divisions[] = {1.0, 0.5, 0.25, 1.0/8.0, 1.0/16.0, 1.0/32.0,
+                              1.0/3.0, 1.0/6.0, 1.0/12.0, 1.0/24.0};
+        if (idx >= 0 && idx < 10)
+            noteGrid->setSnapDivision(divisions[idx]);
+    });
+
+    connect(ccCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        ccLane->setControllerNumber(idx + 1);
+    });
+
+    connect(ccLane, &CCLaneWidget::ccChanged, this, [this]() {
+        noteGrid->update();
     });
 }
 
@@ -138,11 +185,13 @@ void PianoRollWidget::loadClip(juce::ValueTree clipTree)
     int midCScrollY = noteGrid->defaultScrollYForMiddleC();
     noteGrid->setScrollOffset(0, midCScrollY);
     velocityLane->setScrollOffset(0);
+    ccLane->setScrollOffset(0);
     if (vScrollBar != nullptr)
         vScrollBar->setValue(midCScrollY);
 
     noteGrid->update();
     velocityLane->update();
+    ccLane->update();
     ruler->update();
     show();
 }

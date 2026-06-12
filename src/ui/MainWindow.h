@@ -17,6 +17,7 @@ class MixerWidget;
 class PianoRollWidget;
 class FXChainWidget;
 class AutomationLaneWidget;
+class AudioClipEditorWidget;
 class ProjectPoolBrowser;
 
 class MainWindow : public QMainWindow
@@ -38,6 +39,9 @@ private:
 
     void onNew();
     void onOpen();
+    void openProjectFile(const QString& path);
+    void addToRecentProjects(const QString& path);
+    void rebuildRecentProjectsMenu();
     bool onSave();
     void onSaveAs();
     void onUndo();
@@ -46,6 +50,7 @@ private:
     void onPlayToggle();
     void onStop();
     void onRewind();
+    void onLoopToggle();
     void onExport();
     void onAddTrack();
     void onAddTrackWithFX(const juce::String& fxType);
@@ -60,6 +65,7 @@ private:
     void onToggleBrowserPanel();
 
     void updateTimecode();
+    void pumpJuceMessages();
 
     AudioEngine& engine;
 
@@ -75,11 +81,17 @@ private:
     PianoRollWidget* pianoRollWidget;
     FXChainWidget* fxChainWidget;
     AutomationLaneWidget* automationWidget;
+    AudioClipEditorWidget* audioEditorWidget;
 
     QAction* undoAction = nullptr;
     QAction* redoAction = nullptr;
+    QAction* loopAction = nullptr;
 
     QTimer timecodeTimer;
+    QTimer jucePumpTimer;
 
     juce::File currentFile;
+    int selectedTrack = -1;
+
+    QMenu* recentProjectsMenu = nullptr;
 };

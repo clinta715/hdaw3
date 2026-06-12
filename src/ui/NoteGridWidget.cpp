@@ -64,12 +64,34 @@ QRectF NoteGridWidget::noteRect(int noteIndex) const
     return QRectF(x, y, w, keyHeight);
 }
 
+void NoteGridWidget::setSnapEnabled(bool enabled)
+{
+    snapEnabled = enabled;
+    update();
+}
+
+void NoteGridWidget::setSnapDivision(double division)
+{
+    snapDivision = division;
+    update();
+}
+
+double NoteGridWidget::snapToGrid(double beat) const
+{
+    if (!snapEnabled || snapDivision <= 0.0)
+        return beat;
+    return std::max(0.0, std::round(beat / snapDivision) * snapDivision);
+}
+
 void NoteGridWidget::createNoteAtPos(const QPoint& pos, float velocity, double durationBeats)
 {
     int noteNum = noteNumberAtPos(pos.y());
     double beat = (pos.x() + scrollX) / pixelsPerBeat;
     beat = (std::max)(0.0, beat);
+    if (snapEnabled)
+        beat = snapToGrid(beat);
     model.addNote(noteNum, velocity, beat, durationBeats);
+    lastNoteDuration = durationBeats;
     emit notesChanged();
     update();
 }
@@ -115,6 +137,19 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         painter.drawLine(x, 0, x, h);
     }
 
+    // Snap grid lines (faint vertical lines at snap division boundaries)
+    if (snapEnabled && snapDivision > 0.0)
+    {
+        painter.setPen(QPen(QColor(255, 255, 255, 4), 1));
+        double snappedBeats = static_cast<double>(w + scrollX) / pixelsPerBeat + 1;
+        for (int si = 0; si <= static_cast<int>(snappedBeats / snapDivision); ++si)
+        {
+            int x = static_cast<int>(si * snapDivision * pixelsPerBeat - scrollX);
+            if (x < 0 || x > w) continue;
+            painter.drawLine(x, 0, x, h);
+        }
+    }
+
     // Draw notes
     for (int i = 0; i < model.getNumNotes(); ++i)
     {
@@ -147,6 +182,19 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
                 painter.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2, 2);
                 break;
             }
+        }
+    }
+
+    // Rubber-band selection rectangle
+    if (dragMode == Select)
+    {
+        QRect selRect = QRect(dragStart, rubberBandEnd).normalized();
+        if (selRect.width() > 3 || selRect.height() > 3)
+        {
+            painter.setPen(QPen(ThemeColors::accent(), 1, Qt::DashLine));
+            painter.setBrush(QColor(ThemeColors::accent().red(), ThemeColors::accent().green(),
+                                    ThemeColors::accent().blue(), 20));
+            painter.drawRect(selRect);
         }
     }
 
@@ -210,24 +258,10 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
         }
         else
         {
-            // Create note
-            int noteNum = noteNumberAtPos(pos.y());
-            double beat = (pos.x() + scrollX) / pixelsPerBeat;
-            beat = (std::max)(0.0, beat);
-
-            auto newNote = model.addNote(noteNum, 100.0f, beat, 1.0);
-            model.deselectAll();
-            model.selectNote(newNote);
-
-            dragMode = ResizeRight;
-            dragNoteIndex = model.getNumNotes() - 1;
+            // Start rubber-band selection (or click-to-create on release)
+            dragMode = Select;
             dragStart = pos;
-            dragStartBeat = beat;
-            dragStartDuration = 1.0;
-            dragStartNoteNumber = noteNum;
-
-            emit notesChanged();
-            update();
+            rubberBandEnd = pos;
         }
     }
     else if (event->button() == Qt::RightButton)
@@ -253,6 +287,8 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
 
         auto note = model.getNote(dragNoteIndex);
         double newBeat = (std::max)(0.0, dragStartBeat + beatDelta);
+        if (snapEnabled)
+            newBeat = snapToGrid(newBeat);
         int newNoteNum = (std::max)(0, (std::min)(127, dragStartNoteNumber + noteDelta));
 
         note.setProperty(IDs::startBeat, newBeat, &engine.getProjectModel().getUndoManager());
@@ -264,9 +300,21 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
     {
         QPoint delta = pos - dragStart;
         double newDur = (std::max)(0.25, dragStartDuration + delta.x() / pixelsPerBeat);
+        if (snapEnabled)
+        {
+            double endBeat = snapToGrid(dragStartBeat + newDur);
+            if (endBeat <= dragStartBeat)
+                endBeat = dragStartBeat + snapDivision;
+            newDur = endBeat - dragStartBeat;
+        }
         auto note = model.getNote(dragNoteIndex);
         note.setProperty(IDs::durationBeats, newDur, &engine.getProjectModel().getUndoManager());
         emit notesChanged();
+        update();
+    }
+    else if (dragMode == Select)
+    {
+        rubberBandEnd = pos;
         update();
     }
     else if (dragMode == ResizeLeft && dragNoteIndex >= 0)
@@ -274,6 +322,14 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
         QPoint delta = pos - dragStart;
         double newStart = dragStartBeat + delta.x() / pixelsPerBeat;
         double newDur = dragStartDuration - delta.x() / pixelsPerBeat;
+        if (snapEnabled)
+        {
+            double endBeat = dragStartBeat + dragStartDuration;
+            newStart = snapToGrid(newStart);
+            if (newStart >= endBeat)
+                newStart = endBeat - snapDivision;
+            newDur = endBeat - newStart;
+        }
         if (newDur < 0.25)
         {
             newStart = dragStartBeat + dragStartDuration - 0.25;
@@ -306,8 +362,62 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
     }
 }
 
-void NoteGridWidget::mouseReleaseEvent(QMouseEvent*)
+void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (dragMode == Select)
+    {
+        QPoint releasePos = event->pos();
+        int dragDist = (releasePos - dragStart).manhattanLength();
+
+        if (dragDist > 5)
+        {
+            // Rubber-band select
+            QRect selRect = QRect(dragStart, rubberBandEnd).normalized();
+            model.deselectAll();
+            for (int i = 0; i < model.getNumNotes(); ++i)
+            {
+                auto r = noteRect(i).toRect();
+                if (selRect.intersects(r))
+                    model.selectNote(model.getNote(i), true);
+            }
+            if (!model.getSelectedNotes().isEmpty())
+                emit noteSelected(0);
+            emit notesChanged();
+            update();
+        }
+        else
+        {
+            // Click — create note (existing behavior)
+            int noteNum = noteNumberAtPos(releasePos.y());
+            double beat = (releasePos.x() + scrollX) / pixelsPerBeat;
+            beat = (std::max)(0.0, beat);
+            if (snapEnabled)
+                beat = snapToGrid(beat);
+
+            auto newNote = model.addNote(noteNum, 100.0f, beat, lastNoteDuration);
+            model.deselectAll();
+            model.selectNote(newNote);
+
+            dragMode = ResizeRight;
+            dragNoteIndex = model.getNumNotes() - 1;
+            dragStart = releasePos;
+            dragStartBeat = beat;
+            dragStartDuration = lastNoteDuration;
+            dragStartNoteNumber = noteNum;
+
+            emit notesChanged();
+            update();
+            return;
+        }
+    }
+
+    if ((dragMode == ResizeRight || dragMode == ResizeLeft) && dragNoteIndex >= 0)
+    {
+        auto note = model.getNote(dragNoteIndex);
+        if (note.isValid())
+            lastNoteDuration = static_cast<double>(note.getProperty(IDs::durationBeats));
+    }
+
     dragMode = None;
     dragNoteIndex = -1;
 }
@@ -325,6 +435,24 @@ void NoteGridWidget::keyPressEvent(QKeyEvent* event)
         model.deselectAll();
         for (int i = 0; i < model.getNumNotes(); ++i)
             model.selectNote(model.getNote(i), true);
+        update();
+    }
+    else if (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier))
+    {
+        model.copySelectedNotes();
+    }
+    else if (event->key() == Qt::Key_V && (event->modifiers() & Qt::ControlModifier))
+    {
+        double targetBeat = static_cast<double>(scrollX) / pixelsPerBeat;
+        model.pasteNotes(targetBeat);
+        emit notesChanged();
+        update();
+    }
+    else if (event->key() == Qt::Key_X && (event->modifiers() & Qt::ControlModifier))
+    {
+        model.copySelectedNotes();
+        model.removeSelectedNotes();
+        emit notesChanged();
         update();
     }
 }

@@ -4,7 +4,8 @@
 
 class CLAPPluginInstance;
 
-class CLAPPluginEditor : public juce::AudioProcessorEditor
+class CLAPPluginEditor : public juce::AudioProcessorEditor,
+                         private juce::Timer
 {
 public:
     explicit CLAPPluginEditor(CLAPPluginInstance& instance);
@@ -12,10 +13,12 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void parentHierarchyChanged() override;
 
 private:
     bool createUI();
     void destroyUI();
+    void timerCallback() override;
 
     CLAPPluginInstance& clapInstance;
     const clap_plugin_gui_t* guiExt = nullptr;

@@ -21,6 +21,12 @@ public:
     static int getSnapDivision();
     static void setSnapDivision(int idx);
 
+    static inline constexpr auto kKeyLastProjectDir = "lastProjectDirectory";
+    static inline constexpr auto kKeyLastExportDir = "lastExportDirectory";
+    static inline constexpr auto kKeyRecentProjects = "recentProjects";
+    static inline constexpr auto kSettingsOrg = "HDAW";
+    static inline constexpr auto kSettingsApp = "HDAW";
+
 signals:
     void preferencesApplied();
 

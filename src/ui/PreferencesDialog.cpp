@@ -5,8 +5,6 @@
 #include <QLabel>
 #include <QGroupBox>
 
-static const char* kSettingsOrg = "HDAW";
-static const char* kSettingsApp = "HDAW";
 static const char* kKeyClipDur = "defaultClipDuration";
 static const char* kKeySnap = "snapEnabled";
 static const char* kKeySnapDiv = "snapDivision";
@@ -74,7 +72,7 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
 
 void PreferencesDialog::loadSettings()
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     clipDurSpinBox->setValue(settings.value(kKeyClipDur, 4.0).toDouble());
     snapCheckBox->setChecked(settings.value(kKeySnap, true).toBool());
     snapDivisionCombo->setCurrentIndex(settings.value(kKeySnapDiv, 1).toInt());
@@ -88,7 +86,7 @@ void PreferencesDialog::onSave()
 
 void PreferencesDialog::onApply()
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     settings.setValue(kKeyClipDur, clipDurSpinBox->value());
     settings.setValue(kKeySnap, snapCheckBox->isChecked());
     settings.setValue(kKeySnapDiv, snapDivisionCombo->currentIndex());
@@ -98,36 +96,36 @@ void PreferencesDialog::onApply()
 // Static accessors
 double PreferencesDialog::getDefaultClipDuration()
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     return settings.value(kKeyClipDur, 4.0).toDouble();
 }
 
 void PreferencesDialog::setDefaultClipDuration(double dur)
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     settings.setValue(kKeyClipDur, dur);
 }
 
 bool PreferencesDialog::getSnapEnabled()
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     return settings.value(kKeySnap, true).toBool();
 }
 
 void PreferencesDialog::setSnapEnabled(bool en)
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     settings.setValue(kKeySnap, en);
 }
 
 int PreferencesDialog::getSnapDivision()
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     return settings.value(kKeySnapDiv, 1).toInt();
 }
 
 void PreferencesDialog::setSnapDivision(int idx)
 {
-    QSettings settings(kSettingsOrg, kSettingsApp);
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     settings.setValue(kKeySnapDiv, idx);
 }

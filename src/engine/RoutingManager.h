@@ -37,6 +37,7 @@ public:
     HDAW::Track* getTrackNode(int trackIndex) const;
     FxBusProcessor* getFxBus(int busID) const;
     int getNumTracks() const { return static_cast<int>(trackProcessors.size()); }
+    void setPlaybackInfo(double sr, int bs) { sampleRate = sr; blockSize = bs; }
 
 private:
     void connectTrackToBus(int trackIndex, int busID);
@@ -50,6 +51,9 @@ private:
     juce::AudioFormatManager& formatManager;
     HDAW::TransportManager& transportManager;
     HDAW::PluginManager* pluginManager = nullptr;
+
+    double sampleRate = 44100.0;
+    int blockSize = 512;
 
     MasterBusProcessor* masterBus = nullptr;
     juce::AudioProcessorGraph::Node::Ptr masterNode;

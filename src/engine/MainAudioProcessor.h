@@ -33,6 +33,7 @@ public:
     void rebuildTrackFX(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
+    void rebuildAutomationCache(int trackIndex);
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;

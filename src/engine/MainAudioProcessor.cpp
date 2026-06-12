@@ -23,6 +23,7 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     routingManager = std::make_unique<HDAW::RoutingManager>(
         graph, *projectModel, *formatManager, *transportManager, pluginManager);
+    routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
     routingManager->rebuildFromValueTree();
 
     graph.setPlayHead(internalPlayHead.get());
@@ -194,6 +195,15 @@ void MainAudioProcessor::rebuildTrackFX(int trackIndex)
 {
     if (routingManager != nullptr)
         routingManager->rebuildTrackFX(trackIndex);
+}
+
+void MainAudioProcessor::rebuildAutomationCache(int trackIndex)
+{
+    if (routingManager == nullptr) return;
+    auto* track = routingManager->getTrackNode(trackIndex);
+    if (track == nullptr) return;
+    for (int i = 0; i < track->getNumAutomations(); ++i)
+        track->getAutomation(i).rebuildCache();
 }
 
 void MainAudioProcessor::rebuildRoutingGraph()

@@ -20,11 +20,25 @@ void AudioEngine::initialize()
 
     // Setup transport
     transportManager.setBPM(projectModel.getTree().getProperty(IDs::tempo));
+
+    // Sync loop state from ValueTree to TransportManager atomics.
+    // The listener only fires on property changes, so we must push the
+    // initial values here during setup to ensure advance() has valid
+    // loopStartSample / loopEndSample from the start.
+    {
+        auto transportTree = projectModel.getTransportTree();
+        transportManager.setLooping(transportTree.getProperty(IDs::isLooping));
+        double sr = transportManager.getSampleRate();
+        transportManager.setLoopStartSample(
+            static_cast<int64_t>(static_cast<double>(transportTree.getProperty(IDs::loopStart)) * sr));
+        transportManager.setLoopEndSample(
+            static_cast<int64_t>(static_cast<double>(transportTree.getProperty(IDs::loopEnd)) * sr));
+    }
+
     mainProcessor->setTransportManager(&transportManager);
 
-    // Initialize plugin manager — load cache + background scan
+    // Initialize plugin manager — load cache (scan happens asynchronously after UI starts)
     pluginManager.loadCache();
-    pluginManager.scanAll();
 
     // Initialize default audio device (2 in, 2 out)
     auto error = deviceManager.initialiseWithDefaultDevices(2, 2);
@@ -138,6 +152,20 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
         {
             double pos = treeWhosePropertyHasChanged.getProperty(IDs::position);
             transportManager.setCurrentSample(static_cast<int64_t>(pos * transportManager.getSampleRate()));
+        }
+        else if (property == IDs::isLooping)
+        {
+            transportManager.setLooping(treeWhosePropertyHasChanged.getProperty(IDs::isLooping));
+        }
+        else if (property == IDs::loopStart)
+        {
+            double t = treeWhosePropertyHasChanged.getProperty(IDs::loopStart);
+            transportManager.setLoopStartSample(static_cast<int64_t>(t * transportManager.getSampleRate()));
+        }
+        else if (property == IDs::loopEnd)
+        {
+            double t = treeWhosePropertyHasChanged.getProperty(IDs::loopEnd);
+            transportManager.setLoopEndSample(static_cast<int64_t>(t * transportManager.getSampleRate()));
         }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::PROJECT))

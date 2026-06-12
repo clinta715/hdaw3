@@ -1,8 +1,11 @@
 #include "ExportDialog.h"
+#include "PreferencesDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QSettings>
 #include <QMessageBox>
 
 ExportDialog::ExportDialog(AudioEngine& ae, QWidget* parent)
@@ -102,16 +105,20 @@ QString ExportDialog::defaultExtension() const
 
 void ExportDialog::onBrowse()
 {
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
     QString filter = QString("%1 Files (*.%2)")
         .arg(formatCombo->currentText())
         .arg(defaultExtension());
-    auto path = QFileDialog::getSaveFileName(this, "Export Audio", {}, filter);
+    auto path = QFileDialog::getSaveFileName(this, "Export Audio",
+        settings.value(PreferencesDialog::kKeyLastExportDir).toString(), filter);
     if (!path.isEmpty())
     {
         QFileInfo fi(path);
         if (fi.suffix().isEmpty())
             path += "." + defaultExtension();
         pathEdit->setText(path);
+        settings.setValue(PreferencesDialog::kKeyLastExportDir,
+            fi.absolutePath());
     }
 }
 

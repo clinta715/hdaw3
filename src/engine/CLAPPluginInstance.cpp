@@ -33,15 +33,23 @@ void CLAPHost::requestProcess() noexcept
 
 void CLAPHost::requestCallback() noexcept
 {
-    juce::MessageManager::callAsync([this]() {
-        if (instance != nullptr)
-            const_cast<clap_plugin_t*>(instance->getClapPlugin())->on_main_thread(
-                instance->getClapPlugin());
-    });
+    triggerAsyncUpdate();
+}
+
+void CLAPHost::handleAsyncUpdate()
+{
+    if (instance != nullptr)
+    {
+        auto* p = const_cast<clap_plugin_t*>(instance->getClapPlugin());
+        if (p != nullptr)
+            p->on_main_thread(p);
+    }
 }
 
 const void* CLAPHost::getExtension(const char* id) const noexcept
 {
+    if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0)
+        return &timerHub;
     return Host::getExtension(id);
 }
 
@@ -85,6 +93,62 @@ void CLAPHost::logLog(clap_log_severity severity, const char* msg) const noexcep
 {
     juce::ignoreUnused(severity);
     juce::Logger::writeToLog("CLAP: " + juce::String(msg));
+}
+
+bool CLAPHost::timerSupportRegister(uint32_t period_ms, clap_id* timer_id) noexcept
+{
+    if (timer_id == nullptr) return false;
+
+    auto t = std::make_unique<TimerInfo>();
+    t->instance = instance;
+    t->timerID = nextTimerID++;
+    t->period = period_ms;
+    t->startTimer(static_cast<int>(period_ms));
+
+    *timer_id = t->timerID;
+    timers.push_back(std::move(t));
+    return true;
+}
+
+bool CLAPHost::timerSupportUnregister(clap_id timer_id) noexcept
+{
+    for (auto it = timers.begin(); it != timers.end(); ++it)
+    {
+        if ((*it)->timerID == timer_id)
+        {
+            (*it)->stopTimer();
+            timers.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CLAP_ABI CLAPHost::registerTimerFn(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id)
+{
+    auto& self = *reinterpret_cast<CLAPHost*>(host->host_data);
+    return self.timerSupportRegister(period_ms, timer_id);
+}
+
+bool CLAP_ABI CLAPHost::unregisterTimerFn(const clap_host_t* host, clap_id timer_id)
+{
+    auto& self = *reinterpret_cast<CLAPHost*>(host->host_data);
+    return self.timerSupportUnregister(timer_id);
+}
+
+void CLAPHost::TimerInfo::timerCallback()
+{
+    if (instance != nullptr)
+    {
+        auto* p = const_cast<clap_plugin_t*>(instance->getClapPlugin());
+        if (p != nullptr)
+        {
+            auto* timerExt = static_cast<const clap_plugin_timer_support_t*>(
+                p->get_extension(p, CLAP_EXT_TIMER_SUPPORT));
+            if (timerExt != nullptr && timerExt->on_timer != nullptr)
+                timerExt->on_timer(p, timerID);
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -186,30 +250,34 @@ CLAPInputEvents::CLAPInputEvents()
 
 void CLAPInputEvents::clear()
 {
-    storage.clear();
-    pointers.clear();
+    eventCount = 0;
+    storageUsed = 0;
 }
 
 void CLAPInputEvents::push(const clap_event_header_t& event)
 {
-    auto offset = storage.size();
-    storage.resize(offset + event.size);
+    if (eventCount >= MAX_EVENTS) return;
+    if (storageUsed + event.size > STORAGE_SIZE) return;
+
+    auto offset = storageUsed;
     std::memcpy(storage.data() + offset, &event, event.size);
-    pointers.push_back(
-        reinterpret_cast<const clap_event_header_t*>(storage.data() + offset));
+    pointers[eventCount] =
+        reinterpret_cast<const clap_event_header_t*>(storage.data() + offset);
+    ++eventCount;
+    storageUsed += event.size;
 }
 
 uint32_t CLAP_ABI CLAPInputEvents::sizeFn(const clap_input_events* list)
 {
     auto& self = *reinterpret_cast<const CLAPInputEvents*>(list->ctx);
-    return static_cast<uint32_t>(self.pointers.size());
+    return self.eventCount;
 }
 
 const clap_event_header_t* CLAP_ABI CLAPInputEvents::getFn(
     const clap_input_events* list, uint32_t index)
 {
     auto& self = *reinterpret_cast<const CLAPInputEvents*>(list->ctx);
-    if (index < self.pointers.size())
+    if (index < self.eventCount)
         return self.pointers[index];
     return nullptr;
 }
@@ -226,13 +294,14 @@ CLAPOutputEvents::CLAPOutputEvents()
 
 void CLAPOutputEvents::clear()
 {
-    events.clear();
+    eventCount = 0;
+    storageUsed = 0;
 }
 
 const clap_event_header_t* CLAPOutputEvents::getEvent(uint32_t i) const
 {
-    if (i < static_cast<uint32_t>(events.size()))
-        return &events[i];
+    if (i < eventCount)
+        return pointers[i];
     return nullptr;
 }
 
@@ -240,7 +309,15 @@ bool CLAP_ABI CLAPOutputEvents::tryPushFn(
     const clap_output_events* list, const clap_event_header_t* event)
 {
     auto& self = *reinterpret_cast<CLAPOutputEvents*>(list->ctx);
-    self.events.push_back(*event);
+    if (self.eventCount >= MAX_EVENTS) return false;
+    if (self.storageUsed + event->size > STORAGE_SIZE) return false;
+
+    auto offset = self.storageUsed;
+    std::memcpy(self.storage.data() + offset, event, event->size);
+    self.pointers[self.eventCount] =
+        reinterpret_cast<const clap_event_header_t*>(self.storage.data() + offset);
+    ++self.eventCount;
+    self.storageUsed += event->size;
     return true;
 }
 
@@ -294,9 +371,8 @@ void CLAPPluginInstance::initialize()
 void CLAPPluginInstance::addCLAPParameter(std::unique_ptr<CLAPParameter> param)
 {
     auto* ptr = param.get();
-    parameters.push_back(std::move(param));
-    addHostedParameter(std::unique_ptr<juce::AudioProcessorParameterWithID>(
-        static_cast<juce::AudioProcessorParameterWithID*>(ptr)));
+    parameters.push_back(ptr);
+    addHostedParameter(std::move(param));
 }
 
 const juce::String CLAPPluginInstance::getName() const
@@ -309,6 +385,7 @@ const juce::String CLAPPluginInstance::getName() const
 void CLAPPluginInstance::buildParameters()
 {
     parameters.clear();
+
 
     if (paramsExt == nullptr)
         return;
@@ -373,17 +450,6 @@ void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     if (!activated)
     {
-        if (processing)
-        {
-            plugin->stop_processing(plugin);
-            processing = false;
-        }
-        if (activated)
-        {
-            plugin->deactivate(plugin);
-            activated = false;
-        }
-
         plugin->activate(plugin, sampleRate, 1,
                          static_cast<uint32_t>((std::max)(samplesPerBlock, 1)));
         activated = true;

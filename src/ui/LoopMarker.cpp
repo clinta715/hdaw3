@@ -10,6 +10,7 @@ LoopMarker::LoopMarker(TimeRuler& r, Side s)
 {
     setCursor(Qt::SizeHorCursor);
     setAcceptHoverEvents(true);
+    setAcceptedMouseButtons(Qt::LeftButton);
     setZValue(50);
 }
 
@@ -17,7 +18,7 @@ LoopMarker::~LoopMarker() = default;
 
 QRectF LoopMarker::boundingRect() const
 {
-    return QRectF(-markerWidth / 2, -markerHeight, markerWidth, markerHeight + 4);
+    return QRectF(-markerWidth, -markerHeight, markerWidth * 2, markerHeight + 8);
 }
 
 void LoopMarker::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
@@ -26,28 +27,26 @@ void LoopMarker::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidg
 
     QColor color = (side == Left) ? ThemeColors::success() : ThemeColors::warning();
 
-    // Flag triangle
     QPolygonF flag;
     if (side == Left)
     {
-        flag << QPointF(0, -markerHeight)
-             << QPointF(markerWidth, -markerHeight + 6)
-             << QPointF(0, -markerHeight + 12);
+        flag << QPointF(-1, -markerHeight)
+             << QPointF(markerWidth, -markerHeight + 8)
+             << QPointF(-1, -markerHeight + 16);
     }
     else
     {
-        flag << QPointF(0, -markerHeight)
-             << QPointF(-markerWidth, -markerHeight + 6)
-             << QPointF(0, -markerHeight + 12);
+        flag << QPointF(1, -markerHeight)
+             << QPointF(-markerWidth, -markerHeight + 8)
+             << QPointF(1, -markerHeight + 16);
     }
 
     painter->setPen(Qt::NoPen);
     painter->setBrush(color);
     painter->drawPolygon(flag);
 
-    // Vertical line extending down
-    painter->setPen(QPen(color, 1));
-    painter->drawLine(QPointF(0, -markerHeight + 12), QPointF(0, 0));
+    painter->setPen(QPen(color, 2));
+    painter->drawLine(QPointF(0, -markerHeight + 16), QPointF(0, 4));
 }
 
 void LoopMarker::mousePressEvent(QGraphicsSceneMouseEvent* event)
@@ -84,6 +83,7 @@ void LoopMarker::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
     if (event->button() == Qt::LeftButton && dragging)
     {
         dragging = false;
+        ruler.commitLoopBounds();
         event->accept();
     }
 }

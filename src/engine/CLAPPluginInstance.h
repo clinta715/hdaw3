@@ -1,10 +1,17 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <clap/all.h>
+#include <clap/clap.h>
 #include <clap/helpers/host.hh>
+#include <clap/ext/timer-support.h>
+#include <clap/ext/log.h>
+#include <clap/ext/params.h>
+#include <clap/ext/state.h>
+#include <clap/ext/gui.h>
+#include <clap/ext/latency.h>
 #include "CLAPPluginFormat.h"
 #include <atomic>
 #include <vector>
+#include <array>
 #include <memory>
 
 class CLAPPluginInstance;
@@ -12,10 +19,12 @@ class CLAPPluginInstance;
 // ── CLAPHost ────────────────────────────────────────────────────
 
 class CLAPHost : public clap::helpers::Host<clap::helpers::MisbehaviourHandler::Terminate,
-                                             clap::helpers::CheckingLevel::Maximal>
+                                             clap::helpers::CheckingLevel::Maximal>,
+                 private juce::AsyncUpdater
 {
 public:
     explicit CLAPHost(CLAPPluginInstance* instance);
+    ~CLAPHost() override { cancelPendingUpdate(); }
     void setInstance(CLAPPluginInstance* inst) { instance = inst; }
 
     bool threadCheckIsMainThread() const noexcept override;
@@ -49,10 +58,32 @@ public:
     bool implementsLog() const noexcept override { return true; }
     void logLog(clap_log_severity severity, const char* msg) const noexcept override;
 
+    // Timer Support
+    bool implementsTimerSupport() const noexcept { return true; }
+    bool timerSupportRegister(uint32_t period_ms, clap_id* timer_id) noexcept;
+    bool timerSupportUnregister(clap_id timer_id) noexcept;
+
     const clap_host* getClapHost() const { return clapHost(); }
 
 private:
     CLAPPluginInstance* instance;
+
+    static bool CLAP_ABI registerTimerFn(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id);
+    static bool CLAP_ABI unregisterTimerFn(const clap_host_t* host, clap_id timer_id);
+    clap_host_timer_support_t timerHub{ registerTimerFn, unregisterTimerFn };
+
+    struct TimerInfo : public juce::Timer
+    {
+        CLAPPluginInstance* instance;
+        clap_id timerID;
+        uint32_t period;
+
+        void timerCallback() override;
+    };
+    std::vector<std::unique_ptr<TimerInfo>> timers;
+    clap_id nextTimerID = 1;
+
+    void handleAsyncUpdate() override;
 };
 
 // ── CLAPParameter ───────────────────────────────────────────────
@@ -91,6 +122,9 @@ private:
 class CLAPInputEvents final
 {
 public:
+    static constexpr uint32_t MAX_EVENTS = 256;
+    static constexpr size_t STORAGE_SIZE = 16384;
+
     CLAPInputEvents();
     ~CLAPInputEvents() = default;
 
@@ -103,20 +137,25 @@ private:
     static const clap_event_header_t* CLAP_ABI getFn(const clap_input_events* list, uint32_t index);
 
     clap_input_events_t iface;
-    std::vector<uint8_t> storage;
-    std::vector<const clap_event_header_t*> pointers;
+    std::array<uint8_t, STORAGE_SIZE> storage{};
+    std::array<const clap_event_header_t*, MAX_EVENTS> pointers{};
+    uint32_t eventCount = 0;
+    size_t storageUsed = 0;
 };
 
 class CLAPOutputEvents final
 {
 public:
+    static constexpr uint32_t MAX_EVENTS = 256;
+    static constexpr size_t STORAGE_SIZE = 16384;
+
     CLAPOutputEvents();
     ~CLAPOutputEvents() = default;
 
     void clear();
     const clap_output_events_t* getInterface() const { return &iface; }
 
-    uint32_t getNumEvents() const { return static_cast<uint32_t>(events.size()); }
+    uint32_t getNumEvents() const { return eventCount; }
     const clap_event_header_t* getEvent(uint32_t i) const;
 
 private:
@@ -124,7 +163,10 @@ private:
                                    const clap_event_header_t* event);
 
     clap_output_events_t iface;
-    std::vector<clap_event_header_t> events;
+    std::array<uint8_t, STORAGE_SIZE> storage{};
+    std::array<const clap_event_header_t*, MAX_EVENTS> pointers{};
+    uint32_t eventCount = 0;
+    size_t storageUsed = 0;
 };
 
 // ── CLAPPluginInstance ──────────────────────────────────────────
@@ -193,8 +235,8 @@ private:
     const clap_plugin_audio_ports_t* audioPortsExt = nullptr;
     const clap_plugin_note_ports_t* notePortsExt = nullptr;
 
-    // Parameters
-    std::vector<std::unique_ptr<CLAPParameter>> parameters;
+    // Parameters (raw pointers — JUCE owns via addHostedParameter)
+    std::vector<CLAPParameter*> parameters;
 
     // Audio config
     juce::AudioBuffer<float> scratchBuffer;

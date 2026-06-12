@@ -15,7 +15,10 @@ public:
     PluginManager();
     ~PluginManager();
 
-    void scanAll();
+    using ScanProgressCallback = std::function<void(const juce::String& fileName, int completed, int total)>;
+
+    void scanAll(ScanProgressCallback progressCb = nullptr);
+    void abortScan() { abortRequested.store(true); }
     bool isLoading() const { return scanning.load(); }
 
     const std::vector<juce::PluginDescription>& getPlugins() const { return knownPlugins; }
@@ -46,6 +49,7 @@ private:
     juce::KnownPluginList knownPluginList;
     std::vector<juce::PluginDescription> knownPlugins;
     std::atomic<bool> scanning{false};
+    std::atomic<bool> abortRequested{false};
     ScanCallback scanCallback;
     juce::File cacheFile;
 

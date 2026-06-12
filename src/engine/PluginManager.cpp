@@ -1,4 +1,31 @@
 #include "PluginManager.h"
+#include <stdexcept>
+
+#if JUCE_WINDOWS
+#include <windows.h>
+
+namespace {
+// __try/__except must live in its own function with no local C++ objects
+// (C2712 restriction: cannot mix SEH with C++ object unwinding in the same function).
+bool scanNextFileSafe(juce::PluginDirectoryScanner& scanner, juce::String& name, bool& crashed)
+{
+    crashed = false;
+    __try {
+        return scanner.scanNextFile(false, name);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        crashed = true;
+        return false;
+    }
+}
+} // anonymous namespace
+
+// SEH-to-C++ exception translator. Registered with _set_se_translator before calling
+// into buggy VST3 code. Must NOT return — throws a C++ exception instead.
+void __cdecl sehPluginCrashTranslator(unsigned int, struct _EXCEPTION_POINTERS*)
+{
+    throw std::runtime_error("Plugin crashed during instantiation");
+}
+#endif
 
 namespace HDAW {
 
@@ -45,10 +72,11 @@ void PluginManager::saveCache()
     }
 }
 
-void PluginManager::scanAll()
+void PluginManager::scanAll(ScanProgressCallback progressCb)
 {
     if (scanning.load()) return;
     scanning.store(true);
+    abortRequested.store(false);
 
     loadCache();
 
@@ -72,26 +100,78 @@ void PluginManager::scanAll()
     defaultDirs.add("~/.clap");
 #endif
 
+    auto hdawDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("HDAW");
+    int completed = 0;
+
     for (const auto& format : formatManager.getFormats())
     {
         for (const auto& dir : defaultDirs)
         {
             juce::File d(dir);
-            if (d.isDirectory())
-            {
-                juce::PluginDirectoryScanner scanner(
-                    knownPluginList, *format,
-                    juce::FileSearchPath(d.getFullPathName()),
-                    false, juce::File{}, false
-                );
+            if (!d.isDirectory()) continue;
 
-                juce::String name;
-                while (scanner.scanNextFile(false, name))
+            auto pedalName = juce::String("deadmanspedal_")
+                + juce::String(format->getName()) + "_"
+                + d.getFileName() + ".tmp";
+            auto deadMansPedal = hdawDir.getChildFile(pedalName);
+
+            juce::PluginDirectoryScanner scanner(
+                knownPluginList, *format,
+                juce::FileSearchPath(d.getFullPathName()),
+                false, deadMansPedal, false
+            );
+
+            juce::String name;
+            while (true)
+            {
+                bool ok = false;
+#if JUCE_WINDOWS
+                bool crashed = false;
+                ok = scanNextFileSafe(scanner, name, crashed);
+
+                if (crashed)
                 {
-                    juce::Logger::writeToLog("PluginManager: found - " + name);
+                    if (deadMansPedal.existsAsFile())
+                    {
+                        auto crashedFile = deadMansPedal.loadFileAsString().trim();
+                        if (crashedFile.isNotEmpty())
+                        {
+                            blacklistPlugin(crashedFile);
+                            juce::Logger::writeToLog(
+                                "PluginManager: CRASHED and blacklisted: "
+                                + crashedFile);
+                            if (progressCb)
+                                progressCb(crashedFile, ++completed, 0);
+                        }
+                        deadMansPedal.deleteFile();
+                    }
+                    ok = false;
                 }
+#else
+                ok = scanner.scanNextFile(false, name);
+#endif
+                if (!ok) break;
+
+                if (abortRequested.load()) break;
+
+                juce::Logger::writeToLog("PluginManager: found - " + name);
+                if (progressCb)
+                    progressCb(name, ++completed, 0);
             }
+
+            if (deadMansPedal.existsAsFile())
+                deadMansPedal.deleteFile();
+
+            if (abortRequested.load()) break;
         }
+
+        if (abortRequested.load()) break;
+    }
+
+    if (abortRequested.load())
+    {
+        scanning.store(false);
+        return;
     }
 
     onScanFinished();
@@ -120,7 +200,35 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         errorMessage = "Plugin is blacklisted: " + desc.fileOrIdentifier;
         return nullptr;
     }
-    return formatManager.createPluginInstance(desc, sampleRate, blockSize, errorMessage);
+
+    bool crashed = false;
+    std::unique_ptr<juce::AudioPluginInstance> result;
+
+#if JUCE_WINDOWS
+    auto oldTranslator = _set_se_translator(sehPluginCrashTranslator);
+    try
+    {
+        result = formatManager.createPluginInstance(desc, sampleRate, blockSize, errorMessage);
+    }
+    catch (const std::runtime_error&)
+    {
+        errorMessage = "Plugin crashed during instantiation";
+        crashed = true;
+    }
+    _set_se_translator(oldTranslator);
+#else
+    result = formatManager.createPluginInstance(desc, sampleRate, blockSize, errorMessage);
+#endif
+
+    if (crashed)
+    {
+        blacklistPlugin(desc.fileOrIdentifier);
+        juce::Logger::writeToLog(
+            "HDAW: Plugin crashed during instantiation, blacklisted: "
+            + desc.fileOrIdentifier);
+    }
+
+    return result;
 }
 
 bool PluginManager::isBlacklisted(const juce::String& pluginID) const

@@ -18,6 +18,9 @@ public:
     int getScrollX() const { return scrollX; }
     int getScrollY() const { return scrollY; }
 
+    void setSnapEnabled(bool enabled);
+    void setSnapDivision(double division);
+
     int noteNumberAtPos(int y) const;
     int noteIndexAtPos(const QPoint& pos) const;
     int defaultScrollYForMiddleC() const
@@ -40,6 +43,7 @@ protected:
 private:
     QRectF noteRect(int noteIndex) const;
     void createNoteAtPos(const QPoint& pos, float velocity = 100.0f, double durationBeats = 1.0);
+    double snapToGrid(double beat) const;
 
     PianoRollModel& model;
     AudioEngine& engine;
@@ -49,6 +53,9 @@ private:
     int scrollX = 0;
     int scrollY = 0;
 
+    bool snapEnabled = true;
+    double snapDivision = 0.0625; // 1/16
+
     enum DragMode { None, Create, Move, ResizeLeft, ResizeRight, Select };
     DragMode dragMode = None;
     int dragNoteIndex = -1;
@@ -56,5 +63,6 @@ private:
     double dragStartBeat = 0.0;
     double dragStartDuration = 0.0;
     int dragStartNoteNumber = 0;
-    int rubberBandStartNote = -1;
+    QPoint rubberBandEnd{0, 0};
+    double lastNoteDuration = 1.0;
 };

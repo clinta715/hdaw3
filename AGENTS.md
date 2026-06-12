@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.2.1**. The core engine (project model, transport, routing,
+**0.2.2**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the basic UI shell
 (track headers, timeline, mixer, piano roll, FX chain,
 automation) work end-to-end. The project is pre-1.0, pre-test-suite,
@@ -21,6 +21,175 @@ features and the priority-ordered roadmap, see `README.md`.
 - Logging: `HDAW_LOG` (or the older `DBG` macro is **not** available —
   JUCE defines its own `DBG` and shadows it). All paths to `HDAW_LOG`
   must `#include "DebugLog.h"`. Output is appended to `%TEMP%/hdaw_debug.log`.
+
+## Code Style
+
+- Use `auto` where the type is obvious from the initializer
+  (e.g. `const auto& tree = clip.getChildWithName(IDs::CLIP_LIST);`,
+  `auto* port = ...`).
+- Avoid implicit `int`→`float` / `double`→`float` conversions — use
+  `static_cast<float>` explicitly.
+- Prefer `std::clamp` over manual `std::min`/`std::max` clamping.
+- Use `std::span` instead of raw pointer + size pairs where applicable.
+- Avoid variable shadowing — use descriptive prefixes when a local
+  would shadow a class member (e.g. `projectBpm` instead of `bpm`
+  when `bpm` is a member).
+- Prefer pimpl (pointer to implementation) for non-trivial members
+  that don't need to be exposed in the header, to reduce include
+  dependencies and improve compile times.
+- Use `std::unique_ptr` / `std::make_unique` for heap ownership;
+  never bare `new` without an owning wrapper.
+- Use `nullptr` (not `NULL` or `0`) for null pointers.
+- Use `override` and `const` on virtual method overrides consistently.
+- Use `static_cast` / `dynamic_cast` instead of C-style casts.
+
+## Realtime / Audio-Thread Safety
+
+The audio render path (`MainAudioProcessor::processBlock`,
+`Track::processBlock`, `ClipSourceProcessor::processBlock`,
+`MidiClipProcessor::processBlock`, `AutomationManager::getValueAt`)
+runs on the audio thread. Violating realtime safety causes
+dropouts, xruns, and hard-to-reproduce crashes.
+
+**Rules for audio-thread code:**
+
+- **Never allocate.** No `new`, `malloc`, `std::vector::push_back`,
+  `std::string` construction, or `juce::String` construction inside
+  `processBlock` or any function called from it.
+- **Never lock.** No `std::mutex`, `juce::SpinLock` (write path),
+  `juce::CriticalSection`, or any blocking wait. The
+  `AutomationManager` uses `SpinLock` only for the *write* path
+  (ValueTree listener on UI thread); the read path in
+  `getValueAt` is lock-free.
+- **Never call UI code.** No `emit`, no `QMetaObject::invokeMethod`,
+  no `juce::MessageManager::callAsync` from the audio thread.
+- **Use the SPSC bridge for UI→audio parameter updates.** The
+  `SPSCBridge` (`src/engine/SPSCBridge.h`) is a single-producer
+  single-consumer queue. UI code pushes `ParamUpdate` structs;
+  the audio thread pops them at the top of `processBlock`.
+  This is the only sanctioned cross-thread path for parameter
+  changes.
+- **Level meters use atomics.** `LevelMeter` (`src/engine/LevelMeter.h`)
+  stores peak/RMS as `std::atomic<float>`. The audio thread writes;
+  the UI thread (VUMeter timer) reads. No locks.
+- **Beware of indirect violations.** A realtime-safe function
+  becomes unsafe if you call a non-realtime-safe function from it.
+  Check the full call chain. Common traps: `juce::Logger::outputDebugString`
+  allocates; `juce::ValueTree::getProperty` is safe for reads but
+  listeners that trigger writes must not fire on the audio thread.
+
+## Qt Signal/Slot Best Practices
+
+- **Always use the 4-argument `connect` form** when connecting to
+  a lambda: `connect(sender, &Sender::signal, receiver, [receiver]() { ... })`.
+  The `receiver` context argument ensures Qt auto-disconnects the
+  signal if `receiver` is destroyed, preventing use-after-free crashes.
+- **Never `connect` to a raw `this` in a constructor** if the
+  sender might outlive `this` and the lambda captures `this`.
+  Use the 4-arg form with the appropriate context object.
+- **Signal emission order is not guaranteed** when multiple slots
+  connect to the same signal. If ordering matters, chain explicitly
+  or use a single handler that calls sub-handlers in sequence.
+- **Avoid signal loops.** A slot that modifies a property whose
+  `notify` signal triggers the same slot creates an infinite
+  recursion. Use a guard flag or `blockSignals(true)` / `false`
+  around programmatic changes.
+- **`QStackedWidget::currentChanged` does not fire when the index
+  is unchanged.** If you call `setCurrentIndex(0)` on a freshly-
+  created stack whose index is already 0, the signal does not
+  emit. Do any initial state setup after connecting.
+
+## Key Classes Quick Reference
+
+| Role | File | Class |
+|------|------|-------|
+| Main window | `src/ui/MainWindow.h` | `MainWindow` |
+| Data model | `src/model/ProjectModel.h` | `ProjectModel` |
+| Audio engine facade | `src/engine/AudioEngine.h` | `AudioEngine` |
+| Root audio processor | `src/engine/MainAudioProcessor.h` | `MainAudioProcessor` |
+| Transport state | `src/engine/TransportManager.h` | `TransportManager` |
+| Graph routing | `src/engine/RoutingManager.h` | `RoutingManager` |
+| Track processing | `src/engine/Track.h` | `Track` |
+| Audio clip playback | `src/engine/ClipSourceProcessor.h` | `ClipSourceProcessor` |
+| MIDI clip playback | `src/engine/MidiClipProcessor.h` | `MidiClipProcessor` |
+| FX slot / plugin host | `src/engine/TrackFXSlot.h` | `TrackFXSlot` |
+| Automation | `src/engine/AutomationManager.h` | `AutomationManager` |
+| Sends | `src/engine/SendProcessor.h` | `SendProcessor` |
+| Buses | `src/engine/MasterBusProcessor.h` | `MasterBusProcessor`, `GroupBusProcessor`, `FxBusProcessor` |
+| Plugin scanning | `src/engine/PluginManager.h` | `PluginManager` |
+| CLAP hosting | `src/engine/CLAPPluginInstance.h` | `CLAPPluginInstance` |
+| Recording | `src/engine/AudioRecorder.h` | `AudioRecorder` |
+| Export | `src/engine/ExportManager.h` | `ExportManager` |
+| UI→Audio bridge | `src/engine/SPSCBridge.h` | `SPSCBridge` |
+| Level metering | `src/engine/LevelMeter.h` | `LevelMeter` |
+| File save/load | `src/engine/ProjectSerializer.h` | `ProjectSerializer` |
+| Waveform thumbnails | `src/engine/ProjectPool.h` | `ProjectPool` |
+| Timeline composite | `src/ui/TimelineView.h` | `TimelineView` |
+| Timeline scene | `src/ui/TimelineScene.h` | `TimelineScene` |
+| Timeline interaction | `src/ui/TimelineInteraction.h` | `TimelineInteraction` |
+| Clip graphics base | `src/ui/ClipItem.h` | `ClipItem` |
+| Audio waveform clip | `src/ui/AudioClipItem.h` | `AudioClipItem` |
+| MIDI mini-preview | `src/ui/MidiClipItem.h` | `MidiClipItem` |
+| Track headers | `src/ui/TrackHeaderWidget.h` | `TrackHeaderWidget` |
+| Time ruler | `src/ui/TimeRuler.h` | `TimeRuler` |
+| Playhead | `src/ui/PlayheadCursor.h` | `PlayheadCursor` |
+| Loop markers | `src/ui/LoopMarker.h` | `LoopMarker` |
+| Mixer | `src/ui/MixerWidget.h` | `MixerWidget` |
+| Mixer strip | `src/ui/MixerStripWidget.h` | `MixerStripWidget` |
+| VU meter | `src/ui/VUMeter.h` | `VUMeter` |
+| Piano roll | `src/ui/PianoRollWidget.h` | `PianoRollWidget` |
+| Piano roll model | `src/ui/PianoRollModel.h` | `PianoRollModel` |
+| Note grid | `src/ui/NoteGridWidget.h` | `NoteGridWidget` |
+| FX chain UI | `src/ui/FXChainWidget.h` | `FXChainWidget` |
+| Automation UI | `src/ui/AutomationLaneWidget.h` | `AutomationLaneWidget` |
+| Audio clip editor | `src/ui/AudioClipEditorWidget.h` | `AudioClipEditorWidget` |
+| Theme colors | `src/ui/Theme.h` | `ThemeColors` |
+| Debug logging | `src/ui/DebugLog.h` | `HDAW_LOG` macro |
+
+## Testing (future)
+
+The project does not yet have a test suite. When tests are added:
+
+- Use **Google Test** (gtest) for unit tests — JUCE already depends on
+  it via its test infrastructure and it integrates with CTest.
+- Use **QTest** for Qt-specific tests (widget behavior, signal emission).
+- Test files should mirror the source path:
+  `tests/unit/engine/transport_manager_test.cpp` tests
+  `src/engine/TransportManager.h`.
+- Test filenames end in `_test.cpp`.
+- Use deterministic seeds for randomized test inputs.
+- Never use `sleep()` or timed waits for synchronization — use
+  condition variables, latches, or `QSignalSpy::wait()`.
+- Keep temp directories unique per test and clean up in teardown.
+
+## Common Practices
+
+- **Always read the current state of a file before editing.** The
+  codebase evolves quickly; stale assumptions cause cascading errors.
+- **Follow existing patterns.** When adding a new widget, look at how
+  the nearest neighbor is structured (e.g. `FXChainWidget` for a new
+  bottom-panel tab, `MixerStripWidget` for a new strip-style widget).
+- **Run the build after every non-trivial change.** A clean compile
+  catches 80% of issues before they reach runtime.
+- **Check `CMakeLists.txt` source list.** New `.cpp` files must be
+  added to `add_executable` or they silently won't compile (see
+  "Build pipeline" section).
+- **Use `HDAW_LOG` liberally during debugging.** The log file at
+  `%TEMP%/hdaw_debug.log` is the primary diagnostic tool (see
+  "Diagnostic pattern" section).
+
+## Commit Message Style
+
+- Use `<area>: <imperative-summary>` format:
+  - `TimelineScene: fix clip selection after track removal`
+  - `AudioEngine: add CLAP plugin scanning`
+  - `build: update JUCE to 8.0.4`
+- `<area>` is the most relevant class name, module name, or
+  subsystem. For broad changes use `build`, `docs`, `ui`, `engine`.
+- Keep the summary line under 72 characters.
+- Bullet-point significant details in the body.
+- Reference code with backticks: `use \`TrackFXSlot\` instead of
+  bare \`AudioProcessorEditor\``.
 
 ## QGraphicsView initial vertical scroll position — the silent show-stealer
 
@@ -452,6 +621,141 @@ fix is supposed to take effect and the log doesn't show the
 expected state, the fix isn't running — probably a stale
 binary (see "Build pipeline" above) or a missed compile of the
 edited file.
+
+## Plugin editors need a DocumentWindow wrapper — `setVisible(true)` alone is invisible
+
+`TrackFXSlot::showEditor()` used to call `createEditor()` followed by
+`setVisible(true)` with no parent or desktop backing. A JUCE `Component`
+that isn't added to a parent hierarchy and hasn't called `addToDesktop()`
+is invisible — it has no native window.
+
+The fix: wrap the editor in a `juce::DocumentWindow` subclass
+(`PluginEditorWindow` in `TrackFXSlot.h`) that:
+- Takes ownership via `setContentOwned(editor, true)`
+- Provides a native title bar with close button
+- Calls `closeEditor()` via a `std::function<void()>` callback on close
+- Centres on screen using the editor's preferred size
+
+`TrackFXSlot` stores `std::unique_ptr<juce::DocumentWindow> editorWindow`
+instead of `std::unique_ptr<juce::AudioProcessorEditor> editor`.
+
+If a future refactor moves plugin hosting to a separate class, the
+`PluginEditorWindow` helper should move with it. The close-button
+callback pattern (`[this]() { closeEditor(); }`) assumes the
+`TrackFXSlot` outlives the window, which is guaranteed by member
+destruction order (`editorWindow` is destroyed before `this`).
+
+## TrackHeaderWidget selection highlight — paint style matters
+
+`TrackHeaderWidget::paintEvent` draws a subtle blue overlay on the selected
+track row at alpha 40. If the selection is hard to see (user reports "I can't
+tell which track is selected"), make the highlight more visible:
+
+- Use a brighter color `(80, 160, 255)` and higher alpha `60`.
+- Use a thicker border (`rect.adjusted(2, 1, -1, -1)`).
+- Widen the left color strip from 3 px to 6 px when selected, and use
+  `trackColor.lighter(140)` for extra contrast.
+
+The `selectedTrack` member (`TrackHeaderWidget.h:79`, default `-1`) is
+write-on-read. It is set by clicking on the track body in
+`TrackHeaderWidget::mousePressEvent` and via the public
+`setSelectedTrack(int)` slot added in v0.2.2. The slot calls `update()`
+to trigger a repaint.
+
+## clipSelected must also update the track header selection
+
+`TimelineScene::clipSelected` is emitted when a clip is clicked in the
+timeline. `MainWindow` connects this signal to open the piano roll or
+audio editor. **Critically, it must also update `TrackHeaderWidget::selectedTrack`**
+or the user sees no highlight in the track header.
+
+The fix (added in v0.2.2):
+
+1. `TrackHeaderWidget`: public slot `setSelectedTrack(int)`.
+2. `TimelineView`: public slot `selectTrack(int)` → forwards to
+   `trackHeaders->setSelectedTrack(index)`.
+3. `MainWindow::clipSelected` lambda: extract the parent track via
+   `clipTree.getParent().getParent()`, find its index in the track list
+   with `trackList.indexOf(trackTree)`, then call
+   `timelineView->selectTrack(idx)` and update `selectedTrack`.
+
+The parent-traversal chain is: `CLIP` → `CLIP_LIST` → `TRACK`. Both
+intermediate parents must validate correctly or the index lookup returns -1.
+
+## Loop playback ignores region if bounds aren't synced on init
+
+**Root cause**: `AudioEngine::initialize()` never syncs loop start/end
+from the `ValueTree` (TRANSPORT node) to the `TransportManager` atomics
+(`loopStartSample`, `loopEndSample`). The atomics default to `0`, so
+`TransportManager::advance()` never wraps — playback ignores the loop
+region entirely.
+
+**Fix** (`AudioEngine::initialize`, v0.2.2): after setting the playhead,
+explicitly sync loop bounds:
+
+```cpp
+auto transportTree = projectModel.getTransportTree();
+double loopStart = transportTree.getProperty(IDs::loopStart, 0.0);
+double loopEnd = transportTree.getProperty(IDs::loopEnd, 4.0);
+transportManager.setLoopStart(loopStart);
+transportManager.setLoopEnd(loopEnd);
+```
+
+Also add a `valueTreePropertyChanged` listener for `loopStart`, `loopEnd`,
+and `isLooping` so runtime changes (e.g. from `LoopMarker` drag or ruler
+context menu) reach the audio thread.
+
+## TimeRuler context menu for loop region
+
+`TimeRuler` did not override `contextMenuEvent`, so right-clicking on the
+ruler was silently ignored. The user had no way to set the loop region
+without dragging markers (which also had issues — see the next section).
+
+**Fix** (`TimeRuler`, v0.2.2): override `contextMenuEvent` with three
+actions:
+
+- **Set Loop Start Here** → sets `loopStart` to the beat at the click position.
+- **Set Loop End Here** → sets `loopEnd` to the beat at the click position.
+- **Toggle Loop** → toggles `isLooping`.
+
+Each action writes to the TRANSPORT ValueTree via the UndoManager.
+After setting bounds, emit `loopBoundsChanged()` so `LoopMarker` updates
+its position.
+
+## LoopMarker drag must commit bounds to ValueTree
+
+`LoopMarker::mouseMoveEvent` updates the marker's position on the scene but
+**never writes the new position back to the TRANSPORT ValueTree**. On
+project reload, the loop bounds revert to what was last saved — all drag
+edits are lost.
+
+**Fix** (`LoopMarker`, v0.2.2): override `mouseReleaseEvent` to call a new
+`commitLoopBounds()` method that writes the marker's current beat position
+to the appropriate property (`loopStart` or `loopEnd`) on the TRANSPORT
+ValueTree:
+
+```cpp
+void LoopMarker::commitLoopBounds()
+{
+    if (!engine || !engine->isValid())
+        return;
+    auto transportTree = engine->getProjectModel().getTransportTree();
+    double beatPos = pos().x() / pixelsPerBeat;
+    transportTree.setProperty(isStart ? IDs::loopStart : IDs::loopEnd,
+                              beatPos, nullptr);
+    emit loopBoundsChanged();
+}
+```
+
+## LoopMarker right-click must pass through to ruler
+
+`LoopMarker` default accepts all mouse buttons, which steals right-click
+events from the `TimeRuler` below. The user right-clicks on the loop marker
+expecting a context menu, and nothing happens.
+
+**Fix** (`LoopMarker`, v0.2.2): call `setAcceptedMouseButtons(Qt::LeftButton)`
+in the constructor. Right-click events fall through the marker to the ruler,
+which now handles them via its own `contextMenuEvent`.
 
 ## Out-of-scope: known gaps deferred to future work
 

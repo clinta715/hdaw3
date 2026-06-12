@@ -148,6 +148,7 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
         // It's a plugin — find the description
         auto& pluginManager = engine.getPluginManager();
         const auto& plugins = pluginManager.getPlugins();
+        bool found = false;
         for (const auto& desc : plugins)
         {
             if (desc.fileOrIdentifier == type)
@@ -156,12 +157,21 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
                 slotTree.setProperty(IDs::pluginID, desc.fileOrIdentifier, &engine.getProjectModel().getUndoManager());
                 slotTree.setProperty(IDs::pluginFormat, desc.pluginFormatName, &engine.getProjectModel().getUndoManager());
                 slotTree.setProperty(IDs::pluginPath, desc.fileOrIdentifier, &engine.getProjectModel().getUndoManager());
+                found = true;
                 break;
             }
         }
-        rebuildParamUI();
-        paramContainer->setVisible(true);
-        editBtn->setVisible(true);
+        if (found)
+        {
+            rebuildParamUI();
+            paramContainer->setVisible(true);
+            editBtn->setVisible(true);
+        }
+        else
+        {
+            paramContainer->setVisible(false);
+            editBtn->setVisible(false);
+        }
     }
 
     emit slotChanged();
@@ -169,12 +179,16 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
 
 void FXSlotRow::rebuildParamUI()
 {
-    // Clear existing param widgets
-    QLayoutItem* child;
-    while ((child = paramContainer->layout()->takeAt(0)) != nullptr)
+    // Clear existing param widgets — guard against null layout on first call
+    if (auto* layout = paramContainer->layout())
     {
-        delete child->widget();
-        delete child;
+        QLayoutItem* child;
+        while ((child = layout->takeAt(0)) != nullptr)
+        {
+            delete child->widget();
+            delete child;
+        }
+        delete layout;
     }
     paramSliders.clear();
 
@@ -229,7 +243,25 @@ void FXSlotRow::rebuildParamUI()
 
                 int idx = i;
                 connect(slider, &QSlider::valueChanged, this,
-                    [this, idx, instance, p](int val) {
+                    [this, idx](int val) {
+                        auto* proc = engine.getMainProcessor();
+                        auto* track = proc->getTrack(trackIndex);
+                        if (track == nullptr) return;
+                        auto& fxChain = track->getFXChain();
+                        juce::AudioPluginInstance* liveInstance = nullptr;
+                        for (const auto& slot : fxChain)
+                        {
+                            if (slot && slot->isPlugin() &&
+                                slot->getPluginID() == slotTree.getProperty(IDs::pluginID).toString())
+                            {
+                                liveInstance = slot->getPluginInstance();
+                                break;
+                            }
+                        }
+                        if (liveInstance == nullptr) return;
+                        auto params = liveInstance->getParameters();
+                        if (idx < 0 || idx >= params.size()) return;
+                        auto* p = params[idx];
                         float normalized = val / 1000.0f;
                         p->beginChangeGesture();
                         p->setValueNotifyingHost(normalized);

@@ -250,6 +250,13 @@ void TimelineToolbar::setSnap(bool enabled)
     snapBtn->blockSignals(false);
 }
 
+void TimelineToolbar::setLoopEnabled(bool enabled)
+{
+    loopBtn->blockSignals(true);
+    loopBtn->setChecked(enabled);
+    loopBtn->blockSignals(false);
+}
+
 void TimelineToolbar::setSnapDivision(int index)
 {
     snapCombo->blockSignals(true);

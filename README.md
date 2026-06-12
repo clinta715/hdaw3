@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.2.1
+**Current version**: 0.2.2
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.2.1)
+## What works today (v0.2.2)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -34,7 +34,8 @@ pipeline and the rationale.
 - Audio routing graph with Master bus, FX buses (e.g. Reverb),
   and per-track Sends.
 - Play / Stop / Rewind / Record transport, sample-accurate
-  positioning, loop region with start/end markers on the ruler.
+  positioning, loop region with start/end markers on the ruler
+  and right-click context menu to set loop boundaries.
 - BPM and time-signature controls; metronome toggle.
 
 ### Timeline & arrangement
@@ -200,6 +201,10 @@ debugging time during the v0.2 UX pass, including:
   MOC, the stale Release binary, source list).
 - The diagnostic pattern: add `HDAW_LOG` calls at construction
   and render, then read `%TEMP%/hdaw_debug.log` to cross-check.
+- The loop-region init sync, TimeRuler context menu, and LoopMarker
+  drag-commit bugs introduced and fixed in v0.2.2.
+- The `clipSelected` → track-header selection sync pattern.
+- The `TrackHeaderWidget` selection-highlight paint style.
 
 ## License
 

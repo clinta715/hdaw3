@@ -26,6 +26,9 @@ signals:
     void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
     void fxSlotAdded(int trackIndex);
 
+public slots:
+    void setSelectedTrack(int index);
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
@@ -76,6 +79,7 @@ private:
     QPoint dragStart;
     float dragStartValue = 0.0f;
     int resizeTrack = -1;
+    int selectedTrack = -1;
 
     double scrollOffset = 0.0;
 

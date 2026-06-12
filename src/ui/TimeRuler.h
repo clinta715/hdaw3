@@ -1,6 +1,7 @@
 #pragma once
 #include <QGraphicsObject>
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneContextMenuEvent>
 #include <QMenu>
 #include "../engine/AudioEngine.h"
 
@@ -22,6 +23,9 @@ public:
     double getLoopEnd() const { return loopEnd; }
     bool isInLoop(double time) const { return time >= loopStart && time <= loopEnd; }
 
+    /// Write current loopStart/loopEnd to the ValueTree (called from LoopMarker on drag end).
+    void commitLoopBounds();
+
     QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
 
@@ -36,6 +40,7 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent* event) override;
 
 private:
 
