@@ -56,7 +56,18 @@ void MainWindow::closeEvent(QCloseEvent* event)
 {
     timecodeTimer.stop();
     if (checkSaveBeforeAction())
+    {
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        settings.setValue(PreferencesDialog::kKeyWindowGeometry, saveGeometry());
+        settings.setValue(PreferencesDialog::kKeyWindowState, saveState());
+        if (mainHorizontalSplitter != nullptr)
+            settings.setValue(PreferencesDialog::kKeyHorizontalSplitter, mainHorizontalSplitter->saveState());
+        if (mainVerticalSplitter != nullptr)
+            settings.setValue(PreferencesDialog::kKeyVerticalSplitter, mainVerticalSplitter->saveState());
+        if (bottomStack != nullptr)
+            settings.setValue(PreferencesDialog::kKeyBottomPanelIndex, bottomStack->currentIndex());
         event->accept();
+    }
     else
     {
         timecodeTimer.start(33);
@@ -400,6 +411,42 @@ void MainWindow::setupLayout()
             if (track >= 0)
                 engine.getMainProcessor()->rebuildAutomationCache(track);
         });
+
+    // Restore saved window and panel state from previous session
+    {
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto geometry = settings.value(PreferencesDialog::kKeyWindowGeometry);
+        if (geometry.isValid())
+            restoreGeometry(geometry.toByteArray());
+        auto winState = settings.value(PreferencesDialog::kKeyWindowState);
+        if (winState.isValid())
+            restoreState(winState.toByteArray());
+        if (mainHorizontalSplitter != nullptr)
+        {
+            auto hState = settings.value(PreferencesDialog::kKeyHorizontalSplitter);
+            if (hState.isValid())
+                mainHorizontalSplitter->restoreState(hState.toByteArray());
+        }
+        if (mainVerticalSplitter != nullptr)
+        {
+            auto vState = settings.value(PreferencesDialog::kKeyVerticalSplitter);
+            if (vState.isValid())
+                mainVerticalSplitter->restoreState(vState.toByteArray());
+        }
+        if (bottomStack != nullptr)
+        {
+            auto panelIdx = settings.value(PreferencesDialog::kKeyBottomPanelIndex, 0);
+            int idx = panelIdx.toInt();
+            if (idx >= 0 && idx < bottomStack->count())
+            {
+                bottomStack->setCurrentIndex(idx);
+                if (idx == 2 && selectedTrack >= 0)
+                    fxChainWidget->loadTrack(selectedTrack);
+                if (idx == 3 && selectedTrack >= 0)
+                    automationWidget->loadTrack(selectedTrack);
+            }
+        }
+    }
 }
 
 void MainWindow::rebuildAllUI()

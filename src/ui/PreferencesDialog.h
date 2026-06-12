@@ -24,6 +24,11 @@ public:
     static inline constexpr auto kKeyLastProjectDir = "lastProjectDirectory";
     static inline constexpr auto kKeyLastExportDir = "lastExportDirectory";
     static inline constexpr auto kKeyRecentProjects = "recentProjects";
+    static inline constexpr auto kKeyWindowGeometry = "windowGeometry";
+    static inline constexpr auto kKeyWindowState = "windowState";
+    static inline constexpr auto kKeyHorizontalSplitter = "horizontalSplitter";
+    static inline constexpr auto kKeyVerticalSplitter = "verticalSplitter";
+    static inline constexpr auto kKeyBottomPanelIndex = "bottomPanelIndex";
     static inline constexpr auto kSettingsOrg = "HDAW";
     static inline constexpr auto kSettingsApp = "HDAW";
 
