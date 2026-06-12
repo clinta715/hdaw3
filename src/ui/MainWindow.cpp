@@ -6,6 +6,7 @@
 #include "AutomationLaneWidget.h"
 #include "AudioClipEditorWidget.h"
 #include "StepEditorWidget.h"
+#include "StartupDialog.h"
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
@@ -52,6 +53,28 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
     // Listen for transport property changes (loop toggle, etc.)
     engine.getProjectModel().getTransportTree().addListener(this);
+
+    // Startup dialog — let user choose new/open/recent before the main window appears
+    {
+        StartupDialog startup(this);
+        startup.exec();
+
+        switch (startup.getAction())
+        {
+        case StartupDialog::NewProject:
+            onNew();
+            break;
+        case StartupDialog::OpenRecent:
+            openProjectFile(startup.getSelectedPath());
+            break;
+        case StartupDialog::OpenOther:
+            onOpen();
+            break;
+        case StartupDialog::Cancel:
+        default:
+            break; // keep default project
+        }
+    }
 }
 
 MainWindow::~MainWindow()
