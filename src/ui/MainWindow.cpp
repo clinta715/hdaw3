@@ -7,6 +7,7 @@
 #include "AudioClipEditorWidget.h"
 #include "StepEditorWidget.h"
 #include "StartupDialog.h"
+#include "AboutDialog.h"
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
@@ -218,6 +219,15 @@ void MainWindow::setupMenuBar()
     pluginMgrAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     connect(pluginMgrAction, &QAction::triggered, this, [this]() {
         PluginScannerDialog dialog(engine, this);
+        dialog.exec();
+    });
+
+    // ── Help ──
+    auto* helpMenu = menuBar()->addMenu(tr("&Help"));
+
+    auto* aboutAction = helpMenu->addAction(tr("&About HDAW..."));
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        AboutDialog dialog(this);
         dialog.exec();
     });
 

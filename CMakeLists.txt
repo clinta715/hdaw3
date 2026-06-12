@@ -61,6 +61,8 @@ add_executable(HDAW
     src/ui/StepEditorWidget.cpp
     src/ui/StartupDialog.h
     src/ui/StartupDialog.cpp
+    src/ui/AboutDialog.h
+    src/ui/AboutDialog.cpp
     src/ui/FXChainWidget.h
     src/ui/FXChainWidget.cpp
     src/ui/FXSlotRow.h
