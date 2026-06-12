@@ -18,6 +18,7 @@ class PianoRollWidget;
 class FXChainWidget;
 class AutomationLaneWidget;
 class AudioClipEditorWidget;
+class StepEditorWidget;
 class ProjectPoolBrowser;
 
 class MainWindow : public QMainWindow
@@ -82,6 +83,7 @@ private:
     FXChainWidget* fxChainWidget;
     AutomationLaneWidget* automationWidget;
     AudioClipEditorWidget* audioEditorWidget;
+    StepEditorWidget* stepEditorWidget;
 
     QAction* undoAction = nullptr;
     QAction* redoAction = nullptr;

@@ -57,6 +57,8 @@ add_executable(HDAW
     src/ui/CCLaneWidget.cpp
     src/ui/PianoRollRuler.h
     src/ui/PianoRollRuler.cpp
+    src/ui/StepEditorWidget.h
+    src/ui/StepEditorWidget.cpp
     src/ui/FXChainWidget.h
     src/ui/FXChainWidget.cpp
     src/ui/FXSlotRow.h

@@ -5,6 +5,7 @@
 #include "FXChainWidget.h"
 #include "AutomationLaneWidget.h"
 #include "AudioClipEditorWidget.h"
+#include "StepEditorWidget.h"
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
@@ -245,7 +246,8 @@ void MainWindow::setupLayout()
     auto* fxTab = makeTab("FX Chain", 2);
     auto* autoTab = makeTab("Automation", 3);
     auto* audioTab = makeTab("Audio Editor", 4);
-    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab);
+    auto* stepTab = makeTab("Step Seq", 5);
+    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab, stepTab);
 
     tabLayout->addStretch();
     bottomLayout->addWidget(tabBar);
@@ -266,6 +268,9 @@ void MainWindow::setupLayout()
 
     audioEditorWidget = new AudioClipEditorWidget(engine, bottomStack);
     bottomStack->addWidget(audioEditorWidget);
+
+    stepEditorWidget = new StepEditorWidget(engine, bottomStack);
+    bottomStack->addWidget(stepEditorWidget);
 
     // Connect tab button clicks to stack switching
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int id) {
@@ -323,8 +328,18 @@ void MainWindow::setupLayout()
             juce::String type = clipTree.getProperty(IDs::clipType).toString();
             if (type == "midi")
             {
-                pianoRollWidget->loadClip(clipTree);
-                bottomStack->setCurrentIndex(1);
+                QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+                QString mode = settings.value("midiEditorMode", "piano").toString();
+                if (mode == "step")
+                {
+                    stepEditorWidget->loadClip(clipTree);
+                    bottomStack->setCurrentIndex(5);
+                }
+                else
+                {
+                    pianoRollWidget->loadClip(clipTree);
+                    bottomStack->setCurrentIndex(1);
+                }
             }
             else
             {
@@ -343,6 +358,22 @@ void MainWindow::setupLayout()
         [this]() {
             audioEditorWidget->clear();
             bottomStack->setCurrentIndex(0);
+        });
+
+    connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
+        [this]() {
+            stepEditorWidget->clear();
+            bottomStack->setCurrentIndex(0);
+        });
+
+    connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
+        [this]() {
+            if (stepEditorWidget->hasClip())
+            {
+                // Reload current clip in piano roll, same track
+                pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
+                bottomStack->setCurrentIndex(1);
+            }
         });
 
     connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
