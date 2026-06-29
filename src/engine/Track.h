@@ -32,12 +32,31 @@ public:
     std::vector<std::unique_ptr<TrackFXSlot>>& getFXChain() { return fxChain; }
     void toggleFXEditor(int slotIndex);
 
+    // FX chain mutation (used by the MCP server's add_fx/remove_fx/set_fx_bypass tools).
+    // The in-memory chain and the track's FX_CHAIN ValueTree stay in sync.
+    // `pos` < 0 means "append". Returns the new slot's index.
+    int  addFXSlotAt(const std::string& type, int pos = -1);
+    // Sets the pluginID and (best-effort) pluginFormat on a "plugin"-type slot, then
+    // triggers a chain rebuild so the plugin is loaded.
+    void setFXSlotPluginID(int slotIndex, const std::string& pluginID);
+    void removeFXSlot(int slotIndex);
+    void setFXBypassed(int slotIndex, bool bypassed);
+
     void setAutomationTrees(const juce::ValueTree& automationList);
     AutomationManager& getAutomation(int index) { return *automationManagers[index]; }
     int getNumAutomations() const { return static_cast<int>(automationManagers.size()); }
 
     void setPluginManager(PluginManager* pm) { pluginManager = pm; }
     PluginManager* getPluginManager() const { return pluginManager; }
+
+    // Back-pointer to the project model + the track's index. Set once at track
+    // creation by RoutingManager::addTrack. Used by the FX-mutation methods so
+    // they can locate and modify the track's FX_CHAIN subtree in the model.
+    void setProjectContext(ProjectModel* model, int idx)
+    {
+        projectModel = model;
+        trackIndex = idx;
+    }
 
     LevelMeter& getMeter() { return meter; }
 
@@ -70,6 +89,9 @@ private:
     std::vector<std::unique_ptr<AutomationManager>> automationManagers;
 
     PluginManager* pluginManager = nullptr;
+
+    ProjectModel* projectModel = nullptr;
+    int trackIndex = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(Track)
 };

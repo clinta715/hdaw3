@@ -255,6 +255,103 @@ void Track::toggleFXEditor(int slotIndex)
         slot->showEditor();
 }
 
+namespace {
+// Resolve the track's FX_CHAIN subtree from the project model + track index.
+// Returns an invalid ValueTree if the back-pointer isn't set or the track no
+// longer exists in the model.
+juce::ValueTree resolveFXChainTree(ProjectModel* model, int trackIndex)
+{
+    if (model == nullptr || trackIndex < 0) return {};
+    auto trackList = model->getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return {};
+    return trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+}
+} // namespace
+
+int Track::addFXSlotAt(const std::string& type, int pos)
+{
+    auto fxChainTree = resolveFXChainTree(projectModel, trackIndex);
+    if (!fxChainTree.isValid()) return -1;
+
+    const int n = fxChainTree.getNumChildren();
+    int insertIdx = (pos < 0 || pos > n) ? n : pos;
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(type), nullptr);
+    slot.setProperty(IDs::bypassed, false, nullptr);
+    fxChainTree.addChild(slot, insertIdx, nullptr);
+
+    // rebuildFXChain closes plugin editors before clearing the chain. For
+    // a brand-new "plugin"-type slot with no pluginID yet, this will produce
+    // a "none" placeholder until setFXSlotPluginID is called.
+    rebuildFXChain(fxChainTree);
+    return insertIdx;
+}
+
+void Track::setFXSlotPluginID(int slotIndex, const std::string& pluginID)
+{
+    auto fxChainTree = resolveFXChainTree(projectModel, trackIndex);
+    if (!fxChainTree.isValid()) return;
+    if (slotIndex < 0 || slotIndex >= fxChainTree.getNumChildren()) return;
+
+    const juce::String jid(pluginID);
+
+    // Best-effort format lookup so rebuildFXChain knows which plugin format to
+    // instantiate. If we don't find it the slot becomes a "none" placeholder
+    // (matches the existing behaviour for unknown formats).
+    juce::String format;
+    if (pluginManager != nullptr)
+    {
+        for (const auto& p : pluginManager->getPlugins())
+        {
+            if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
+            {
+                format = p.pluginFormatName;
+                break;
+            }
+        }
+        if (format.isEmpty())
+        {
+            juce::Logger::writeToLog("HDAW: setFXSlotPluginID could not resolve format for "
+                + jid + " (plugin may not be in the scan cache)");
+        }
+    }
+
+    auto slot = fxChainTree.getChild(slotIndex);
+    slot.setProperty(IDs::fxType, juce::String("plugin"), nullptr);
+    slot.setProperty(IDs::pluginID, jid, nullptr);
+    slot.setProperty(IDs::pluginFormat, format, nullptr);
+
+    rebuildFXChain(fxChainTree);
+}
+
+void Track::removeFXSlot(int slotIndex)
+{
+    auto fxChainTree = resolveFXChainTree(projectModel, trackIndex);
+    if (!fxChainTree.isValid()) return;
+    if (slotIndex < 0 || slotIndex >= fxChainTree.getNumChildren()) return;
+
+    fxChainTree.removeChild(slotIndex, nullptr);
+    rebuildFXChain(fxChainTree);
+}
+
+void Track::setFXBypassed(int slotIndex, bool bypassed)
+{
+    // Hold the lock so a concurrent rebuildFXChain can't invalidate the
+    // fxChain vector while we're indexing into it. The audio thread uses
+    // tryEnter, so it just skips if the lock is held.
+    juce::SpinLock::ScopedLockType lock(stateLock);
+
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size()) || !fxChain[slotIndex])
+        return;
+    fxChain[slotIndex]->setBypassed(bypassed);
+
+    auto fxChainTree = resolveFXChainTree(projectModel, trackIndex);
+    if (!fxChainTree.isValid()) return;
+    if (slotIndex < 0 || slotIndex >= fxChainTree.getNumChildren()) return;
+    fxChainTree.getChild(slotIndex).setProperty(IDs::bypassed, bypassed, nullptr);
+}
+
 void Track::setVolume(float newVolume)
 {
     volumeGain.setTargetValue(newVolume);

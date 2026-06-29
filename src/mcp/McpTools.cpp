@@ -747,6 +747,52 @@ void registerAllTools(McpServer& s) {
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0), total, notes);
         }});
+
+    // --- FX ---
+    s.registerTool({"add_fx",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay}, OR a pluginId.",
+        objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                  {"fxType",   QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay"}}}},
+                  {"pluginId", QJsonObject{{"type","string"}}},
+                  {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
+            if (!tr) return McpToolResult::text("track not found", true);
+            std::string type = a.value("fxType").toString().toStdString();
+            if (type.empty() && a.contains("pluginId")) type = "plugin";
+            int pos = a.value("position").toInt(-1);
+            int idx = tr->addFXSlotAt(type, pos);
+            if (a.contains("pluginId"))
+                tr->setFXSlotPluginID(idx, a.value("pluginId").toString().toStdString());
+            return McpToolResult::text(QString("slot=%1").arg(idx));
+        }});
+
+    s.registerTool({"remove_fx", "Remove an FX slot (destructive).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"dryRun",    QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            auto* tr = e->getMainProcessor()->getTrack(ti);
+            if (!tr) return McpToolResult::text("track not found", true);
+            int s = a.value("slotIndex").toInt();
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would remove FX slot %1 on track %2").arg(s).arg(ti));
+            tr->removeFXSlot(s);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_fx_bypass", "Bypass or unbypass an FX slot.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
+            if (!tr) return McpToolResult::text("track not found", true);
+            tr->setFXBypassed(a.value("slotIndex").toInt(), a.value("bypassed").toBool());
+            return McpToolResult::text("ok");
+        }});
 }
 
 } // namespace mcp
