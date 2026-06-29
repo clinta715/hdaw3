@@ -21,6 +21,15 @@ public:
     void setSnapEnabled(bool enabled);
     void setSnapDivision(double division);
 
+    // Chord stamp mode
+    void setChordStampEnabled(bool enabled) { chordStampEnabled = enabled; }
+    bool isChordStampEnabled() const { return chordStampEnabled; }
+    void setChordStampType(int chordTypeIndex) { chordStampType = chordTypeIndex; }
+    int getChordStampType() const { return chordStampType; }
+    void setChordStampVoicing(int v) { chordStampVoicing = v; }
+    void setChordStampInversion(int inv) { chordStampInversion = inv; }
+    void setChordStampDuration(double dur) { chordStampDuration = dur; }
+
     int noteNumberAtPos(int y) const;
     int noteIndexAtPos(const QPoint& pos) const;
     int defaultScrollYForMiddleC() const
@@ -65,4 +74,11 @@ private:
     int dragStartNoteNumber = 0;
     QPoint rubberBandEnd{0, 0};
     double lastNoteDuration = 1.0;
+
+    // Chord stamp state
+    bool chordStampEnabled = false;
+    int chordStampType = 0;
+    int chordStampVoicing = 0;
+    int chordStampInversion = 0;
+    double chordStampDuration = 2.0;
 };

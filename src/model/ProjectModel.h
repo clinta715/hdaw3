@@ -98,6 +98,11 @@ namespace IDs {
     // Tempo track
     DECLARE_ID(TEMPO_POINT_LIST)
     DECLARE_ID(TEMPO_POINT)
+
+    // Project scale
+    DECLARE_ID(scaleRoot)
+    DECLARE_ID(scaleMode)
+    DECLARE_ID(SCALE_INFO)
     #undef DECLARE_ID
 }
 
@@ -113,6 +118,13 @@ public:
     juce::ValueTree getTrackListTree() { return projectTree.getChildWithName(IDs::TRACK_LIST); }
     juce::ValueTree getTrackListTree() const { return projectTree.getChildWithName(IDs::TRACK_LIST); }
     juce::ValueTree getBusListTree() { return projectTree.getChildWithName(IDs::ROUTING_GRAPH).getChildWithName(IDs::BUS_LIST); }
+
+    juce::ValueTree getScaleInfoTree();
+    juce::ValueTree getScaleInfoTree() const;
+    int getScaleRoot() const;
+    int getScaleMode() const;
+    void setScaleRoot(int root);
+    void setScaleMode(int mode);
 
     juce::UndoManager& getUndoManager() { return undoManager; }
     bool isDirty() const { return dirty; }

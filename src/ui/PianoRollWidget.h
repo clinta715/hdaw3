@@ -11,6 +11,7 @@
 
 class QPushButton;
 class QComboBox;
+class QCheckBox;
 
 class PianoRollWidget : public QWidget
 {
@@ -43,6 +44,11 @@ private:
 
     QPushButton* snapBtn;
     QComboBox* snapCombo;
+
+    // Chord stamp controls
+    QCheckBox* chordStampChk;
+    QComboBox* chordStampCombo;
+    QComboBox* chordVoicingCombo;
 
     CCLaneWidget* ccLane;
     QComboBox* ccCombo;

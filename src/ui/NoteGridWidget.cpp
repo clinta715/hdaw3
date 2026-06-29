@@ -1,5 +1,7 @@
 #include "NoteGridWidget.h"
 #include "Theme.h"
+#include "../engine/PhraseGenerator.h"
+#include "../model/ProjectModel.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -106,6 +108,28 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
 
     // Background
     painter.fillRect(rect(), ThemeColors::bgWindow());
+
+    // Scale highlighting
+    {
+        auto& projModel = engine.getProjectModel();
+        int scaleRoot = projModel.getScaleRoot();
+        int scaleMode = projModel.getScaleMode();
+        auto scalePitches = PhraseGenerator::buildScalePitches(scaleRoot, scaleMode, 0, 127);
+        bool inScale[128] = {false};
+        for (int p : scalePitches)
+            if (p >= 0 && p < 128)
+                inScale[p] = true;
+
+        QColor scaleColor(ThemeColors::accent().red(), ThemeColors::accent().green(),
+                          ThemeColors::accent().blue(), 12);
+        for (int n = 0; n < 128; ++n)
+        {
+            if (!inScale[n]) continue;
+            int y = static_cast<int>(n * keyHeight - scrollY);
+            if (y > h + 10 || y + keyHeight < -10) continue;
+            painter.fillRect(0, static_cast<int>(y), w, static_cast<int>(keyHeight + 1), scaleColor);
+        }
+    }
 
     // Grid lines (octave colors)
     painter.setPen(QPen(QColor(255, 255, 255, 3), 1));
@@ -387,12 +411,44 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
         }
         else
         {
-            // Click — create note (existing behavior)
+            // Click — create note (or chord stamp)
             int noteNum = noteNumberAtPos(releasePos.y());
             double beat = (releasePos.x() + scrollX) / pixelsPerBeat;
             beat = (std::max)(0.0, beat);
             if (snapEnabled)
                 beat = snapToGrid(beat);
+
+            if (chordStampEnabled)
+            {
+                PhraseGenerator::ChordParams cp;
+                cp.scaleRoot = engine.getProjectModel().getScaleRoot();
+                cp.scaleMode = engine.getProjectModel().getScaleMode();
+                cp.lowNote = 0;
+                cp.highNote = 127;
+                cp.minVelocity = 80;
+                cp.maxVelocity = 110;
+                cp.chordType = chordStampType;
+                cp.voicing = chordStampVoicing;
+                cp.inversion = chordStampInversion;
+                cp.arpeggiate = false;
+                cp.durationBeats = chordStampDuration;
+
+                auto chordNotes = PhraseGenerator::generateChord(noteNum, cp);
+                int lastIdx = -1;
+                for (const auto& cn : chordNotes)
+                {
+                    auto newNote = model.addNote(cn.noteNumber, static_cast<float>(cn.velocity),
+                                                  beat, cn.durationBeats);
+                    lastIdx = model.getNumNotes() - 1;
+                }
+                model.deselectAll();
+                if (lastIdx >= 0)
+                    model.selectNote(model.getNote(lastIdx));
+
+                emit notesChanged();
+                update();
+                return;
+            }
 
             auto newNote = model.addNote(noteNum, 100.0f, beat, lastNoteDuration);
             model.deselectAll();

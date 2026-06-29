@@ -8,6 +8,7 @@
 #include "StepEditorWidget.h"
 #include "StartupDialog.h"
 #include "AboutDialog.h"
+#include "PhraseGeneratorDialog.h"
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
@@ -219,6 +220,18 @@ void MainWindow::setupMenuBar()
     pluginMgrAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
     connect(pluginMgrAction, &QAction::triggered, this, [this]() {
         PluginScannerDialog dialog(engine, this);
+        dialog.exec();
+    });
+
+    auto* phraseGenAction = toolsMenu->addAction(tr("Phrase &Generator..."));
+    phraseGenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G));
+    connect(phraseGenAction, &QAction::triggered, this, [this]() {
+        int trackIdx = selectedTrack;
+        if (trackIdx < 0) {
+            statusBar()->showMessage("Select a track first.", 3000);
+            return;
+        }
+        PhraseGeneratorDialog dialog(engine, trackIdx, this);
         dialog.exec();
     });
 

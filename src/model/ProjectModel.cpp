@@ -52,6 +52,50 @@ static juce::ValueTree createAutomationList()
 
 static std::atomic<int> nextClipID{1};
 
+juce::ValueTree ProjectModel::getScaleInfoTree()
+{
+    auto tree = projectTree.getChildWithName(IDs::SCALE_INFO);
+    if (!tree.isValid())
+    {
+        tree = juce::ValueTree(IDs::SCALE_INFO);
+        tree.setProperty(IDs::scaleRoot, 0, nullptr);
+        tree.setProperty(IDs::scaleMode, 0, nullptr);
+        projectTree.addChild(tree, -1, nullptr);
+    }
+    return tree;
+}
+
+juce::ValueTree ProjectModel::getScaleInfoTree() const
+{
+    return projectTree.getChildWithName(IDs::SCALE_INFO);
+}
+
+int ProjectModel::getScaleRoot() const
+{
+    auto tree = getScaleInfoTree();
+    return tree.isValid() ? static_cast<int>(tree.getProperty(IDs::scaleRoot, 0)) : 0;
+}
+
+int ProjectModel::getScaleMode() const
+{
+    auto tree = getScaleInfoTree();
+    return tree.isValid() ? static_cast<int>(tree.getProperty(IDs::scaleMode, 0)) : 0;
+}
+
+void ProjectModel::setScaleRoot(int root)
+{
+    auto tree = getScaleInfoTree();
+    if (tree.isValid())
+        tree.setProperty(IDs::scaleRoot, root, &undoManager);
+}
+
+void ProjectModel::setScaleMode(int mode)
+{
+    auto tree = getScaleInfoTree();
+    if (tree.isValid())
+        tree.setProperty(IDs::scaleMode, mode, &undoManager);
+}
+
 int ProjectModel::allocateClipID()
 {
     return nextClipID.fetch_add(1, std::memory_order_relaxed);
@@ -168,6 +212,14 @@ void ProjectModel::createDefaultProject()
 
     juce::ValueTree trackList(IDs::TRACK_LIST);
     projectTree.addChild(trackList, -1, nullptr);
+
+    // Scale info (root=C, mode=Major)
+    {
+        juce::ValueTree scaleInfo(IDs::SCALE_INFO);
+        scaleInfo.setProperty(IDs::scaleRoot, 0, nullptr);
+        scaleInfo.setProperty(IDs::scaleMode, 0, nullptr);
+        projectTree.addChild(scaleInfo, -1, nullptr);
+    }
 
     // Tempo track
     projectTree.addChild(createTempoPointList(), -1, nullptr);

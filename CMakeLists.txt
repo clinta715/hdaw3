@@ -63,6 +63,8 @@ add_executable(HDAW
     src/ui/StartupDialog.cpp
     src/ui/AboutDialog.h
     src/ui/AboutDialog.cpp
+    src/ui/PhraseGeneratorDialog.h
+    src/ui/PhraseGeneratorDialog.cpp
     src/ui/FXChainWidget.h
     src/ui/FXChainWidget.cpp
     src/ui/FXSlotRow.h
@@ -116,6 +118,8 @@ add_executable(HDAW
     src/engine/ClipSourceProcessor.h
     src/engine/MidiClipProcessor.h
     src/engine/TrackFXSlot.h
+    src/engine/PhraseGenerator.h
+    src/engine/PhraseGenerator.cpp
     src/model/ProjectModel.h
     src/model/ProjectModel.cpp
 )

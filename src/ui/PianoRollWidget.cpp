@@ -1,10 +1,12 @@
 #include "PianoRollWidget.h"
+#include "../engine/PhraseGenerator.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QComboBox>
+#include <QCheckBox>
 
 PianoRollWidget::PianoRollWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -53,6 +55,27 @@ void PianoRollWidget::setupUI()
     headerLayout->addWidget(snapCombo);
 
     headerLayout->addSpacing(16);
+
+    // Chord stamp controls
+    chordStampChk = new QCheckBox("Chord", header);
+    chordStampChk->setFixedHeight(22);
+    headerLayout->addWidget(chordStampChk);
+
+    chordStampCombo = new QComboBox(header);
+    const auto& chordTypes = PhraseGenerator::getChordTypes();
+    for (const auto& ct : chordTypes)
+        chordStampCombo->addItem(ct.name, ct.index);
+    chordStampCombo->setCurrentIndex(0);
+    chordStampCombo->setFixedHeight(22);
+    headerLayout->addWidget(chordStampCombo);
+
+    chordVoicingCombo = new QComboBox(header);
+    chordVoicingCombo->addItem("Close", 0);
+    chordVoicingCombo->addItem("Open", 1);
+    chordVoicingCombo->addItem("Spread", 2);
+    chordVoicingCombo->setCurrentIndex(0);
+    chordVoicingCombo->setFixedHeight(22);
+    headerLayout->addWidget(chordVoicingCombo);
 
     ccCombo = new QComboBox(header);
     for (int c = 1; c <= 127; ++c)
@@ -157,6 +180,15 @@ void PianoRollWidget::connectSignals()
                               1.0/3.0, 1.0/6.0, 1.0/12.0, 1.0/24.0};
         if (idx >= 0 && idx < 10)
             noteGrid->setSnapDivision(divisions[idx]);
+    });
+
+    // Chord stamp wiring
+    connect(chordStampChk, &QCheckBox::toggled, noteGrid, &NoteGridWidget::setChordStampEnabled);
+    connect(chordStampCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        noteGrid->setChordStampType(chordStampCombo->currentData().toInt());
+    });
+    connect(chordVoicingCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        noteGrid->setChordStampVoicing(chordVoicingCombo->currentData().toInt());
     });
 
     connect(ccCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
