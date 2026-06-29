@@ -1,5 +1,6 @@
 #include "PianoRollWidget.h"
 #include "../engine/PhraseGenerator.h"
+#include "DebugLog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -202,6 +203,10 @@ void PianoRollWidget::connectSignals()
 
 void PianoRollWidget::loadClip(juce::ValueTree clipTree)
 {
+    HDAW_LOG("PRLoad", QString("ENTER valid=%1 type=%2 notes=%3")
+        .arg(clipTree.isValid() ? 1 : 0)
+        .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
+        .arg(clipTree.getChildWithName(IDs::MIDI_NOTE_LIST).getNumChildren()));
     model.setClipTree(clipTree);
     model.setUndoManager(&engine.getProjectModel().getUndoManager());
     isLoaded = model.isValid();

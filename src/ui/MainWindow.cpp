@@ -367,6 +367,9 @@ void MainWindow::setupLayout()
     auto* scene = timelineView->getScene();
     connect(scene, &TimelineScene::clipSelected, this,
         [this](juce::ValueTree clipTree) {
+            HDAW_LOG("MWClipSel", QString("ENTER type=%1 valid=%2")
+                .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
+                .arg(clipTree.isValid() ? 1 : 0));
             auto trackTree = clipTree.getParent().getParent();
             if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
             {
@@ -391,8 +394,18 @@ void MainWindow::setupLayout()
                 }
                 else
                 {
+                    auto vs = mainVerticalSplitter->sizes();
+                    HDAW_LOG("MWClipSel", QString("piano: before load mode=%1 vSplit=[%2,%3] rollH=%4 rollVis=%5")
+                        .arg(mode)
+                        .arg(vs.value(0)).arg(vs.value(1))
+                        .arg(pianoRollWidget->height())
+                        .arg(pianoRollWidget->isVisible() ? 1 : 0));
                     pianoRollWidget->loadClip(clipTree);
                     bottomStack->setCurrentIndex(1);
+                    HDAW_LOG("MWClipSel", QString("piano: after load stackIdx=%1 rollH=%2 rollVis=%3")
+                        .arg(bottomStack->currentIndex())
+                        .arg(pianoRollWidget->height())
+                        .arg(pianoRollWidget->isVisible() ? 1 : 0));
                 }
             }
             else
