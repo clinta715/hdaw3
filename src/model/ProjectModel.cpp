@@ -101,6 +101,25 @@ int ProjectModel::allocateClipID()
     return nextClipID.fetch_add(1, std::memory_order_relaxed);
 }
 
+juce::uint32 ProjectModel::trackColorForIndex(int index)
+{
+    // Curated palette of distinct, dark-background-friendly hues (ARGB).
+    static const juce::uint32 palette[] = {
+        0xFF5B9BD5, // blue
+        0xFFED7D31, // orange
+        0xFF70AD47, // green
+        0xFFFFC000, // gold
+        0xFF7B68A6, // purple
+        0xFF00B0A0, // teal
+        0xFFE15F8C, // rose
+        0xFF7F7F8E  // slate
+    };
+    constexpr int n = static_cast<int>(sizeof(palette) / sizeof(palette[0]));
+    int i = index % n;
+    if (i < 0) i += n;
+    return palette[i];
+}
+
 void ProjectModel::resetClipIDCounter()
 {
     nextClipID.store(1, std::memory_order_relaxed);
@@ -255,6 +274,7 @@ void ProjectModel::createDefaultProject()
     track1.setProperty(IDs::isMuted, false, nullptr);
     track1.setProperty(IDs::isSoloed, false, nullptr);
     track1.setProperty(IDs::parentBus, 0, nullptr);
+    track1.setProperty(IDs::color, static_cast<int>(trackColorForIndex(0)), nullptr);
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
         track1.addChild(clipList, -1, nullptr);
@@ -271,6 +291,7 @@ void ProjectModel::createDefaultProject()
     track2.setProperty(IDs::isMuted, false, nullptr);
     track2.setProperty(IDs::isSoloed, false, nullptr);
     track2.setProperty(IDs::parentBus, 0, nullptr);
+    track2.setProperty(IDs::color, static_cast<int>(trackColorForIndex(1)), nullptr);
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
         clipList.addChild(createMidiClip("Melody", 0.0, 4.0), -1, nullptr);
@@ -289,6 +310,7 @@ void ProjectModel::createDefaultProject()
     track3.setProperty(IDs::isMuted, false, nullptr);
     track3.setProperty(IDs::isSoloed, false, nullptr);
     track3.setProperty(IDs::parentBus, 0, nullptr);
+    track3.setProperty(IDs::color, static_cast<int>(trackColorForIndex(2)), nullptr);
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
         track3.addChild(clipList, -1, nullptr);

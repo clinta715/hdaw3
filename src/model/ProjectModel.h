@@ -132,6 +132,9 @@ public:
 
     static int allocateClipID();
     static void resetClipIDCounter();
+    // Returns a color from a curated rotating palette so each track (and thus
+    // its clips) gets a distinct, stable color without clashing.
+    static juce::uint32 trackColorForIndex(int index);
     void scanAndSyncClipIDs();
 
     void createDefaultProject();

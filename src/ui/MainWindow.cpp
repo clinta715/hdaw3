@@ -842,6 +842,7 @@ void MainWindow::onAddTrack()
     track.setProperty(IDs::isMuted, false, &model.getUndoManager());
     track.setProperty(IDs::isSoloed, false, &model.getUndoManager());
     track.setProperty(IDs::parentBus, 0, &model.getUndoManager());
+    track.setProperty(IDs::color, static_cast<int>(model.trackColorForIndex(before)), &model.getUndoManager());
 
     juce::ValueTree clipList(IDs::CLIP_LIST);
     track.addChild(clipList, -1, &model.getUndoManager());

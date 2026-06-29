@@ -167,10 +167,17 @@ void TimelineScene::updateClipItem(juce::ValueTree clipTree)
 
 void TimelineScene::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)
 {
-    juce::ignoreUnused(property);
     if (tree.hasType(IDs::CLIP))
     {
         updateClipItem(tree);
+    }
+    else if (tree.hasType(IDs::TRACK) && property == IDs::color)
+    {
+        // Track color changed: repaint every clip on this track so they pick
+        // up the new color (ClipItem::getColor resolves it from the track).
+        auto clipList = tree.getChildWithName(IDs::CLIP_LIST);
+        for (int i = 0; i < clipList.getNumChildren(); ++i)
+            updateClipItem(clipList.getChild(i));
     }
 }
 

@@ -21,7 +21,9 @@ public:
     double getFadeIn() const { return clipTree.getProperty(IDs::fadeIn); }
     double getFadeOut() const { return clipTree.getProperty(IDs::fadeOut); }
     juce::String getClipType() const { return clipTree.getProperty(IDs::clipType).toString(); }
-    juce::uint32 getColor() const { return static_cast<juce::uint32>(static_cast<int>(clipTree.getProperty(IDs::color))); }
+    // Resolves the clip's color from its parent track so clips always match
+    // the track they live on (and adopt a new track's color when moved).
+    juce::uint32 getColor() const;
 
     QRectF boundingRect() const override;
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;

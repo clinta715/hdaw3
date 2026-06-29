@@ -13,6 +13,19 @@ ClipItem::ClipItem(juce::ValueTree tree, double pps)
 
 ClipItem::~ClipItem() = default;
 
+juce::uint32 ClipItem::getColor() const
+{
+    // CLIP -> CLIP_LIST -> TRACK. Prefer the track's color so a clip always
+    // reflects the track it lives on; this automatically applies the
+    // destination track's color when a clip is dragged in from another track.
+    auto trackTree = clipTree.getParent().getParent();
+    if (trackTree.isValid() && trackTree.hasType(IDs::TRACK) && trackTree.hasProperty(IDs::color))
+        return static_cast<juce::uint32>(static_cast<int>(trackTree.getProperty(IDs::color)));
+
+    // Fallback: the clip's own color (e.g. before it is attached to a track).
+    return static_cast<juce::uint32>(static_cast<int>(clipTree.getProperty(IDs::color)));
+}
+
 void ClipItem::setPixelsPerSecond(double pps)
 {
     if (pixelsPerSecond != pps)
