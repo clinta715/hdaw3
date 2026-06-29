@@ -1,2 +1,8 @@
 #include <gtest/gtest.h>
-TEST(DummyTransportStdio, Works) { EXPECT_EQ(1, 1); }
+#include "mcp/McpTransportStdio.h"
+using namespace mcp;
+
+TEST(StdioTransport, NotifyPublicSurface) {
+    TransportStdio t;
+    EXPECT_NO_THROW(t.notify(QByteArray("{}")));
+}
