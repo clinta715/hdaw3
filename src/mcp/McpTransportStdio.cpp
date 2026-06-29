@@ -1,6 +1,7 @@
 #include "McpTransportStdio.h"
 #include "McpServer.h"
 #include "McpJsonRpc.h"
+#include <QCoreApplication>
 #include <QFile>
 #include <QTextStream>
 #include <QJsonDocument>
@@ -22,7 +23,6 @@ public:
         in.open(STDIN_FILENO, QIODevice::ReadOnly | QIODevice::Text);
         QTextStream ts(&in);
         while (!parent_->stopped_.load(std::memory_order_relaxed)) {
-            if (ts.atEnd()) { QThread::msleep(5); continue; }
             QString line = ts.readLine();
             if (line.isNull()) break;
             auto trimmed = line.trimmed();
@@ -45,6 +45,10 @@ public:
                 Q_ARG(QJsonValue, req.id),
                 Q_ARG(QString, req.method),
                 Q_ARG(QJsonValue, req.params));
+        }
+        if (QCoreApplication::instance()) {
+            QMetaObject::invokeMethod(QCoreApplication::instance(), "quit",
+                                      Qt::QueuedConnection);
         }
     }
 private:
