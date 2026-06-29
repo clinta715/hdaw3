@@ -6,6 +6,7 @@
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/Track.h"
 #include "../engine/TrackFXSlot.h"
+#include "../engine/PhraseGenerator.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -621,6 +622,130 @@ void registerAllTools(McpServer& s) {
                 return McpToolResult::text(QString("would clear %1 notes").arg(n));
             if (nl.isValid()) c.removeChild(nl, &e->getProjectModel().getUndoManager());
             return McpToolResult::text(QString("cleared %1 notes").arg(n));
+        }});
+
+    // --- Composition (PhraseGenerator) ---
+    static const std::pair<const char*, PhraseGenerator::Style> kStyleMap[] = {
+        {"Standard",   PhraseGenerator::Standard},
+        {"Arpeggio",   PhraseGenerator::Arpeggio},
+        {"BassLine",   PhraseGenerator::BassLine},
+        {"ChordStab",  PhraseGenerator::ChordStab},
+        {"Pad",        PhraseGenerator::Pad},
+        {"Lead",       PhraseGenerator::Lead},
+        {"RandomWalk", PhraseGenerator::RandomWalk},
+        {"Buildup",    PhraseGenerator::Buildup}
+    };
+
+    s.registerTool({"set_scale", "Set the project scale (root 0..11, mode index).",
+        objSchema({{"root", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
+                  {"mode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}}}, {"root","mode"}),
+        [e](const QJsonObject& a) {
+            e->getProjectModel().setScaleRoot(a.value("root").toInt());
+            e->getProjectModel().setScaleMode(a.value("mode").toInt());
+            return McpToolResult::text("ok");
+        }});
+
+    auto generateIntoClip = [&](int trackId, double start, double length,
+                                const std::vector<PhraseGenerator::GeneratedNote>& notes) -> McpToolResult {
+        auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+        auto tl = m.getTrackListTree();
+        if (trackId < 0 || trackId >= tl.getNumChildren())
+            return McpToolResult::text("track not found", true);
+        juce::ValueTree c(IDs::CLIP);
+        int cid = m.allocateClipID();
+        c.setProperty(IDs::clipID, cid, nullptr);
+        c.setProperty(IDs::name, "Generated", &um);
+        c.setProperty(IDs::startTime, start, &um);
+        c.setProperty(IDs::duration, length, &um);
+        c.setProperty(IDs::offset, 0.0, &um);
+        c.setProperty(IDs::clipType, "midi", &um);
+        c.setProperty(IDs::gain, 1.0, &um);
+        c.setProperty(IDs::fadeIn, 0.0, &um);
+        c.setProperty(IDs::fadeOut, 0.0, &um);
+        c.setProperty(IDs::looping, false, &um);
+        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), &um);
+        auto nl = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+        for (const auto& gn : notes) {
+            juce::ValueTree n(IDs::MIDI_NOTE);
+            n.setProperty(IDs::noteID, m.allocateNoteID(), nullptr);
+            n.setProperty(IDs::noteNumber, gn.noteNumber, nullptr);
+            n.setProperty(IDs::startBeat, gn.startBeat, nullptr);
+            n.setProperty(IDs::durationBeats, gn.durationBeats, nullptr);
+            n.setProperty(IDs::velocity, gn.velocity, nullptr);
+            nl.addChild(n, -1, nullptr);
+        }
+        c.addChild(nl, -1, nullptr);
+        tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+        return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg(notes.size()));
+    };
+
+    s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"style",   QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup"}}}},
+                  {"length",  QJsonObject{{"type","number"}}},
+                  {"density", QJsonObject{{"type","integer"}}},
+                  {"start",   QJsonObject{{"type","number"}}}}, {"trackId","style","length","density"}),
+        [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
+            PhraseGenerator::PhraseParams p;
+            QString sname = a.value("style").toString();
+            for (const auto& kv : kStyleMap)
+                if (sname == kv.first) p.style = kv.second;
+            p.lengthBeats = a.value("length").toDouble();
+            p.density = a.value("density").toInt();
+            p.lowNote = 48; p.highNote = 84;
+            p.scaleRoot = e->getProjectModel().getScaleRoot();
+            p.scaleMode = e->getProjectModel().getScaleMode();
+            auto notes = PhraseGenerator::generatePhrase(p);
+            return helper(a.value("trackId").toInt(),
+                          a.value("start").toDouble(0.0),
+                          a.value("length").toDouble(), notes);
+        }});
+
+    s.registerTool({"generate_chord", "Generate a chord (or arpeggio) into a new clip.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"rootPitch", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"chordType", QJsonObject{{"type","integer"}}},
+                  {"voicing",   QJsonObject{{"type","integer"}}},
+                  {"inversion", QJsonObject{{"type","integer"}}},
+                  {"arpeggiate",QJsonObject{{"type","boolean"}}},
+                  {"start",     QJsonObject{{"type","number"}}},
+                  {"length",    QJsonObject{{"type","number"}}}}, {"trackId","rootPitch","chordType","length"}),
+        [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
+            PhraseGenerator::ChordParams p;
+            p.chordType = a.value("chordType").toInt();
+            p.voicing = a.value("voicing").toInt(0);
+            p.inversion = a.value("inversion").toInt(0);
+            p.arpeggiate = a.value("arpeggiate").toBool();
+            p.durationBeats = a.value("length").toDouble();
+            p.lowNote = 24; p.highNote = 96;
+            p.scaleRoot = e->getProjectModel().getScaleRoot();
+            p.scaleMode = e->getProjectModel().getScaleMode();
+            auto notes = PhraseGenerator::generateChord(a.value("rootPitch").toInt(), p);
+            return helper(a.value("trackId").toInt(),
+                          a.value("start").toDouble(0.0),
+                          a.value("length").toDouble(), notes);
+        }});
+
+    s.registerTool({"generate_progression", "Generate a chord progression into a new clip.",
+        objSchema({{"trackId",       QJsonObject{{"type","integer"}}},
+                  {"pattern",       QJsonObject{{"type","integer"}}},
+                  {"start",         QJsonObject{{"type","number"}}},
+                  {"beatsPerChord", QJsonObject{{"type","number"}}}}, {"trackId","pattern","beatsPerChord"}),
+        [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
+            PhraseGenerator::ProgressionParams p;
+            p.patternIndex = a.value("pattern").toInt();
+            p.beatsPerChord = a.value("beatsPerChord").toDouble();
+            p.durationBeats = 2.0;
+            p.lowNote = 24; p.highNote = 96;
+            p.scaleRoot = e->getProjectModel().getScaleRoot();
+            p.scaleMode = e->getProjectModel().getScaleMode();
+            auto notes = PhraseGenerator::generateProgression(p);
+            const auto& pats = PhraseGenerator::getProgressionPatterns();
+            int patIdx = std::clamp(p.patternIndex, 0, (int)pats.size() - 1);
+            double total = p.beatsPerChord * pats[patIdx].chords.size();
+            return helper(a.value("trackId").toInt(),
+                          a.value("start").toDouble(0.0), total, notes);
         }});
 }
 
