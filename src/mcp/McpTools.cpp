@@ -213,9 +213,41 @@ void registerAllTools(McpServer& s) {
                 .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
         }});
 
-    // --- Transport / Track / Clip / Note / Comp / FX / Auto / Undo / Export tools
-    // are added in Tasks 10-18. The transport (`transport`, `seek`) and undo
-    // (`undo`, `redo`) tools are added in Tasks 10 and 11.
+    // --- Transport ---
+    s.registerTool({"transport",
+        "Control transport: action in {play,stop,pause,rewind,toggleLoop}; optional loopStart/loopEnd (seconds).",
+        objSchema({{"action", QJsonObject{{"type","string"},
+            {"enum", QJsonArray{"play","stop","pause","rewind","toggleLoop"}}}},
+                  {"loopStart", QJsonObject{{"type","number"}}},
+                  {"loopEnd",   QJsonObject{{"type","number"}}}}, {"action"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            QString action = a.value("action").toString();
+            auto tp = e->getProjectModel().getTransportTree();
+            if      (action == "play")  tp.setProperty(IDs::isPlaying, true, nullptr);
+            else if (action == "stop")  { tp.setProperty(IDs::isPlaying, false, nullptr);
+                                          tp.setProperty(IDs::position, 0.0, nullptr); }
+            else if (action == "pause") tp.setProperty(IDs::isPlaying, false, nullptr);
+            else if (action == "rewind") tp.setProperty(IDs::position, 0.0, nullptr);
+            else if (action == "toggleLoop") {
+                bool cur = static_cast<bool>(tp.getProperty(IDs::isLooping));
+                tp.setProperty(IDs::isLooping, !cur, nullptr);
+            }
+            if (a.contains("loopStart")) tp.setProperty(IDs::loopStart, a.value("loopStart").toDouble(), nullptr);
+            if (a.contains("loopEnd"))   tp.setProperty(IDs::loopEnd,   a.value("loopEnd").toDouble(), nullptr);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"seek", "Move the playhead to a position (in seconds).",
+        objSchema({{"position", QJsonObject{{"type","number"}}}}, {"position"}),
+        [e](const QJsonObject& a) {
+            e->getProjectModel().getTransportTree().setProperty(
+                IDs::position, a.value("position").toDouble(), nullptr);
+            return McpToolResult::text("ok");
+        }});
+
+    // --- Track / Clip / Note / Comp / FX / Auto / Undo / Export tools
+    // are added in Tasks 11-18. The undo (`undo`, `redo`) tools are
+    // added in Task 11.
 }
 
 } // namespace mcp
