@@ -748,6 +748,57 @@ void registerAllTools(McpServer& s) {
                           a.value("start").toDouble(0.0), total, notes);
         }});
 
+    // --- Automation ---
+    auto findLane = [&](int trackId, const QJsonValue& ref) -> juce::ValueTree {
+        auto tl = e->getProjectModel().getTrackListTree();
+        if (trackId < 0 || trackId >= tl.getNumChildren()) return {};
+        auto al = tl.getChild(trackId).getChildWithName(IDs::AUTOMATION_LIST);
+        if (ref.isDouble()) {
+            int pid = ref.toInt();
+            for (int i = 0; i < al.getNumChildren(); ++i)
+                if (static_cast<int>(al.getChild(i).getProperty(IDs::paramID)) == pid) return al.getChild(i);
+        } else if (ref.isString()) {
+            QString n = ref.toString();
+            for (int i = 0; i < al.getNumChildren(); ++i)
+                if (al.getChild(i).getProperty(IDs::name).toString() == juce::String(n.toUtf8().constData())) return al.getChild(i);
+        }
+        return {};
+    };
+
+    s.registerTool({"add_automation_point", "Add a point to an automation lane (paramID integer preferred; name accepted).",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"lane",   QJsonObject{{"oneOf", QJsonArray{
+                      QJsonObject{{"type","integer"}},
+                      QJsonObject{{"type","string"}}}}}},
+                  {"time",   QJsonObject{{"type","number"}}},
+                  {"value",  QJsonObject{{"type","number"}}}}, {"trackId","lane","time","value"}),
+        [e, &findLane](const QJsonObject& a) -> McpToolResult {
+            auto lane = findLane(a.value("trackId").toInt(), a.value("lane"));
+            if (!lane.isValid()) return McpToolResult::text("lane not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            auto pl = lane.getChildWithName(IDs::POINT_LIST);
+            if (!pl.isValid()) { pl = juce::ValueTree(IDs::POINT_LIST); lane.addChild(pl, -1, &um); }
+            juce::ValueTree pt(IDs::POINT);
+            pt.setProperty(IDs::startTime, a.value("time").toDouble(), &um);
+            pt.setProperty(IDs::gain, a.value("value").toDouble(), &um);
+            pl.addChild(pt, -1, &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_automation_enabled", "Enable or disable an automation lane.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"lane",   QJsonObject{{"oneOf", QJsonArray{
+                      QJsonObject{{"type","integer"}},
+                      QJsonObject{{"type","string"}}}}}},
+                  {"enabled",QJsonObject{{"type","boolean"}}}}, {"trackId","lane","enabled"}),
+        [e, &findLane](const QJsonObject& a) -> McpToolResult {
+            auto lane = findLane(a.value("trackId").toInt(), a.value("lane"));
+            if (!lane.isValid()) return McpToolResult::text("lane not found", true);
+            lane.setProperty(IDs::automationEnabled, a.value("enabled").toBool(),
+                             &e->getProjectModel().getUndoManager());
+            return McpToolResult::text("ok");
+        }});
+
     // --- FX ---
     s.registerTool({"add_fx",
         "Add an FX slot. fxType in {eq,compressor,reverb,delay}, OR a pluginId.",
