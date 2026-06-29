@@ -245,9 +245,27 @@ void registerAllTools(McpServer& s) {
             return McpToolResult::text("ok");
         }});
 
-    // --- Track / Clip / Note / Comp / FX / Auto / Undo / Export tools
-    // are added in Tasks 11-18. The undo (`undo`, `redo`) tools are
-    // added in Task 11.
+    // --- Undo ---
+    s.registerTool({"undo", "Undo the last N actions (default 1).",
+        objSchema({{"count", QJsonObject{{"type","integer"}}}}),
+        [e](const QJsonObject& a) {
+            int n = a.value("count").toInt(1);
+            auto& um = e->getProjectModel().getUndoManager();
+            for (int i = 0; i < n; ++i) if (!um.undo()) break;
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"redo", "Redo the last N undone actions (default 1).",
+        objSchema({{"count", QJsonObject{{"type","integer"}}}}),
+        [e](const QJsonObject& a) {
+            int n = a.value("count").toInt(1);
+            auto& um = e->getProjectModel().getUndoManager();
+            for (int i = 0; i < n; ++i) if (!um.redo()) break;
+            return McpToolResult::text("ok");
+        }});
+
+    // --- Track / Clip / Note / Comp / FX / Auto / Export tools
+    // are added in later tasks.
 }
 
 } // namespace mcp
