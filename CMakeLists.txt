@@ -19,6 +19,8 @@ include(cmake/JUCEHelper.cmake)
 add_library(HDAW_lib STATIC
     src/engine/AudioEngine.cpp
     src/engine/AudioRecorder.cpp
+    src/engine/CLAPPluginEditor.h
+    src/engine/CLAPPluginEditor.cpp
     src/engine/CLAPPluginFormat.cpp
     src/engine/CLAPPluginInstance.cpp
     src/engine/ExportManager.cpp
