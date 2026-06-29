@@ -46,6 +46,7 @@ public:
 
         if (undoManager) undoManager->beginNewTransaction();
         juce::ValueTree note(IDs::MIDI_NOTE);
+        note.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
         note.setProperty(IDs::noteNumber, noteNumber, undoManager);
         note.setProperty(IDs::velocity, velocity, undoManager);
         note.setProperty(IDs::startBeat, startBeat, undoManager);
@@ -115,6 +116,7 @@ public:
         {
             juce::ValueTree note(IDs::MIDI_NOTE);
             double origBeat = n.getProperty(IDs::startBeat);
+            note.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
             note.setProperty(IDs::noteNumber, n.getProperty(IDs::noteNumber), undoManager);
             note.setProperty(IDs::velocity, n.getProperty(IDs::velocity), undoManager);
             note.setProperty(IDs::startBeat, targetBeat + (origBeat - minBeat), undoManager);

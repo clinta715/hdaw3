@@ -1222,6 +1222,7 @@ void MainWindow::onImportMIDI()
                 }
 
                 juce::ValueTree noteNode(IDs::MIDI_NOTE);
+                noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
                 noteNode.setProperty(IDs::noteNumber, noteNum, nullptr);
                 noteNode.setProperty(IDs::velocity, static_cast<float>(msg.getVelocity()) / 127.0f, nullptr);
                 noteNode.setProperty(IDs::startBeat, beatTime, nullptr);
