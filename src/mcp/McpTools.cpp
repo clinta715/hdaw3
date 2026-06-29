@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QSet>
 #include <algorithm>
 
 namespace mcp {
@@ -503,6 +504,123 @@ void registerAllTools(McpServer& s) {
             copy.setProperty(IDs::startTime, ns, nullptr);
             tl.getChild(nti).getChildWithName(IDs::CLIP_LIST).addChild(copy, -1, &um);
             return McpToolResult::text(QString("clipId=%1").arg(newId));
+        }});
+
+    // --- Notes ---
+    auto findNote = [&](int noteId, int* outClipId) -> juce::ValueTree {
+        auto tl = e->getProjectModel().getTrackListTree();
+        for (int i = 0; i < tl.getNumChildren(); ++i) {
+            auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+            for (int j = 0; j < cl.getNumChildren(); ++j) {
+                auto nl = cl.getChild(j).getChildWithName(IDs::MIDI_NOTE_LIST);
+                if (!nl.isValid()) continue;
+                for (int k = 0; k < nl.getNumChildren(); ++k) {
+                    auto n = nl.getChild(k);
+                    if (static_cast<int>(n.getProperty(IDs::noteID)) == noteId) {
+                        if (outClipId) *outClipId = static_cast<int>(cl.getChild(j).getProperty(IDs::clipID));
+                        return n;
+                    }
+                }
+            }
+        }
+        return {};
+    };
+
+    s.registerTool({"add_note", "Add a MIDI note to a clip; returns noteId.",
+        objSchema({{"clipId",    QJsonObject{{"type","integer"}}},
+                  {"pitch",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"start",     QJsonObject{{"type","number"}}},
+                  {"duration",  QJsonObject{{"type","number"}}},
+                  {"velocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
+                 {"clipId","pitch","start","duration","velocity"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
+                return McpToolResult::text("clip is not MIDI", true);
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid()) { nl = juce::ValueTree(IDs::MIDI_NOTE_LIST); c.addChild(nl, -1, nullptr); }
+            juce::ValueTree n(IDs::MIDI_NOTE);
+            int nid = m.allocateNoteID();
+            n.setProperty(IDs::noteID, nid, nullptr);
+            n.setProperty(IDs::noteNumber, a.value("pitch").toInt(), &um);
+            n.setProperty(IDs::startBeat, a.value("start").toDouble(), &um);
+            n.setProperty(IDs::durationBeats, a.value("duration").toDouble(), &um);
+            n.setProperty(IDs::velocity, a.value("velocity").toInt(), &um);
+            nl.addChild(n, -1, &um);
+            return McpToolResult::text(QString("noteId=%1").arg(nid));
+        }});
+
+    s.registerTool({"set_note", "Update a note's properties (partial).",
+        objSchema({{"noteId",   QJsonObject{{"type","integer"}}},
+                  {"pitch",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"start",    QJsonObject{{"type","number"}}},
+                  {"duration", QJsonObject{{"type","number"}}},
+                  {"velocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}}, {"noteId"}),
+        [e, &findNote](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            if (a.contains("pitch"))    n.setProperty(IDs::noteNumber, a.value("pitch").toInt(), &um);
+            if (a.contains("start"))    n.setProperty(IDs::startBeat, a.value("start").toDouble(), &um);
+            if (a.contains("duration")) n.setProperty(IDs::durationBeats, a.value("duration").toDouble(), &um);
+            if (a.contains("velocity")) n.setProperty(IDs::velocity, a.value("velocity").toInt(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"remove_notes", "Remove notes by filter or by noteIds (destructive).",
+        objSchema({{"clipId",   QJsonObject{{"type","integer"}}},
+                  {"pitches",  QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}}},
+                  {"startGte", QJsonObject{{"type","number"}}},
+                  {"startLt",  QJsonObject{{"type","number"}}},
+                  {"noteIds",  QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"}}}}},
+                  {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid()) return McpToolResult::text("ok");
+            QSet<int> pitches; for (const auto& p : a.value("pitches").toArray()) pitches.insert(p.toInt());
+            QSet<int> ids;     for (const auto& i : a.value("noteIds").toArray()) ids.insert(i.toInt());
+            bool hasGte = a.contains("startGte"); bool hasLt = a.contains("startLt");
+            double gte = a.value("startGte").toDouble(); double lt = a.value("startLt").toDouble();
+            int matched = 0;
+            for (int k = nl.getNumChildren() - 1; k >= 0; --k) {
+                auto n = nl.getChild(k);
+                int nid = static_cast<int>(n.getProperty(IDs::noteID));
+                int p   = static_cast<int>(n.getProperty(IDs::noteNumber));
+                double s= static_cast<double>(n.getProperty(IDs::startBeat));
+                bool match = false;
+                if (!ids.isEmpty() && ids.contains(nid)) match = true;
+                if (!pitches.isEmpty() && pitches.contains(p)) match = true;
+                if (hasGte && s < gte) match = false;
+                if (hasLt  && s >= lt) match = false;
+                if (match) {
+                    ++matched;
+                    if (!a.value("dryRun").toBool(false))
+                        nl.removeChild(k, &e->getProjectModel().getUndoManager());
+                }
+            }
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would remove %1 notes").arg(matched));
+            return McpToolResult::text(QString("removed %1 notes").arg(matched));
+        }});
+
+    s.registerTool({"clear_notes", "Remove all notes from a MIDI clip (destructive).",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                  {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            int n = nl.isValid() ? nl.getNumChildren() : 0;
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would clear %1 notes").arg(n));
+            if (nl.isValid()) c.removeChild(nl, &e->getProjectModel().getUndoManager());
+            return McpToolResult::text(QString("cleared %1 notes").arg(n));
         }});
 }
 
