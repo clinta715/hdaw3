@@ -29,6 +29,22 @@ void registerAllTools(McpServer& s) {
     auto* e = s.engine();
     if (!e) return;
 
+    // --- Clips ---
+    auto findClip = [&](int clipId, int* outTrackIdx) -> juce::ValueTree {
+        auto tl = e->getProjectModel().getTrackListTree();
+        for (int i = 0; i < tl.getNumChildren(); ++i) {
+            auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+            for (int j = 0; j < cl.getNumChildren(); ++j) {
+                auto c = cl.getChild(j);
+                if (static_cast<int>(c.getProperty(IDs::clipID)) == clipId) {
+                    if (outTrackIdx) *outTrackIdx = i;
+                    return c;
+                }
+            }
+        }
+        return {};
+    };
+
     // --- Read / inspector tools ---
 
     s.registerTool({"get_project_summary",
@@ -333,7 +349,7 @@ void registerAllTools(McpServer& s) {
     s.registerTool({"move_track", "Move a track to a new index.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),
-        [e](const QJsonObject& a) -> McpToolResult {
+        [e](const QJsonObject& a) {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             auto tl = m.getTrackListTree();
             int id = a.value("trackId").toInt();
@@ -344,6 +360,149 @@ void registerAllTools(McpServer& s) {
             tl.removeChild(id, nullptr);
             tl.addChild(t, ni, &um);
             return McpToolResult::text("ok");
+        }});
+
+    // --- Clips ---
+    s.registerTool({"add_midi_clip", "Add an empty MIDI clip to a track.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"start",   QJsonObject{{"type","number"}}},
+                  {"length",  QJsonObject{{"type","number"}}},
+                  {"name",    QJsonObject{{"type","string"}}}}, {"trackId","start","length"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            int ti = a.value("trackId").toInt();
+            auto tl = m.getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            juce::ValueTree c(IDs::CLIP);
+            int cid = m.allocateClipID();
+            c.setProperty(IDs::clipID, cid, nullptr);
+            c.setProperty(IDs::name, juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()), &um);
+            c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
+            c.setProperty(IDs::duration, a.value("length").toDouble(), &um);
+            c.setProperty(IDs::offset, 0.0, &um);
+            c.setProperty(IDs::clipType, "midi", &um);
+            c.setProperty(IDs::gain, 1.0, &um);
+            c.setProperty(IDs::fadeIn, 0.0, &um);
+            c.setProperty(IDs::fadeOut, 0.0, &um);
+            c.setProperty(IDs::looping, false, &um);
+            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), &um);
+            c.addChild(juce::ValueTree(IDs::MIDI_NOTE_LIST), -1, nullptr);
+            tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+            return McpToolResult::text(QString("clipId=%1").arg(cid));
+        }});
+
+    s.registerTool({"add_audio_clip", "Add an audio clip referencing a source file.",
+        objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                  {"start",       QJsonObject{{"type","number"}}},
+                  {"length",      QJsonObject{{"type","number"}}},
+                  {"sourceFile",  QJsonObject{{"type","string"}}},
+                  {"name",        QJsonObject{{"type","string"}}}}, {"trackId","start","length","sourceFile"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            int ti = a.value("trackId").toInt();
+            auto tl = m.getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            juce::File src(QString::fromUtf8(a.value("sourceFile").toString().toUtf8()).toStdString());
+            if (!src.existsAsFile()) return McpToolResult::text("source file not found", true);
+            juce::ValueTree c(IDs::CLIP);
+            int cid = m.allocateClipID();
+            c.setProperty(IDs::clipID, cid, nullptr);
+            c.setProperty(IDs::name, juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()), &um);
+            c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
+            c.setProperty(IDs::duration, a.value("length").toDouble(), &um);
+            c.setProperty(IDs::offset, 0.0, &um);
+            c.setProperty(IDs::clipType, "audio", &um);
+            c.setProperty(IDs::gain, 1.0, &um);
+            c.setProperty(IDs::fadeIn, 0.0, &um);
+            c.setProperty(IDs::fadeOut, 0.0, &um);
+            c.setProperty(IDs::looping, false, &um);
+            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), &um);
+            c.setProperty(IDs::sourceFile, src.getFullPathName(), &um);
+            tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+            return McpToolResult::text(QString("clipId=%1").arg(cid));
+        }});
+
+    s.registerTool({"remove_clip", "Remove a clip (destructive).",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                  {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            QString name = jstr(c.getProperty(IDs::name).toString());
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would remove clip %1 (%2)").arg(static_cast<int>(c.getProperty(IDs::clipID))).arg(name));
+            e->getProjectModel().getTrackListTree().getChild(ti)
+                .getChildWithName(IDs::CLIP_LIST).removeChild(c, &e->getProjectModel().getUndoManager());
+            return McpToolResult::text(QString("removed clip %1").arg(static_cast<int>(c.getProperty(IDs::clipID))));
+        }});
+
+    s.registerTool({"move_clip", "Move a clip to a new start (and optionally a new track).",
+        objSchema({{"clipId",  QJsonObject{{"type","integer"}}},
+                  {"start",   QJsonObject{{"type","number"}}},
+                  {"trackId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            if (a.contains("start")) c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
+            if (a.contains("trackId")) {
+                int nti = a.value("trackId").toInt();
+                auto tl = e->getProjectModel().getTrackListTree();
+                if (nti < 0 || nti >= tl.getNumChildren()) return McpToolResult::text("target track not found", true);
+                e->getProjectModel().getTrackListTree().getChild(ti)
+                    .getChildWithName(IDs::CLIP_LIST).removeChild(c, nullptr);
+                tl.getChild(nti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+            }
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_clip", "Update clip properties (partial).",
+        objSchema({{"clipId",    QJsonObject{{"type","integer"}}},
+                  {"name",      QJsonObject{{"type","string"}}},
+                  {"start",     QJsonObject{{"type","number"}}},
+                  {"duration",  QJsonObject{{"type","number"}}},
+                  {"gain",      QJsonObject{{"type","number"}}},
+                  {"fadeIn",    QJsonObject{{"type","number"}}},
+                  {"fadeOut",   QJsonObject{{"type","number"}}},
+                  {"looping",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            if (a.contains("name"))     c.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
+            if (a.contains("start"))    c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
+            if (a.contains("duration")) c.setProperty(IDs::duration, a.value("duration").toDouble(), &um);
+            if (a.contains("gain"))     c.setProperty(IDs::gain, a.value("gain").toDouble(), &um);
+            if (a.contains("fadeIn"))   c.setProperty(IDs::fadeIn, a.value("fadeIn").toDouble(), &um);
+            if (a.contains("fadeOut"))  c.setProperty(IDs::fadeOut, a.value("fadeOut").toDouble(), &um);
+            if (a.contains("looping"))  c.setProperty(IDs::looping, a.value("looping").toBool(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"duplicate_clip", "Duplicate a clip (destructive: creates a new clip).",
+        objSchema({{"clipId",   QJsonObject{{"type","integer"}}},
+                  {"start",    QJsonObject{{"type","number"}}},
+                  {"trackId",  QJsonObject{{"type","integer"}}},
+                  {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        [e, &findClip](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto src = findClip(a.value("clipId").toInt(), &ti);
+            if (!src.isValid()) return McpToolResult::text("clip not found", true);
+            int nti = a.contains("trackId") ? a.value("trackId").toInt() : ti;
+            double ns = a.contains("start") ? a.value("start").toDouble()
+                                            : static_cast<double>(src.getProperty(IDs::startTime));
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would duplicate clip %1 to track %2 @ %3")
+                    .arg(static_cast<int>(src.getProperty(IDs::clipID))).arg(nti).arg(ns));
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            auto tl = m.getTrackListTree();
+            if (nti < 0 || nti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            auto xml = src.toXmlString();
+            juce::ValueTree copy(juce::ValueTree::fromXml(xml));
+            int newId = m.allocateClipID();
+            copy.setProperty(IDs::clipID, newId, nullptr);
+            copy.setProperty(IDs::startTime, ns, nullptr);
+            tl.getChild(nti).getChildWithName(IDs::CLIP_LIST).addChild(copy, -1, &um);
+            return McpToolResult::text(QString("clipId=%1").arg(newId));
         }});
 }
 
