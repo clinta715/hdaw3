@@ -12,6 +12,42 @@ qt_standard_project_setup()
 # JUCE Configuration
 include(cmake/JUCEHelper.cmake)
 
+# --- HDAW_lib: engine + model static library (no GUI / Qt Widgets) ---
+# Contains all non-GUI sources so tests can link the engine+model
+# without spinning up a QApplication. Future MCP sources will be added
+# here in later tasks.
+add_library(HDAW_lib STATIC
+    src/engine/AudioEngine.cpp
+    src/engine/AudioRecorder.cpp
+    src/engine/CLAPPluginFormat.cpp
+    src/engine/CLAPPluginInstance.cpp
+    src/engine/ExportManager.cpp
+    src/engine/MainAudioProcessor.cpp
+    src/engine/PhraseGenerator.cpp
+    src/engine/PluginManager.cpp
+    src/engine/ProjectSerializer.cpp
+    src/engine/RoutingManager.cpp
+    src/engine/Track.cpp
+    src/model/ProjectModel.cpp
+)
+target_include_directories(HDAW_lib PUBLIC src)
+target_link_libraries(HDAW_lib PUBLIC
+    juce::juce_audio_utils
+    juce::juce_audio_processors
+    juce::juce_audio_devices
+    juce::juce_dsp
+    juce::juce_core
+    juce::juce_gui_basics
+    Qt6::Core
+    clap_juce_extensions
+)
+
+# Enable VST3 plugin hosting (needed by PluginManager.cpp -> juce::VST3PluginFormat)
+target_compile_definitions(HDAW_lib PUBLIC
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_MODAL_LOOPS_PERMITTED=1
+)
+
 add_executable(HDAW
     src/main.cpp
     src/ui/MainWindow.h
@@ -70,14 +106,6 @@ add_executable(HDAW
     src/ui/FXSlotRow.h
     src/ui/FXSlotRow.cpp
     src/engine/AutomationManager.h
-    src/engine/PluginManager.h
-    src/engine/PluginManager.cpp
-    src/engine/ProjectSerializer.h
-    src/engine/ProjectSerializer.cpp
-    src/engine/AudioRecorder.h
-    src/engine/AudioRecorder.cpp
-    src/engine/ExportManager.h
-    src/engine/ExportManager.cpp
     src/ui/AutomationLaneWidget.h
     src/ui/AutomationLaneWidget.cpp
     src/ui/AudioClipEditorWidget.h
@@ -95,33 +123,18 @@ add_executable(HDAW
     src/ui/ScanProgressDialog.cpp
     src/ui/PreferencesDialog.h
     src/ui/PreferencesDialog.cpp
-    src/engine/AudioEngine.h
-    src/engine/AudioEngine.cpp
-    src/engine/MainAudioProcessor.h
-    src/engine/MainAudioProcessor.cpp
-    src/engine/Track.h
-    src/engine/Track.cpp
-    src/engine/ProjectPool.h
-    src/engine/SendProcessor.h
-    src/engine/CLAPPluginFormat.h
-    src/engine/CLAPPluginFormat.cpp
-    src/engine/CLAPPluginInstance.h
-    src/engine/CLAPPluginInstance.cpp
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp
     src/engine/BusProcessorBase.h
     src/engine/MasterBusProcessor.h
     src/engine/GroupBusProcessor.h
     src/engine/FxBusProcessor.h
-    src/engine/RoutingManager.h
-    src/engine/RoutingManager.cpp
+    src/engine/ProjectPool.h
+    src/engine/SendProcessor.h
     src/engine/ClipSourceProcessor.h
     src/engine/MidiClipProcessor.h
     src/engine/TrackFXSlot.h
-    src/engine/PhraseGenerator.h
-    src/engine/PhraseGenerator.cpp
-    src/model/ProjectModel.h
-    src/model/ProjectModel.cpp
+    src/engine/TransportManager.h
 )
 
 target_link_libraries(HDAW
@@ -131,13 +144,10 @@ target_link_libraries(HDAW
     juce::juce_dsp
     juce::juce_gui_basics
     clap_juce_extensions
+    HDAW_lib
 )
 
-# Enable VST3 plugin hosting
-target_compile_definitions(HDAW PRIVATE 
-    JUCE_PLUGINHOST_VST3=1
-    JUCE_MODAL_LOOPS_PERMITTED=1
-)
+# JUCE_PLUGINHOST_VST3 / JUCE_MODAL_LOOPS_PERMITTED are inherited from HDAW_lib (PUBLIC)
 
 # Enable modern C++ features for MSVC
 if(MSVC)
@@ -148,3 +158,10 @@ set_target_properties(HDAW PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
 )
+
+# --- Tests (MCP pilot) ---
+option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)
+if(HDAW_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
