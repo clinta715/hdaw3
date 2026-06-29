@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <algorithm>
 
 namespace mcp {
 
@@ -264,8 +265,86 @@ void registerAllTools(McpServer& s) {
             return McpToolResult::text("ok");
         }});
 
-    // --- Track / Clip / Note / Comp / FX / Auto / Export tools
-    // are added in later tasks.
+    // --- Tracks ---
+    s.registerTool({"add_track",
+        "Add a track. Color defaults to the next palette color if omitted.",
+        objSchema({{"name", QJsonObject{{"type","string"}}},
+                  {"color", QJsonObject{{"type","integer"}}},
+                  {"parentBus", QJsonObject{{"type","integer"}}}}, {"name"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel();
+            auto& um = m.getUndoManager();
+            int idx = m.getTrackListTree().getNumChildren();
+            juce::ValueTree t(IDs::TRACK);
+            t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
+            t.setProperty(IDs::volume, 0.85, &um);
+            t.setProperty(IDs::pan, 0.0, &um);
+            t.setProperty(IDs::isMuted, false, &um);
+            t.setProperty(IDs::isSoloed, false, &um);
+            t.setProperty(IDs::parentBus, a.value("parentBus").toInt(0), &um);
+            int color = a.contains("color") ? a.value("color").toInt()
+                                             : static_cast<int>(ProjectModel::trackColorForIndex(idx));
+            t.setProperty(IDs::color, color, &um);
+            t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, &um);
+            t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
+            t.addChild(juce::ValueTree(IDs::AUTOMATION_LIST), -1, &um);
+            m.getTrackListTree().addChild(t, -1, &um);
+            return McpToolResult::text(QString("trackId=%1").arg(idx));
+        }});
+
+    s.registerTool({"remove_track", "Remove a track (destructive).",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"dryRun",  QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel();
+            auto tl = m.getTrackListTree();
+            int id = a.value("trackId").toInt();
+            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            QString name = jstr(tl.getChild(id).getProperty(IDs::name).toString());
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would remove track %1 (%2)").arg(id).arg(name));
+            tl.removeChild(id, &m.getUndoManager());
+            return McpToolResult::text(QString("removed track %1").arg(id));
+        }});
+
+    s.registerTool({"set_track", "Update track properties (partial).",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"name",   QJsonObject{{"type","string"}}},
+                  {"volume", QJsonObject{{"type","number"}}},
+                  {"pan",    QJsonObject{{"type","number"}}},
+                  {"mute",   QJsonObject{{"type","boolean"}}},
+                  {"solo",   QJsonObject{{"type","boolean"}}},
+                  {"color",  QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            int id = a.value("trackId").toInt();
+            auto tl = m.getTrackListTree();
+            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            auto t = tl.getChild(id);
+            if (a.contains("name"))   t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
+            if (a.contains("volume")) t.setProperty(IDs::volume, a.value("volume").toDouble(), &um);
+            if (a.contains("pan"))    t.setProperty(IDs::pan, a.value("pan").toDouble(), &um);
+            if (a.contains("mute"))   t.setProperty(IDs::isMuted, a.value("mute").toBool(), &um);
+            if (a.contains("solo"))   t.setProperty(IDs::isSoloed, a.value("solo").toBool(), &um);
+            if (a.contains("color"))  t.setProperty(IDs::color, a.value("color").toInt(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"move_track", "Move a track to a new index.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            auto tl = m.getTrackListTree();
+            int id = a.value("trackId").toInt();
+            int ni = a.value("newIndex").toInt();
+            if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            ni = std::clamp(ni, 0, tl.getNumChildren() - 1);
+            auto t = tl.getChild(id);
+            tl.removeChild(id, nullptr);
+            tl.addChild(t, ni, &um);
+            return McpToolResult::text("ok");
+        }});
 }
 
 } // namespace mcp
