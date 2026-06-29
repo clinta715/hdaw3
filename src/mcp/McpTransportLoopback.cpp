@@ -22,7 +22,14 @@ void TransportLoopback::pumpIncoming(const QByteArray& line) {
     if (trimmed.isEmpty()) return;
     QJsonParseError pe;
     auto doc = QJsonDocument::fromJson(trimmed, &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return;
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+        if (server_ && server_->transport()) {
+            server_->transport()->send(serializeResponse(
+                McpResponse::failure({}, err::ParseError,
+                    QString::fromUtf8(pe.errorString().toUtf8()))).toUtf8());
+        }
+        return;
+    }
     auto v = validateRequest(doc.object());
     if (std::holds_alternative<McpResponse>(v)) {
         // Forward the parse/validation error to the transport so the test
