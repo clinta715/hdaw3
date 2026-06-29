@@ -24,9 +24,16 @@ void TransportLoopback::pumpIncoming(const QByteArray& line) {
     auto doc = QJsonDocument::fromJson(trimmed, &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) return;
     auto v = validateRequest(doc.object());
-    if (!std::holds_alternative<McpRequest>(v)) return;
+    if (std::holds_alternative<McpResponse>(v)) {
+        // Forward the parse/validation error to the transport so the test
+        // (or future client) can assert on it instead of hanging.
+        if (server_ && server_->transport()) {
+            server_->transport()->send(serializeResponse(std::get<McpResponse>(v)).toUtf8());
+        }
+        return;
+    }
     auto& req = std::get<McpRequest>(v);
-    QMetaObject::invokeMethod(server_, "handleRequestOnTestThread",
+    QMetaObject::invokeMethod(server_, "handleRequest",
         Qt::DirectConnection,
         Q_ARG(QJsonValue, req.id),
         Q_ARG(QString, req.method),

@@ -24,6 +24,7 @@ public:
     const QHash<QString, McpToolDef>& tools() const { return tools_; }
 
     void setTransport(Transport* t);
+    Transport* transport() const { return transport_; }
     void start();
     void stop();
 
