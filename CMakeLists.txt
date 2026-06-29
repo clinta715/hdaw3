@@ -30,6 +30,7 @@ add_library(HDAW_lib STATIC
     src/engine/Track.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
+    src/mcp/McpSchema.cpp
 )
 target_include_directories(HDAW_lib PUBLIC src)
 target_link_libraries(HDAW_lib PUBLIC
