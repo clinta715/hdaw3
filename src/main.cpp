@@ -8,6 +8,7 @@
 #include "ui/DebugLog.h"
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpTools.h"
 #include "mcp/McpTransport.h"
 #include "mcp/McpTransportStdio.h"
 #include <juce_core/juce_core.h>
@@ -69,7 +70,7 @@ int main(int argc, char *argv[])
         engine.initialize();
         mcp::McpServer server;
         server.setEngine(&engine);
-        // TODO(task-9): mcp::registerAllTools(server);
+        mcp::registerAllTools(server);
         auto* transport = new mcp::TransportStdio();
         server.setTransport(transport);
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {

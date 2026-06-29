@@ -32,6 +32,7 @@ add_library(HDAW_lib STATIC
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
     src/mcp/McpServer.cpp
+    src/mcp/McpTools.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
 )
