@@ -31,14 +31,12 @@ QString serializeNotification(const McpNotification& n) {
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
-QJsonValue parseLine(const QByteArray& line, bool* ok) {
-    *ok = false;
+std::optional<QJsonValue> parseLine(const QByteArray& line) {
     QByteArray trimmed = line.trimmed();
-    if (trimmed.isEmpty()) return {};
+    if (trimmed.isEmpty()) return std::nullopt;
     QJsonParseError pe;
     auto doc = QJsonDocument::fromJson(trimmed, &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return {};
-    *ok = true;
+    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return std::nullopt;
     return doc.object();
 }
 

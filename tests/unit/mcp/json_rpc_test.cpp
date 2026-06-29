@@ -15,10 +15,9 @@ TEST(JsonRpc, SerializeError) {
     EXPECT_TRUE(s.contains("nope"));
 }
 TEST(JsonRpc, ParseLineValid) {
-    bool ok = false;
-    auto v = parseLine(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"ping"})"), &ok);
-    EXPECT_TRUE(ok);
-    auto r = validateRequest(v);
+    auto v = parseLine(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"ping"})"));
+    ASSERT_TRUE(v.has_value());
+    auto r = validateRequest(*v);
     EXPECT_TRUE(std::holds_alternative<McpRequest>(r));
     EXPECT_EQ(std::get<McpRequest>(r).method, "ping");
     EXPECT_FALSE(std::get<McpRequest>(r).isNotification());
@@ -30,10 +29,9 @@ TEST(JsonRpc, ValidateNotificationHasNullId) {
     ASSERT_TRUE(std::holds_alternative<McpRequest>(r));
     EXPECT_TRUE(std::get<McpRequest>(r).isNotification());
 }
-TEST(JsonRpc, InvalidJsonReturnsParseError) {
-    bool ok = true;
-    parseLine(QByteArray("not json"), &ok);
-    EXPECT_FALSE(ok);
+TEST(JsonRpc, InvalidJsonReturnsNullopt) {
+    auto v = parseLine(QByteArray("not json"));
+    EXPECT_FALSE(v.has_value());
 }
 TEST(JsonRpc, MissingMethodIsInvalidRequest) {
     auto r = validateRequest(QJsonObject{{"jsonrpc","2.0"},{"id",1}});

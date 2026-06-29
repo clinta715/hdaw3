@@ -36,7 +36,7 @@ namespace err {
 
 QString serializeResponse(const McpResponse& r);
 QString serializeNotification(const McpNotification& n);
-QJsonValue parseLine(const QByteArray& line, bool* ok);
+std::optional<QJsonValue> parseLine(const QByteArray& line);
 std::variant<McpRequest, McpResponse> validateRequest(const QJsonValue& v);
 
 } // namespace mcp
