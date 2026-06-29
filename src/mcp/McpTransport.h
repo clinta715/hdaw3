@@ -1,6 +1,6 @@
 #pragma once
 #include <QByteArray>
-class McpServer;
+namespace mcp { class McpServer; }
 namespace mcp {
 class Transport {
 public:
