@@ -51,12 +51,17 @@ private:
     TransportStdio* parent_;
 };
 
+void TransportStdio::ReaderThread::run() {
+    if (reader_) reader_->run();
+}
+
 TransportStdio::TransportStdio() = default;
 TransportStdio::~TransportStdio() { stop(); }
 
 void TransportStdio::start(McpServer* s) {
     server_ = s; stopped_ = false;
     reader_ = new Reader(this);
+    readerThread_.setReader(reader_);
     readerThread_.start();
 }
 

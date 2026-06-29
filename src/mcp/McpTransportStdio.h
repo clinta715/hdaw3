@@ -15,8 +15,15 @@ public:
     void notify(const QByteArray& jsonLine) override;
 private:
     class Reader;
+    class ReaderThread : public QThread {
+    public:
+        void setReader(Reader* r) { reader_ = r; }
+        void run() override;
+    private:
+        Reader* reader_ = nullptr;
+    };
     Reader* reader_ = nullptr;
-    QThread readerThread_;
+    ReaderThread readerThread_;
     McpServer* server_ = nullptr;
     std::atomic<bool> stopped_{false};
     QMutex stdoutMtx_;
