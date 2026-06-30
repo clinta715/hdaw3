@@ -27,6 +27,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QMenuBar>
@@ -298,7 +299,10 @@ void MainWindow::startMcpHttpServer()
     mcpHttp_ = new mcp::TransportHttp(port);
     mcpHttp_->start(mcpServer_);
     if (mcpHttpAction != nullptr && !mcpHttpAction->isChecked())
+    {
+        const QSignalBlocker b(mcpHttpAction);
         mcpHttpAction->setChecked(true);
+    }
     statusBar()->showMessage(QString("MCP HTTP server listening on 127.0.0.1:%1").arg(port), 5000);
 }
 
@@ -309,7 +313,10 @@ void MainWindow::stopMcpHttpServer()
     delete mcpHttp_;
     mcpHttp_ = nullptr;
     if (mcpHttpAction != nullptr && mcpHttpAction->isChecked())
+    {
+        const QSignalBlocker b(mcpHttpAction);
         mcpHttpAction->setChecked(false);
+    }
     statusBar()->showMessage("MCP HTTP server stopped", 3000);
 }
 
@@ -539,13 +546,6 @@ void MainWindow::setupLayout()
     // JUCE message pump (needed to drive JUCE timers/async updates in a Qt app)
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
-
-    // Keyboard shortcuts
-    auto* recordShortcut = new QShortcut(QKeySequence(Qt::Key_R), this);
-    connect(recordShortcut, &QShortcut::activated, this, &MainWindow::onRecordToggle);
-
-    auto* playShortcut = new QShortcut(QKeySequence(Qt::Key_Space), this);
-    connect(playShortcut, &QShortcut::activated, this, &MainWindow::onPlayToggle);
 
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
         [this]() {
@@ -1094,11 +1094,11 @@ void MainWindow::onImportAudio()
     QFileInfo fi(path);
     double duration = 4.0;
     auto& pool = engine.getProjectPool();
-    auto* reader = pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData()));
+    auto reader = std::unique_ptr<juce::AudioFormatReader>(
+        pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData())));
     if (reader != nullptr)
     {
         duration = reader->lengthInSamples / reader->sampleRate;
-        delete reader;
     }
 
     double startTime = 0.0;
