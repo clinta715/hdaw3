@@ -171,6 +171,10 @@ add_executable(HDAW
     src/engine/MidiClipProcessor.h
     src/engine/TrackFXSlot.h
     src/engine/TransportManager.h
+    src/engine/AudioImport.h
+    src/engine/AudioImport.cpp
+    src/engine/MidiImport.h
+    src/engine/MidiImport.cpp
 )
 
 target_link_libraries(HDAW
