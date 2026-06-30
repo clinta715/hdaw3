@@ -139,6 +139,7 @@ public:
     static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
     static juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
     static juce::ValueTree createMidiNote(int note, float vel, double start, double dur);
+    static juce::ValueTree getTrackOfClip(const juce::ValueTree& clip);
     // Returns a color from a curated rotating palette so each track (and thus
     // its clips) gets a distinct, stable color without clashing.
     static juce::uint32 trackColorForIndex(int index);

@@ -231,6 +231,14 @@ juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double star
     return clip;
 }
 
+juce::ValueTree ProjectModel::getTrackOfClip(const juce::ValueTree& clip)
+{
+    if (!clip.isValid() || !clip.hasType(IDs::CLIP)) return {};
+    auto clipList = clip.getParent();
+    if (!clipList.isValid()) return {};
+    return clipList.getParent();
+}
+
 static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
 {
     juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, start, dur);

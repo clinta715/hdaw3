@@ -431,7 +431,7 @@ void MainWindow::setupLayout()
             HDAW_LOG("MWClipSel", QString("ENTER type=%1 valid=%2")
                 .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
                 .arg(clipTree.isValid() ? 1 : 0));
-            auto trackTree = clipTree.getParent().getParent();
+            auto trackTree = ProjectModel::getTrackOfClip(clipTree);
             if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
             {
                 auto trackList = engine.getProjectModel().getTrackListTree();
