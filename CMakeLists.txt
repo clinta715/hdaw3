@@ -12,6 +12,31 @@ qt_standard_project_setup()
 # JUCE Configuration
 include(cmake/JUCEHelper.cmake)
 
+# Deploy Qt DLLs alongside an executable on Windows via windeployqt.
+# Skipped silently on non-Windows or when windeployqt isn't found.
+function(hdaw_deploy_qt target)
+    if(NOT WIN32)
+        return()
+    endif()
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt
+        HINTS ${Qt6_DIR}/../../../bin
+              ${Qt6_DIR}/bin
+    )
+    if(NOT WINDEPLOYQT_EXECUTABLE)
+        message(STATUS "windeployqt not found; skipping Qt deploy for ${target}")
+        return()
+    endif()
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${WINDEPLOYQT_EXECUTABLE}
+                --no-translations
+                --no-system-d3d-compiler
+                --no-opengl-sw
+                $<TARGET_FILE_DIR:${target}>
+        COMMENT "Running windeployqt for ${target}"
+        VERBATIM
+    )
+endfunction()
+
 # --- HDAW_lib: engine + model static library (no GUI / Qt Widgets) ---
 # Contains all non-GUI sources so tests can link the engine+model
 # without spinning up a QApplication. Future MCP sources will be added
@@ -171,6 +196,8 @@ set_target_properties(HDAW PROPERTIES
     WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
 )
+
+hdaw_deploy_qt(HDAW)
 
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)

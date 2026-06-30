@@ -24,3 +24,5 @@ target_link_libraries(hdaw_tests PRIVATE
     GTest::gtest_main
 )
 add_test(NAME hdaw_tests COMMAND hdaw_tests)
+
+hdaw_deploy_qt(hdaw_tests)
