@@ -1,4 +1,5 @@
 #include "ProjectModel.h"
+#include "../engine/PluginManager.h"
 #include <atomic>
 #include <algorithm>
 #include <functional>
@@ -370,4 +371,43 @@ void ProjectModel::createDefaultProject()
         track3.addChild(createAutomationList(), -1, nullptr);
     }
     trackList.addChild(track3, -1, nullptr);
+}
+
+int ProjectModel::addFxSlot(int trackIdx, const std::string& type, int pos,
+                            const std::string& pluginID)
+{
+    auto tl = getTrackListTree();
+    if (trackIdx < 0 || trackIdx >= tl.getNumChildren()) return -1;
+    auto track = tl.getChild(trackIdx);
+    auto fxChainTree = track.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChainTree.isValid())
+    {
+        fxChainTree = juce::ValueTree(IDs::FX_CHAIN);
+        track.addChild(fxChainTree, -1, &undoManager);
+    }
+    const int n = fxChainTree.getNumChildren();
+    int insertIdx = (pos < 0 || pos > n) ? n : pos;
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(type), &undoManager);
+    if (type == "plugin" && !pluginID.empty())
+    {
+        slot.setProperty(IDs::pluginID, juce::String(pluginID), &undoManager);
+        slot.setProperty(IDs::pluginFormat, juce::String(resolvePluginFormat(pluginID)),
+                         &undoManager);
+    }
+    slot.setProperty(IDs::bypassed, false, &undoManager);
+    fxChainTree.addChild(slot, insertIdx, &undoManager);
+    return insertIdx;
+}
+
+std::string ProjectModel::resolvePluginFormat(const std::string& pluginID) const
+{
+    if (pluginManager_ == nullptr) return {};
+    juce::String jid(pluginID);
+    for (const auto& p : pluginManager_->getPlugins())
+    {
+        if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
+            return p.pluginFormatName.toStdString();
+    }
+    return {};
 }

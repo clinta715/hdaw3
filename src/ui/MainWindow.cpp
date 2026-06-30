@@ -45,6 +45,7 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
     mcpServer_ = new mcp::McpServer(this);
     mcpServer_->setEngine(&engine);
+    engine.getProjectModel().setPluginManager(&engine.getPluginManager());
     mcp::registerAllTools(*mcpServer_);
 
     setupLayout();
@@ -955,25 +956,13 @@ void MainWindow::onAddTrackWithFX(const juce::String& fxType)
     int last = trackList.getNumChildren() - 1;
     if (last < 0) return;
 
-    auto trackTree = trackList.getChild(last);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, fxType, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    engine.getProjectModel().addFxSlot(last, fxType.toStdString());
 
     engine.getMainProcessor()->rebuildTrackFX(last);
     rebuildAllUI();
 }
 
-void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat)
+void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
     onAddTrack();
 
@@ -981,21 +970,7 @@ void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::
     int last = trackList.getNumChildren() - 1;
     if (last < 0) return;
 
-    auto trackTree = trackList.getChild(last);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    engine.getProjectModel().addFxSlot(last, "plugin", -1, pluginID.toStdString());
 
     engine.getMainProcessor()->rebuildTrackFX(last);
     rebuildAllUI();

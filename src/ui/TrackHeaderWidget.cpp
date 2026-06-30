@@ -730,48 +730,16 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(trackIndex);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    if (engine.getProjectModel().addFxSlot(trackIndex, type.toStdString()) < 0) return;
 
     engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }
 
-void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat)
+void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(trackIndex);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    if (engine.getProjectModel().addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString()) < 0) return;
 
     engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();

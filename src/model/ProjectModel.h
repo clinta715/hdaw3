@@ -1,6 +1,9 @@
 #pragma once
 #include <juce_data_structures/juce_data_structures.h>
+#include <string>
 #include <atomic>
+
+namespace HDAW { class PluginManager; }
 
 namespace IDs {
     #define DECLARE_ID(name) const juce::Identifier name { #name };
@@ -148,6 +151,23 @@ public:
 
     void createDefaultProject();
 
+    // Wire the engine's PluginManager so addFxSlot can resolve plugin formats.
+    // Pass nullptr to clear. The pointer is not owned.
+    void setPluginManager(HDAW::PluginManager* pm) { pluginManager_ = pm; }
+
+    // Add a new FX slot to a track. `type` is the FX type
+    // ("eq"/"compressor"/"reverb"/"delay") or "plugin". `pluginID` is required
+    // when type == "plugin" and is used to look up the plugin's format via the
+    // project's PluginManager. `pos` < 0 means append. Returns the new slot
+    // index, or -1 on error.
+    int addFxSlot(int trackIdx, const std::string& type, int pos = -1,
+                  const std::string& pluginID = {});
+
+    // Look up the format for a plugin ID via the project's PluginManager.
+    // Returns the matching pluginFormatName, or an empty string if the manager
+    // is unset or the plugin is not in the cache.
+    std::string resolvePluginFormat(const std::string& pluginID) const;
+
 private:
     void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) override { dirty = true; }
     void valueTreeChildAdded(juce::ValueTree&, juce::ValueTree&) override { dirty = true; }
@@ -160,4 +180,5 @@ private:
     juce::ValueTree projectTree;
     juce::UndoManager undoManager;
     bool dirty = false;
+    HDAW::PluginManager* pluginManager_ = nullptr;
 };
