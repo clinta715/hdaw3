@@ -11,6 +11,9 @@
 #include <QList>
 #include <juce_core/juce_core.h>
 #include "../engine/AudioEngine.h"
+#include "../mcp/McpTransportHttp.h"
+
+namespace mcp { class McpServer; }
 
 class TimelineView;
 class MixerWidget;
@@ -66,6 +69,9 @@ private:
     void onMetronomeToggled(bool enabled);
     void onToggleBrowserPanel();
 
+    void startMcpHttpServer();
+    void stopMcpHttpServer();
+
     void updateTimecode();
     void pumpJuceMessages();
 
@@ -99,4 +105,8 @@ private:
     int selectedTrack = -1;
 
     QMenu* recentProjectsMenu = nullptr;
+
+    mcp::McpServer* mcpServer_ = nullptr;
+    mcp::TransportHttp* mcpHttp_ = nullptr;
+    QAction* mcpHttpAction = nullptr;
 };

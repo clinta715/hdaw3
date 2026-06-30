@@ -16,6 +16,8 @@
 #include "PluginScannerDialog.h"
 #include "PreferencesDialog.h"
 #include "DebugLog.h"
+#include "../mcp/McpServer.h"
+#include "../mcp/McpTools.h"
 #include <QStatusBar>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -39,6 +41,11 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 {
     setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
     resize(1200, 800);
+
+    mcpServer_ = new mcp::McpServer(this);
+    mcpServer_->setEngine(&engine);
+    mcp::registerAllTools(*mcpServer_);
+
     setupLayout();
     setupMenuBar();
 
@@ -235,6 +242,23 @@ void MainWindow::setupMenuBar()
         dialog.exec();
     });
 
+    toolsMenu->addSeparator();
+
+    mcpHttpAction = toolsMenu->addAction(tr("&MCP HTTP Server"));
+    mcpHttpAction->setCheckable(true);
+    {
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        mcpHttpAction->setChecked(settings.value("mcp/httpEnabled", false).toBool());
+    }
+    connect(mcpHttpAction, &QAction::toggled, this, [this](bool on) {
+        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        settings.setValue("mcp/httpEnabled", on);
+        if (on) startMcpHttpServer();
+        else    stopMcpHttpServer();
+    });
+
+    if (mcpHttpAction->isChecked()) startMcpHttpServer();
+
     // ── Help ──
     auto* helpMenu = menuBar()->addMenu(tr("&Help"));
 
@@ -257,6 +281,29 @@ void MainWindow::setupMenuBar()
             timelineView->getInteraction()->setDefaultClipDuration(clipDur);
         }
     });
+}
+
+void MainWindow::startMcpHttpServer()
+{
+    if (mcpHttp_ != nullptr) return;
+    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    quint16 port = static_cast<quint16>(settings.value("mcp/httpPort", 8765).toInt());
+    mcpHttp_ = new mcp::TransportHttp(port);
+    mcpHttp_->start(mcpServer_);
+    if (mcpHttpAction != nullptr && !mcpHttpAction->isChecked())
+        mcpHttpAction->setChecked(true);
+    statusBar()->showMessage(QString("MCP HTTP server listening on 127.0.0.1:%1").arg(port), 5000);
+}
+
+void MainWindow::stopMcpHttpServer()
+{
+    if (mcpHttp_ == nullptr) return;
+    mcpHttp_->stop();
+    delete mcpHttp_;
+    mcpHttp_ = nullptr;
+    if (mcpHttpAction != nullptr && mcpHttpAction->isChecked())
+        mcpHttpAction->setChecked(false);
+    statusBar()->showMessage("MCP HTTP server stopped", 3000);
 }
 
 void MainWindow::setupLayout()
