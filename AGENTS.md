@@ -173,6 +173,15 @@ dropouts, xruns, and hard-to-reproduce crashes.
 | MCP tool record (name, description, inputSchema, handler) | `src/mcp/McpToolDef.h` | `mcp::McpToolDef` / `mcp::McpToolResult` / `mcp::McpHandler` |
 | MCP tool registrations (per-domain: read/transport/track/clip/note/composition/automation/fx) | `src/mcp/McpTools.{h,cpp}` | `mcp::registerAllTools(McpServer&)` |
 | MCP export tool (extracted from McpTools) | `src/mcp/McpExportTool.{h,cpp}` | `mcp::registerExportTool(McpServer&)` |
+| Plugin isolation: shared types | `src/proxy/ProxyCommon.h` | `proxy::MessageType`, `ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent` |
+| Plugin isolation: SPSC ring buffer | `src/proxy/ProxyRingBuffer.h` | `proxy::RingBuffer<T>` |
+| Plugin isolation: named pipe | `src/proxy/ProxyPipe.h` | `proxy::PipeServer`, `proxy::PipeClient` |
+| Plugin isolation: shared memory | `src/proxy/ProxySharedMemory.h` | `proxy::ShmRegion` |
+| Plugin isolation: process manager | `src/proxy/ProxyProcessManager.h` | `proxy::ProxyProcessManager` |
+| Plugin isolation: proxy slot | `src/proxy/PluginProxySlot.h` | `proxy::PluginProxySlot` |
+| Plugin isolation: proxy editor | `src/proxy/ProxyEditor.h` | `proxy::ProxyEditor` |
+| Plugin isolation: crash dialog | `src/proxy/CrashDialog.h` | `proxy::CrashDialog` |
+| Plugin isolation: child process | `src/proxy/host/PluginHost.h` | `PluginHost` |
 
 ## Testing
 
@@ -906,3 +915,44 @@ helpers, optimizations, and structural refactors.
   preloaded buffers. Acceptable for a desktop DAW at this scale;
   a background-streaming ring buffer is the documented v0.4
   follow-up.
+
+## Plugin Process Isolation (v0.4 candidate)
+
+VST3/CLAP plugins run in a separate child process so crashes don't
+take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
+
+**Architecture:**
+- `hdaw_plugin_host.exe` — child process that loads and runs a
+  single plugin. Entry: `src/proxy/host/main.cpp`.
+- `PluginHost` — loads plugin via JUCE `AudioPluginFormatManager`,
+  runs control loop (pipe listener) and audio loop (shared-memory
+  ring buffer reader/writer).
+- `ProxyProcessManager` — DAW-side process lifecycle. Spawns,
+  monitors, kills child processes. Heartbeat monitoring with
+  `checkAllChildren()`.
+- `PluginProxySlot` — `juce::AudioPluginInstance` wrapper. The rest
+  of the engine sees a normal plugin. `processBlock` writes to shared
+  memory ring, reads output ring.
+- `ProxyEditor` — lightweight UI card (plugin name, bypass, open
+  editor, crash-restart button).
+- `CrashDialog` — Qt dialog shown on crash. Offers restart.
+
+**IPC Protocol:**
+- **Control pipe:** Named pipe (`\\.\pipe\hdaw_plugin_N`). Fixed
+  256-byte `ProxyMessage`/`ProxyResponse` structs. No heap
+  allocation.
+- **Audio:** Shared-memory SPSC ring buffers. `ShmHeader` has
+  atomic read/write positions for input, output, MIDI rings.
+- **Health:** `childAlive`/`dawAlive` atomics in `ShmHeader`.
+  Heartbeat every 500ms. Stale threshold: 2s.
+
+**Shared types:** `src/proxy/ProxyCommon.h` — `MessageType`,
+`ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent`.
+
+**Build flag:** `-DHDAW_PLUGIN_ISOLATION=ON` (default OFF). Guards
+`ProxyProcessManager`, `PluginProxySlot`, `ProxyEditor`, and the
+`hdaw_plugin_host` target. Zero overhead when disabled.
+
+**Spec / plan:**
+- `docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
+- `docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md`
