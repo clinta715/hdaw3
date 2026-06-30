@@ -55,6 +55,8 @@ private:
     void showEvent(QShowEvent* event) override;
     void handleFileDrop(const QString& filePath, QPointF scenePos);
     void handleContextMenu(QContextMenuEvent* event);
+    void handleClipContextMenu(ClipItem* clip, const QPoint& globalPos);
+    void handleEmptyAreaContextMenu(const QPointF& scenePos, const QPoint& globalPos);
     void handleKeyPress(QKeyEvent* event);
     void handleDrop(QDropEvent* event);
 

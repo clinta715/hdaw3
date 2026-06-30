@@ -74,8 +74,8 @@ private:
     void addFXToTrack(int trackIndex, const juce::String& type);
     void addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat);
     void layoutRects();
-    void buildEmptyAreaMenu(QMenu& menu, QContextMenuEvent* event);
-    void buildTrackMenu(QMenu& menu, int trackIdx, QContextMenuEvent* event);
+    void buildEmptyAreaMenu(const QPoint& globalPos);
+    void buildTrackMenu(int trackIdx, const QPoint& globalPos);
 
     AudioEngine& engine;
     QTimer vuTimer;
