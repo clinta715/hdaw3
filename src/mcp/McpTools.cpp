@@ -1,4 +1,5 @@
 #include "McpTools.h"
+#include "McpExportTool.h"
 #include "McpServer.h"
 #include "McpJsonRpc.h"
 #include "McpToolDef.h"
@@ -35,28 +36,63 @@ static QJsonObject objSchema(const QJsonObject& props, const QJsonArray& require
     return s;
 }
 
-void registerAllTools(McpServer& s) {
-    auto* e = s.engine();
-    if (!e) return;
+static juce::ValueTree findClip(AudioEngine* e, int clipId, int* outTrackIdx)
+{
+    auto tl = e->getProjectModel().getTrackListTree();
+    for (int i = 0; i < tl.getNumChildren(); ++i) {
+        auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+        for (int j = 0; j < cl.getNumChildren(); ++j) {
+            auto c = cl.getChild(j);
+            if (static_cast<int>(c.getProperty(IDs::clipID)) == clipId) {
+                if (outTrackIdx) *outTrackIdx = i;
+                return c;
+            }
+        }
+    }
+    return {};
+}
 
-    // --- Clips ---
-    auto findClip = [&](int clipId, int* outTrackIdx) -> juce::ValueTree {
-        auto tl = e->getProjectModel().getTrackListTree();
-        for (int i = 0; i < tl.getNumChildren(); ++i) {
-            auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
-            for (int j = 0; j < cl.getNumChildren(); ++j) {
-                auto c = cl.getChild(j);
-                if (static_cast<int>(c.getProperty(IDs::clipID)) == clipId) {
-                    if (outTrackIdx) *outTrackIdx = i;
-                    return c;
+static juce::ValueTree findNote(AudioEngine* e, int noteId, int* outClipId)
+{
+    auto tl = e->getProjectModel().getTrackListTree();
+    for (int i = 0; i < tl.getNumChildren(); ++i) {
+        auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+        for (int j = 0; j < cl.getNumChildren(); ++j) {
+            auto nl = cl.getChild(j).getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid()) continue;
+            for (int k = 0; k < nl.getNumChildren(); ++k) {
+                auto n = nl.getChild(k);
+                if (static_cast<int>(n.getProperty(IDs::noteID)) == noteId) {
+                    if (outClipId) *outClipId = static_cast<int>(cl.getChild(j).getProperty(IDs::clipID));
+                    return n;
                 }
             }
         }
-        return {};
-    };
+    }
+    return {};
+}
 
-    // --- Read / inspector tools ---
+static juce::ValueTree findLane(AudioEngine* e, int trackId, const QJsonValue& ref)
+{
+    auto tl = e->getProjectModel().getTrackListTree();
+    if (trackId < 0 || trackId >= tl.getNumChildren()) return {};
+    auto al = tl.getChild(trackId).getChildWithName(IDs::AUTOMATION_LIST);
+    if (ref.isDouble()) {
+        int pid = ref.toInt();
+        for (int i = 0; i < al.getNumChildren(); ++i)
+            if (static_cast<int>(al.getChild(i).getProperty(IDs::paramID)) == pid) return al.getChild(i);
+    } else if (ref.isString()) {
+        QString n = ref.toString();
+        for (int i = 0; i < al.getNumChildren(); ++i)
+            if (al.getChild(i).getProperty(IDs::name).toString() == juce::String(n.toUtf8().constData())) return al.getChild(i);
+    }
+    return {};
+}
 
+// --- Read / inspector tools ---
+
+static void registerReadTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"get_project_summary",
         "Return project name, tempo, track/clip counts, transport state.",
         QJsonObject{{"type","object"}},
@@ -239,8 +275,12 @@ void registerAllTools(McpServer& s) {
                 .arg(arr.size())
                 .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
         }});
+}
 
-    // --- Transport ---
+// --- Transport + Undo ---
+
+static void registerTransportTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"transport",
         "Control transport: action in {play,stop,pause,rewind,toggleLoop}; optional loopStart/loopEnd (seconds).",
         objSchema({{"action", QJsonObject{{"type","string"},
@@ -272,7 +312,6 @@ void registerAllTools(McpServer& s) {
             return McpToolResult::text("ok");
         }});
 
-    // --- Undo ---
     s.registerTool({"undo", "Undo the last N actions (default 1).",
         objSchema({{"count", QJsonObject{{"type","integer"}}}}),
         [e](const QJsonObject& a) {
@@ -290,8 +329,12 @@ void registerAllTools(McpServer& s) {
             for (int i = 0; i < n; ++i) if (!um.redo()) break;
             return McpToolResult::text("ok");
         }});
+}
 
-    // --- Tracks ---
+// --- Tracks ---
+
+static void registerTrackTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"add_track",
         "Add a track. Color defaults to the next palette color if omitted.",
         objSchema({{"name", QJsonObject{{"type","string"}}},
@@ -371,8 +414,12 @@ void registerAllTools(McpServer& s) {
             tl.addChild(t, ni, &um);
             return McpToolResult::text("ok");
         }});
+}
 
-    // --- Clips ---
+// --- Clips ---
+
+static void registerClipTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"add_midi_clip", "Add an empty MIDI clip to a track.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"start",   QJsonObject{{"type","number"}}},
@@ -418,8 +465,8 @@ void registerAllTools(McpServer& s) {
     s.registerTool({"remove_clip", "Remove a clip (destructive).",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                   {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             QString name = jstr(c.getProperty(IDs::name).toString());
             if (a.value("dryRun").toBool(false))
@@ -433,8 +480,8 @@ void registerAllTools(McpServer& s) {
         objSchema({{"clipId",  QJsonObject{{"type","integer"}}},
                   {"start",   QJsonObject{{"type","number"}}},
                   {"trackId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             if (a.contains("start")) c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
@@ -458,8 +505,8 @@ void registerAllTools(McpServer& s) {
                   {"fadeIn",    QJsonObject{{"type","number"}}},
                   {"fadeOut",   QJsonObject{{"type","number"}}},
                   {"looping",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             if (a.contains("name"))     c.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
@@ -477,8 +524,8 @@ void registerAllTools(McpServer& s) {
                   {"start",    QJsonObject{{"type","number"}}},
                   {"trackId",  QJsonObject{{"type","integer"}}},
                   {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto src = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto src = findClip(e, a.value("clipId").toInt(), &ti);
             if (!src.isValid()) return McpToolResult::text("clip not found", true);
             int nti = a.contains("trackId") ? a.value("trackId").toInt() : ti;
             double ns = a.contains("start") ? a.value("start").toDouble()
@@ -497,27 +544,12 @@ void registerAllTools(McpServer& s) {
             tl.getChild(nti).getChildWithName(IDs::CLIP_LIST).addChild(copy, -1, &um);
             return McpToolResult::text(QString("clipId=%1").arg(newId));
         }});
+}
 
-    // --- Notes ---
-    auto findNote = [&](int noteId, int* outClipId) -> juce::ValueTree {
-        auto tl = e->getProjectModel().getTrackListTree();
-        for (int i = 0; i < tl.getNumChildren(); ++i) {
-            auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
-            for (int j = 0; j < cl.getNumChildren(); ++j) {
-                auto nl = cl.getChild(j).getChildWithName(IDs::MIDI_NOTE_LIST);
-                if (!nl.isValid()) continue;
-                for (int k = 0; k < nl.getNumChildren(); ++k) {
-                    auto n = nl.getChild(k);
-                    if (static_cast<int>(n.getProperty(IDs::noteID)) == noteId) {
-                        if (outClipId) *outClipId = static_cast<int>(cl.getChild(j).getProperty(IDs::clipID));
-                        return n;
-                    }
-                }
-            }
-        }
-        return {};
-    };
+// --- Notes ---
 
+static void registerNoteTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"add_note", "Add a MIDI note to a clip; returns noteId.",
         objSchema({{"clipId",    QJsonObject{{"type","integer"}}},
                   {"pitch",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
@@ -525,8 +557,8 @@ void registerAllTools(McpServer& s) {
                   {"duration",  QJsonObject{{"type","number"}}},
                   {"velocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
                  {"clipId","pitch","start","duration","velocity"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
                 return McpToolResult::text("clip is not MIDI", true);
@@ -550,8 +582,8 @@ void registerAllTools(McpServer& s) {
                   {"start",    QJsonObject{{"type","number"}}},
                   {"duration", QJsonObject{{"type","number"}}},
                   {"velocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}}, {"noteId"}),
-        [e, &findNote](const QJsonObject& a) -> McpToolResult {
-            int dummy = 0; auto n = findNote(a.value("noteId").toInt(), &dummy);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             if (a.contains("pitch"))    n.setProperty(IDs::noteNumber, a.value("pitch").toInt(), &um);
@@ -570,8 +602,8 @@ void registerAllTools(McpServer& s) {
                   {"noteIds",  QJsonObject{{"type","array"},
                       {"items", QJsonObject{{"type","integer"}}}}},
                   {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
             if (!nl.isValid()) return McpToolResult::text("ok");
@@ -604,8 +636,8 @@ void registerAllTools(McpServer& s) {
     s.registerTool({"clear_notes", "Remove all notes from a MIDI clip (destructive).",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                   {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
-        [e, &findClip](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(a.value("clipId").toInt(), &ti);
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
             int n = nl.isValid() ? nl.getNumChildren() : 0;
@@ -614,8 +646,12 @@ void registerAllTools(McpServer& s) {
             if (nl.isValid()) c.removeChild(nl, &e->getProjectModel().getUndoManager());
             return McpToolResult::text(QString("cleared %1 notes").arg(n));
         }});
+}
 
-    // --- Composition (PhraseGenerator) ---
+// --- Composition (PhraseGenerator) ---
+
+static void registerCompositionTools(McpServer& s, AudioEngine* e)
+{
     static const std::pair<const char*, PhraseGenerator::Style> kStyleMap[] = {
         {"Standard",   PhraseGenerator::Standard},
         {"Arpeggio",   PhraseGenerator::Arpeggio},
@@ -720,24 +756,12 @@ void registerAllTools(McpServer& s) {
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0), total, notes);
         }});
+}
 
-    // --- Automation ---
-    auto findLane = [&](int trackId, const QJsonValue& ref) -> juce::ValueTree {
-        auto tl = e->getProjectModel().getTrackListTree();
-        if (trackId < 0 || trackId >= tl.getNumChildren()) return {};
-        auto al = tl.getChild(trackId).getChildWithName(IDs::AUTOMATION_LIST);
-        if (ref.isDouble()) {
-            int pid = ref.toInt();
-            for (int i = 0; i < al.getNumChildren(); ++i)
-                if (static_cast<int>(al.getChild(i).getProperty(IDs::paramID)) == pid) return al.getChild(i);
-        } else if (ref.isString()) {
-            QString n = ref.toString();
-            for (int i = 0; i < al.getNumChildren(); ++i)
-                if (al.getChild(i).getProperty(IDs::name).toString() == juce::String(n.toUtf8().constData())) return al.getChild(i);
-        }
-        return {};
-    };
+// --- Automation ---
 
+static void registerAutomationTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"add_automation_point", "Add a point to an automation lane (paramID integer preferred; name accepted).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
@@ -745,8 +769,8 @@ void registerAllTools(McpServer& s) {
                       QJsonObject{{"type","string"}}}}}},
                   {"time",   QJsonObject{{"type","number"}}},
                   {"value",  QJsonObject{{"type","number"}}}}, {"trackId","lane","time","value"}),
-        [e, &findLane](const QJsonObject& a) -> McpToolResult {
-            auto lane = findLane(a.value("trackId").toInt(), a.value("lane"));
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             auto pl = lane.getChildWithName(IDs::POINT_LIST);
@@ -764,15 +788,19 @@ void registerAllTools(McpServer& s) {
                       QJsonObject{{"type","integer"}},
                       QJsonObject{{"type","string"}}}}}},
                   {"enabled",QJsonObject{{"type","boolean"}}}}, {"trackId","lane","enabled"}),
-        [e, &findLane](const QJsonObject& a) -> McpToolResult {
-            auto lane = findLane(a.value("trackId").toInt(), a.value("lane"));
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             lane.setProperty(IDs::automationEnabled, a.value("enabled").toBool(),
                              &e->getProjectModel().getUndoManager());
             return McpToolResult::text("ok");
         }});
+}
 
-    // --- FX ---
+// --- FX ---
+
+static void registerFxTools(McpServer& s, AudioEngine* e)
+{
     s.registerTool({"add_fx",
         "Add an FX slot. fxType in {eq,compressor,reverb,delay}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
@@ -817,177 +845,22 @@ void registerAllTools(McpServer& s) {
             tr->setFXBypassed(a.value("slotIndex").toInt(), a.value("bypassed").toBool());
             return McpToolResult::text("ok");
         }});
+}
 
-    // --- Export ---
-    s.registerTool({"export_audio",
-        "Render the project to an audio file (wav/aiff/flac). The render runs on the ExportManager's internal worker thread; the tool handler blocks until completion but does no heavy CPU itself. Cooperative cancellation: a notifications/cancelled received before the export starts skips it entirely; a notifications/cancelled received while the export is running will be picked up at the next progress tick (the render thread checks the cancel flag via the onProgress callback and aborts the render). Progress is reported via notifications/progress (0.0, 0.25, 0.5, 0.75, 1.0).",
-        objSchema({{"outputPath", QJsonObject{{"type","string"}}},
-                  {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav","aiff","flac"}}}},
-                  {"start",      QJsonObject{{"type","number"}}},
-                  {"end",        QJsonObject{{"type","number"}}},
-                  {"sampleRate", QJsonObject{{"type","number"},{"minimum",8000},{"maximum",192000}}},
-                  {"bitDepth",   QJsonObject{{"type","integer"},{"enum", QJsonArray{16,24,32}}}},
-                  {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
-                  {"dryRun",     QJsonObject{{"type","boolean"}}}},
-                 {"outputPath"}),
-        [e, &s](const QJsonObject& a) -> McpToolResult {
-            QString path = a.value("outputPath").toString();
-            if (path.isEmpty()) return McpToolResult::text("outputPath required", true);
+// --- Aggregator ---
 
-            // dry-run: return a plan describing what would happen.
-            if (a.value("dryRun").toBool(false))
-                return McpToolResult::text(QString("would export to %1").arg(path));
-
-            // Cancel-checked start: if the cancel flag is already set, skip
-            // the export entirely. The MCP server sets this from
-            // notifications/cancelled.
-            if (s.isCancelRequested()) {
-                s.resetCancelFlag();
-                return McpToolResult::text("export cancelled (flag was already set)", true);
-            }
-
-            // Map format string to ExportManager::Format.
-            QString formatStr = a.value("format").toString("wav").toLower();
-            HDAW::ExportManager::Format fmt = HDAW::ExportManager::WAV;
-            if      (formatStr == "aiff") fmt = HDAW::ExportManager::AIFF;
-            else if (formatStr == "flac") fmt = HDAW::ExportManager::FLAC;
-            else if (formatStr != "wav")  fmt = HDAW::ExportManager::WAV;
-
-            double sampleRate = a.value("sampleRate").toDouble(48000.0);
-            int bitDepth = a.value("bitDepth").toInt(24);
-
-            // Compute range: defaults to [0, project duration + tail].
-            double startTime = a.value("start").toDouble(0.0);
-            double endTime = a.value("end").toDouble(-1.0);
-            if (endTime <= 0.0)
-                endTime = HDAW::ExportManager::calculateProjectDuration(e->getProjectModel());
-
-            juce::File outFile(juce::String(path.toUtf8().constData()));
-            if (outFile.existsAsFile()) outFile.deleteFile();
-            double duration = std::max(0.001, endTime - startTime);
-
-            // Resolve the project tree and the format/plugin managers from the
-            // engine. ExportManager.startExport takes a non-const ValueTree
-            // reference; we work on a copy so the original stays immutable.
-            auto& em = e->getMainProcessor()->getExportManager();
-            if (em.isExporting()) {
-                return McpToolResult::text("export already in progress", true);
-            }
-
-            juce::ValueTree projectCopy = e->getProjectModel().getTree().createCopy();
-            auto& formatManager = e->getProjectPool().getFormatManager();
-            auto* pluginManager = &e->getPluginManager();
-
-            // Wire progress notifications: ExportManager fires onProgress on
-            // its internal thread, so we hop to the main thread via a queued
-            // invokeMethod. We also use this callback as a backstop to detect
-            // an in-flight cancel and trigger ExportManager::cancel() — the
-            // cancel-watcher thread below is the primary path, but the
-            // onProgress tick guarantees we catch the cancel at least every
-            // render block (~12ms at 44.1kHz / 512 samples).
-            auto* serverPtr = &s;
-            em.onProgress = [serverPtr, &em](float prog) {
-                if (serverPtr->isCancelRequested()) {
-                    // Cooperative cancel: tell ExportManager to stop after
-                    // the current block. The cancel flag is set by the
-                    // notifications/cancelled handler running on the main
-                    // thread. Because the main thread is currently blocked in
-                    // the tool handler, the flag may not be observable until
-                    // the export completes; this is a documented v1.1
-                    // limitation (the cancel-watcher thread is a
-                    // best-effort, main-thread-independent path).
-                    em.cancel();
-                }
-                QJsonObject params{
-                    {"progress", static_cast<double>(prog)},
-                    {"message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0))}
-                };
-                McpNotification n{"notifications/progress", params};
-                QString line = serializeNotification(n);
-                QMetaObject::invokeMethod(serverPtr, "notifyFromBackground",
-                    Qt::QueuedConnection, Q_ARG(QString, line));
-            };
-
-            // Wait for completion via a promise. The promise is set on
-            // ExportManager's thread; the main thread (tool handler) blocks
-            // on the future.
-            auto donePromise = std::make_shared<std::promise<std::pair<bool, QString>>>();
-            auto doneFuture = donePromise->get_future();
-            em.onComplete = [donePromise](bool success, const juce::String& message) {
-                donePromise->set_value({success, QString::fromUtf8(message.toRawUTF8())});
-            };
-
-            // Cancel-watcher: a small polling thread that watches the MCP
-            // server's cancel flag and tells ExportManager to abort. This is
-            // the only way to break out of a render that is in progress when
-            // the main thread is blocked in the tool handler.
-            std::atomic<bool> stopWatcher{false};
-            std::thread cancelWatcher;
-            cancelWatcher = std::thread([serverPtr, &em, &stopWatcher]() {
-                while (!stopWatcher.load(std::memory_order_relaxed)) {
-                    if (serverPtr->isCancelRequested()) {
-                        em.cancel();
-                        break;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                }
-            });
-
-            // Kick off the export on ExportManager's internal worker thread.
-            if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
-                                sampleRate, startTime, duration, fmt, bitDepth)) {
-                stopWatcher.store(true);
-                if (cancelWatcher.joinable()) cancelWatcher.join();
-                em.onProgress = nullptr;
-                em.onComplete = nullptr;
-                return McpToolResult::text("failed to start export", true);
-            }
-
-            // Initial progress: 0.0 (kick-off). Sent synchronously on the
-            // main thread is fine — it's just one notification.
-            {
-                QJsonObject params{{"progress", 0.0},{"message","starting render"}};
-                McpNotification n{"notifications/progress", params};
-                s.notifyFromBackground(serializeNotification(n));
-            }
-
-            // Block on the export. The future will be set by ExportManager's
-            // worker thread when the render finishes (or is cancelled).
-            auto [success, message] = doneFuture.get();
-
-            // Stop the cancel-watcher and join.
-            stopWatcher.store(true);
-            if (cancelWatcher.joinable()) cancelWatcher.join();
-
-            // Final progress notification: 1.0 on success, or the actual
-            // fraction reached on cancel. Sent via notifyFromBackground so it
-            // is enqueued on the main thread (it will be delivered after the
-            // current tool call returns, since the main thread is currently
-            // executing this handler).
-            {
-                QJsonObject params{
-                    {"progress", success ? 1.0 : 0.0},
-                    {"message", message}
-                };
-                McpNotification n{"notifications/progress", params};
-                s.notifyFromBackground(serializeNotification(n));
-            }
-
-            em.onProgress = nullptr;
-            em.onComplete = nullptr;
-
-            // Clear the cancel flag so the next export can run.
-            s.resetCancelFlag();
-
-            if (!success) {
-                QString reply = message.contains("cancel", Qt::CaseInsensitive)
-                    ? QString("export cancelled: %1").arg(message)
-                    : QString("export failed: %1").arg(message);
-                return McpToolResult::text(reply, true);
-            }
-            return McpToolResult::text(QString("exported to %1 (%2)")
-                .arg(path).arg(message));
-        }});
+void registerAllTools(McpServer& s) {
+    auto* e = s.engine();
+    if (!e) return;
+    registerReadTools(s, e);
+    registerTransportTools(s, e);
+    registerTrackTools(s, e);
+    registerClipTools(s, e);
+    registerNoteTools(s, e);
+    registerCompositionTools(s, e);
+    registerAutomationTools(s, e);
+    registerFxTools(s, e);
+    registerExportTool(s);
 }
 
 } // namespace mcp
