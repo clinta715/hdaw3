@@ -466,12 +466,14 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     }
     else if (type == 4) // Volume drag
     {
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust volume");
         dragTrack = trackIdx;
         dragStart = event->pos();
         dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::volume));
     }
     else if (type == 5) // Pan drag
     {
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust pan");
         dragTrack = trackIdx;
         dragStart = event->pos();
         dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::pan));

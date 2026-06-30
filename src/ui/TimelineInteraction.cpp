@@ -53,6 +53,9 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
 
     if (clip != nullptr)
     {
+        if (undoManager)
+            undoManager->beginNewTransaction("Edit clip");
+
         double pps = clip->getPixelsPerSecond();
         double dur = clip->getDuration();
         double clipW = dur * pps;
