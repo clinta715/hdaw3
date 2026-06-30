@@ -179,6 +179,41 @@ bool ProxyProcessManager::checkHealth(uint32_t slotId, uint32_t staleThresholdMs
     return elapsedMs < staleThresholdMs;
 }
 
+void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
+    std::vector<uint32_t> crashedSlots;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& [id, info] : children) {
+            if (info.processHandle == INVALID_HANDLE_VALUE) continue;
+
+            DWORD exitCode = 0;
+            if (!GetExitCodeProcess(info.processHandle, &exitCode)) {
+                crashedSlots.push_back(id);
+                continue;
+            }
+            if (exitCode != STILL_ACTIVE) {
+                info.alive.store(false);
+                crashedSlots.push_back(id);
+                continue;
+            }
+
+            auto now = static_cast<uint32_t>(
+                std::chrono::steady_clock::now().time_since_epoch().count());
+            auto last = info.lastHeartbeat.load();
+            auto elapsed = (now > last) ? (now - last) : 0;
+            auto elapsedMs = elapsed / 1000;
+
+            if (elapsedMs > staleThresholdMs) {
+                crashedSlots.push_back(id);
+            }
+        }
+    }
+
+    for (auto id : crashedSlots) {
+        if (crashCallback) crashCallback(id);
+    }
+}
+
 std::string ProxyProcessManager::getHostExePath() {
     char buf[MAX_PATH]{};
     GetModuleFileNameA(nullptr, buf, MAX_PATH);

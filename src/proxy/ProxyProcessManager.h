@@ -8,6 +8,7 @@
 #include <atomic>
 #include <mutex>
 #include <memory>
+#include <functional>
 
 namespace proxy {
 
@@ -49,6 +50,8 @@ struct ChildInfo {
     ChildInfo& operator=(const ChildInfo&) = delete;
 };
 
+using CrashCallback = std::function<void(uint32_t slotId)>;
+
 class ProxyProcessManager {
 public:
     ProxyProcessManager();
@@ -69,6 +72,9 @@ public:
     bool sendHeartbeat(uint32_t slotId);
     bool checkHealth(uint32_t slotId, uint32_t staleThresholdMs = 2000);
 
+    void setCrashCallback(CrashCallback cb) { crashCallback = std::move(cb); }
+    void checkAllChildren(uint32_t staleThresholdMs = 2000);
+
     static std::string getHostExePath();
 
 private:
@@ -77,6 +83,7 @@ private:
 
     std::unordered_map<uint32_t, ChildInfo> children;
     mutable std::mutex mutex;
+    CrashCallback crashCallback;
 };
 
 } // namespace proxy

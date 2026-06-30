@@ -157,6 +157,37 @@ bool PluginProxySlot::hasEditor() const {
 
 void PluginProxySlot::onChildCrashed() {
     crashed.store(true);
+    saveStateToTemp();
+}
+
+void PluginProxySlot::saveStateToTemp() {
+    juce::MemoryBlock block;
+    getStateInformation(block);
+    if (block.getSize() == 0) return;
+
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" +
+        juce::String(static_cast<int>(slotId)) + ".bin");
+    file.getParentDirectory().createDirectory();
+    file.replaceWithData(block.getData(), block.getSize());
+}
+
+bool PluginProxySlot::restoreStateFromTemp() {
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" +
+        juce::String(static_cast<int>(slotId)) + ".bin");
+
+    juce::FileInputStream stream(file);
+    if (stream.failedToIntOpen()) return false;
+
+    juce::MemoryBlock block(stream.getTotalLength());
+    stream.read(block.getData(), block.getSize());
+
+    if (block.getSize() > 0) {
+        setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+        return true;
+    }
+    return false;
 }
 
 } // namespace proxy
