@@ -8,7 +8,7 @@ namespace mcp {
 class TransportLoopback : public Transport {
 public:
     TransportLoopback();
-    void start(McpServer* server) override;
+    bool start(McpServer* server) override;
     void stop() override;
     void send(const QByteArray& jsonLine) override;
     void notify(const QByteArray& jsonLine) override;

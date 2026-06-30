@@ -22,7 +22,7 @@ namespace {
 // A minimal Transport that records every send() call.
 class CaptureTransport : public Transport {
 public:
-    void start(McpServer*) override {}
+    bool start(McpServer*) override { return true; }
     void stop() override {}
     void send(const QByteArray& line) override {
         QMutexLocker lk(&mtx_); sent_ += line; sent_ += '\n';

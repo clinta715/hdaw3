@@ -9,7 +9,7 @@ class TransportStdio : public Transport {
 public:
     TransportStdio();
     ~TransportStdio() override;
-    void start(McpServer* server) override;
+    bool start(McpServer* server) override;
     void stop() override;
     void send(const QByteArray& jsonLine) override;
     void notify(const QByteArray& jsonLine) override;

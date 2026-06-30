@@ -17,6 +17,16 @@ namespace mcp {
 class McpServer : public QObject {
     Q_OBJECT
 public:
+    // Centralized dispatch result. One call to dispatchRequest covers all
+    // entry points: the stdio/HTTP transports, the test thread helper, and
+    // the GUI's queued request handler.
+    struct DispatchResult {
+        bool isNotification = false;   // true → no response, caller returns nothing
+        bool isError = false;          // true → JSON-RPC error
+        QJsonValue payload;            // on !isError: bare tool/initialize/ping result
+                                       // on isError: {code, message} object
+    };
+
     explicit McpServer(QObject* parent = nullptr);
     ~McpServer() override;
 
@@ -37,6 +47,12 @@ public:
     QString serverName()    const { return "hdaw"; }
     QString serverVersion() const { return "0.3.0"; }
     QString protocolVersion() const { return "2024-11-05"; }
+
+    // Pure dispatch: routes (id, method, params) to the right handler and
+    // returns a normalized result. Public so the HTTP transport can call
+    // it directly (the QHttpServer handler runs on the main thread, which
+    // is the same thread McpServer lives on — no queueing needed).
+    DispatchResult dispatchRequest(const QJsonValue& id, const QString& method, const QJsonValue& params);
 
 public slots:
     void handleRequest(QJsonValue id, QString method, QJsonValue params);

@@ -21,30 +21,52 @@ void McpServer::notifyFromBackground(const QString& jsonLine) {
 }
 
 void McpServer::handleRequest(QJsonValue id, QString method, QJsonValue params) {
-    // Notifications (id is null) do not get a response per JSON-RPC 2.0.
-    bool isNotification = id.isNull();
-    QJsonValue err;
-    QJsonValue result = handleMethod(method, params, &err);
-    if (isNotification) return;
-    if (err.isObject()) {
-        int code = err.toObject().value("code").toInt(err::InternalError);
-        sendError(id, code, err.toObject().value("message").toString());
+    auto r = dispatchRequest(id, method, params);
+    if (r.isNotification) return;
+    if (r.isError) {
+        int code = r.payload.toObject().value("code").toInt(err::InternalError);
+        sendError(id, code, r.payload.toObject().value("message").toString());
     } else {
-        sendResponse(id, result);
+        sendResponse(id, r.payload);
     }
 }
 
 QJsonValue McpServer::handleRequestOnTestThread(QJsonValue id, QString method, QJsonValue params) {
-    // Notifications have no response — just dispatch and return an empty value.
-    bool isNotification = id.isNull();
-    QJsonValue err;
-    QJsonValue result = handleMethod(method, params, &err);
-    if (isNotification) return {};
-    if (err.isObject()) {
+    auto r = dispatchRequest(id, method, params);
+    if (r.isNotification) return {};
+    if (r.isError) {
         return QJsonObject{{"isError", true},
-                           {"error", err.toObject()}};
+                           {"error", r.payload.toObject()}};
     }
-    return result;
+    // Preserve the bare-result contract that the existing tool-registry
+    // and dry-run tests depend on (they read .toObject().value("isError")
+    // and .value("content") directly off the return value).
+    return r.payload;
+}
+
+McpServer::DispatchResult McpServer::dispatchRequest(const QJsonValue& id, const QString& method, const QJsonValue& params) {
+    DispatchResult r;
+    bool isNotification = id.isNull();
+    r.isNotification = isNotification;
+    if (isNotification) {
+        // For notifications, still dispatch side-effects (e.g.
+        // notifications/cancelled sets the cancel flag) but produce no
+        // response. The error out param is intentionally ignored.
+        QJsonValue ignoredErr;
+        handleMethod(method, params, &ignoredErr);
+        return r;
+    }
+    QJsonValue err;
+    auto result = handleMethod(method, params, &err);
+    if (err.isObject()) {
+        r.isError = true;
+        r.payload = err;
+        return r;
+    }
+    // result is either a {isError, content} object (from handleToolsCall
+    // tool failures/successes) or a plain object (initialize/tools.list/ping).
+    r.payload = result;
+    return r;
 }
 
 QJsonValue McpServer::handleMethod(const QString& m, const QJsonValue& p, QJsonValue* out) {

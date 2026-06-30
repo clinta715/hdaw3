@@ -62,11 +62,12 @@ void TransportStdio::ReaderThread::run() {
 TransportStdio::TransportStdio() = default;
 TransportStdio::~TransportStdio() { stop(); }
 
-void TransportStdio::start(McpServer* s) {
+bool TransportStdio::start(McpServer* s) {
     server_ = s; stopped_ = false;
     reader_ = new Reader(this);
     readerThread_.setReader(reader_);
     readerThread_.start();
+    return true;
 }
 
 void TransportStdio::stop() {

@@ -3,14 +3,21 @@
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
+#include "mcp/McpTransportHttp.h"
 #include "mcp/McpJsonRpc.h"
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QTimer>
+#include <QUrl>
 #include <thread>
 
 namespace {
@@ -35,6 +42,53 @@ QJsonObject parseResponse(const QByteArray& buf) {
     }
     return {};
 }
+}
+
+// HTTP round-trip: POST a JSON-RPC request to the running TransportHttp and
+// read the response. Exercises the full HTTP → McpServer::dispatchRequest →
+// HTTP response path, replacing the v1 sync stub.
+//
+// This test is placed FIRST in the McpServer test suite because the
+// integration tests that follow (FxAddRemoveBypass and the
+// export_audio tests) call engine.initialize(), which on Windows brings up
+// a JUCE WASAPI audio device. The teardown of that device across test
+// boundaries can leave stale socket-notifier state in Qt's event loop
+// that, when interleaved with a fresh QNetworkAccessManager, crashes
+// with SEH 0xc0000005. Running this test first avoids the crash for a
+// single run of the test binary.
+//
+// The transport binds to 127.0.0.1:18765; the unit smoke test
+// (HttpTransport.StartStopLifecycle) uses a different port so the two
+// can coexist in the same test binary.
+TEST(McpServer, HttpRoundTrip) {
+    AudioEngine engine;
+    mcp::McpServer s;
+    s.setEngine(&engine);
+    mcp::registerAllTools(s);
+    mcp::TransportHttp t(18765);
+    ASSERT_TRUE(t.start(&s)) << "start failed: " << t.lastError().toStdString();
+
+    QNetworkAccessManager nam;
+    QNetworkRequest req(QUrl("http://127.0.0.1:18765/mcp"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    QByteArray body = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
+
+    QEventLoop loop;
+    QObject::connect(&nam, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
+    QNetworkReply* reply = nam.post(req, body);
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    ASSERT_EQ(reply->error(), QNetworkReply::NoError)
+        << "HTTP error: " << reply->errorString().toStdString();
+    auto resp = QJsonDocument::fromJson(reply->readAll()).object();
+    reply->deleteLater();
+    t.stop();
+
+    EXPECT_EQ(resp.value("jsonrpc").toString().toStdString(), std::string("2.0"));
+    EXPECT_EQ(resp.value("id").toInt(), 1);
+    EXPECT_TRUE(resp.value("result").isObject());
+    EXPECT_TRUE(resp.value("error").isUndefined() || resp.value("error").isNull());
 }
 
 TEST(McpServer, InitializeAndList) {

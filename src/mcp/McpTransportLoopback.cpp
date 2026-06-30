@@ -7,7 +7,7 @@ namespace mcp {
 
 TransportLoopback::TransportLoopback() = default;
 
-void TransportLoopback::start(McpServer* s) { server_ = s; stopped_ = false; }
+bool TransportLoopback::start(McpServer* s) { server_ = s; stopped_ = false; return true; }
 void TransportLoopback::stop() {
     QMutexLocker lk(&mtx_); stopped_ = true; cv_.wakeAll();
 }
