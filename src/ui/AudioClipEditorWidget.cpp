@@ -154,11 +154,15 @@ void AudioClipEditorWidget::connectSignals()
     connect(zoomInBtn, &QPushButton::clicked, waveform, &AudioWaveformWidget::zoomIn);
     connect(zoomOutBtn, &QPushButton::clicked, waveform, &AudioWaveformWidget::zoomOut);
 
+    connect(gainSlider, &QSlider::sliderPressed, this, [this]() {
+        if (settingUi || !currentClip.isValid()) return;
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust gain");
+    });
     connect(gainSlider, &QSlider::valueChanged, this, [this](int val) {
         if (settingUi || !currentClip.isValid()) return;
         double dB = val / 100.0;
         double linear = std::pow(10.0, dB / 20.0);
-        currentClip.setProperty(IDs::gain, linear, nullptr);
+        currentClip.setProperty(IDs::gain, linear, &engine.getProjectModel().getUndoManager());
         gainLabel->setText(QString("%1 dB").arg(dB, 0, 'f', 1));
     });
 
@@ -225,7 +229,8 @@ void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
     juce::File jf(src.toUtf8().constData());
     if (jf.existsAsFile())
     {
-        auto* reader = engine.getProjectPool().getFormatManager().createReaderFor(jf);
+        auto reader = std::unique_ptr<juce::AudioFormatReader>(
+            engine.getProjectPool().getFormatManager().createReaderFor(jf));
         if (reader != nullptr)
         {
             double len = static_cast<double>(reader->lengthInSamples) / reader->sampleRate;
@@ -233,7 +238,6 @@ void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
                 .arg(reader->sampleRate)
                 .arg(reader->bitsPerSample)
                 .arg(len, 0, 'f', 2));
-            delete reader;
         }
     }
 
