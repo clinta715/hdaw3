@@ -78,7 +78,7 @@ void ProjectPoolBrowser::setupUI()
 
     addBtn = new QPushButton("Add File to Pool", poolContainer);
     connect(addBtn, &QPushButton::clicked, this, [this]() {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         QString file = QFileDialog::getOpenFileName(this, "Import Audio",
             settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
             "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");

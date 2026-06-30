@@ -33,7 +33,7 @@ void StepEditorWidget::setupUI()
     switchButton = new QPushButton("Switch to Piano Roll", headerBar);
     switchButton->setFixedHeight(22);
     connect(switchButton, &QPushButton::clicked, this, [this]() {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         settings.setValue("midiEditorMode", "piano");
         emit switchToPianoRoll();
     });

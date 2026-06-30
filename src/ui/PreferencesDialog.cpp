@@ -98,9 +98,15 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
     loadSettings();
 }
 
+QSettings& PreferencesDialog::settings()
+{
+    static QSettings s(kSettingsOrg, kSettingsApp);
+    return s;
+}
+
 void PreferencesDialog::loadSettings()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     clipDurSpinBox->setValue(settings.value(kKeyClipDur, 4.0).toDouble());
     snapCheckBox->setChecked(settings.value(kKeySnap, true).toBool());
     snapDivisionCombo->setCurrentIndex(settings.value(kKeySnapDiv, 1).toInt());
@@ -117,7 +123,7 @@ void PreferencesDialog::onSave()
 
 void PreferencesDialog::onApply()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeyClipDur, clipDurSpinBox->value());
     settings.setValue(kKeySnap, snapCheckBox->isChecked());
     settings.setValue(kKeySnapDiv, snapDivisionCombo->currentIndex());
@@ -130,36 +136,36 @@ void PreferencesDialog::onApply()
 // Static accessors
 double PreferencesDialog::getDefaultClipDuration()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     return settings.value(kKeyClipDur, 4.0).toDouble();
 }
 
 void PreferencesDialog::setDefaultClipDuration(double dur)
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeyClipDur, dur);
 }
 
 bool PreferencesDialog::getSnapEnabled()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     return settings.value(kKeySnap, true).toBool();
 }
 
 void PreferencesDialog::setSnapEnabled(bool en)
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeySnap, en);
 }
 
 int PreferencesDialog::getSnapDivision()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     return settings.value(kKeySnapDiv, 1).toInt();
 }
 
 void PreferencesDialog::setSnapDivision(int idx)
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeySnapDiv, idx);
 }

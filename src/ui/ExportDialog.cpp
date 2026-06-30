@@ -105,7 +105,7 @@ QString ExportDialog::defaultExtension() const
 
 void ExportDialog::onBrowse()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     QString filter = QString("%1 Files (*.%2)")
         .arg(formatCombo->currentText())
         .arg(defaultExtension());

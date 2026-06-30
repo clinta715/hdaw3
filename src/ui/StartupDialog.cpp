@@ -74,7 +74,7 @@ StartupDialog::StartupDialog(QWidget* parent)
     recentList->setCursor(Qt::PointingHandCursor);
 
     // Populate from QSettings
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     recentPaths = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
     for (const auto& path : recentPaths)
     {

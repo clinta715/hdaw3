@@ -106,7 +106,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     timecodeTimer.stop();
     if (checkSaveBeforeAction())
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         settings.setValue(PreferencesDialog::kKeyWindowGeometry, saveGeometry());
         settings.setValue(PreferencesDialog::kKeyWindowState, saveState());
         if (mainHorizontalSplitter != nullptr)
@@ -255,11 +255,11 @@ void MainWindow::setupMenuBar()
     mcpHttpAction = toolsMenu->addAction(tr("&MCP HTTP Server"));
     mcpHttpAction->setCheckable(true);
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         mcpHttpAction->setChecked(settings.value("mcp/httpEnabled", false).toBool());
     }
     connect(mcpHttpAction, &QAction::toggled, this, [this](bool on) {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         settings.setValue("mcp/httpEnabled", on);
         if (on) startMcpHttpServer();
         else    stopMcpHttpServer();
@@ -294,7 +294,7 @@ void MainWindow::setupMenuBar()
 void MainWindow::startMcpHttpServer()
 {
     if (mcpHttp_ != nullptr) return;
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     quint16 port = static_cast<quint16>(settings.value("mcp/httpPort", 8765).toInt());
     mcpHttp_ = new mcp::TransportHttp(port);
     mcpHttp_->start(mcpServer_);
@@ -446,7 +446,7 @@ void MainWindow::setupLayout()
             juce::String type = clipTree.getProperty(IDs::clipType).toString();
             if (type == "midi")
             {
-                QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+                auto& settings = PreferencesDialog::settings();
                 QString mode = settings.value("midiEditorMode", "piano").toString();
                 if (mode == "step")
                 {
@@ -566,7 +566,7 @@ void MainWindow::setupLayout()
 
     // Restore saved window and panel state from previous session
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         auto geometry = settings.value(PreferencesDialog::kKeyWindowGeometry);
         if (geometry.isValid())
             restoreGeometry(geometry.toByteArray());
@@ -663,7 +663,7 @@ void MainWindow::onOpen()
 {
     if (!checkSaveBeforeAction()) return;
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Open Project",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "HDAW Projects (*.hdaw)");
@@ -680,7 +680,7 @@ void MainWindow::openProjectFile(const QString& path)
     {
         QMessageBox::warning(this, "File Not Found",
             QString("The file no longer exists:\n%1").arg(path));
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
         if (list.removeAll(path) > 0)
         {
@@ -697,7 +697,7 @@ void MainWindow::openProjectFile(const QString& path)
         return;
     }
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(PreferencesDialog::kKeyLastProjectDir, QFileInfo(path).absolutePath());
     currentFile = file;
     engine.getMainProcessor()->rebuildRoutingGraph();
@@ -712,7 +712,7 @@ void MainWindow::addToRecentProjects(const QString& path)
 {
     if (path.isEmpty()) return;
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
     list.removeAll(path);
     list.prepend(path);
@@ -727,7 +727,7 @@ void MainWindow::rebuildRecentProjectsMenu()
 
     recentProjectsMenu->clear();
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
 
     if (list.isEmpty())
@@ -763,7 +763,7 @@ bool MainWindow::onSave()
 
 void MainWindow::onSaveAs()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getSaveFileName(this, "Save Project As",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "HDAW Projects (*.hdaw)");
@@ -1054,7 +1054,7 @@ void MainWindow::onToggleBrowserPanel()
 
 void MainWindow::onImportAudio()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Import Audio",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
@@ -1121,7 +1121,7 @@ void MainWindow::onImportAudio()
 
 void MainWindow::onImportMIDI()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Import MIDI",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "MIDI Files (*.mid *.midi)");

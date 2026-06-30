@@ -14,6 +14,8 @@ class PreferencesDialog : public QDialog
 public:
     explicit PreferencesDialog(QWidget* parent = nullptr);
 
+    static QSettings& settings();
+
     static double getDefaultClipDuration();
     static void setDefaultClipDuration(double dur);
 
