@@ -36,6 +36,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
@@ -71,6 +72,7 @@ private:
     void commitPan(int trackIndex, float pan);
     void addFXToTrack(int trackIndex, const juce::String& type);
     void addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat);
+    void layoutRects();
 
     AudioEngine& engine;
     QTimer vuTimer;
