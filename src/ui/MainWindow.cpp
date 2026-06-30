@@ -34,7 +34,7 @@
 #include <QInputDialog>
 
 // Keep this in sync with VERSION in CMakeLists.txt.
-static constexpr const char* APP_VERSION = "0.2.0";
+static constexpr const char* APP_VERSION = "0.3.0";
 
 MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     : QMainWindow(parent), engine(ae)

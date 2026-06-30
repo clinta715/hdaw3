@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 CLAPHost::CLAPHost(CLAPPluginInstance* inst)
-    : Host("HDAW", "HDAW", "https://github.com/user/hdaw", "0.2.0"),
+    : Host("HDAW", "HDAW", "https://github.com/user/hdaw", "0.3.0"),
       instance(inst)
 {
 }
