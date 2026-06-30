@@ -88,6 +88,13 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
 MainWindow::~MainWindow()
 {
+    if (mcpHttp_ != nullptr)
+    {
+        mcpHttp_->stop();
+        delete mcpHttp_;
+        mcpHttp_ = nullptr;
+    }
+
     auto transportTree = engine.getProjectModel().getTransportTree();
     if (transportTree.isValid())
         transportTree.removeListener(this);
