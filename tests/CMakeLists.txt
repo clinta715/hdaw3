@@ -16,6 +16,10 @@ add_executable(hdaw_tests
     unit/mcp/transport_stdio_test.cpp
     unit/mcp/transport_http_test.cpp
     integration/mcp/mcp_server_test.cpp
+    unit/proxy/common_test.cpp
+    unit/proxy/ring_buffer_test.cpp
+    unit/proxy/pipe_test.cpp
+    unit/proxy/shm_test.cpp
 )
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(hdaw_tests PRIVATE

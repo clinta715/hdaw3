@@ -64,6 +64,8 @@ add_library(HDAW_lib STATIC
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
+    src/proxy/ProxyPipe.cpp
+    src/proxy/ProxySharedMemory.cpp
 )
 target_include_directories(HDAW_lib PUBLIC src)
 target_link_libraries(HDAW_lib PUBLIC
