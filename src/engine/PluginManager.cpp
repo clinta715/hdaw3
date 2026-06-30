@@ -1,6 +1,14 @@
 #include "PluginManager.h"
 #include <stdexcept>
 
+#if HDAW_PLUGIN_ISOLATION
+#include "proxy/PluginProxySlot.h"
+#include "proxy/ProxyProcessManager.h"
+namespace {
+    proxy::ProxyProcessManager proxyProcessManager;
+}
+#endif
+
 #if JUCE_WINDOWS
 #include <windows.h>
 
@@ -193,13 +201,32 @@ void PluginManager::onScanFinished()
 
 std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     const juce::PluginDescription& desc, juce::String& errorMessage,
-    double sampleRate, int blockSize)
+    double sampleRate, int blockSize, bool isolated)
 {
     if (isBlacklisted(desc.fileOrIdentifier))
     {
         errorMessage = "Plugin is blacklisted: " + desc.fileOrIdentifier;
         return nullptr;
     }
+
+#if HDAW_PLUGIN_ISOLATION
+    if (isolated)
+    {
+        auto slotId = static_cast<uint32_t>(knownPlugins.size());
+        auto* proxy = new proxy::PluginProxySlot(
+            proxyProcessManager, slotId, desc.name);
+
+        if (!proxyProcessManager.spawnPluginHost(
+                desc.fileOrIdentifier.toStdString(), slotId))
+        {
+            delete proxy;
+            errorMessage = "Failed to spawn isolated plugin process";
+            return nullptr;
+        }
+
+        return std::unique_ptr<juce::AudioPluginInstance>(proxy);
+    }
+#endif
 
     bool crashed = false;
     std::unique_ptr<juce::AudioPluginInstance> result;

@@ -41,6 +41,7 @@ endfunction()
 # Contains all non-GUI sources so tests can link the engine+model
 # without spinning up a QApplication. Future MCP sources will be added
 # here in later tasks.
+option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" OFF)
 add_library(HDAW_lib STATIC
     src/engine/AudioEngine.cpp
     src/engine/AudioRecorder.cpp
@@ -64,7 +65,19 @@ add_library(HDAW_lib STATIC
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
+    src/proxy/ProxyPipe.cpp
+    src/proxy/ProxySharedMemory.cpp
 )
+
+if(HDAW_PLUGIN_ISOLATION)
+    target_sources(HDAW_lib PRIVATE
+        src/proxy/ProxyProcessManager.cpp
+        src/proxy/PluginProxySlot.cpp
+        src/proxy/ProxyEditor.cpp
+    )
+    target_compile_definitions(HDAW_lib PUBLIC HDAW_PLUGIN_ISOLATION=1)
+endif()
+
 target_include_directories(HDAW_lib PUBLIC src)
 target_link_libraries(HDAW_lib PUBLIC
     juce::juce_audio_utils
@@ -203,6 +216,20 @@ set_target_properties(HDAW PROPERTIES
 )
 
 hdaw_deploy_qt(HDAW)
+
+# --- hdaw_plugin_host: child process for isolated plugin hosting ---
+if(HDAW_PLUGIN_ISOLATION)
+    add_executable(hdaw_plugin_host
+        src/proxy/host/main.cpp
+        src/proxy/host/PluginHost.cpp
+    )
+    target_include_directories(hdaw_plugin_host PRIVATE src)
+    target_link_libraries(hdaw_plugin_host PRIVATE
+        HDAW_lib
+        juce::juce_audio_processors
+        juce::juce_core
+    )
+endif()
 
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)

@@ -25,7 +25,8 @@ public:
 
     std::unique_ptr<juce::AudioPluginInstance> createPluginInstance(
         const juce::PluginDescription& desc, juce::String& errorMessage,
-        double sampleRate = 44100.0, int blockSize = 512);
+        double sampleRate = 44100.0, int blockSize = 512,
+        bool isolated = false);
 
     void loadCache();
     void saveCache();
