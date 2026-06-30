@@ -14,6 +14,7 @@ add_executable(hdaw_tests
     unit/mcp/dry_run_test.cpp
     unit/mcp/note_id_test.cpp
     unit/mcp/transport_stdio_test.cpp
+    unit/mcp/transport_http_test.cpp
     integration/mcp/mcp_server_test.cpp
 )
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

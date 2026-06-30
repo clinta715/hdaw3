@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Qt 6 Configuration
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer)
 qt_standard_project_setup()
 
 # JUCE Configuration
@@ -37,6 +37,7 @@ add_library(HDAW_lib STATIC
     src/mcp/McpTools.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
+    src/mcp/McpTransportHttp.cpp
 )
 target_include_directories(HDAW_lib PUBLIC src)
 target_link_libraries(HDAW_lib PUBLIC
@@ -47,6 +48,8 @@ target_link_libraries(HDAW_lib PUBLIC
     juce::juce_core
     juce::juce_gui_basics
     Qt6::Core
+    Qt6::Network
+    Qt6::HttpServer
     clap_juce_extensions
 )
 
@@ -148,6 +151,8 @@ add_executable(HDAW
 target_link_libraries(HDAW
     PRIVATE
     Qt6::Widgets
+    Qt6::Network
+    Qt6::HttpServer
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_basics
