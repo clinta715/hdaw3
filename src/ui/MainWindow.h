@@ -37,6 +37,9 @@ protected:
 
 private:
     void setupLayout();
+    void setupBottomPanel();
+    void connectSignals();
+    void restoreWindowGeometry();
     void setupMenuBar();
     void rebuildAllUI();
 
@@ -68,6 +71,7 @@ private:
     void onBPMChanged(double bpm);
     void onMetronomeToggled(bool enabled);
     void onToggleBrowserPanel();
+    void onClipSelected(const juce::ValueTree& clipTree);
 
     void startMcpHttpServer();
     void stopMcpHttpServer();

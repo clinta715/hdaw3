@@ -327,9 +327,30 @@ void MainWindow::setupLayout()
     statusBar()->showMessage("Ready");
 
     timelineView = new TimelineView(engine, this);
-
     browserPanel = new ProjectPoolBrowser(engine, this);
 
+    setupBottomPanel();
+
+    mainVerticalSplitter = new QSplitter(Qt::Vertical, this);
+    mainVerticalSplitter->addWidget(timelineView);
+    mainVerticalSplitter->addWidget(bottomStack->parentWidget());
+    mainVerticalSplitter->setStretchFactor(0, 3);
+    mainVerticalSplitter->setStretchFactor(1, 1);
+
+    mainHorizontalSplitter = new QSplitter(Qt::Horizontal, this);
+    mainHorizontalSplitter->addWidget(mainVerticalSplitter);
+    mainHorizontalSplitter->addWidget(browserPanel);
+    mainHorizontalSplitter->setStretchFactor(0, 4);
+    mainHorizontalSplitter->setStretchFactor(1, 1);
+
+    setCentralWidget(mainHorizontalSplitter);
+
+    connectSignals();
+    restoreWindowGeometry();
+}
+
+void MainWindow::setupBottomPanel()
+{
     auto* bottomContainer = new QFrame(this);
     bottomContainer->setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
 
@@ -337,7 +358,6 @@ void MainWindow::setupLayout()
     bottomLayout->setContentsMargins(0, 0, 0, 0);
     bottomLayout->setSpacing(0);
 
-    // Tab bar
     auto* tabBar = new QWidget(bottomContainer);
     tabBar->setFixedHeight(24);
     auto* tabLayout = new QHBoxLayout(tabBar);
@@ -388,7 +408,6 @@ void MainWindow::setupLayout()
     stepEditorWidget = new StepEditorWidget(engine, bottomStack);
     bottomStack->addWidget(stepEditorWidget);
 
-    // Connect tab button clicks to stack switching
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 2 && selectedTrack >= 0)
             fxChainWidget->loadTrack(selectedTrack);
@@ -397,109 +416,37 @@ void MainWindow::setupLayout()
         bottomStack->setCurrentIndex(id);
     });
 
-    // Keep tab button checked-state in sync with the stack — covers both
-    // user clicks on the tab and programmatic setCurrentIndex (e.g. from clipSelected).
     connect(bottomStack, &QStackedWidget::currentChanged, this, [this](int index) {
         if (index < 0 || index >= tabButtons.size()) return;
         for (int i = 0; i < tabButtons.size(); ++i)
             tabButtons[i]->setChecked(i == index);
     });
-    // Set the initial checked state to match the stack's starting index.
     if (bottomStack->currentIndex() >= 0 && bottomStack->currentIndex() < tabButtons.size())
         tabButtons[bottomStack->currentIndex()]->setChecked(true);
 
     bottomStack->setCurrentIndex(0);
-
     bottomLayout->addWidget(bottomStack);
+}
 
-    mainVerticalSplitter = new QSplitter(Qt::Vertical, this);
-    mainVerticalSplitter->addWidget(timelineView);
-    mainVerticalSplitter->addWidget(bottomContainer);
-    mainVerticalSplitter->setStretchFactor(0, 3);
-    mainVerticalSplitter->setStretchFactor(1, 1);
-
-    mainHorizontalSplitter = new QSplitter(Qt::Horizontal, this);
-    mainHorizontalSplitter->addWidget(mainVerticalSplitter);
-    mainHorizontalSplitter->addWidget(browserPanel);
-    mainHorizontalSplitter->setStretchFactor(0, 4);
-    mainHorizontalSplitter->setStretchFactor(1, 1);
-
-    setCentralWidget(mainHorizontalSplitter);
-
+void MainWindow::connectSignals()
+{
     auto* scene = timelineView->getScene();
-    connect(scene, &TimelineScene::clipSelected, this,
-        [this](juce::ValueTree clipTree) {
-            HDAW_LOG("MWClipSel", QString("ENTER type=%1 valid=%2")
-                .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
-                .arg(clipTree.isValid() ? 1 : 0));
-            auto trackTree = ProjectModel::getTrackOfClip(clipTree);
-            if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
-            {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                int trackIdx = trackList.indexOf(trackTree);
-                if (trackIdx >= 0)
-                {
-                    selectedTrack = trackIdx;
-                    timelineView->selectTrack(trackIdx);
-                }
-            }
 
-            juce::String type = clipTree.getProperty(IDs::clipType).toString();
-            if (type == "midi")
-            {
-                auto& settings = PreferencesDialog::settings();
-                QString mode = settings.value("midiEditorMode", "piano").toString();
-                if (mode == "step")
-                {
-                    stepEditorWidget->loadClip(clipTree);
-                    bottomStack->setCurrentIndex(5);
-                }
-                else
-                {
-                    auto vs = mainVerticalSplitter->sizes();
-                    HDAW_LOG("MWClipSel", QString("piano: before load mode=%1 vSplit=[%2,%3] rollH=%4 rollVis=%5")
-                        .arg(mode)
-                        .arg(vs.value(0)).arg(vs.value(1))
-                        .arg(pianoRollWidget->height())
-                        .arg(pianoRollWidget->isVisible() ? 1 : 0));
-                    pianoRollWidget->loadClip(clipTree);
-                    bottomStack->setCurrentIndex(1);
-                    HDAW_LOG("MWClipSel", QString("piano: after load stackIdx=%1 rollH=%2 rollVis=%3")
-                        .arg(bottomStack->currentIndex())
-                        .arg(pianoRollWidget->height())
-                        .arg(pianoRollWidget->isVisible() ? 1 : 0));
-                }
-            }
-            else
-            {
-                audioEditorWidget->loadClip(clipTree);
-                bottomStack->setCurrentIndex(4);
-            }
-        });
+    connect(scene, &TimelineScene::clipSelected, this, &MainWindow::onClipSelected);
 
     connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
-        [this]() {
-            pianoRollWidget->clear();
-            bottomStack->setCurrentIndex(0);
-        });
+        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
 
     connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
-        [this]() {
-            audioEditorWidget->clear();
-            bottomStack->setCurrentIndex(0);
-        });
+        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
 
     connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
-        [this]() {
-            stepEditorWidget->clear();
-            bottomStack->setCurrentIndex(0);
-        });
+        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
 
     connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
         [this]() {
             if (stepEditorWidget->hasClip())
             {
-                // Reload current clip in piano roll, same track
                 pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
                 bottomStack->setCurrentIndex(1);
             }
@@ -534,17 +481,14 @@ void MainWindow::setupLayout()
     connect(timelineView, &TimelineView::addTrackWithPlugin, this, &MainWindow::onAddTrackWithPlugin);
     connect(timelineView, &TimelineView::bpmChanged, this, &MainWindow::onBPMChanged);
     connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
-
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
     connect(timelineView, &TimelineView::rewindRequested, this, &MainWindow::onRewind);
 
-    // Timecode timer
     connect(&timecodeTimer, &QTimer::timeout, this, &MainWindow::updateTimecode);
     timecodeTimer.start(33);
 
-    // JUCE message pump (needed to drive JUCE timers/async updates in a Qt app)
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
 
@@ -564,41 +508,91 @@ void MainWindow::setupLayout()
             if (track >= 0)
                 engine.getMainProcessor()->rebuildAutomationCache(track);
         });
+}
 
-    // Restore saved window and panel state from previous session
+void MainWindow::restoreWindowGeometry()
+{
+    auto& settings = PreferencesDialog::settings();
+    auto geometry = settings.value(PreferencesDialog::kKeyWindowGeometry);
+    if (geometry.isValid())
+        restoreGeometry(geometry.toByteArray());
+    auto winState = settings.value(PreferencesDialog::kKeyWindowState);
+    if (winState.isValid())
+        restoreState(winState.toByteArray());
+    if (mainHorizontalSplitter != nullptr)
+    {
+        auto hState = settings.value(PreferencesDialog::kKeyHorizontalSplitter);
+        if (hState.isValid())
+            mainHorizontalSplitter->restoreState(hState.toByteArray());
+    }
+    if (mainVerticalSplitter != nullptr)
+    {
+        auto vState = settings.value(PreferencesDialog::kKeyVerticalSplitter);
+        if (vState.isValid())
+            mainVerticalSplitter->restoreState(vState.toByteArray());
+    }
+    if (bottomStack != nullptr)
+    {
+        auto panelIdx = settings.value(PreferencesDialog::kKeyBottomPanelIndex, 0);
+        int idx = panelIdx.toInt();
+        if (idx >= 0 && idx < bottomStack->count())
+        {
+            bottomStack->setCurrentIndex(idx);
+            if (idx == 2 && selectedTrack >= 0)
+                fxChainWidget->loadTrack(selectedTrack);
+            if (idx == 3 && selectedTrack >= 0)
+                automationWidget->loadTrack(selectedTrack);
+        }
+    }
+}
+
+void MainWindow::onClipSelected(const juce::ValueTree& clipTree)
+{
+    HDAW_LOG("MWClipSel", QString("ENTER type=%1 valid=%2")
+        .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
+        .arg(clipTree.isValid() ? 1 : 0));
+    auto trackTree = ProjectModel::getTrackOfClip(clipTree);
+    if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
+    {
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        int trackIdx = trackList.indexOf(trackTree);
+        if (trackIdx >= 0)
+        {
+            selectedTrack = trackIdx;
+            timelineView->selectTrack(trackIdx);
+        }
+    }
+
+    juce::String type = clipTree.getProperty(IDs::clipType).toString();
+    if (type == "midi")
     {
         auto& settings = PreferencesDialog::settings();
-        auto geometry = settings.value(PreferencesDialog::kKeyWindowGeometry);
-        if (geometry.isValid())
-            restoreGeometry(geometry.toByteArray());
-        auto winState = settings.value(PreferencesDialog::kKeyWindowState);
-        if (winState.isValid())
-            restoreState(winState.toByteArray());
-        if (mainHorizontalSplitter != nullptr)
+        QString mode = settings.value("midiEditorMode", "piano").toString();
+        if (mode == "step")
         {
-            auto hState = settings.value(PreferencesDialog::kKeyHorizontalSplitter);
-            if (hState.isValid())
-                mainHorizontalSplitter->restoreState(hState.toByteArray());
+            stepEditorWidget->loadClip(clipTree);
+            bottomStack->setCurrentIndex(5);
         }
-        if (mainVerticalSplitter != nullptr)
+        else
         {
-            auto vState = settings.value(PreferencesDialog::kKeyVerticalSplitter);
-            if (vState.isValid())
-                mainVerticalSplitter->restoreState(vState.toByteArray());
+            auto vs = mainVerticalSplitter->sizes();
+            HDAW_LOG("MWClipSel", QString("piano: before load mode=%1 vSplit=[%2,%3] rollH=%4 rollVis=%5")
+                .arg(mode)
+                .arg(vs.value(0)).arg(vs.value(1))
+                .arg(pianoRollWidget->height())
+                .arg(pianoRollWidget->isVisible() ? 1 : 0));
+            pianoRollWidget->loadClip(clipTree);
+            bottomStack->setCurrentIndex(1);
+            HDAW_LOG("MWClipSel", QString("piano: after load stackIdx=%1 rollH=%2 rollVis=%3")
+                .arg(bottomStack->currentIndex())
+                .arg(pianoRollWidget->height())
+                .arg(pianoRollWidget->isVisible() ? 1 : 0));
         }
-        if (bottomStack != nullptr)
-        {
-            auto panelIdx = settings.value(PreferencesDialog::kKeyBottomPanelIndex, 0);
-            int idx = panelIdx.toInt();
-            if (idx >= 0 && idx < bottomStack->count())
-            {
-                bottomStack->setCurrentIndex(idx);
-                if (idx == 2 && selectedTrack >= 0)
-                    fxChainWidget->loadTrack(selectedTrack);
-                if (idx == 3 && selectedTrack >= 0)
-                    automationWidget->loadTrack(selectedTrack);
-            }
-        }
+    }
+    else
+    {
+        audioEditorWidget->loadClip(clipTree);
+        bottomStack->setCurrentIndex(4);
     }
 }
 
