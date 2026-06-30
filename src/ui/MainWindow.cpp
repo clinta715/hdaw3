@@ -1110,19 +1110,9 @@ void MainWindow::onImportAudio()
         startTime = (std::max)(startTime, end);
     }
 
-    juce::ValueTree clip(IDs::CLIP);
-    clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-    clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::startTime, startTime, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::duration, duration, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::clipType, "audio", &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::sourceFile, path.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), &engine.getProjectModel().getUndoManager());
+    auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
+                                              startTime, duration,
+                                              path.toUtf8().constData());
     clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
@@ -1234,21 +1224,10 @@ void MainWindow::onImportMIDI()
             clipStartTime = (std::max)(clipStartTime, end);
         }
 
-        juce::ValueTree clip(IDs::CLIP);
-        clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-        clip.setProperty(IDs::name, ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
-            &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::startTime, clipStartTime, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::duration, clipDuration, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::clipType, "midi", &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &engine.getProjectModel().getUndoManager());
-
-        juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
+        auto clip = ProjectModel::createMidiClipEmpty(
+            ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
+            clipStartTime, clipDuration);
+        auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
 
         for (int e = 0; e < midiTrack->getNumEvents(); ++e)
         {
@@ -1275,19 +1254,14 @@ void MainWindow::onImportMIDI()
                     }
                 }
 
-                juce::ValueTree noteNode(IDs::MIDI_NOTE);
-                noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
-                noteNode.setProperty(IDs::noteNumber, noteNum, nullptr);
-                noteNode.setProperty(IDs::velocity, static_cast<float>(msg.getVelocity()) / 127.0f, nullptr);
-                noteNode.setProperty(IDs::startBeat, beatTime, nullptr);
-                noteNode.setProperty(IDs::durationBeats, noteDurBeats, nullptr);
-                midiNotes.addChild(noteNode, -1, nullptr);
+                midiNotes.addChild(ProjectModel::createMidiNote(
+                    noteNum, static_cast<float>(msg.getVelocity()) / 127.0f,
+                    beatTime, noteDurBeats), -1, nullptr);
             }
         }
 
         if (midiNotes.getNumChildren() > 0)
         {
-            clip.addChild(midiNotes, -1, nullptr);
             clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
         }
     }

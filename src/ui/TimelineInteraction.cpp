@@ -267,21 +267,7 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     duration = snapToGrid(snappedTime + duration) - snappedTime;
     duration = (std::max)(0.5, duration);
 
-    juce::ValueTree clipTree(IDs::CLIP);
-    clipTree.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-    clipTree.setProperty(IDs::name, "MIDI Clip", &model.getUndoManager());
-    clipTree.setProperty(IDs::startTime, snappedTime, &model.getUndoManager());
-    clipTree.setProperty(IDs::duration, duration, &model.getUndoManager());
-    clipTree.setProperty(IDs::offset, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::clipType, "midi", &model.getUndoManager());
-    clipTree.setProperty(IDs::gain, 1.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::fadeIn, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::fadeOut, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::looping, false, &model.getUndoManager());
-    clipTree.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &model.getUndoManager());
-
-    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
-    clipTree.addChild(midiNotes, -1, nullptr);
+    auto clipTree = ProjectModel::createMidiClipEmpty("MIDI Clip", snappedTime, duration);
 
     clipList.addChild(clipTree, -1, &model.getUndoManager());
     engine.getMainProcessor()->rebuildRoutingGraph();

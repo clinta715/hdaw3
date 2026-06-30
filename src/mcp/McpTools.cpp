@@ -383,20 +383,11 @@ void registerAllTools(McpServer& s) {
             int ti = a.value("trackId").toInt();
             auto tl = m.getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            juce::ValueTree c(IDs::CLIP);
-            int cid = m.allocateClipID();
-            c.setProperty(IDs::clipID, cid, nullptr);
-            c.setProperty(IDs::name, juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()), &um);
-            c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
-            c.setProperty(IDs::duration, a.value("length").toDouble(), &um);
-            c.setProperty(IDs::offset, 0.0, &um);
-            c.setProperty(IDs::clipType, "midi", &um);
-            c.setProperty(IDs::gain, 1.0, &um);
-            c.setProperty(IDs::fadeIn, 0.0, &um);
-            c.setProperty(IDs::fadeOut, 0.0, &um);
-            c.setProperty(IDs::looping, false, &um);
-            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), &um);
-            c.addChild(juce::ValueTree(IDs::MIDI_NOTE_LIST), -1, nullptr);
+            auto c = ProjectModel::createMidiClipEmpty(
+                juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()),
+                a.value("start").toDouble(), a.value("length").toDouble());
+            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
+            int cid = static_cast<int>(c.getProperty(IDs::clipID));
             tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
             return McpToolResult::text(QString("clipId=%1").arg(cid));
         }});
@@ -414,20 +405,12 @@ void registerAllTools(McpServer& s) {
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
             juce::File src(QString::fromUtf8(a.value("sourceFile").toString().toUtf8()).toStdString());
             if (!src.existsAsFile()) return McpToolResult::text("source file not found", true);
-            juce::ValueTree c(IDs::CLIP);
-            int cid = m.allocateClipID();
-            c.setProperty(IDs::clipID, cid, nullptr);
-            c.setProperty(IDs::name, juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()), &um);
-            c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
-            c.setProperty(IDs::duration, a.value("length").toDouble(), &um);
-            c.setProperty(IDs::offset, 0.0, &um);
-            c.setProperty(IDs::clipType, "audio", &um);
-            c.setProperty(IDs::gain, 1.0, &um);
-            c.setProperty(IDs::fadeIn, 0.0, &um);
-            c.setProperty(IDs::fadeOut, 0.0, &um);
-            c.setProperty(IDs::looping, false, &um);
-            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), &um);
-            c.setProperty(IDs::sourceFile, src.getFullPathName(), &um);
+            auto c = ProjectModel::createAudioClip(
+                juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()),
+                a.value("start").toDouble(), a.value("length").toDouble(),
+                src.getFullPathName());
+            c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
+            int cid = static_cast<int>(c.getProperty(IDs::clipID));
             tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
             return McpToolResult::text(QString("clipId=%1").arg(cid));
         }});
@@ -659,32 +642,14 @@ void registerAllTools(McpServer& s) {
         auto tl = m.getTrackListTree();
         if (trackId < 0 || trackId >= tl.getNumChildren())
             return McpToolResult::text("track not found", true);
-        juce::ValueTree c(IDs::CLIP);
-        int cid = m.allocateClipID();
-        c.setProperty(IDs::clipID, cid, nullptr);
-        c.setProperty(IDs::name, "Generated", &um);
-        c.setProperty(IDs::startTime, start, &um);
-        c.setProperty(IDs::duration, length, &um);
-        c.setProperty(IDs::offset, 0.0, &um);
-        c.setProperty(IDs::clipType, "midi", &um);
-        c.setProperty(IDs::gain, 1.0, &um);
-        c.setProperty(IDs::fadeIn, 0.0, &um);
-        c.setProperty(IDs::fadeOut, 0.0, &um);
-        c.setProperty(IDs::looping, false, &um);
-        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), &um);
-        auto nl = juce::ValueTree(IDs::MIDI_NOTE_LIST);
-        for (const auto& gn : notes) {
-            juce::ValueTree n(IDs::MIDI_NOTE);
-            n.setProperty(IDs::noteID, m.allocateNoteID(), nullptr);
-            n.setProperty(IDs::noteNumber, gn.noteNumber, nullptr);
-            n.setProperty(IDs::startBeat, gn.startBeat, nullptr);
-            n.setProperty(IDs::durationBeats, gn.durationBeats, nullptr);
-            n.setProperty(IDs::velocity, gn.velocity, nullptr);
-            nl.addChild(n, -1, nullptr);
-        }
-        c.addChild(nl, -1, nullptr);
+        auto c = ProjectModel::createMidiClipEmpty("Generated", start, length);
+        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), nullptr);
+        auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+        for (const auto& gn : notes)
+            nl.addChild(ProjectModel::createMidiNote(gn.noteNumber, gn.velocity, gn.startBeat, gn.durationBeats), -1, nullptr);
+        int cid = static_cast<int>(c.getProperty(IDs::clipID));
         tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
-        return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg(notes.size()));
+        return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg((int) notes.size()));
     };
 
     s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",

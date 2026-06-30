@@ -184,7 +184,7 @@ void ProjectModel::scanAndSyncNoteIDs()
     while (cur <= maxExisting && !nextNoteID.compare_exchange_weak(cur, maxExisting + 1)) {}
 }
 
-static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file)
+juce::ValueTree ProjectModel::createAudioClip(juce::String name, double start, double dur, juce::String file)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
@@ -202,7 +202,7 @@ static juce::ValueTree createAudioClip(juce::String name, double start, double d
     return clip;
 }
 
-static juce::ValueTree createMidiNote(int note, float vel, double start, double dur)
+juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double start, double dur)
 {
     juce::ValueTree noteNode(IDs::MIDI_NOTE);
     noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
@@ -213,7 +213,7 @@ static juce::ValueTree createMidiNote(int note, float vel, double start, double 
     return noteNode;
 }
 
-static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
+juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double start, double dur)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
@@ -227,16 +227,20 @@ static juce::ValueTree createMidiClip(juce::String name, double start, double du
     clip.setProperty(IDs::fadeOut, 0.0, nullptr);
     clip.setProperty(IDs::looping, false, nullptr);
     clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), nullptr);
+    clip.addChild(juce::ValueTree(IDs::MIDI_NOTE_LIST), -1, nullptr);
+    return clip;
+}
 
-    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
-    midiNotes.addChild(createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
-    midiNotes.addChild(createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
-    midiNotes.addChild(createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
-    midiNotes.addChild(createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
-    midiNotes.addChild(createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
-    midiNotes.addChild(createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
-    clip.addChild(midiNotes, -1, nullptr);
-
+static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
+{
+    juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, start, dur);
+    auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    midiNotes.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
     return clip;
 }
 
