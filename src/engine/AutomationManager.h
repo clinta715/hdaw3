@@ -39,23 +39,18 @@ public:
 
             if (!points.empty())
             {
-                if (timeSeconds <= points.front().first)
-                    result = points.front().second;
-                else if (timeSeconds >= points.back().first)
+                auto it = std::lower_bound(points.begin(), points.end(), timeSeconds,
+                    [](const std::pair<double, double>& p, double t) { return p.first < t; });
+                if (it == points.end())
                     result = points.back().second;
+                else if (it == points.begin())
+                    result = points.front().second;
                 else
                 {
-                    for (size_t i = 0; i < points.size() - 1; ++i)
-                    {
-                        if (timeSeconds >= points[i].first && timeSeconds <= points[i + 1].first)
-                        {
-                            double t = (timeSeconds - points[i].first) / (points[i + 1].first - points[i].first);
-                            result = points[i].second + t * (points[i + 1].second - points[i].second);
-                            break;
-                        }
-                    }
-                    if (result < 0.0)
-                        result = points.back().second;
+                    const auto& a = *(it - 1);
+                    const auto& b = *it;
+                    double t = (timeSeconds - a.first) / (b.first - a.first);
+                    result = a.second + t * (b.second - a.second);
                 }
             }
             cacheLock.exit();

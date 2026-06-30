@@ -121,9 +121,10 @@ public:
         int64_t sourceSample = offsetSamples + clipLocalSample;
 
         // Read from preloaded in-memory buffer (RT-safe: no disk I/O on audio thread)
+        int numToRead = 0;
         if (preloadedLength > 0 && sourceSample < preloadedLength)
         {
-            int numToRead = (std::min)(numSamples, static_cast<int>(preloadedLength - sourceSample));
+            numToRead = (std::min)(numSamples, static_cast<int>(preloadedLength - sourceSample));
 
             buffer.clear();
             for (int ch = 0; ch < numChannels; ++ch)
@@ -152,7 +153,7 @@ public:
         int64_t fadeInSamples = static_cast<int64_t>(currentFadeIn * sr);
         int64_t fadeOutSamples = static_cast<int64_t>(currentFadeOut * sr);
 
-        for (int s = 0; s < numSamples; ++s)
+        for (int s = 0; s < numToRead; ++s)
         {
             int64_t localPos = clipLocalSample + s;
 
