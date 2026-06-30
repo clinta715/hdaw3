@@ -4,9 +4,13 @@
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
 #include "mcp/McpJsonRpc.h"
+#include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
 #include <thread>
 
 namespace {
@@ -14,6 +18,22 @@ QJsonObject parseOne(const QByteArray& buf) {
     int nl = buf.indexOf('\n');
     QByteArray line = nl >= 0 ? buf.left(nl) : buf;
     return QJsonDocument::fromJson(line).object();
+}
+
+// Find the first response line (object with an "id" field) in a multi-line
+// buffer. Notifications ("method" without "id") are skipped.
+QJsonObject parseResponse(const QByteArray& buf) {
+    int start = 0;
+    while (start < buf.size()) {
+        int nl = buf.indexOf('\n', start);
+        QByteArray line = (nl >= 0) ? buf.mid(start, nl - start) : buf.mid(start);
+        start = (nl >= 0) ? nl + 1 : buf.size();
+        QByteArray trimmed = line.trimmed();
+        if (trimmed.isEmpty()) continue;
+        QJsonObject obj = QJsonDocument::fromJson(trimmed).object();
+        if (obj.contains("id")) return obj;
+    }
+    return {};
 }
 }
 
@@ -233,6 +253,118 @@ TEST(McpServer, NotificationsCancelledSetsFlagAndProducesNoResponse) {
     s.resetCancelFlag();
     EXPECT_FALSE(s.isCancelRequested());
 
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+namespace {
+// Build a unique temp file path for a single export run. Cleans up any
+// pre-existing file so the assertion is meaningful.
+// Uses forward slashes so the path is safe to embed directly in JSON
+// without escaping (QStandardPaths returns native separators on Windows).
+QString makeTempWavPath(const char* tag) {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (dir.isEmpty()) dir = QDir::tempPath();
+    dir = QDir::fromNativeSeparators(dir);
+    QString path = QString("%1/hdaw_export_test_%2_%3.wav")
+                       .arg(dir)
+                       .arg(tag)
+                       .arg(QCoreApplication::applicationPid());
+    QFile::remove(path);
+    return path;
+}
+
+QString textOf(const QJsonObject& r) {
+    return r.value("result").toObject()
+            .value("content").toArray().at(0).toObject()
+            .value("text").toString();
+}
+} // namespace
+
+TEST(McpServer, ExportAudioDryRunReturnsPlan) {
+    AudioEngine engine;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    QString path = makeTempWavPath("dryrun");
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"export_audio","arguments":{"outputPath":")" + path.toUtf8() +
+        R"(","dryRun":true}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r).contains("would export to"));
+    EXPECT_TRUE(QFile::exists(path) == false);  // dry-run must not write
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, ExportAudioSkipsWhenCancelFlagSet) {
+    AudioEngine engine;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    // Arm the cancel flag directly (simulating a notifications/cancelled
+    // already dispatched before this tool call).
+    s.setCancelFlag(true);
+    ASSERT_TRUE(s.isCancelRequested());
+
+    QString path = makeTempWavPath("cancelled");
+    QByteArray request = R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export_audio","arguments":{"outputPath":")" + path.toUtf8() + R"("}}})";
+    tp.pumpIncoming(request);
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_TRUE(r.value("result").toObject().value("isError").toBool(false));
+    QString text = textOf(r);
+    EXPECT_TRUE(text.contains("cancelled")) << "got: " << text.toStdString();
+    EXPECT_FALSE(QFile::exists(path));  // no file written
+
+    // The handler must have cleared the flag so subsequent calls work.
+    EXPECT_FALSE(s.isCancelRequested());
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, ExportAudioRendersDefaultProject) {
+    AudioEngine engine;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    QString path = makeTempWavPath("real");
+
+    // A 2-second render of the default project (3 tracks, 2 MIDI clips)
+    // produces a small but non-empty WAV. The exact duration is bounded by
+    // [start, end]; we use a short range so the test finishes quickly.
+    QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":2.0,"sampleRate":44100.0,"bitDepth":16})")
+                       .arg(path);
+    QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
+                      .arg(args);
+    tp.pumpIncoming(req.toUtf8());
+    QByteArray out;
+    // The export takes a few hundred ms to render 2 seconds at 44.1kHz.
+    // Allow up to 30s.
+    ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    // The export tool emits progress notifications through the same
+    // transport. Look for the response (object with an "id") specifically.
+    auto r = parseResponse(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    QString text = textOf(r);
+    if (r.value("result").toObject().value("isError").toBool(false)) {
+        FAIL() << "export failed: " << text.toStdString();
+    }
+    EXPECT_TRUE(text.contains("exported to")) << "got: [" << text.toStdString() << "]";
+    EXPECT_TRUE(QFile::exists(path));
+    EXPECT_GT(QFile(path).size(), 0);
+
+    // The MCP cancel flag must be cleared after a successful run.
+    EXPECT_FALSE(s.isCancelRequested());
+
+    QFile::remove(path);
     s.stop();
     s.setTransport(nullptr);
 }

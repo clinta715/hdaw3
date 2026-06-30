@@ -42,6 +42,11 @@ public slots:
     void handleRequest(QJsonValue id, QString method, QJsonValue params);
     QJsonValue handleRequestOnTestThread(QJsonValue id, QString method, QJsonValue params);
     void setCancelFlag(bool cancel);
+    // Send a server-initiated JSON-RPC notification (e.g. notifications/progress)
+    // to the transport. Safe to call from any thread: when invoked via
+    // QMetaObject::invokeMethod with Qt::QueuedConnection, the actual transport
+    // write happens on the main thread where the transport is safe to use.
+    void notifyFromBackground(const QString& jsonLine);
 
 private:
     QJsonValue handleInitialize(const QJsonValue& params);

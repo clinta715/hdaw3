@@ -157,7 +157,11 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
         }
 
         delete writer;
-        delete outStream;
+        // NOTE: do NOT also `delete outStream` here. The AudioFormatWriter
+        // takes ownership of the output stream in its constructor and deletes
+        // it in its destructor. A second `delete outStream` is undefined
+        // behaviour and causes a hang in debug builds (MSVC debug heap walks
+        // the freed block and stalls). The previous code was incorrect.
 
         if (cancelFlag.load())
         {

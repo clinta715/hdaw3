@@ -15,6 +15,11 @@ void McpServer::start() { if (transport_) transport_->start(this); }
 void McpServer::stop()  { if (transport_) transport_->stop(); }
 void McpServer::setCancelFlag(bool c) { cancelFlag_.store(c, std::memory_order_relaxed); }
 
+void McpServer::notifyFromBackground(const QString& jsonLine) {
+    if (transport_ == nullptr || jsonLine.isEmpty()) return;
+    transport_->notify(jsonLine.toUtf8());
+}
+
 void McpServer::handleRequest(QJsonValue id, QString method, QJsonValue params) {
     // Notifications (id is null) do not get a response per JSON-RPC 2.0.
     bool isNotification = id.isNull();
