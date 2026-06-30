@@ -31,6 +31,9 @@ public:
     void setEngine(AudioEngine* e) { engine_ = e; }
     AudioEngine* engine() const { return engine_; }
 
+    bool isCancelRequested() const { return cancelFlag_.load(std::memory_order_relaxed); }
+    void resetCancelFlag() { cancelFlag_.store(false, std::memory_order_relaxed); }
+
     QString serverName()    const { return "hdaw"; }
     QString serverVersion() const { return "0.3.0"; }
     QString protocolVersion() const { return "2024-11-05"; }

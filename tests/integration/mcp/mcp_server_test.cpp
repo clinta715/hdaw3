@@ -206,3 +206,33 @@ TEST(McpServer, FxAddRemoveBypass) {
     s.stop();
     s.setTransport(nullptr);
 }
+
+TEST(McpServer, NotificationsCancelledSetsFlagAndProducesNoResponse) {
+    AudioEngine engine;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    EXPECT_FALSE(s.isCancelRequested());
+
+    // Pump a notification (no "id" field). Per JSON-RPC 2.0 the server
+    // must not produce a response.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","method":"notifications/cancelled"})"));
+    QByteArray out;
+    EXPECT_FALSE(tp.waitForOutgoing(50, &out));
+    EXPECT_TRUE(tp.drainOutgoing().isEmpty());
+    EXPECT_TRUE(s.isCancelRequested());
+
+    // A regular request after the notification must still get a response.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":42,"method":"ping"})"));
+    ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_EQ(r.value("id").toInt(), 42);
+    EXPECT_TRUE(r.value("error").isNull() || r.value("error").isUndefined());
+
+    // resetCancelFlag must clear the atomic for the next run.
+    s.resetCancelFlag();
+    EXPECT_FALSE(s.isCancelRequested());
+
+    s.stop();
+    s.setTransport(nullptr);
+}

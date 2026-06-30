@@ -847,7 +847,7 @@ void registerAllTools(McpServer& s) {
 
     // --- Export ---
     s.registerTool({"export_audio",
-        "Render the project (or selected tracks) to an audio file. Long-running; cancellable via notifications/cancelled. (v1: synchronous render on the main thread; worker-thread + async cancellation is a documented follow-up.)",
+        "Render the project (or selected tracks) to an audio file. v1: synchronous render on the main thread; the worker-thread + async cancellation implementation is a documented follow-up (the MCP server exposes the cancel flag via notifications/cancelled for when it lands).",
         objSchema({{"outputPath", QJsonObject{{"type","string"}}},
                   {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav"}}}},
                   {"start",      QJsonObject{{"type","number"}}},

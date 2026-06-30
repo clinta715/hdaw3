@@ -16,8 +16,11 @@ void McpServer::stop()  { if (transport_) transport_->stop(); }
 void McpServer::setCancelFlag(bool c) { cancelFlag_.store(c, std::memory_order_relaxed); }
 
 void McpServer::handleRequest(QJsonValue id, QString method, QJsonValue params) {
+    // Notifications (id is null) do not get a response per JSON-RPC 2.0.
+    bool isNotification = id.isNull();
     QJsonValue err;
     QJsonValue result = handleMethod(method, params, &err);
+    if (isNotification) return;
     if (err.isObject()) {
         int code = err.toObject().value("code").toInt(err::InternalError);
         sendError(id, code, err.toObject().value("message").toString());
@@ -27,8 +30,11 @@ void McpServer::handleRequest(QJsonValue id, QString method, QJsonValue params) 
 }
 
 QJsonValue McpServer::handleRequestOnTestThread(QJsonValue id, QString method, QJsonValue params) {
+    // Notifications have no response — just dispatch and return an empty value.
+    bool isNotification = id.isNull();
     QJsonValue err;
     QJsonValue result = handleMethod(method, params, &err);
+    if (isNotification) return {};
     if (err.isObject()) {
         return QJsonObject{{"isError", true},
                            {"error", err.toObject()}};
@@ -41,6 +47,10 @@ QJsonValue McpServer::handleMethod(const QString& m, const QJsonValue& p, QJsonV
     if (m == "tools/list") return handleToolsList();
     if (m == "tools/call") return handleToolsCall(p);
     if (m == "ping")      return handlePing();
+    if (m == "notifications/cancelled") {
+        cancelFlag_.store(true, std::memory_order_relaxed);
+        return {};
+    }
     *out = QJsonObject{{"code", err::MethodNotFound},{"message","unknown method: " + m}};
     return {};
 }
