@@ -5,22 +5,37 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.2.2**. The core engine (project model, transport, routing,
+**0.3.x**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the basic UI shell
 (track headers, timeline, mixer, piano roll, FX chain,
-automation) work end-to-end. The project is pre-1.0, pre-test-suite,
-and pre-per-clip-audio-editor. For the full list of working
-features and the priority-ordered roadmap, see `README.md`.
+automation) work end-to-end. The project is pre-1.0 and
+pre-per-clip-audio-editor. **v0.3.x** adds the MCP server (see
+"MCP server" below) and a gtest test suite. For the full list of
+working features and the priority-ordered roadmap, see `README.md`.
 
 ## Build
 
 - Configuration: `cmake --build build --config Debug`
-- Output: `build/Debug/HDAW.exe`
+- Outputs: `build/Debug/HDAW.exe` (GUI + stdio MCP), `build/Debug/hdaw_tests.exe` (gtest)
 - Do NOT run `build/Release/HDAW.exe` — it is a stale binary from before
   the bug-fix series began and contains none of the fixes.
+- On Windows, the `HDAW_lib` static library, `HDAW` exe, and `hdaw_tests`
+  exe each run a `windeployqt` POST_BUILD step (see `hdaw_deploy_qt()`
+  in `CMakeLists.txt`) that copies the required Qt DLLs
+  (`Qt6Cored.dll`, `Qt6HttpServerd.dll`, `Qt6WebSocketsd.dll`, …) into
+  `build/Debug/`. On a clean machine this is the difference between
+  the test binary loading and `STATUS_DLL_NOT_FOUND`. Qt 6.11+
+  `windeployqt` auto-detects required modules; older Qt versions may
+  need `--http-server`/`--websockets` flags.
 - Logging: `HDAW_LOG` (or the older `DBG` macro is **not** available —
   JUCE defines its own `DBG` and shadows it). All paths to `HDAW_LOG`
   must `#include "DebugLog.h"`. Output is appended to `%TEMP%/hdaw_debug.log`.
+- CLI flags (MCP headless mode): `--mcp-stdio` forces headless stdio
+  MCP server (run when launched as a subprocess by an MCP client),
+  `--no-mcp` disables MCP entirely, `--mcp-http-port=<N>` overrides
+  the HTTP server's bind port for this launch. Without any flag the
+  GUI starts; if `stdin`/`stdout` are not TTYs the stdio MCP server
+  starts automatically and the GUI is skipped.
 
 ## Code Style
 
@@ -120,6 +135,7 @@ dropouts, xruns, and hard-to-reproduce crashes.
 | CLAP hosting | `src/engine/CLAPPluginInstance.h` | `CLAPPluginInstance` |
 | Recording | `src/engine/AudioRecorder.h` | `AudioRecorder` |
 | Export | `src/engine/ExportManager.h` | `ExportManager` |
+| Composition (phrase / chord / progression generator) | `src/engine/PhraseGenerator.h` | `PhraseGenerator` |
 | UI→Audio bridge | `src/engine/SPSCBridge.h` | `SPSCBridge` |
 | Level metering | `src/engine/LevelMeter.h` | `LevelMeter` |
 | File save/load | `src/engine/ProjectSerializer.h` | `ProjectSerializer` |
@@ -145,22 +161,88 @@ dropouts, xruns, and hard-to-reproduce crashes.
 | Audio clip editor | `src/ui/AudioClipEditorWidget.h` | `AudioClipEditorWidget` |
 | Theme colors | `src/ui/Theme.h` | `ThemeColors` |
 | Debug logging | `src/ui/DebugLog.h` | `HDAW_LOG` macro |
+| MCP server core (tool registry, dispatch, lifecycle) | `src/mcp/McpServer.h` | `mcp::McpServer` |
+| MCP JSON-RPC 2.0 framing (requests/responses/notifications) | `src/mcp/McpJsonRpc.h` | `mcp` namespace (`McpRequest`/`McpResponse`/`McpNotification`, `err::`, `parseLine`, `validateRequest`) |
+| MCP JSON-Schema subset validator (type/required/properties/items/enum/min/max) | `src/mcp/McpSchema.h` | `mcp::validateSchema` |
+| MCP transport interface (4 virtuals: `start`/`stop`/`send`/`notify`) | `src/mcp/McpTransport.h` | `mcp::Transport` |
+| MCP stdio transport (newline-delimited JSON, reader thread) | `src/mcp/McpTransportStdio.h` | `mcp::TransportStdio` |
+| MCP Streamable HTTP transport (loopback only, real round-trip) | `src/mcp/McpTransportHttp.h` | `mcp::TransportHttp` |
+| MCP loopback test transport (in-memory `QByteArray` queues) | `src/mcp/McpTransportLoopback.h` | `mcp::TransportLoopback` |
+| MCP tool record (name, description, inputSchema, handler) | `src/mcp/McpToolDef.h` | `mcp::McpToolDef` / `mcp::McpToolResult` / `mcp::McpHandler` |
+| MCP tool registrations (all 36 tools live in one file) | `src/mcp/McpTools.{h,cpp}` | `mcp::registerAllTools(McpServer&)` |
 
-## Testing (future)
+## Testing
 
-The project does not yet have a test suite. When tests are added:
+The project has a gtest suite (added in v0.3.x via the `hdaw_lib`
+static library split; see `tests/CMakeLists.txt` and the `HDAW_BUILD_TESTS`
+option in the top-level `CMakeLists.txt`). The MCP module is the pilot —
+its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
 
-- Use **Google Test** (gtest) for unit tests — JUCE already depends on
-  it via its test infrastructure and it integrates with CTest.
-- Use **QTest** for Qt-specific tests (widget behavior, signal emission).
-- Test files should mirror the source path:
-  `tests/unit/engine/transport_manager_test.cpp` tests
-  `src/engine/TransportManager.h`.
-- Test filenames end in `_test.cpp`.
-- Use deterministic seeds for randomized test inputs.
-- Never use `sleep()` or timed waits for synchronization — use
-  condition variables, latches, or `QSignalSpy::wait()`.
-- Keep temp directories unique per test and clean up in teardown.
+- **Run all tests**: `ctest --test-dir build -C Debug --output-on-failure`
+  (registers the `hdaw_tests` aggregate) — or run the binary directly:
+  `build/Debug/hdaw_tests.exe`. Filter a single gtest sub-suite with
+  the binary's `--gtest_filter=SuiteName.*` (e.g. `--gtest_filter=JsonRpc.*`).
+  The project's CTest setup registers only the aggregate `hdaw_tests`
+  target, not individual gtest sub-suites, so `ctest -R JsonRpc` does
+  **not** work — use the gtest binary's filter instead.
+- **Layout** mirrors the source path: `tests/unit/mcp/json_rpc_test.cpp`
+  tests `src/mcp/McpJsonRpc.h`, `tests/integration/mcp/mcp_server_test.cpp`
+  exercises the full server end-to-end. Filenames end in `_test.cpp`.
+- **The `TransportLoopback` is the test seam** for the MCP server. It
+  uses in-memory `QByteArray` queues and a `pumpIncoming` /
+  `waitForOutgoing` API, so the full JSON-RPC protocol can be exercised
+  without real stdin/stdout, sockets, or an audio device. Any future
+  transport implements the same `Transport` interface and is
+  interchangeable in tests.
+- **Determinism**: never `sleep()` or use timed waits for
+  synchronization — use `QSignalSpy::wait()`, the loopback's
+  `waitForOutgoing` (bounded timeout), or condition variables.
+- **Temp directories**: keep unique per test (e.g. via `QStandardPaths::TempLocation` + a UUID), clean up in teardown.
+- **Known test-infra note**: `McpServer.HttpRoundTrip` is order-sensitive
+  in the test binary — it must run **first** in the `McpServer` suite
+  because the JUCE WASAPI audio-device teardown from earlier tests
+  leaves process-wide COM/WinHTTP state that a subsequent HTTP test
+  cannot recover from. Single-run is stable; `--gtest_repeat` is
+  flaky at the start of iteration 2. A comment in the test file
+  documents this. A future fix is to make the test order-independent
+  (e.g. by isolating the audio device).
+
+## MCP server (v0.3.x)
+
+A new `src/mcp/` module exposes HDAW as an **MCP** (Model Context
+Protocol) server so an LLM client (Claude Desktop, opencode, etc.)
+can drive the DAW. 36 tools cover transport, tracks, clips, MIDI notes,
+composition (`PhraseGenerator`), FX, automation, undo, and audio export.
+
+- **Two transports**, both behind the `Transport` interface
+  (`src/mcp/McpTransport.h`): `McpTransportStdio` (newline-delimited
+  JSON over `stdin`/`stdout`, with a dedicated reader thread that
+  posts requests to the server via `Qt::QueuedConnection`) and
+  `McpTransportHttp` (Streamable HTTP on `127.0.0.1`, loopback only,
+  no auth). `McpTransportLoopback` is the in-memory test transport.
+- **Tool safety**: every destructive tool (`remove_*`, `clear_notes`,
+  `duplicate_clip`, `export_audio`) accepts `dryRun: true` and reports
+  what it would do without mutating. Every mutation goes through the
+  `UndoManager` so `undo` / `redo` tools (or the GUI's `Ctrl+Z`) can
+  roll it back. `notifications/cancelled` sets a `std::atomic<bool>`
+  cancel flag (`McpServer::isCancelRequested()`); the spec's
+  worker-thread follow-up will poll this for cancellable exports.
+- **Tool-execution errors are not JSON-RPC errors.** Per the MCP
+  contract, a tool that runs but fails returns
+  `{isError: true, content: [{type:"text", text:"…"}]}` in a SUCCESSFUL
+  JSON-RPC response. JSON-RPC errors (`{code, message}`) are reserved
+  for parse/validation/method-not-found failures. `McpServer::dispatchRequest`
+  in `src/mcp/McpServer.cpp` is the single dispatch path used by both
+  the stdio transport (via the `handleRequest` slot) and the HTTP
+  transport (directly, synchronously).
+- **Every tool runs on the main thread.** This is the same
+  single-thread rule as the rest of the project: tools access the
+  engine/model directly without locks, and the audio thread is
+  never touched. Audio-thread concerns (e.g. plugin parameter
+  changes) are the tool handler's responsibility — use `SPSCBridge` for
+  audio-thread notifications, as documented in the next section.
+- **Spec / plan** documents: `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
+  and `docs/superpowers/plans/2026-06-29-hdaw-mcp-server-phase{1,2}.md`.
 
 ## Common Practices
 
@@ -762,4 +844,18 @@ which now handles them via its own `contextMenuEvent`.
 - **No per-clip audio editor**. Double-clicking an audio clip
   currently routes the user to the global Mixer panel, not to a
   per-clip waveform/properties editor. Adding one is a
-  ~200-400-line feature, not a bug fix.
+  ~200-400-line feature, not a bug fix. (This is the main v0.4
+  candidate.)
+- **MCP server documented v1 follow-ups** (tracked in
+  `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md` §10):
+  - HTTP authentication for non-loopback exposure.
+  - `resources/*` and `prompts/*` (the v1 surface is tools-only).
+  - `export_audio` worker-thread + per-block cancellation (the v1
+    implementation is synchronous on the main thread with a
+    cancel-watcher thread; full async is a v1 follow-up).
+- **MCP `McpServer.HttpRoundTrip` test ordering fragility** — the
+  test must run first in the `McpServer` suite because the JUCE
+  WASAPI audio-device teardown from earlier tests leaves
+  process-wide COM/WinHTTP state that a subsequent HTTP test cannot
+  recover from. Documented in the test file; a future fix isolates
+  the audio device.
