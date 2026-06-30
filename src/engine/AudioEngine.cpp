@@ -177,10 +177,12 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TRACK))
     {
-        if (property == IDs::volume || property == IDs::pan)
+        if (property == IDs::volume || property == IDs::pan || property == IDs::isMuted)
         {
             float value = treeWhosePropertyHasChanged.getProperty(property);
-            int paramID = (property == IDs::volume) ? 1 : 2;
+            int paramID = (property == IDs::volume) ? 1
+                        : (property == IDs::pan)     ? 2
+                                                     : 3;
 
             auto trackList = projectModel.getTrackListTree();
             for (int i = 0; i < trackList.getNumChildren(); ++i)
@@ -196,11 +198,19 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::CLIP))
     {
-        if (property == IDs::gain || property == IDs::fadeIn || property == IDs::fadeOut)
+        if (property == IDs::gain    || property == IDs::fadeIn  || property == IDs::fadeOut ||
+            property == IDs::startTime || property == IDs::duration ||
+            property == IDs::offset   || property == IDs::looping)
         {
             float value = treeWhosePropertyHasChanged.getProperty(property);
-            int paramID = (property == IDs::gain) ? 10 :
-                          (property == IDs::fadeIn) ? 11 : 12;
+            int paramID;
+            if      (property == IDs::gain)      paramID = 10;
+            else if (property == IDs::fadeIn)    paramID = 11;
+            else if (property == IDs::fadeOut)   paramID = 12;
+            else if (property == IDs::startTime) paramID = 13;
+            else if (property == IDs::duration)  paramID = 14;
+            else if (property == IDs::offset)    paramID = 15;
+            else                                  paramID = 16; // looping
 
             // Find which track + clip index this belongs to
             auto trackList = projectModel.getTrackListTree();
