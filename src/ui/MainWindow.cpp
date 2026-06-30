@@ -1027,6 +1027,27 @@ void MainWindow::onToggleBrowserPanel()
     browserPanel->setVisible(!browserPanel->isVisible());
 }
 
+int MainWindow::promptForImportTrack(QWidget* parent, AudioEngine& eng, const QString& title)
+{
+    auto trackList = eng.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0)
+        return -1;
+
+    QStringList trackNames;
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    {
+        auto name = QString::fromUtf8(
+            trackList.getChild(i).getProperty(IDs::name).toString().toRawUTF8());
+        trackNames << QString("Track %1: %2").arg(i + 1).arg(name);
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(parent, title,
+        "Import to which track?", trackNames, 0, false, &ok);
+    if (!ok || selected.isEmpty()) return -1;
+    return trackNames.indexOf(selected);
+}
+
 void MainWindow::onImportAudio()
 {
     auto& settings = PreferencesDialog::settings();
@@ -1039,7 +1060,10 @@ void MainWindow::onImportAudio()
     if (trackList.getNumChildren() == 0)
         onAddTrack();
 
-    if (HDAW::importAudioFile(engine, this, path))
+    int trackIdx = promptForImportTrack(this, engine, "Import Audio");
+    if (trackIdx < 0) return;
+
+    if (HDAW::importAudioFile(engine, path, trackIdx))
         rebuildAllUI();
 }
 
@@ -1055,7 +1079,10 @@ void MainWindow::onImportMIDI()
     if (trackList.getNumChildren() == 0)
         onAddTrack();
 
-    if (HDAW::importMidiFile(engine, this, path))
+    int trackIdx = promptForImportTrack(this, engine, "Import MIDI");
+    if (trackIdx < 0) return;
+
+    if (HDAW::importMidiFile(engine, path, trackIdx))
         rebuildAllUI();
 }
 
