@@ -418,18 +418,7 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
                     auto& model = engine.getProjectModel();
                     auto trackList = model.getTrackListTree();
 
-                    double trackY = timelineScene->getRulerHeight();
-                    int trackIndex = -1;
-                    for (int t = 0; t < trackList.getNumChildren(); ++t)
-                    {
-                        double h = timelineScene->getTrackHeight(t);
-                        if (scenePos.y() >= trackY && scenePos.y() < trackY + h)
-                        {
-                            trackIndex = t;
-                            break;
-                        }
-                        trackY += h;
-                    }
+                    int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
                     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
                         return;
 
@@ -471,19 +460,7 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
 
-    double trackY = timelineScene->getRulerHeight();
-    int trackIndex = -1;
-    for (int t = 0; t < trackList.getNumChildren(); ++t)
-    {
-        double h = timelineScene->getTrackHeight(t);
-        if (scenePos.y() >= trackY && scenePos.y() < trackY + h)
-        {
-            trackIndex = t;
-            break;
-        }
-        trackY += h;
-    }
-
+    int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
     if (trackIndex < 0) return;
 
     // Read actual audio file duration

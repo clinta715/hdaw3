@@ -235,24 +235,9 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     // Find which track the Y position falls on
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
-    double trackY = scene->getRulerHeight();
-    int trackIndex = -1;
-    HDAW_LOG("TIDblClk", QString("clickY=%1 numTracks=%2").arg(clickY).arg(trackList.getNumChildren()));
-    for (int t = 0; t < trackList.getNumChildren(); ++t)
-    {
-        double h = scene->getTrackHeight(t);
-        HDAW_LOG("TIDblClk", QString("  track %1: y=%2 h=%3 clickY in [y,y+h)? %4")
-            .arg(t).arg(trackY).arg(h)
-            .arg(clickY >= trackY && clickY < trackY + h));
-        if (clickY >= trackY && clickY < trackY + h)
-        {
-            trackIndex = t;
-            break;
-        }
-        trackY += h;
-    }
-    HDAW_LOG("TIDblClk", QString("trackIndex=%1 clickY=%2 trackY start=%3")
-        .arg(trackIndex).arg(clickY).arg(scene->getRulerHeight()));
+    int trackIndex = scene->trackIndexAtY(clickY);
+    HDAW_LOG("TIDblClk", QString("clickY=%1 numTracks=%2 trackIndex=%3")
+        .arg(clickY).arg(trackList.getNumChildren()).arg(trackIndex));
     if (trackIndex < 0) return false;
 
     auto trackTree = trackList.getChild(trackIndex);
