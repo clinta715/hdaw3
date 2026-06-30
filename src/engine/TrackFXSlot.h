@@ -78,10 +78,12 @@ public:
             activeType = ActiveType::None;
     }
 
-    TrackFXSlot(std::unique_ptr<juce::AudioPluginInstance> plugin, const juce::String& pluginID)
+    TrackFXSlot(std::unique_ptr<juce::AudioPluginInstance> plugin, const juce::String& pluginID,
+                bool isIsolated = false)
         : slotType("plugin"),
           pluginInstance(std::move(plugin)),
           isExternal(true),
+          isolated(isIsolated),
           pluginIdentifier(pluginID)
     {
         activeType = ActiveType::Plugin;
@@ -95,6 +97,7 @@ public:
     void setBypassed(bool b) { bypassed.store(b, std::memory_order_relaxed); }
 
     const juce::String& getPluginID() const { return pluginIdentifier; }
+    bool isIsolated() const { return isolated; }
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
@@ -228,6 +231,7 @@ private:
     std::atomic<bool> bypassed{ false };
 
     bool isExternal = false;
+    bool isolated = false;
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     juce::String pluginIdentifier;
