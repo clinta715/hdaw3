@@ -347,7 +347,8 @@ void MainWindow::setupLayout()
 
     setCentralWidget(mainHorizontalSplitter);
 
-    connectSignals();
+    connectTimelineSignals();
+    connectBottomPanelSignals();
     restoreWindowGeometry();
 }
 
@@ -430,36 +431,11 @@ void MainWindow::setupBottomPanel()
     bottomLayout->addWidget(bottomStack);
 }
 
-void MainWindow::connectSignals()
+void MainWindow::connectTimelineSignals()
 {
     auto* scene = timelineView->getScene();
 
     connect(scene, &TimelineScene::clipSelected, this, &MainWindow::onClipSelected);
-
-    connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
-        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
-        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
-        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
-        [this]() {
-            if (stepEditorWidget->hasClip())
-            {
-                pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
-                bottomStack->setCurrentIndex(1);
-            }
-        });
-
-    connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
-        [this](int trackIndex) {
-            selectedTrack = trackIndex;
-            fxChainWidget->loadTrack(trackIndex);
-            bottomStack->setCurrentIndex(2);
-        });
 
     connect(timelineView, &TimelineView::automationToggled, this,
         [this](int trackIndex) {
@@ -493,6 +469,34 @@ void MainWindow::connectSignals()
 
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
+}
+
+void MainWindow::connectBottomPanelSignals()
+{
+    connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
+        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
+        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
+        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
+        [this]() {
+            if (stepEditorWidget->hasClip())
+            {
+                pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
+                bottomStack->setCurrentIndex(1);
+            }
+        });
+
+    connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
+        [this](int trackIndex) {
+            selectedTrack = trackIndex;
+            fxChainWidget->loadTrack(trackIndex);
+            bottomStack->setCurrentIndex(2);
+        });
 
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
         [this]() {

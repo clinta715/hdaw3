@@ -38,7 +38,8 @@ protected:
 private:
     void setupLayout();
     void setupBottomPanel();
-    void connectSignals();
+    void connectTimelineSignals();
+    void connectBottomPanelSignals();
     void restoreWindowGeometry();
     void setupMenuBar();
     void rebuildAllUI();
