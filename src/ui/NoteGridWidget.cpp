@@ -114,17 +114,22 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         auto& projModel = engine.getProjectModel();
         int scaleRoot = projModel.getScaleRoot();
         int scaleMode = projModel.getScaleMode();
-        auto scalePitches = PhraseGenerator::buildScalePitches(scaleRoot, scaleMode, 0, 127);
-        bool inScale[128] = {false};
-        for (int p : scalePitches)
-            if (p >= 0 && p < 128)
-                inScale[p] = true;
+        if (scaleRoot != cachedScaleRoot || scaleMode != cachedScaleMode)
+        {
+            cachedScaleRoot = scaleRoot;
+            cachedScaleMode = scaleMode;
+            inScale.reset();
+            auto scalePitches = PhraseGenerator::buildScalePitches(scaleRoot, scaleMode, 0, 127);
+            for (int p : scalePitches)
+                if (p >= 0 && p < 128)
+                    inScale.set(static_cast<size_t>(p));
+        }
 
         QColor scaleColor(ThemeColors::accent().red(), ThemeColors::accent().green(),
                           ThemeColors::accent().blue(), 12);
         for (int n = 0; n < 128; ++n)
         {
-            if (!inScale[n]) continue;
+            if (!inScale.test(n)) continue;
             int y = static_cast<int>(n * keyHeight - scrollY);
             if (y > h + 10 || y + keyHeight < -10) continue;
             painter.fillRect(0, static_cast<int>(y), w, static_cast<int>(keyHeight + 1), scaleColor);
@@ -179,7 +184,7 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
     {
         auto note = model.getNote(i);
         auto r = noteRect(i);
-        if (r.right() < 0 || r.left() > w) continue;
+        if (r.right() < 0 || r.left() > w || r.bottom() < 0 || r.top() > h) continue;
 
         float vel = note.getProperty(IDs::velocity);
         int alpha = static_cast<int>(vel / 127.0f * 200.0f + 55.0f);
@@ -193,20 +198,14 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
     }
 
     // Draw selection
-    auto sel = model.getSelectedNotes();
-    for (const auto& s : sel)
+    for (int i = 0; i < model.getNumNotes(); ++i)
     {
-        for (int i = 0; i < model.getNumNotes(); ++i)
-        {
-            if (model.getNote(i) == s)
-            {
-                auto r = noteRect(i);
-                painter.setPen(QPen(ThemeColors::warning(), 2));
-                painter.setBrush(Qt::NoBrush);
-                painter.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2, 2);
-                break;
-            }
-        }
+        if (!model.isSelected(i)) continue;
+        auto r = noteRect(i);
+        if (r.right() < 0 || r.left() > w || r.bottom() < 0 || r.top() > h) continue;
+        painter.setPen(QPen(ThemeColors::warning(), 2));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2, 2);
     }
 
     // Rubber-band selection rectangle
