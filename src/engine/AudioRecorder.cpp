@@ -83,6 +83,8 @@ void AudioRecorder::processBlock(const juce::AudioBuffer<float>& buffer)
         return;
     }
 
+    samples = juce::jmin(samples, channelBuffer.getNumSamples());
+
     for (int ch = 0; ch < chans; ++ch)
         channelBuffer.copyFrom(ch, 0, buffer, ch, 0, samples);
 

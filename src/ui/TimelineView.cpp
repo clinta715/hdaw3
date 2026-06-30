@@ -503,11 +503,11 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     // Read actual audio file duration
     double duration = 4.0;
     auto& pool = engine.getProjectPool();
-    auto* reader = pool.getFormatManager().createReaderFor(juce::File(filePath.toUtf8().constData()));
+    auto reader = std::unique_ptr<juce::AudioFormatReader>(
+        pool.getFormatManager().createReaderFor(juce::File(filePath.toUtf8().constData())));
     if (reader != nullptr)
     {
         duration = reader->lengthInSamples / reader->sampleRate;
-        delete reader;
     }
 
     auto trackTree = trackList.getChild(trackIndex);

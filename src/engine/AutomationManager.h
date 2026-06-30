@@ -28,12 +28,15 @@ public:
 
     double getValueAtTime(double timeSeconds) const
     {
-        if (!enabled)
-            return -1.0;
-
         double result = -1.0;
         if (cacheLock.tryEnter())
         {
+            if (!enabled)
+            {
+                cacheLock.exit();
+                return -1.0;
+            }
+
             if (!points.empty())
             {
                 if (timeSeconds <= points.front().first)

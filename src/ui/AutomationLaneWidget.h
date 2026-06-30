@@ -41,7 +41,6 @@ private:
     AudioEngine& engine;
     int currentTrack = -1;
     int currentParamIndex = 0;
-    HDAW::AutomationManager* automation = nullptr;
     QComboBox* paramCombo;
 
     double pixelsPerSecond = 40.0;

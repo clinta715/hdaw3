@@ -32,7 +32,6 @@ public:
         const int numChannels = juce::jmin(2, buffer.getNumChannels());
 
         scratchBuffer.clear();
-        int totalInputs = getTotalNumInputChannels();
         for (int ch = 0; ch < numChannels; ++ch)
             scratchBuffer.addFrom(ch, 0, buffer, ch, 0, numSamples);
 
