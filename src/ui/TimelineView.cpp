@@ -434,7 +434,6 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
                         (std::max)(0.0, timeSeconds), 4.0);
                     clipList.addChild(clip, -1, &model.getUndoManager());
                     engine.getMainProcessor()->rebuildRoutingGraph();
-                    timelineScene->rebuildFromValueTree();
                 });
             }
 
@@ -487,5 +486,4 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     clipList.addChild(clip, -1, &model.getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    timelineScene->rebuildFromValueTree();
 }

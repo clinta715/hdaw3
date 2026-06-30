@@ -256,7 +256,6 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
 
     clipList.addChild(clipTree, -1, &model.getUndoManager());
     engine.getMainProcessor()->rebuildRoutingGraph();
-    scene->rebuildFromValueTree();
 
     lastClipDuration = duration;
     emit scene->clipSelected(clipTree);

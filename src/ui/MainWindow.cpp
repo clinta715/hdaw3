@@ -1091,7 +1091,6 @@ void MainWindow::onImportAudio()
     clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    rebuildAllUI();
 }
 
 void MainWindow::onImportMIDI()
@@ -1242,7 +1241,6 @@ void MainWindow::onImportMIDI()
     }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    rebuildAllUI();
 }
 
 void MainWindow::onBPMChanged(double bpm)
@@ -1266,7 +1264,6 @@ void MainWindow::onRecordToggle()
     {
         proc->stopRecording();
         engine.getTransportManager().setPlaying(false);
-        rebuildAllUI();
         statusBar()->showMessage("Recording stopped", 3000);
     }
     else
