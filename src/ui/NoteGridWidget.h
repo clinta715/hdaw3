@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <bitset>
 #include "PianoRollModel.h"
 #include "../engine/AudioEngine.h"
 
@@ -61,6 +62,13 @@ private:
     double keyHeight = 10.0;
     int scrollX = 0;
     int scrollY = 0;
+
+    // Cached scale-pitch lookup. Rebuilt only when (scaleRoot, scaleMode) change,
+    // not on every paint. Avoids the per-paint cost of PhraseGenerator::buildScalePitches
+    // and a 128-entry array fill in NoteGridWidget::paintEvent.
+    int cachedScaleRoot = -1;
+    int cachedScaleMode = -1;
+    std::bitset<128> inScale;
 
     bool snapEnabled = true;
     double snapDivision = 0.0625; // 1/16

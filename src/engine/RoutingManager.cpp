@@ -347,9 +347,13 @@ void RoutingManager::updateClipParam(int trackIndex, int clipIndex, int paramID,
         auto* clip = audioIt->second;
         switch (paramID)
         {
-            case 10: clip->setGain(value);       break;
-            case 11: clip->setFadeIn(value);     break;
-            case 12: clip->setFadeOut(value);    break;
+            case 10: clip->setGain(value);                              break;
+            case 11: clip->setFadeIn(value);                            break;
+            case 12: clip->setFadeOut(value);                           break;
+            case 13: clip->setStartTime(static_cast<double>(value));    break;
+            case 14: clip->setDuration(static_cast<double>(value));     break;
+            case 15: clip->setOffset(static_cast<double>(value));       break;
+            case 16: clip->setLooping(value > 0.5f);                    break;
         }
         return;
     }

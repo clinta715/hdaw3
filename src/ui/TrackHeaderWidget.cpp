@@ -4,6 +4,7 @@
 #include "../engine/PluginManager.h"
 #include <QPainter>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QMenu>
@@ -16,6 +17,17 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
 {
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
+
+    nameFont = font();
+    nameFont.setPointSize(9);
+    nameFont.setBold(true);
+
+    toggleFont = font();
+    toggleFont.setPointSize(6);
+    toggleFont.setBold(true);
+
+    smallFont = font();
+    smallFont.setPointSize(6);
 
     connect(&vuTimer, &QTimer::timeout, this, &TrackHeaderWidget::updateVU);
     vuTimer.start(static_cast<int>(vuUpdateInterval));
@@ -53,6 +65,7 @@ void TrackHeaderWidget::rebuild()
     }
 
     setMinimumHeight(100);
+    layoutRects();
     update();
 }
 
@@ -63,6 +76,7 @@ void TrackHeaderWidget::setTrackHeight(int index, double height)
     {
         trackList.getChild(index).setProperty(IDs::trackHeight,
             (std::max)(40.0, height), &engine.getProjectModel().getUndoManager());
+        layoutRects();
         update();
     }
 }
@@ -90,7 +104,66 @@ void TrackHeaderWidget::updateVU()
             h.vuRight = meter.getRightLevel();
         }
     }
-    update();
+    for (auto& h : tracks)
+    {
+        if (!h.vuRect.isEmpty())
+            update(h.vuRect);
+    }
+}
+
+void TrackHeaderWidget::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    layoutRects();
+}
+
+void TrackHeaderWidget::layoutRects()
+{
+    int w = width();
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int count = trackList.getNumChildren();
+
+    if (static_cast<int>(tracks.size()) != count)
+        return;
+
+    double trackY = rulerHeight - scrollOffset;
+
+    for (int i = 0; i < count; ++i)
+    {
+        auto& header = tracks[i];
+        double trackH = getTrackHeight(i);
+        int y = static_cast<int>(trackY);
+        int h = static_cast<int>(trackH);
+
+        QRect row(0, y, w, h);
+        header.bounds = row;
+
+        header.nameRect = QRect(8, y + 4, w - 16, 16);
+
+        int btnY = y + 24;
+        int btnSize = 14;
+        int btnSpacing = 4;
+        int btnX = 6;
+        header.muteRect = QRect(btnX, btnY, btnSize, btnSize);
+        header.soloRect = QRect(btnX + btnSize + btnSpacing, btnY, btnSize, btnSize);
+        header.armRect = QRect(btnX + 2 * (btnSize + btnSpacing), btnY, btnSize, btnSize);
+        header.autoRect = QRect(btnX + 3 * (btnSize + btnSpacing), btnY, btnSize, btnSize);
+
+        int faderY = y + 44;
+        int faderH = 20;
+        int faderW = w - 20;
+        int faderX = 10;
+        header.volRect = QRect(faderX, faderY, faderW, faderH);
+
+        int panY = y + 66;
+        int panW = faderW;
+        int panH = 10;
+        header.panRect = QRect(faderX, panY, panW, panH);
+
+        header.vuRect = QRect(w - 14, y + 4, 10, h - 8);
+
+        trackY += trackH;
+    }
 }
 
 int TrackHeaderWidget::hitTest(const QPoint& pos, int& outTrackIndex) const
@@ -156,6 +229,7 @@ void TrackHeaderWidget::setScrollOffset(double yOffset)
     if (scrollOffset != yOffset)
     {
         scrollOffset = yOffset;
+        layoutRects();
         update();
     }
 }
@@ -199,7 +273,6 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         rebuild();
 
     double trackY = rulerHeight - scrollOffset;
-    double trackH = defaultTrackHeight;
 
     painter.save();
     painter.setClipRect(0, static_cast<int>(rulerHeight), w, height() - static_cast<int>(rulerHeight));
@@ -207,14 +280,10 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     for (int i = 0; i < count; ++i)
     {
         auto tree = trackList.getChild(i);
-        trackH = getTrackHeight(i);
-
-        int y = static_cast<int>(trackY);
-        int h = static_cast<int>(trackH);
-        QRect row(0, y, w, h);
+        double trackH = getTrackHeight(i);
 
         auto& header = headerFor(i);
-        header.bounds = row;
+        const QRect& row = header.bounds;
 
         // Background
         QColor bg = (i % 2 == 0) ? ThemeColors::trackFill1() : ThemeColors::trackFill2();
@@ -234,105 +303,82 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
             int tc = tree.getProperty(IDs::color, static_cast<int>(0xFF4488CC));
             QColor trackColor((tc >> 16) & 0xFF, (tc >> 8) & 0xFF, tc & 0xFF);
             int stripW = isSelected ? 6 : 3;
-            painter.fillRect(QRect(0, y, stripW, h), isSelected ? trackColor.lighter(140) : trackColor);
+            painter.fillRect(QRect(0, row.y(), stripW, row.height()),
+                isSelected ? trackColor.lighter(140) : trackColor);
         }
 
         // Name
-        header.nameRect = QRect(8, y + 4, w - 16, 16);
         painter.setPen(Qt::white);
-        QFont f = painter.font();
-        f.setPointSize(9);
-        f.setBold(true);
-        painter.setFont(f);
-    QString name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
-    painter.drawText(header.nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
+        painter.setFont(nameFont);
+        QString name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+        painter.drawText(header.nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
 
-        // Mute / Solo / Arm buttons
-        int btnY = y + 24;
-        int btnSize = 14;
-        int btnSpacing = 4;
-        int btnX = 6;
-
-        auto drawToggle = [&](QRect& rect, int x, QColor onColor, bool active, const QString& label) {
-            rect = QRect(x, btnY, btnSize, btnSize);
+        // Mute / Solo / Arm buttons (rects pre-computed in layoutRects)
+        auto drawToggle = [&](const QRect& rect, QColor onColor, bool active, const QString& label) {
             painter.setPen(QPen(active ? onColor.lighter(130) : ThemeColors::borderLight(), 1));
             painter.setBrush(active ? onColor : ThemeColors::bgWidget());
             painter.drawRoundedRect(rect, 2, 2);
             painter.setPen(active ? Qt::white : ThemeColors::textSecondary());
-            QFont sf = painter.font();
-            sf.setPointSize(6);
-            sf.setBold(true);
-            painter.setFont(sf);
+            painter.setFont(toggleFont);
             painter.drawText(rect, Qt::AlignCenter, label);
         };
 
-        drawToggle(header.muteRect, btnX, ThemeColors::danger(), header.isMuted, "M");
-        drawToggle(header.soloRect, btnX + btnSize + btnSpacing, ThemeColors::warning(), header.isSoloed, "S");
+        drawToggle(header.muteRect, ThemeColors::danger(), header.isMuted, "M");
+        drawToggle(header.soloRect, ThemeColors::warning(), header.isSoloed, "S");
         {
             bool rArm = tree.getProperty(IDs::isArm);
-            drawToggle(header.armRect, btnX + 2 * (btnSize + btnSpacing), ThemeColors::danger(), rArm, "R");
+            drawToggle(header.armRect, ThemeColors::danger(), rArm, "R");
         }
 
         // Automation toggle
-        int autoX = btnX + 3 * (btnSize + btnSpacing);
-        header.autoRect = QRect(autoX, btnY, btnSize, btnSize);
         bool autoEnabled = tree.getProperty(IDs::automationEnabled);
         painter.setPen(QPen(autoEnabled ? ThemeColors::accentBright() : ThemeColors::borderLight(), 1));
         painter.setBrush(autoEnabled ? ThemeColors::accentDim() : ThemeColors::bgWidget());
         painter.drawRoundedRect(header.autoRect, 2, 2);
         painter.setPen(autoEnabled ? ThemeColors::accentBright() : ThemeColors::textSecondary());
+        painter.setFont(toggleFont);
         painter.drawText(header.autoRect, Qt::AlignCenter, "A");
 
         // Volume fader
-        int faderY = y + 44;
-        int faderH = 20;
-        int faderW = w - 20;
-        int faderX = 10;
-        header.volRect = QRect(faderX, faderY, faderW, faderH);
-
         painter.setPen(ThemeColors::border());
         painter.setBrush(ThemeColors::bgPanel());
         painter.drawRoundedRect(header.volRect, 3, 3);
 
         float vol = tree.getProperty(IDs::volume);
-        float volPos = vol * (faderW - 8);
-        QRect thumb((faderX + static_cast<int>(volPos)), faderY, 8, faderH);
+        float volPos = vol * (header.volRect.width() - 8);
+        QRect thumb((header.volRect.x() + static_cast<int>(volPos)),
+                    header.volRect.y(), 8, header.volRect.height());
         painter.setPen(Qt::NoPen);
         painter.setBrush(ThemeColors::accent());
         painter.drawRoundedRect(thumb, 2, 2);
 
         // Volume label
         painter.setPen(ThemeColors::textSecondary());
-        QFont sf2 = painter.font();
-        sf2.setPointSize(6);
-        painter.setFont(sf2);
+        painter.setFont(smallFont);
         int db = static_cast<int>(20.0 * std::log10((std::max)(vol, 0.001f)));
         painter.drawText(header.volRect.adjusted(2, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number(db) + "dB");
 
         // Pan
-        int panY = y + 66;
-        int panW = faderW;
-        int panH = 10;
-        header.panRect = QRect(faderX, panY, panW, panH);
-
         painter.setPen(ThemeColors::border());
         painter.setBrush(ThemeColors::bgPanel());
         painter.drawRoundedRect(header.panRect, 2, 2);
 
         float pan = tree.getProperty(IDs::pan);
-        float panPos = (pan * 0.5f + 0.5f) * (panW - 4) + 2;
+        float panPos = (pan * 0.5f + 0.5f) * (header.panRect.width() - 4) + 2;
         painter.setPen(Qt::NoPen);
         painter.setBrush(ThemeColors::textSecondary());
-        painter.drawEllipse(QPointF(faderX + panPos, panY + panH / 2), 3, 3);
+        painter.drawEllipse(QPointF(header.panRect.x() + panPos,
+                                    header.panRect.y() + header.panRect.height() / 2), 3, 3);
 
         // Pan label
         painter.setPen(ThemeColors::textSecondary());
-        painter.drawText(QRect(faderX + panW + 2, panY, 20, panH), Qt::AlignLeft | Qt::AlignVCenter,
+        painter.drawText(QRect(header.panRect.x() + header.panRect.width() + 2,
+                               header.panRect.y(), 20, header.panRect.height()),
+                         Qt::AlignLeft | Qt::AlignVCenter,
                          QString::number(static_cast<int>(pan * 100.0)) + "%");
 
         // VU meter area
-        header.vuRect = QRect(w - 14, y + 4, 10, h - 8);
         painter.setPen(ThemeColors::border());
         painter.setBrush(QColor(20, 20, 22));
         painter.drawRect(header.vuRect);
@@ -466,12 +512,14 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     }
     else if (type == 4) // Volume drag
     {
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust volume");
         dragTrack = trackIdx;
         dragStart = event->pos();
         dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::volume));
     }
     else if (type == 5) // Pan drag
     {
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust pan");
         dragTrack = trackIdx;
         dragStart = event->pos();
         dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::pan));
@@ -728,48 +776,16 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(trackIndex);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    if (engine.getProjectModel().addFxSlot(trackIndex, type.toStdString()) < 0) return;
 
     engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }
 
-void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat)
+void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(trackIndex);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    if (engine.getProjectModel().addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString()) < 0) return;
 
     engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();

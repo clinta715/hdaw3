@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <QResizeEvent>
 #include <juce_data_structures/juce_data_structures.h>
 #include "../engine/AudioEngine.h"
 
@@ -33,11 +34,14 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private slots:
     void updateVU();
 
 private:
+    void layoutRects();
+
     int trackIndex;
     AudioEngine& engine;
 
@@ -53,8 +57,17 @@ private:
 
     bool draggingVol = false;
     bool draggingPan = false;
+    QRect nameRect;
+    QRect vuLeftRect;
+    QRect vuRightRect;
+    QRect muteRect;
+    QRect soloRect;
     QRect fxBtnRect;
-    QRect panRect;
+    QRect faderRect;
+    QRect faderTrackRect;
+    QRect volLabelRect;
+    QRect panTrackRect;
+    QRect panLabelRect;
 
     static constexpr int stripWidth = 60;
     static constexpr int stripHeight = 200;

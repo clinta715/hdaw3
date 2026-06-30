@@ -53,6 +53,9 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
 
     if (clip != nullptr)
     {
+        if (undoManager)
+            undoManager->beginNewTransaction("Edit clip");
+
         double pps = clip->getPixelsPerSecond();
         double dur = clip->getDuration();
         double clipW = dur * pps;
@@ -232,24 +235,9 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     // Find which track the Y position falls on
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
-    double trackY = scene->getRulerHeight();
-    int trackIndex = -1;
-    HDAW_LOG("TIDblClk", QString("clickY=%1 numTracks=%2").arg(clickY).arg(trackList.getNumChildren()));
-    for (int t = 0; t < trackList.getNumChildren(); ++t)
-    {
-        double h = scene->getTrackHeight(t);
-        HDAW_LOG("TIDblClk", QString("  track %1: y=%2 h=%3 clickY in [y,y+h)? %4")
-            .arg(t).arg(trackY).arg(h)
-            .arg(clickY >= trackY && clickY < trackY + h));
-        if (clickY >= trackY && clickY < trackY + h)
-        {
-            trackIndex = t;
-            break;
-        }
-        trackY += h;
-    }
-    HDAW_LOG("TIDblClk", QString("trackIndex=%1 clickY=%2 trackY start=%3")
-        .arg(trackIndex).arg(clickY).arg(scene->getRulerHeight()));
+    int trackIndex = scene->trackIndexAtY(clickY);
+    HDAW_LOG("TIDblClk", QString("clickY=%1 numTracks=%2 trackIndex=%3")
+        .arg(clickY).arg(trackList.getNumChildren()).arg(trackIndex));
     if (trackIndex < 0) return false;
 
     auto trackTree = trackList.getChild(trackIndex);
@@ -264,25 +252,10 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     duration = snapToGrid(snappedTime + duration) - snappedTime;
     duration = (std::max)(0.5, duration);
 
-    juce::ValueTree clipTree(IDs::CLIP);
-    clipTree.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-    clipTree.setProperty(IDs::name, "MIDI Clip", &model.getUndoManager());
-    clipTree.setProperty(IDs::startTime, snappedTime, &model.getUndoManager());
-    clipTree.setProperty(IDs::duration, duration, &model.getUndoManager());
-    clipTree.setProperty(IDs::offset, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::clipType, "midi", &model.getUndoManager());
-    clipTree.setProperty(IDs::gain, 1.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::fadeIn, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::fadeOut, 0.0, &model.getUndoManager());
-    clipTree.setProperty(IDs::looping, false, &model.getUndoManager());
-    clipTree.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &model.getUndoManager());
-
-    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
-    clipTree.addChild(midiNotes, -1, nullptr);
+    auto clipTree = ProjectModel::createMidiClipEmpty("MIDI Clip", snappedTime, duration);
 
     clipList.addChild(clipTree, -1, &model.getUndoManager());
     engine.getMainProcessor()->rebuildRoutingGraph();
-    scene->rebuildFromValueTree();
 
     lastClipDuration = duration;
     emit scene->clipSelected(clipTree);

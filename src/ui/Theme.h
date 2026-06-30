@@ -4,52 +4,52 @@
 
 namespace ThemeColors {
     // Backgrounds
-    inline QColor bgWindow()     { return QColor(0x12, 0x12, 0x14); }
-    inline QColor bgPanel()      { return QColor(0x1c, 0x1c, 0x1f); }
-    inline QColor bgHeader()     { return QColor(0x1c, 0x1c, 0x1f); }
-    inline QColor bgWidget()     { return QColor(0x2a, 0x2a, 0x2e); }
-    inline QColor bgInput()      { return QColor(0x2a, 0x2a, 0x2e); }
-    inline QColor bgElevated()   { return QColor(0x2e, 0x2e, 0x32); }
-    inline QColor bgToolbar()    { return QColor(28, 28, 31, 220); }
+    inline QColor bgWindow()     { static const QColor c(0x12, 0x12, 0x14); return c; }
+    inline QColor bgPanel()      { static const QColor c(0x1c, 0x1c, 0x1f); return c; }
+    inline QColor bgHeader()     { static const QColor c(0x1c, 0x1c, 0x1f); return c; }
+    inline QColor bgWidget()     { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor bgInput()      { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor bgElevated()   { static const QColor c(0x2e, 0x2e, 0x32); return c; }
+    inline QColor bgToolbar()    { static const QColor c(28, 28, 31, 220); return c; }
 
     // Borders
-    inline QColor border()       { return QColor(0x3a, 0x3a, 0x3e); }
-    inline QColor borderLight()  { return QColor(0x4a, 0x4a, 0x4e); }
+    inline QColor border()       { static const QColor c(0x3a, 0x3a, 0x3e); return c; }
+    inline QColor borderLight()  { static const QColor c(0x4a, 0x4a, 0x4e); return c; }
 
     // Text
-    inline QColor textPrimary()  { return QColor(0xe4, 0xe4, 0xe7); }
-    inline QColor textSecondary(){ return QColor(0xa1, 0xa1, 0xaa); }
-    inline QColor textMuted()    { return QColor(0x71, 0x71, 0x7a); }
+    inline QColor textPrimary()  { static const QColor c(0xe4, 0xe4, 0xe7); return c; }
+    inline QColor textSecondary(){ static const QColor c(0xa1, 0xa1, 0xaa); return c; }
+    inline QColor textMuted()    { static const QColor c(0x71, 0x71, 0x7a); return c; }
 
     // Accent - Sleek Cyan
-    inline QColor accent()       { return QColor(0x06, 0xb6, 0xd4); }
-    inline QColor accentDim()    { return QColor(0x08, 0x91, 0xb2); }
-    inline QColor accentBright() { return QColor(0x22, 0xd3, 0xee); }
+    inline QColor accent()       { static const QColor c(0x06, 0xb6, 0xd4); return c; }
+    inline QColor accentDim()    { static const QColor c(0x08, 0x91, 0xb2); return c; }
+    inline QColor accentBright() { static const QColor c(0x22, 0xd3, 0xee); return c; }
 
     // Semantic
-    inline QColor danger()       { return QColor(0xef, 0x44, 0x44); }
-    inline QColor warning()      { return QColor(0xf5, 0x9e, 0x0b); }
-    inline QColor success()      { return QColor(0x10, 0xb9, 0x81); }
+    inline QColor danger()       { static const QColor c(0xef, 0x44, 0x44); return c; }
+    inline QColor warning()      { static const QColor c(0xf5, 0x9e, 0x0b); return c; }
+    inline QColor success()      { static const QColor c(0x10, 0xb9, 0x81); return c; }
 
     // VU meter gradient
-    inline QColor vuGreen()      { return QColor(0x10, 0xb9, 0x81); }
-    inline QColor vuYellow()     { return QColor(0xf5, 0x9e, 0x0b); }
-    inline QColor vuRed()        { return QColor(0xef, 0x44, 0x44); }
+    inline QColor vuGreen()      { static const QColor c(0x10, 0xb9, 0x81); return c; }
+    inline QColor vuYellow()     { static const QColor c(0xf5, 0x9e, 0x0b); return c; }
+    inline QColor vuRed()        { static const QColor c(0xef, 0x44, 0x44); return c; }
 
     // Track surfaces
-    inline QColor trackFill1()   { return QColor(0x2a, 0x2a, 0x2e); }
-    inline QColor trackFill2()   { return QColor(0x2e, 0x2e, 0x32); }
-    inline QColor trackColor()   { return QColor(0x06, 0xb6, 0xd4, 40); }
-    inline QColor rulerBg()      { return QColor(0x1c, 0x1c, 0x1f); }
+    inline QColor trackFill1()   { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor trackFill2()   { static const QColor c(0x2e, 0x2e, 0x32); return c; }
+    inline QColor trackColor()   { static const QColor c(0x06, 0xb6, 0xd4, 40); return c; }
+    inline QColor rulerBg()      { static const QColor c(0x1c, 0x1c, 0x1f); return c; }
 
     // Automation
-    inline QColor automationFill(){ return QColor(0x06, 0xb6, 0xd4, 40); }
-    inline QColor automationLine(){ return QColor(0x06, 0xb6, 0xd4, 200); }
+    inline QColor automationFill(){ static const QColor c(0x06, 0xb6, 0xd4, 40); return c; }
+    inline QColor automationLine(){ static const QColor c(0x06, 0xb6, 0xd4, 200); return c; }
 
     // Scrollbar
-    inline QColor scrollbarBg()  { return QColor(0x18, 0x18, 0x1b); }
-    inline QColor scrollbarHandle(){ return QColor(0x3a, 0x3a, 0x3e); }
-    inline QColor scrollbarHover(){ return QColor(0x06, 0xb6, 0xd4); }
+    inline QColor scrollbarBg()  { static const QColor c(0x18, 0x18, 0x1b); return c; }
+    inline QColor scrollbarHandle(){ static const QColor c(0x3a, 0x3a, 0x3e); return c; }
+    inline QColor scrollbarHover(){ static const QColor c(0x06, 0xb6, 0xd4); return c; }
 }
 
 inline QString getGlobalStyleSheet()

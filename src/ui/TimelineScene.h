@@ -24,6 +24,7 @@ public:
 
     int getTrackCount() const { return trackCount; }
     double getTrackY(int trackIndex) const;
+    int trackIndexAtY(double y) const;
 
     AudioEngine& getEngine() { return engine; }
     double getRulerHeight() const { return rulerHeight; }

@@ -18,7 +18,7 @@ juce::uint32 ClipItem::getColor() const
     // CLIP -> CLIP_LIST -> TRACK. Prefer the track's color so a clip always
     // reflects the track it lives on; this automatically applies the
     // destination track's color when a clip is dragged in from another track.
-    auto trackTree = clipTree.getParent().getParent();
+    auto trackTree = ProjectModel::getTrackOfClip(clipTree);
     if (trackTree.isValid() && trackTree.hasType(IDs::TRACK) && trackTree.hasProperty(IDs::color))
         return static_cast<juce::uint32>(static_cast<int>(trackTree.getProperty(IDs::color)));
 

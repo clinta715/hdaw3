@@ -2,6 +2,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QSignalBlocker>
 #include "../engine/PluginManager.h"
 
 TimelineToolbar::TimelineToolbar(QWidget* parent)
@@ -213,6 +214,7 @@ TimelineToolbar::~TimelineToolbar() = default;
 
 void TimelineToolbar::setPlaying(bool playing)
 {
+    const QSignalBlocker blocker(playBtn);
     playBtn->setChecked(playing);
     playBtn->setText(playing ? "\xE2\x8F\xB8" : "\xE2\x96\xB6"); // ⏸ or ▶
 }

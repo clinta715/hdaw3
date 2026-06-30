@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QLineEdit>
+#include <QFont>
 #include "../engine/AudioEngine.h"
 #include <vector>
 
@@ -36,6 +37,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
@@ -71,6 +73,7 @@ private:
     void commitPan(int trackIndex, float pan);
     void addFXToTrack(int trackIndex, const juce::String& type);
     void addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& pluginFormat);
+    void layoutRects();
 
     AudioEngine& engine;
     QTimer vuTimer;
@@ -82,6 +85,10 @@ private:
     int selectedTrack = -1;
 
     double scrollOffset = 0.0;
+
+    QFont nameFont;
+    QFont toggleFont;
+    QFont smallFont;
 
     static constexpr double headerWidth = 120.0;
     static constexpr double defaultTrackHeight = 80.0;

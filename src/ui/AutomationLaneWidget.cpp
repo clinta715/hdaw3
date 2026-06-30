@@ -105,7 +105,6 @@ void AutomationLaneWidget::onParamChanged(int index)
 void AutomationLaneWidget::loadTrack(int trackIndex)
 {
     currentTrack = trackIndex;
-    automation = nullptr;
     currentParamIndex = 0;
     refreshParamCombo();
     update();
@@ -114,7 +113,6 @@ void AutomationLaneWidget::loadTrack(int trackIndex)
 void AutomationLaneWidget::clear()
 {
     currentTrack = -1;
-    automation = nullptr;
     currentParamIndex = 0;
     paramCombo->clear();
     update();

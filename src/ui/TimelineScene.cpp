@@ -112,6 +112,18 @@ double TimelineScene::getTrackY(int trackIndex) const
     return y;
 }
 
+int TimelineScene::trackIndexAtY(double y) const
+{
+    double acc = rulerHeight;
+    for (int i = 0; i < getTrackCount(); ++i)
+    {
+        double h = getTrackHeight(i);
+        if (y >= acc && y < acc + h) return i;
+        acc += h;
+    }
+    return -1;
+}
+
 void TimelineScene::attachListener(juce::ValueTree tree)
 {
     if (listenerRoot.isValid())

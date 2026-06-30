@@ -1,4 +1,5 @@
 #include "ProjectModel.h"
+#include "../engine/PluginManager.h"
 #include <atomic>
 #include <algorithm>
 #include <functional>
@@ -184,7 +185,7 @@ void ProjectModel::scanAndSyncNoteIDs()
     while (cur <= maxExisting && !nextNoteID.compare_exchange_weak(cur, maxExisting + 1)) {}
 }
 
-static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file)
+juce::ValueTree ProjectModel::createAudioClip(juce::String name, double start, double dur, juce::String file)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
@@ -202,7 +203,7 @@ static juce::ValueTree createAudioClip(juce::String name, double start, double d
     return clip;
 }
 
-static juce::ValueTree createMidiNote(int note, float vel, double start, double dur)
+juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double start, double dur)
 {
     juce::ValueTree noteNode(IDs::MIDI_NOTE);
     noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
@@ -213,7 +214,7 @@ static juce::ValueTree createMidiNote(int note, float vel, double start, double 
     return noteNode;
 }
 
-static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
+juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double start, double dur)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
@@ -227,16 +228,28 @@ static juce::ValueTree createMidiClip(juce::String name, double start, double du
     clip.setProperty(IDs::fadeOut, 0.0, nullptr);
     clip.setProperty(IDs::looping, false, nullptr);
     clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), nullptr);
+    clip.addChild(juce::ValueTree(IDs::MIDI_NOTE_LIST), -1, nullptr);
+    return clip;
+}
 
-    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
-    midiNotes.addChild(createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
-    midiNotes.addChild(createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
-    midiNotes.addChild(createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
-    midiNotes.addChild(createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
-    midiNotes.addChild(createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
-    midiNotes.addChild(createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
-    clip.addChild(midiNotes, -1, nullptr);
+juce::ValueTree ProjectModel::getTrackOfClip(const juce::ValueTree& clip)
+{
+    if (!clip.isValid() || !clip.hasType(IDs::CLIP)) return {};
+    auto clipList = clip.getParent();
+    if (!clipList.isValid()) return {};
+    return clipList.getParent();
+}
 
+static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
+{
+    juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, start, dur);
+    auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    midiNotes.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
+    midiNotes.addChild(ProjectModel::createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
     return clip;
 }
 
@@ -358,4 +371,43 @@ void ProjectModel::createDefaultProject()
         track3.addChild(createAutomationList(), -1, nullptr);
     }
     trackList.addChild(track3, -1, nullptr);
+}
+
+int ProjectModel::addFxSlot(int trackIdx, const std::string& type, int pos,
+                            const std::string& pluginID)
+{
+    auto tl = getTrackListTree();
+    if (trackIdx < 0 || trackIdx >= tl.getNumChildren()) return -1;
+    auto track = tl.getChild(trackIdx);
+    auto fxChainTree = track.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChainTree.isValid())
+    {
+        fxChainTree = juce::ValueTree(IDs::FX_CHAIN);
+        track.addChild(fxChainTree, -1, &undoManager);
+    }
+    const int n = fxChainTree.getNumChildren();
+    int insertIdx = (pos < 0 || pos > n) ? n : pos;
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(type), &undoManager);
+    if (type == "plugin" && !pluginID.empty())
+    {
+        slot.setProperty(IDs::pluginID, juce::String(pluginID), &undoManager);
+        slot.setProperty(IDs::pluginFormat, juce::String(resolvePluginFormat(pluginID)),
+                         &undoManager);
+    }
+    slot.setProperty(IDs::bypassed, false, &undoManager);
+    fxChainTree.addChild(slot, insertIdx, &undoManager);
+    return insertIdx;
+}
+
+std::string ProjectModel::resolvePluginFormat(const std::string& pluginID) const
+{
+    if (pluginManager_ == nullptr) return {};
+    juce::String jid(pluginID);
+    for (const auto& p : pluginManager_->getPlugins())
+    {
+        if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
+            return p.pluginFormatName.toStdString();
+    }
+    return {};
 }

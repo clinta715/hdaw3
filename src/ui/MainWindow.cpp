@@ -27,6 +27,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QMenuBar>
@@ -44,6 +45,7 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
     mcpServer_ = new mcp::McpServer(this);
     mcpServer_->setEngine(&engine);
+    engine.getProjectModel().setPluginManager(&engine.getPluginManager());
     mcp::registerAllTools(*mcpServer_);
 
     setupLayout();
@@ -88,6 +90,13 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
 MainWindow::~MainWindow()
 {
+    if (mcpHttp_ != nullptr)
+    {
+        mcpHttp_->stop();
+        delete mcpHttp_;
+        mcpHttp_ = nullptr;
+    }
+
     auto transportTree = engine.getProjectModel().getTransportTree();
     if (transportTree.isValid())
         transportTree.removeListener(this);
@@ -98,7 +107,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     timecodeTimer.stop();
     if (checkSaveBeforeAction())
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         settings.setValue(PreferencesDialog::kKeyWindowGeometry, saveGeometry());
         settings.setValue(PreferencesDialog::kKeyWindowState, saveState());
         if (mainHorizontalSplitter != nullptr)
@@ -247,11 +256,11 @@ void MainWindow::setupMenuBar()
     mcpHttpAction = toolsMenu->addAction(tr("&MCP HTTP Server"));
     mcpHttpAction->setCheckable(true);
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         mcpHttpAction->setChecked(settings.value("mcp/httpEnabled", false).toBool());
     }
     connect(mcpHttpAction, &QAction::toggled, this, [this](bool on) {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         settings.setValue("mcp/httpEnabled", on);
         if (on) startMcpHttpServer();
         else    stopMcpHttpServer();
@@ -286,12 +295,15 @@ void MainWindow::setupMenuBar()
 void MainWindow::startMcpHttpServer()
 {
     if (mcpHttp_ != nullptr) return;
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     quint16 port = static_cast<quint16>(settings.value("mcp/httpPort", 8765).toInt());
     mcpHttp_ = new mcp::TransportHttp(port);
     mcpHttp_->start(mcpServer_);
     if (mcpHttpAction != nullptr && !mcpHttpAction->isChecked())
+    {
+        const QSignalBlocker b(mcpHttpAction);
         mcpHttpAction->setChecked(true);
+    }
     statusBar()->showMessage(QString("MCP HTTP server listening on 127.0.0.1:%1").arg(port), 5000);
 }
 
@@ -302,7 +314,10 @@ void MainWindow::stopMcpHttpServer()
     delete mcpHttp_;
     mcpHttp_ = nullptr;
     if (mcpHttpAction != nullptr && mcpHttpAction->isChecked())
+    {
+        const QSignalBlocker b(mcpHttpAction);
         mcpHttpAction->setChecked(false);
+    }
     statusBar()->showMessage("MCP HTTP server stopped", 3000);
 }
 
@@ -417,7 +432,7 @@ void MainWindow::setupLayout()
             HDAW_LOG("MWClipSel", QString("ENTER type=%1 valid=%2")
                 .arg(QString::fromUtf8(clipTree.getProperty(IDs::clipType).toString().toRawUTF8()))
                 .arg(clipTree.isValid() ? 1 : 0));
-            auto trackTree = clipTree.getParent().getParent();
+            auto trackTree = ProjectModel::getTrackOfClip(clipTree);
             if (trackTree.isValid() && trackTree.hasType(IDs::TRACK))
             {
                 auto trackList = engine.getProjectModel().getTrackListTree();
@@ -432,7 +447,7 @@ void MainWindow::setupLayout()
             juce::String type = clipTree.getProperty(IDs::clipType).toString();
             if (type == "midi")
             {
-                QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+                auto& settings = PreferencesDialog::settings();
                 QString mode = settings.value("midiEditorMode", "piano").toString();
                 if (mode == "step")
                 {
@@ -533,13 +548,6 @@ void MainWindow::setupLayout()
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
 
-    // Keyboard shortcuts
-    auto* recordShortcut = new QShortcut(QKeySequence(Qt::Key_R), this);
-    connect(recordShortcut, &QShortcut::activated, this, &MainWindow::onRecordToggle);
-
-    auto* playShortcut = new QShortcut(QKeySequence(Qt::Key_Space), this);
-    connect(playShortcut, &QShortcut::activated, this, &MainWindow::onPlayToggle);
-
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
         [this]() {
             auto trackList = engine.getProjectModel().getTrackListTree();
@@ -559,7 +567,7 @@ void MainWindow::setupLayout()
 
     // Restore saved window and panel state from previous session
     {
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         auto geometry = settings.value(PreferencesDialog::kKeyWindowGeometry);
         if (geometry.isValid())
             restoreGeometry(geometry.toByteArray());
@@ -656,7 +664,7 @@ void MainWindow::onOpen()
 {
     if (!checkSaveBeforeAction()) return;
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Open Project",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "HDAW Projects (*.hdaw)");
@@ -673,7 +681,7 @@ void MainWindow::openProjectFile(const QString& path)
     {
         QMessageBox::warning(this, "File Not Found",
             QString("The file no longer exists:\n%1").arg(path));
-        QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+        auto& settings = PreferencesDialog::settings();
         QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
         if (list.removeAll(path) > 0)
         {
@@ -690,7 +698,7 @@ void MainWindow::openProjectFile(const QString& path)
         return;
     }
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     settings.setValue(PreferencesDialog::kKeyLastProjectDir, QFileInfo(path).absolutePath());
     currentFile = file;
     engine.getMainProcessor()->rebuildRoutingGraph();
@@ -705,7 +713,7 @@ void MainWindow::addToRecentProjects(const QString& path)
 {
     if (path.isEmpty()) return;
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
     list.removeAll(path);
     list.prepend(path);
@@ -720,7 +728,7 @@ void MainWindow::rebuildRecentProjectsMenu()
 
     recentProjectsMenu->clear();
 
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     QStringList list = settings.value(PreferencesDialog::kKeyRecentProjects).toStringList();
 
     if (list.isEmpty())
@@ -756,7 +764,7 @@ bool MainWindow::onSave()
 
 void MainWindow::onSaveAs()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getSaveFileName(this, "Save Project As",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "HDAW Projects (*.hdaw)");
@@ -948,25 +956,13 @@ void MainWindow::onAddTrackWithFX(const juce::String& fxType)
     int last = trackList.getNumChildren() - 1;
     if (last < 0) return;
 
-    auto trackTree = trackList.getChild(last);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, fxType, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    engine.getProjectModel().addFxSlot(last, fxType.toStdString());
 
     engine.getMainProcessor()->rebuildTrackFX(last);
     rebuildAllUI();
 }
 
-void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat)
+void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
     onAddTrack();
 
@@ -974,21 +970,7 @@ void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::
     int last = trackList.getNumChildren() - 1;
     if (last < 0) return;
 
-    auto trackTree = trackList.getChild(last);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginID, pluginID, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::pluginFormat, pluginFormat, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    engine.getProjectModel().addFxSlot(last, "plugin", -1, pluginID.toStdString());
 
     engine.getMainProcessor()->rebuildTrackFX(last);
     rebuildAllUI();
@@ -1047,7 +1029,7 @@ void MainWindow::onToggleBrowserPanel()
 
 void MainWindow::onImportAudio()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Import Audio",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
@@ -1087,11 +1069,11 @@ void MainWindow::onImportAudio()
     QFileInfo fi(path);
     double duration = 4.0;
     auto& pool = engine.getProjectPool();
-    auto* reader = pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData()));
+    auto reader = std::unique_ptr<juce::AudioFormatReader>(
+        pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData())));
     if (reader != nullptr)
     {
         duration = reader->lengthInSamples / reader->sampleRate;
-        delete reader;
     }
 
     double startTime = 0.0;
@@ -1103,28 +1085,17 @@ void MainWindow::onImportAudio()
         startTime = (std::max)(startTime, end);
     }
 
-    juce::ValueTree clip(IDs::CLIP);
-    clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-    clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::startTime, startTime, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::duration, duration, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::clipType, "audio", &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::sourceFile, path.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
-    clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), &engine.getProjectModel().getUndoManager());
+    auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
+                                              startTime, duration,
+                                              path.toUtf8().constData());
     clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    rebuildAllUI();
 }
 
 void MainWindow::onImportMIDI()
 {
-    QSettings settings(PreferencesDialog::kSettingsOrg, PreferencesDialog::kSettingsApp);
+    auto& settings = PreferencesDialog::settings();
     auto path = QFileDialog::getOpenFileName(this, "Import MIDI",
         settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
         "MIDI Files (*.mid *.midi)");
@@ -1227,21 +1198,10 @@ void MainWindow::onImportMIDI()
             clipStartTime = (std::max)(clipStartTime, end);
         }
 
-        juce::ValueTree clip(IDs::CLIP);
-        clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-        clip.setProperty(IDs::name, ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
-            &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::startTime, clipStartTime, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::duration, clipDuration, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::clipType, "midi", &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &engine.getProjectModel().getUndoManager());
-
-        juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
+        auto clip = ProjectModel::createMidiClipEmpty(
+            ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
+            clipStartTime, clipDuration);
+        auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
 
         for (int e = 0; e < midiTrack->getNumEvents(); ++e)
         {
@@ -1268,25 +1228,19 @@ void MainWindow::onImportMIDI()
                     }
                 }
 
-                juce::ValueTree noteNode(IDs::MIDI_NOTE);
-                noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
-                noteNode.setProperty(IDs::noteNumber, noteNum, nullptr);
-                noteNode.setProperty(IDs::velocity, static_cast<float>(msg.getVelocity()) / 127.0f, nullptr);
-                noteNode.setProperty(IDs::startBeat, beatTime, nullptr);
-                noteNode.setProperty(IDs::durationBeats, noteDurBeats, nullptr);
-                midiNotes.addChild(noteNode, -1, nullptr);
+                midiNotes.addChild(ProjectModel::createMidiNote(
+                    noteNum, static_cast<float>(msg.getVelocity()) / 127.0f,
+                    beatTime, noteDurBeats), -1, nullptr);
             }
         }
 
         if (midiNotes.getNumChildren() > 0)
         {
-            clip.addChild(midiNotes, -1, nullptr);
             clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
         }
     }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    rebuildAllUI();
 }
 
 void MainWindow::onBPMChanged(double bpm)
@@ -1310,7 +1264,6 @@ void MainWindow::onRecordToggle()
     {
         proc->stopRecording();
         engine.getTransportManager().setPlaying(false);
-        rebuildAllUI();
         statusBar()->showMessage("Recording stopped", 3000);
     }
     else

@@ -476,31 +476,11 @@ void PhraseGeneratorDialog::onGenerate()
 
     auto& um = engine.getProjectModel().getUndoManager();
 
-    juce::ValueTree clipTree(IDs::CLIP);
-    clipTree.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
-    clipTree.setProperty(IDs::name, "Generated", nullptr);
-    clipTree.setProperty(IDs::startTime, 0.0, nullptr);
-    clipTree.setProperty(IDs::duration, lengthBeats, nullptr);
-    clipTree.setProperty(IDs::offset, 0.0, nullptr);
-    clipTree.setProperty(IDs::clipType, "midi", &um);
-    clipTree.setProperty(IDs::gain, 1.0, &um);
-    clipTree.setProperty(IDs::fadeIn, 0.0, &um);
-    clipTree.setProperty(IDs::fadeOut, 0.0, &um);
-    clipTree.setProperty(IDs::looping, false, &um);
-    clipTree.setProperty(IDs::color, static_cast<int>(0xFF88CC44), &um);
-
-    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
+    auto clipTree = ProjectModel::createMidiClipEmpty("Generated", 0.0, lengthBeats);
+    clipTree.setProperty(IDs::color, static_cast<int>(0xFF88CC44), nullptr);
+    auto midiNotes = clipTree.getChildWithName(IDs::MIDI_NOTE_LIST);
     for (const auto& n : notes)
-    {
-        juce::ValueTree midiNote(IDs::MIDI_NOTE);
-        midiNote.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
-        midiNote.setProperty(IDs::noteNumber, n.noteNumber, nullptr);
-        midiNote.setProperty(IDs::velocity, n.velocity, nullptr);
-        midiNote.setProperty(IDs::startBeat, n.startBeat, nullptr);
-        midiNote.setProperty(IDs::durationBeats, n.durationBeats, nullptr);
-        midiNotes.addChild(midiNote, -1, nullptr);
-    }
-    clipTree.addChild(midiNotes, -1, nullptr);
+        midiNotes.addChild(ProjectModel::createMidiNote(n.noteNumber, n.velocity, n.startBeat, n.durationBeats), -1, nullptr);
 
     clipList.addChild(clipTree, -1, &um);
 

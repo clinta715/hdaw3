@@ -418,18 +418,7 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
                     auto& model = engine.getProjectModel();
                     auto trackList = model.getTrackListTree();
 
-                    double trackY = timelineScene->getRulerHeight();
-                    int trackIndex = -1;
-                    for (int t = 0; t < trackList.getNumChildren(); ++t)
-                    {
-                        double h = timelineScene->getTrackHeight(t);
-                        if (scenePos.y() >= trackY && scenePos.y() < trackY + h)
-                        {
-                            trackIndex = t;
-                            break;
-                        }
-                        trackY += h;
-                    }
+                    int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
                     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
                         return;
 
@@ -441,25 +430,10 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
                         trackTree.addChild(clipList, -1, &model.getUndoManager());
                     }
 
-                    juce::ValueTree clip(IDs::CLIP);
-                    clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-                    clip.setProperty(IDs::name, "MIDI Clip", &model.getUndoManager());
-                    clip.setProperty(IDs::startTime, (std::max)(0.0, timeSeconds), &model.getUndoManager());
-                    clip.setProperty(IDs::duration, 4.0, &model.getUndoManager());
-                    clip.setProperty(IDs::offset, 0.0, &model.getUndoManager());
-                    clip.setProperty(IDs::clipType, "midi", &model.getUndoManager());
-                    clip.setProperty(IDs::gain, 1.0, &model.getUndoManager());
-                    clip.setProperty(IDs::fadeIn, 0.0, &model.getUndoManager());
-                    clip.setProperty(IDs::fadeOut, 0.0, &model.getUndoManager());
-                    clip.setProperty(IDs::looping, false, &model.getUndoManager());
-                    clip.setProperty(IDs::color, static_cast<int>(0xFFCC8844), &model.getUndoManager());
-
-                    juce::ValueTree midiNotes(IDs::MIDI_NOTE_LIST);
-                    clip.addChild(midiNotes, -1, nullptr);
-
+                    auto clip = ProjectModel::createMidiClipEmpty("MIDI Clip",
+                        (std::max)(0.0, timeSeconds), 4.0);
                     clipList.addChild(clip, -1, &model.getUndoManager());
                     engine.getMainProcessor()->rebuildRoutingGraph();
-                    timelineScene->rebuildFromValueTree();
                 });
             }
 
@@ -485,29 +459,17 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
 
-    double trackY = timelineScene->getRulerHeight();
-    int trackIndex = -1;
-    for (int t = 0; t < trackList.getNumChildren(); ++t)
-    {
-        double h = timelineScene->getTrackHeight(t);
-        if (scenePos.y() >= trackY && scenePos.y() < trackY + h)
-        {
-            trackIndex = t;
-            break;
-        }
-        trackY += h;
-    }
-
+    int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
     if (trackIndex < 0) return;
 
     // Read actual audio file duration
     double duration = 4.0;
     auto& pool = engine.getProjectPool();
-    auto* reader = pool.getFormatManager().createReaderFor(juce::File(filePath.toUtf8().constData()));
+    auto reader = std::unique_ptr<juce::AudioFormatReader>(
+        pool.getFormatManager().createReaderFor(juce::File(filePath.toUtf8().constData())));
     if (reader != nullptr)
     {
         duration = reader->lengthInSamples / reader->sampleRate;
-        delete reader;
     }
 
     auto trackTree = trackList.getChild(trackIndex);
@@ -518,21 +480,10 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
         trackTree.addChild(clipList, -1, &model.getUndoManager());
     }
 
-    juce::ValueTree clip(IDs::CLIP);
-    clip.setProperty(IDs::clipID, engine.getProjectModel().allocateClipID(), nullptr);
-    clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &model.getUndoManager());
-    clip.setProperty(IDs::startTime, (std::max)(0.0, timeSeconds), &model.getUndoManager());
-    clip.setProperty(IDs::duration, duration, &model.getUndoManager());
-    clip.setProperty(IDs::offset, 0.0, &model.getUndoManager());
-    clip.setProperty(IDs::clipType, "audio", &model.getUndoManager());
-    clip.setProperty(IDs::sourceFile, filePath.toUtf8().constData(), &model.getUndoManager());
-    clip.setProperty(IDs::gain, 1.0, &model.getUndoManager());
-    clip.setProperty(IDs::fadeIn, 0.0, &model.getUndoManager());
-    clip.setProperty(IDs::fadeOut, 0.0, &model.getUndoManager());
-    clip.setProperty(IDs::looping, false, &model.getUndoManager());
-    clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), &model.getUndoManager());
+    auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
+                                              (std::max)(0.0, timeSeconds), duration,
+                                              filePath.toUtf8().constData());
     clipList.addChild(clip, -1, &model.getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    timelineScene->rebuildFromValueTree();
 }

@@ -107,7 +107,6 @@ public:
             }
             else if (activeNotes[note.noteNumber])
             {
-                uint8_t velByte = static_cast<uint8_t>(gain.load() * 127.0f);
                 midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, note.noteNumber, 0.0f),
                                       0);
                 activeNotes[note.noteNumber] = false;
@@ -116,7 +115,11 @@ public:
 
         float ccVal = gain.load();
         uint8_t ccByte = static_cast<uint8_t>((std::max)(0.0f, (std::min)(1.0f, ccVal)) * 127.0f);
-        midiMessages.addEvent(juce::MidiMessage::controllerEvent(midiChannel, 7, ccByte), 0);
+        if (ccByte != lastCcByte)
+        {
+            midiMessages.addEvent(juce::MidiMessage::controllerEvent(midiChannel, 7, ccByte), 0);
+            lastCcByte = ccByte;
+        }
     }
 
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -169,6 +172,7 @@ private:
     std::atomic<float> gain{ 1.0f };
 
     int midiChannel = 1;
+    uint8_t lastCcByte = 255;
     std::array<bool, 128> activeNotes{};
 
     std::array<std::array<NoteData, MAX_NOTES>, 2> noteCaches{};

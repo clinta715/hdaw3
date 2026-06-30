@@ -41,19 +41,32 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
+        (void) samplesPerBlock;
         sr = sampleRate;
 
-        reader.reset();
-        tempChannels[0].free();
-        tempChannels[1].free();
+        preloadedData[0].free();
+        preloadedData[1].free();
+        preloadedChannels = 0;
+        preloadedLength = 0;
 
         if (sourceFile.isNotEmpty())
         {
-            reader.reset(formatManager.createReaderFor(juce::File(sourceFile)));
+            std::unique_ptr<juce::AudioFormatReader> r(
+                formatManager.createReaderFor(juce::File(sourceFile)));
+            if (r != nullptr)
+            {
+                preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
+                const int total = static_cast<int>(r->lengthInSamples);
+                if (preloadedChannels > 0 && total > 0)
+                {
+                    preloadedData[0].malloc(total);
+                    preloadedData[1].malloc(total);
+                    int* const ptrs[2] = { preloadedData[0], preloadedData[1] };
+                    r->read(ptrs, preloadedChannels, 0, total, true);
+                    preloadedLength = static_cast<int64_t>(total);
+                }
+            }
         }
-
-        tempChannels[0].malloc(samplesPerBlock);
-        tempChannels[1].malloc(samplesPerBlock);
 
         gainSmooth.reset(sampleRate, 0.02);
         gainSmooth.setCurrentAndTargetValue(gain.load());
@@ -61,9 +74,10 @@ public:
 
     void releaseResources() override
     {
-        reader.reset();
-        tempChannels[0].free();
-        tempChannels[1].free();
+        preloadedData[0].free();
+        preloadedData[1].free();
+        preloadedChannels = 0;
+        preloadedLength = 0;
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
@@ -106,23 +120,22 @@ public:
 
         int64_t sourceSample = offsetSamples + clipLocalSample;
 
-        // Read audio
-        if (reader != nullptr && sourceSample < reader->lengthInSamples)
+        // Read from preloaded in-memory buffer (RT-safe: no disk I/O on audio thread)
+        int numToRead = 0;
+        if (preloadedLength > 0 && sourceSample < preloadedLength)
         {
-            int numToRead = (std::min)(numSamples, static_cast<int>(reader->lengthInSamples - sourceSample));
-            int readerCh = (std::min)(static_cast<int>(reader->numChannels), 2);
-
-            // Read via integer buffers and convert to float
-            int* const readPtrs[2] = { tempChannels[0], tempChannels[1] };
-            reader->read(readPtrs, numToRead, sourceSample, numToRead, true);
+            numToRead = (std::min)(numSamples, static_cast<int>(preloadedLength - sourceSample));
 
             buffer.clear();
             for (int ch = 0; ch < numChannels; ++ch)
             {
-                int srcCh = (readerCh > 1) ? (std::min)(ch, readerCh - 1) : 0;
-                auto* dest = buffer.getWritePointer(ch);
+                int srcCh = (preloadedChannels > 1) ? (std::min)(ch, preloadedChannels - 1) : 0;
+                const int* src = preloadedData[srcCh];
+                float* dest = buffer.getWritePointer(ch);
                 for (int s = 0; s < numToRead; ++s)
-                    dest[s] = static_cast<float>(readPtrs[srcCh][s]) / 32768.0f;
+                    dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
+                for (int s = numToRead; s < numSamples; ++s)
+                    dest[s] = 0.0f;
             }
         }
         else
@@ -140,7 +153,7 @@ public:
         int64_t fadeInSamples = static_cast<int64_t>(currentFadeIn * sr);
         int64_t fadeOutSamples = static_cast<int64_t>(currentFadeOut * sr);
 
-        for (int s = 0; s < numSamples; ++s)
+        for (int s = 0; s < numToRead; ++s)
         {
             int64_t localPos = clipLocalSample + s;
 
@@ -182,7 +195,6 @@ public:
 private:
     HDAW::TransportManager& transportManager;
     juce::AudioFormatManager& formatManager;
-    std::unique_ptr<juce::AudioFormatReader> reader;
     juce::String sourceFile;
 
     std::atomic<double> startTime{ 0.0 };
@@ -193,7 +205,9 @@ private:
     std::atomic<float> fadeOut{ 0.0f };
     std::atomic<bool> looping{ false };
 
-    juce::HeapBlock<int> tempChannels[2];
+    juce::HeapBlock<int> preloadedData[2];
+    int preloadedChannels = 0;
+    int64_t preloadedLength = 0;
     juce::LinearSmoothedValue<float> gainSmooth;
     double sr = 44100.0;
 

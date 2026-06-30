@@ -65,6 +65,18 @@ public:
     }
 
     const juce::Array<juce::ValueTree>& getSelectedNotes() const { return selectedNotes; }
+
+    // Index-based selection check used by NoteGridWidget::paintEvent to avoid the
+    // previous O(N*k) nested scan (selectedNotes outer x all notes inner). Each
+    // call is O(k) (juce::Array::contains is linear), so the full paint pass is
+    // O(N*k) but with a much smaller constant — and the per-iteration body
+    // doesn't pay noteRect() geometry for non-selected notes.
+    bool isSelected(int noteIndex) const
+    {
+        if (noteIndex < 0 || noteIndex >= getNumNotes()) return false;
+        return selectedNotes.contains(noteList.getChild(noteIndex));
+    }
+
     void selectNote(juce::ValueTree note, bool addToSelection = false)
     {
         if (!addToSelection)
