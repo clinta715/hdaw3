@@ -249,6 +249,8 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
         int idx = noteIndexAtPos(pos);
         if (idx >= 0)
         {
+            engine.getProjectModel().getUndoManager().beginNewTransaction("Edit note");
+
             auto note = model.getNote(idx);
             double localX = pos.x() - (noteRect(idx).x());
             double noteW = noteRect(idx).width();
@@ -531,9 +533,8 @@ void NoteGridWidget::wheelEvent(QWheelEvent* event)
     }
     else
     {
-        // Vertical scroll
-        scrollY = (std::max)(0, scrollY - event->angleDelta().y());
-        update();
+        // Vertical scroll (route through setScrollOffset to clamp to piano range)
+        setScrollOffset(scrollX, scrollY - event->angleDelta().y());
         event->accept();
     }
 }
