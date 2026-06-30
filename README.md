@@ -84,6 +84,46 @@ pipeline and the rationale.
 - MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
 - Audio export to WAV (Export dialog).
 
+## MCP server
+
+HDAW exposes an MCP (Model Context Protocol) server so an LLM client
+can drive the DAW. 36 tools cover project inspection, transport,
+tracks, clips, MIDI notes, composition (PhraseGenerator), FX,
+automation, undo, and audio export.
+
+### Launching the stdio server (Claude Desktop, opencode, etc.)
+
+Most MCP clients launch the server as a subprocess. Add HDAW to your
+client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "hdaw": {
+      "command": "C:/path/to/HDAW.exe",
+      "args": ["--mcp-stdio"]
+    }
+  }
+}
+```
+
+HDAW detects piped stdio and runs headless (no GUI) with the MCP stdio
+transport. The process exits when the client closes the pipes.
+
+### Optional HTTP transport (loopback only)
+
+In the GUI, enable **Tools → MCP HTTP Server**. Defaults: `127.0.0.1:8765`.
+Configurable in **Preferences → MCP**. Binds loopback only; no
+authentication. Do not expose beyond loopback.
+
+### Safety
+
+- Every destructive tool (`remove_*`, `clear_notes`, `duplicate_clip`,
+  `export_audio`) accepts `dryRun: true` and reports what it would do
+  without mutating.
+- Every mutation is undoable via `undo` / `redo` tools, and the GUI's
+  Ctrl+Z.
+
 ## Goals (what the project is working toward)
 
 In priority order:
