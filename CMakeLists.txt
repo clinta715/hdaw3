@@ -206,6 +206,18 @@ set_target_properties(HDAW PROPERTIES
 
 hdaw_deploy_qt(HDAW)
 
+# --- hdaw_plugin_host: child process for isolated plugin hosting ---
+add_executable(hdaw_plugin_host
+    src/proxy/host/main.cpp
+    src/proxy/host/PluginHost.cpp
+)
+target_include_directories(hdaw_plugin_host PRIVATE src)
+target_link_libraries(hdaw_plugin_host PRIVATE
+    HDAW_lib
+    juce::juce_audio_processors
+    juce::juce_core
+)
+
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)
 if(HDAW_BUILD_TESTS)
