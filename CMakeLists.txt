@@ -56,6 +56,7 @@ add_library(HDAW_lib STATIC
     src/engine/ProjectSerializer.cpp
     src/engine/RoutingManager.cpp
     src/engine/Track.cpp
+    src/engine/TrackFXSlot.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -184,6 +185,7 @@ add_executable(HDAW
     src/engine/ClipSourceProcessor.h
     src/engine/MidiClipProcessor.h
     src/engine/TrackFXSlot.h
+    src/engine/TrackFXSlot.cpp
     src/engine/TransportManager.h
     src/engine/AudioImport.h
     src/engine/AudioImport.cpp

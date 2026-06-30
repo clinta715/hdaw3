@@ -5,6 +5,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include "../ui/DebugLog.h"
 
 namespace HDAW {
 
@@ -64,6 +65,7 @@ public:
     TrackFXSlot(const juce::String& type)
         : slotType(type)
     {
+        HDAW_LOG("FXSlotCtor", QString::fromStdString((juce::String("ctor1 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " type=" + type.toStdString() + " editorWindow(before)=0x" + juce::String::toHexString((juce::pointer_sized_int)editorWindow.get())).toStdString()));
         if (type == "eq")
             activeType = ActiveType::EQ;
         else if (type == "compressor")
@@ -86,10 +88,11 @@ public:
           isolated(isIsolated),
           pluginIdentifier(pluginID)
     {
+        HDAW_LOG("FXSlotCtor", QString::fromStdString((juce::String("ctor2 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " pluginID=" + pluginID.toStdString() + " isolated=" + (isIsolated?"true":"false") + " pluginInstance=" + (pluginInstance?"ok":"null")).toStdString()));
         activeType = ActiveType::Plugin;
     }
 
-    ~TrackFXSlot() = default;
+    ~TrackFXSlot();
 
     juce::String getType() const { return slotType; }
     bool isPlugin() const { return isExternal; }
@@ -217,9 +220,13 @@ public:
 
     void closeEditor()
     {
-        juce::MessageManager::callAsync([this]() {
-            editorWindow = nullptr;
-        });
+        HDAW_LOG("FXSlotCloseEditor", QString::fromStdString((juce::String("entry this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " editorWindow(before)=" + (editorWindow?"set":"null")).toStdString()));
+        // Direct assignment (was: juce::MessageManager::callAsync([this]() { editorWindow = nullptr; })).
+        // The async form captured a raw `this`; if the TrackFXSlot was destroyed
+        // before the message was delivered, the lambda ran on a dead object
+        // (use-after-free write). The close button is invoked on the message
+        // thread, so a direct assignment is safe and avoids the lifetime bug.
+        editorWindow = nullptr;
     }
 
     bool isEditorOpen() const { return editorWindow != nullptr; }

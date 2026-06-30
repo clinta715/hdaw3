@@ -20,7 +20,9 @@ add_executable(hdaw_tests
     unit/proxy/ring_buffer_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
+    unit/engine/track_fx_slot_debug_test.cpp
 )
+
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(hdaw_tests PRIVATE
     Qt6::Core
