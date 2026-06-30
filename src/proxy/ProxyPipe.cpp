@@ -56,6 +56,28 @@ bool PipeServer::send(const ProxyResponse& resp) {
     return WriteFile(hPipe, &resp, sizeof(ProxyResponse), &bytesWritten, nullptr);
 }
 
+bool PipeServer::sendMsg(const ProxyMessage& msg) {
+    if (hPipe == INVALID_HANDLE_VALUE || !connected) return false;
+    DWORD bytesWritten = 0;
+    return WriteFile(hPipe, &msg, sizeof(ProxyMessage), &bytesWritten, nullptr);
+}
+
+bool PipeServer::receiveResp(ProxyResponse& resp) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    if (!connected) {
+        connected = ConnectNamedPipe(hPipe, nullptr) ||
+                    GetLastError() == ERROR_PIPE_CONNECTED;
+        if (!connected) return false;
+    }
+    DWORD bytesRead = 0;
+    BOOL ok = ReadFile(hPipe, &resp, sizeof(ProxyResponse), &bytesRead, nullptr);
+    if (!ok) {
+        connected = false;
+        return false;
+    }
+    return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);
+}
+
 // --- PipeClient ---
 
 PipeClient::PipeClient(const std::string& pipeName) : name(pipeName) {}

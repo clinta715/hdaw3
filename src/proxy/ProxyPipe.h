@@ -17,6 +17,8 @@ public:
     void stop();
     bool receive(ProxyMessage& msg);
     bool send(const ProxyResponse& resp);
+    bool sendMsg(const ProxyMessage& msg);
+    bool receiveResp(ProxyResponse& resp);
     bool isConnected() const { return connected; }
 
 private:
