@@ -78,6 +78,7 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
 {
     auto newTrack = std::make_unique<HDAW::Track>();
     newTrack->setPluginManager(pluginManager);
+    newTrack->setProjectContext(&projectModel, trackIndex);
     newTrack->prepareToPlay(sampleRate, blockSize);
     auto node = graph.addNode(std::move(newTrack));
     trackProcessors[trackIndex] = static_cast<HDAW::Track*>(node->getProcessor());

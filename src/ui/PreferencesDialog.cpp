@@ -8,12 +8,15 @@
 static const char* kKeyClipDur = "defaultClipDuration";
 static const char* kKeySnap = "snapEnabled";
 static const char* kKeySnapDiv = "snapDivision";
+static const char* kKeyMcpHost = "mcp/httpHost";
+static const char* kKeyMcpPort = "mcp/httpPort";
+static const char* kKeyMcpEnabled = "mcp/httpEnabled";
 
 PreferencesDialog::PreferencesDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("Preferences");
-    setMinimumWidth(350);
+    setMinimumWidth(400);
     setModal(true);
 
     auto* mainLayout = new QVBoxLayout(this);
@@ -47,6 +50,31 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
 
     mainLayout->addWidget(timelineGroup);
 
+    // MCP section
+    auto* mcpGroup = new QGroupBox("MCP Server (HTTP)", this);
+    auto* mcpLayout = new QFormLayout(mcpGroup);
+
+    mcpHostEdit = new QLineEdit(mcpGroup);
+    mcpHostEdit->setText("127.0.0.1");
+    mcpLayout->addRow("Host:", mcpHostEdit);
+
+    auto* mcpHostNote = new QLabel(
+        "Any address other than loopback requires authentication, "
+        "which HDAW v0.3.x does not provide.", mcpGroup);
+    mcpHostNote->setWordWrap(true);
+    mcpHostNote->setStyleSheet("color: #a0a0a0;");
+    mcpLayout->addRow("", mcpHostNote);
+
+    mcpPortSpin = new QSpinBox(mcpGroup);
+    mcpPortSpin->setRange(1024, 65535);
+    mcpPortSpin->setValue(8765);
+    mcpLayout->addRow("Port:", mcpPortSpin);
+
+    mcpAutoStartCheck = new QCheckBox("Auto-start MCP HTTP server at launch", mcpGroup);
+    mcpLayout->addRow("", mcpAutoStartCheck);
+
+    mainLayout->addWidget(mcpGroup);
+
     mainLayout->addStretch();
 
     // Buttons
@@ -76,6 +104,9 @@ void PreferencesDialog::loadSettings()
     clipDurSpinBox->setValue(settings.value(kKeyClipDur, 4.0).toDouble());
     snapCheckBox->setChecked(settings.value(kKeySnap, true).toBool());
     snapDivisionCombo->setCurrentIndex(settings.value(kKeySnapDiv, 1).toInt());
+    mcpHostEdit->setText(settings.value(kKeyMcpHost, "127.0.0.1").toString());
+    mcpPortSpin->setValue(settings.value(kKeyMcpPort, 8765).toInt());
+    mcpAutoStartCheck->setChecked(settings.value(kKeyMcpEnabled, false).toBool());
 }
 
 void PreferencesDialog::onSave()
@@ -90,6 +121,9 @@ void PreferencesDialog::onApply()
     settings.setValue(kKeyClipDur, clipDurSpinBox->value());
     settings.setValue(kKeySnap, snapCheckBox->isChecked());
     settings.setValue(kKeySnapDiv, snapDivisionCombo->currentIndex());
+    settings.setValue(kKeyMcpHost, mcpHostEdit->text());
+    settings.setValue(kKeyMcpPort, mcpPortSpin->value());
+    settings.setValue(kKeyMcpEnabled, mcpAutoStartCheck->isChecked());
     emit preferencesApplied();
 }
 

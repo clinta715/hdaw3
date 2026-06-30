@@ -1,5 +1,7 @@
 #include "ProjectModel.h"
 #include <atomic>
+#include <algorithm>
+#include <functional>
 
 ProjectModel::ProjectModel()
     : projectTree(IDs::PROJECT)
@@ -101,6 +103,16 @@ int ProjectModel::allocateClipID()
     return nextClipID.fetch_add(1, std::memory_order_relaxed);
 }
 
+int ProjectModel::allocateNoteID()
+{
+    return nextNoteID.fetch_add(1, std::memory_order_relaxed);
+}
+
+void ProjectModel::resetNoteIDCounter()
+{
+    nextNoteID.store(1, std::memory_order_relaxed);
+}
+
 juce::uint32 ProjectModel::trackColorForIndex(int index)
 {
     // Curated palette of distinct, dark-background-friendly hues (ARGB).
@@ -145,6 +157,33 @@ void ProjectModel::scanAndSyncClipIDs()
     nextClipID.store(maxID + 1, std::memory_order_relaxed);
 }
 
+void ProjectModel::scanAndSyncNoteIDs()
+{
+    int maxExisting = 0;
+    std::function<void(juce::ValueTree)> walk = [&](juce::ValueTree t) {
+        if (t.hasType(IDs::MIDI_NOTE))
+        {
+            if (t.hasProperty(IDs::noteID))
+            {
+                maxExisting = std::max(maxExisting, static_cast<int>(t.getProperty(IDs::noteID)));
+            }
+            else
+            {
+                int id = nextNoteID.fetch_add(1, std::memory_order_relaxed);
+                t.setProperty(IDs::noteID, id, nullptr);
+                maxExisting = std::max(maxExisting, id);
+            }
+            return;
+        }
+        for (int i = 0; i < t.getNumChildren(); ++i)
+            walk(t.getChild(i));
+    };
+    walk(projectTree);
+
+    int cur = nextNoteID.load(std::memory_order_relaxed);
+    while (cur <= maxExisting && !nextNoteID.compare_exchange_weak(cur, maxExisting + 1)) {}
+}
+
 static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file)
 {
     juce::ValueTree clip(IDs::CLIP);
@@ -166,6 +205,7 @@ static juce::ValueTree createAudioClip(juce::String name, double start, double d
 static juce::ValueTree createMidiNote(int note, float vel, double start, double dur)
 {
     juce::ValueTree noteNode(IDs::MIDI_NOTE);
+    noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
     noteNode.setProperty(IDs::noteNumber, note, nullptr);
     noteNode.setProperty(IDs::velocity, vel, nullptr);
     noteNode.setProperty(IDs::startBeat, start, nullptr);

@@ -136,6 +136,7 @@ void StepEditorWidget::commitNote(int row, int step, bool add)
     {
         auto& um = engine.getProjectModel().getUndoManager();
         juce::ValueTree note(IDs::MIDI_NOTE);
+        note.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
         note.setProperty(IDs::noteNumber, noteNumber, &um);
         note.setProperty(IDs::velocity, 100, &um);
         note.setProperty(IDs::startBeat, stepBeat, &um);

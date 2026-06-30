@@ -4,6 +4,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QPushButton>
+#include <QLineEdit>
+#include <QSpinBox>
 #include <QSettings>
 
 class PreferencesDialog : public QDialog
@@ -45,4 +47,8 @@ private:
     QDoubleSpinBox* clipDurSpinBox;
     QCheckBox* snapCheckBox;
     QComboBox* snapDivisionCombo;
+
+    QLineEdit* mcpHostEdit;
+    QSpinBox* mcpPortSpin;
+    QCheckBox* mcpAutoStartCheck;
 };

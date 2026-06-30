@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_data_structures/juce_data_structures.h>
+#include <atomic>
 
 namespace IDs {
     #define DECLARE_ID(name) const juce::Identifier name { #name };
@@ -25,6 +26,7 @@ namespace IDs {
 
     // Clip properties
     DECLARE_ID(clipID)
+    DECLARE_ID(noteID)
     DECLARE_ID(color)
     DECLARE_ID(startTime)
     DECLARE_ID(duration)
@@ -132,10 +134,13 @@ public:
 
     static int allocateClipID();
     static void resetClipIDCounter();
+    static int allocateNoteID();
+    static void resetNoteIDCounter();
     // Returns a color from a curated rotating palette so each track (and thus
     // its clips) gets a distinct, stable color without clashing.
     static juce::uint32 trackColorForIndex(int index);
     void scanAndSyncClipIDs();
+    void scanAndSyncNoteIDs();
 
     void createDefaultProject();
 
@@ -145,6 +150,8 @@ private:
     void valueTreeChildRemoved(juce::ValueTree&, juce::ValueTree&, int) override { dirty = true; }
     void valueTreeChildOrderChanged(juce::ValueTree&, int, int) override { dirty = true; }
     void valueTreeParentChanged(juce::ValueTree&) override {}
+
+    static inline std::atomic<int> nextNoteID{1};
 
     juce::ValueTree projectTree;
     juce::UndoManager undoManager;

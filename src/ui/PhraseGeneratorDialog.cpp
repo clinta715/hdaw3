@@ -493,6 +493,7 @@ void PhraseGeneratorDialog::onGenerate()
     for (const auto& n : notes)
     {
         juce::ValueTree midiNote(IDs::MIDI_NOTE);
+        midiNote.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
         midiNote.setProperty(IDs::noteNumber, n.noteNumber, nullptr);
         midiNote.setProperty(IDs::velocity, n.velocity, nullptr);
         midiNote.setProperty(IDs::startBeat, n.startBeat, nullptr);

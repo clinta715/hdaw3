@@ -45,6 +45,7 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
 
     model.getUndoManager().clearUndoHistory();
     model.scanAndSyncClipIDs();
+    model.scanAndSyncNoteIDs();
     model.markAsSaved();
     return true;
 }
