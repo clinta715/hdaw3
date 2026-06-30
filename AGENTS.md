@@ -140,6 +140,8 @@ dropouts, xruns, and hard-to-reproduce crashes.
 | Level metering | `src/engine/LevelMeter.h` | `LevelMeter` |
 | File save/load | `src/engine/ProjectSerializer.h` | `ProjectSerializer` |
 | Waveform thumbnails | `src/engine/ProjectPool.h` | `ProjectPool` |
+| Audio import | `src/engine/AudioImport.h` | `HDAW::importAudioFile()` |
+| MIDI import | `src/engine/MidiImport.h` | `HDAW::importMidiFile()` |
 | Timeline composite | `src/ui/TimelineView.h` | `TimelineView` |
 | Timeline scene | `src/ui/TimelineScene.h` | `TimelineScene` |
 | Timeline interaction | `src/ui/TimelineInteraction.h` | `TimelineInteraction` |
@@ -169,7 +171,8 @@ dropouts, xruns, and hard-to-reproduce crashes.
 | MCP Streamable HTTP transport (loopback only, real round-trip) | `src/mcp/McpTransportHttp.h` | `mcp::TransportHttp` |
 | MCP loopback test transport (in-memory `QByteArray` queues) | `src/mcp/McpTransportLoopback.h` | `mcp::TransportLoopback` |
 | MCP tool record (name, description, inputSchema, handler) | `src/mcp/McpToolDef.h` | `mcp::McpToolDef` / `mcp::McpToolResult` / `mcp::McpHandler` |
-| MCP tool registrations (all 36 tools live in one file) | `src/mcp/McpTools.{h,cpp}` | `mcp::registerAllTools(McpServer&)` |
+| MCP tool registrations (per-domain: read/transport/track/clip/note/composition/automation/fx) | `src/mcp/McpTools.{h,cpp}` | `mcp::registerAllTools(McpServer&)` |
+| MCP export tool (extracted from McpTools) | `src/mcp/McpExportTool.{h,cpp}` | `mcp::registerExportTool(McpServer&)` |
 
 ## Testing
 
@@ -839,7 +842,46 @@ expecting a context menu, and nothing happens.
 in the constructor. Right-click events fall through the marker to the ruler,
 which now handles them via its own `contextMenuEvent`.
 
-## Out-of-scope: known gaps deferred to future work
+## Codebase hardening (v0.3.x, 2026-06-30)
+
+The codebase hardening pass addressed 23 tasks across 6 phases:
+audio-thread safety, shutdown correctness, undo coalescing, shared
+helpers, optimizations, and structural refactors.
+
+**Key architectural decisions:**
+- **Audio preload**: `ClipSourceProcessor` now preloads entire audio
+  files into `HeapBlock<int>` in `prepareToPlay`, eliminating
+  audio-thread disk I/O. Memory cost is acceptable for desktop use;
+  streaming is a v0.4 follow-up.
+- **SPSC param forwarding**: mute (paramID 3) and clip position
+  (paramIDs 13–16: startTime, duration, offset, looping) are now
+  forwarded from the UI thread to the audio thread via the existing
+  `SPSCBridge` queue, matching the volume/pan/gain/fade pattern.
+- **Undo coalescing**: all continuous drags (clip move/trim/fade,
+  note drag, volume/pan fader, gain slider) call
+  `beginNewTransaction()` on press so each drag is one undo step.
+- **Factory dedup**: `ProjectModel::createAudioClip`,
+  `createMidiClipEmpty`, `createMidiNote` are public statics that
+  replaced 8 hand-written clip/note construction sites.
+- **`trackIndexAtY`**: `TimelineScene::trackIndexAtY(double y)`
+  replaces 3 duplicated hit-test loops in `TimelineInteraction` and
+  `TimelineView`.
+- **`getTrackOfClip`**: `ProjectModel::getTrackOfClip(clip)` replaces
+  `clip.getParent().getParent()` at 2 sites.
+- **Cached QSettings**: `PreferencesDialog::settings()` returns a
+  function-local-static `QSettings&`, replacing 26 constructions.
+- **MCP tool split**: `registerAllTools` is now a 10-line aggregator
+  calling 8 domain-specific registrars (`registerReadTools`, etc.).
+  The `export_audio` handler is extracted to `McpExportTool.{h,cpp}`.
+- **Import extraction**: `onImportAudio`/`onImportMIDI` bodies moved
+  to `AudioImport.{h,cpp}` / `MidiImport.{h,cpp}` free functions.
+- **MainWindow split**: `setupLayout` is now ~30 lines calling
+  `setupBottomPanel()`, `connectSignals()`, `restoreWindowGeometry()`.
+  The `clipSelected` lambda is the named slot `onClipSelected`.
+- **Context-menu split**: `TrackHeaderWidget::contextMenuEvent`
+  dispatches to `buildEmptyAreaMenu`/`buildTrackMenu`.
+  `TimelineView::eventFilter` dispatches to
+  `handleContextMenu`/`handleKeyPress`/`handleDrop`.
 
 - **No per-clip audio editor**. Double-clicking an audio clip
   currently routes the user to the global Mixer panel, not to a
@@ -859,3 +901,8 @@ which now handles them via its own `contextMenuEvent`.
   process-wide COM/WinHTTP state that a subsequent HTTP test cannot
   recover from. Documented in the test file; a future fix isolates
   the audio device.
+- **Audio preload memory cost (v0.3.x)** — each audio clip holds
+  its entire file in RAM as int samples via `ClipSourceProcessor`'s
+  preloaded buffers. Acceptable for a desktop DAW at this scale;
+  a background-streaming ring buffer is the documented v0.4
+  follow-up.
