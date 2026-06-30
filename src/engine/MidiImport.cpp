@@ -1,34 +1,48 @@
 #include "MidiImport.h"
 #include "../model/ProjectModel.h"
-#include <QMessageBox>
-#include <QInputDialog>
+#include "../ui/DebugLog.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 
-bool HDAW::importMidiFile(AudioEngine& engine, QWidget* parent, const QString& path)
+bool HDAW::importMidiFile(AudioEngine& engine, const QString& path, int trackIdx)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackList.getNumChildren() == 0) return false;
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    int resolvedTrack = trackIdx;
+    if (resolvedTrack < 0)
+    {
+        if (trackList.getNumChildren() == 0)
+        {
+            HDAW_LOG("MidiImport", "no tracks available and no trackIdx supplied");
+            return false;
+        }
+        resolvedTrack = 0;
+    }
+    if (resolvedTrack >= trackList.getNumChildren())
+    {
+        HDAW_LOG("MidiImport", "trackIdx out of range: " + QString::number(resolvedTrack));
+        return false;
+    }
 
     juce::File midiFile(path.toUtf8().constData());
     juce::FileInputStream stream(midiFile);
     if (!stream.openedOk())
     {
-        QMessageBox::warning(parent, "Error", "Could not open MIDI file.");
+        HDAW_LOG("MidiImport", "could not open MIDI file: " + path);
         return false;
     }
 
     juce::MidiFile midiData;
     if (!midiData.readFrom(stream))
     {
-        QMessageBox::warning(parent, "Error", "Failed to read MIDI file.");
+        HDAW_LOG("MidiImport", "failed to read MIDI file: " + path);
         return false;
     }
 
     int midiTimeFormat = static_cast<int>(midiData.getTimeFormat());
     if (midiTimeFormat <= 0)
     {
-        QMessageBox::warning(parent, "Error", "SMPTE timecode MIDI files are not supported.");
+        HDAW_LOG("MidiImport", "SMPTE timecode MIDI files are not supported: " + path);
         return false;
     }
     int midiTicksPerQuarterNote = midiTimeFormat;
@@ -52,21 +66,13 @@ bool HDAW::importMidiFile(AudioEngine& engine, QWidget* parent, const QString& p
 
     double secondsPerTick = (60.0 / bpm) / static_cast<double>(midiTicksPerQuarterNote);
 
-    QStringList trackNames;
-    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    auto trackTree = trackList.getChild(resolvedTrack);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
     {
-        auto name = QString::fromUtf8(
-            trackList.getChild(i).getProperty(IDs::name).toString().toRawUTF8());
-        trackNames << QString("Track %1: %2").arg(i + 1).arg(name);
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        trackTree.addChild(clipList, -1, &model.getUndoManager());
     }
-
-    bool ok = false;
-    QString selected = QInputDialog::getItem(parent, "Select Track",
-        "Import to which track?", trackNames, 0, false, &ok);
-    if (!ok || selected.isEmpty()) return false;
-
-    int trackIndex = trackNames.indexOf(selected);
-    if (trackIndex < 0) return false;
 
     for (int mt = 0; mt < midiData.getNumTracks(); ++mt)
     {
@@ -78,14 +84,6 @@ bool HDAW::importMidiFile(AudioEngine& engine, QWidget* parent, const QString& p
         auto* lastEventHolder = midiTrack->getEventPointer(midiTrack->getNumEvents() - 1);
         if (lastEventHolder != nullptr)
             clipDuration = lastEventHolder->message.getTimeStamp() * secondsPerTick + 1.0;
-
-        auto trackTree = trackList.getChild(trackIndex);
-        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-        if (!clipList.isValid())
-        {
-            clipList = juce::ValueTree(IDs::CLIP_LIST);
-            trackTree.addChild(clipList, -1, &engine.getProjectModel().getUndoManager());
-        }
 
         double clipStartTime = 0.0;
         for (int i = 0; i < clipList.getNumChildren(); ++i)
@@ -134,7 +132,7 @@ bool HDAW::importMidiFile(AudioEngine& engine, QWidget* parent, const QString& p
 
         if (midiNotes.getNumChildren() > 0)
         {
-            clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
+            clipList.addChild(clip, -1, &model.getUndoManager());
         }
     }
 

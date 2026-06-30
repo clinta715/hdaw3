@@ -347,7 +347,8 @@ void MainWindow::setupLayout()
 
     setCentralWidget(mainHorizontalSplitter);
 
-    connectSignals();
+    connectTimelineSignals();
+    connectBottomPanelSignals();
     restoreWindowGeometry();
 }
 
@@ -430,36 +431,11 @@ void MainWindow::setupBottomPanel()
     bottomLayout->addWidget(bottomStack);
 }
 
-void MainWindow::connectSignals()
+void MainWindow::connectTimelineSignals()
 {
     auto* scene = timelineView->getScene();
 
     connect(scene, &TimelineScene::clipSelected, this, &MainWindow::onClipSelected);
-
-    connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
-        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
-        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
-        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
-
-    connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
-        [this]() {
-            if (stepEditorWidget->hasClip())
-            {
-                pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
-                bottomStack->setCurrentIndex(1);
-            }
-        });
-
-    connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
-        [this](int trackIndex) {
-            selectedTrack = trackIndex;
-            fxChainWidget->loadTrack(trackIndex);
-            bottomStack->setCurrentIndex(2);
-        });
 
     connect(timelineView, &TimelineView::automationToggled, this,
         [this](int trackIndex) {
@@ -493,6 +469,34 @@ void MainWindow::connectSignals()
 
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
+}
+
+void MainWindow::connectBottomPanelSignals()
+{
+    connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
+        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
+        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
+        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+
+    connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
+        [this]() {
+            if (stepEditorWidget->hasClip())
+            {
+                pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
+                bottomStack->setCurrentIndex(1);
+            }
+        });
+
+    connect(mixerWidget, &MixerWidget::fxButtonClicked, this,
+        [this](int trackIndex) {
+            selectedTrack = trackIndex;
+            fxChainWidget->loadTrack(trackIndex);
+            bottomStack->setCurrentIndex(2);
+        });
 
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
         [this]() {
@@ -1023,6 +1027,27 @@ void MainWindow::onToggleBrowserPanel()
     browserPanel->setVisible(!browserPanel->isVisible());
 }
 
+int MainWindow::promptForImportTrack(QWidget* parent, AudioEngine& eng, const QString& title)
+{
+    auto trackList = eng.getProjectModel().getTrackListTree();
+    if (trackList.getNumChildren() == 0)
+        return -1;
+
+    QStringList trackNames;
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    {
+        auto name = QString::fromUtf8(
+            trackList.getChild(i).getProperty(IDs::name).toString().toRawUTF8());
+        trackNames << QString("Track %1: %2").arg(i + 1).arg(name);
+    }
+
+    bool ok = false;
+    QString selected = QInputDialog::getItem(parent, title,
+        "Import to which track?", trackNames, 0, false, &ok);
+    if (!ok || selected.isEmpty()) return -1;
+    return trackNames.indexOf(selected);
+}
+
 void MainWindow::onImportAudio()
 {
     auto& settings = PreferencesDialog::settings();
@@ -1035,7 +1060,10 @@ void MainWindow::onImportAudio()
     if (trackList.getNumChildren() == 0)
         onAddTrack();
 
-    if (HDAW::importAudioFile(engine, this, path))
+    int trackIdx = promptForImportTrack(this, engine, "Import Audio");
+    if (trackIdx < 0) return;
+
+    if (HDAW::importAudioFile(engine, path, trackIdx))
         rebuildAllUI();
 }
 
@@ -1051,7 +1079,10 @@ void MainWindow::onImportMIDI()
     if (trackList.getNumChildren() == 0)
         onAddTrack();
 
-    if (HDAW::importMidiFile(engine, this, path))
+    int trackIdx = promptForImportTrack(this, engine, "Import MIDI");
+    if (trackIdx < 0) return;
+
+    if (HDAW::importMidiFile(engine, path, trackIdx))
         rebuildAllUI();
 }
 

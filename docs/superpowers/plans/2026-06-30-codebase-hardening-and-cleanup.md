@@ -631,9 +631,9 @@ Each returns success; `MainWindow` keeps only the file-dialog + track-picker UI 
 
 **Files:** Modify `src/ui/TrackHeaderWidget.{h,cpp}`, `src/ui/TimelineView.cpp`.
 
-- [ ] **Step 1 — TrackHeaderWidget:** extract `buildEmptyAreaMenu(const QPoint&)` and `buildTrackMenu(int trackIdx, const QPoint&)` from the 140-line `contextMenuEvent` (~588–727). The handler becomes a dispatcher that picks one and calls `menu.exec()`.
-- [ ] **Step 2 — TimelineView:** split `eventFilter` (~266–472) into `handleContextMenu(QContextMenuEvent*)`, `handleKeyPress(QKeyEvent*)`, `handleDrop(QDropEvent*)`. Reuse the shared clip factory (Task 9) in the "Add MIDI Clip" branch.
-- [ ] **Step 3:** Build + smoke (right-click empty timeline, a clip, a track header; keyboard shortcuts; drag-drop). Commit. `git commit -am "ui: extract context-menu builders in TrackHeaderWidget and TimelineView"`
+- [x] **Step 1 — TrackHeaderWidget:** extract `buildEmptyAreaMenu(const QPoint&)` and `buildTrackMenu(int trackIdx, const QPoint&)` from the 140-line `contextMenuEvent` (~588–727). The handler becomes a dispatcher that picks one and calls `menu.exec()`.
+- [x] **Step 2 — TimelineView:** split `eventFilter` (~266–472) into `handleContextMenu(QContextMenuEvent*)`, `handleKeyPress(QKeyEvent*)`, `handleDrop(QDropEvent*)`. Reuse the shared clip factory (Task 9) in the "Add MIDI Clip" branch.
+- [x] **Step 3:** Build + smoke (right-click empty timeline, a clip, a track header; keyboard shortcuts; drag-drop). Commit. `git commit -am "ui: extract context-menu builders in TrackHeaderWidget and TimelineView"`
 
 ---
 

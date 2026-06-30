@@ -93,6 +93,55 @@ dropouts, xruns, and hard-to-reproduce crashes.
   allocates; `juce::ValueTree::getProperty` is safe for reads but
   listeners that trigger writes must not fire on the audio thread.
 
+## Hardening lessons learned
+
+Lessons from the v0.3.x codebase hardening pass (Phases 1–5, 23
+tasks). These are *not* deferred work — they document tradeoffs and
+contracts that future contributors should know about.
+
+- **Audio-preload memory cost (Task 1).** `ClipSourceProcessor`
+  preloads the entire audio file into two `HeapBlock<int>` buffers
+  in `prepareToPlay` (`src/engine/ClipSourceProcessor.h:88-114`),
+  eliminating audio-thread disk I/O. Memory cost is ≈ file size
+  per clip (2 channels × `lengthInSamples` × 4 bytes). Acceptable
+  for v0.3.x desktop use; a background-streaming ring buffer is
+  the documented v0.4 follow-up (see "Hardening follow-ups"
+  below). Do not regress to streaming from disk on the audio
+  thread; the original code was a known xrun source.
+
+- **SPSC paramID scheme (Task 3).** UI→audio parameter changes
+  cross threads via `SPSCBridge`. The `ParamUpdate` struct uses a
+  small integer `paramID` to identify which track/clip and which
+  field is being updated. The contract:
+  - `1=volume`, `2=pan`, `3=isMuted` (TRACK)
+  - `10=gain`, `11=fadeIn`, `12=fadeOut` (CLIP)
+  - `13=startTime`, `14=duration`, `15=offset`, `16=looping` (CLIP,
+    added in Task 3 to forward MCP/GUI clip-position writes)
+
+  The audio-thread dispatcher (`MainAudioProcessor::processBlock`)
+  and the UI-thread sender (`AudioEngine::valueTreePropertyChanged`)
+  must agree on the same map. When adding a new paramID: pick the
+  next free number, extend both the SPSC send side and the
+  receive side's switch (`RoutingManager::updateClipParam`), and
+  add a new `ClipSourceProcessor::setX` setter that writes to an
+  atomic the audio thread polls. Numbers 4–9 and 17+ are
+  currently unallocated; reserve ranges for future track-side vs.
+  clip-side additions to keep the numbering legible.
+
+- **`ClipSourceProcessor` gain-loop bound (Task 18).** The audio-
+  thread gain smoother loop iterates only `numToRead` samples —
+  the audible portion — not the full `numSamples` block
+  (`src/engine/ClipSourceProcessor.h:156`). The smoother's
+  internal state therefore advances at audible-sample rate, not
+  wall-clock. When `numToRead < numSamples` (clip tail beyond
+  the source file), the smoother drifts slightly relative to a
+  hypothetical wall-clock version. The drift is sub-millisecond
+  and only affects invisible state (smoother internals); audible
+  output is identical. If a future feature needs sample-accurate
+  wall-clock smoother advancement, decouple the smoother step
+  from the audible read (e.g. always advance `numSamples` even
+  when reading fewer).
+
 ## Qt Signal/Slot Best Practices
 
 - **Always use the 4-argument `connect` form** when connecting to
@@ -860,12 +909,14 @@ helpers, optimizations, and structural refactors.
 **Key architectural decisions:**
 - **Audio preload**: `ClipSourceProcessor` now preloads entire audio
   files into `HeapBlock<int>` in `prepareToPlay`, eliminating
-  audio-thread disk I/O. Memory cost is acceptable for desktop use;
-  streaming is a v0.4 follow-up.
+  audio-thread disk I/O. See the "Hardening lessons learned"
+  section for the memory-cost tradeoff and the v0.4 follow-up.
 - **SPSC param forwarding**: mute (paramID 3) and clip position
   (paramIDs 13–16: startTime, duration, offset, looping) are now
   forwarded from the UI thread to the audio thread via the existing
   `SPSCBridge` queue, matching the volume/pan/gain/fade pattern.
+  See the "Hardening lessons learned" section for the full
+  paramID contract.
 - **Undo coalescing**: all continuous drags (clip move/trim/fade,
   note drag, volume/pan fader, gain slider) call
   `beginNewTransaction()` on press so each drag is one undo step.
@@ -892,29 +943,58 @@ helpers, optimizations, and structural refactors.
   `TimelineView::eventFilter` dispatches to
   `handleContextMenu`/`handleKeyPress`/`handleDrop`.
 
-- **No per-clip audio editor**. Double-clicking an audio clip
+### Hardening follow-ups (v0.4 candidates)
+
+Work the hardening pass surfaced but did not finish — deferred to
+v0.4. Lessons-learned (tradeoffs and contracts, not deferred work)
+live in the "Hardening lessons learned" section above.
+
+- **No per-clip audio editor.** Double-clicking an audio clip
   currently routes the user to the global Mixer panel, not to a
   per-clip waveform/properties editor. Adding one is a
-  ~200-400-line feature, not a bug fix. (This is the main v0.4
-  candidate.)
-- **MCP server documented v1 follow-ups** (tracked in
-  `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md` §10):
-  - HTTP authentication for non-loopback exposure.
-  - `resources/*` and `prompts/*` (the v1 surface is tools-only).
-  - `export_audio` worker-thread + per-block cancellation (the v1
-    implementation is synchronous on the main thread with a
-    cancel-watcher thread; full async is a v1 follow-up).
-- **MCP `McpServer.HttpRoundTrip` test ordering fragility** — the
-  test must run first in the `McpServer` suite because the JUCE
-  WASAPI audio-device teardown from earlier tests leaves
-  process-wide COM/WinHTTP state that a subsequent HTTP test cannot
-  recover from. Documented in the test file; a future fix isolates
-  the audio device.
-- **Audio preload memory cost (v0.3.x)** — each audio clip holds
-  its entire file in RAM as int samples via `ClipSourceProcessor`'s
-  preloaded buffers. Acceptable for a desktop DAW at this scale;
-  a background-streaming ring buffer is the documented v0.4
-  follow-up.
+  ~200-400-line feature, not a bug fix. (Main v0.4 candidate.)
+
+- **ValueTree listener gaps in `MixerWidget` / `FXChainWidget` /
+  `TrackHeaderWidget`.** These three widgets do not implement
+  `juce::ValueTree::Listener`. As a result, the 11
+  `rebuildAllUI()` calls in `MainWindow` (lines 659, 705, 794,
+  804, 947, 962, 976, 988, 1006, 1021, 1067, 1086) are still
+  load-bearing for TRACK add/remove/rename/duplicate. Task 14
+  (incremental rebuilds) removed the redundant
+  `rebuildAllUI()` calls that followed a single localized
+  mutation; the remaining calls cover cases the per-widget
+  listeners do not yet handle. Closing these gaps is the
+  v0.4 follow-up that unlocks the rest of the plan's stated
+  savings.
+
+- **`TimelineScene::valueTreeChildRemoved` ignores
+  `IDs::TRACK`** (`src/ui/TimelineScene.cpp:236-241`). It only
+  handles `IDs::CLIP` removal — track removal leaves a stale
+  track row in the scene until the next full rebuild. Fix:
+  handle TRACK removal and remove the corresponding track row
+  from the scene.
+
+- **`MixerStripWidget::paintEvent` reads model state from
+  `ValueTree` at the top** (`src/ui/MixerStripWidget.cpp:100-109`)
+  instead of via the `setXxx` setters. This paint-during-read
+  pattern bypasses the listener slots the setters implement.
+  If a future change closes the listener gap above,
+  `MixerStripWidget` will need to either implement
+  `ValueTree::Listener` or move these reads into a dedicated
+  `syncFromModel()` called from a listener slot.
+
+- **MCP server v1 follow-ups** (tracked in
+  `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
+  §10):
+  - HTTP authentication for non-loopback exposure (loopback-
+    only is current; auth is needed before any
+    non-`127.0.0.1` binding).
+  - `resources/*` and `prompts/*` (the v1 surface is
+    tools-only).
+  - `export_audio` worker-thread + per-block cancellation
+    (the v1 implementation is synchronous on the main thread
+    with a cancel-watcher thread; full async is a v1
+    follow-up).
 
 ## Plugin Process Isolation (v0.4 candidate)
 

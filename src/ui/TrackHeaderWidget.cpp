@@ -638,19 +638,18 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
     int trackIdx = -1;
     hitTest(event->pos(), trackIdx);
 
-    QMenu menu;
-
     if (trackIdx < 0 || trackIdx >= static_cast<int>(tracks.size()))
-        buildEmptyAreaMenu(menu, event);
+        buildEmptyAreaMenu(event->globalPos());
     else
-        buildTrackMenu(menu, trackIdx, event);
+        buildTrackMenu(trackIdx, event->globalPos());
 
-    menu.exec(event->globalPos());
     event->accept();
 }
 
-void TrackHeaderWidget::buildEmptyAreaMenu(QMenu& menu, QContextMenuEvent* event)
+void TrackHeaderWidget::buildEmptyAreaMenu(const QPoint& globalPos)
 {
+    QMenu menu;
+
     auto* addAction = menu.addAction("Add Track");
     connect(addAction, &QAction::triggered, this, &TrackHeaderWidget::addTrackRequested);
 
@@ -685,11 +684,13 @@ void TrackHeaderWidget::buildEmptyAreaMenu(QMenu& menu, QContextMenuEvent* event
         }
     }
 
-    Q_UNUSED(event);
+    menu.exec(globalPos);
 }
 
-void TrackHeaderWidget::buildTrackMenu(QMenu& menu, int trackIdx, QContextMenuEvent* event)
+void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
 {
+    QMenu menu;
+
     auto* renameAction = menu.addAction("Rename Track");
     connect(renameAction, &QAction::triggered, this, [this, trackIdx]() {
         auto trackList = engine.getProjectModel().getTrackListTree();
@@ -777,7 +778,7 @@ void TrackHeaderWidget::buildTrackMenu(QMenu& menu, int trackIdx, QContextMenuEv
         }
     });
 
-    Q_UNUSED(event);
+    menu.exec(globalPos);
 }
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)

@@ -38,7 +38,8 @@ protected:
 private:
     void setupLayout();
     void setupBottomPanel();
-    void connectSignals();
+    void connectTimelineSignals();
+    void connectBottomPanelSignals();
     void restoreWindowGeometry();
     void setupMenuBar();
     void rebuildAllUI();
@@ -68,6 +69,7 @@ private:
     void onDuplicateTrack();
     void onImportAudio();
     void onImportMIDI();
+    int promptForImportTrack(QWidget* parent, AudioEngine& eng, const QString& title);
     void onBPMChanged(double bpm);
     void onMetronomeToggled(bool enabled);
     void onToggleBrowserPanel();
