@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QLineEdit>
+#include <QFont>
 #include "../engine/AudioEngine.h"
 #include <vector>
 
@@ -84,6 +85,10 @@ private:
     int selectedTrack = -1;
 
     double scrollOffset = 0.0;
+
+    QFont nameFont;
+    QFont toggleFont;
+    QFont smallFont;
 
     static constexpr double headerWidth = 120.0;
     static constexpr double defaultTrackHeight = 80.0;

@@ -18,6 +18,17 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
 
+    nameFont = font();
+    nameFont.setPointSize(9);
+    nameFont.setBold(true);
+
+    toggleFont = font();
+    toggleFont.setPointSize(6);
+    toggleFont.setBold(true);
+
+    smallFont = font();
+    smallFont.setPointSize(6);
+
     connect(&vuTimer, &QTimer::timeout, this, &TrackHeaderWidget::updateVU);
     vuTimer.start(static_cast<int>(vuUpdateInterval));
 
@@ -298,10 +309,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
 
         // Name
         painter.setPen(Qt::white);
-        QFont f = painter.font();
-        f.setPointSize(9);
-        f.setBold(true);
-        painter.setFont(f);
+        painter.setFont(nameFont);
         QString name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
         painter.drawText(header.nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
 
@@ -311,10 +319,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
             painter.setBrush(active ? onColor : ThemeColors::bgWidget());
             painter.drawRoundedRect(rect, 2, 2);
             painter.setPen(active ? Qt::white : ThemeColors::textSecondary());
-            QFont sf = painter.font();
-            sf.setPointSize(6);
-            sf.setBold(true);
-            painter.setFont(sf);
+            painter.setFont(toggleFont);
             painter.drawText(rect, Qt::AlignCenter, label);
         };
 
@@ -331,6 +336,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         painter.setBrush(autoEnabled ? ThemeColors::accentDim() : ThemeColors::bgWidget());
         painter.drawRoundedRect(header.autoRect, 2, 2);
         painter.setPen(autoEnabled ? ThemeColors::accentBright() : ThemeColors::textSecondary());
+        painter.setFont(toggleFont);
         painter.drawText(header.autoRect, Qt::AlignCenter, "A");
 
         // Volume fader
@@ -348,9 +354,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
 
         // Volume label
         painter.setPen(ThemeColors::textSecondary());
-        QFont sf2 = painter.font();
-        sf2.setPointSize(6);
-        painter.setFont(sf2);
+        painter.setFont(smallFont);
         int db = static_cast<int>(20.0 * std::log10((std::max)(vol, 0.001f)));
         painter.drawText(header.volRect.adjusted(2, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number(db) + "dB");
