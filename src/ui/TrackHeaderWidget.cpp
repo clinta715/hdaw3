@@ -638,51 +638,58 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
     int trackIdx = -1;
     hitTest(event->pos(), trackIdx);
 
-    // Right-click on empty area -> "Add Track" context menu
-    if (trackIdx < 0 || trackIdx >= static_cast<int>(tracks.size()))
-    {
-        QMenu menu;
-        auto* addAction = menu.addAction("Add Track");
-        connect(addAction, &QAction::triggered, this, &TrackHeaderWidget::addTrackRequested);
-
-        auto* addFxs = menu.addMenu("Add Track with FX");
-        auto* eqTrk = addFxs->addAction("EQ");
-        connect(eqTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("eq"); });
-        auto* compTrk = addFxs->addAction("Compressor");
-        connect(compTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("compressor"); });
-        auto* revTrk = addFxs->addAction("Reverb");
-        connect(revTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("reverb"); });
-        auto* delTrk = addFxs->addAction("Delay");
-        connect(delTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("delay"); });
-
-        auto& pluginManager = engine.getPluginManager();
-        const auto& plugins = pluginManager.getPlugins();
-        if (!plugins.empty())
-        {
-            auto* pluginTrk = addFxs->addMenu("Plugin");
-            for (const auto& desc : plugins)
-            {
-                if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
-                    continue;
-
-                QString label = QString("[%1] %2")
-                    .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
-                    .arg(QString::fromUtf8(desc.name.toRawUTF8()));
-                auto* act = pluginTrk->addAction(label);
-                connect(act, &QAction::triggered, this,
-                    [this, desc]() {
-                        emit addTrackWithPlugin(desc.fileOrIdentifier, desc.pluginFormatName);
-                    });
-            }
-        }
-
-        menu.exec(event->globalPos());
-        event->accept();
-        return;
-    }
-
     QMenu menu;
 
+    if (trackIdx < 0 || trackIdx >= static_cast<int>(tracks.size()))
+        buildEmptyAreaMenu(menu, event);
+    else
+        buildTrackMenu(menu, trackIdx, event);
+
+    menu.exec(event->globalPos());
+    event->accept();
+}
+
+void TrackHeaderWidget::buildEmptyAreaMenu(QMenu& menu, QContextMenuEvent* event)
+{
+    auto* addAction = menu.addAction("Add Track");
+    connect(addAction, &QAction::triggered, this, &TrackHeaderWidget::addTrackRequested);
+
+    auto* addFxs = menu.addMenu("Add Track with FX");
+    auto* eqTrk = addFxs->addAction("EQ");
+    connect(eqTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("eq"); });
+    auto* compTrk = addFxs->addAction("Compressor");
+    connect(compTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("compressor"); });
+    auto* revTrk = addFxs->addAction("Reverb");
+    connect(revTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("reverb"); });
+    auto* delTrk = addFxs->addAction("Delay");
+    connect(delTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("delay"); });
+
+    auto& pluginManager = engine.getPluginManager();
+    const auto& plugins = pluginManager.getPlugins();
+    if (!plugins.empty())
+    {
+        auto* pluginTrk = addFxs->addMenu("Plugin");
+        for (const auto& desc : plugins)
+        {
+            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+                continue;
+
+            QString label = QString("[%1] %2")
+                .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
+                .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+            auto* act = pluginTrk->addAction(label);
+            connect(act, &QAction::triggered, this,
+                [this, desc]() {
+                    emit addTrackWithPlugin(desc.fileOrIdentifier, desc.pluginFormatName);
+                });
+        }
+    }
+
+    Q_UNUSED(event);
+}
+
+void TrackHeaderWidget::buildTrackMenu(QMenu& menu, int trackIdx, QContextMenuEvent* event)
+{
     auto* renameAction = menu.addAction("Rename Track");
     connect(renameAction, &QAction::triggered, this, [this, trackIdx]() {
         auto trackList = engine.getProjectModel().getTrackListTree();
@@ -770,8 +777,7 @@ void TrackHeaderWidget::contextMenuEvent(QContextMenuEvent* event)
         }
     });
 
-    menu.exec(event->globalPos());
-    event->accept();
+    Q_UNUSED(event);
 }
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)

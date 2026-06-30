@@ -54,6 +54,9 @@ private:
     bool eventFilter(QObject* obj, QEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void handleFileDrop(const QString& filePath, QPointF scenePos);
+    void handleContextMenu(QContextMenuEvent* event);
+    void handleKeyPress(QKeyEvent* event);
+    void handleDrop(QDropEvent* event);
 
     AudioEngine& engine;
 

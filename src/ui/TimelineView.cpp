@@ -10,6 +10,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QKeyEvent>
+#include <QContextMenuEvent>
 #include <QInputDialog>
 #include <QApplication>
 #include <QShowEvent>
@@ -286,163 +287,175 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
         }
         else if (event->type() == QEvent::Drop)
         {
-            auto* drop = static_cast<QDropEvent*>(event);
-            QString filePath;
-
-            if (drop->mimeData()->hasUrls())
-            {
-                auto urls = drop->mimeData()->urls();
-                if (!urls.isEmpty())
-                    filePath = urls.first().toLocalFile();
-            }
-            else if (drop->mimeData()->hasText())
-            {
-                filePath = drop->mimeData()->text();
-            }
-
-            if (!filePath.isEmpty())
-            {
-                QPointF scenePos = graphicsView->mapToScene(drop->position().toPoint());
-                handleFileDrop(filePath, scenePos);
-                drop->acceptProposedAction();
-                return true;
-            }
+            handleDrop(static_cast<QDropEvent*>(event));
+            return true;
         }
         else if (event->type() == QEvent::KeyPress)
         {
-            auto* keyEvent = static_cast<QKeyEvent*>(event);
-            if (keyEvent->key() == Qt::Key_Delete || keyEvent->key() == Qt::Key_Backspace)
-            {
-                auto selectedItems = timelineScene->selectedItems();
-                for (auto* item : selectedItems)
-                {
-                    auto* clip = dynamic_cast<ClipItem*>(item);
-                    if (clip != nullptr)
-                    {
-                        auto clipTree = clip->getClipTree();
-                        auto parentTree = clipTree.getParent();
-                        if (parentTree.isValid())
-                        {
-                            parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
-                        }
-                    }
-                }
-                keyEvent->accept();
-                return true;
-            }
+            handleKeyPress(static_cast<QKeyEvent*>(event));
+            return true;
         }
         else if (event->type() == QEvent::ContextMenu)
         {
-            auto* cmEvent = static_cast<QContextMenuEvent*>(event);
-            QPointF scenePos = graphicsView->mapToScene(cmEvent->pos());
-            QGraphicsItem* item = timelineScene->itemAt(scenePos, QTransform());
-
-            QMenu menu;
-
-            // No parentItem() walk: ClipItem is not grouped under track-lane containers.
-            ClipItem* clip = dynamic_cast<ClipItem*>(item);
-
-            if (clip != nullptr)
-            {
-                auto* deleteAction = menu.addAction("Delete Clip");
-                connect(deleteAction, &QAction::triggered, this, [this, clip]() {
-                    auto clipTree = clip->getClipTree();
-                    auto parentTree = clipTree.getParent();
-                    if (parentTree.isValid())
-                        parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
-                });
-
-                auto* openAction = menu.addAction("Open in Editor");
-                connect(openAction, &QAction::triggered, this, [this, clip]() {
-                    emit timelineScene->clipSelected(clip->getClipTree());
-                });
-
-                menu.addSeparator();
-
-                auto* splitAction = menu.addAction("Split");
-                connect(splitAction, &QAction::triggered, this, [this, cmEvent, clip, scenePos]() {
-                    Q_UNUSED(cmEvent);
-                    Q_UNUSED(scenePos);
-                    // Future: implement split at playhead or click position
-                });
-            }
-            else
-            {
-                // Right-click on empty timeline space
-                double timeSeconds = scenePos.x() / pixelsPerSecond;
-
-                auto* addTrackAction = menu.addAction("Add Track");
-                connect(addTrackAction, &QAction::triggered, this, &TimelineView::addTrackClicked);
-
-                menu.addSeparator();
-
-                auto* addTempoAction = menu.addAction("Add Tempo Change Here...");
-                connect(addTempoAction, &QAction::triggered, this, [this, timeSeconds]() {
-                    bool ok = false;
-                    double newBpm = QInputDialog::getDouble(
-                        QApplication::activeWindow(), "Tempo Change",
-                        QString("BPM at %1s:").arg(timeSeconds, 0, 'f', 2),
-                        engine.getTransportManager().getBPM(), 20.0, 999.0, 1, &ok);
-                    if (!ok) return;
-
-                    auto& modl = engine.getProjectModel();
-                    auto tempoList = modl.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
-                    if (!tempoList.isValid())
-                    {
-                        tempoList = juce::ValueTree(IDs::TEMPO_POINT_LIST);
-                        modl.getTree().addChild(tempoList, -1, &modl.getUndoManager());
-                    }
-
-                    juce::ValueTree pt(IDs::TEMPO_POINT);
-                    pt.setProperty(IDs::startTime, timeSeconds, &modl.getUndoManager());
-                    pt.setProperty(IDs::tempo, newBpm, &modl.getUndoManager());
-                    tempoList.addChild(pt, -1, &modl.getUndoManager());
-                });
-
-                auto* setBpmAction = menu.addAction("Set Global BPM...");
-                connect(setBpmAction, &QAction::triggered, this, [this]() {
-                    bool ok = false;
-                    double newBpm = QInputDialog::getDouble(
-                        QApplication::activeWindow(), "Tempo",
-                        "BPM:", engine.getTransportManager().getBPM(), 20.0, 999.0, 1, &ok);
-                    if (!ok) return;
-                    engine.getProjectModel().getTree().setProperty(IDs::tempo, newBpm,
-                        &engine.getProjectModel().getUndoManager());
-                });
-
-                menu.addSeparator();
-
-                auto* addMidiAction = menu.addAction("Add MIDI Clip...");
-                connect(addMidiAction, &QAction::triggered, this, [this, scenePos]() {
-                    double timeSeconds = scenePos.x() / pixelsPerSecond;
-                    auto& model = engine.getProjectModel();
-                    auto trackList = model.getTrackListTree();
-
-                    int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
-                    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
-                        return;
-
-                    auto trackTree = trackList.getChild(trackIndex);
-                    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-                    if (!clipList.isValid())
-                    {
-                        clipList = juce::ValueTree(IDs::CLIP_LIST);
-                        trackTree.addChild(clipList, -1, &model.getUndoManager());
-                    }
-
-                    auto clip = ProjectModel::createMidiClipEmpty("MIDI Clip",
-                        (std::max)(0.0, timeSeconds), 4.0);
-                    clipList.addChild(clip, -1, &model.getUndoManager());
-                    engine.getMainProcessor()->rebuildRoutingGraph();
-                });
-            }
-
-            menu.exec(cmEvent->globalPos());
-            cmEvent->accept();
+            handleContextMenu(static_cast<QContextMenuEvent*>(event));
             return true;
         }
     }
     return QWidget::eventFilter(obj, event);
+}
+
+void TimelineView::handleContextMenu(QContextMenuEvent* event)
+{
+    QPointF scenePos = graphicsView->mapToScene(event->pos());
+    QGraphicsItem* item = timelineScene->itemAt(scenePos, QTransform());
+
+    QMenu menu;
+
+    // No parentItem() walk: ClipItem is not grouped under track-lane containers.
+    ClipItem* clip = dynamic_cast<ClipItem*>(item);
+
+    if (clip != nullptr)
+    {
+        auto* deleteAction = menu.addAction("Delete Clip");
+        connect(deleteAction, &QAction::triggered, this, [this, clip]() {
+            auto clipTree = clip->getClipTree();
+            auto parentTree = clipTree.getParent();
+            if (parentTree.isValid())
+                parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
+        });
+
+        auto* openAction = menu.addAction("Open in Editor");
+        connect(openAction, &QAction::triggered, this, [this, clip]() {
+            emit timelineScene->clipSelected(clip->getClipTree());
+        });
+
+        menu.addSeparator();
+
+        auto* splitAction = menu.addAction("Split");
+        connect(splitAction, &QAction::triggered, this, [this, event, clip, scenePos]() {
+            Q_UNUSED(event);
+            Q_UNUSED(scenePos);
+            // Future: implement split at playhead or click position
+        });
+    }
+    else
+    {
+        // Right-click on empty timeline space
+        double timeSeconds = scenePos.x() / pixelsPerSecond;
+
+        auto* addTrackAction = menu.addAction("Add Track");
+        connect(addTrackAction, &QAction::triggered, this, &TimelineView::addTrackClicked);
+
+        menu.addSeparator();
+
+        auto* addTempoAction = menu.addAction("Add Tempo Change Here...");
+        connect(addTempoAction, &QAction::triggered, this, [this, timeSeconds]() {
+            bool ok = false;
+            double newBpm = QInputDialog::getDouble(
+                QApplication::activeWindow(), "Tempo Change",
+                QString("BPM at %1s:").arg(timeSeconds, 0, 'f', 2),
+                engine.getTransportManager().getBPM(), 20.0, 999.0, 1, &ok);
+            if (!ok) return;
+
+            auto& modl = engine.getProjectModel();
+            auto tempoList = modl.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+            if (!tempoList.isValid())
+            {
+                tempoList = juce::ValueTree(IDs::TEMPO_POINT_LIST);
+                modl.getTree().addChild(tempoList, -1, &modl.getUndoManager());
+            }
+
+            juce::ValueTree pt(IDs::TEMPO_POINT);
+            pt.setProperty(IDs::startTime, timeSeconds, &modl.getUndoManager());
+            pt.setProperty(IDs::tempo, newBpm, &modl.getUndoManager());
+            tempoList.addChild(pt, -1, &modl.getUndoManager());
+        });
+
+        auto* setBpmAction = menu.addAction("Set Global BPM...");
+        connect(setBpmAction, &QAction::triggered, this, [this]() {
+            bool ok = false;
+            double newBpm = QInputDialog::getDouble(
+                QApplication::activeWindow(), "Tempo",
+                "BPM:", engine.getTransportManager().getBPM(), 20.0, 999.0, 1, &ok);
+            if (!ok) return;
+            engine.getProjectModel().getTree().setProperty(IDs::tempo, newBpm,
+                &engine.getProjectModel().getUndoManager());
+        });
+
+        menu.addSeparator();
+
+        auto* addMidiAction = menu.addAction("Add MIDI Clip...");
+        connect(addMidiAction, &QAction::triggered, this, [this, scenePos]() {
+            double timeSeconds = scenePos.x() / pixelsPerSecond;
+            auto& model = engine.getProjectModel();
+            auto trackList = model.getTrackListTree();
+
+            int trackIndex = timelineScene->trackIndexAtY(scenePos.y());
+            if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+                return;
+
+            auto trackTree = trackList.getChild(trackIndex);
+            auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+            if (!clipList.isValid())
+            {
+                clipList = juce::ValueTree(IDs::CLIP_LIST);
+                trackTree.addChild(clipList, -1, &model.getUndoManager());
+            }
+
+            auto clip = ProjectModel::createMidiClipEmpty("MIDI Clip",
+                (std::max)(0.0, timeSeconds), 4.0);
+            clipList.addChild(clip, -1, &model.getUndoManager());
+            engine.getMainProcessor()->rebuildRoutingGraph();
+        });
+    }
+
+    menu.exec(event->globalPos());
+    event->accept();
+}
+
+void TimelineView::handleKeyPress(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+    {
+        auto selectedItems = timelineScene->selectedItems();
+        for (auto* item : selectedItems)
+        {
+            auto* clip = dynamic_cast<ClipItem*>(item);
+            if (clip != nullptr)
+            {
+                auto clipTree = clip->getClipTree();
+                auto parentTree = clipTree.getParent();
+                if (parentTree.isValid())
+                {
+                    parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
+                }
+            }
+        }
+        event->accept();
+    }
+}
+
+void TimelineView::handleDrop(QDropEvent* event)
+{
+    QString filePath;
+
+    if (event->mimeData()->hasUrls())
+    {
+        auto urls = event->mimeData()->urls();
+        if (!urls.isEmpty())
+            filePath = urls.first().toLocalFile();
+    }
+    else if (event->mimeData()->hasText())
+    {
+        filePath = event->mimeData()->text();
+    }
+
+    if (!filePath.isEmpty())
+    {
+        QPointF scenePos = graphicsView->mapToScene(event->position().toPoint());
+        handleFileDrop(filePath, scenePos);
+        event->acceptProposedAction();
+    }
 }
 
 void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
