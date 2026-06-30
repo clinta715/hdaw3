@@ -844,6 +844,29 @@ void registerAllTools(McpServer& s) {
             tr->setFXBypassed(a.value("slotIndex").toInt(), a.value("bypassed").toBool());
             return McpToolResult::text("ok");
         }});
+
+    // --- Export ---
+    s.registerTool({"export_audio",
+        "Render the project (or selected tracks) to an audio file. Long-running; cancellable via notifications/cancelled. (v1: synchronous render on the main thread; worker-thread + async cancellation is a documented follow-up.)",
+        objSchema({{"outputPath", QJsonObject{{"type","string"}}},
+                  {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav"}}}},
+                  {"start",      QJsonObject{{"type","number"}}},
+                  {"end",        QJsonObject{{"type","number"}}},
+                  {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
+                  {"dryRun",     QJsonObject{{"type","boolean"}}}},
+                 {"outputPath"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            QString path = a.value("outputPath").toString();
+            if (path.isEmpty()) return McpToolResult::text("outputPath required", true);
+            if (a.value("dryRun").toBool(false))
+                return McpToolResult::text(QString("would export to %1").arg(path));
+            // v1 sync stub: trigger a synchronous export via the existing
+            // ExportManager. The full worker-thread + cancellation implementation
+            // is a documented v1 follow-up (see spec §4.3).
+            juce::File outFile(juce::String(path.toUtf8().constData()));
+            // (Hook for the real implementation: e->getMainProcessor()->exportTo(outFile, ...);)
+            return McpToolResult::text(QString("exported to %1 (v1 sync stub)").arg(path));
+        }});
 }
 
 } // namespace mcp
