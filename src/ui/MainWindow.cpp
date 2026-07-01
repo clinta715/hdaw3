@@ -458,6 +458,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::trackSelectionChanged, this,
         [this](int trackIndex) {
             selectedTrack = trackIndex;
+            timelineView->setSelectedTrack(trackIndex);
             int idx = bottomStack->currentIndex();
             if (idx == 2 && selectedTrack >= 0)
                 fxChainWidget->loadTrack(trackIndex);

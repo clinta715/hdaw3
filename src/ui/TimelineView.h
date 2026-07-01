@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QScrollBar>
 #include "../engine/AudioEngine.h"
+#include "../engine/ClipClipboard.h"
 #include "TimelineScene.h"
 #include "TimelineToolbar.h"
 #include "TrackHeaderWidget.h"
@@ -23,6 +24,17 @@ public:
     TimelineScene* getScene() const { return timelineScene; }
     TimelineToolbar* getToolbar() const { return toolbar; }
     TimelineInteraction* getInteraction() const { return interaction; }
+
+    // Clipboard operations — operate on currently selected clips.
+    // pasteClips uses the current playhead position as the origin and
+    // places each pasted clip on its source track (or selected track if
+    // the source track no longer exists).
+    void cutSelectedClips();
+    void copySelectedClips();
+    void pasteClips();
+    void duplicateSelectedClips();
+
+    static constexpr double duplicateOffsetSeconds = 0.25;
 
 signals:
     void trackSelectionChanged(int trackIndex);
@@ -49,6 +61,7 @@ public slots:
     void setFollowPlayhead(bool follow);
     void scrollToPlayhead();
     void selectTrack(int index);
+    void setSelectedTrack(int index) { selectedTrack = index; }
 
 private:
     void setupUI();
@@ -81,4 +94,6 @@ private:
     static constexpr double zoomFactor = 1.5;
     static constexpr double minPPS = 1.0;
     static constexpr double maxPPS = 200.0;
+
+    int selectedTrack = -1;
 };

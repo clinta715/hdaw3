@@ -194,6 +194,8 @@ add_executable(HDAW
     src/engine/MidiImport.cpp
     src/engine/MidiInputManager.h
     src/engine/MidiInputManager.cpp
+    src/engine/ClipClipboard.h
+    src/engine/ClipClipboard.cpp
 )
 
 target_link_libraries(HDAW

@@ -250,8 +250,137 @@ void TimelineView::scrollToPlayhead()
     double viewWidth = graphicsView->viewport()->width();
     double centerX = playheadX - viewWidth * 0.3;
 
-    graphicsView->horizontalScrollBar()->setValue(
-        static_cast<int>(centerX));
+    graphicsView->horizontalScrollBar()->setValue(static_cast<int>(centerX));
+}
+
+void TimelineView::cutSelectedClips()
+{
+    if (interaction == nullptr)
+        return;
+    auto& um = engine.getProjectModel().getUndoManager();
+    um.beginNewTransaction("Cut clips");
+    copySelectedClips();
+    interaction->deleteSelectedClips();
+}
+
+void TimelineView::copySelectedClips()
+{
+    if (interaction == nullptr)
+        return;
+    auto selected = interaction->getSelectedClips();
+    if (selected.isEmpty())
+        return;
+    std::vector<HDAW::ClipboardEntry> entries;
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    for (auto* clip : selected)
+    {
+        auto clipTree = clip->getClipTree();
+        auto trackTree = ProjectModel::getTrackOfClip(clipTree);
+        int trackIdx = trackList.indexOf(trackTree);
+        HDAW::ClipboardEntry entry = HDAW::ClipClipboard::deepCopy(clipTree);
+        entry.sourceTrackIndex = trackIdx;
+        entries.push_back(entry);
+    }
+    HDAW::ClipClipboard::copyClips(entries);
+}
+
+void TimelineView::pasteClips()
+{
+    if (!HDAW::ClipClipboard::hasContent())
+        return;
+    auto& model = engine.getProjectModel();
+    auto& um = model.getUndoManager();
+    um.beginNewTransaction("Paste clips");
+
+    // Paste origin: current playhead time, in seconds
+    int64_t samples = engine.getTransportManager().getCurrentSample();
+    double sr = engine.getTransportManager().getSampleRate();
+    double originSeconds = sr > 0 ? static_cast<double>(samples) / sr : 0.0;
+
+    auto& entries = HDAW::ClipClipboard::getClips();
+    auto trackList = model.getTrackListTree();
+    int numTracks = trackList.getNumChildren();
+
+    for (const auto& entry : entries)
+    {
+        if (!entry.clipTree.isValid()) continue;
+
+        // Choose target track: prefer the source track if it still exists,
+        // else fall back to the currently selected track, else track 0.
+        int targetTrack = entry.sourceTrackIndex;
+        if (targetTrack < 0 || targetTrack >= numTracks)
+        {
+            if (selectedTrack >= 0 && selectedTrack < numTracks)
+                targetTrack = selectedTrack;
+            else if (numTracks > 0)
+                targetTrack = 0;
+            else
+                continue;
+        }
+        auto trackTree = trackList.getChild(targetTrack);
+        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid())
+        {
+            clipList = juce::ValueTree(IDs::CLIP_LIST);
+            trackTree.addChild(clipList, -1, &um);
+        }
+
+        // Offset paste so the earliest source start lands at origin.
+        double srcStart = entry.clipTree.getProperty(IDs::startTime);
+        double newStart = originSeconds + (srcStart - entry.sourceStartTime);
+        if (newStart < 0.0) newStart = 0.0;
+
+        // Deep copy again so each paste is independent.
+        auto newClip = entry.clipTree.createCopy();
+        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+        newClip.setProperty(IDs::startTime, newStart, &um);
+        // Append " copy" to the name to disambiguate.
+        juce::String origName = newClip.getProperty(IDs::name).toString();
+        if (!origName.endsWith(" copy"))
+            newClip.setProperty(IDs::name, origName + " copy", &um);
+        clipList.addChild(newClip, -1, &um);
+    }
+
+    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+        mainProc->rebuildRoutingGraph();
+}
+
+void TimelineView::duplicateSelectedClips()
+{
+    if (interaction == nullptr)
+        return;
+    auto& um = engine.getProjectModel().getUndoManager();
+    um.beginNewTransaction("Duplicate clips");
+    copySelectedClips();
+
+    auto& entries = HDAW::ClipClipboard::getClips();
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    int numTracks = trackList.getNumChildren();
+
+    for (const auto& entry : entries)
+    {
+        if (!entry.clipTree.isValid()) continue;
+        int targetTrack = entry.sourceTrackIndex;
+        if (targetTrack < 0 || targetTrack >= numTracks) continue;
+        auto trackTree = trackList.getChild(targetTrack);
+        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+
+        auto newClip = entry.clipTree.createCopy();
+        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+        double srcStart2 = entry.clipTree.getProperty(IDs::startTime);
+        double newStart = srcStart2 + duplicateOffsetSeconds;
+        newClip.setProperty(IDs::startTime, newStart, &um);
+        juce::String origName = newClip.getProperty(IDs::name).toString();
+        if (!origName.endsWith(" copy"))
+            newClip.setProperty(IDs::name, origName + " copy", &um);
+        clipList.addChild(newClip, -1, &um);
+    }
+
+    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+        mainProc->rebuildRoutingGraph();
 }
 
 void TimelineView::syncRulerWithScene()
@@ -410,6 +539,19 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
     for (auto* item : timelineScene->selectedItems())
         if (dynamic_cast<ClipItem*>(item) != nullptr) ++selectedCount;
 
+    auto* copyAction = menu.addAction("Copy");
+    connect(copyAction, &QAction::triggered, this, [this]() { copySelectedClips(); });
+
+    auto* cutAction = menu.addAction("Cut");
+    connect(cutAction, &QAction::triggered, this, [this]() { cutSelectedClips(); });
+
+    auto* duplicateAction = menu.addAction("Duplicate");
+    connect(duplicateAction, &QAction::triggered, this, [this]() { duplicateSelectedClips(); });
+
+    auto* pasteAction = menu.addAction("Paste");
+    connect(pasteAction, &QAction::triggered, this, [this]() { pasteClips(); });
+    pasteAction->setEnabled(HDAW::ClipClipboard::hasContent());
+
     auto* deleteAction = menu.addAction(selectedCount > 1
         ? QString("Delete %1 Clips").arg(selectedCount)
         : QStringLiteral("Delete Clip"));
@@ -459,6 +601,12 @@ void TimelineView::handleEmptyAreaContextMenu(const QPointF& scenePos, const QPo
 
     auto* addTrackAction = menu.addAction("Add Track");
     connect(addTrackAction, &QAction::triggered, this, &TimelineView::addTrackClicked);
+
+    menu.addSeparator();
+
+    auto* pasteAtCursor = menu.addAction("Paste");
+    connect(pasteAtCursor, &QAction::triggered, this, [this]() { pasteClips(); });
+    pasteAtCursor->setEnabled(HDAW::ClipClipboard::hasContent());
 
     menu.addSeparator();
 
@@ -556,6 +704,32 @@ void TimelineView::handleKeyPress(QKeyEvent* event)
             for (auto* item : timelineScene->items())
                 item->setSelected(false);
         }
+        event->accept();
+        return;
+    }
+
+    Qt::KeyboardModifiers mods = event->modifiers();
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_C)
+    {
+        copySelectedClips();
+        event->accept();
+        return;
+    }
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_X)
+    {
+        cutSelectedClips();
+        event->accept();
+        return;
+    }
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_V)
+    {
+        pasteClips();
+        event->accept();
+        return;
+    }
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_D)
+    {
+        duplicateSelectedClips();
         event->accept();
         return;
     }
