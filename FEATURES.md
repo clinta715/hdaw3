@@ -54,7 +54,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Instrument plugins** — distinguish instrument plugins from audio FX
 
 ### UI / UX
-- [ ] **Multi-select clips** — select multiple clips in timeline (rubber band, Ctrl+click)
+- [x] **Multi-select clips** — select multiple clips in timeline (rubber band, Ctrl+click) ✅ Done
 - [ ] **Clipboard for clips** — copy/paste clips in timeline
 - [ ] **Marker track** — named markers at positions, marker navigation
 - [ ] **Zoom-to-fit** — auto-zoom to show all content or selection
@@ -191,3 +191,5 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Horizontal scroll via Shift+wheel
 - [x] Plugin search filter in FX slot combo
 - [x] Stuck drag state fix (all editors)
+- [x] Playhead rendering in automation, velocity, CC lanes
+- [x] Multi-clip selection (rubber band, Ctrl+click, Shift+click, Ctrl+A)
