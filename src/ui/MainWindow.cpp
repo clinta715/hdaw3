@@ -459,6 +459,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::addTrackWithPlugin, this, &MainWindow::onAddTrackWithPlugin);
     connect(timelineView, &TimelineView::bpmChanged, this, &MainWindow::onBPMChanged);
     connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
+    connect(timelineView, &TimelineView::countInToggled, this, &MainWindow::onCountInToggled);
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
@@ -1097,7 +1098,12 @@ void MainWindow::onMetronomeToggled(bool enabled)
     auto& model = engine.getProjectModel();
     auto transport = model.getTransportTree();
     transport.setProperty(IDs::metronomeEnabled, enabled, &model.getUndoManager());
-    Q_UNUSED(enabled);
+}
+
+void MainWindow::onCountInToggled(bool enabled)
+{
+    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+        mainProc->setCountInEnabled(enabled, 1);
 }
 
 void MainWindow::onRecordToggle()

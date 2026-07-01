@@ -200,6 +200,17 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     connect(recordBtn, &QPushButton::clicked, this, &TimelineToolbar::recordClicked);
     layout->addWidget(recordBtn);
 
+    // Count-in toggle
+    countInBtn = new QPushButton("1Bar", this);
+    countInBtn->setCheckable(true);
+    countInBtn->setFixedHeight(22);
+    countInBtn->setToolTip("Count-in: play one bar before recording starts");
+    countInBtn->setStyleSheet(
+        "QPushButton { color: #a8a8b0; font-size: 7pt; padding: 2px 4px; }"
+        "QPushButton:checked { color: #d97706; }");
+    connect(countInBtn, &QPushButton::toggled, this, &TimelineToolbar::countInToggled);
+    layout->addWidget(countInBtn);
+
     // Timecode display
     timecodeLabel = new QLabel("00:00:000", this);
     timecodeLabel->setStyleSheet(
@@ -236,6 +247,13 @@ void TimelineToolbar::setMetronomeEnabled(bool enabled)
     metronomeBtn->blockSignals(true);
     metronomeBtn->setChecked(enabled);
     metronomeBtn->blockSignals(false);
+}
+
+void TimelineToolbar::setCountInEnabled(bool enabled)
+{
+    countInBtn->blockSignals(true);
+    countInBtn->setChecked(enabled);
+    countInBtn->blockSignals(false);
 }
 
 void TimelineToolbar::setDefaultClipLen(double beats)

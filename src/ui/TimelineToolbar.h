@@ -26,6 +26,7 @@ public slots:
     void setSnap(bool enabled);
     void setLoopEnabled(bool enabled);
     void setSnapDivision(int index);
+    void setCountInEnabled(bool enabled);
 
 signals:
     void addTrackClicked();
@@ -44,6 +45,7 @@ signals:
     void rewindClicked();
     void bpmChanged(double bpm);
     void metronomeToggled(bool enabled);
+    void countInToggled(bool enabled);
     void defaultClipLenChanged(double beats);
 
 public:
@@ -66,6 +68,7 @@ private:
     QDoubleSpinBox* bpmSpinBox;
     QLabel* timeSigLabel;
     QPushButton* metronomeBtn;
+    QPushButton* countInBtn;
     QDoubleSpinBox* defaultClipLenSpinBox;
     QMenu* trackMenu;
 };

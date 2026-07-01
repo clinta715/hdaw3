@@ -36,6 +36,7 @@ signals:
     void rewindRequested();
     void bpmChanged(double bpm);
     void metronomeToggled(bool enabled);
+    void countInToggled(bool enabled);
     void defaultClipLenChanged(double beats);
 
 public slots:

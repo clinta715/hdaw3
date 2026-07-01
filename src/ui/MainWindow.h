@@ -72,6 +72,7 @@ private:
     int promptForImportTrack(QWidget* parent, AudioEngine& eng, const QString& title);
     void onBPMChanged(double bpm);
     void onMetronomeToggled(bool enabled);
+    void onCountInToggled(bool enabled);
     void onToggleBrowserPanel();
     void onClipSelected(const juce::ValueTree& clipTree);
 

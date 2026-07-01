@@ -47,7 +47,16 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 
     setPlayHead(internalPlayHead.get());
 
-    // Capture input for recording (before graph processing)
+    if (countInActive.load() && transportManager)
+    {
+        if (transportManager->getCurrentSample() >= pendingRecordStartSample)
+        {
+            countInActive.store(false);
+            metronome.setEnabled(wasMetronomeOn);
+            beginActualRecording();
+        }
+    }
+
     if (transportManager && transportManager->isRecordingNow())
         audioRecorder->processBlock(buffer);
 
@@ -96,6 +105,27 @@ bool MainAudioProcessor::startRecording()
 {
     if (transportManager == nullptr) return false;
 
+    if (countInEnabled)
+    {
+        double bpm = transportManager->getBpmAtTime(
+            static_cast<double>(transportManager->getCurrentSample()) / transportManager->getSampleRate());
+        double sr = transportManager->getSampleRate();
+        double countInSec = static_cast<double>(countInBars) * 4.0 * 60.0 / bpm;
+        pendingRecordStartSample = transportManager->getCurrentSample()
+            + static_cast<int64_t>(countInSec * sr);
+        countInActive.store(true);
+        wasMetronomeOn = metronome.isEnabled();
+        metronome.setEnabled(true);
+        return true;
+    }
+
+    return beginActualRecording();
+}
+
+bool MainAudioProcessor::beginActualRecording()
+{
+    if (transportManager == nullptr) return false;
+
     auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
     auto recDir = appData.getChildFile("HDAW").getChildFile("recordings");
     recDir.createDirectory();
@@ -116,6 +146,14 @@ bool MainAudioProcessor::startRecording()
 
 void MainAudioProcessor::stopRecording()
 {
+    if (countInActive.load())
+    {
+        countInActive.store(false);
+        metronome.setEnabled(wasMetronomeOn);
+        transportManager->setPlaying(false);
+        return;
+    }
+
     if (!audioRecorder->isRecording()) return;
 
     auto recordedFile = audioRecorder->stopRecording();

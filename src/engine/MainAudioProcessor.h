@@ -32,10 +32,12 @@ public:
     HDAW::LevelMeter& getMasterMeter();
     HDAW::RoutingManager* getRoutingManager() const { return routingManager.get(); }
     HDAW::Metronome& getMetronome() { return metronome; }
+    void setCountInEnabled(bool enabled, int bars = 1) { countInEnabled = enabled; countInBars = bars; }
     void rebuildTrackFX(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
     void rebuildAutomationCache(int trackIndex);
+    bool beginActualRecording();
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -81,6 +83,11 @@ private:
     std::unique_ptr<HDAW::RoutingManager> routingManager;
     std::unique_ptr<HDAW::AudioRecorder> audioRecorder;
     int64_t recordingStartSample = 0;
+    int64_t pendingRecordStartSample = -1;
+    std::atomic<bool> countInActive{ false };
+    bool countInEnabled = false;
+    int countInBars = 1;
+    bool wasMetronomeOn = false;
     HDAW::Metronome metronome;
     HDAW::ExportManager exportManager;
 
