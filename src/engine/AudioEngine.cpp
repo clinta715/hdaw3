@@ -217,6 +217,31 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                 {
                     ParamUpdate update{ i, paramID, value };
                     spscBridge.pushUpdate(update);
+
+                    if (transportManager.isPlayingNow() && property != IDs::isMuted)
+                    {
+                        auto autoList = treeWhosePropertyHasChanged.getChildWithName(IDs::AUTOMATION_LIST);
+                        for (int a = 0; a < autoList.getNumChildren(); ++a)
+                        {
+                            auto autoTree = autoList.getChild(a);
+                            if (static_cast<int>(autoTree.getProperty(IDs::paramID)) == paramID)
+                            {
+                                double timeSec = static_cast<double>(transportManager.getCurrentSample())
+                                    / transportManager.getSampleRate();
+                                auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+                                if (!pointList.isValid())
+                                {
+                                    pointList = juce::ValueTree(IDs::POINT_LIST);
+                                    autoTree.addChild(pointList, -1, nullptr);
+                                }
+                                juce::ValueTree pt(IDs::POINT);
+                                pt.setProperty(IDs::startTime, timeSec, nullptr);
+                                pt.setProperty(IDs::gain, static_cast<double>(value), nullptr);
+                                pointList.addChild(pt, -1, nullptr);
+                                break;
+                            }
+                        }
+                    }
                     break;
                 }
             }
