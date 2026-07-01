@@ -352,8 +352,10 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
         return result;
     }
 
-    // Clear pedal on normal exit (even if load failed — it wasn't a crash)
-    pedalFile.deleteFile();
+    // Only clear pedal on normal exit (success or load failure).
+    // Leave it intact for crash exit codes so scanAll() can read it.
+    if (exitCode == 0 || exitCode == 1)
+        pedalFile.deleteFile();
 
     if (exitCode == 0 && output.isNotEmpty())
     {
@@ -361,7 +363,7 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
         auto json = juce::JSON::parse(output);
         if (auto* obj = json.getDynamicObject())
         {
-            result.ok = static_cast<bool>(obj->getProperty("ok"));
+            result.ok = obj->hasProperty("ok") && static_cast<bool>(obj->getProperty("ok"));
             result.name = obj->getProperty("name").toString();
             result.manufacturer = obj->getProperty("manufacturer").toString();
             result.category = obj->getProperty("category").toString();
