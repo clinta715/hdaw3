@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.3.0
+**Current version**: 0.4.0
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.3.0)
+## What works today (v0.4.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -58,10 +58,16 @@ pipeline and the rationale.
   be created (click), moved (drag horizontally = beat, drag
   vertically = pitch), resized (drag right edge), selected,
   and deleted (right-click or Delete key). Ctrl+A selects all.
+  Right-click context menu provides Quantize, Humanize, and
+  Transpose. Keyboard shortcuts: Up/Down arrows for transpose
+  (±1 semitone, ±1 octave with Ctrl), Q for quantize, H for
+  humanize.
 - **Audio clips**: clips render waveforms from the source file.
   Drag the body to move; drag the left/right 6 px edge to trim
   the start or duration; drag the top corners to set fade-in /
-  fade-out.
+  fade-out. Right-click context menu provides Normalize and
+  Reverse operations (creates new WAV files alongside originals).
+  Take management via context menu when multiple takes exist.
 - Clip edits are wired through `juce::UndoManager`, so
   Edit → Undo / Redo work for every clip change.
 
@@ -78,11 +84,18 @@ pipeline and the rationale.
   `juce_dsp`).
 - Plugin hosting: VST3 and CLAP via JUCE's native format
   loaders. Plugin Manager dialog scans known paths and lists
-  detected plugins.
+  detected plugins. Plugin search filter in FX slot combo box.
+- Plugin delay compensation (PDC) — track latency is computed
+  from the FX chain and compensated automatically.
 - Audio file import (WAV, AIFF, MP3, FLAC, OGG) into a project
   pool with thumbnail caching.
 - MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
 - Audio export to WAV (Export dialog).
+- Metronome with count-in/pre-roll, time signature support.
+- MIDI hardware input with device selection.
+- Per-track input monitoring toggle.
+- Automation recording — fader/knob movements captured during
+  playback.
 
 ## MCP server
 
@@ -161,12 +174,9 @@ In priority order:
   two MIDI clips; the two audio tracks exist as empty lanes
   ready to receive dropped-in audio.
 - **No bundled sample library.** See "Goals" item 3.
-- **No controller lanes in the piano roll** beyond the basic
-  velocity lane.
-- **No automation recording** — automation lanes exist for
-  manual curve editing but don't capture during playback.
-- **No MIDI input from hardware controllers** — only the
-  transport keyboard shortcuts work.
+- **No automation mute** — volume and pan automation work but
+  mute automation is not yet supported.
+- **No audio crossfades** — adjacent clips don't auto-crossfade.
 
 ## Project layout
 

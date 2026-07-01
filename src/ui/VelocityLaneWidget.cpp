@@ -2,6 +2,7 @@
 #include "Theme.h"
 #include <QPainter>
 #include <QMouseEvent>
+#include <QApplication>
 #include <cmath>
 
 VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, QWidget* parent)
@@ -9,6 +10,7 @@ VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, QWidget* parent)
 {
     setFixedHeight(laneHeight);
     setMouseTracking(true);
+    qApp->installEventFilter(this);
 }
 
 int VelocityLaneWidget::noteIndexAtBeat(double beat) const
@@ -149,4 +151,34 @@ void VelocityLaneWidget::mouseMoveEvent(QMouseEvent* event)
 void VelocityLaneWidget::mouseReleaseEvent(QMouseEvent*)
 {
     dragging = false;
+}
+
+void VelocityLaneWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    if (dragging)
+    {
+        dragging = false;
+        update();
+    }
+}
+
+void VelocityLaneWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    if (dragging)
+    {
+        dragging = false;
+        update();
+    }
+}
+
+bool VelocityLaneWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && dragging && obj != this)
+    {
+        dragging = false;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

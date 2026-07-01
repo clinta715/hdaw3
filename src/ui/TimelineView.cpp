@@ -15,6 +15,7 @@
 #include <QApplication>
 #include <QShowEvent>
 #include "DebugLog.h"
+#include "../engine/AudioImport.h"
 
 TimelineView::TimelineView(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -302,6 +303,16 @@ bool TimelineView::eventFilter(QObject* obj, QEvent* event)
             handleKeyPress(static_cast<QKeyEvent*>(event));
             return true;
         }
+        else if (event->type() == QEvent::Wheel)
+        {
+            auto* we = static_cast<QWheelEvent*>(event);
+            if (we->modifiers() & Qt::ShiftModifier)
+            {
+                graphicsView->horizontalScrollBar()->setValue(
+                    graphicsView->horizontalScrollBar()->value() - we->angleDelta().y());
+                return true;
+            }
+        }
         else if (event->type() == QEvent::ContextMenu)
         {
             handleContextMenu(static_cast<QContextMenuEvent*>(event));
@@ -365,6 +376,34 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
             }
             menu.addSeparator();
         }
+
+        // Audio editing actions
+        auto* normalizeAction = menu.addAction("Normalize");
+        connect(normalizeAction, &QAction::triggered, this, [this, clip]() {
+            QString sourcePath = QString::fromUtf8(clip->getClipTree().getProperty(IDs::sourceFile).toString().toRawUTF8());
+            QString outPath;
+            if (HDAW::normalizeAudioFile(engine, sourcePath, outPath))
+            {
+                auto& um = engine.getProjectModel().getUndoManager();
+                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &um);
+                if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+                    mainProc->rebuildRoutingGraph();
+            }
+        });
+
+        auto* reverseAction = menu.addAction("Reverse");
+        connect(reverseAction, &QAction::triggered, this, [this, clip]() {
+            QString sourcePath = QString::fromUtf8(clip->getClipTree().getProperty(IDs::sourceFile).toString().toRawUTF8());
+            QString outPath;
+            if (HDAW::reverseAudioFile(engine, sourcePath, outPath))
+            {
+                auto& um = engine.getProjectModel().getUndoManager();
+                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &um);
+                if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+                    mainProc->rebuildRoutingGraph();
+            }
+        });
+        menu.addSeparator();
     }
 
     auto* deleteAction = menu.addAction("Delete Clip");

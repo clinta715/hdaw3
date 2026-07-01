@@ -14,6 +14,9 @@ NoteGridWidget::NoteGridWidget(PianoRollModel& m, AudioEngine& ae, QWidget* pare
 {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
+    // Install global filter to catch mouse releases outside this widget
+    qApp->installEventFilter(this);
+    setMouseTracking(true);
 }
 
 void NoteGridWidget::setPixelsPerBeat(double ppb)
@@ -512,6 +515,32 @@ void NoteGridWidget::keyPressEvent(QKeyEvent* event)
         emit notesChanged();
         update();
     }
+    else if (event->key() == Qt::Key_Up)
+    {
+        int semitones = (event->modifiers() & Qt::ControlModifier) ? 12 : 1;
+        model.transposeSelected(semitones);
+        emit notesChanged();
+        update();
+    }
+    else if (event->key() == Qt::Key_Down)
+    {
+        int semitones = (event->modifiers() & Qt::ControlModifier) ? -12 : -1;
+        model.transposeSelected(semitones);
+        emit notesChanged();
+        update();
+    }
+    else if (event->key() == Qt::Key_Q)
+    {
+        model.quantizeSelected(snapDivision, 1.0);
+        emit notesChanged();
+        update();
+    }
+    else if (event->key() == Qt::Key_H)
+    {
+        model.humanizeSelected(0.05, 5.0);
+        emit notesChanged();
+        update();
+    }
 }
 
 void NoteGridWidget::wheelEvent(QWheelEvent* event)
@@ -536,4 +565,96 @@ void NoteGridWidget::wheelEvent(QWheelEvent* event)
         setScrollOffset(scrollX, scrollY - event->angleDelta().y());
         event->accept();
     }
+}
+
+void NoteGridWidget::contextMenuEvent(QContextMenuEvent* event)
+{
+    QMenu menu(this);
+
+    QMenu* editMenu = menu.addMenu("Edit");
+    editMenu->addAction("Quantize (Q)", this, [this]() {
+        model.quantizeSelected(snapDivision, 1.0);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addAction("Humanize (H)", this, [this]() {
+        model.humanizeSelected(0.05, 5.0);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addSeparator();
+    editMenu->addAction("Transpose Up +1", this, [this]() {
+        model.transposeSelected(1);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addAction("Transpose Down -1", this, [this]() {
+        model.transposeSelected(-1);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addAction("Transpose Up Octave", this, [this]() {
+        model.transposeSelected(12);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addAction("Transpose Down Octave", this, [this]() {
+        model.transposeSelected(-12);
+        emit notesChanged();
+        update();
+    });
+    editMenu->addSeparator();
+    editMenu->addAction("Delete Selected", this, [this]() {
+        model.removeSelectedNotes();
+        emit notesChanged();
+        update();
+    });
+
+    menu.addSeparator();
+    menu.addAction("Select All", this, [this]() {
+        model.deselectAll();
+        for (int i = 0; i < model.getNumNotes(); ++i)
+            model.selectNote(model.getNote(i), true);
+        update();
+    });
+
+    menu.exec(event->globalPos());
+}
+
+void NoteGridWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    if (dragMode != None)
+    {
+        dragMode = None;
+        dragNoteIndex = -1;
+        update();
+    }
+}
+
+void NoteGridWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    if (dragMode != None)
+    {
+        dragMode = None;
+        dragNoteIndex = -1;
+        update();
+    }
+}
+
+bool NoteGridWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    // Catch mouse button release anywhere in the app to reset stuck drag modes
+    if (event->type() == QEvent::MouseButtonRelease && dragMode != None)
+    {
+        // Only reset if the release is not on this widget (this widget handles its own releases)
+        if (obj != this)
+        {
+            dragMode = None;
+            dragNoteIndex = -1;
+            update();
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }

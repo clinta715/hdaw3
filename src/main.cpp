@@ -16,10 +16,6 @@
 #include <cstring>
 #ifdef _WIN32
 #include <io.h>
-#define isatty _isatty
-#define fileno _fileno
-#else
-#include <unistd.h>
 #endif
 
 // Forward JUCE engine log messages to HDAW_LOG (appears in %TEMP%/hdaw_debug.log)
@@ -57,10 +53,9 @@ int main(int argc, char *argv[])
     HDAW_JuceLogger juceLogger;
     juce::Logger::setCurrentLogger(&juceLogger);
 
-    const bool noMcp      = parseFlag(argc, argv, "--no-mcp");
-    const bool forceStdio = parseFlag(argc, argv, "--mcp-stdio");
-    const bool stdioAuto  = !isatty(fileno(stdin)) || !isatty(fileno(stdout));
-    const bool headlessMcp = !noMcp && (forceStdio || stdioAuto);
+    const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
+
+    HDAW_LOG("main", QString("Mode: %1").arg(headlessMcp ? "HEADLESS MCP (--mcp-stdio)" : "GUI"));
 
     if (headlessMcp) {
         QCoreApplication::setOrganizationName("HDAW");

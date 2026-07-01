@@ -140,6 +140,52 @@ public:
     bool hasClipboard() const { return !clipboardNotes.isEmpty(); }
     void clearClipboard() { clipboardNotes.clear(); }
 
+    // --- MIDI Editing ---
+
+    void transposeSelected(int semitones)
+    {
+        if (undoManager) undoManager->beginNewTransaction("Transpose notes");
+        for (auto& n : selectedNotes)
+        {
+            int noteNum = n.getProperty(IDs::noteNumber);
+            noteNum = juce::jlimit(0, 127, noteNum + semitones);
+            n.setProperty(IDs::noteNumber, noteNum, undoManager);
+        }
+    }
+
+    void quantizeSelected(double snapDivision, double strength)
+    {
+        if (undoManager) undoManager->beginNewTransaction("Quantize notes");
+        for (auto& n : selectedNotes)
+        {
+            double start = n.getProperty(IDs::startBeat);
+            double snapped = std::round(start / snapDivision) * snapDivision;
+            double quantized = start + (snapped - start) * strength;
+            n.setProperty(IDs::startBeat, quantized, undoManager);
+
+            double dur = n.getProperty(IDs::durationBeats);
+            double snappedDur = std::round(dur / snapDivision) * snapDivision;
+            double quantizedDur = dur + (snappedDur - dur) * strength;
+            n.setProperty(IDs::durationBeats, juce::jmax(0.25, quantizedDur), undoManager);
+        }
+    }
+
+    void humanizeSelected(double timingAmount, double velocityAmount)
+    {
+        if (undoManager) undoManager->beginNewTransaction("Humanize notes");
+        for (auto& n : selectedNotes)
+        {
+            double start = n.getProperty(IDs::startBeat);
+            double offset = (juce::Random::getSystemRandom().nextDouble() * 2.0 - 1.0) * timingAmount;
+            n.setProperty(IDs::startBeat, start + offset, undoManager);
+
+            float vel = n.getProperty(IDs::velocity);
+            float velOffset = static_cast<float>(
+                (juce::Random::getSystemRandom().nextDouble() * 2.0 - 1.0) * velocityAmount);
+            n.setProperty(IDs::velocity, juce::jlimit(1.0f, 127.0f, vel + velOffset), undoManager);
+        }
+    }
+
     // --- CC API ---
 
     int getCcPointCount(int controllerNumber) const

@@ -6,6 +6,7 @@
 #include <QMenu>
 #include <QAction>
 #include <QInputDialog>
+#include <QApplication>
 #include <cmath>
 
 MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
@@ -13,6 +14,8 @@ MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
 {
     setFixedSize(stripWidth, stripHeight);
     setMinimumWidth(stripWidth);
+    setMouseTracking(true);
+    qApp->installEventFilter(this);
 
     layoutRects();
 
@@ -323,4 +326,37 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
 
     menu.exec(event->globalPos());
     event->accept();
+}
+
+void MixerStripWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    if (draggingVol || draggingPan)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
+}
+
+void MixerStripWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    if (draggingVol || draggingPan)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
+}
+
+bool MixerStripWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && (draggingVol || draggingPan) && obj != this)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

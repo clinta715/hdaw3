@@ -11,6 +11,14 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
     mainLayout->setContentsMargins(4, 2, 4, 2);
     mainLayout->setSpacing(2);
 
+    // Search filter for plugin list
+    filterEdit = new QLineEdit(this);
+    filterEdit->setPlaceholderText("Search plugins...");
+    filterEdit->setClearButtonEnabled(true);
+    filterEdit->setFixedHeight(20);
+    filterEdit->setStyleSheet("QLineEdit { font-size: 10px; padding: 1px 4px; }");
+    mainLayout->addWidget(filterEdit);
+
     auto* topRow = new QWidget(this);
     auto* layout = new QHBoxLayout(topRow);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -41,6 +49,24 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
 
     typeCombo->setFixedHeight(22);
     layout->addWidget(typeCombo, 1);
+
+    connect(filterEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+        juce::String currentType = slotTree.getProperty(IDs::fxType).toString();
+        populateTypeCombo(text);
+        // Restore selection
+        if (currentType == "plugin")
+        {
+            juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
+            int ci = typeCombo->findData(QString::fromUtf8(pluginID.toRawUTF8()));
+            if (ci >= 0) typeCombo->setCurrentIndex(ci);
+        }
+        else
+        {
+            int ci = typeCombo->findText(QString::fromUtf8(currentType.toRawUTF8()),
+                                         Qt::MatchFixedString);
+            if (ci >= 0) typeCombo->setCurrentIndex(ci);
+        }
+    });
 
     connect(typeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) {
@@ -125,7 +151,7 @@ FXSlotRow::~FXSlotRow()
         registeredInstance->removeListener(paramListener.get());
 }
 
-void FXSlotRow::populateTypeCombo()
+void FXSlotRow::populateTypeCombo(const QString& filter)
 {
     typeCombo->clear();
     typeCombo->addItem("EQ");
@@ -146,6 +172,10 @@ void FXSlotRow::populateTypeCombo()
             QString label = QString("[%1] %2")
                 .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
                 .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+
+            if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive))
+                continue;
+
             QString pluginID = QString::fromUtf8(desc.fileOrIdentifier.toRawUTF8());
             typeCombo->addItem(label, QVariant(pluginID));
         }

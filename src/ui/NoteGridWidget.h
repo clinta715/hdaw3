@@ -1,6 +1,8 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <QMenu>
+#include <QContextMenuEvent>
 #include <bitset>
 #include "PianoRollModel.h"
 #include "../engine/AudioEngine.h"
@@ -49,6 +51,10 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     QRectF noteRect(int noteIndex) const;

@@ -21,6 +21,9 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     int noteIndexAtBeat(double beat) const;

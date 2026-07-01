@@ -34,6 +34,9 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     enum class DragMode { None, FadeIn, FadeOut, SelectRegion };

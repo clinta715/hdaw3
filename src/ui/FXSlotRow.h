@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QSlider>
@@ -35,7 +36,7 @@ signals:
     void editRequested(int index);
 
 private:
-    void populateTypeCombo();
+    void populateTypeCombo(const QString& filter = QString());
     void rebuildParamUI();
     void onTypeChanged(const juce::String& type);
     void pollParamUpdates();
@@ -44,6 +45,7 @@ private:
     int slotIndex;
     int trackIndex;
     AudioEngine& engine;
+    QLineEdit* filterEdit;
     QComboBox* typeCombo;
     QPushButton* bypassBtn;
     QPushButton* editBtn;

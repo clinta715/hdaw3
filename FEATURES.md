@@ -6,16 +6,16 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 
 ## Tier 1 — Critical (blocks basic DAW workflow)
 
-- [ ] **Tempo track** — tempo automation with tempo points, gradual and instantaneous changes
-- [ ] **Time signature changes** — per-bar time signature, UI to set/change
-- [ ] **Automation → engine integration** — automation points actually control track parameters (volume, pan, mute) during playback
-- [ ] **Automation recording** — capture fader/knob movements in real-time during playback
-- [ ] **MIDI hardware input** — record from MIDI controllers and keyboards
-- [ ] **Audio recording → timeline** — recorded audio becomes a clip on the track at the correct position
-- [ ] **Take management** — multiple takes per track, take lanes, comping (selecting best parts from takes)
-- [ ] **Count-in / pre-roll** — metronome count before recording starts
-- [ ] **Input monitoring** — hear input signal while recording (with latency compensation)
-- [ ] **Plugin delay compensation (PDC)** — compensate for plugin latency across the signal chain
+- [ ] **Tempo track** — tempo automation with tempo points, gradual and instantaneous changes ✅ Done
+- [x] **Time signature changes** — per-bar time signature, UI to set/change ✅ Done
+- [ ] **Automation → engine integration** — automation points actually control track parameters (volume, pan) during playback ✅ Done (mute automation pending)
+- [x] **Automation recording** — capture fader/knob movements in real-time during playback ✅ Done
+- [x] **MIDI hardware input** — record from MIDI controllers and keyboards ✅ Done
+- [ ] **Audio recording → timeline** — recorded audio becomes a clip on the track at the correct position ✅ Done
+- [x] **Take management** — multiple takes per track, take lanes, comping (selecting best parts from takes) ✅ Done (basic: multiple takes, switch via context menu)
+- [ ] **Count-in / pre-roll** — metronome count before recording starts ✅ Done
+- [x] **Input monitoring** — hear input signal while recording (with latency compensation) ✅ Done
+- [x] **Plugin delay compensation (PDC)** — compensate for plugin latency across the signal chain ✅ Done
 
 ## Tier 2 — High Priority (expected by most users)
 
@@ -23,14 +23,14 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Per-clip waveform editor** — destructive cut/splice/trim within a clip
 - [ ] **Audio crossfades** — automatic and manual crossfades between adjacent clips
 - [ ] **Clip gain overlay** — visual gain adjustment directly on timeline clips
-- [ ] **Reverse audio** — reverse clip contents
-- [ ] **Normalize** — gain normalization per clip or selection
+- [x] **Reverse audio** — reverse clip contents ✅ Done
+- [x] **Normalize** — gain normalization per clip or selection ✅ Done
 - [ ] **Audio quantize** — snap audio transients to grid
 
 ### MIDI Editing
-- [ ] **MIDI quantize** — snap notes to grid with strength control
-- [ ] **MIDI transpose** — shift notes up/down by semitones/octaves
-- [ ] **MIDI humanize** — add random timing/velocity variation
+- [x] **MIDI quantize** — snap notes to grid with strength control ✅ Done
+- [x] **MIDI transpose** — shift notes up/down by semitones/octaves ✅ Done
+- [x] **MIDI humanize** — add random timing/velocity variation ✅ Done
 - [ ] **MIDI CC automation recording** — capture mod wheel, expression, pitch bend during playback
 - [ ] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1)
 - [ ] **MIDI output to hardware** — send MIDI to external devices
@@ -58,14 +58,14 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Clipboard for clips** — copy/paste clips in timeline
 - [ ] **Marker track** — named markers at positions, marker navigation
 - [ ] **Zoom-to-fit** — auto-zoom to show all content or selection
-- [ ] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel
+- [x] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel ✅ Done
 - [ ] **Drag-reorder FX slots** — reorder plugins in FX chain via drag
-- [ ] **Search/filter in plugin list** — search plugins by name in add-FX menu
+- [x] **Search/filter in plugin list** — search plugins by name in add-FX menu ✅ Done
 - [ ] **Undo history UI** — visual list of undo steps for navigation
 - [ ] **Status bar** — show current tool, position, selection info
 
 ### Recording
-- [ ] **Metronome audio rendering** — actual click sound during recording/playback
+- [ ] **Metronome audio rendering** — actual click sound during recording/playback ✅ Done
 - [ ] **Overdub recording** — layer new takes on top of existing audio
 - [ ] **Punch-in / punch-out** — record only within a defined region
 
@@ -179,3 +179,15 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Master bus routing
 - [x] Scale-aware piano roll
 - [x] Clip move/trim/fade in timeline
+- [x] Metronome with count-in/pre-roll
+- [x] Time signature changes
+- [x] Automation recording during playback
+- [x] MIDI hardware input
+- [x] Input monitoring per track
+- [x] Take management for audio clips
+- [x] Plugin delay compensation (PDC)
+- [x] MIDI quantize, transpose, humanize
+- [x] Audio normalize and reverse
+- [x] Horizontal scroll via Shift+wheel
+- [x] Plugin search filter in FX slot combo
+- [x] Stuck drag state fix (all editors)

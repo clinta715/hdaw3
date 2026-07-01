@@ -4,6 +4,7 @@
 #include <QPainterPath>
 #include <QImage>
 #include <QWheelEvent>
+#include <QApplication>
 #include <cmath>
 
 AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* parent)
@@ -11,6 +12,7 @@ AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* paren
 {
     setMouseTracking(true);
     setMinimumHeight(80);
+    qApp->installEventFilter(this);
 }
 
 AudioWaveformWidget::~AudioWaveformWidget() = default;
@@ -327,4 +329,34 @@ void AudioWaveformWidget::wheelEvent(QWheelEvent* event)
         scrollX = (std::max)(0, scrollX - delta);
         update();
     }
+}
+
+void AudioWaveformWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    if (dragMode != DragMode::None)
+    {
+        dragMode = DragMode::None;
+        update();
+    }
+}
+
+void AudioWaveformWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    if (dragMode != DragMode::None)
+    {
+        dragMode = DragMode::None;
+        update();
+    }
+}
+
+bool AudioWaveformWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && dragMode != DragMode::None && obj != this)
+    {
+        dragMode = DragMode::None;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

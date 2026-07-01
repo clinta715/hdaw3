@@ -17,6 +17,8 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
 {
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
+    setMouseTracking(true);
+    qApp->installEventFilter(this);
 
     nameFont = font();
     nameFont.setPointSize(9);
@@ -814,4 +816,63 @@ void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& plu
     engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
+}
+
+void TrackHeaderWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    bool wasDragging = false;
+    for (auto& t : tracks)
+    {
+        if (t.draggingVol || t.draggingPan)
+        {
+            t.draggingVol = false;
+            t.draggingPan = false;
+            wasDragging = true;
+        }
+    }
+    dragTrack = -1;
+    resizeTrack = -1;
+    if (wasDragging) update();
+}
+
+void TrackHeaderWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    bool wasDragging = false;
+    for (auto& t : tracks)
+    {
+        if (t.draggingVol || t.draggingPan)
+        {
+            t.draggingVol = false;
+            t.draggingPan = false;
+            wasDragging = true;
+        }
+    }
+    if (wasDragging) update();
+}
+
+bool TrackHeaderWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && obj != this)
+    {
+        bool wasDragging = false;
+        for (auto& t : tracks)
+        {
+            if (t.draggingVol || t.draggingPan)
+            {
+                t.draggingVol = false;
+                t.draggingPan = false;
+                wasDragging = true;
+            }
+        }
+        if (dragTrack >= 0 || resizeTrack >= 0)
+        {
+            dragTrack = -1;
+            resizeTrack = -1;
+            wasDragging = true;
+        }
+        if (wasDragging) update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

@@ -172,7 +172,7 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                     auto crashedPath = pedalFile.loadFileAsString().trim();
                     if (crashedPath.isNotEmpty())
                     {
-                        blacklistPlugin(crashedPath);
+                        blacklistPlugin(crashedPath, "crash");
                         lastScanCrashCount++;
                         juce::Logger::writeToLog(
                             "PluginManager: CRASHED (isolated) and blacklisted: " + crashedPath);
@@ -232,7 +232,7 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
 
             if (crashed)
             {
-                blacklistPlugin(path);
+                blacklistPlugin(path, "crash");
                 lastScanCrashCount++;
                 juce::Logger::writeToLog(
                     "PluginManager: CRASHED (in-process) and blacklisted: " + path);
@@ -431,7 +431,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
 
     if (crashed)
     {
-        blacklistPlugin(desc.fileOrIdentifier);
+        blacklistPlugin(desc.fileOrIdentifier, "crash");
         juce::Logger::writeToLog(
             "HDAW: Plugin crashed during instantiation, blacklisted: "
             + desc.fileOrIdentifier);
@@ -455,6 +455,22 @@ void PluginManager::blacklistPlugin(const juce::String& pluginID)
         blacklistedIDs.push_back(pluginID);
         saveBlacklist();
     }
+}
+
+void PluginManager::blacklistPlugin(const juce::String& pluginID, const juce::String& reason)
+{
+    if (!isBlacklisted(pluginID))
+    {
+        blacklistedIDs.push_back(pluginID);
+        blacklistReasons[pluginID] = reason;
+        saveBlacklist();
+    }
+}
+
+juce::String PluginManager::getBlacklistReason(const juce::String& pluginID) const
+{
+    auto it = blacklistReasons.find(pluginID);
+    return it != blacklistReasons.end() ? it->second : juce::String();
 }
 
 void PluginManager::unblacklistPlugin(const juce::String& pluginID)
@@ -491,7 +507,12 @@ void PluginManager::loadBlacklist()
         {
             juce::String id = el->getStringAttribute("id");
             if (id.isNotEmpty())
+            {
                 blacklistedIDs.push_back(id);
+                auto reason = el->getStringAttribute("reason");
+                if (reason.isNotEmpty())
+                    blacklistReasons[id] = reason;
+            }
         }
     }
 }
@@ -505,6 +526,9 @@ void PluginManager::saveBlacklist()
     {
         auto* el = root.createNewChildElement("PLUGIN");
         el->setAttribute("id", id);
+        auto it = blacklistReasons.find(id);
+        if (it != blacklistReasons.end())
+            el->setAttribute("reason", it->second);
     }
     root.writeTo(blacklistFile, {});
 }

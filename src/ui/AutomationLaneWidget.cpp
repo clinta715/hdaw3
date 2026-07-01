@@ -7,11 +7,14 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QApplication>
 #include <cmath>
 
 AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    setMouseTracking(true);
+    qApp->installEventFilter(this);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -381,4 +384,34 @@ void AutomationLaneWidget::wheelEvent(QWheelEvent* event)
         update();
         event->accept();
     }
+}
+
+void AutomationLaneWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    if (dragPoint >= 0)
+    {
+        dragPoint = -1;
+        update();
+    }
+}
+
+void AutomationLaneWidget::leaveEvent(QEvent* event)
+{
+    QWidget::leaveEvent(event);
+    if (dragPoint >= 0)
+    {
+        dragPoint = -1;
+        update();
+    }
+}
+
+bool AutomationLaneWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && dragPoint >= 0 && obj != this)
+    {
+        dragPoint = -1;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include "CLAPPluginFormat.h"
 #include <vector>
+#include <unordered_map>
 #include <memory>
 #include <functional>
 #include <atomic>
@@ -35,8 +36,10 @@ public:
     // Blacklist
     bool isBlacklisted(const juce::String& pluginID) const;
     void blacklistPlugin(const juce::String& pluginID);
+    void blacklistPlugin(const juce::String& pluginID, const juce::String& reason);
     void unblacklistPlugin(const juce::String& pluginID);
     const std::vector<juce::String>& getBlacklistedIDs() const { return blacklistedIDs; }
+    juce::String getBlacklistReason(const juce::String& pluginID) const;
     void loadBlacklist();
     void saveBlacklist();
 
@@ -56,6 +59,7 @@ private:
     juce::File cacheFile;
 
     std::vector<juce::String> blacklistedIDs;
+    std::unordered_map<juce::String, juce::String> blacklistReasons;
     juce::File blacklistFile;
 
     // Isolated scanning
