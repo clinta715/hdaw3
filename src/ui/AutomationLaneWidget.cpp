@@ -271,13 +271,32 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
     painter.drawText(40, 32, 150, 14, Qt::AlignLeft,
         QString::fromUtf8(name.toRawUTF8()) + QString(enabled ? " (A)" : ""));
 
-    // Grid
-    painter.setPen(QPen(ThemeColors::gridLineBeat(), 1));
-    for (int b = 0; b < 100; ++b)
+    // Grid (beat lines)
+    double bpm = engine.getTransportManager().getBPM();
+    double beatsPerSec = bpm / 60.0;
+    for (int b = 0; b < 1000; ++b)
     {
-        int x = static_cast<int>(b * pixelsPerSecond - scrollX);
+        double beatTime = b / beatsPerSec;
+        int x = static_cast<int>(beatTime * pixelsPerSecond - scrollX);
         if (x > w) break;
-        if (x >= 0) painter.drawLine(x, 30, x, h);
+        if (x >= 0)
+        {
+            bool isBar = (b % 4 == 0);
+            painter.setPen(QPen(isBar ? ThemeColors::gridLineBar() : ThemeColors::gridLineBeat(),
+                                isBar ? 1 : 1));
+            painter.drawLine(x, 30, x, h);
+        }
+    }
+
+    // Playhead
+    if (playheadSeconds >= 0)
+    {
+        int phx = static_cast<int>(playheadSeconds * pixelsPerSecond - scrollX);
+        if (phx >= 0 && phx <= w)
+        {
+            painter.setPen(QPen(ThemeColors::accentBright(), 1));
+            painter.drawLine(phx, 30, phx, h);
+        }
     }
 }
 

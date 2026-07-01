@@ -867,7 +867,8 @@ void MainWindow::updateTimecode()
     auto& tm = engine.getTransportManager();
     int64_t samples = tm.getCurrentSample();
     double sr = tm.getSampleRate();
-    double seconds = static_cast<double>(samples) / sr;
+    double seconds = sr > 0 ? static_cast<double>(samples) / sr : 0.0;
+    double bpm = tm.getBPM();
 
     int mins = static_cast<int>(seconds) / 60;
     int secs = static_cast<int>(seconds) % 60;
@@ -878,9 +879,17 @@ void MainWindow::updateTimecode()
 
     timelineView->getToolbar()->setTimecode(QString::fromUtf8(buf));
     timelineView->getToolbar()->setPlaying(tm.isPlayingNow());
-    timelineView->getToolbar()->setBPM(tm.getBPM());
+    timelineView->getToolbar()->setBPM(bpm);
 
     timelineView->scrollToPlayhead();
+
+    // Update playhead in all open editors
+    if (automationWidget)
+        automationWidget->setPlayheadPosition(seconds);
+    if (audioEditorWidget)
+        audioEditorWidget->updatePlayhead(seconds);
+    if (pianoRollWidget)
+        pianoRollWidget->setPlayheadPosition(seconds, bpm);
 }
 
 void MainWindow::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)

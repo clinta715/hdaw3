@@ -105,6 +105,18 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
                              QString::number(static_cast<int>(vel)));
         }
     }
+
+    // Playhead
+    if (playheadSeconds >= 0)
+    {
+        double beatPos = playheadSeconds * playheadBpm / 60.0;
+        int phx = static_cast<int>(beatPos * pixelsPerBeat - scrollX);
+        if (phx >= 0 && phx <= w)
+        {
+            painter.setPen(QPen(ThemeColors::accentBright(), 1));
+            painter.drawLine(phx, 0, phx, h);
+        }
+    }
 }
 
 void VelocityLaneWidget::mousePressEvent(QMouseEvent* event)

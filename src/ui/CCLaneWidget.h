@@ -12,6 +12,7 @@ public:
     void setScrollOffset(int x) { scrollX = x; update(); }
     void setControllerNumber(int cc) { controllerNumber = cc; update(); }
     int getControllerNumber() const { return controllerNumber; }
+    void setPlayheadPosition(double seconds, double bpm) { playheadSeconds = seconds; playheadBpm = bpm; update(); }
 
     static constexpr int laneHeight = 60;
 
@@ -37,4 +38,6 @@ private:
     int controllerNumber = 1;
     bool dragging = false;
     int dragPointIndex = -1;
+    double playheadSeconds = -1.0;
+    double playheadBpm = 120.0;
 };

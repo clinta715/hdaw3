@@ -243,6 +243,12 @@ void PianoRollWidget::clear()
     velocityLane->update();
 }
 
+void PianoRollWidget::setPlayheadPosition(double seconds, double bpm)
+{
+    velocityLane->setPlayheadPosition(seconds, bpm);
+    ccLane->setPlayheadPosition(seconds, bpm);
+}
+
 void PianoRollWidget::updateZoom(double factor)
 {
     double ppb = noteGrid->getPixelsPerBeat() * factor;

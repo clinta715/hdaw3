@@ -15,6 +15,9 @@ public:
     void loadTrack(int trackIndex);
     void clear();
     int currentTrackIndex() const { return currentTrack; }
+    void setPlayheadPosition(double seconds) { playheadSeconds = seconds; update(); }
+    void setPixelsPerSecond(double pps) { pixelsPerSecond = pps; update(); }
+    void setScrollX(int sx) { scrollX = sx; update(); }
 
 signals:
     void automationChanged();
@@ -50,6 +53,7 @@ private:
     int scrollX = 0;
     int dragPoint = -1;
     int hoverPoint = -1;
+    double playheadSeconds = -1.0;
 
     static constexpr int laneHeight = 120;
     static constexpr int pointRadius = 5;

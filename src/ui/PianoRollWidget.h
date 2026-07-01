@@ -22,6 +22,7 @@ public:
 
     void loadClip(juce::ValueTree clipTree);
     void clear();
+    void setPlayheadPosition(double seconds, double bpm);
 
 signals:
     void clipClosed();
