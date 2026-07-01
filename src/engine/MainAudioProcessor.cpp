@@ -24,6 +24,22 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     transportManager->setSampleRate(sampleRate);
     metronome.prepareToPlay(sampleRate);
 
+    // Re-sync loop bounds with the actual sample rate. The initial sync in
+    // AudioEngine::initialize() uses the default 44100 Hz, but the audio
+    // device may use a different rate (e.g. 48000). Without this re-sync
+    // the loop wraps at the wrong position.
+    {
+        auto transportTree = projectModel->getTransportTree();
+        double ls = transportTree.getProperty(IDs::loopStart);
+        double le = transportTree.getProperty(IDs::loopEnd);
+        transportManager->setLoopStartSample(static_cast<int64_t>(ls * sampleRate));
+        transportManager->setLoopEndSample(static_cast<int64_t>(le * sampleRate));
+        juce::Logger::writeToLog("MainAudioProcessor::prepareToPlay loop bounds re-synced: "
+            "sampleRate=" + juce::String(sampleRate)
+            + " loopStart=" + juce::String(ls) + "s (" + juce::String(static_cast<int64_t>(ls * sampleRate)) + " samples)"
+            + " loopEnd=" + juce::String(le) + "s (" + juce::String(static_cast<int64_t>(le * sampleRate)) + " samples)");
+    }
+
     routingManager = std::make_unique<HDAW::RoutingManager>(
         graph, *projectModel, *formatManager, *transportManager, pluginManager);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
