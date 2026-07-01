@@ -233,6 +233,18 @@ if(HDAW_PLUGIN_ISOLATION)
     )
 endif()
 
+# --- hdaw_plugin_scanner: child process for isolated plugin scanning ---
+add_executable(hdaw_plugin_scanner
+    src/proxy/scanner/PluginScannerMain.cpp
+)
+target_include_directories(hdaw_plugin_scanner PRIVATE src)
+target_link_libraries(hdaw_plugin_scanner PRIVATE
+    HDAW_lib
+    juce::juce_audio_processors
+    juce::juce_core
+)
+hdaw_deploy_qt(hdaw_plugin_scanner)
+
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)
 if(HDAW_BUILD_TESTS)
