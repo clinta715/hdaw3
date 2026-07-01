@@ -6,6 +6,7 @@
 #include "TransportManager.h"
 #include "ProjectPool.h"
 #include "PluginManager.h"
+#include "MidiInputManager.h"
 #include "../model/ProjectModel.h"
 #include <memory>
 
@@ -24,6 +25,7 @@ public:
     HDAW::TransportManager& getTransportManager() { return transportManager; }
     HDAW::ProjectPool& getProjectPool() { return projectPool; }
     HDAW::PluginManager& getPluginManager() { return pluginManager; }
+    HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
 
     // Facade methods
     int getTrackCount() const { return mainProcessor ? mainProcessor->getNumTracks() : 0; }
@@ -53,4 +55,5 @@ private:
     HDAW::TransportManager transportManager;
     HDAW::ProjectPool projectPool;
     HDAW::PluginManager pluginManager;
+    HDAW::MidiInputManager midiInputManager;
 };

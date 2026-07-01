@@ -33,6 +33,7 @@ public:
     HDAW::RoutingManager* getRoutingManager() const { return routingManager.get(); }
     HDAW::Metronome& getMetronome() { return metronome; }
     void setCountInEnabled(bool enabled, int bars = 1) { countInEnabled = enabled; countInBars = bars; }
+    void addExternalMidiMessage(const juce::MidiMessage& msg);
     void rebuildTrackFX(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
@@ -90,6 +91,9 @@ private:
     bool wasMetronomeOn = false;
     HDAW::Metronome metronome;
     HDAW::ExportManager exportManager;
+
+    juce::CriticalSection midiLock;
+    juce::MidiBuffer pendingMidi;
 
     juce::SpinLock graphLock;
     std::atomic<bool> graphRebuildPending{ false };

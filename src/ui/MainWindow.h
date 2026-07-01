@@ -75,6 +75,7 @@ private:
     void onCountInToggled(bool enabled);
     void onTimeSigChanged(int numerator, int denominator);
     void onInputMonitoringChanged(int trackIndex, bool enabled);
+    void onMidiDeviceChanged(const QString& deviceIdentifier);
     void onToggleBrowserPanel();
     void onClipSelected(const juce::ValueTree& clipTree);
 

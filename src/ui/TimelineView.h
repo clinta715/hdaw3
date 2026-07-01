@@ -39,6 +39,7 @@ signals:
     void metronomeToggled(bool enabled);
     void countInToggled(bool enabled);
     void timeSigChanged(int numerator, int denominator);
+    void midiDeviceChanged(const QString& deviceIdentifier);
     void defaultClipLenChanged(double beats);
 
 public slots:

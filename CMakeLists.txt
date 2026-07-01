@@ -53,6 +53,7 @@ add_library(HDAW_lib STATIC
     src/engine/MainAudioProcessor.cpp
     src/engine/PhraseGenerator.cpp
     src/engine/PluginManager.cpp
+    src/engine/MidiInputManager.cpp
     src/engine/ProjectSerializer.cpp
     src/engine/RoutingManager.cpp
     src/engine/Track.cpp
@@ -191,6 +192,8 @@ add_executable(HDAW
     src/engine/AudioImport.cpp
     src/engine/MidiImport.h
     src/engine/MidiImport.cpp
+    src/engine/MidiInputManager.h
+    src/engine/MidiInputManager.cpp
 )
 
 target_link_libraries(HDAW

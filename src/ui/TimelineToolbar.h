@@ -28,6 +28,7 @@ public slots:
     void setSnapDivision(int index);
     void setCountInEnabled(bool enabled);
     void setTimeSig(int numerator, int denominator);
+    void populateMidiDevices(const QStringList& devices);
 
 signals:
     void addTrackClicked();
@@ -48,6 +49,7 @@ signals:
     void metronomeToggled(bool enabled);
     void countInToggled(bool enabled);
     void timeSigChanged(int numerator, int denominator);
+    void midiDeviceChanged(const QString& deviceIdentifier);
     void defaultClipLenChanged(double beats);
 
 public:
@@ -55,6 +57,7 @@ public:
 
 private slots:
     void onTimeSigChanged(int index);
+    void onMidiDeviceChanged(int index);
 
 private:
     QToolButton* addTrackBtn;
@@ -72,6 +75,7 @@ private:
     QLabel* timecodeLabel;
     QDoubleSpinBox* bpmSpinBox;
     QComboBox* timeSigCombo;
+    QComboBox* midiDeviceCombo;
     QPushButton* metronomeBtn;
     QPushButton* countInBtn;
     QDoubleSpinBox* defaultClipLenSpinBox;

@@ -462,6 +462,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::countInToggled, this, &MainWindow::onCountInToggled);
     connect(timelineView, &TimelineView::timeSigChanged, this, &MainWindow::onTimeSigChanged);
     connect(timelineView, &TimelineView::inputMonitoringChanged, this, &MainWindow::onInputMonitoringChanged);
+    connect(timelineView, &TimelineView::midiDeviceChanged, this, &MainWindow::onMidiDeviceChanged);
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
@@ -472,6 +473,13 @@ void MainWindow::connectTimelineSignals()
 
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
+
+    // Populate MIDI devices
+    auto midiDevices = engine.getMidiInputManager().getAvailableDevices();
+    QStringList devList;
+    for (const auto& d : midiDevices)
+        devList << QString::fromStdString(d.toStdString());
+    timelineView->getToolbar()->populateMidiDevices(devList);
 }
 
 void MainWindow::connectBottomPanelSignals()
@@ -1123,6 +1131,15 @@ void MainWindow::onInputMonitoringChanged(int trackIndex, bool enabled)
         if (auto* rm = mainProc->getRoutingManager())
             rm->setInputMonitoring(trackIndex, enabled);
     }
+}
+
+void MainWindow::onMidiDeviceChanged(const QString& deviceIdentifier)
+{
+    auto& midiMgr = engine.getMidiInputManager();
+    if (deviceIdentifier.isEmpty())
+        midiMgr.closeDevice();
+    else
+        midiMgr.openDevice(deviceIdentifier.toStdString().c_str());
 }
 
 void MainWindow::onRecordToggle()

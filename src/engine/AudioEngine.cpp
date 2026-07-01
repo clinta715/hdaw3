@@ -60,6 +60,11 @@ void AudioEngine::initialize()
     
     // Add player as audio callback
     deviceManager.addAudioCallback(&processorPlayer);
+
+    // Wire MIDI input to processor
+    midiInputManager.setNoteCallback([this](const juce::MidiMessage& msg) {
+        mainProcessor->addExternalMidiMessage(msg);
+    });
 }
 
 void AudioEngine::shutdown()

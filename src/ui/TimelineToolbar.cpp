@@ -121,6 +121,22 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
             this, &TimelineToolbar::onTimeSigChanged);
     layout->addWidget(timeSigCombo);
 
+    // MIDI device selector
+    auto* midiLabel = new QLabel("MIDI:", this);
+    midiLabel->setStyleSheet("QLabel { color: #a8a8b0; font-size: 7pt; }");
+    layout->addWidget(midiLabel);
+
+    midiDeviceCombo = new QComboBox(this);
+    midiDeviceCombo->addItem("None");
+    midiDeviceCombo->setFixedHeight(22);
+    midiDeviceCombo->setFixedWidth(100);
+    midiDeviceCombo->setStyleSheet(
+        "QComboBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
+        "border-radius: 2px; padding: 1px 2px; font-size: 7pt; }");
+    connect(midiDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TimelineToolbar::onMidiDeviceChanged);
+    layout->addWidget(midiDeviceCombo);
+
     layout->addSpacing(4);
 
     // Metronome toggle
@@ -276,6 +292,24 @@ void TimelineToolbar::onTimeSigChanged(int index)
     auto parts = text.split('/');
     if (parts.size() == 2)
         emit timeSigChanged(parts[0].toInt(), parts[1].toInt());
+}
+
+void TimelineToolbar::onMidiDeviceChanged(int index)
+{
+    if (index == 0)
+        emit midiDeviceChanged({});
+    else
+        emit midiDeviceChanged(midiDeviceCombo->currentData().toString());
+}
+
+void TimelineToolbar::populateMidiDevices(const QStringList& devices)
+{
+    midiDeviceCombo->blockSignals(true);
+    midiDeviceCombo->clear();
+    midiDeviceCombo->addItem("None");
+    for (const auto& dev : devices)
+        midiDeviceCombo->addItem(dev);
+    midiDeviceCombo->blockSignals(false);
 }
 
 void TimelineToolbar::setDefaultClipLen(double beats)
