@@ -103,6 +103,7 @@ bool MainAudioProcessor::startRecording()
     if (!audioRecorder->startRecording(recFile, sr, numChannels))
         return false;
 
+    recordingStartSample = transportManager->getCurrentSample();
     transportManager->setRecording(true);
     return true;
 }
@@ -114,22 +115,24 @@ void MainAudioProcessor::stopRecording()
     auto recordedFile = audioRecorder->stopRecording();
     transportManager->setRecording(false);
 
-    // Create a clip on the first armed track
     if (projectModel != nullptr && recordedFile.existsAsFile())
     {
         auto trackList = projectModel->getTrackListTree();
         auto& um = projectModel->getUndoManager();
 
-        double recStartTime = transportManager
-            ? static_cast<double>(transportManager->getCurrentSample()) / transportManager->getSampleRate()
-            : 0.0;
+        double sr = transportManager ? transportManager->getSampleRate() : getSampleRate();
+        double startTimeSec = static_cast<double>(recordingStartSample) / sr;
 
-        double recDuration = recordedFile.getSize()
-            ? static_cast<double>(recordedFile.getSize()) /
-              (static_cast<double>(getSampleRate()) * 2.0 * 2.0) // 16-bit stereo
-            : 4.0;
+        double recDuration = 4.0;
+        if (formatManager != nullptr)
+        {
+            if (auto reader = formatManager->createReaderFor(recordedFile))
+            {
+                recDuration = static_cast<double>(reader->lengthInSamples) / reader->sampleRate;
+                delete reader;
+            }
+        }
 
-        // Find first armed track, or use track 0
         int targetTrack = -1;
         for (int i = 0; i < trackList.getNumChildren(); ++i)
         {
@@ -152,18 +155,8 @@ void MainAudioProcessor::stopRecording()
                 trackTree.addChild(clipList, -1, &um);
             }
 
-            juce::ValueTree clip(IDs::CLIP);
-            clip.setProperty(IDs::name, "Recording", &um);
-            clip.setProperty(IDs::startTime, recStartTime - recDuration, &um);
-            clip.setProperty(IDs::duration, recDuration, &um);
-            clip.setProperty(IDs::offset, 0.0, &um);
-            clip.setProperty(IDs::clipType, "audio", &um);
-            clip.setProperty(IDs::sourceFile, recordedFile.getFullPathName(), &um);
-            clip.setProperty(IDs::gain, 1.0, &um);
-            clip.setProperty(IDs::fadeIn, 0.0, &um);
-            clip.setProperty(IDs::fadeOut, 0.0, &um);
-            clip.setProperty(IDs::looping, false, &um);
-            clip.setProperty(IDs::color, static_cast<int>(0xFFCC4444), &um);
+            auto clip = ProjectModel::createAudioClip(
+                "Recording", startTimeSec, recDuration, recordedFile.getFullPathName());
             clipList.addChild(clip, -1, &um);
 
             rebuildRoutingGraph();

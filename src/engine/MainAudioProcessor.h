@@ -78,6 +78,7 @@ private:
     juce::AudioProcessorGraph graph;
     std::unique_ptr<HDAW::RoutingManager> routingManager;
     std::unique_ptr<HDAW::AudioRecorder> audioRecorder;
+    int64_t recordingStartSample = 0;
     HDAW::ExportManager exportManager;
 
     juce::SpinLock graphLock;
