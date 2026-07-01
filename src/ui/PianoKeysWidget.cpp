@@ -51,13 +51,13 @@ void PianoKeysWidget::paintEvent(QPaintEvent*)
 
         // White key
         painter.setPen(QPen(ThemeColors::border(), 1));
-        painter.setBrush((octave % 2 == 0) ? QColor(220, 220, 220) : QColor(200, 200, 200));
+        painter.setBrush((octave % 2 == 0) ? QColor(60, 60, 66) : QColor(52, 52, 58));
         painter.drawRect(r.adjusted(0, 0, -1, 0));
 
         // C key label
         if (inOctave == 0)
         {
-            painter.setPen(QColor(80, 80, 80));
+            painter.setPen(ThemeColors::textMuted());
             QFont f = painter.font();
             f.setPointSize(7);
             painter.setFont(f);
@@ -74,10 +74,10 @@ void PianoKeysWidget::paintEvent(QPaintEvent*)
         QRect r = keyRect(n);
         if (r.bottom() < 0 || r.top() > h) continue;
 
-        painter.setPen(QPen(QColor(20, 20, 20), 1));
-        painter.setBrush(QColor(40, 40, 40));
+        painter.setPen(QPen(QColor(20, 20, 24), 1));
+        painter.setBrush(QColor(30, 30, 34));
         painter.drawRect(r.adjusted(0, 0, 0, -1));
-        painter.setPen(QColor(20, 20, 20));
+        painter.setPen(QColor(20, 20, 24));
         painter.drawLine(r.topLeft(), r.topRight());
     }
 
