@@ -293,8 +293,8 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         bool isSelected = (i == selectedTrack);
         if (isSelected)
         {
-            painter.fillRect(row, QColor(80, 160, 255, 60));
-            painter.setPen(QPen(QColor(80, 160, 255), 2));
+            painter.fillRect(row, QColor(217, 119, 6, 50));
+            painter.setPen(QPen(ThemeColors::accent(), 2));
             painter.drawRect(row.adjusted(2, 1, -1, -1));
         }
 
