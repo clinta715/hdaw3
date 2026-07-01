@@ -40,6 +40,10 @@ public:
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved) override;
+
+    void rebuildTempoMap();
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;

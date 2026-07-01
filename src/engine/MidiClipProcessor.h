@@ -66,7 +66,6 @@ public:
 
         int64_t transportSample = transportManager.getCurrentSample();
         double sr = transportManager.getSampleRate();
-        double bpm = transportManager.getBPM();
         double startSec = startTime.load();
         double durSec = duration.load();
 
@@ -85,8 +84,8 @@ public:
             return;
         }
 
-        double secondsPerBeat = 60.0 / bpm;
-        double currentBeat = clipLocalSec / secondsPerBeat;
+        double currentBeat = transportManager.secondsToPpq(currentTimeSec)
+                           - transportManager.secondsToPpq(startSec);
 
         for (int i = 0; i < count; ++i)
         {

@@ -20,6 +20,7 @@ void AudioEngine::initialize()
 
     // Setup transport
     transportManager.setBPM(projectModel.getTree().getProperty(IDs::tempo));
+    rebuildTempoMap();
 
     // Sync loop state from ValueTree to TransportManager atomics.
     // The listener only fires on property changes, so we must push the
@@ -175,6 +176,10 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             transportManager.setBPM(treeWhosePropertyHasChanged.getProperty(IDs::tempo));
         }
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::TEMPO_POINT))
+    {
+        rebuildTempoMap();
+    }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TRACK))
     {
         if (property == IDs::volume || property == IDs::pan || property == IDs::isMuted)
@@ -231,4 +236,41 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             }
         }
     }
+}
+
+void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
+{
+    juce::ignoreUnused(childWhichHasBeenAdded);
+    if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
+        rebuildTempoMap();
+}
+
+void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
+{
+    juce::ignoreUnused(childWhichHasBeenRemoved, indexFromWhichItWasRemoved);
+    if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
+        rebuildTempoMap();
+}
+
+void AudioEngine::rebuildTempoMap()
+{
+    auto tempoList = projectModel.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid())
+        return;
+
+    auto map = std::make_shared<std::vector<HDAW::TempoPoint>>();
+    for (int i = 0; i < tempoList.getNumChildren(); ++i)
+    {
+        auto pt = tempoList.getChild(i);
+        double t = pt.getProperty(IDs::startTime);
+        double b = pt.getProperty(IDs::tempo);
+        map->push_back({ t, b });
+    }
+
+    std::sort(map->begin(), map->end(),
+              [](const HDAW::TempoPoint& a, const HDAW::TempoPoint& b) {
+                  return a.timeInSeconds < b.timeInSeconds;
+              });
+
+    transportManager.setTempoMap(map);
 }
