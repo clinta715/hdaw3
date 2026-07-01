@@ -47,6 +47,9 @@ void RoutingManager::rebuildFromValueTree()
     ioNode = graph.addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
         juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
 
+    inputNode = graph.addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
+        juce::AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
+
     auto masterProc = std::make_unique<MasterBusProcessor>();
     masterNode = graph.addNode(std::move(masterProc));
     masterBus = static_cast<MasterBusProcessor*>(masterNode->getProcessor());
@@ -394,6 +397,29 @@ FxBusProcessor* RoutingManager::getFxBus(int busID) const
 {
     auto it = fxBusProcessors.find(busID);
     return (it != fxBusProcessors.end()) ? it->second : nullptr;
+}
+
+void RoutingManager::setInputMonitoring(int trackIndex, bool enabled)
+{
+    auto trackIt = trackNodes.find(trackIndex);
+    if (trackIt == trackNodes.end() || inputNode == nullptr) return;
+
+    auto& mc = monitorConnections[trackIndex];
+
+    if (enabled && !mc.connected)
+    {
+        mc.connections[0] = { { inputNode->nodeID, 0 }, { trackIt->second->nodeID, 0 } };
+        mc.connections[1] = { { inputNode->nodeID, 1 }, { trackIt->second->nodeID, 1 } };
+        graph.addConnection(mc.connections[0]);
+        graph.addConnection(mc.connections[1]);
+        mc.connected = true;
+    }
+    else if (!enabled && mc.connected)
+    {
+        graph.removeConnection(mc.connections[0]);
+        graph.removeConnection(mc.connections[1]);
+        mc.connected = false;
+    }
 }
 
 } // namespace HDAW

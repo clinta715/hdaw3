@@ -30,6 +30,7 @@ namespace ThemeColors {
     inline QColor danger()       { static const QColor c(0xef, 0x44, 0x44); return c; }
     inline QColor warning()      { static const QColor c(0xea, 0xb3, 0x08); return c; }
     inline QColor success()      { static const QColor c(0x10, 0xb9, 0x81); return c; }
+    inline QColor info()         { static const QColor c(0x38, 0xb2, 0xdf); return c; }
 
     // VU meter gradient
     inline QColor vuGreen()      { static const QColor c(0x10, 0xb9, 0x81); return c; }

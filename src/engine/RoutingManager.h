@@ -38,6 +38,7 @@ public:
     FxBusProcessor* getFxBus(int busID) const;
     int getNumTracks() const { return static_cast<int>(trackProcessors.size()); }
     void setPlaybackInfo(double sr, int bs) { sampleRate = sr; blockSize = bs; }
+    void setInputMonitoring(int trackIndex, bool enabled);
 
 private:
     void connectTrackToBus(int trackIndex, int busID);
@@ -77,6 +78,13 @@ private:
     std::map<std::pair<int, int>, SendConnection> sendConnections;
 
     juce::AudioProcessorGraph::Node::Ptr ioNode;
+    juce::AudioProcessorGraph::Node::Ptr inputNode;
+
+    struct MonitorConnection {
+        juce::AudioProcessorGraph::Connection connections[2];
+        bool connected = false;
+    };
+    std::map<int, MonitorConnection> monitorConnections;
 };
 
 } // namespace HDAW

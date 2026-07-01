@@ -30,6 +30,7 @@ signals:
     void addTrackWithFX(const juce::String& fxType);
     void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
     void automationToggled(int trackIndex);
+    void inputMonitoringChanged(int trackIndex, bool enabled);
     void recordToggled();
     void playToggled();
     void stopRequested();

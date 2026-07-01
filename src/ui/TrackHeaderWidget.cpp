@@ -148,6 +148,7 @@ void TrackHeaderWidget::layoutRects()
         header.soloRect = QRect(btnX + btnSize + btnSpacing, btnY, btnSize, btnSize);
         header.armRect = QRect(btnX + 2 * (btnSize + btnSpacing), btnY, btnSize, btnSize);
         header.autoRect = QRect(btnX + 3 * (btnSize + btnSpacing), btnY, btnSize, btnSize);
+        header.monitorRect = QRect(btnX + 4 * (btnSize + btnSpacing), btnY, btnSize, btnSize);
 
         int faderY = y + 44;
         int faderH = 20;
@@ -182,6 +183,7 @@ int TrackHeaderWidget::hitTest(const QPoint& pos, int& outTrackIndex) const
             if (clampRect(h.soloRect).contains(pos)) return 2;
             if (clampRect(h.armRect).contains(pos)) return 3;
             if (clampRect(h.autoRect).contains(pos)) return 7;
+            if (clampRect(h.monitorRect).contains(pos)) return 8;
             if (clampRect(h.volRect).contains(pos)) return 4;
             if (clampRect(h.panRect).contains(pos)) return 5;
             if (clampRect(h.nameRect).contains(pos)) return 6;
@@ -328,6 +330,10 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         {
             bool rArm = tree.getProperty(IDs::isArm);
             drawToggle(header.armRect, ThemeColors::danger(), rArm, "R");
+        }
+        {
+            bool mon = tree.getProperty(IDs::inputMonitor);
+            drawToggle(header.monitorRect, ThemeColors::info(), mon, "In");
         }
 
         // Automation toggle
@@ -509,6 +515,17 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     else if (type == 7) // Automation
     {
         emit automationToggled(trackIdx);
+    }
+    else if (type == 8) // Input monitor
+    {
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
+        {
+            auto tree = trackList.getChild(trackIdx);
+            bool mon = !tree.getProperty(IDs::inputMonitor);
+            tree.setProperty(IDs::inputMonitor, mon, &engine.getProjectModel().getUndoManager());
+            emit inputMonitoringChanged(trackIdx, mon);
+        }
     }
     else if (type == 4) // Volume drag
     {

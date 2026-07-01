@@ -22,6 +22,7 @@ public:
 signals:
     void trackSelectionChanged(int trackIndex);
     void automationToggled(int trackIndex);
+    void inputMonitoringChanged(int trackIndex, bool enabled);
     void addTrackRequested();
     void addTrackWithFX(const juce::String& fxType);
     void addTrackWithPlugin(const juce::String& pluginID, const juce::String& pluginFormat);
@@ -51,6 +52,7 @@ private:
         QRect muteRect;
         QRect soloRect;
         QRect armRect;
+        QRect monitorRect;
         QRect autoRect;
         QRect volRect;
         QRect panRect;

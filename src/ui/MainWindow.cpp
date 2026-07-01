@@ -461,6 +461,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
     connect(timelineView, &TimelineView::countInToggled, this, &MainWindow::onCountInToggled);
     connect(timelineView, &TimelineView::timeSigChanged, this, &MainWindow::onTimeSigChanged);
+    connect(timelineView, &TimelineView::inputMonitoringChanged, this, &MainWindow::onInputMonitoringChanged);
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
@@ -1113,6 +1114,15 @@ void MainWindow::onTimeSigChanged(int numerator, int denominator)
     auto transport = model.getTransportTree();
     transport.setProperty(IDs::timeSigNumerator, numerator, &model.getUndoManager());
     transport.setProperty(IDs::timeSigDenominator, denominator, &model.getUndoManager());
+}
+
+void MainWindow::onInputMonitoringChanged(int trackIndex, bool enabled)
+{
+    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+    {
+        if (auto* rm = mainProc->getRoutingManager())
+            rm->setInputMonitoring(trackIndex, enabled);
+    }
 }
 
 void MainWindow::onRecordToggle()

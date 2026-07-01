@@ -26,6 +26,7 @@ namespace IDs {
     DECLARE_ID(isMuted)
     DECLARE_ID(isSoloed)
     DECLARE_ID(isArm)
+    DECLARE_ID(inputMonitor)
 
     // Clip properties
     DECLARE_ID(clipID)

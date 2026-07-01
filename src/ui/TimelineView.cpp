@@ -190,6 +190,10 @@ void TimelineView::connectSignals()
     connect(trackHeaders, &TrackHeaderWidget::automationToggled, this,
         &TimelineView::automationToggled);
 
+    // Input monitoring
+    connect(trackHeaders, &TrackHeaderWidget::inputMonitoringChanged, this,
+        &TimelineView::inputMonitoringChanged);
+
     // Vertical scroll sync
     connect(graphicsView->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int) {
         syncRulerWithScene();
