@@ -2,8 +2,12 @@
 #include "TimelineScene.h"
 #include "ClipItem.h"
 #include "DebugLog.h"
+#include "Theme.h"
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
+#include <QGraphicsRectItem>
+#include <QBrush>
+#include <QPen>
 #include <cmath>
 
 TimelineInteraction::TimelineInteraction(TimelineScene* s, AudioEngine& ae, QObject* parent)
@@ -44,8 +48,12 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
     if (e->button() != Qt::LeftButton)
         return false;
 
+    Qt::KeyboardModifiers mods = e->modifiers();
+    bool additive = mods & Qt::ControlModifier;
+    bool range = mods & Qt::ShiftModifier;
+
     QGraphicsItem* item = scene->itemAt(e->scenePos(), QTransform());
-    HDAW_LOG("TIPress", QString("itemAt type=%1").arg(item ? item->type() : -1));
+    HDAW_LOG("TIPress", QString("itemAt type=%1 mods=%2").arg(item ? item->type() : -1).arg(int(mods)));
 
     // Check for edge/fade handles on clip items.
     // No parentItem() walk: ClipItem is not grouped under track-lane containers.
@@ -53,18 +61,58 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
 
     if (clip != nullptr)
     {
-        if (undoManager)
-            undoManager->beginNewTransaction("Edit clip");
-
+        // Multi-selection: handle selection before drag.
+        // If user clicked in a non-trim/non-fade area, this also changes
+        // selection. Edge/trim/fade drags preserve the existing selection.
         double pps = clip->getPixelsPerSecond();
         double dur = clip->getDuration();
         double clipW = dur * pps;
         QPointF localPos = clip->mapFromScene(e->scenePos());
         double edgeThreshold = 6.0;
+
+        // If clicking near an edge or fade handle, treat as a trim/fade
+        // drag on this clip only and DO NOT change selection.
+        bool isEdgeArea = (localPos.x() < edgeThreshold)
+                       || (localPos.x() > clipW - edgeThreshold);
+        bool isFadeArea = false;
+        if (localPos.y() < 10)
+        {
+            double fadeIn = clip->getFadeIn();
+            double fadeOut = clip->getFadeOut();
+            if ((localPos.x() < fadeIn * pps + edgeThreshold && fadeIn > 0.001)
+             || (localPos.x() > clipW - fadeOut * pps - edgeThreshold && fadeOut > 0.001))
+                isFadeArea = true;
+        }
+
+        if (!isEdgeArea && !isFadeArea)
+        {
+            // Plain click on clip body — update selection.
+            if (additive)
+            {
+                clip->setSelected(!clip->isSelected());
+                lastClickedClip = clip;
+            }
+            else if (range && lastClickedClip != nullptr)
+            {
+                selectRange(lastClickedClip, clip);
+                lastClickedClip = clip;
+            }
+            else
+            {
+                // Clear others, select this one
+                clearSelection();
+                clip->setSelected(true);
+                lastClickedClip = clip;
+            }
+        }
+
+        if (undoManager)
+            undoManager->beginNewTransaction("Edit clip");
+
         dragPPS = pps;
 
         // Trim left edge
-        if (localPos.x() < edgeThreshold)
+        if (isEdgeArea && localPos.x() < edgeThreshold)
         {
             dragMode = TrimLeft;
             dragItem = clip;
@@ -72,8 +120,7 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
             e->accept();
             return true;
         }
-        // Trim right edge
-        if (localPos.x() > clipW - edgeThreshold)
+        if (isEdgeArea && localPos.x() > clipW - edgeThreshold)
         {
             dragMode = TrimRight;
             dragItem = clip;
@@ -81,8 +128,7 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
             e->accept();
             return true;
         }
-        // Fade handles (top corners)
-        if (localPos.y() < 10)
+        if (isFadeArea)
         {
             double fadeIn = clip->getFadeIn();
             double fadeOut = clip->getFadeOut();
@@ -109,13 +155,20 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
         dragItem = clip;
         dragStartPos = e->scenePos();
         dragStartValue = clip->getStartTime();
-        clip->setSelected(true);
         e->accept();
         return true;
     }
 
-    // Not a ClipItem — let QGraphicsScene dispatch to the actual item
-    // underneath (LoopMarker, TimeRuler, etc.)
+    // Not a ClipItem — start rubber band selection on empty area.
+    // LoopMarker/TimeRuler/etc. handle their own events; we only run
+    // when no item was hit, so this is genuinely the empty track area.
+    if (item == nullptr)
+    {
+        startRubberBand(e->scenePos(), additive || range);
+        e->accept();
+        return true;
+    }
+    // Some other item (ruler, marker, etc.) — let the scene dispatch.
     return false;
 }
 
@@ -123,6 +176,13 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
 {
     if (dragMode == None)
         return false;
+
+    if (dragMode == RubberBand)
+    {
+        updateRubberBand(e->scenePos());
+        e->accept();
+        return true;
+    }
 
     double pps = dragPPS;
 
@@ -133,8 +193,30 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
         newTime = snapToGrid(newTime);
         newTime = (std::max)(0.0, newTime);
 
-        dragItem->getClipTree().setProperty(IDs::startTime, newTime, undoManager);
-        dragItem->setPos(newTime * pps, dragItem->pos().y());
+        // Move all selected clips by the same delta so multi-selection
+        // drags stay aligned.
+        double timeDelta = newTime - dragItem->getStartTime();
+        auto* um = undoManager;
+        if (um && !getSelectedClips().contains(dragItem))
+        {
+            // Drag was started on an unselected clip (we still let the
+            // move happen on dragItem only).
+        }
+        auto selected = getSelectedClips();
+        for (auto* c : selected)
+        {
+            double targetStart = c->getStartTime() + timeDelta;
+            targetStart = (std::max)(0.0, targetStart);
+            c->getClipTree().setProperty(IDs::startTime, targetStart, um);
+            c->setPos(targetStart * pps, c->pos().y());
+        }
+        // If the dragged clip wasn't in the selection (e.g. rubber band
+        // selected nothing), still move it alone.
+        if (!selected.contains(dragItem))
+        {
+            dragItem->getClipTree().setProperty(IDs::startTime, newTime, undoManager);
+            dragItem->setPos(newTime * pps, dragItem->pos().y());
+        }
         e->accept();
         return true;
     }
@@ -199,6 +281,12 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
 
 bool TimelineInteraction::handleMouseRelease(QGraphicsSceneMouseEvent* e)
 {
+    if (dragMode == RubberBand)
+    {
+        endRubberBand();
+        e->accept();
+        return true;
+    }
     if (dragMode != None)
     {
         dragMode = None;
@@ -261,4 +349,149 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     emit scene->clipSelected(clipTree);
     e->accept();
     return true;
+}
+
+// ------------------------------------------------------------------
+// Multi-selection helpers
+// ------------------------------------------------------------------
+
+void TimelineInteraction::clearSelection()
+{
+    for (auto* item : scene->selectedItems())
+        item->setSelected(false);
+    lastClickedClip = nullptr;
+}
+
+void TimelineInteraction::selectClip(ClipItem* clip, bool additive)
+{
+    if (clip == nullptr)
+        return;
+    if (!additive)
+        clearSelection();
+    clip->setSelected(true);
+    lastClickedClip = clip;
+}
+
+void TimelineInteraction::selectRange(ClipItem* fromClip, ClipItem* toClip)
+{
+    if (fromClip == nullptr || toClip == nullptr)
+        return;
+    auto fromTrack = ProjectModel::getTrackOfClip(fromClip->getClipTree());
+    auto toTrack = ProjectModel::getTrackOfClip(toClip->getClipTree());
+    if (!fromTrack.isValid() || fromTrack != toTrack)
+    {
+        // Different tracks — just select the destination.
+        clearSelection();
+        toClip->setSelected(true);
+        return;
+    }
+    // Same track: select every clip on that track between the two.
+    double fromStart = fromClip->getStartTime();
+    double toStart = toClip->getStartTime();
+    double lo = (std::min)(fromStart, toStart);
+    double hi = (std::max)(fromStart, toStart);
+    auto clipList = fromTrack.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+        return;
+    clearSelection();
+    for (int i = 0; i < clipList.getNumChildren(); ++i)
+    {
+        auto child = clipList.getChild(i);
+        double s = child.getProperty(IDs::startTime);
+        if (s >= lo - 0.0001 && s <= hi + 0.0001)
+        {
+            // Find the corresponding ClipItem by matching ValueTree.
+            for (auto* item : scene->items())
+            {
+                auto* ci = dynamic_cast<ClipItem*>(item);
+                if (ci != nullptr && ci->getClipTree() == child)
+                {
+                    ci->setSelected(true);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+QList<ClipItem*> TimelineInteraction::getSelectedClips() const
+{
+    QList<ClipItem*> out;
+    for (auto* item : scene->selectedItems())
+    {
+        auto* ci = dynamic_cast<ClipItem*>(item);
+        if (ci != nullptr)
+            out << ci;
+    }
+    return out;
+}
+
+void TimelineInteraction::deleteSelectedClips()
+{
+    auto& um = engine.getProjectModel().getUndoManager();
+    if (undoManager)
+        undoManager->beginNewTransaction("Delete clips");
+    auto selected = getSelectedClips();
+    for (auto* clip : selected)
+    {
+        auto clipTree = clip->getClipTree();
+        auto parentTree = clipTree.getParent();
+        if (parentTree.isValid())
+            parentTree.removeChild(clipTree, &um);
+    }
+}
+
+void TimelineInteraction::startRubberBand(const QPointF& scenePos, bool additive)
+{
+    dragMode = RubberBand;
+    rubberBandAdditive = additive;
+    rubberBandStartPos = scenePos;
+
+    if (!additive)
+        clearSelection();
+
+    if (rubberBandRectItem == nullptr)
+    {
+        rubberBandRectItem = new QGraphicsRectItem();
+        rubberBandRectItem->setZValue(1000);
+        QPen pen(ThemeColors::accent(), 1, Qt::DashLine);
+        QColor brushColor = ThemeColors::accent();
+        brushColor.setAlpha(40);
+        QBrush brush(brushColor);
+        rubberBandRectItem->setPen(pen);
+        rubberBandRectItem->setBrush(brush);
+        scene->addItem(rubberBandRectItem);
+    }
+    rubberBandRectItem->setRect(QRectF(scenePos, QSizeF(0, 0)));
+    rubberBandRectItem->setVisible(true);
+}
+
+void TimelineInteraction::updateRubberBand(const QPointF& scenePos)
+{
+    QRectF r(rubberBandStartPos, scenePos);
+    r = r.normalized();
+    rubberBandRectItem->setRect(r);
+
+    // Live preview: highlight all clips that intersect the rect.
+    // We don't commit selection until release, but the user wants feedback.
+    for (auto* item : scene->items())
+    {
+        auto* ci = dynamic_cast<ClipItem*>(item);
+        if (ci == nullptr) continue;
+        bool inside = r.intersects(ci->sceneBoundingRect());
+        bool keep = inside;
+        if (rubberBandAdditive)
+            keep = inside || ci->isSelected();
+        else
+            keep = inside;
+        ci->setSelected(keep);
+    }
+}
+
+void TimelineInteraction::endRubberBand()
+{
+    if (rubberBandRectItem != nullptr)
+        rubberBandRectItem->setVisible(false);
+    dragMode = None;
+    // Final selection is whatever updateRubberBand last set.
 }

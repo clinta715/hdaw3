@@ -436,6 +436,17 @@ void MainWindow::connectTimelineSignals()
     auto* scene = timelineView->getScene();
 
     connect(scene, &TimelineScene::clipSelected, this, &MainWindow::onClipSelected);
+    connect(scene, &QGraphicsScene::selectionChanged, this, [this, scene]() {
+        int count = 0;
+        for (auto* item : scene->selectedItems())
+            if (dynamic_cast<ClipItem*>(item) != nullptr) ++count;
+        if (count == 0)
+            statusBar()->clearMessage();
+        else if (count == 1)
+            statusBar()->showMessage("1 clip selected", 0);
+        else
+            statusBar()->showMessage(QString("%1 clips selected").arg(count), 0);
+    });
 
     connect(timelineView, &TimelineView::automationToggled, this,
         [this](int trackIndex) {

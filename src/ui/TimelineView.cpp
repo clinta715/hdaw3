@@ -406,12 +406,35 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
         menu.addSeparator();
     }
 
-    auto* deleteAction = menu.addAction("Delete Clip");
+    int selectedCount = 0;
+    for (auto* item : timelineScene->selectedItems())
+        if (dynamic_cast<ClipItem*>(item) != nullptr) ++selectedCount;
+
+    auto* deleteAction = menu.addAction(selectedCount > 1
+        ? QString("Delete %1 Clips").arg(selectedCount)
+        : QStringLiteral("Delete Clip"));
     connect(deleteAction, &QAction::triggered, this, [this, clip]() {
-        auto ct = clip->getClipTree();
-        auto parentTree = ct.getParent();
-        if (parentTree.isValid())
-            parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
+        if (interaction == nullptr)
+        {
+            auto ct = clip->getClipTree();
+            auto parentTree = ct.getParent();
+            if (parentTree.isValid())
+                parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
+            return;
+        }
+        auto selected = interaction->getSelectedClips();
+        if (selected.size() <= 1)
+        {
+            // Single clip — use direct removal to preserve the focused clip
+            auto ct = clip->getClipTree();
+            auto parentTree = ct.getParent();
+            if (parentTree.isValid())
+                parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
+        }
+        else
+        {
+            interaction->deleteSelectedClips();
+        }
     });
 
     auto* openAction = menu.addAction("Open in Editor");
@@ -506,21 +529,35 @@ void TimelineView::handleKeyPress(QKeyEvent* event)
 {
     if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
     {
-        auto selectedItems = timelineScene->selectedItems();
-        for (auto* item : selectedItems)
+        if (interaction != nullptr)
+            interaction->deleteSelectedClips();
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_A && (event->modifiers() & Qt::ControlModifier))
+    {
+        // Ctrl+A — select all clips
+        if (interaction != nullptr)
         {
-            auto* clip = dynamic_cast<ClipItem*>(item);
-            if (clip != nullptr)
+            for (auto* item : timelineScene->items())
             {
-                auto clipTree = clip->getClipTree();
-                auto parentTree = clipTree.getParent();
-                if (parentTree.isValid())
-                {
-                    parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
-                }
+                auto* ci = dynamic_cast<ClipItem*>(item);
+                if (ci != nullptr)
+                    ci->setSelected(true);
             }
         }
         event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape)
+    {
+        if (interaction != nullptr)
+        {
+            for (auto* item : timelineScene->items())
+                item->setSelected(false);
+        }
+        event->accept();
+        return;
     }
 }
 

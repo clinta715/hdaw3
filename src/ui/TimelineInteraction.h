@@ -1,11 +1,13 @@
 #pragma once
 #include <QObject>
 #include <QPointF>
+#include <QRectF>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
 
 class TimelineScene;
 class ClipItem;
+class QGraphicsRectItem;
 class AudioEngine;
 
 class TimelineInteraction : public QObject
@@ -32,8 +34,20 @@ public:
     bool handleMouseRelease(QGraphicsSceneMouseEvent* e);
     bool handleMouseDoubleClick(QGraphicsSceneMouseEvent* e);
 
+    // Multi-selection helpers (called from TimelineScene or elsewhere)
+    void clearSelection();
+    void selectClip(ClipItem* clip, bool additive);
+    void selectRange(ClipItem* fromClip, ClipItem* toClip);
+    QList<ClipItem*> getSelectedClips() const;
+    void deleteSelectedClips();
+
 private:
-    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut };
+    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut, RubberBand };
+
+    void selectClipsInRect(const QRectF& rect, bool additive);
+    void startRubberBand(const QPointF& scenePos, bool additive);
+    void updateRubberBand(const QPointF& scenePos);
+    void endRubberBand();
 
 public:
     void setUndoManager(juce::UndoManager* um) { undoManager = um; }
@@ -53,4 +67,10 @@ private:
     double dragPPS = 10.0;
     double lastClipDuration = 4.0;
     double defaultClipDuration = 4.0;
+
+    // Multi-selection state
+    ClipItem* lastClickedClip = nullptr;
+    bool rubberBandAdditive = false;
+    QPointF rubberBandStartPos;
+    QGraphicsRectItem* rubberBandRectItem = nullptr;
 };
