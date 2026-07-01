@@ -14,6 +14,11 @@ ScanProgressDialog::ScanProgressDialog(HDAW::PluginManager& pm, QWidget* parent)
     layout->setSpacing(12);
 
     statusLabel = new QLabel("Scanning plugins...", this);
+    auto exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                      .getParentDirectory();
+    auto scannerExe = exeDir.getChildFile("hdaw_plugin_scanner.exe");
+    if (scannerExe.existsAsFile())
+        statusLabel->setText("Scanning plugins (isolated)...");
     QFont f = statusLabel->font();
     f.setPointSize(10);
     statusLabel->setFont(f);
@@ -68,7 +73,15 @@ void ScanProgressDialog::onProgress(const QString& fileName, int done, int)
 void ScanProgressDialog::onFinished()
 {
     if (alive.load())
+    {
+        int crashes = pluginManager.getLastScanCrashCount();
+        if (crashes > 0)
+            statusLabel->setText(
+                QString("Scan complete — %1 plugin(s) crashed and were blacklisted").arg(crashes));
+        else
+            statusLabel->setText("Scan complete");
         accept();
+    }
 }
 
 void ScanProgressDialog::onCancel()
