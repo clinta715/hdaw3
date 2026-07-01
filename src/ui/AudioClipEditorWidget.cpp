@@ -63,17 +63,17 @@ void AudioClipEditorWidget::setupUI()
     controlLayout->setSpacing(6);
 
     sourceLabel = new QLabel("No file", controlBar);
-    sourceLabel->setStyleSheet("color: #71717a; font-size: 7pt;");
+    sourceLabel->setStyleSheet("color: #787880; font-size: 7pt;");
     controlLayout->addWidget(sourceLabel);
 
     infoLabel = new QLabel("", controlBar);
-    infoLabel->setStyleSheet("color: #71717a; font-size: 7pt;");
+    infoLabel->setStyleSheet("color: #787880; font-size: 7pt;");
     controlLayout->addWidget(infoLabel);
 
     controlLayout->addStretch();
 
     auto* gainLbl = new QLabel("Gain:", controlBar);
-    gainLbl->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    gainLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(gainLbl);
 
     gainSlider = new QSlider(Qt::Horizontal, controlBar);
@@ -85,11 +85,11 @@ void AudioClipEditorWidget::setupUI()
 
     gainLabel = new QLabel("0.0 dB", controlBar);
     gainLabel->setFixedWidth(40);
-    gainLabel->setStyleSheet("color: #e4e4e7; font-size: 7pt;");
+    gainLabel->setStyleSheet("color: #e8e8ec; font-size: 7pt;");
     controlLayout->addWidget(gainLabel);
 
     auto* fadeInLbl = new QLabel("Fade In:", controlBar);
-    fadeInLbl->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    fadeInLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(fadeInLbl);
 
     fadeInSpin = new QDoubleSpinBox(controlBar);
@@ -102,7 +102,7 @@ void AudioClipEditorWidget::setupUI()
     controlLayout->addWidget(fadeInSpin);
 
     auto* fadeOutLbl = new QLabel("Fade Out:", controlBar);
-    fadeOutLbl->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    fadeOutLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(fadeOutLbl);
 
     fadeOutSpin = new QDoubleSpinBox(controlBar);
@@ -115,11 +115,11 @@ void AudioClipEditorWidget::setupUI()
     controlLayout->addWidget(fadeOutSpin);
 
     loopCheck = new QCheckBox("Loop", controlBar);
-    loopCheck->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    loopCheck->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(loopCheck);
 
     auto* offsetLbl = new QLabel("Offset:", controlBar);
-    offsetLbl->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    offsetLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(offsetLbl);
 
     offsetSpin = new QDoubleSpinBox(controlBar);
@@ -132,7 +132,7 @@ void AudioClipEditorWidget::setupUI()
     controlLayout->addWidget(offsetSpin);
 
     auto* durLbl = new QLabel("Dur:", controlBar);
-    durLbl->setStyleSheet("color: #a1a1aa; font-size: 7pt;");
+    durLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
     controlLayout->addWidget(durLbl);
 
     durationSpin = new QDoubleSpinBox(controlBar);

@@ -28,7 +28,7 @@ void StepEditorWidget::setupUI()
     headerLayout->setContentsMargins(8, 2, 8, 2);
 
     titleLabel = new QLabel("Step Editor - No clip selected", headerBar);
-    titleLabel->setStyleSheet("color: #ccc; font-weight: bold;");
+    titleLabel->setStyleSheet(QString("color: %1; font-weight: bold;").arg(ThemeColors::textPrimary().name()));
 
     switchButton = new QPushButton("Switch to Piano Roll", headerBar);
     switchButton->setFixedHeight(22);

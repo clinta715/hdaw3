@@ -1,4 +1,5 @@
 #include "PreferencesDialog.h"
+#include "Theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -62,7 +63,7 @@ PreferencesDialog::PreferencesDialog(QWidget* parent)
         "Any address other than loopback requires authentication, "
         "which HDAW v0.3.x does not provide.", mcpGroup);
     mcpHostNote->setWordWrap(true);
-    mcpHostNote->setStyleSheet("color: #a0a0a0;");
+    mcpHostNote->setStyleSheet(QString("color: %1;").arg(ThemeColors::textSecondary().name()));
     mcpLayout->addRow("", mcpHostNote);
 
     mcpPortSpin = new QSpinBox(mcpGroup);

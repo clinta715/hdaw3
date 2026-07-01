@@ -1,4 +1,5 @@
 #include "MixerWidget.h"
+#include "Theme.h"
 #include <QPainter>
 #include <QScrollBar>
 #include <QLabel>
@@ -17,7 +18,7 @@ MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setFrameStyle(QFrame::NoFrame);
-    scrollArea->setStyleSheet("QScrollArea { background-color: #121214; }");
+    scrollArea->setStyleSheet(QString("QScrollArea { background-color: %1; }").arg(ThemeColors::bgWindow().name()));
 
     stripContainer = new QWidget();
     stripLayout = new QHBoxLayout(stripContainer);
@@ -30,7 +31,7 @@ MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     // Master strip (non-scrollable, right side)
     auto* masterWidget = new QWidget(this);
     masterWidget->setFixedWidth(70);
-    masterWidget->setStyleSheet("background-color: #1c1c1f;");
+    masterWidget->setStyleSheet(QString("background-color: %1;").arg(ThemeColors::bgPanel().name()));
     auto* masterLayout = new QVBoxLayout(masterWidget);
     masterLayout->setContentsMargins(4, 4, 4, 4);
 

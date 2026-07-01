@@ -21,7 +21,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     addTrackBtn->setToolTip("Add Track");
     addTrackBtn->setStyleSheet(
         "QToolButton { font-weight: bold; font-size: 11pt; }"
-        "QToolButton:hover { border-color: #06b6d4; }");
+        "QToolButton:hover { border-color: #d97706; }");
     addTrackBtn->setPopupMode(QToolButton::MenuButtonPopup);
 
     trackMenu = new QMenu(addTrackBtn);
@@ -102,7 +102,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     bpmSpinBox->setFixedWidth(50);
     bpmSpinBox->setFixedHeight(22);
     bpmSpinBox->setStyleSheet(
-        "QDoubleSpinBox { background: #121214; color: #e4e4e7; border: 1px solid #3a3a3e; "
+        "QDoubleSpinBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
         "border-radius: 2px; padding: 1px 2px; }");
     connect(bpmSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &TimelineToolbar::bpmChanged);
@@ -111,7 +111,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     // Time signature label
     timeSigLabel = new QLabel("4/4", this);
     timeSigLabel->setStyleSheet(
-        "QLabel { color: #a1a1aa; font-family: monospace; font-size: 8pt; "
+        "QLabel { color: #a8a8b0; font-family: monospace; font-size: 8pt; "
         "padding: 2px 4px; }");
     layout->addWidget(timeSigLabel);
 
@@ -122,7 +122,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     metronomeBtn->setCheckable(true);
     metronomeBtn->setFixedHeight(22);
     metronomeBtn->setStyleSheet(
-        "QPushButton { color: #a1a1aa; }"
+        "QPushButton { color: #a8a8b0; }"
         "QPushButton:checked { color: #10b981; }");
     connect(metronomeBtn, &QPushButton::toggled, this, &TimelineToolbar::metronomeToggled);
     layout->addWidget(metronomeBtn);
@@ -131,7 +131,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
 
     // Default clip length
     auto* clipLenLabel = new QLabel("Clip:", this);
-    clipLenLabel->setStyleSheet("QLabel { color: #a1a1aa; font-size: 7pt; }");
+    clipLenLabel->setStyleSheet("QLabel { color: #a8a8b0; font-size: 7pt; }");
     layout->addWidget(clipLenLabel);
 
     defaultClipLenSpinBox = new QDoubleSpinBox(this);
@@ -144,7 +144,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     defaultClipLenSpinBox->setFixedHeight(22);
     defaultClipLenSpinBox->setToolTip("Default MIDI clip length (double-click to create)");
     defaultClipLenSpinBox->setStyleSheet(
-        "QDoubleSpinBox { background: #121214; color: #e4e4e7; border: 1px solid #3a3a3e; "
+        "QDoubleSpinBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
         "border-radius: 2px; padding: 1px 2px; }");
     connect(defaultClipLenSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &TimelineToolbar::defaultClipLenChanged);
@@ -195,7 +195,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     recordBtn->setCheckable(true);
     recordBtn->setFixedHeight(22);
     recordBtn->setStyleSheet(
-        "QPushButton { color: #a1a1aa; font-weight: bold; }"
+        "QPushButton { color: #a8a8b0; font-weight: bold; }"
         "QPushButton:checked { color: #ef4444; }");
     connect(recordBtn, &QPushButton::clicked, this, &TimelineToolbar::recordClicked);
     layout->addWidget(recordBtn);
@@ -203,7 +203,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     // Timecode display
     timecodeLabel = new QLabel("00:00:000", this);
     timecodeLabel->setStyleSheet(
-        "QLabel { color: #e4e4e7; font-family: monospace; font-size: 10pt; "
+        "QLabel { color: #e8e8ec; font-family: monospace; font-size: 10pt; "
         "background: #121214; padding: 2px 6px; border: 1px solid #3a3a3e; border-radius: 2px; }");
     layout->addWidget(timecodeLabel);
 
