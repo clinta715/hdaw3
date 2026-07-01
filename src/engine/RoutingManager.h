@@ -31,6 +31,7 @@ public:
     void removeSend(int trackIndex, int sendIndex);
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
+    void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);
     void rebuildTrackFX(int trackIndex);
 
     MasterBusProcessor* getMasterBus() { return masterBus; }

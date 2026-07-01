@@ -204,11 +204,52 @@ void MainAudioProcessor::stopRecording()
                 trackTree.addChild(clipList, -1, &um);
             }
 
-            auto clip = ProjectModel::createAudioClip(
-                "Recording", startTimeSec, recDuration, recordedFile.getFullPathName());
-            clipList.addChild(clip, -1, &um);
+            double recEnd = startTimeSec + recDuration;
+            int overlapClip = -1;
+            for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+            {
+                auto c = clipList.getChild(ci);
+                if (c.getProperty(IDs::clipType).toString() != "audio") continue;
+                double cStart = c.getProperty(IDs::startTime);
+                double cDur = c.getProperty(IDs::duration);
+                if (startTimeSec < cStart + cDur && recEnd > cStart)
+                {
+                    overlapClip = ci;
+                    break;
+                }
+            }
 
-            rebuildRoutingGraph();
+            if (overlapClip >= 0)
+            {
+                auto clipTree = clipList.getChild(overlapClip);
+                auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+                if (!takeList.isValid())
+                {
+                    takeList = juce::ValueTree(IDs::TAKE_LIST);
+                    clipTree.addChild(takeList, -1, &um);
+
+                    auto origSource = clipTree.getProperty(IDs::sourceFile).toString();
+                    auto origTake = juce::ValueTree(IDs::TAKE);
+                    origTake.setProperty(IDs::sourceFile, origSource, nullptr);
+                    origTake.setProperty(IDs::name, "Take 1", nullptr);
+                    takeList.addChild(origTake, -1, nullptr);
+                }
+
+                auto newTake = juce::ValueTree(IDs::TAKE);
+                newTake.setProperty(IDs::sourceFile, recordedFile.getFullPathName(), nullptr);
+                newTake.setProperty(IDs::name, "Take " + juce::String(takeList.getNumChildren() + 1), nullptr);
+                takeList.addChild(newTake, -1, &um);
+                clipTree.setProperty(IDs::activeTake, takeList.getNumChildren() - 1, &um);
+
+                rebuildRoutingGraph();
+            }
+            else
+            {
+                auto clip = ProjectModel::createAudioClip(
+                    "Recording", startTimeSec, recDuration, recordedFile.getFullPathName());
+                clipList.addChild(clip, -1, &um);
+                rebuildRoutingGraph();
+            }
         }
     }
 }

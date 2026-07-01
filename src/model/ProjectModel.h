@@ -109,6 +109,11 @@ namespace IDs {
     DECLARE_ID(timeSigNumerator)
     DECLARE_ID(timeSigDenominator)
 
+    // Take management
+    DECLARE_ID(TAKE_LIST)
+    DECLARE_ID(TAKE)
+    DECLARE_ID(activeTake)
+
     // Project scale
     DECLARE_ID(scaleRoot)
     DECLARE_ID(scaleMode)

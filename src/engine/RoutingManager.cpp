@@ -308,7 +308,17 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
         if (clipType == "audio")
         {
             auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager);
-            clipProc->setSourceFile(clipTree.getProperty(IDs::sourceFile).toString());
+
+            juce::String sourcePath = clipTree.getProperty(IDs::sourceFile).toString();
+            auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+            if (takeList.isValid() && takeList.getNumChildren() > 0)
+            {
+                int activeIdx = static_cast<int>(clipTree.getProperty(IDs::activeTake, 0));
+                activeIdx = juce::jlimit(0, takeList.getNumChildren() - 1, activeIdx);
+                sourcePath = takeList.getChild(activeIdx).getProperty(IDs::sourceFile).toString();
+            }
+
+            clipProc->setSourceFile(sourcePath);
             clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
             clipProc->setDuration(clipTree.getProperty(IDs::duration));
             clipProc->setOffset(clipTree.getProperty(IDs::offset));
@@ -371,6 +381,13 @@ void RoutingManager::updateClipParam(int trackIndex, int clipIndex, int paramID,
         if (paramID == 10)
             clip->setGain(value);
     }
+}
+
+void RoutingManager::switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile)
+{
+    auto audioIt = audioClipSources.find({trackIndex, clipIndex});
+    if (audioIt != audioClipSources.end())
+        audioIt->second->switchToSourceFile(sourceFile);
 }
 
 void RoutingManager::rebuildTrackFX(int trackIndex)

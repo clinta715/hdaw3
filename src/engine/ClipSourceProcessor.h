@@ -25,6 +25,34 @@ public:
         sourceFile = path;
     }
 
+    void switchToSourceFile(const juce::String& path)
+    {
+        sourceFile = path;
+        preloadedData[0].free();
+        preloadedData[1].free();
+        preloadedChannels = 0;
+        preloadedLength = 0;
+
+        if (sourceFile.isNotEmpty() && sr > 0)
+        {
+            std::unique_ptr<juce::AudioFormatReader> r(
+                formatManager.createReaderFor(juce::File(sourceFile)));
+            if (r != nullptr)
+            {
+                preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
+                const int total = static_cast<int>(r->lengthInSamples);
+                if (preloadedChannels > 0 && total > 0)
+                {
+                    preloadedData[0].malloc(total);
+                    preloadedData[1].malloc(total);
+                    int* const ptrs[2] = { preloadedData[0], preloadedData[1] };
+                    r->read(ptrs, preloadedChannels, 0, total, true);
+                    preloadedLength = static_cast<int64_t>(total);
+                }
+            }
+        }
+    }
+
     juce::String getSourceFile() const { return sourceFile; }
 
     void setStartTime(double t) { startTime.store(t); }

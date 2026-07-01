@@ -331,12 +331,48 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
 {
     QMenu menu;
 
+    auto clipTree = clip->getClipTree();
+
+    if (clipTree.getProperty(IDs::clipType).toString() == "audio")
+    {
+        auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+        if (takeList.isValid() && takeList.getNumChildren() > 1)
+        {
+            auto* takesMenu = menu.addMenu("Takes");
+            int activeIdx = clipTree.getProperty(IDs::activeTake, 0);
+            for (int t = 0; t < takeList.getNumChildren(); ++t)
+            {
+                auto take = takeList.getChild(t);
+                QString name = QString::fromUtf8(take.getProperty(IDs::name).toString().toRawUTF8());
+                auto* action = takesMenu->addAction(name);
+                action->setCheckable(true);
+                action->setChecked(t == activeIdx);
+                auto trackTree = clipTree.getParent().getParent();
+                auto& um = engine.getProjectModel().getUndoManager();
+                connect(action, &QAction::triggered, this, [this, clipTree, takeList, t, trackTree, &um]() mutable {
+                    clipTree.setProperty(IDs::activeTake, t, &um);
+                    auto sourceFile = takeList.getChild(t).getProperty(IDs::sourceFile).toString();
+                    auto trackList = engine.getProjectModel().getTrackListTree();
+                    int trackIdx = trackList.indexOf(trackTree);
+                    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+                    int clipIdx = clipList.indexOf(clipTree);
+                    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+                    {
+                        if (auto* rm = mainProc->getRoutingManager())
+                            rm->switchClipTake(trackIdx, clipIdx, sourceFile);
+                    }
+                });
+            }
+            menu.addSeparator();
+        }
+    }
+
     auto* deleteAction = menu.addAction("Delete Clip");
     connect(deleteAction, &QAction::triggered, this, [this, clip]() {
-        auto clipTree = clip->getClipTree();
-        auto parentTree = clipTree.getParent();
+        auto ct = clip->getClipTree();
+        auto parentTree = ct.getParent();
         if (parentTree.isValid())
-            parentTree.removeChild(clipTree, &engine.getProjectModel().getUndoManager());
+            parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
     });
 
     auto* openAction = menu.addAction("Open in Editor");
@@ -348,7 +384,6 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
 
     auto* splitAction = menu.addAction("Split");
     connect(splitAction, &QAction::triggered, this, []() {
-        // Future: implement split at playhead or click position
     });
 
     menu.exec(globalPos);
