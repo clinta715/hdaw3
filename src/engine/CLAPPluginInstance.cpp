@@ -87,6 +87,21 @@ void CLAPHost::guiClosed(bool wasDestroyed) noexcept
 
 void CLAPHost::latencyChanged() noexcept
 {
+    if (instance != nullptr)
+    {
+        auto* p = instance->getClapPlugin();
+        if (p != nullptr)
+        {
+            auto* latExt = static_cast<const clap_plugin_latency_t*>(
+                p->get_extension(p, CLAP_EXT_LATENCY));
+            if (latExt != nullptr)
+            {
+                auto pluginLatency = latExt->get(p);
+                instance->setLatencySamples(static_cast<int>(pluginLatency));
+                instance->updateHostDisplay();
+            }
+        }
+    }
 }
 
 void CLAPHost::logLog(clap_log_severity severity, const char* msg) const noexcept

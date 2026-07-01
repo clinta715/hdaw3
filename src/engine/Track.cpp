@@ -29,6 +29,19 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
     for (const auto& am : automationManagers)
         if (am)
             am->rebuildCache();
+
+    updateLatency();
+}
+
+void Track::updateLatency()
+{
+    int totalLatency = 0;
+    for (const auto& slot : fxChain)
+    {
+        if (slot != nullptr && slot->getPluginInstance() != nullptr)
+            totalLatency += slot->getPluginInstance()->getLatencySamples();
+    }
+    setLatencySamples(totalLatency);
 }
 
 void Track::setAutomationTrees(const juce::ValueTree& automationList)
@@ -168,6 +181,8 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 
         fxChain.push_back(std::move(slot));
     }
+
+    updateLatency();
 }
 
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
