@@ -202,8 +202,18 @@ void MainAudioProcessor::rebuildAutomationCache(int trackIndex)
     if (routingManager == nullptr) return;
     auto* track = routingManager->getTrackNode(trackIndex);
     if (track == nullptr) return;
-    for (int i = 0; i < track->getNumAutomations(); ++i)
-        track->getAutomation(i).rebuildCache();
+
+    if (projectModel != nullptr)
+    {
+        auto trackList = projectModel->getTrackListTree();
+        auto trackTree = trackList.getChild(trackIndex);
+        track->setAutomationTrees(trackTree.getChildWithName(IDs::AUTOMATION_LIST));
+    }
+    else
+    {
+        for (int i = 0; i < track->getNumAutomations(); ++i)
+            track->getAutomation(i).rebuildCache();
+    }
 }
 
 void MainAudioProcessor::rebuildRoutingGraph()

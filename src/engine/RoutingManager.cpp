@@ -97,6 +97,9 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
         }
     }
 
+    trackProcessors[trackIndex]->setAutomationTrees(
+        trackTree.getChildWithName(IDs::AUTOMATION_LIST));
+
     rebuildClipsForTrack(trackIndex, trackTree);
 }
 
