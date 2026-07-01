@@ -55,7 +55,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 
 ### UI / UX
 - [x] **Multi-select clips** — select multiple clips in timeline (rubber band, Ctrl+click) ✅ Done
-- [ ] **Clipboard for clips** — copy/paste clips in timeline
+- [x] **Clipboard for clips** — copy/paste clips in timeline ✅ Done (Ctrl+C/X/V/D, deep copy of MIDI notes)
 - [ ] **Marker track** — named markers at positions, marker navigation
 - [ ] **Zoom-to-fit** — auto-zoom to show all content or selection
 - [x] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel ✅ Done
@@ -193,3 +193,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Stuck drag state fix (all editors)
 - [x] Playhead rendering in automation, velocity, CC lanes
 - [x] Multi-clip selection (rubber band, Ctrl+click, Shift+click, Ctrl+A)
+- [x] Clip clipboard (cut/copy/paste/duplicate)
