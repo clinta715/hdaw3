@@ -27,6 +27,7 @@ public slots:
     void setLoopEnabled(bool enabled);
     void setSnapDivision(int index);
     void setCountInEnabled(bool enabled);
+    void setTimeSig(int numerator, int denominator);
 
 signals:
     void addTrackClicked();
@@ -46,10 +47,14 @@ signals:
     void bpmChanged(double bpm);
     void metronomeToggled(bool enabled);
     void countInToggled(bool enabled);
+    void timeSigChanged(int numerator, int denominator);
     void defaultClipLenChanged(double beats);
 
 public:
     void addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager);
+
+private slots:
+    void onTimeSigChanged(int index);
 
 private:
     QToolButton* addTrackBtn;
@@ -66,7 +71,7 @@ private:
     QPushButton* recordBtn;
     QLabel* timecodeLabel;
     QDoubleSpinBox* bpmSpinBox;
-    QLabel* timeSigLabel;
+    QComboBox* timeSigCombo;
     QPushButton* metronomeBtn;
     QPushButton* countInBtn;
     QDoubleSpinBox* defaultClipLenSpinBox;

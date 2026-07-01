@@ -147,6 +147,7 @@ void TimelineView::connectSignals()
     connect(toolbar, &TimelineToolbar::bpmChanged, this, &TimelineView::bpmChanged);
     connect(toolbar, &TimelineToolbar::metronomeToggled, this, &TimelineView::metronomeToggled);
     connect(toolbar, &TimelineToolbar::countInToggled, this, &TimelineView::countInToggled);
+    connect(toolbar, &TimelineToolbar::timeSigChanged, this, &TimelineView::timeSigChanged);
 
     connect(this, &TimelineView::defaultClipLenChanged, this, [this](double beats) {
         interaction->setDefaultClipDuration(beats);

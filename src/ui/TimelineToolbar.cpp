@@ -108,12 +108,18 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
             this, &TimelineToolbar::bpmChanged);
     layout->addWidget(bpmSpinBox);
 
-    // Time signature label
-    timeSigLabel = new QLabel("4/4", this);
-    timeSigLabel->setStyleSheet(
-        "QLabel { color: #a8a8b0; font-family: monospace; font-size: 8pt; "
-        "padding: 2px 4px; }");
-    layout->addWidget(timeSigLabel);
+    // Time signature
+    timeSigCombo = new QComboBox(this);
+    timeSigCombo->addItems({"2/4", "3/4", "4/4", "5/4", "6/8", "7/8"});
+    timeSigCombo->setCurrentText("4/4");
+    timeSigCombo->setFixedHeight(22);
+    timeSigCombo->setFixedWidth(48);
+    timeSigCombo->setStyleSheet(
+        "QComboBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
+        "border-radius: 2px; padding: 1px 2px; font-family: monospace; font-size: 8pt; }");
+    connect(timeSigCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TimelineToolbar::onTimeSigChanged);
+    layout->addWidget(timeSigCombo);
 
     layout->addSpacing(4);
 
@@ -254,6 +260,22 @@ void TimelineToolbar::setCountInEnabled(bool enabled)
     countInBtn->blockSignals(true);
     countInBtn->setChecked(enabled);
     countInBtn->blockSignals(false);
+}
+
+void TimelineToolbar::setTimeSig(int numerator, int denominator)
+{
+    timeSigCombo->blockSignals(true);
+    timeSigCombo->setCurrentText(QString("%1/%2").arg(numerator).arg(denominator));
+    timeSigCombo->blockSignals(false);
+}
+
+void TimelineToolbar::onTimeSigChanged(int index)
+{
+    Q_UNUSED(index);
+    QString text = timeSigCombo->currentText();
+    auto parts = text.split('/');
+    if (parts.size() == 2)
+        emit timeSigChanged(parts[0].toInt(), parts[1].toInt());
 }
 
 void TimelineToolbar::setDefaultClipLen(double beats)

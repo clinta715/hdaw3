@@ -104,6 +104,10 @@ namespace IDs {
     DECLARE_ID(TEMPO_POINT_LIST)
     DECLARE_ID(TEMPO_POINT)
 
+    // Time signature
+    DECLARE_ID(timeSigNumerator)
+    DECLARE_ID(timeSigDenominator)
+
     // Project scale
     DECLARE_ID(scaleRoot)
     DECLARE_ID(scaleMode)

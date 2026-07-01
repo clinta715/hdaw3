@@ -16,6 +16,7 @@ public:
 
     void setEnabled(bool e) { enabled.store(e); }
     bool isEnabled() const { return enabled.load(); }
+    void setBeatsPerBar(int bpb) { beatsPerBar.store(bpb); }
 
     template<typename Transport>
     void processBlock(juce::AudioBuffer<float>& buffer, const Transport& transport)
@@ -33,7 +34,7 @@ public:
         if (endPpq <= startPpq) return;
 
         const double ppqRange = endPpq - startPpq;
-        const int beatsPerBar = 4;
+        const int bpb = beatsPerBar.load();
 
         const int firstBeat = static_cast<int>(std::ceil(startPpq - 0.0001));
         const int lastBeat = static_cast<int>(endPpq + 0.0001);
@@ -47,7 +48,7 @@ public:
 
             if (offset >= 0 && offset < numSamples)
             {
-                const bool isDownbeat = (beat % beatsPerBar) == 0;
+                const bool isDownbeat = (beat % bpb) == 0;
                 renderClick(buffer, offset, isDownbeat);
             }
         }
@@ -76,6 +77,7 @@ private:
     double sr = 44100.0;
     int clickSamples = 1102;
     std::atomic<bool> enabled{ false };
+    std::atomic<int> beatsPerBar{ 4 };
 };
 
 } // namespace HDAW

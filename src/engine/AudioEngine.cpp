@@ -36,6 +36,12 @@ void AudioEngine::initialize()
             static_cast<int64_t>(static_cast<double>(transportTree.getProperty(IDs::loopEnd)) * sr));
     }
 
+    {
+        auto transportTree = projectModel.getTransportTree();
+        int tsNum = transportTree.getProperty(IDs::timeSigNumerator, 4);
+        mainProcessor->getMetronome().setBeatsPerBar(tsNum > 0 ? tsNum : 4);
+    }
+
     mainProcessor->setTransportManager(&transportManager);
 
     // Initialize plugin manager — load cache (scan happens asynchronously after UI starts)
@@ -172,6 +178,11 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
         {
             mainProcessor->getMetronome().setEnabled(
                 treeWhosePropertyHasChanged.getProperty(IDs::metronomeEnabled));
+        }
+        else if (property == IDs::timeSigNumerator)
+        {
+            int num = treeWhosePropertyHasChanged.getProperty(IDs::timeSigNumerator);
+            mainProcessor->getMetronome().setBeatsPerBar(num > 0 ? num : 4);
         }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::PROJECT))

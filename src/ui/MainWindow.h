@@ -73,6 +73,7 @@ private:
     void onBPMChanged(double bpm);
     void onMetronomeToggled(bool enabled);
     void onCountInToggled(bool enabled);
+    void onTimeSigChanged(int numerator, int denominator);
     void onToggleBrowserPanel();
     void onClipSelected(const juce::ValueTree& clipTree);
 

@@ -37,6 +37,7 @@ signals:
     void bpmChanged(double bpm);
     void metronomeToggled(bool enabled);
     void countInToggled(bool enabled);
+    void timeSigChanged(int numerator, int denominator);
     void defaultClipLenChanged(double beats);
 
 public slots:

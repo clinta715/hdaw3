@@ -460,6 +460,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::bpmChanged, this, &MainWindow::onBPMChanged);
     connect(timelineView, &TimelineView::metronomeToggled, this, &MainWindow::onMetronomeToggled);
     connect(timelineView, &TimelineView::countInToggled, this, &MainWindow::onCountInToggled);
+    connect(timelineView, &TimelineView::timeSigChanged, this, &MainWindow::onTimeSigChanged);
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
@@ -1104,6 +1105,14 @@ void MainWindow::onCountInToggled(bool enabled)
 {
     if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
         mainProc->setCountInEnabled(enabled, 1);
+}
+
+void MainWindow::onTimeSigChanged(int numerator, int denominator)
+{
+    auto& model = engine.getProjectModel();
+    auto transport = model.getTransportTree();
+    transport.setProperty(IDs::timeSigNumerator, numerator, &model.getUndoManager());
+    transport.setProperty(IDs::timeSigDenominator, denominator, &model.getUndoManager());
 }
 
 void MainWindow::onRecordToggle()
