@@ -24,7 +24,7 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
     tf.setPointSize(14);
     tf.setBold(true);
     title->setFont(tf);
-    title->setStyleSheet("color: #88bbff;");
+    title->setStyleSheet(QString("color: %1;").arg(ThemeColors::accent().name()));
     mainLayout->addWidget(title);
 
     // ── Mode selector ──
@@ -118,7 +118,7 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
 
     // ── Preview ──
     previewLabel = new QLabel("");
-    previewLabel->setStyleSheet("color: #888; font-size: 10px;");
+    previewLabel->setStyleSheet(QString("color: %1; font-size: 10px;").arg(ThemeColors::textMuted().name()));
     previewLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(previewLabel);
 
@@ -130,10 +130,11 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
 
     auto* generateBtn = new QPushButton("Generate");
     generateBtn->setFixedHeight(30);
-    generateBtn->setStyleSheet(
-        "QPushButton { background-color: #2a6fdb; color: white; border: none; "
+    generateBtn->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: white; border: none; "
         "border-radius: 4px; padding: 0 16px; font-weight: bold; }"
-        "QPushButton:hover { background-color: #3a7feb; }");
+        "QPushButton:hover { background-color: %2; }")
+        .arg(ThemeColors::accent().name(), ThemeColors::accentBright().name()));
     connect(generateBtn, &QPushButton::clicked, this, &PhraseGeneratorDialog::onGenerate);
 
     btnLayout->addStretch();

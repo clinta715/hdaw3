@@ -28,7 +28,7 @@ StartupDialog::StartupDialog(QWidget* parent)
     titleFont.setBold(true);
     titleLabel->setFont(titleFont);
     titleLabel->setAlignment(Qt::AlignCenter);
-    titleLabel->setStyleSheet("color: #88bbff;");
+    titleLabel->setStyleSheet(QString("color: %1;").arg(ThemeColors::accent().name()));
     mainLayout->addWidget(titleLabel);
 
     auto* subtitleLabel = new QLabel("Holofonic Digital Audio Workstation");
@@ -36,7 +36,7 @@ StartupDialog::StartupDialog(QWidget* parent)
     subFont.setPointSize(10);
     subtitleLabel->setFont(subFont);
     subtitleLabel->setAlignment(Qt::AlignCenter);
-    subtitleLabel->setStyleSheet("color: #888;");
+    subtitleLabel->setStyleSheet(QString("color: %1;").arg(ThemeColors::textMuted().name()));
     mainLayout->addWidget(subtitleLabel);
     mainLayout->addSpacing(12);
 
@@ -44,11 +44,11 @@ StartupDialog::StartupDialog(QWidget* parent)
     auto* newBtn = new QPushButton("+ New Project");
     newBtn->setFixedHeight(40);
     newBtn->setCursor(Qt::PointingHandCursor);
-    newBtn->setStyleSheet(
-        "QPushButton { background-color: #2a6fdb; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: bold; }"
-        "QPushButton:hover { background-color: #3a7feb; }"
-        "QPushButton:pressed { background-color: #1a5fcb; }"
-    );
+    newBtn->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: bold; }"
+        "QPushButton:hover { background-color: %2; }"
+        "QPushButton:pressed { background-color: %3; }")
+        .arg(ThemeColors::accent().name(), ThemeColors::accentBright().name(), ThemeColors::accentDim().name()));
     connect(newBtn, &QPushButton::clicked, this, &StartupDialog::onNewClicked);
     mainLayout->addWidget(newBtn);
 
@@ -60,17 +60,19 @@ StartupDialog::StartupDialog(QWidget* parent)
     recentFont.setPointSize(11);
     recentFont.setBold(true);
     recentLabel->setFont(recentFont);
-    recentLabel->setStyleSheet("color: #bbb;");
+    recentLabel->setStyleSheet(QString("color: %1;").arg(ThemeColors::textPrimary().name()));
     mainLayout->addWidget(recentLabel);
 
     // Recent projects list
     recentList = new QListWidget(this);
-    recentList->setStyleSheet(
-        "QListWidget { background-color: #252530; border: 1px solid #3a3a45; border-radius: 4px; }"
-        "QListWidget::item { padding: 8px; color: #ccc; }"
-        "QListWidget::item:hover { background-color: #333040; }"
-        "QListWidget::item:selected { background-color: #2a6fdb; color: white; }"
-    );
+    recentList->setStyleSheet(QString(
+        "QListWidget { background-color: %1; border: 1px solid %2; border-radius: 4px; }"
+        "QListWidget::item { padding: 8px; color: %3; }"
+        "QListWidget::item:hover { background-color: %4; }"
+        "QListWidget::item:selected { background-color: %5; color: white; }")
+        .arg(ThemeColors::bgWidget().name(), ThemeColors::border().name(),
+             ThemeColors::textSecondary().name(), ThemeColors::bgElevated().name(),
+             ThemeColors::accent().name()));
     recentList->setCursor(Qt::PointingHandCursor);
 
     // Populate from QSettings
@@ -97,11 +99,13 @@ StartupDialog::StartupDialog(QWidget* parent)
     auto* openBtn = new QPushButton("Open Other...");
     openBtn->setFixedHeight(36);
     openBtn->setCursor(Qt::PointingHandCursor);
-    openBtn->setStyleSheet(
-        "QPushButton { background-color: #353540; color: #ccc; border: 1px solid #4a4a55; border-radius: 4px; font-size: 13px; }"
-        "QPushButton:hover { background-color: #454550; }"
-        "QPushButton:pressed { background-color: #2a2a35; }"
-    );
+    openBtn->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: %2; border: 1px solid %3; border-radius: 4px; font-size: 13px; }"
+        "QPushButton:hover { background-color: %4; }"
+        "QPushButton:pressed { background-color: %5; }")
+        .arg(ThemeColors::bgWidget().name(), ThemeColors::textSecondary().name(),
+             ThemeColors::borderLight().name(), ThemeColors::bgElevated().name(),
+             ThemeColors::bgPanel().name()));
     connect(openBtn, &QPushButton::clicked, this, &StartupDialog::onOpenOtherClicked);
     mainLayout->addWidget(openBtn);
 
