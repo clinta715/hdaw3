@@ -20,6 +20,7 @@ public:
     void scanAll(ScanProgressCallback progressCb = nullptr);
     void abortScan() { abortRequested.store(true); }
     bool isLoading() const { return scanning.load(); }
+    int getLastScanCrashCount() const { return lastScanCrashCount; }
 
     const std::vector<juce::PluginDescription>& getPlugins() const { return knownPlugins; }
 
@@ -56,6 +57,13 @@ private:
 
     std::vector<juce::String> blacklistedIDs;
     juce::File blacklistFile;
+
+    // Isolated scanning
+    juce::File scannerExePath;
+    struct ScanResult { bool ok; juce::String name, manufacturer, category, format, file, id, error; };
+    ScanResult scanPluginIsolated(const juce::String& pluginPath);
+    juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
+    int lastScanCrashCount = 0;
 };
 
 } // namespace HDAW
