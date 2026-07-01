@@ -269,7 +269,7 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
         QString::fromUtf8(name.toRawUTF8()) + QString(enabled ? " (A)" : ""));
 
     // Grid
-    painter.setPen(QPen(QColor(255, 255, 255, 6), 1));
+    painter.setPen(QPen(ThemeColors::gridLineBeat(), 1));
     for (int b = 0; b < 100; ++b)
     {
         int x = static_cast<int>(b * pixelsPerSecond - scrollX);

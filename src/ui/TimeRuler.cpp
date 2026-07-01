@@ -164,7 +164,7 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
         double x = xFromTime(t);
         bool isBar = (static_cast<int>(beat) % 4 == 0);
 
-        painter->setPen(isBar ? QColor(255, 255, 255, 20) : QColor(255, 255, 255, 10));
+        painter->setPen(isBar ? ThemeColors::gridLineBar() : ThemeColors::gridLineBeat());
         painter->drawLine(QPointF(x, height - (isBar ? 12 : 6)), QPointF(x, height));
 
         if (isBar)
@@ -174,7 +174,7 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
             for (int s = 1; s < 4; ++s)
             {
                 double subX = x + s * secondsPerBeat * pixelsPerSecond;
-                painter->setPen(QColor(255, 255, 255, 5));
+                painter->setPen(ThemeColors::gridLineSub());
                 painter->drawLine(QPointF(subX, height - 4), QPointF(subX, height));
             }
         }

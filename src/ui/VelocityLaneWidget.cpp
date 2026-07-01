@@ -58,7 +58,7 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
     {
         int x = static_cast<int>(b * pixelsPerBeat - scrollX);
         if (x < -5 || x > w + 5) continue;
-        painter.setPen(QPen(QColor(255, 255, 255, 6), 1));
+        painter.setPen(QPen(ThemeColors::gridLineBeat(), 1));
         painter.drawLine(x, 0, x, h);
     }
 

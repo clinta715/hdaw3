@@ -137,7 +137,7 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
     }
 
     // Grid lines (octave colors)
-    painter.setPen(QPen(QColor(255, 255, 255, 3), 1));
+    painter.setPen(QPen(ThemeColors::gridLineSub(), 1));
     for (int n = 0; n < 128; ++n)
     {
         int y = static_cast<int>(n * keyHeight - scrollY);
@@ -145,12 +145,12 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         bool isCOctave = (n % 12 == 0);
         if (isCOctave)
         {
-            painter.setPen(QPen(QColor(255, 255, 255, 8), 1));
+            painter.setPen(QPen(ThemeColors::gridLineBeat(), 1));
             painter.drawLine(0, y, w, y);
         }
         else if (n % 12 == 4 || n % 12 == 7)
         {
-            painter.setPen(QPen(QColor(255, 255, 255, 5), 1));
+            painter.setPen(QPen(ThemeColors::gridLineSub(), 1));
             painter.drawLine(0, y, w, y);
         }
     }
@@ -162,14 +162,14 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         int x = static_cast<int>(b * pixelsPerBeat - scrollX);
         if (x < -5 || x > w + 5) continue;
         bool isBar = (b % 4 == 0);
-        painter.setPen(QPen(isBar ? QColor(255, 255, 255, 12) : QColor(255, 255, 255, 6), isBar ? 2 : 1));
+        painter.setPen(QPen(isBar ? ThemeColors::gridLineBar() : ThemeColors::gridLineBeat(), isBar ? 2 : 1));
         painter.drawLine(x, 0, x, h);
     }
 
     // Snap grid lines (faint vertical lines at snap division boundaries)
     if (snapEnabled && snapDivision > 0.0)
     {
-        painter.setPen(QPen(QColor(255, 255, 255, 4), 1));
+        painter.setPen(QPen(ThemeColors::gridLineSub(), 1));
         double snappedBeats = static_cast<double>(w + scrollX) / pixelsPerBeat + 1;
         for (int si = 0; si <= static_cast<int>(snappedBeats / snapDivision); ++si)
         {

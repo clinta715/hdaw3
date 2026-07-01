@@ -37,7 +37,7 @@ void PianoRollRuler::paintEvent(QPaintEvent*)
 
         bool isBar = (beat % 4 == 0);
 
-        painter.setPen(isBar ? QColor(255, 255, 255, 20) : QColor(255, 255, 255, 10));
+        painter.setPen(isBar ? ThemeColors::gridLineBar() : ThemeColors::gridLineBeat());
         painter.drawLine(x, isBar ? h - 14 : h - 6, x, h);
 
         if (isBar)
