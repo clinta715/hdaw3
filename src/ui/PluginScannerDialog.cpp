@@ -95,6 +95,12 @@ void PluginScannerDialog::refreshList()
             continue;
 
         auto name = juce::String(desc.name) + " (" + juce::String(desc.manufacturerName) + ")";
+        if (bl)
+        {
+            auto reason = pluginManager.getBlacklistReason(desc.fileOrIdentifier);
+            if (reason == "crash")
+                name += " — crashed during scan";
+        }
         auto* item = new QListWidgetItem(QString::fromUtf8(name.toRawUTF8()));
         item->setData(Qt::UserRole, QString::fromUtf8(desc.fileOrIdentifier.toRawUTF8()));
         item->setData(Qt::UserRole + 1, bl);
