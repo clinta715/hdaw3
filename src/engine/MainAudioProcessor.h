@@ -9,6 +9,7 @@
 #include "PluginManager.h"
 #include "AudioRecorder.h"
 #include "ExportManager.h"
+#include "Metronome.h"
 #include "../model/ProjectModel.h"
 #include <memory>
 
@@ -30,6 +31,7 @@ public:
 
     HDAW::LevelMeter& getMasterMeter();
     HDAW::RoutingManager* getRoutingManager() const { return routingManager.get(); }
+    HDAW::Metronome& getMetronome() { return metronome; }
     void rebuildTrackFX(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
@@ -79,6 +81,7 @@ private:
     std::unique_ptr<HDAW::RoutingManager> routingManager;
     std::unique_ptr<HDAW::AudioRecorder> audioRecorder;
     int64_t recordingStartSample = 0;
+    HDAW::Metronome metronome;
     HDAW::ExportManager exportManager;
 
     juce::SpinLock graphLock;

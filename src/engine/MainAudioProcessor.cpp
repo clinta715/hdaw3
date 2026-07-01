@@ -21,6 +21,9 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     if (projectModel == nullptr || transportManager == nullptr || formatManager == nullptr) return;
 
+    transportManager->setSampleRate(sampleRate);
+    metronome.prepareToPlay(sampleRate);
+
     routingManager = std::make_unique<HDAW::RoutingManager>(
         graph, *projectModel, *formatManager, *transportManager, pluginManager);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
@@ -83,7 +86,10 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     }
 
     if (transportManager != nullptr)
+    {
+        metronome.processBlock(buffer, *transportManager);
         transportManager->advance(buffer.getNumSamples());
+    }
 }
 
 bool MainAudioProcessor::startRecording()

@@ -168,6 +168,11 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             double t = treeWhosePropertyHasChanged.getProperty(IDs::loopEnd);
             transportManager.setLoopEndSample(static_cast<int64_t>(t * transportManager.getSampleRate()));
         }
+        else if (property == IDs::metronomeEnabled)
+        {
+            mainProcessor->getMetronome().setEnabled(
+                treeWhosePropertyHasChanged.getProperty(IDs::metronomeEnabled));
+        }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::PROJECT))
     {
