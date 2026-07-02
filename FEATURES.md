@@ -46,7 +46,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 
 ### Plugin Hosting
 - [ ] **Plugin presets** — save/recall/load plugin factory presets
-- [ ] **Plugin state save/load per slot** — `getStateInformation`/`setStateInformation` wired to project
+- [x] **Plugin state save/load per slot** — `getStateInformation`/`setStateInformation` wired to project ✅ Done (base64 in FX_SLOT.pluginState; round-trip tested)
 - [ ] **FX chain presets** — save/load entire FX chain configurations
 - [ ] **FX A/B comparison** — compare two plugin states
 - [ ] **Plugin categorization / tagging** — organize plugins by type/instrument/effect
@@ -196,3 +196,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Clip clipboard (cut/copy/paste/duplicate)
 - [x] MIDI CC automation recording (mod wheel, expression, etc.)
 - [x] Status bar (BPM, time sig, sample rate, track, MIDI, REC, selection)
+- [x] Plugin state save/load per slot (base64 in project file)
