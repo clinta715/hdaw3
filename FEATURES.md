@@ -205,3 +205,6 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Bugfix: marker double-offset paint, click-to-seek, undo coalescing
 - [x] Bugfix: multi-clip paste relative offsets, duplicate clipboard clobber
 - [x] Bugfix: midiCcRecordArmed data race (now atomic<bool>)
+- [x] Preferences: Audio Settings (driver/device/SR/buffer), MIDI device persistence, count-in bars
+- [x] MCP HTTP host configurable via Preferences (was hardcoded 127.0.0.1)
+- [x] `--no-mcp` CLI flag implemented (disables MCP HTTP auto-start)

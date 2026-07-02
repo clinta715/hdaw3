@@ -102,10 +102,16 @@ pipeline and the rationale.
 - MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
 - Audio export to WAV (Export dialog).
 - Metronome with count-in/pre-roll, time signature support.
-- MIDI hardware input with device selection.
+- MIDI hardware input with device selection and persistence across
+  launches.
 - Per-track input monitoring toggle.
 - Automation recording — fader/knob movements captured during
   playback.
+- Preferences dialog with Audio Settings (driver, output/input
+  device, sample rate, buffer size, latency display), MIDI device
+  persistence, count-in bars configuration.
+- MCP HTTP server host is configurable in Preferences (defaults to
+  `127.0.0.1`). `--no-mcp` CLI flag fully implemented.
 
 ## MCP server
 
@@ -202,6 +208,7 @@ src/
     ProjectPool.h
     ProjectSerializer.{h,cpp}
     PluginManager.{h,cpp}
+    ClipClipboard.{h,cpp}        — multi-clip copy/cut/paste
     ...
   model/
     ProjectModel.{h,cpp}         — juce::ValueTree project schema
@@ -227,11 +234,21 @@ src/
     AutomationLaneWidget.{h,cpp} — per-track automation editor
     ProjectPoolBrowser.{h,cpp}   — file pool side panel
     PluginScannerDialog.{h,cpp}  — plugin scanner
-    PreferencesDialog.{h,cpp}    — preferences
+    PreferencesDialog.{h,cpp}    — preferences (audio, MIDI, MCP)
     ExportDialog.{h,cpp}         — audio export
+    MarkerItem.{h,cpp}           — time ruler markers
+    StatusBar.{h,cpp}            — status bar widgets
     VUMeter.{h,cpp}              — VU meter widget
     DebugLog.h                   — HDAW_LOG macro
     Theme.h                      — dark theme tokens
+  mcp/                           — MCP server
+    McpServer.{h,cpp}            — core server, tool dispatch
+    McpTools.{h,cpp}             — tool registrations (36 tools)
+    McpTransport.{h}             — transport interface
+    McpTransportStdio.{h,cpp}    — stdio transport
+    McpTransportHttp.{h,cpp}     — HTTP transport (configurable host)
+    McpJsonRpc.{h,cpp}           — JSON-RPC framing
+    McpSchema.{h,cpp}            — JSON-Schema validator
 cmake/
   JUCEHelper.cmake               — wraps FetchContent for JUCE
 CMakeLists.txt                   — top-level build script

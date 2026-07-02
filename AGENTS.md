@@ -11,7 +11,8 @@ JUCE plugin hosting, internal FX) and the basic UI shell
 automation) work end-to-end. v0.3.x added the MCP server and a
 gtest test suite. **v0.4.x** adds multi-clip selection, clipboard,
 markers, MIDI CC recording, MIDI channel routing, FX drag-reorder,
-status bar, zoom-to-fit, and a bugfix pass (11 bugs fixed in
+status bar, zoom-to-fit, expanded preferences (audio settings,
+MIDI persistence, count-in), and a bugfix pass (11 bugs fixed in
 v0.4.1). For the full list of working features and the
 priority-ordered roadmap, see `README.md`.
 
@@ -281,8 +282,8 @@ composition (`PhraseGenerator`), FX, automation, undo, and audio export.
   (`src/mcp/McpTransport.h`): `McpTransportStdio` (newline-delimited
   JSON over `stdin`/`stdout`, with a dedicated reader thread that
   posts requests to the server via `Qt::QueuedConnection`) and
-  `McpTransportHttp` (Streamable HTTP on `127.0.0.1`, loopback only,
-  no auth). `McpTransportLoopback` is the in-memory test transport.
+  `McpTransportHttp` (Streamable HTTP, configurable host via Preferences
+  `mcp/httpHost`, defaults to `127.0.0.1`, no auth). `McpTransportLoopback` is the in-memory test transport.
 - **Tool safety**: every destructive tool (`remove_*`, `clear_notes`,
   `duplicate_clip`, `export_audio`) accepts `dryRun: true` and reports
   what it would do without mutating. Every mutation goes through the
