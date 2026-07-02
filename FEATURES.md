@@ -57,7 +57,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Multi-select clips** — select multiple clips in timeline (rubber band, Ctrl+click) ✅ Done
 - [x] **Clipboard for clips** — copy/paste clips in timeline ✅ Done (Ctrl+C/X/V/D, deep copy of MIDI notes)
 - [ ] **Marker track** — named markers at positions, marker navigation
-- [ ] **Zoom-to-fit** — auto-zoom to show all content or selection
+- [x] **Zoom-to-fit** — auto-zoom to show all content or selection ✅ Done (F = all, Shift+F = selection)
 - [x] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel ✅ Done
 - [ ] **Drag-reorder FX slots** — reorder plugins in FX chain via drag
 - [x] **Search/filter in plugin list** — search plugins by name in add-FX menu ✅ Done
@@ -197,3 +197,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] MIDI CC automation recording (mod wheel, expression, etc.)
 - [x] Status bar (BPM, time sig, sample rate, track, MIDI, REC, selection)
 - [x] Plugin state save/load per slot (base64 in project file)
+- [x] Zoom-to-fit (F = all clips, Shift+F = selection)
