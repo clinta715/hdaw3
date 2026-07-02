@@ -6,6 +6,7 @@
 #include "AutomationLaneWidget.h"
 #include "AudioClipEditorWidget.h"
 #include "StepEditorWidget.h"
+#include "StatusBar.h"
 #include "StartupDialog.h"
 #include "AboutDialog.h"
 #include "PhraseGeneratorDialog.h"
@@ -325,8 +326,20 @@ void MainWindow::stopMcpHttpServer()
 
 void MainWindow::setupLayout()
 {
-    setStatusBar(new QStatusBar(this));
-    statusBar()->showMessage("Ready");
+    // Build a custom status bar widget with permanent fields (BPM, time
+    // signature, sample rate, selected track, MIDI device, etc.). The
+    // built-in QStatusBar is kept around for transient message overlays
+    // via statusBar()->showMessage().
+    auto* qsb = new QStatusBar(this);
+    setStatusBar(qsb);
+    statusBarWidget = new StatusBar(engine, this);
+    qsb->addWidget(statusBarWidget, 1);
+
+    // Keep a QLabel for transient messages alongside the permanent widget.
+    auto* transientLabel = new QLabel(this);
+    transientLabel->setStyleSheet("color: #c8c8cc; padding: 1px 6px;");
+    qsb->addPermanentWidget(transientLabel);
+    qsb->showMessage("Ready");
 
     timelineView = new TimelineView(engine, this);
     browserPanel = new ProjectPoolBrowser(engine, this);
@@ -440,6 +453,8 @@ void MainWindow::connectTimelineSignals()
         int count = 0;
         for (auto* item : scene->selectedItems())
             if (dynamic_cast<ClipItem*>(item) != nullptr) ++count;
+        if (statusBarWidget)
+            statusBarWidget->setSelectionCount(count);
         if (count == 0)
             statusBar()->clearMessage();
         else if (count == 1)
@@ -464,6 +479,13 @@ void MainWindow::connectTimelineSignals()
                 fxChainWidget->loadTrack(trackIndex);
             if (idx == 3 && selectedTrack >= 0)
                 automationWidget->loadTrack(trackIndex);
+            if (statusBarWidget)
+            {
+                QString name = (trackIndex >= 0)
+                    ? QString::fromUtf8(engine.getTrackName(trackIndex).toRawUTF8())
+                    : QString();
+                statusBarWidget->setSelectedTrack(trackIndex, name);
+            }
         });
 
     connect(timelineView, &TimelineView::addTrackClicked, this, &MainWindow::onAddTrack);
@@ -903,6 +925,13 @@ void MainWindow::updateTimecode()
         audioEditorWidget->updatePlayhead(seconds);
     if (pianoRollWidget)
         pianoRollWidget->setPlayheadPosition(seconds, bpm);
+
+    // Refresh the permanent status bar fields
+    if (statusBarWidget)
+    {
+        statusBarWidget->setBPM(bpm);
+        statusBarWidget->setSampleRate(sr);
+    }
 }
 
 void MainWindow::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)
@@ -1144,6 +1173,8 @@ void MainWindow::onTimeSigChanged(int numerator, int denominator)
     auto transport = model.getTransportTree();
     transport.setProperty(IDs::timeSigNumerator, numerator, &model.getUndoManager());
     transport.setProperty(IDs::timeSigDenominator, denominator, &model.getUndoManager());
+    if (statusBarWidget)
+        statusBarWidget->setTimeSignature(numerator, denominator);
 }
 
 void MainWindow::onInputMonitoringChanged(int trackIndex, bool enabled)
@@ -1162,6 +1193,8 @@ void MainWindow::onMidiDeviceChanged(const QString& deviceIdentifier)
         midiMgr.closeDevice();
     else
         midiMgr.openDevice(deviceIdentifier.toStdString().c_str());
+    if (statusBarWidget)
+        statusBarWidget->setMidiDevice(deviceIdentifier);
 }
 
 void MainWindow::onRecordToggle()
@@ -1171,6 +1204,7 @@ void MainWindow::onRecordToggle()
     {
         proc->stopRecording();
         engine.getTransportManager().setPlaying(false);
+        if (statusBarWidget) statusBarWidget->setRecording(false);
         statusBar()->showMessage("Recording stopped", 3000);
     }
     else
@@ -1178,6 +1212,7 @@ void MainWindow::onRecordToggle()
         if (proc->startRecording())
         {
             engine.getTransportManager().setPlaying(true);
+            if (statusBarWidget) statusBarWidget->setRecording(true);
             statusBar()->showMessage("Recording...", 0);
         }
     }

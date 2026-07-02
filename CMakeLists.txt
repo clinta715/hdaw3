@@ -147,6 +147,8 @@ add_executable(HDAW
     src/ui/PianoRollRuler.cpp
     src/ui/StepEditorWidget.h
     src/ui/StepEditorWidget.cpp
+    src/ui/StatusBar.h
+    src/ui/StatusBar.cpp
     src/ui/StartupDialog.h
     src/ui/StartupDialog.cpp
     src/ui/AboutDialog.h

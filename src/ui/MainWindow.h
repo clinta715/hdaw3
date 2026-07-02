@@ -23,6 +23,7 @@ class AutomationLaneWidget;
 class AudioClipEditorWidget;
 class StepEditorWidget;
 class ProjectPoolBrowser;
+class StatusBar;
 
 class MainWindow : public QMainWindow
                  , private juce::ValueTree::Listener
@@ -104,6 +105,7 @@ private:
     AutomationLaneWidget* automationWidget;
     AudioClipEditorWidget* audioEditorWidget;
     StepEditorWidget* stepEditorWidget;
+    StatusBar* statusBarWidget = nullptr;
 
     QAction* undoAction = nullptr;
     QAction* redoAction = nullptr;
