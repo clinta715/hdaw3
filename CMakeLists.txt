@@ -128,6 +128,8 @@ add_executable(HDAW
     src/ui/PlayheadCursor.cpp
     src/ui/LoopMarker.h
     src/ui/LoopMarker.cpp
+    src/ui/MarkerItem.h
+    src/ui/MarkerItem.cpp
     src/ui/MixerWidget.h
     src/ui/MixerWidget.cpp
     src/ui/MixerStripWidget.h

@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QScrollBar>
+#include <vector>
 #include "../engine/AudioEngine.h"
 #include "../engine/ClipClipboard.h"
 #include "TimelineScene.h"
@@ -12,9 +13,10 @@
 #include "TimeRuler.h"
 #include "PlayheadCursor.h"
 #include "LoopMarker.h"
+#include "MarkerItem.h"
 #include "TimelineInteraction.h"
 
-class TimelineView : public QWidget
+class TimelineView : public QWidget, private juce::ValueTree::Listener
 {
     Q_OBJECT
 public:
@@ -76,6 +78,11 @@ private:
     void connectSignals();
     void syncRulerWithScene();
 
+    // ValueTree listener — fires when the project tree changes (markers, etc.)
+    void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved) override;
+
     bool eventFilter(QObject* obj, QEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void handleFileDrop(const QString& filePath, QPointF scenePos);
@@ -97,6 +104,17 @@ private:
     PlayheadCursor* playheadCursor;
     LoopMarker* loopStartMarker;
     LoopMarker* loopEndMarker;
+
+    // Marker items, indexed by their underlying MARKER ValueTree. We
+    // listen to the MARKER_LIST subtree of the project tree and create /
+    // destroy MarkerItem objects as markers are added or removed.
+    std::vector<MarkerItem*> markerItems;
+    juce::ValueTree markerListTree;
+    void syncMarkers();
+    MarkerItem* findMarkerItem(const juce::ValueTree& markerTree);
+    void onMarkerPropertyChanged(const juce::ValueTree& markerTree, const juce::Identifier& property);
+    void onMarkerAdded(const juce::ValueTree& markerTree);
+    void onMarkerRemoved(const juce::ValueTree& markerTree);
 
     double pixelsPerSecond = 10.0;
     static constexpr double zoomFactor = 1.5;

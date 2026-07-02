@@ -1,6 +1,8 @@
 #include "TimelineView.h"
 #include "Theme.h"
 #include <QScrollBar>
+#include <QInputDialog>
+#include <QApplication>
 #include <limits>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -23,11 +25,21 @@ TimelineView::TimelineView(AudioEngine& ae, QWidget* parent)
 {
     setupUI();
     connectSignals();
+
+    // Register as a ValueTree listener on the project tree so we can
+    // observe MARKER_LIST mutations. The listener is removed in the
+    // destructor by the ValueTree's own bookkeeping.
+    engine.getProjectModel().getTree().addListener(this);
+    syncMarkers();
 }
 
 TimelineView::~TimelineView()
 {
+    engine.getProjectModel().getTree().removeListener(this);
     playheadCursor->stopSync();
+    for (auto* m : markerItems)
+        if (m) delete m;
+    markerItems.clear();
 }
 
 void TimelineView::showEvent(QShowEvent* event)
@@ -224,6 +236,10 @@ void TimelineView::setZoom(double factor)
     // Update loop marker positions
     loopStartMarker->setPos(rulerItem->xFromTime(rulerItem->getLoopStart()), 0);
     loopEndMarker->setPos(rulerItem->xFromTime(rulerItem->getLoopEnd()), 0);
+
+    // Update marker item zoom too
+    for (auto* m : markerItems)
+        if (m) m->setPixelsPerSecond(pixelsPerSecond);
 
     update();
 }
@@ -892,4 +908,165 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     clipList.addChild(clip, -1, &model.getUndoManager());
 
     engine.getMainProcessor()->rebuildRoutingGraph();
+}
+
+// ------------------------------------------------------------------
+// Marker management
+// ------------------------------------------------------------------
+
+void TimelineView::syncMarkers()
+{
+    auto& model = engine.getProjectModel();
+    auto projectTree = model.getTree();
+    auto newList = projectTree.getChildWithName(IDs::MARKER_LIST);
+
+    // Drop removed items, add new items. Properties (name, time, color)
+    // are reflected in the existing MarkerItem via its paint() so we
+    // just need to call update().
+    if (markerListTree != newList)
+    {
+        // List pointer changed (e.g. after a project load) — rebuild from
+        // scratch.
+        for (auto* m : markerItems)
+            if (m) delete m;
+        markerItems.clear();
+        markerListTree = newList;
+    }
+    if (!markerListTree.isValid())
+        return;
+
+    // Remove MarkerItem entries whose ValueTree is no longer in the list.
+    for (size_t i = 0; i < markerItems.size(); )
+    {
+        auto* m = markerItems[i];
+        bool found = false;
+        for (int j = 0; j < markerListTree.getNumChildren(); ++j)
+            if (markerListTree.getChild(j) == m->getMarkerTree()) { found = true; break; }
+        if (!found)
+        {
+            delete m;
+            markerItems.erase(markerItems.begin() + i);
+        }
+        else
+        {
+            ++i;
+        }
+    }
+
+    // Add new items for any marker we don't have a MarkerItem for.
+    for (int j = 0; j < markerListTree.getNumChildren(); ++j)
+    {
+        auto markerTree = markerListTree.getChild(j);
+        bool found = false;
+        for (auto* m : markerItems)
+            if (m && m->getMarkerTree() == markerTree) { found = true; break; }
+        if (!found)
+            onMarkerAdded(markerTree);
+    }
+
+    for (auto* m : markerItems)
+        if (m) m->setPixelsPerSecond(pixelsPerSecond);
+}
+
+MarkerItem* TimelineView::findMarkerItem(const juce::ValueTree& markerTree)
+{
+    for (auto* m : markerItems)
+        if (m && m->getMarkerTree() == markerTree)
+            return m;
+    return nullptr;
+}
+
+void TimelineView::onMarkerAdded(const juce::ValueTree& markerTree)
+{
+    auto* m = new MarkerItem(markerTree, engine);
+    m->setPixelsPerSecond(pixelsPerSecond);
+    timelineScene->addItem(m);
+
+    // Place at the marker's stored time, just above the time ruler.
+    double t = markerTree.getProperty(IDs::markerTime);
+    m->setPos(t * pixelsPerSecond, rulerItem->pos().y());
+
+    connect(m, &MarkerItem::markerClicked, this, [this](double time) {
+        // Seek the playhead to the marker position.
+        auto& tm = engine.getTransportManager();
+        double sr = tm.getSampleRate();
+        if (sr <= 0) sr = 44100.0;
+        tm.setCurrentSample(static_cast<int64_t>(time * sr));
+        auto transport = engine.getProjectModel().getTransportTree();
+        transport.setProperty(IDs::position, time, nullptr);
+    });
+    connect(m, &MarkerItem::markerDeleteRequested, this, [this](juce::ValueTree tree) {
+        if (markerListTree.isValid() && tree.getParent() == markerListTree)
+            markerListTree.removeChild(tree, &engine.getProjectModel().getUndoManager());
+    });
+    connect(m, &MarkerItem::markerRenameRequested, this, [this](juce::ValueTree tree) {
+        bool ok = false;
+        QString newName = QInputDialog::getText(
+            QApplication::activeWindow(), "Rename Marker", "Marker name:",
+            QLineEdit::Normal, QString::fromUtf8(tree.getProperty(IDs::markerName).toString().toRawUTF8()),
+            &ok);
+        if (ok)
+            tree.setProperty(IDs::markerName, newName.toUtf8().constData(),
+                             &engine.getProjectModel().getUndoManager());
+    });
+
+    markerItems.push_back(m);
+}
+
+void TimelineView::onMarkerRemoved(const juce::ValueTree& markerTree)
+{
+    for (size_t i = 0; i < markerItems.size(); ++i)
+    {
+        if (markerItems[i] && markerItems[i]->getMarkerTree() == markerTree)
+        {
+            delete markerItems[i];
+            markerItems.erase(markerItems.begin() + i);
+            return;
+        }
+    }
+}
+
+void TimelineView::onMarkerPropertyChanged(const juce::ValueTree& markerTree,
+                                           const juce::Identifier& property)
+{
+    auto* m = findMarkerItem(markerTree);
+    if (m == nullptr) return;
+    if (property == IDs::markerTime)
+    {
+        double t = markerTree.getProperty(IDs::markerTime);
+        m->setPos(t * pixelsPerSecond, rulerItem->pos().y());
+    }
+    m->update();
+}
+
+void TimelineView::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged,
+                                            const juce::Identifier& property)
+{
+    if (treeWhosePropertyHasChanged.hasType(IDs::MARKER))
+        onMarkerPropertyChanged(treeWhosePropertyHasChanged, property);
+}
+
+void TimelineView::valueTreeChildAdded(juce::ValueTree& parentTree,
+                                       juce::ValueTree& childWhichHasBeenAdded)
+{
+    if (parentTree.hasType(IDs::PROJECT) && childWhichHasBeenAdded.hasType(IDs::MARKER_LIST))
+    {
+        markerListTree = childWhichHasBeenAdded;
+        syncMarkers();
+    }
+    else if (parentTree == markerListTree && childWhichHasBeenAdded.hasType(IDs::MARKER))
+    {
+        onMarkerAdded(childWhichHasBeenAdded);
+    }
+}
+
+void TimelineView::valueTreeChildRemoved(juce::ValueTree& parentTree,
+                                         juce::ValueTree& childWhichHasBeenRemoved,
+                                         int indexFromWhichItWasRemoved)
+{
+    juce::ignoreUnused(indexFromWhichItWasRemoved);
+    if (parentTree == markerListTree && childWhichHasBeenRemoved.hasType(IDs::MARKER))
+    {
+        onMarkerRemoved(childWhichHasBeenRemoved);
+    }
 }

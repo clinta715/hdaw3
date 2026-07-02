@@ -61,6 +61,13 @@ namespace IDs {
     DECLARE_ID(isLooping)
     DECLARE_ID(metronomeEnabled)
 
+    // Markers (named navigation points)
+    DECLARE_ID(MARKER_LIST)
+    DECLARE_ID(MARKER)
+    DECLARE_ID(markerTime)
+    DECLARE_ID(markerName)
+    DECLARE_ID(markerColor)
+
     // Routing
     DECLARE_ID(ROUTING_GRAPH)
     DECLARE_ID(BUS_LIST)

@@ -278,6 +278,32 @@ void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
             &engine.getProjectModel().getUndoManager());
     });
 
+    menu.addSeparator();
+
+    auto* addMarker = menu.addAction("Add Marker Here...");
+    connect(addMarker, &QAction::triggered, this, [this, t]() {
+        bool ok = false;
+        QString name = QInputDialog::getText(
+            QApplication::activeWindow(), "Add Marker",
+            "Marker name:", QLineEdit::Normal,
+            QString("Marker %1").arg(t, 0, 'f', 2), &ok);
+        if (!ok) return;
+
+        auto& model = engine.getProjectModel();
+        auto projectTree = model.getTree();
+        auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
+        if (!markerList.isValid())
+        {
+            markerList = juce::ValueTree(IDs::MARKER_LIST);
+            projectTree.addChild(markerList, -1, &model.getUndoManager());
+        }
+        juce::ValueTree marker(IDs::MARKER);
+        marker.setProperty(IDs::markerTime, t, &model.getUndoManager());
+        marker.setProperty(IDs::markerName, name.toUtf8().constData(), &model.getUndoManager());
+        marker.setProperty(IDs::markerColor, static_cast<int>(0xFF59e0c4), nullptr);
+        markerList.addChild(marker, -1, &model.getUndoManager());
+    });
+
     menu.exec(event->screenPos());
     event->accept();
 }
