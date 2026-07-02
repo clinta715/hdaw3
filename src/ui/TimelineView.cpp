@@ -436,8 +436,9 @@ void TimelineView::pasteClips()
         }
 
         // Offset paste so the earliest source start lands at origin.
+        double minStart = HDAW::ClipClipboard::getMeta().minStartTime;
         double srcStart = entry.clipTree.getProperty(IDs::startTime);
-        double newStart = originSeconds + (srcStart - entry.sourceStartTime);
+        double newStart = originSeconds + (srcStart - minStart);
         if (newStart < 0.0) newStart = 0.0;
 
         // Deep copy again so each paste is independent.
@@ -461,11 +462,24 @@ void TimelineView::duplicateSelectedClips()
         return;
     auto& um = engine.getProjectModel().getUndoManager();
     um.beginNewTransaction("Duplicate clips");
-    copySelectedClips();
 
-    auto& entries = HDAW::ClipClipboard::getClips();
+    // Build local copies without touching the global clipboard.
+    auto selected = interaction->getSelectedClips();
+    if (selected.isEmpty())
+        return;
+    std::vector<HDAW::ClipboardEntry> entries;
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
+    for (auto* clip : selected)
+    {
+        auto clipTree = clip->getClipTree();
+        auto trackTree = ProjectModel::getTrackOfClip(clipTree);
+        int trackIdx = trackList.indexOf(trackTree);
+        HDAW::ClipboardEntry entry = HDAW::ClipClipboard::deepCopy(clipTree);
+        entry.sourceTrackIndex = trackIdx;
+        entries.push_back(entry);
+    }
+
     int numTracks = trackList.getNumChildren();
 
     for (const auto& entry : entries)

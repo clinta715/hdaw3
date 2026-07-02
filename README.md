@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.4.0
+**Current version**: 0.4.1
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.4.0)
+## What works today (v0.4.1)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -52,6 +52,12 @@ pipeline and the rationale.
 - Right-click empty timeline area for Add Track, Add MIDI Clip,
   Set BPM, Add Tempo Change.
 - Right-click a clip for Delete / Open in Editor.
+- Multi-clip selection (rubber band, Ctrl+click, Shift+click range,
+  Ctrl+A). Move, delete, cut, copy, paste, duplicate selected clips
+  (Ctrl+C/X/V/D). Paste offsets clips relative to the playhead.
+- Named markers on the time ruler (right-click ruler → Add Marker).
+  Click to seek, drag to move, double-click to rename.
+- Zoom-to-fit: press F to fit all clips, Shift+F to fit selection.
 
 ### Clip interaction
 - **MIDI clips**: double-click opens the Piano Roll. Notes can
@@ -74,8 +80,12 @@ pipeline and the rationale.
 ### Mixer
 - Per-track channel strip with volume fader, pan, mute, solo,
   record-arm, automation toggle, VU meter.
-- Per-track FX chain editor in the FX Chain panel.
+- Per-track FX chain editor in the FX Chain panel. Drag the handle
+  to reorder slots, or use the up/down arrows.
+- Per-track MIDI channel routing (1-16) via track header context menu.
 - Per-track automation lane editor in the Automation panel.
+- MIDI CC automation recording (CC Rec toolbar button captures
+  incoming controller events during playback).
 
 ### Audio engine
 - JUCE 8 audio device management with `AudioDeviceManager`.

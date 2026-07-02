@@ -1,5 +1,10 @@
 #include "FXChainWidget.h"
 #include <QHBoxLayout>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <algorithm>
 
 FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -33,6 +38,13 @@ FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
 
     scrollArea->setWidget(slotContainer);
     mainLayout->addWidget(scrollArea, 1);
+
+    // Enable drag-and-drop reordering on the slot container. The drop
+    // position is determined by the drop Y coordinate, mapped to the
+    // nearest slot boundary. FXChainWidget intercepts the events via
+    // an event filter so we don't have to subclass QWidget.
+    slotContainer->setAcceptDrops(true);
+    slotContainer->installEventFilter(this);
 
     // Add FX button
     auto* addBtn = new QPushButton("+ Add FX", this);
@@ -181,4 +193,83 @@ void FXChainWidget::addFXSlot(const juce::String& type)
 
     rebuildUI();
     emit chainChanged();
+}
+
+int FXChainWidget::indexAtDropY(int y) const
+{
+    // Walk the layout's child widgets in order, accumulating heights.
+    // The drop index is the slot whose top-to-midpoint the y crosses.
+    if (slotLayout == nullptr) return -1;
+    int cumulative = 0;
+    int count = slotLayout->count();
+    int result = 0;
+    for (int i = 0; i < count; ++i)
+    {
+        QLayoutItem* item = slotLayout->itemAt(i);
+        QWidget* w = item ? item->widget() : nullptr;
+        if (w == nullptr) continue; // skip the trailing stretch
+        int h = w->height();
+        if (h == 0) h = 60; // not laid out yet — assume ~60px
+        int mid = cumulative + h / 2;
+        if (y < mid)
+            return i;
+        cumulative += h + slotLayout->spacing();
+        result = i + 1;
+    }
+    return result;
+}
+
+bool FXChainWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (obj == slotContainer)
+    {
+        if (event->type() == QEvent::DragEnter)
+        {
+            static const QString mimeType = "application/x-hdaw-fxslot";
+            auto* e = static_cast<QDragEnterEvent*>(event);
+            if (e->mimeData()->hasFormat(mimeType))
+                e->acceptProposedAction();
+        }
+        else if (event->type() == QEvent::DragMove)
+        {
+            auto* e = static_cast<QDragMoveEvent*>(event);
+            e->acceptProposedAction();
+        }
+        else if (event->type() == QEvent::Drop)
+        {
+            static const QString mimeType = "application/x-hdaw-fxslot";
+            auto* e = static_cast<QDropEvent*>(event);
+            if (!e->mimeData()->hasFormat(mimeType))
+            {
+                e->ignore();
+                return QWidget::eventFilter(obj, event);
+            }
+            int fromIndex = e->mimeData()->data(mimeType).toInt();
+            int toIndex = indexAtDropY(e->pos().y());
+            if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex)
+            {
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (currentTrack >= 0 && currentTrack < trackList.getNumChildren())
+                {
+                    auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
+                    if (c.isValid() && fromIndex < c.getNumChildren())
+                    {
+                        // moveChild rotates the element to position
+                        // toIndex, but indexAtDropY returns an insertion
+                        // point. For downward drags the source removal
+                        // shifts items, so decrement to compensate.
+                        if (fromIndex < toIndex)
+                            toIndex--;
+                        toIndex = std::clamp(toIndex, 0, c.getNumChildren() - 1);
+                        c.moveChild(fromIndex, toIndex,
+                                    &engine.getProjectModel().getUndoManager());
+                        rebuildUI();
+                        emit chainChanged();
+                    }
+                }
+            }
+            e->acceptProposedAction();
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }

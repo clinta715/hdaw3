@@ -5,13 +5,15 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.3.x**. The core engine (project model, transport, routing,
+**0.4.1**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the basic UI shell
 (track headers, timeline, mixer, piano roll, FX chain,
-automation) work end-to-end. The project is pre-1.0 and
-pre-per-clip-audio-editor. **v0.3.x** adds the MCP server (see
-"MCP server" below) and a gtest test suite. For the full list of
-working features and the priority-ordered roadmap, see `README.md`.
+automation) work end-to-end. v0.3.x added the MCP server and a
+gtest test suite. **v0.4.x** adds multi-clip selection, clipboard,
+markers, MIDI CC recording, MIDI channel routing, FX drag-reorder,
+status bar, zoom-to-fit, and a bugfix pass (11 bugs fixed in
+v0.4.1). For the full list of working features and the
+priority-ordered roadmap, see `README.md`.
 
 ## Build
 

@@ -38,12 +38,13 @@ void MarkerItem::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidg
 {
     painter->setRenderHint(QPainter::Antialiasing);
 
-    double t = markerTree.getProperty(IDs::markerTime);
     juce::String name = markerTree.getProperty(IDs::markerName).toString();
     int colorInt = markerTree.getProperty(IDs::markerColor, static_cast<int>(0xFF59e0c4));
     QColor markerColor = QColor::fromRgba(static_cast<QRgb>(colorInt));
 
-    double x = t * pixelsPerSecond;
+    // The item's pos() already encodes the time offset (t * pixelsPerSecond),
+    // so paint at local x = 0 — matching the LoopMarker pattern.
+    double x = 0.0;
 
     // Vertical line (down through the ruler)
     painter->setPen(QPen(markerColor, 1, Qt::SolidLine));
@@ -74,8 +75,11 @@ void MarkerItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
     if (event->button() == Qt::LeftButton)
     {
         dragging = true;
+        dragMoved = false;
         dragStartX = event->scenePos().x();
         dragStartTime = markerTree.getProperty(IDs::markerTime);
+        auto& um = engine.getProjectModel().getUndoManager();
+        um.beginNewTransaction("Move marker");
         event->accept();
     }
     else if (event->button() == Qt::RightButton)
@@ -88,6 +92,8 @@ void MarkerItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     if (!dragging) return;
     double dx = event->scenePos().x() - dragStartX;
+    if (std::abs(dx) > 1.0)
+        dragMoved = true;
     double newTime = (std::max)(0.0, dragStartTime + dx / pixelsPerSecond);
     auto& um = engine.getProjectModel().getUndoManager();
     markerTree.setProperty(IDs::markerTime, newTime, &um);
@@ -99,8 +105,17 @@ void MarkerItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
     if (dragging && event->button() == Qt::LeftButton)
     {
         dragging = false;
-        double newTime = markerTree.getProperty(IDs::markerTime);
-        emit markerMoved(markerTree, newTime);
+        if (!dragMoved)
+        {
+            // Click without drag → seek to marker position
+            double time = markerTree.getProperty(IDs::markerTime);
+            emit markerClicked(time);
+        }
+        else
+        {
+            double newTime = markerTree.getProperty(IDs::markerTime);
+            emit markerMoved(markerTree, newTime);
+        }
         event->accept();
     }
 }

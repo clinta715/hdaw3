@@ -35,7 +35,13 @@ signals:
     void slotChanged();
     void editRequested(int index);
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private:
+    QPoint dragStartPos;
+    void startDrag();
+
     void populateTypeCombo(const QString& filter = QString());
     void rebuildParamUI();
     void onTypeChanged(const juce::String& type);

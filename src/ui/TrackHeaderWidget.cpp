@@ -319,8 +319,8 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
 
         // MIDI channel indicator (small text on the right of the name row)
         {
-            int channel = tree.getProperty(IDs::midiChannel, 0);
-            QString chText = (channel == 0) ? "OMNI" : QString("Ch %1").arg(channel);
+            int channel = tree.getProperty(IDs::midiChannel, 1);
+            QString chText = QString("Ch %1").arg(channel);
             QFont chFont = painter.font();
             chFont.setPointSize(7);
             painter.setFont(chFont);
@@ -802,13 +802,13 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
         auto trackList = engine.getProjectModel().getTrackListTree();
         if (trackIdx >= trackList.getNumChildren()) return;
         auto tree = trackList.getChild(trackIdx);
-        int current = tree.getProperty(IDs::midiChannel, 0);
+        int current = tree.getProperty(IDs::midiChannel, 1);
         bool ok = false;
         int channel = QInputDialog::getInt(
             const_cast<QWidget*>(static_cast<const QWidget*>(this)),
             "MIDI Channel",
-            "MIDI channel (0 = OMNI, 1-16):",
-            current, 0, 16, 1, &ok);
+            "MIDI channel (1-16):",
+            current, 1, 16, 1, &ok);
         if (ok)
         {
             tree.setProperty(IDs::midiChannel, channel,

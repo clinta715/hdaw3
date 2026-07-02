@@ -44,8 +44,8 @@ public:
     // playback are dispatched to the registered callback (on the main thread)
     // so the UI can record them into the current clip's CC list.
     using MidiCcCallback = std::function<void(int controllerNumber, int value)>;
-    void setMidiCcRecordArmed(bool armed) { midiCcRecordArmed = armed; }
-    bool isMidiCcRecordArmed() const { return midiCcRecordArmed; }
+    void setMidiCcRecordArmed(bool armed) { midiCcRecordArmed.store(armed); }
+    bool isMidiCcRecordArmed() const { return midiCcRecordArmed.load(); }
     void setMidiCcCallback(MidiCcCallback cb) { midiCcCallback = std::move(cb); }
 
 private:
@@ -66,6 +66,6 @@ private:
     HDAW::PluginManager pluginManager;
     HDAW::MidiInputManager midiInputManager;
 
-    bool midiCcRecordArmed = false;
+    std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;
 };

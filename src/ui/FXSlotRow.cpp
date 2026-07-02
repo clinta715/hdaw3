@@ -3,6 +3,10 @@
 #include "../engine/PluginManager.h"
 #include <QHBoxLayout>
 #include <QTimer>
+#include <QMouseEvent>
+#include <QDrag>
+#include <QMimeData>
+#include <QApplication>
 
 FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), slotTree(tree), slotIndex(index), trackIndex(trackIdx), engine(ae)
@@ -103,6 +107,15 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
     connect(downBtn, &QPushButton::clicked, this, [this]() { emit moveDownRequested(slotIndex); });
     layout->addWidget(downBtn);
 
+    // Drag handle — click and drag to reorder slots within the chain.
+    auto* dragHandle = new QPushButton("\xE2\x96\xB6", topRow);
+    dragHandle->setFixedSize(20, 22);
+    dragHandle->setToolTip("Drag to reorder");
+    dragHandle->setCursor(Qt::SizeVerCursor);
+    dragHandle->installEventFilter(this);
+    dragHandle->setProperty("dragHandleSlotIndex", slotIndex);
+    layout->addWidget(dragHandle);
+
     // Remove
     auto* removeBtn = new QPushButton("X", topRow);
     removeBtn->setFixedSize(20, 22);
@@ -149,6 +162,43 @@ FXSlotRow::~FXSlotRow()
         pollTimer->stop();
     if (registeredInstance && paramListener)
         registeredInstance->removeListener(paramListener.get());
+}
+
+bool FXSlotRow::eventFilter(QObject* obj, QEvent* event)
+{
+    // Drag handle — initiate a QDrag when the user moves the mouse
+    // a few pixels while holding the left button down.
+    if (obj != nullptr && obj->property("dragHandleSlotIndex").isValid())
+    {
+        if (event->type() == QEvent::MouseButtonPress)
+        {
+            auto* e = static_cast<QMouseEvent*>(event);
+            if (e->button() == Qt::LeftButton)
+                dragStartPos = e->pos();
+        }
+        else if (event->type() == QEvent::MouseMove)
+        {
+            auto* e = static_cast<QMouseEvent*>(event);
+            if ((e->buttons() & Qt::LeftButton)
+                && (e->pos() - dragStartPos).manhattanLength() >= QApplication::startDragDistance())
+            {
+                startDrag();
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, event);
+}
+
+void FXSlotRow::startDrag()
+{
+    static const QString mimeType = "application/x-hdaw-fxslot";
+    QMimeData* mime = new QMimeData();
+    mime->setData(mimeType, QByteArray::number(slotIndex));
+    QDrag* drag = new QDrag(this);
+    drag->setMimeData(mime);
+    drag->exec(Qt::MoveAction);
+    drag->deleteLater();
 }
 
 void FXSlotRow::populateTypeCombo(const QString& filter)

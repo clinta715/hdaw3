@@ -40,7 +40,7 @@ public:
     void setStartTime(double t) { startTime.store(t); }
     void setDuration(double d) { duration.store(d); }
     void setGain(float g) { gain.store(g); }
-    void setMidiChannel(int ch) { midiChannel.store(juce::jlimit(0, 16, ch)); }
+    void setMidiChannel(int ch) { midiChannel.store(juce::jlimit(1, 16, ch)); }
     int  getMidiChannel() const { return midiChannel.load(); }
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
@@ -175,7 +175,7 @@ private:
     std::atomic<double> duration{ 1.0 };
     std::atomic<float> gain{ 1.0f };
 
-    std::atomic<int> midiChannel{ 1 }; // 0 = OMNI (all channels), 1-16 = specific channel
+    std::atomic<int> midiChannel{ 1 }; // 1-16 = specific MIDI channel
     uint8_t lastCcByte = 255;
     std::array<bool, 128> activeNotes{};
 

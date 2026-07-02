@@ -220,10 +220,6 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     {
         if (property == IDs::midiChannel)
         {
-            // Propagate the new channel to all of this track's MIDI
-            // clip processors. midiChannel == 0 means OMNI (all
-            // channels). The audio thread reads the atomic on each
-            // processBlock call.
             int newChannel = treeWhosePropertyHasChanged.getProperty(IDs::midiChannel);
             auto trackList = projectModel.getTrackListTree();
             int tIdx = -1;
@@ -241,10 +237,7 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     rm->setTrackMidiChannel(tIdx, newChannel);
             }
         }
-    }
-    else if (treeWhosePropertyHasChanged.hasType(IDs::TRACK))
-    {
-        if (property == IDs::volume || property == IDs::pan || property == IDs::isMuted)
+        else if (property == IDs::volume || property == IDs::pan || property == IDs::isMuted)
         {
             float value = treeWhosePropertyHasChanged.getProperty(property);
             int paramID = (property == IDs::volume) ? 1

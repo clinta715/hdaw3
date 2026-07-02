@@ -330,7 +330,7 @@ void ProjectModel::createDefaultProject()
     track1.setProperty(IDs::isSoloed, false, nullptr);
     track1.setProperty(IDs::parentBus, 0, nullptr);
     track1.setProperty(IDs::color, static_cast<int>(trackColorForIndex(0)), nullptr);
-    track1.setProperty(IDs::midiChannel, 0, nullptr); // 0 = OMNI for audio tracks
+    track1.setProperty(IDs::midiChannel, 1, nullptr);
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
         track1.addChild(clipList, -1, nullptr);

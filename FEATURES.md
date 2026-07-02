@@ -32,7 +32,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **MIDI transpose** — shift notes up/down by semitones/octaves ✅ Done
 - [x] **MIDI humanize** — add random timing/velocity variation ✅ Done
 - [x] **MIDI CC automation recording** — capture mod wheel, expression, pitch bend during playback ✅ Done (CC Rec button, captures to current clip on selected track)
-- [x] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1) ✅ Done (track context menu, 0 = OMNI)
+- [x] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1) ✅ Done (track context menu, 1-16)
 - [ ] **MIDI output to hardware** — send MIDI to external devices
 
 ### Mixing & Routing
@@ -59,7 +59,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Marker track** — named markers at positions, marker navigation ✅ Done (click-to-seek, drag, rename, delete)
 - [x] **Zoom-to-fit** — auto-zoom to show all content or selection ✅ Done (F = all, Shift+F = selection)
 - [x] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel ✅ Done
-- [ ] **Drag-reorder FX slots** — reorder plugins in FX chain via drag
+- [x] **Drag-reorder FX slots** — reorder plugins in FX chain via drag ✅ Done (drag handle button + drop target with off-by-one fix)
 - [x] **Search/filter in plugin list** — search plugins by name in add-FX menu ✅ Done
 - [ ] **Undo history UI** — visual list of undo steps for navigation
 - [x] **Status bar** — show current tool, position, selection info ✅ Done (BPM, time sig, sample rate, track, MIDI device, REC, selection count)
@@ -199,4 +199,9 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Plugin state save/load per slot (base64 in project file)
 - [x] Zoom-to-fit (F = all clips, Shift+F = selection)
 - [x] Marker track (named markers, click-to-seek, drag, rename, delete)
-- [x] MIDI channel routing (0 = OMNI, 1-16, atomic for RT safety)
+- [x] MIDI channel routing (1-16, atomic for RT safety)
+- [x] FX slot drag-reorder (drag handle + custom MIME drop target)
+- [x] Bugfix: TRACK volume/pan/mute ValueTree listener dead-code (AudioEngine)
+- [x] Bugfix: marker double-offset paint, click-to-seek, undo coalescing
+- [x] Bugfix: multi-clip paste relative offsets, duplicate clipboard clobber
+- [x] Bugfix: midiCcRecordArmed data race (now atomic<bool>)

@@ -4,6 +4,9 @@
 #include <QScrollArea>
 #include <QLabel>
 #include <QPushButton>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include "../engine/AudioEngine.h"
 #include "FXSlotRow.h"
 
@@ -20,9 +23,13 @@ public:
 signals:
     void chainChanged();
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private:
     void rebuildUI();
     void addFXSlot(const juce::String& type = "eq");
+    int indexAtDropY(int y) const;
 
     AudioEngine& engine;
     int currentTrack = -1;

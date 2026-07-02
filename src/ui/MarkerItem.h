@@ -44,6 +44,7 @@ private:
     double pixelsPerSecond;
     double height;
     bool dragging = false;
+    bool dragMoved = false;
     double dragStartX = 0.0;
     double dragStartTime = 0.0;
 };

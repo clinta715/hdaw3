@@ -6,6 +6,7 @@ namespace HDAW
 namespace
 {
 std::vector<ClipboardEntry> g_clipboard;
+ClipboardMeta g_meta;
 }
 
 ClipboardEntry ClipClipboard::deepCopy(const juce::ValueTree& sourceClip)
@@ -25,11 +26,25 @@ ClipboardEntry ClipClipboard::deepCopy(const juce::ValueTree& sourceClip)
 void ClipClipboard::copyClips(const std::vector<ClipboardEntry>& entries)
 {
     g_clipboard = entries;
+    // Compute the minimum startTime so paste can offset the whole group.
+    g_meta.minStartTime = 0.0;
+    if (!entries.empty())
+    {
+        double minStart = entries[0].sourceStartTime;
+        for (const auto& e : entries)
+            minStart = std::min(minStart, e.sourceStartTime);
+        g_meta.minStartTime = minStart;
+    }
 }
 
 const std::vector<ClipboardEntry>& ClipClipboard::getClips()
 {
     return g_clipboard;
+}
+
+const ClipboardMeta& ClipClipboard::getMeta()
+{
+    return g_meta;
 }
 
 bool ClipClipboard::hasContent()
