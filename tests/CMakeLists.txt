@@ -23,6 +23,7 @@ add_executable(hdaw_tests
     unit/engine/track_fx_slot_debug_test.cpp
     unit/engine/track_fx_slot_show_editor_test.cpp
     unit/engine/isolated_scanner_test.cpp
+    unit/engine/plugin_state_save_load_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

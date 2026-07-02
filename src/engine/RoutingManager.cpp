@@ -103,6 +103,16 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     trackProcessors[trackIndex]->setAutomationTrees(
         trackTree.getChildWithName(IDs::AUTOMATION_LIST));
 
+    // Build the in-memory FX chain from the project model so the saved
+    // plugin state (base64 in IDs::pluginState) is reapplied. This is
+    // what makes plugin state save/load actually work end-to-end: a
+    // project reload walks the same code path as the initial graph
+    // build, so the plugin state bytes get decoded and pushed into the
+    // newly instantiated VST3/CLAP instance.
+    auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
+    if (fxChainTree.isValid())
+        trackProcessors[trackIndex]->rebuildFXChain(fxChainTree);
+
     rebuildClipsForTrack(trackIndex, trackTree);
 }
 
