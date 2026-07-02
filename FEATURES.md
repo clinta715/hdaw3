@@ -31,7 +31,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **MIDI quantize** — snap notes to grid with strength control ✅ Done
 - [x] **MIDI transpose** — shift notes up/down by semitones/octaves ✅ Done
 - [x] **MIDI humanize** — add random timing/velocity variation ✅ Done
-- [ ] **MIDI CC automation recording** — capture mod wheel, expression, pitch bend during playback
+- [x] **MIDI CC automation recording** — capture mod wheel, expression, pitch bend during playback ✅ Done (CC Rec button, captures to current clip on selected track)
 - [ ] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1)
 - [ ] **MIDI output to hardware** — send MIDI to external devices
 
@@ -194,3 +194,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Playhead rendering in automation, velocity, CC lanes
 - [x] Multi-clip selection (rubber band, Ctrl+click, Shift+click, Ctrl+A)
 - [x] Clip clipboard (cut/copy/paste/duplicate)
+- [x] MIDI CC automation recording (mod wheel, expression, etc.)
