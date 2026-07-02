@@ -27,6 +27,7 @@ namespace IDs {
     DECLARE_ID(isSoloed)
     DECLARE_ID(isArm)
     DECLARE_ID(inputMonitor)
+    DECLARE_ID(midiChannel)
 
     // Clip properties
     DECLARE_ID(clipID)

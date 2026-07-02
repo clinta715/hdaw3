@@ -40,12 +40,14 @@ public:
     void setStartTime(double t) { startTime.store(t); }
     void setDuration(double d) { duration.store(d); }
     void setGain(float g) { gain.store(g); }
+    void setMidiChannel(int ch) { midiChannel.store(juce::jlimit(0, 16, ch)); }
+    int  getMidiChannel() const { return midiChannel.load(); }
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
         juce::ignoreUnused(sampleRate, samplesPerBlock);
         std::fill(activeNotes.begin(), activeNotes.end(), false);
-        midiChannel = 1;
+        // midiChannel is set externally via setMidiChannel; default is 1.
     }
 
     void releaseResources() override
@@ -74,10 +76,11 @@ public:
 
         if (clipLocalSec < 0.0 || clipLocalSec > durSec)
         {
+            const int channel = midiChannel.load();
             for (int note = 0; note < 128; ++note)
             {
                 if (!activeNotes[note]) continue;
-                midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, note, 0.0f),
+                midiMessages.addEvent(juce::MidiMessage::noteOff(channel, note, 0.0f),
                                        juce::jmin(numSamples - 1, 0));
             }
             std::fill(activeNotes.begin(), activeNotes.end(), false);
@@ -86,6 +89,8 @@ public:
 
         double currentBeat = transportManager.secondsToPpq(currentTimeSec)
                            - transportManager.secondsToPpq(startSec);
+
+        const int channel = midiChannel.load();
 
         for (int i = 0; i < count; ++i)
         {
@@ -99,14 +104,14 @@ public:
                     float vel = note.velocity * gain.load();
                     vel = (std::max)(0.0f, (std::min)(1.0f, vel));
                     uint8_t velByte = static_cast<uint8_t>(vel * 127.0f);
-                    midiMessages.addEvent(juce::MidiMessage::noteOn(midiChannel, note.noteNumber, velByte),
+                    midiMessages.addEvent(juce::MidiMessage::noteOn(channel, note.noteNumber, velByte),
                                           0);
                     activeNotes[note.noteNumber] = true;
                 }
             }
             else if (activeNotes[note.noteNumber])
             {
-                midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel, note.noteNumber, 0.0f),
+                midiMessages.addEvent(juce::MidiMessage::noteOff(channel, note.noteNumber, 0.0f),
                                       0);
                 activeNotes[note.noteNumber] = false;
             }
@@ -116,7 +121,7 @@ public:
         uint8_t ccByte = static_cast<uint8_t>((std::max)(0.0f, (std::min)(1.0f, ccVal)) * 127.0f);
         if (ccByte != lastCcByte)
         {
-            midiMessages.addEvent(juce::MidiMessage::controllerEvent(midiChannel, 7, ccByte), 0);
+            midiMessages.addEvent(juce::MidiMessage::controllerEvent(channel, 7, ccByte), 0);
             lastCcByte = ccByte;
         }
     }
@@ -170,7 +175,7 @@ private:
     std::atomic<double> duration{ 1.0 };
     std::atomic<float> gain{ 1.0f };
 
-    int midiChannel = 1;
+    std::atomic<int> midiChannel{ 1 }; // 0 = OMNI (all channels), 1-16 = specific channel
     uint8_t lastCcByte = 255;
     std::array<bool, 128> activeNotes{};
 

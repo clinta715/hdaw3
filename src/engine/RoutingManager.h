@@ -33,6 +33,7 @@ public:
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);
     void rebuildTrackFX(int trackIndex);
+    void setTrackMidiChannel(int trackIndex, int channel);
 
     MasterBusProcessor* getMasterBus() { return masterBus; }
     HDAW::Track* getTrackNode(int trackIndex) const;

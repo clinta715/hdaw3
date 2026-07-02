@@ -353,6 +353,11 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
             clipProc->setDuration(clipTree.getProperty(IDs::duration));
             clipProc->setGain(clipTree.getProperty(IDs::gain));
+            // Apply the track's MIDI channel to the new clip processor.
+            // The track's midiChannel defaults to 1; the user can change
+            // it via the track header.
+            int trackChannel = trackTree.getProperty(IDs::midiChannel, 1);
+            clipProc->setMidiChannel(trackChannel);
 
             auto node = graph.addNode(std::move(clipProc));
             midiClipNodes[{trackIndex, ci}] = node;
@@ -424,6 +429,17 @@ FxBusProcessor* RoutingManager::getFxBus(int busID) const
 {
     auto it = fxBusProcessors.find(busID);
     return (it != fxBusProcessors.end()) ? it->second : nullptr;
+}
+
+void RoutingManager::setTrackMidiChannel(int trackIndex, int channel)
+{
+    // Update every MIDI clip processor on this track. The clip processors
+    // are stored in midiClipSources keyed by (trackIndex, clipIndex).
+    for (auto& kv : midiClipSources)
+    {
+        if (kv.first.first == trackIndex && kv.second != nullptr)
+            kv.second->setMidiChannel(channel);
+    }
 }
 
 void RoutingManager::setInputMonitoring(int trackIndex, bool enabled)

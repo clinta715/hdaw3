@@ -317,6 +317,19 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         QString name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
         painter.drawText(header.nameRect, Qt::AlignLeft | Qt::AlignVCenter, name);
 
+        // MIDI channel indicator (small text on the right of the name row)
+        {
+            int channel = tree.getProperty(IDs::midiChannel, 0);
+            QString chText = (channel == 0) ? "OMNI" : QString("Ch %1").arg(channel);
+            QFont chFont = painter.font();
+            chFont.setPointSize(7);
+            painter.setFont(chFont);
+            painter.setPen(ThemeColors::textMuted());
+            QRect chRect = header.nameRect;
+            chRect.setLeft(chRect.right() - 50);
+            painter.drawText(chRect, Qt::AlignRight | Qt::AlignVCenter, chText);
+        }
+
         // Mute / Solo / Arm buttons (rects pre-computed in layoutRects)
         auto drawToggle = [&](const QRect& rect, QColor onColor, bool active, const QString& label) {
             painter.setPen(QPen(active ? onColor.lighter(130) : ThemeColors::borderLight(), 1));
@@ -783,6 +796,26 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
     }
 
     menu.addSeparator();
+
+    auto* midiChAction = menu.addAction("MIDI Channel...");
+    connect(midiChAction, &QAction::triggered, this, [this, trackIdx]() {
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx >= trackList.getNumChildren()) return;
+        auto tree = trackList.getChild(trackIdx);
+        int current = tree.getProperty(IDs::midiChannel, 0);
+        bool ok = false;
+        int channel = QInputDialog::getInt(
+            const_cast<QWidget*>(static_cast<const QWidget*>(this)),
+            "MIDI Channel",
+            "MIDI channel (0 = OMNI, 1-16):",
+            current, 0, 16, 1, &ok);
+        if (ok)
+        {
+            tree.setProperty(IDs::midiChannel, channel,
+                &engine.getProjectModel().getUndoManager());
+            update();
+        }
+    });
 
     auto* deleteAction = menu.addAction("Delete Track");
     connect(deleteAction, &QAction::triggered, this, [this, trackIdx]() {
