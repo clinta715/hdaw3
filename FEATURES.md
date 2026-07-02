@@ -32,7 +32,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **MIDI transpose** — shift notes up/down by semitones/octaves ✅ Done
 - [x] **MIDI humanize** — add random timing/velocity variation ✅ Done
 - [x] **MIDI CC automation recording** — capture mod wheel, expression, pitch bend during playback ✅ Done (CC Rec button, captures to current clip on selected track)
-- [ ] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1)
+- [x] **MIDI channel routing** — per-track MIDI channel selection (not hardcoded to 1) ✅ Done (track context menu, 0 = OMNI)
 - [ ] **MIDI output to hardware** — send MIDI to external devices
 
 ### Mixing & Routing
@@ -199,3 +199,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Plugin state save/load per slot (base64 in project file)
 - [x] Zoom-to-fit (F = all clips, Shift+F = selection)
 - [x] Marker track (named markers, click-to-seek, drag, rename, delete)
+- [x] MIDI channel routing (0 = OMNI, 1-16, atomic for RT safety)
