@@ -62,7 +62,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Drag-reorder FX slots** — reorder plugins in FX chain via drag
 - [x] **Search/filter in plugin list** — search plugins by name in add-FX menu ✅ Done
 - [ ] **Undo history UI** — visual list of undo steps for navigation
-- [ ] **Status bar** — show current tool, position, selection info
+- [x] **Status bar** — show current tool, position, selection info ✅ Done (BPM, time sig, sample rate, track, MIDI device, REC, selection count)
 
 ### Recording
 - [ ] **Metronome audio rendering** — actual click sound during recording/playback ✅ Done
@@ -195,3 +195,4 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Multi-clip selection (rubber band, Ctrl+click, Shift+click, Ctrl+A)
 - [x] Clip clipboard (cut/copy/paste/duplicate)
 - [x] MIDI CC automation recording (mod wheel, expression, etc.)
+- [x] Status bar (BPM, time sig, sample rate, track, MIDI, REC, selection)
