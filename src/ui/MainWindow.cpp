@@ -476,6 +476,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::inputMonitoringChanged, this, &MainWindow::onInputMonitoringChanged);
     connect(timelineView, &TimelineView::midiDeviceChanged, this, &MainWindow::onMidiDeviceChanged);
     connect(timelineView, &TimelineView::recordToggled, this, &MainWindow::onRecordToggle);
+    connect(timelineView, &TimelineView::ccRecordToggled, this, &MainWindow::onCcRecordToggled);
     connect(timelineView, &TimelineView::playToggled, this, &MainWindow::onPlayToggle);
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
     connect(timelineView, &TimelineView::rewindRequested, this, &MainWindow::onRewind);
@@ -1179,6 +1180,65 @@ void MainWindow::onRecordToggle()
             engine.getTransportManager().setPlaying(true);
             statusBar()->showMessage("Recording...", 0);
         }
+    }
+}
+
+void MainWindow::onCcRecordToggled(bool armed)
+{
+    engine.setMidiCcRecordArmed(armed);
+    if (armed)
+    {
+        // Set the callback to capture CC events into the currently
+        // selected track's clip at the current time. Routed through
+        // the audio engine's MIDI input callback.
+        engine.setMidiCcCallback([this](int controller, int value) {
+            if (selectedTrack < 0) return;
+            auto trackList = engine.getProjectModel().getTrackListTree();
+            if (selectedTrack >= trackList.getNumChildren()) return;
+            auto trackTree = trackList.getChild(selectedTrack);
+            auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+            if (!clipList.isValid()) return;
+
+            double sr = engine.getTransportManager().getSampleRate();
+            if (sr <= 0) return;
+            double currentTime = static_cast<double>(engine.getTransportManager().getCurrentSample()) / sr;
+
+            // Find the clip at the current time on the selected track.
+            for (int i = 0; i < clipList.getNumChildren(); ++i)
+            {
+                auto clip = clipList.getChild(i);
+                double clipStart = clip.getProperty(IDs::startTime);
+                double clipDur = clip.getProperty(IDs::duration);
+                if (currentTime >= clipStart && currentTime < clipStart + clipDur)
+                {
+                    auto ccList = clip.getChildWithName(IDs::CC_LIST);
+                    if (!ccList.isValid())
+                    {
+                        ccList = juce::ValueTree(IDs::CC_LIST);
+                        clip.addChild(ccList, -1, nullptr);
+                    }
+                    double bpm = engine.getTransportManager().getBPM();
+                    if (bpm <= 0) bpm = 120.0;
+                    double currentBeat = currentTime * bpm / 60.0;
+
+                    juce::ValueTree pt(IDs::CC_POINT);
+                    pt.setProperty(IDs::controllerNumber, controller,
+                                   &engine.getProjectModel().getUndoManager());
+                    pt.setProperty(IDs::beat, currentBeat,
+                                   &engine.getProjectModel().getUndoManager());
+                    pt.setProperty(IDs::value, value,
+                                   &engine.getProjectModel().getUndoManager());
+                    ccList.addChild(pt, -1, &engine.getProjectModel().getUndoManager());
+                    break;
+                }
+            }
+        });
+        statusBar()->showMessage("CC record armed — move controllers during playback", 0);
+    }
+    else
+    {
+        engine.setMidiCcCallback(nullptr);
+        statusBar()->showMessage("CC record off", 2000);
     }
 }
 

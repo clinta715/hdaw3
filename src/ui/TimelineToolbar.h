@@ -29,6 +29,7 @@ public slots:
     void setCountInEnabled(bool enabled);
     void setTimeSig(int numerator, int denominator);
     void populateMidiDevices(const QStringList& devices);
+    void setCcRecordArmed(bool armed);
 
 signals:
     void addTrackClicked();
@@ -51,6 +52,7 @@ signals:
     void timeSigChanged(int numerator, int denominator);
     void midiDeviceChanged(const QString& deviceIdentifier);
     void defaultClipLenChanged(double beats);
+    void ccRecordToggled(bool armed);
 
 public:
     void addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager);
@@ -72,6 +74,7 @@ private:
     QPushButton* stopBtn;
     QPushButton* rewindBtn;
     QPushButton* recordBtn;
+    QPushButton* ccRecBtn;
     QLabel* timecodeLabel;
     QDoubleSpinBox* bpmSpinBox;
     QComboBox* timeSigCombo;

@@ -56,6 +56,7 @@ private:
     void onUndo();
     void onRedo();
     void onRecordToggle();
+    void onCcRecordToggled(bool armed);
     void onPlayToggle();
     void onStop();
     void onRewind();

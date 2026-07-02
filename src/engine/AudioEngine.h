@@ -8,6 +8,7 @@
 #include "PluginManager.h"
 #include "MidiInputManager.h"
 #include "../model/ProjectModel.h"
+#include <functional>
 #include <memory>
 
 class AudioEngine : private juce::ValueTree::Listener
@@ -39,6 +40,14 @@ public:
     void setTrackArmed(int trackIndex, bool armed);
     juce::String getTrackName(int trackIndex) const;
 
+    // MIDI CC automation recording. When armed, incoming CC messages during
+    // playback are dispatched to the registered callback (on the main thread)
+    // so the UI can record them into the current clip's CC list.
+    using MidiCcCallback = std::function<void(int controllerNumber, int value)>;
+    void setMidiCcRecordArmed(bool armed) { midiCcRecordArmed = armed; }
+    bool isMidiCcRecordArmed() const { return midiCcRecordArmed; }
+    void setMidiCcCallback(MidiCcCallback cb) { midiCcCallback = std::move(cb); }
+
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
@@ -56,4 +65,7 @@ private:
     HDAW::ProjectPool projectPool;
     HDAW::PluginManager pluginManager;
     HDAW::MidiInputManager midiInputManager;
+
+    bool midiCcRecordArmed = false;
+    MidiCcCallback midiCcCallback;
 };

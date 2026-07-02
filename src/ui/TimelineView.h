@@ -44,6 +44,7 @@ signals:
     void automationToggled(int trackIndex);
     void inputMonitoringChanged(int trackIndex, bool enabled);
     void recordToggled();
+    void ccRecordToggled(bool armed);
     void playToggled();
     void stopRequested();
     void rewindRequested();

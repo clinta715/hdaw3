@@ -222,6 +222,17 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     connect(recordBtn, &QPushButton::clicked, this, &TimelineToolbar::recordClicked);
     layout->addWidget(recordBtn);
 
+    // CC Record button — captures MIDI controller movements during playback
+    ccRecBtn = new QPushButton("CC Rec", this);
+    ccRecBtn->setCheckable(true);
+    ccRecBtn->setFixedHeight(22);
+    ccRecBtn->setToolTip("Record incoming MIDI CC messages into the selected clip");
+    ccRecBtn->setStyleSheet(
+        "QPushButton { color: #a8a8b0; font-size: 8pt; padding: 2px 6px; }"
+        "QPushButton:checked { color: #d97706; border: 1px solid #d97706; }");
+    connect(ccRecBtn, &QPushButton::toggled, this, &TimelineToolbar::ccRecordToggled);
+    layout->addWidget(ccRecBtn);
+
     // Count-in toggle
     countInBtn = new QPushButton("1Bar", this);
     countInBtn->setCheckable(true);
@@ -335,9 +346,14 @@ void TimelineToolbar::setLoopEnabled(bool enabled)
 
 void TimelineToolbar::setSnapDivision(int index)
 {
-    snapCombo->blockSignals(true);
+    const QSignalBlocker blocker(snapCombo);
     snapCombo->setCurrentIndex(index);
-    snapCombo->blockSignals(false);
+}
+
+void TimelineToolbar::setCcRecordArmed(bool armed)
+{
+    const QSignalBlocker blocker(ccRecBtn);
+    ccRecBtn->setChecked(armed);
 }
 
 void TimelineToolbar::addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager)

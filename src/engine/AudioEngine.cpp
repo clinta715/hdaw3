@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include <juce_events/juce_events.h>
 
 AudioEngine::AudioEngine()
 {
@@ -63,6 +64,20 @@ void AudioEngine::initialize()
 
     // Wire MIDI input to processor
     midiInputManager.setNoteCallback([this](const juce::MidiMessage& msg) {
+        // If CC recording is armed and the transport is playing, capture
+        // controller events and dispatch them to the main thread. The audio
+        // thread is never allowed to touch the ValueTree, so we route through
+        // the message manager.
+        if (msg.isController() && midiCcRecordArmed
+            && transportManager.isPlayingNow() && midiCcCallback)
+        {
+            int controller = msg.getControllerNumber();
+            int value = msg.getControllerValue();
+            juce::MessageManager::callAsync([this, controller, value]() {
+                if (midiCcCallback)
+                    midiCcCallback(controller, value);
+            });
+        }
         mainProcessor->addExternalMidiMessage(msg);
     });
 }

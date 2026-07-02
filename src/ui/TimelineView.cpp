@@ -158,6 +158,7 @@ void TimelineView::connectSignals()
 
     connect(toolbar, &TimelineToolbar::followPlayheadChanged, this, &TimelineView::setFollowPlayhead);
     connect(toolbar, &TimelineToolbar::recordClicked, this, &TimelineView::recordToggled);
+    connect(toolbar, &TimelineToolbar::ccRecordToggled, this, &TimelineView::ccRecordToggled);
     connect(toolbar, &TimelineToolbar::playClicked, this, &TimelineView::playToggled);
     connect(toolbar, &TimelineToolbar::stopClicked, this, &TimelineView::stopRequested);
     connect(toolbar, &TimelineToolbar::rewindClicked, this, &TimelineView::rewindRequested);
