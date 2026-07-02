@@ -232,6 +232,14 @@ void MainWindow::setupMenuBar()
     zoomOutViewAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
     connect(zoomOutViewAction, &QAction::triggered, timelineView, &TimelineView::zoomOut);
 
+    auto* zoomFitAllAction = viewMenu->addAction(tr("Zoom to Fit &All"));
+    zoomFitAllAction->setShortcut(QKeySequence(Qt::Key_F));
+    connect(zoomFitAllAction, &QAction::triggered, timelineView, &TimelineView::zoomToFitAll);
+
+    auto* zoomFitSelAction = viewMenu->addAction(tr("Zoom to Fit &Selection"));
+    zoomFitSelAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F));
+    connect(zoomFitSelAction, &QAction::triggered, timelineView, &TimelineView::zoomToFitSelection);
+
     // ── Tools ──
     auto* toolsMenu = menuBar()->addMenu(tr("&Tools"));
 

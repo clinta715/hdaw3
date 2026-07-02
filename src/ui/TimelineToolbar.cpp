@@ -75,6 +75,14 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     connect(zoomInBtn, &QPushButton::clicked, this, &TimelineToolbar::zoomInClicked);
     layout->addWidget(zoomInBtn);
 
+    // Zoom-to-fit
+    zoomFitBtn = new QPushButton("Fit", this);
+    zoomFitBtn->setFixedHeight(22);
+    zoomFitBtn->setToolTip("Zoom to fit all clips (F) or selection (Shift+F)");
+    zoomFitBtn->setStyleSheet("QPushButton { padding: 2px 6px; font-size: 8pt; }");
+    connect(zoomFitBtn, &QPushButton::clicked, this, [this]() { zoomFitClicked(); });
+    layout->addWidget(zoomFitBtn);
+
     layout->addSpacing(8);
 
     // Grid type
@@ -349,6 +357,16 @@ void TimelineToolbar::setSnapDivision(int index)
     const QSignalBlocker blocker(snapCombo);
     snapCombo->setCurrentIndex(index);
 }
+
+void TimelineToolbar::zoomFitClicked()
+{
+    // The toolbar doesn't know whether the user has a selection, so
+    // always fit-all on the toolbar button. The keyboard shortcut
+    // Shift+F (handled in MainWindow's View menu) uses the selection-
+    // aware path.
+    emit zoomFitClicked(true);
+}
+
 
 void TimelineToolbar::setCcRecordArmed(bool armed)
 {

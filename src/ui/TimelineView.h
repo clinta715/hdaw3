@@ -64,6 +64,13 @@ public slots:
     void selectTrack(int index);
     void setSelectedTrack(int index) { selectedTrack = index; }
 
+    // Zoom-to-fit: adjust pixelsPerSecond so the visible viewport shows
+    // either all clips (fitAll) or just the current selection
+    // (fitSelection). Both clamp to [minPPS, maxPPS] and recentre the
+    // horizontal scroll on the resulting range.
+    void zoomToFitAll();
+    void zoomToFitSelection();
+
 private:
     void setupUI();
     void connectSignals();

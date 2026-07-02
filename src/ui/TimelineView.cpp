@@ -1,6 +1,7 @@
 #include "TimelineView.h"
 #include "Theme.h"
 #include <QScrollBar>
+#include <limits>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QMimeData>
@@ -131,6 +132,11 @@ void TimelineView::connectSignals()
 
     connect(toolbar, &TimelineToolbar::zoomInClicked, this, &TimelineView::zoomIn);
     connect(toolbar, &TimelineToolbar::zoomOutClicked, this, &TimelineView::zoomOut);
+    connect(toolbar, static_cast<void (TimelineToolbar::*)(bool)>(&TimelineToolbar::zoomFitClicked),
+            this, [this](bool fitAll) {
+        if (fitAll) zoomToFitAll();
+        else        zoomToFitSelection();
+    });
 
     connect(toolbar, &TimelineToolbar::gridTypeChanged, this, [this](bool showBeats) {
         rulerItem->setShowBeats(showBeats);
@@ -230,6 +236,92 @@ void TimelineView::zoomIn()
 void TimelineView::zoomOut()
 {
     setZoom(1.0 / zoomFactor);
+}
+
+void TimelineView::zoomToFitAll()
+{
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+
+    double maxEnd = 0.0;
+    bool any = false;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto track = trackList.getChild(t);
+        auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double s = clip.getProperty(IDs::startTime);
+            double d = clip.getProperty(IDs::duration);
+            double e = s + d;
+            if (e > maxEnd) maxEnd = e;
+            any = true;
+        }
+    }
+    // If no clips exist, fall back to a 30-second default window.
+    if (!any)
+        maxEnd = 30.0;
+
+    // Pad 5% on either side so the rightmost clip isn't flush against
+    // the viewport edge.
+    double padded = maxEnd * 1.05;
+
+    int viewportWidth = graphicsView->viewport()->width();
+    if (viewportWidth <= 0)
+        viewportWidth = 800;
+
+    double targetPps = static_cast<double>(viewportWidth) / padded;
+    targetPps = std::clamp(targetPps, minPPS, maxPPS);
+
+    double factor = targetPps / pixelsPerSecond;
+    setZoom(factor);
+
+    // Centre the visible region on the content origin.
+    graphicsView->horizontalScrollBar()->setValue(0);
+}
+
+void TimelineView::zoomToFitSelection()
+{
+    if (interaction == nullptr) return;
+
+    auto selected = interaction->getSelectedClips();
+    if (selected.isEmpty())
+    {
+        zoomToFitAll();
+        return;
+    }
+
+    double minStart = std::numeric_limits<double>::max();
+    double maxEnd = 0.0;
+    for (auto* clip : selected)
+    {
+        double s = clip->getStartTime();
+        double d = clip->getDuration();
+        if (s < minStart) minStart = s;
+        if (s + d > maxEnd) maxEnd = s + d;
+    }
+
+    double span = maxEnd - minStart;
+    if (span <= 0.0) span = 1.0;
+
+    // Pad 10% on either side so the bounds aren't flush against the edge.
+    double padded = span * 1.10;
+
+    int viewportWidth = graphicsView->viewport()->width();
+    if (viewportWidth <= 0)
+        viewportWidth = 800;
+
+    double targetPps = static_cast<double>(viewportWidth) / padded;
+    targetPps = std::clamp(targetPps, minPPS, maxPPS);
+
+    double factor = targetPps / pixelsPerSecond;
+    setZoom(factor);
+
+    // Centre the visible region on the selection.
+    int scrollX = static_cast<int>((minStart - span * 0.05) * pixelsPerSecond);
+    graphicsView->horizontalScrollBar()->setValue(scrollX);
 }
 
 void TimelineView::setFollowPlayhead(bool follow)

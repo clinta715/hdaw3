@@ -43,6 +43,7 @@ signals:
     void loopToggleChanged(bool enabled);
     void followPlayheadChanged(bool enabled);
     void recordClicked();
+    void zoomFitClicked(bool fitAll);
     void playClicked();
     void stopClicked();
     void rewindClicked();
@@ -60,6 +61,7 @@ public:
 private slots:
     void onTimeSigChanged(int index);
     void onMidiDeviceChanged(int index);
+    void zoomFitClicked();
 
 private:
     QToolButton* addTrackBtn;
@@ -67,6 +69,7 @@ private:
     QComboBox* snapCombo;
     QPushButton* zoomInBtn;
     QPushButton* zoomOutBtn;
+    QPushButton* zoomFitBtn;
     QComboBox* gridCombo;
     QPushButton* loopBtn;
     QPushButton* followBtn;
