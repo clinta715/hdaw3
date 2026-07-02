@@ -27,6 +27,7 @@ public:
     HDAW::ProjectPool& getProjectPool() { return projectPool; }
     HDAW::PluginManager& getPluginManager() { return pluginManager; }
     HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
+    juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
 
     // Facade methods
     int getTrackCount() const { return mainProcessor ? mainProcessor->getNumTracks() : 0; }

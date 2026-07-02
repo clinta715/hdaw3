@@ -6,7 +6,7 @@
 namespace mcp {
 class TransportHttp : public Transport {
 public:
-    TransportHttp(quint16 port);
+    TransportHttp(quint16 port, const QString& host = QString());
     ~TransportHttp() override;
     bool start(McpServer* server) override;
     void stop() override;
@@ -18,6 +18,7 @@ private:
     class Impl;
     std::unique_ptr<Impl> impl_;
     quint16 port_;
+    QString host_;
     McpServer* server_ = nullptr;
     QString lastError_;
 };

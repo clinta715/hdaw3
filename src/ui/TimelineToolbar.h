@@ -29,6 +29,7 @@ public slots:
     void setCountInEnabled(bool enabled);
     void setTimeSig(int numerator, int denominator);
     void populateMidiDevices(const QStringList& devices);
+    void selectMidiDevice(const QString& name);
     void setCcRecordArmed(bool armed);
 
 signals:

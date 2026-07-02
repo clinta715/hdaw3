@@ -331,6 +331,16 @@ void TimelineToolbar::populateMidiDevices(const QStringList& devices)
     midiDeviceCombo->blockSignals(false);
 }
 
+void TimelineToolbar::selectMidiDevice(const QString& name)
+{
+    int idx = midiDeviceCombo->findText(name);
+    if (idx < 0) idx = 0; // fall back to "None"
+    midiDeviceCombo->blockSignals(true);
+    midiDeviceCombo->setCurrentIndex(idx);
+    midiDeviceCombo->blockSignals(false);
+    emit midiDeviceChanged(midiDeviceCombo->currentData().toString());
+}
+
 void TimelineToolbar::setDefaultClipLen(double beats)
 {
     defaultClipLenSpinBox->blockSignals(true);

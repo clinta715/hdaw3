@@ -268,7 +268,13 @@ void MainWindow::setupMenuBar()
     mcpHttpAction->setCheckable(true);
     {
         auto& settings = PreferencesDialog::settings();
-        mcpHttpAction->setChecked(settings.value("mcp/httpEnabled", false).toBool());
+        bool noMcp = QCoreApplication::property("hdaw.noMcp").toBool();
+        if (noMcp) {
+            mcpHttpAction->setChecked(false);
+            mcpHttpAction->setEnabled(false);
+        } else {
+            mcpHttpAction->setChecked(settings.value("mcp/httpEnabled", false).toBool());
+        }
     }
     connect(mcpHttpAction, &QAction::toggled, this, [this](bool on) {
         auto& settings = PreferencesDialog::settings();
@@ -293,12 +299,16 @@ void MainWindow::setupMenuBar()
     auto* prefAction = toolsMenu->addAction(tr("&Preferences..."));
     prefAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
     connect(prefAction, &QAction::triggered, this, [this]() {
-        PreferencesDialog dialog(this);
+        PreferencesDialog dialog(&engine, this);
         if (dialog.exec() == QDialog::Accepted)
         {
             double clipDur = PreferencesDialog::getDefaultClipDuration();
             timelineView->getToolbar()->setDefaultClipLen(clipDur);
             timelineView->getInteraction()->setDefaultClipDuration(clipDur);
+            auto& s = PreferencesDialog::settings();
+            int countInBars = s.value(PreferencesDialog::kKeyCountInBars, 1).toInt();
+            if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+                mainProc->setCountInEnabled(countInBars > 0, countInBars);
         }
     });
 }
@@ -308,7 +318,8 @@ void MainWindow::startMcpHttpServer()
     if (mcpHttp_ != nullptr) return;
     auto& settings = PreferencesDialog::settings();
     quint16 port = static_cast<quint16>(settings.value("mcp/httpPort", 8765).toInt());
-    mcpHttp_ = new mcp::TransportHttp(port);
+    QString host = settings.value("mcp/httpHost", "127.0.0.1").toString();
+    mcpHttp_ = new mcp::TransportHttp(port, host);
     mcpHttp_->start(mcpServer_);
     if (mcpHttpAction != nullptr && !mcpHttpAction->isChecked())
     {
@@ -517,12 +528,22 @@ void MainWindow::connectTimelineSignals()
     connect(&jucePumpTimer, &QTimer::timeout, this, &MainWindow::pumpJuceMessages);
     jucePumpTimer.start(10);
 
-    // Populate MIDI devices
+    // Populate MIDI devices and restore last selection
     auto midiDevices = engine.getMidiInputManager().getAvailableDevices();
     QStringList devList;
     for (const auto& d : midiDevices)
         devList << QString::fromStdString(d.toStdString());
     timelineView->getToolbar()->populateMidiDevices(devList);
+    QString lastMidi = PreferencesDialog::settings().value(PreferencesDialog::kKeyMidiDevice).toString();
+    if (!lastMidi.isEmpty() && devList.contains(lastMidi))
+        timelineView->getToolbar()->selectMidiDevice(lastMidi);
+
+    // Restore count-in from preferences
+    auto& s = PreferencesDialog::settings();
+    int countInBars = s.value(PreferencesDialog::kKeyCountInBars, 1).toInt();
+    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
+        mainProc->setCountInEnabled(countInBars > 0, countInBars);
+    timelineView->getToolbar()->setCountInEnabled(countInBars > 0);
 }
 
 void MainWindow::connectBottomPanelSignals()
@@ -1203,6 +1224,7 @@ void MainWindow::onMidiDeviceChanged(const QString& deviceIdentifier)
         midiMgr.openDevice(deviceIdentifier.toStdString().c_str());
     if (statusBarWidget)
         statusBarWidget->setMidiDevice(deviceIdentifier);
+    PreferencesDialog::settings().setValue(PreferencesDialog::kKeyMidiDevice, deviceIdentifier);
 }
 
 void MainWindow::onRecordToggle()

@@ -16,7 +16,7 @@ public:
     std::unique_ptr<QTcpServer> tcp;
 };
 
-TransportHttp::TransportHttp(quint16 p) : port_(p), impl_(std::make_unique<Impl>()) {}
+TransportHttp::TransportHttp(quint16 p, const QString& h) : port_(p), host_(h), impl_(std::make_unique<Impl>()) {}
 TransportHttp::~TransportHttp() { stop(); }
 
 bool TransportHttp::start(McpServer* s) {
@@ -72,14 +72,17 @@ bool TransportHttp::start(McpServer* s) {
                 }).toJson());
         });
     impl_->tcp = std::make_unique<QTcpServer>();
-    if (!impl_->tcp->listen(QHostAddress::LocalHost, port_)) {
-        lastError_ = QString("failed to listen on 127.0.0.1:%1 (%2)")
-                       .arg(port_).arg(impl_->tcp->errorString());
+    QHostAddress addr = host_.isEmpty() ? QHostAddress::LocalHost
+                                        : QHostAddress(host_);
+    if (!impl_->tcp->listen(addr, port_)) {
+        lastError_ = QString("failed to listen on %1:%2 (%3)")
+                       .arg(addr.toString()).arg(port_).arg(impl_->tcp->errorString());
         impl_->tcp.reset();
         return false;
     }
     if (!impl_->server.bind(impl_->tcp.get())) {
-        lastError_ = QString("failed to bind QHttpServer on 127.0.0.1:%1").arg(port_);
+        lastError_ = QString("failed to bind QHttpServer on %1:%2")
+                       .arg(addr.toString()).arg(port_);
         impl_->tcp->close();
         impl_->tcp.reset();
         return false;

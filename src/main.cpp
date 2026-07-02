@@ -54,8 +54,14 @@ int main(int argc, char *argv[])
     juce::Logger::setCurrentLogger(&juceLogger);
 
     const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
+    const bool noMcp = parseFlag(argc, argv, "--no-mcp");
 
     HDAW_LOG("main", QString("Mode: %1").arg(headlessMcp ? "HEADLESS MCP (--mcp-stdio)" : "GUI"));
+
+    if (noMcp) {
+        // Sentinel property checked by MainWindow to skip MCP auto-start
+        QCoreApplication::setProperty("hdaw.noMcp", true);
+    }
 
     if (headlessMcp) {
         QCoreApplication::setOrganizationName("HDAW");
