@@ -9,6 +9,7 @@ Track::Track()
 {
     volumeGain.setCurrentAndTargetValue(1.0f);
     panPosition.setCurrentAndTargetValue(0.5f);
+    modulationManager = std::make_unique<ModulationManager>();
 }
 
 Track::~Track() = default;
@@ -29,6 +30,9 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
     for (const auto& am : automationManagers)
         if (am)
             am->rebuildCache();
+
+    if (modulationManager)
+        modulationManager->prepare(sampleRate);
 
     updateLatency();
 }
@@ -185,6 +189,12 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
     updateLatency();
 }
 
+void Track::rebuildModulation(const juce::ValueTree& modulationListTree)
+{
+    if (!modulationManager) return;
+    modulationManager->rebuild(modulationListTree, getSampleRate());
+}
+
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ignoreUnused(midiMessages);
@@ -239,10 +249,26 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         float* leftChannel = buffer.getWritePointer(0);
         float* rightChannel = buffer.getWritePointer(1);
 
+        // Get BPM from playhead for beat-synced modulation
+        double bpm = 120.0;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                bpm = pos->getBpm().orFallback(120.0);
+
         for (int sample = 0; sample < numSamples; ++sample)
         {
-            float currentGain = volumeGain.getNextValue();
-            float currentPan = panPosition.getNextValue();
+            float baseGain = volumeGain.getNextValue();
+            float basePan  = panPosition.getNextValue();
+
+            float modGain = 0.0f, modPan = 0.0f;
+            if (modulationManager)
+            {
+                modGain = modulationManager->getModulation(1, bpm, getSampleRate());
+                modPan  = modulationManager->getModulation(2, bpm, getSampleRate());
+            }
+
+            float currentGain = std::clamp(baseGain + modGain, 0.0f, 1.0f);
+            float currentPan  = std::clamp(basePan  + modPan,  -1.0f, 1.0f);
 
             float leftGain = currentGain * (1.0f - currentPan);
             float rightGain = currentGain * currentPan;

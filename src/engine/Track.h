@@ -5,6 +5,7 @@
 #include "LevelMeter.h"
 #include "TrackFXSlot.h"
 #include "AutomationManager.h"
+#include "ModulationManager.h"
 #include "PluginManager.h"
 #include "../model/ProjectModel.h"
 #include <vector>
@@ -49,6 +50,8 @@ public:
     void setPluginManager(PluginManager* pm) { pluginManager = pm; }
     PluginManager* getPluginManager() const { return pluginManager; }
 
+    void rebuildModulation(const juce::ValueTree& modulationListTree);
+
     // Back-pointer to the project model + the track's index. Set once at track
     // creation by RoutingManager::addTrack. Used by the FX-mutation methods so
     // they can locate and modify the track's FX_CHAIN subtree in the model.
@@ -88,6 +91,7 @@ private:
     juce::dsp::ProcessSpec fxSpec;
 
     std::vector<std::unique_ptr<AutomationManager>> automationManagers;
+    std::unique_ptr<ModulationManager> modulationManager;
 
     PluginManager* pluginManager = nullptr;
 
