@@ -123,8 +123,9 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
         if (w == currentWave) btn->setChecked(true);
         row->addWidget(btn);
     }
-    connect(waveGroup, QOverload<int>::of(&QButtonGroup::idClicked),
-            this, [this](int) { onLfoParamChanged(); });
+    // Connect each button individually so sender() resolves to QWidget*
+    for (auto* btn : waveGroup->buttons())
+        connect(btn, &QPushButton::clicked, this, [this]() { onLfoParamChanged(); });
 
     // Rate
     panel.rateSpin = new QDoubleSpinBox(container);
@@ -141,8 +142,11 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     panel.syncBtn->setCheckable(true);
     panel.syncBtn->setChecked(modTree.getProperty(IDs::rateSync, true));
     panel.syncBtn->setFixedHeight(22);
-    connect(panel.syncBtn, &QPushButton::toggled, this, [this, &panel](bool checked) mutable {
-        panel.rateSpin->setSuffix(checked ? "" : " Hz");
+    // Use index-based capture to avoid dangling reference
+    int panelIdx = static_cast<int>(panels.size());
+    connect(panel.syncBtn, &QPushButton::toggled, this, [this, panelIdx](bool checked) mutable {
+        if (panelIdx < static_cast<int>(panels.size()))
+            panels[panelIdx].rateSpin->setSuffix(checked ? "" : " Hz");
         onLfoParamChanged();
     });
     row->addWidget(panel.syncBtn);
