@@ -165,11 +165,11 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     row->addWidget(panel.depthLabel);
 
     // Use index-based lookup instead of reference capture
-    int panelIdx = static_cast<int>(panels.size());
-    connect(panel.depthSlider, &QSlider::valueChanged, this, [this, panelIdx](int v) {
-        if (panelIdx < static_cast<int>(panels.size()))
+    int sliderIdx = static_cast<int>(panels.size());
+    connect(panel.depthSlider, &QSlider::valueChanged, this, [this, sliderIdx](int v) {
+        if (sliderIdx < static_cast<int>(panels.size()))
         {
-            panels[panelIdx].depthLabel->setText(QString("%1%").arg(v));
+            panels[sliderIdx].depthLabel->setText(QString("%1%").arg(v));
         }
         onLfoParamChanged();
     });
