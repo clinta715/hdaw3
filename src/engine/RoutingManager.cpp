@@ -417,6 +417,8 @@ void RoutingManager::rebuildTrackFX(int trackIndex)
     auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
 
     trackIt->second->rebuildFXChain(fxChainTree);
+    auto modulationListTree = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    trackIt->second->rebuildModulation(modulationListTree);
 }
 
 HDAW::Track* RoutingManager::getTrackNode(int trackIndex) const
