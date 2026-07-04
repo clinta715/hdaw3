@@ -138,6 +138,7 @@ namespace IDs {
     DECLARE_ID(phaseOffset)
     DECLARE_ID(targetParamID)
     DECLARE_ID(targetClipIndex)
+    DECLARE_ID(enabled)
     #undef DECLARE_ID
 }
 
