@@ -126,6 +126,18 @@ namespace IDs {
     DECLARE_ID(scaleRoot)
     DECLARE_ID(scaleMode)
     DECLARE_ID(SCALE_INFO)
+
+    // Modulation
+    DECLARE_ID(MODULATION_LIST)
+    DECLARE_ID(MODULATION)
+    DECLARE_ID(waveform)
+    DECLARE_ID(rate)
+    DECLARE_ID(rateSync)
+    DECLARE_ID(depth)
+    DECLARE_ID(bipolar)
+    DECLARE_ID(phaseOffset)
+    DECLARE_ID(targetParamID)
+    DECLARE_ID(targetClipIndex)
     #undef DECLARE_ID
 }
 
