@@ -58,7 +58,7 @@ public:
     juce::ValueTree toValueTree(const juce::String& id) const;
 
 private:
-    float lookupWaveform(double normPhase) const;
+    float lookupWaveform(double normPhase);
 
     // Atomics — written by UI thread, read by audio thread
     std::atomic<float>  depth{0.0f};
@@ -76,7 +76,7 @@ private:
 
     // S&H state
     double lastShValue = 0.0;
-    double shPhase = 0.0; // tracks when to generate new S&H value
+    double shPhase = 0.0;
 };
 
 // ── inline implementations ──
@@ -131,7 +131,7 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
     return value * d;
 }
 
-inline float LFOModulationSource::lookupWaveform(double p) const
+inline float LFOModulationSource::lookupWaveform(double p)
 {
     switch (waveform.load(std::memory_order_relaxed))
     {
