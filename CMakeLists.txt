@@ -164,6 +164,8 @@ add_executable(HDAW
     src/engine/AutomationManager.h
     src/ui/AutomationLaneWidget.h
     src/ui/AutomationLaneWidget.cpp
+    src/ui/ModulationWidget.h
+    src/ui/ModulationWidget.cpp
     src/ui/AudioClipEditorWidget.h
     src/ui/AudioClipEditorWidget.cpp
     src/ui/AudioWaveformWidget.h
