@@ -6,6 +6,7 @@
 #include "AutomationLaneWidget.h"
 #include "AudioClipEditorWidget.h"
 #include "StepEditorWidget.h"
+#include "ModulationWidget.h"
 #include "StatusBar.h"
 #include "StartupDialog.h"
 #include "AboutDialog.h"
@@ -268,7 +269,7 @@ void MainWindow::setupMenuBar()
     mcpHttpAction->setCheckable(true);
     {
         auto& settings = PreferencesDialog::settings();
-        bool noMcp = QCoreApplication::property("hdaw.noMcp").toBool();
+        bool noMcp = qApp->property("hdaw.noMcp").toBool();
         if (noMcp) {
             mcpHttpAction->setChecked(false);
             mcpHttpAction->setEnabled(false);
@@ -418,7 +419,8 @@ void MainWindow::setupBottomPanel()
     auto* autoTab = makeTab("Automation", 3);
     auto* audioTab = makeTab("Audio Editor", 4);
     auto* stepTab = makeTab("Step Seq", 5);
-    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab, stepTab);
+    auto* modTab = makeTab("Modulation", 6);
+    juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab, stepTab, modTab);
 
     tabLayout->addStretch();
     bottomLayout->addWidget(tabBar);
@@ -443,11 +445,16 @@ void MainWindow::setupBottomPanel()
     stepEditorWidget = new StepEditorWidget(engine, bottomStack);
     bottomStack->addWidget(stepEditorWidget);
 
+    modulationWidget = new ModulationWidget(engine, bottomStack);
+    bottomStack->addWidget(modulationWidget);
+
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int id) {
         if (id == 2 && selectedTrack >= 0)
             fxChainWidget->loadTrack(selectedTrack);
         if (id == 3 && selectedTrack >= 0)
             automationWidget->loadTrack(selectedTrack);
+        if (id == 6 && selectedTrack >= 0)
+            modulationWidget->loadTrack(selectedTrack);
         bottomStack->setCurrentIndex(id);
     });
 
@@ -498,6 +505,8 @@ void MainWindow::connectTimelineSignals()
                 fxChainWidget->loadTrack(trackIndex);
             if (idx == 3 && selectedTrack >= 0)
                 automationWidget->loadTrack(trackIndex);
+            if (idx == 6 && selectedTrack >= 0)
+                modulationWidget->loadTrack(trackIndex);
             if (statusBarWidget)
             {
                 QString name = (trackIndex >= 0)

@@ -22,6 +22,7 @@ class FXChainWidget;
 class AutomationLaneWidget;
 class AudioClipEditorWidget;
 class StepEditorWidget;
+class ModulationWidget;
 class ProjectPoolBrowser;
 class StatusBar;
 
@@ -105,6 +106,7 @@ private:
     AutomationLaneWidget* automationWidget;
     AudioClipEditorWidget* audioEditorWidget;
     StepEditorWidget* stepEditorWidget;
+    ModulationWidget* modulationWidget = nullptr;
     StatusBar* statusBarWidget = nullptr;
 
     QAction* undoAction = nullptr;
