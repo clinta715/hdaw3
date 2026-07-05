@@ -53,15 +53,17 @@ int main(int argc, char* argv[])
 
         auto instance = fmtMgr.createPluginInstance(desc, 44100.0, 512, error);
         if (instance) {
-            // Build JSON via JUCE to handle escaping properly
+            // Use the fully populated description from the live instance
+            auto pluginDesc = instance->getPluginDescription();
             auto* obj = new juce::DynamicObject();
             obj->setProperty("ok", true);
-            obj->setProperty("name", desc.name);
-            obj->setProperty("manufacturer", desc.manufacturerName);
-            obj->setProperty("category", desc.category);
-            obj->setProperty("format", desc.pluginFormatName);
-            obj->setProperty("file", desc.fileOrIdentifier);
-            obj->setProperty("id", desc.createIdentifierString());
+            obj->setProperty("name", pluginDesc.name);
+            obj->setProperty("manufacturer", pluginDesc.manufacturerName);
+            obj->setProperty("category", pluginDesc.category);
+            obj->setProperty("format", pluginDesc.pluginFormatName);
+            obj->setProperty("file", pluginDesc.fileOrIdentifier);
+            obj->setProperty("uid", static_cast<juce::int64>(pluginDesc.uniqueId));
+            obj->setProperty("id", pluginDesc.createIdentifierString());
             std::cout << juce::JSON::toString(juce::var(obj)) << std::endl;
 
             // Clear pedal on success

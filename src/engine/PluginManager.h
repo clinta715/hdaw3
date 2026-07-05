@@ -25,6 +25,9 @@ public:
 
     const std::vector<juce::PluginDescription>& getPlugins() const { return knownPlugins; }
 
+    std::vector<juce::PluginDescription> getInstrumentPlugins() const;
+    std::vector<juce::PluginDescription> getEffectPlugins() const;
+
     std::unique_ptr<juce::AudioPluginInstance> createPluginInstance(
         const juce::PluginDescription& desc, juce::String& errorMessage,
         double sampleRate = 44100.0, int blockSize = 512,
@@ -64,7 +67,7 @@ private:
 
     // Isolated scanning
     juce::File scannerExePath;
-    struct ScanResult { bool ok; juce::String name, manufacturer, category, format, file, id, error; };
+    struct ScanResult { bool ok; int uid = 0; juce::String name, manufacturer, category, format, file, id, error; };
     ScanResult scanPluginIsolated(const juce::String& pluginPath);
     juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
     int lastScanCrashCount = 0;

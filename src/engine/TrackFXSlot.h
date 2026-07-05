@@ -231,6 +231,33 @@ public:
 
     bool isEditorOpen() const { return editorWindow != nullptr; }
 
+    int getNumPrograms() const
+    {
+        if (isExternal && pluginInstance)
+            return pluginInstance->getNumPrograms();
+        return 1;
+    }
+
+    int getCurrentProgram() const
+    {
+        if (isExternal && pluginInstance)
+            return pluginInstance->getCurrentProgram();
+        return 0;
+    }
+
+    juce::String getProgramName(int index) const
+    {
+        if (isExternal && pluginInstance)
+            return pluginInstance->getProgramName(index);
+        return {};
+    }
+
+    void setCurrentProgram(int index)
+    {
+        if (isExternal && pluginInstance)
+            pluginInstance->setCurrentProgram(index);
+    }
+
 private:
     enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Plugin };
     ActiveType activeType = ActiveType::None;

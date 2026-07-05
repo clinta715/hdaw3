@@ -341,6 +341,7 @@ void Track::setFXSlotPluginID(int slotIndex, const std::string& pluginID)
     // instantiate. If we don't find it the slot becomes a "none" placeholder
     // (matches the existing behaviour for unknown formats).
     juce::String format;
+    juce::String resolvedID = jid; // may be overridden to the file path
     if (pluginManager != nullptr)
     {
         for (const auto& p : pluginManager->getPlugins())
@@ -348,6 +349,7 @@ void Track::setFXSlotPluginID(int slotIndex, const std::string& pluginID)
             if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
             {
                 format = p.pluginFormatName;
+                resolvedID = p.fileOrIdentifier; // always store the file path, not the identifier string
                 break;
             }
         }
@@ -360,7 +362,7 @@ void Track::setFXSlotPluginID(int slotIndex, const std::string& pluginID)
 
     auto slot = fxChainTree.getChild(slotIndex);
     slot.setProperty(IDs::fxType, juce::String("plugin"), nullptr);
-    slot.setProperty(IDs::pluginID, jid, nullptr);
+    slot.setProperty(IDs::pluginID, resolvedID, nullptr);
     slot.setProperty(IDs::pluginFormat, format, nullptr);
 
     rebuildFXChain(fxChainTree);

@@ -120,12 +120,15 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
 
     // Enumerate all candidate plugin files
     auto pluginFiles = findPluginFiles(defaultDirs);
+    juce::Logger::writeToLog("PluginManager: found " + juce::String(pluginFiles.size()) + " plugin files to scan");
+    juce::Logger::writeToLog("PluginManager: scannerExePath=" + scannerExePath.getFullPathName() + " exists=" + (scannerExePath.existsAsFile() ? "yes" : "no"));
 
     for (const auto& file : pluginFiles)
     {
         if (abortRequested.load()) break;
 
         auto path = file.getFullPathName();
+        juce::Logger::writeToLog("PluginManager: scanning " + path);
 
         // Skip if already known
         bool alreadyKnown = false;
@@ -149,19 +152,24 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
         if (scannerExePath.existsAsFile())
         {
             auto scanResult = scanPluginIsolated(path);
+            juce::Logger::writeToLog("PluginManager: scan result for " + file.getFileName()
+                + " ok=" + (scanResult.ok ? "true" : "false")
+                + " name='" + scanResult.name + "'"
+                + " error='" + scanResult.error + "'");
 
             if (scanResult.ok)
             {
-                // Add to known list
                 juce::PluginDescription desc;
                 desc.name = scanResult.name;
                 desc.manufacturerName = scanResult.manufacturer;
                 desc.category = scanResult.category;
                 desc.pluginFormatName = scanResult.format;
                 desc.fileOrIdentifier = scanResult.file.isNotEmpty() ? scanResult.file : path;
+                desc.uniqueId = scanResult.uid;
                 knownPluginList.addType(desc);
 
-                juce::Logger::writeToLog("PluginManager: found (isolated) - " + scanResult.name);
+                juce::Logger::writeToLog("PluginManager: found (isolated) - "
+                                         + (scanResult.name.isNotEmpty() ? scanResult.name : path));
             }
             else if (scanResult.error == "Scanner timed out (30s)" ||
                      scanResult.error.startsWith("Scanner exited with code"))
@@ -276,6 +284,32 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
     onScanFinished();
 }
 
+std::vector<juce::PluginDescription> PluginManager::getInstrumentPlugins() const
+{
+    std::vector<juce::PluginDescription> result;
+    for (const auto& desc : knownPlugins)
+    {
+        if (isBlacklisted(desc.fileOrIdentifier))
+            continue;
+        if (desc.isInstrument)
+            result.push_back(desc);
+    }
+    return result;
+}
+
+std::vector<juce::PluginDescription> PluginManager::getEffectPlugins() const
+{
+    std::vector<juce::PluginDescription> result;
+    for (const auto& desc : knownPlugins)
+    {
+        if (isBlacklisted(desc.fileOrIdentifier))
+            continue;
+        if (!desc.isInstrument)
+            result.push_back(desc);
+    }
+    return result;
+}
+
 void PluginManager::onScanFinished()
 {
     knownPlugins.clear();
@@ -331,7 +365,7 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
 
     // Spawn child process
     juce::ChildProcess child;
-    if (!child.start(cmd, 0))
+    if (!child.start(cmd, juce::ChildProcess::wantStdOut))
     {
         result.error = "Failed to start scanner process";
         pedalFile.deleteFile();
@@ -370,6 +404,7 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
             result.format = obj->getProperty("format").toString();
             result.file = obj->getProperty("file").toString();
             result.id = obj->getProperty("id").toString();
+            result.uid = obj->hasProperty("uid") ? static_cast<int>(obj->getProperty("uid")) : 0;
             result.error = obj->getProperty("error").toString();
         }
     }

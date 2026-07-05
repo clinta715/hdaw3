@@ -58,17 +58,19 @@ int main(int argc, char *argv[])
 
     HDAW_LOG("main", QString("Mode: %1").arg(headlessMcp ? "HEADLESS MCP (--mcp-stdio)" : "GUI"));
 
-    if (noMcp) {
-        // Sentinel property checked by MainWindow to skip MCP auto-start
-        QCoreApplication::setProperty("hdaw.noMcp", true);
-    }
-
     if (headlessMcp) {
         QCoreApplication::setOrganizationName("HDAW");
         QCoreApplication::setApplicationName("HDAW");
         QCoreApplication app(argc, argv);
         AudioEngine engine;
         engine.initialize();
+        // If plugin cache is empty, scan synchronously now
+        if (engine.getPluginManager().getPlugins().empty())
+        {
+            HDAW_LOG("main", "Plugin cache empty; scanning for VST3/CLAP plugins...");
+            engine.getPluginManager().scanAll();
+            HDAW_LOG("main", QString("Scan complete: %1 plugins found").arg((int)engine.getPluginManager().getPlugins().size()));
+        }
         mcp::McpServer server;
         server.setEngine(&engine);
         mcp::registerAllTools(server);
@@ -87,6 +89,10 @@ int main(int argc, char *argv[])
     }
 
     QApplication app(argc, argv);
+
+    if (noMcp) {
+        app.setProperty("hdaw.noMcp", true);
+    }
 
     // Apply global dark theme
     app.setStyleSheet(getGlobalStyleSheet());

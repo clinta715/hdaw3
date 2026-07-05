@@ -81,6 +81,7 @@ private:
 
     juce::AudioProcessorGraph::Node::Ptr ioNode;
     juce::AudioProcessorGraph::Node::Ptr inputNode;
+    juce::AudioProcessorGraph::Node::Ptr midiInputNode;
 
     struct MonitorConnection {
         juce::AudioProcessorGraph::Connection connections[2];

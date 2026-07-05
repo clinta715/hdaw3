@@ -24,6 +24,7 @@ RoutingManager::~RoutingManager()
     masterNode = nullptr;
     masterBus = nullptr;
     ioNode = nullptr;
+    midiInputNode = nullptr;
 }
 
 void RoutingManager::rebuildFromValueTree()
@@ -43,12 +44,16 @@ void RoutingManager::rebuildFromValueTree()
     masterBus = nullptr;
     masterNode = nullptr;
     ioNode = nullptr;
+    midiInputNode = nullptr;
 
     ioNode = graph.addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
         juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
 
     inputNode = graph.addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
         juce::AudioProcessorGraph::AudioGraphIOProcessor::audioInputNode));
+
+    midiInputNode = graph.addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
+        juce::AudioProcessorGraph::AudioGraphIOProcessor::midiInputNode));
 
     auto masterProc = std::make_unique<MasterBusProcessor>();
     masterNode = graph.addNode(std::move(masterProc));
@@ -89,6 +94,13 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
 
     int parentBus = trackTree.getProperty(IDs::parentBus);
     connectTrackToBus(trackIndex, parentBus);
+
+    // Connect MIDI input → track so external MIDI keyboard triggers instruments
+    if (midiInputNode != nullptr)
+    {
+        graph.addConnection({ { midiInputNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                              { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+    }
 
     auto sendList = trackTree.getChildWithName(IDs::SEND_LIST);
     if (sendList.isValid())
@@ -364,8 +376,11 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             midiClipSources[{trackIndex, ci}] =
                 static_cast<MidiClipProcessor*>(node->getProcessor());
 
-            // MIDI flows through the graph's MIDI buffer — no audio connections needed
-            // The Track accepts MIDI, so MIDI messages flow through automatically
+            // Connect MIDI clip output → track MIDI input.
+            // JUCE's AudioProcessorGraph requires explicit MIDI connections
+            // just like audio connections — MIDI does NOT flow automatically.
+            graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                                  { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
         }
     }
 }
