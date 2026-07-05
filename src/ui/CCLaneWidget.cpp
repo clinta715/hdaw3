@@ -57,14 +57,15 @@ void CCLaneWidget::paintEvent(QPaintEvent*)
         painter.drawLine(x, 0, x, h);
     }
 
-    // Label
+    // Label — keep the three labels in disjoint corners so they don't overlap:
+    // "CCn" top-left, "127" top-right, "0" bottom-left.
     painter.setPen(ThemeColors::textSecondary());
     QFont f = painter.font();
     f.setPointSize(6);
     painter.setFont(f);
     painter.drawText(2, 2, 30, 12, Qt::AlignLeft | Qt::AlignTop,
                      QString("CC%1").arg(controllerNumber));
-    painter.drawText(2, 2, 30, h, Qt::AlignLeft | Qt::AlignVCenter, "127");
+    painter.drawText(w - 32, 2, 30, 12, Qt::AlignRight | Qt::AlignTop, "127");
     painter.drawText(2, h - 12, 30, 10, Qt::AlignLeft | Qt::AlignTop, "0");
 
     // Draw CC points as vertical bars

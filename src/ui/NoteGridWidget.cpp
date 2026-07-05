@@ -37,8 +37,14 @@ void NoteGridWidget::setScrollOffset(int x, int y)
 
 int NoteGridWidget::noteNumberAtPos(int y) const
 {
+    // Return -1 for clicks that fall outside the MIDI range (above the top
+    // of the grid or below the bottom). Callers that create notes on click
+    // must check for -1, otherwise stray notes at MIDI 0/127 appear when
+    // the user clicks in the ruler spacer or below the grid.
     int idx = (y + scrollY) / static_cast<int>(keyHeight);
-    return 96 - 1 - idx;
+    int note = 96 - 1 - idx;
+    if (note < 0 || note > 127) return -1;
+    return note;
 }
 
 int NoteGridWidget::noteIndexAtPos(const QPoint& pos) const
@@ -91,6 +97,7 @@ double NoteGridWidget::snapToGrid(double beat) const
 void NoteGridWidget::createNoteAtPos(const QPoint& pos, float velocity, double durationBeats)
 {
     int noteNum = noteNumberAtPos(pos.y());
+    if (noteNum < 0) return; // click outside the MIDI range — no note
     double beat = (pos.x() + scrollX) / pixelsPerBeat;
     beat = (std::max)(0.0, beat);
     if (snapEnabled)
@@ -423,6 +430,13 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
         {
             // Click — create note (or chord stamp)
             int noteNum = noteNumberAtPos(releasePos.y());
+            if (noteNum < 0)
+            {
+                // Click fell outside the MIDI range (ruler spacer or below
+                // the grid) — don't create a stray note. Treat as a no-op.
+                dragMode = None;
+                return;
+            }
             double beat = (releasePos.x() + scrollX) / pixelsPerBeat;
             beat = (std::max)(0.0, beat);
             if (snapEnabled)

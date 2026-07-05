@@ -91,9 +91,8 @@ inline QString getGlobalStyleSheet()
             background-color: #1e1e22;
         }
         QPushButton:checked {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #d97706, stop:1 #b45309);
-            color: white;
+            background-color: #3d2a14;
+            color: #f5d9b0;
             border-color: #d97706;
         }
         QPushButton:disabled {

@@ -221,6 +221,7 @@ void MixerStripWidget::mousePressEvent(QMouseEvent* event)
     if (fxBtnRect.contains(pos))
     {
         emit fxButtonClicked(trackIndex);
+        event->accept();
         return;
     }
 
@@ -229,20 +230,29 @@ void MixerStripWidget::mousePressEvent(QMouseEvent* event)
         muted = !muted;
         emit muteToggled(trackIndex, muted);
         update();
+        event->accept();
     }
     else if (soloRect.contains(pos))
     {
         soloed = !soloed;
         emit soloToggled(trackIndex, soloed);
         update();
+        event->accept();
     }
     else if (faderRect.contains(pos))
     {
         draggingVol = true;
+        event->accept();
     }
     else if (panTrackRect.contains(pos))
     {
         draggingPan = true;
+        event->accept();
+    }
+    else
+    {
+        // Click on empty strip area — let the parent (scroll area) handle it.
+        QWidget::mousePressEvent(event);
     }
 }
 
@@ -261,6 +271,7 @@ void MixerStripWidget::mouseMoveEvent(QMouseEvent* event)
             emit volumeChanged(trackIndex, newVol);
             update();
         }
+        event->accept();
     }
     else if (draggingPan)
     {
@@ -274,13 +285,22 @@ void MixerStripWidget::mouseMoveEvent(QMouseEvent* event)
             emit panChanged(trackIndex, newPan);
             update();
         }
+        event->accept();
+    }
+    else
+    {
+        QWidget::mouseMoveEvent(event);
     }
 }
 
-void MixerStripWidget::mouseReleaseEvent(QMouseEvent*)
+void MixerStripWidget::mouseReleaseEvent(QMouseEvent* event)
 {
+    // We only get here when a press was accepted by this widget (started a
+    // fader/pan drag). Consume the matching release so it doesn't propagate
+    // to the parent scroll area.
     draggingVol = false;
     draggingPan = false;
+    event->accept();
 }
 
 void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)

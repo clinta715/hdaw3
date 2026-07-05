@@ -370,8 +370,13 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         painter.setBrush(ThemeColors::bgPanel());
         painter.drawRoundedRect(header.volRect, 3, 3);
 
+        // `volume` is a linear gain and may exceed 1.0 (e.g. +6 dB from a
+        // saved project or MCP write), but the fader track is a normalized
+        // 0..1 representation and the drag handler clamps to that range.
+        // Clamp the display position to match so the thumb stays in the track.
         float vol = tree.getProperty(IDs::volume);
-        float volPos = vol * (header.volRect.width() - 8);
+        float volClamped = (std::max)(0.0f, (std::min)(1.0f, vol));
+        float volPos = volClamped * (header.volRect.width() - 8);
         QRect thumb((header.volRect.x() + static_cast<int>(volPos)),
                     header.volRect.y(), 8, header.volRect.height());
         painter.setPen(Qt::NoPen);

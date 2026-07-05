@@ -64,14 +64,15 @@ void VelocityLaneWidget::paintEvent(QPaintEvent*)
         painter.drawLine(x, 0, x, h);
     }
 
-    // Labels
+    // Labels — keep them in disjoint corners so they don't overlap:
+    // "Vel" top-left, "127" top-right, "0" bottom-left.
     painter.setPen(ThemeColors::textSecondary());
     QFont f = painter.font();
     f.setPointSize(6);
     painter.setFont(f);
     painter.drawText(2, 2, 30, 12, Qt::AlignLeft | Qt::AlignTop, "Vel");
     painter.drawText(2, h - 12, 30, 10, Qt::AlignLeft | Qt::AlignTop, "0");
-    painter.drawText(2, 2, 30, h, Qt::AlignLeft | Qt::AlignVCenter, "127");
+    painter.drawText(w - 32, 2, 30, 12, Qt::AlignRight | Qt::AlignTop, "127");
 
     // Velocity bars
     const auto& selectedNotes = model.getSelectedNotes();
