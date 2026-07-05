@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QButtonGroup>
 #include <QScrollArea>
+#include <QTimer>
 #include "../engine/AudioEngine.h"
 #include "../engine/ModulationManager.h"
 #include <vector>
@@ -27,6 +28,7 @@ private slots:
     void onAddLFO();
     void onRemoveLFO(int lfoIndex);
     void onLfoParamChanged();
+    void flushChanges();
 
 private:
     struct LfoPanel {
@@ -48,6 +50,7 @@ private:
     void rebuildPanels();
     int addPanel(const juce::ValueTree& modTree, int index);
     void writeLfoToTree(int lfoIndex);
+    void syncModulationToAudio();
 
     AudioEngine& engine;
     int currentTrack = -1;
@@ -56,4 +59,5 @@ private:
     QPushButton* addBtn;
     QLabel* trackLabel;
     std::vector<LfoPanel> panels;
+    QTimer debounceTimer;
 };

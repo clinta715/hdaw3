@@ -296,6 +296,19 @@ void MainAudioProcessor::rebuildTrackFX(int trackIndex)
         routingManager->rebuildTrackFX(trackIndex);
 }
 
+void MainAudioProcessor::rebuildModulation(int trackIndex)
+{
+    if (routingManager == nullptr) return;
+    auto* track = routingManager->getTrackNode(trackIndex);
+    if (track == nullptr) return;
+    if (projectModel == nullptr) return;
+    auto trackList = projectModel->getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(trackIndex);
+    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    track->rebuildModulation(modList);
+}
+
 void MainAudioProcessor::rebuildAutomationCache(int trackIndex)
 {
     if (routingManager == nullptr) return;

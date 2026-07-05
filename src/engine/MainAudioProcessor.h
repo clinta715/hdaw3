@@ -35,6 +35,7 @@ public:
     void setCountInEnabled(bool enabled, int bars = 1) { countInEnabled = enabled; countInBars = bars; }
     void addExternalMidiMessage(const juce::MidiMessage& msg);
     void rebuildTrackFX(int trackIndex);
+    void rebuildModulation(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
     void rebuildAutomationCache(int trackIndex);

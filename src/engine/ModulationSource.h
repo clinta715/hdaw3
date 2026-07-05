@@ -3,6 +3,7 @@
 #include <cmath>
 #include <atomic>
 #include <random>
+#include <array>
 
 namespace HDAW {
 
@@ -58,7 +59,7 @@ public:
     juce::ValueTree toValueTree(const juce::String& id) const;
 
 private:
-    float lookupWaveform(double normPhase);
+    float lookupWaveform(double normPhase, int wf);
 
     // Atomics — written by UI thread, read by audio thread
     std::atomic<float>  depth{0.0f};
@@ -77,13 +78,13 @@ private:
     // S&H state
     double lastShValue = 0.0;
     double shPhase = 0.0;
+    std::mt19937 rng{42};
 };
 
 // ── inline implementations ──
 
 inline LFOModulationSource::LFOModulationSource()
 {
-    std::mt19937 rng{42};
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
     lastShValue = dist(rng);
 }
@@ -122,7 +123,8 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
     double normPhase = std::fmod(currentPhase + phaseOff / 360.0, 1.0);
     if (normPhase < 0.0) normPhase += 1.0;
 
-    float value = lookupWaveform(normPhase);
+    auto wf = waveform.load(std::memory_order_relaxed);
+    float value = lookupWaveform(normPhase, wf);
     float d = depth.load(std::memory_order_relaxed);
 
     if (!bipolar.load(std::memory_order_relaxed))
@@ -131,9 +133,9 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
     return value * d;
 }
 
-inline float LFOModulationSource::lookupWaveform(double p)
+inline float LFOModulationSource::lookupWaveform(double p, int wf)
 {
-    switch (waveform.load(std::memory_order_relaxed))
+    switch (wf)
     {
         case 0: // sine
             return static_cast<float>(std::sin(2.0 * juce::MathConstants<double>::pi * p));
@@ -149,10 +151,8 @@ inline float LFOModulationSource::lookupWaveform(double p)
 
         case 4: // sample & hold
         {
-            // Update S&H value once per cycle
             if (p < shPhase)
             {
-                std::mt19937 rng{static_cast<unsigned int>(p * 1000000.0)};
                 std::uniform_real_distribution<double> dist(-1.0, 1.0);
                 lastShValue = dist(rng);
             }

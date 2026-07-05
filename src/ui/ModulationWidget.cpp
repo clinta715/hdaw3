@@ -38,6 +38,10 @@ ModulationWidget::ModulationWidget(AudioEngine& ae, QWidget* parent)
 
     scrollArea->setWidget(listWidget);
     outerLayout->addWidget(scrollArea);
+
+    debounceTimer.setSingleShot(true);
+    debounceTimer.setInterval(150);
+    connect(&debounceTimer, &QTimer::timeout, this, &ModulationWidget::flushChanges);
 }
 
 ModulationWidget::~ModulationWidget() = default;
@@ -258,6 +262,7 @@ void ModulationWidget::onAddLFO()
     modList.addChild(newMod, -1, &model.getUndoManager());
 
     rebuildPanels();
+    syncModulationToAudio();
 }
 
 void ModulationWidget::onRemoveLFO(int lfoIndex)
@@ -274,6 +279,7 @@ void ModulationWidget::onRemoveLFO(int lfoIndex)
 
     modList.removeChild(modList.getChild(lfoIndex), &model.getUndoManager());
     rebuildPanels();
+    syncModulationToAudio();
 }
 
 void ModulationWidget::writeLfoToTree(int lfoIndex)
@@ -304,17 +310,19 @@ void ModulationWidget::writeLfoToTree(int lfoIndex)
 
 void ModulationWidget::onLfoParamChanged()
 {
-    // Find which LFO panel triggered the change by comparing sender()
-    auto* senderWidget = qobject_cast<QWidget*>(sender());
-    if (!senderWidget) return;
+    debounceTimer.start();
+}
 
+void ModulationWidget::flushChanges()
+{
     for (int i = 0; i < static_cast<int>(panels.size()); ++i)
-    {
-        if (panels[i].container == senderWidget ||
-            panels[i].container->isAncestorOf(senderWidget))
-        {
-            writeLfoToTree(i);
-            return;
-        }
-    }
+        writeLfoToTree(i);
+    syncModulationToAudio();
+}
+
+void ModulationWidget::syncModulationToAudio()
+{
+    if (currentTrack < 0) return;
+    if (auto* mainProc = engine.getMainProcessor())
+        mainProc->rebuildModulation(currentTrack);
 }
