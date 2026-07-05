@@ -623,13 +623,13 @@ look like "I can't edit MIDI" from the user's side:
    with three columns (keys | noteGrid | vScrollBar) so the
    scrollbar has its own column and never overlaps the grid.
 
-4. **The `paintEvent` cull is horizontal only.** The current
-   cull in `NoteGridWidget::paintEvent` skips notes whose rect
-   lies entirely outside the viewport horizontally but does
-   NOT cull vertically. If a future feature moves notes far
-   from y=0, add a vertical cull (`r.bottom() < 0 || r.top() >
-   h`) to avoid the painter being asked to draw off-screen
-   rects.
+4. **The `paintEvent` cull covers both axes.** `NoteGridWidget::paintEvent`
+   skips notes whose rect is entirely outside the viewport with
+   `if (r.right() < 0 || r.left() > w || r.bottom() < 0 || r.top() > h)
+   continue;` (`src/ui/NoteGridWidget.cpp:197`). If a future feature
+   moves the coordinate system (e.g. a vertical zoom that changes
+   `keyHeight` mid-paint), re-check that the cull still bounds-checks
+   against the right `w`/`h`.
 
 ## Tab buttons in `QStackedWidget` need a `QButtonGroup` + `currentChanged` bridge
 
@@ -790,6 +790,39 @@ If a future refactor moves plugin hosting to a separate class, the
 callback pattern (`[this]() { closeEditor(); }`) assumes the
 `TrackFXSlot` outlives the window, which is guaranteed by member
 destruction order (`editorWindow` is destroyed before `this`).
+
+## UI widgets that poll engine meters need a null-collaborator fallback
+
+**Symptom**: `MixerWidget` constructs a `VUMeter` for the master strip
+in its constructor, but `AudioEngine::initialize()` (which creates the
+`MainAudioProcessor` and its master `LevelMeter`) runs *after* the UI
+is built. Dereferencing `engine.getMainProcessor()->getMasterMeter()`
+in the ctor crashes when `getMainProcessor()` returns null. A naive
+"null-guard" ternary that names a non-existent fallback symbol then
+fails to compile.
+
+**The fix** (`src/ui/MixerWidget.cpp:40-46`): use a function-local
+`static HDAW::LevelMeter fallbackMeter;` as the false branch of the
+ternary so `VUMeter` construction always succeeds. The existing
+`MixerWidget::updateMasterMeter()` reassigns the real master meter via
+`setMeter(...)` once the engine is ready:
+
+```cpp
+static HDAW::LevelMeter fallbackMeter;
+auto* mainProc = engine.getMainProcessor();
+masterVU = new HDAW::VUMeter(
+    mainProc ? mainProc->getMasterMeter() : fallbackMeter, masterWidget);
+```
+
+**Rule**: any UI widget that polls an engine-owned object (meter,
+transport atomic, plugin instance) in its constructor must tolerate the
+collaborator being null. The two safe options are (a) a static fallback
+object passed by reference (the `VUMeter` pattern), or (b) letting the
+widget accept a null pointer and skip work until a later `setX(...)`
+wires up the real object (`VUMeter::updateLevels` already no-ops on a
+null `meter`). `MainAudioProcessor::getMasterMeter()` uses the same
+function-local-static fallback internally, so the defensive pattern is
+already idiomatic in this codebase.
 
 ## TrackHeaderWidget selection highlight — paint style matters
 
