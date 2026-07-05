@@ -167,10 +167,24 @@ void AudioClipEditorWidget::connectSignals()
     });
 
     connect(waveform, &AudioWaveformWidget::fadeInChanged, this, [this](double sec) {
-        if (!settingUi) fadeInSpin->setValue(sec);
+        // Block signals while programmatically updating the spinbox: otherwise
+        // setValue fires valueChanged, which re-writes the same fadeIn property
+        // to the ValueTree and triggers a redundant waveform repaint on every
+        // drag move (a feedback loop). The drag itself already committed the
+        // property; this sync is purely visual.
+        if (!settingUi)
+        {
+            QSignalBlocker blocker(fadeInSpin);
+            fadeInSpin->setValue(sec);
+        }
     });
     connect(waveform, &AudioWaveformWidget::fadeOutChanged, this, [this](double sec) {
-        if (!settingUi) fadeOutSpin->setValue(sec);
+        // See fadeInChanged above for why we block signals here.
+        if (!settingUi)
+        {
+            QSignalBlocker blocker(fadeOutSpin);
+            fadeOutSpin->setValue(sec);
+        }
     });
 
     connect(fadeInSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {

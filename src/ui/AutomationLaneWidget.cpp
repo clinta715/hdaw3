@@ -128,7 +128,13 @@ double AutomationLaneWidget::timeFromX(int x) const
 
 double AutomationLaneWidget::valueFromY(int y) const
 {
-    return 1.0 - static_cast<double>(y - 30) / (height() - 30);
+    // Guard against a zero/negative usable height (laneHeight is set via
+    // setMinimumHeight, which is a floor, not a guarantee — a splitter or
+    // window-restore animation can shrink the widget below 30 px
+    // transiently). Without this, the division produces NaN/inf which
+    // would be clamped to 0..1 but still get written to the ValueTree.
+    const int usable = (std::max)(1, height() - 30);
+    return 1.0 - static_cast<double>(y - 30) / usable;
 }
 
 int AutomationLaneWidget::xFromTime(double t) const
@@ -138,7 +144,8 @@ int AutomationLaneWidget::xFromTime(double t) const
 
 int AutomationLaneWidget::yFromValue(double v) const
 {
-    return 30 + static_cast<int>((1.0 - v) * (height() - 30));
+    const int usable = (std::max)(1, height() - 30);
+    return 30 + static_cast<int>((1.0 - v) * usable);
 }
 
 int AutomationLaneWidget::pointAtPos(const QPoint& pos) const

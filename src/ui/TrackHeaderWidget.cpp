@@ -199,6 +199,11 @@ TrackHeaderWidget::TrackHeader& TrackHeaderWidget::headerFor(int trackIndex)
 {
     if (trackIndex >= 0 && trackIndex < static_cast<int>(tracks.size()))
         return tracks[trackIndex];
+    // Sentinel for out-of-range access. Callers MUST re-validate the index
+    // before mutating any field — the same dummy is shared across all
+    // out-of-range calls, so writing through it (e.g. nameEdit) tramples
+    // state and can leak QLineEdits. The name-edit lambdas below capture
+    // the QLineEdit* directly to avoid this trap.
     static TrackHeader dummy;
     return dummy;
 }
@@ -467,18 +472,28 @@ void TrackHeaderWidget::mouseDoubleClickEvent(QMouseEvent* event)
             header.nameEdit->selectAll();
             header.nameEdit->show();
             header.nameEdit->setFocus();
-            connect(header.nameEdit, &QLineEdit::editingFinished, this, [this, trackIdx]() {
-                auto& hdr = headerFor(trackIdx);
-                if (hdr.nameEdit)
+            // Capture the QLineEdit* directly rather than re-resolving via
+            // headerFor() in the lambda: if the track is deleted between the
+            // press and the edit-commit, headerFor(trackIdx) would return the
+            // shared dummy sentinel, and deleteLater/nullptr reset on the
+            // dummy would leak the QLineEdit and corrupt shared state.
+            QLineEdit* edit = header.nameEdit;
+            connect(edit, &QLineEdit::editingFinished, this, [this, trackIdx, edit]() {
+                QString newName = edit->text();
+                edit->deleteLater();
+                // Only clear the back-pointer on the live header — if the
+                // track was removed, headerFor would alias the dummy and we
+                // must not touch it.
+                if (trackIdx >= 0 && trackIdx < static_cast<int>(tracks.size()))
                 {
-                    QString newName = hdr.nameEdit->text();
-                    auto trackList = engine.getProjectModel().getTrackListTree();
-                    if (trackIdx < trackList.getNumChildren())
-                        trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-                    hdr.nameEdit->deleteLater();
-                    hdr.nameEdit = nullptr;
-                    update();
+                    auto& hdr = tracks[trackIdx];
+                    if (hdr.nameEdit == edit)
+                        hdr.nameEdit = nullptr;
                 }
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx >= 0 && trackIdx < trackList.getNumChildren())
+                    trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
+                update();
             });
         }
         return;
@@ -586,18 +601,23 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
             header.nameEdit->show();
             header.nameEdit->setFocus();
 
-            connect(header.nameEdit, &QLineEdit::editingFinished, this, [this, trackIdx]() {
-                auto& hdr = headerFor(trackIdx);
-                if (hdr.nameEdit)
+            // Capture the QLineEdit* directly; see the matching handler in
+            // mouseDoubleClickEvent for why we don't re-resolve via headerFor()
+            // here (the track may be deleted between press and edit-commit).
+            QLineEdit* edit = header.nameEdit;
+            connect(edit, &QLineEdit::editingFinished, this, [this, trackIdx, edit]() {
+                QString newName = edit->text();
+                edit->deleteLater();
+                if (trackIdx >= 0 && trackIdx < static_cast<int>(tracks.size()))
                 {
-                    QString newName = hdr.nameEdit->text();
-                    auto trackList = engine.getProjectModel().getTrackListTree();
-                    if (trackIdx < trackList.getNumChildren())
-                        trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-                    hdr.nameEdit->deleteLater();
-                    hdr.nameEdit = nullptr;
-                    update();
+                    auto& hdr = tracks[trackIdx];
+                    if (hdr.nameEdit == edit)
+                        hdr.nameEdit = nullptr;
                 }
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx >= 0 && trackIdx < trackList.getNumChildren())
+                    trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
+                update();
             });
         }
     }

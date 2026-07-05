@@ -37,7 +37,14 @@ MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     masterLabel->setAlignment(Qt::AlignCenter);
     masterLayout->addWidget(masterLabel);
 
-    masterVU = new HDAW::VUMeter(engine.getMainProcessor()->getMasterMeter(), masterWidget);
+    // The master processor may not be initialized yet at construction time
+    // (AudioEngine::initialize() runs after the UI is built). Use a static
+    // fallback meter so VUMeter construction always succeeds; updateMasterMeter()
+    // reassigns the real master meter once the engine is ready.
+    static HDAW::LevelMeter fallbackMeter;
+    auto* mainProc = engine.getMainProcessor();
+    masterVU = new HDAW::VUMeter(
+        mainProc ? mainProc->getMasterMeter() : fallbackMeter, masterWidget);
     masterVU->setFixedHeight(80);
     masterLayout->addWidget(masterVU);
 
@@ -116,7 +123,10 @@ void MixerWidget::rebuild()
 void MixerWidget::updateMasterMeter()
 {
     if (masterVU != nullptr)
-        masterVU->setMeter(&engine.getMainProcessor()->getMasterMeter());
+    {
+        if (auto* mainProc = engine.getMainProcessor())
+            masterVU->setMeter(&mainProc->getMasterMeter());
+    }
 }
 
 
