@@ -23,7 +23,12 @@ juce::uint32 ClipItem::getColor() const
         return static_cast<juce::uint32>(static_cast<int>(trackTree.getProperty(IDs::color)));
 
     // Fallback: the clip's own color (e.g. before it is attached to a track).
-    return static_cast<juce::uint32>(static_cast<int>(clipTree.getProperty(IDs::color)));
+    auto clipColor = clipTree.getProperty(IDs::color);
+    if (static_cast<int>(clipColor) != 0)
+        return static_cast<juce::uint32>(static_cast<int>(clipColor));
+
+    // Default color if neither track nor clip has one
+    return static_cast<juce::uint32>(0xFF4488CC);
 }
 
 void ClipItem::setPixelsPerSecond(double pps)

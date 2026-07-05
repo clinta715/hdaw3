@@ -318,7 +318,7 @@ void TimelineToolbar::onMidiDeviceChanged(int index)
     if (index == 0)
         emit midiDeviceChanged({});
     else
-        emit midiDeviceChanged(midiDeviceCombo->currentData().toString());
+        emit midiDeviceChanged(midiDeviceCombo->currentText());
 }
 
 void TimelineToolbar::populateMidiDevices(const QStringList& devices)
@@ -338,7 +338,7 @@ void TimelineToolbar::selectMidiDevice(const QString& name)
     midiDeviceCombo->blockSignals(true);
     midiDeviceCombo->setCurrentIndex(idx);
     midiDeviceCombo->blockSignals(false);
-    emit midiDeviceChanged(midiDeviceCombo->currentData().toString());
+    emit midiDeviceChanged(midiDeviceCombo->currentText());
 }
 
 void TimelineToolbar::setDefaultClipLen(double beats)

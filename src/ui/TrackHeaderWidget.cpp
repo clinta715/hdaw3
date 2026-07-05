@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QMenu>
 #include <QAction>
+#include <QTimer>
 #include <QInputDialog>
 #include <QColorDialog>
 
@@ -279,7 +280,10 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     int count = trackList.getNumChildren();
 
     if (count != static_cast<int>(tracks.size()))
-        rebuild();
+    {
+        QTimer::singleShot(0, this, &TrackHeaderWidget::rebuild);
+        return;
+    }
 
     double trackY = rulerHeight - scrollOffset;
 

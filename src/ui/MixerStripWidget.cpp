@@ -204,7 +204,7 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
     painter.setBrush(ThemeColors::bgPanel());
     painter.drawRoundedRect(panTrackRect, 2, 2);
 
-    float panPos = (pan * 0.5f + 0.5f) * (panTrackRect.width() - 6) + 3;
+    float panPos = (pan * 0.5f + 0.5f) * (panTrackRect.width() - 4) + 2;
     painter.setPen(Qt::NoPen);
     painter.setBrush(ThemeColors::textSecondary());
     painter.drawEllipse(QPointF(panTrackRect.x() + panPos, panTrackRect.center().y()), 3, 3);

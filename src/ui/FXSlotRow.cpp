@@ -210,25 +210,48 @@ void FXSlotRow::populateTypeCombo(const QString& filter)
     typeCombo->addItem("Delay");
 
     auto& pluginManager = engine.getPluginManager();
-    const auto& plugins = pluginManager.getPlugins();
-    if (!plugins.empty())
-    {
-        typeCombo->insertSeparator(typeCombo->count());
-        for (const auto& desc : plugins)
-        {
-            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
-                continue;
+    const auto& plugInfos = pluginManager.getPlugins();
+    if (plugInfos.empty())
+        return;
 
+    // Collect instrument and effect plugins separately
+    std::vector<const juce::PluginDescription*> instruments, effects;
+    for (const auto& desc : plugInfos)
+    {
+        if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+            continue;
+        if (desc.isInstrument)
+            instruments.push_back(&desc);
+        else
+            effects.push_back(&desc);
+    }
+
+    auto addPlugins = [&](const std::vector<const juce::PluginDescription*>& list)
+    {
+        for (auto* desc : list)
+        {
             QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(desc.name.toRawUTF8()));
+                .arg(QString::fromUtf8(desc->pluginFormatName.toRawUTF8()))
+                .arg(QString::fromUtf8(desc->name.toRawUTF8()));
 
             if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive))
                 continue;
 
-            QString pluginID = QString::fromUtf8(desc.fileOrIdentifier.toRawUTF8());
+            QString pluginID = QString::fromUtf8(desc->fileOrIdentifier.toRawUTF8());
             typeCombo->addItem(label, QVariant(pluginID));
         }
+    };
+
+    if (!instruments.empty())
+    {
+        typeCombo->insertSeparator(typeCombo->count());
+        addPlugins(instruments);
+    }
+
+    if (!effects.empty())
+    {
+        typeCombo->insertSeparator(typeCombo->count());
+        addPlugins(effects);
     }
 }
 
