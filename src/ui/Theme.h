@@ -3,18 +3,18 @@
 #include <QColor>
 
 namespace ThemeColors {
-    // Backgrounds (warmer, lighter)
-    inline QColor bgWindow()     { static const QColor c(0x1a, 0x1a, 0x1e); return c; }
-    inline QColor bgPanel()      { static const QColor c(0x22, 0x22, 0x26); return c; }
-    inline QColor bgHeader()     { static const QColor c(0x22, 0x22, 0x26); return c; }
-    inline QColor bgWidget()     { static const QColor c(0x2e, 0x2e, 0x32); return c; }
-    inline QColor bgInput()      { static const QColor c(0x2e, 0x2e, 0x32); return c; }
-    inline QColor bgElevated()   { static const QColor c(0x33, 0x33, 0x38); return c; }
-    inline QColor bgToolbar()    { static const QColor c(34, 34, 38, 220); return c; }
+    // Backgrounds (deeper hierarchy)
+    inline QColor bgWindow()     { static const QColor c(0x14, 0x14, 0x16); return c; }
+    inline QColor bgPanel()      { static const QColor c(0x1e, 0x1e, 0x22); return c; }
+    inline QColor bgHeader()     { static const QColor c(0x1e, 0x1e, 0x22); return c; }
+    inline QColor bgWidget()     { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor bgInput()      { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor bgElevated()   { static const QColor c(0x32, 0x32, 0x36); return c; }
+    inline QColor bgToolbar()    { static const QColor c(20, 20, 22, 230); return c; }
 
-    // Borders (slightly warmer)
-    inline QColor border()       { static const QColor c(0x3a, 0x3a, 0x40); return c; }
-    inline QColor borderLight()  { static const QColor c(0x4a, 0x4a, 0x50); return c; }
+    // Borders (softer)
+    inline QColor border()       { static const QColor c(0x2a, 0x2a, 0x2e); return c; }
+    inline QColor borderLight()  { static const QColor c(0x3a, 0x3a, 0x40); return c; }
 
     // Text
     inline QColor textPrimary()  { static const QColor c(0xe8, 0xe8, 0xec); return c; }
@@ -62,54 +62,55 @@ inline QString getGlobalStyleSheet()
 {
     return R"(
         QWidget {
-            background-color: #222226;
+            background-color: #1e1e22;
             color: #e8e8ec;
-            font-family: "Segoe UI Semibold", "Segoe UI", "Arial", sans-serif;
+            font-family: "Segoe UI", "Arial", sans-serif;
             font-size: 8pt;
         }
         QMainWindow {
-            background-color: #1a1a1e;
+            background-color: #141416;
         }
-
         QFrame {
-            background-color: #1a1a1e;
-            border: 1px solid #3a3a40;
+            background-color: #141416;
+            border: 1px solid #2a2a2e;
         }
 
         QPushButton {
-            background-color: #2e2e32;
+            background-color: #2a2a2e;
             color: #e8e8ec;
-            border: 1px solid #4a4a50;
-            border-radius: 3px;
+            border: 1px solid #3a3a40;
+            border-radius: 4px;
             padding: 3px 8px;
             font-size: 8pt;
         }
         QPushButton:hover {
-            background-color: #333338;
-            border-color: #d97706;
+            background-color: #323236;
+            border-color: #4a4a50;
         }
         QPushButton:pressed {
-            background-color: #222226;
+            background-color: #1e1e22;
         }
         QPushButton:checked {
-            background-color: #d97706;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #d97706, stop:1 #b45309);
             color: white;
+            border-color: #d97706;
         }
         QPushButton:disabled {
-            background-color: #2e2e32;
+            background-color: #2a2a2e;
             color: #787880;
         }
 
         QComboBox {
-            background-color: #2e2e32;
+            background-color: #2a2a2e;
             color: #e8e8ec;
-            border: 1px solid #4a4a50;
-            border-radius: 3px;
+            border: 1px solid #3a3a40;
+            border-radius: 4px;
             padding: 2px 6px;
             font-size: 8pt;
         }
         QComboBox:hover {
-            border-color: #d97706;
+            border-color: #4a4a50;
         }
         QComboBox::drop-down {
             border: none;
@@ -120,18 +121,18 @@ inline QString getGlobalStyleSheet()
             height: 8px;
         }
         QComboBox QAbstractItemView {
-            background-color: #333338;
+            background-color: #323236;
             color: #e8e8ec;
-            border: 1px solid #3a3a40;
+            border: 1px solid #2a2a2e;
             selection-background-color: #d97706;
             selection-color: white;
             outline: none;
         }
 
         QLineEdit {
-            background-color: #2e2e32;
+            background-color: #2a2a2e;
             color: #e8e8ec;
-            border: 1px solid #4a4a50;
+            border: 1px solid #3a3a40;
             border-radius: 2px;
             padding: 2px 4px;
             font-size: 8pt;
@@ -141,15 +142,15 @@ inline QString getGlobalStyleSheet()
         }
 
         QScrollBar:vertical {
-            background: #1e1e22;
-            width: 6px;
+            background: #141416;
+            width: 4px;
             border: none;
             margin: 0;
         }
         QScrollBar::handle:vertical {
-            background: #3a3a40;
+            background: #4a4a50;
             min-height: 20px;
-            border-radius: 3px;
+            border-radius: 2px;
             margin: 1px;
         }
         QScrollBar::handle:vertical:hover {
@@ -161,15 +162,15 @@ inline QString getGlobalStyleSheet()
             border: none;
         }
         QScrollBar:horizontal {
-            background: #1e1e22;
-            height: 6px;
+            background: #141416;
+            height: 4px;
             border: none;
             margin: 0;
         }
         QScrollBar::handle:horizontal {
-            background: #3a3a40;
+            background: #4a4a50;
             min-width: 20px;
-            border-radius: 3px;
+            border-radius: 2px;
             margin: 1px;
         }
         QScrollBar::handle:horizontal:hover {
@@ -182,7 +183,7 @@ inline QString getGlobalStyleSheet()
         }
 
         QSplitter::handle {
-            background: #3a3a40;
+            background: #2a2a2e;
         }
         QSplitter::handle:horizontal {
             width: 2px;
@@ -198,28 +199,64 @@ inline QString getGlobalStyleSheet()
         }
 
         QStatusBar {
-            background: #222226;
+            background: #0e0e10;
             color: #a8a8b0;
-            border-top: 1px solid #3a3a40;
+            border-top: 1px solid #2a2a2e;
+        }
+
+        QMenuBar {
+            background: #1e1e22;
+            color: #e8e8ec;
+            font-size: 9pt;
+            border-bottom: 1px solid #2a2a2e;
+            padding: 2px 0;
+        }
+        QMenuBar::item {
+            padding: 4px 10px;
+            background: transparent;
+        }
+        QMenuBar::item:selected {
+            background: #2a2a2e;
         }
 
         QMenu {
-            background-color: #333338;
+            background-color: #323236;
             color: #e8e8ec;
-            border: 1px solid #3a3a40;
+            border: 1px solid #2a2a2e;
+            padding: 4px 0;
+        }
+        QMenu::item {
+            padding: 5px 24px 5px 12px;
+            font-size: 9pt;
         }
         QMenu::item:selected {
             background-color: #d97706;
             color: white;
         }
-
+        QMenu::item:disabled {
+            color: #66666e;
+        }
+        QMenu::indicator {
+            width: 16px;
+            height: 16px;
+            margin-left: 2px;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #3a3a40;
+            margin: 4px 12px;
+        }
+        QMenu::right-arrow {
+            width: 8px;
+            height: 8px;
+            right: 6px;
+        }
         QToolTip {
-            background-color: #2e2e32;
+            background-color: #2a2a2e;
             color: #e8e8ec;
-            border: 1px solid #4a4a50;
+            border: 1px solid #3a3a40;
             padding: 4px;
         }
-
         QScrollArea {
             border: none;
             background: transparent;

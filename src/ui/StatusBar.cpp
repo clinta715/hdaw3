@@ -19,7 +19,7 @@ QFrame* makeSeparator(QWidget* parent)
 {
     auto* sep = new QFrame(parent);
     sep->setFrameShape(QFrame::VLine);
-    sep->setStyleSheet("color: #3a3a3e;");
+    sep->setStyleSheet("color: #2a2a2e;");
     sep->setFixedHeight(14);
     return sep;
 }

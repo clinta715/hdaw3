@@ -9,7 +9,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     : QWidget(parent)
 {
     setStyleSheet(
-        "TimelineToolbar { background: rgba(28, 28, 31, 220); border-bottom: 1px solid #3a3a3e; }");
+        "TimelineToolbar { background: rgba(20, 20, 22, 230); border-bottom: 1px solid #2a2a2e; }");
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(4, 2, 4, 2);
     layout->setSpacing(4);
@@ -110,7 +110,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     bpmSpinBox->setFixedWidth(50);
     bpmSpinBox->setFixedHeight(22);
     bpmSpinBox->setStyleSheet(
-        "QDoubleSpinBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
+        "QDoubleSpinBox { background: #141416; color: #e8e8ec; border: 1px solid #2a2a2e; "
         "border-radius: 2px; padding: 1px 2px; }");
     connect(bpmSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &TimelineToolbar::bpmChanged);
@@ -123,7 +123,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     timeSigCombo->setFixedHeight(22);
     timeSigCombo->setFixedWidth(48);
     timeSigCombo->setStyleSheet(
-        "QComboBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
+        "QComboBox { background: #141416; color: #e8e8ec; border: 1px solid #2a2a2e; "
         "border-radius: 2px; padding: 1px 2px; font-family: monospace; font-size: 8pt; }");
     connect(timeSigCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TimelineToolbar::onTimeSigChanged);
@@ -139,7 +139,7 @@ TimelineToolbar::TimelineToolbar(QWidget* parent)
     midiDeviceCombo->setFixedHeight(22);
     midiDeviceCombo->setFixedWidth(100);
     midiDeviceCombo->setStyleSheet(
-        "QComboBox { background: #1a1a1e; color: #e8e8ec; border: 1px solid #3a3a40; "
+        "QComboBox { background: #141416; color: #e8e8ec; border: 1px solid #2a2a2e; "
         "border-radius: 2px; padding: 1px 2px; font-size: 7pt; }");
     connect(midiDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TimelineToolbar::onMidiDeviceChanged);
@@ -393,20 +393,35 @@ void TimelineToolbar::addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager&
     if (plugins.empty()) return;
 
     auto* pluginMenu = parentMenu->addMenu("Track with Plugin");
+
+    auto addPlugin = [&](QMenu* parent, const juce::PluginDescription& d)
+    {
+        QString label = QString("[%1] %2")
+            .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
+            .arg(QString::fromUtf8(d.name.toRawUTF8()));
+        auto* act = parent->addAction(label);
+        connect(act, &QAction::triggered, this,
+            [this, id = juce::String(d.fileOrIdentifier),
+                    fmt = juce::String(d.pluginFormatName)]() {
+                emit addTrackWithPlugin(id, fmt);
+            });
+    };
+
+    auto* instMenu = pluginMenu->addMenu("Instrument");
+    auto* effMenu = pluginMenu->addMenu("Effect");
     for (const auto& desc : plugins)
     {
         if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
             continue;
 
-        QString label = QString("[%1] %2")
-            .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
-            .arg(QString::fromUtf8(desc.name.toRawUTF8()));
-        auto* act = pluginMenu->addAction(label);
-        juce::String id = desc.fileOrIdentifier;
-        juce::String fmt = desc.pluginFormatName;
-        connect(act, &QAction::triggered, this,
-            [this, id, fmt]() {
-                emit addTrackWithPlugin(id, fmt);
-            });
+        if (desc.isInstrument)
+            addPlugin(instMenu, desc);
+        else
+            addPlugin(effMenu, desc);
     }
+
+    if (instMenu->actions().isEmpty())
+        pluginMenu->removeAction(instMenu->menuAction());
+    if (effMenu->actions().isEmpty())
+        pluginMenu->removeAction(effMenu->menuAction());
 }

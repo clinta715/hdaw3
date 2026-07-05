@@ -25,11 +25,11 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     nameFont.setBold(true);
 
     toggleFont = font();
-    toggleFont.setPointSize(6);
+    toggleFont.setPointSize(7);
     toggleFont.setBold(true);
 
     smallFont = font();
-    smallFont.setPointSize(6);
+    smallFont.setPointSize(7);
 
     connect(&vuTimer, &QTimer::timeout, this, &TrackHeaderWidget::updateVU);
     vuTimer.start(static_cast<int>(vuUpdateInterval));
@@ -320,7 +320,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         // MIDI channel indicator (small text on the right of the name row)
         {
             int channel = tree.getProperty(IDs::midiChannel, 1);
-            QString chText = QString("Ch %1").arg(channel);
+            QString chText = QString("CH %1").arg(channel);
             QFont chFont = painter.font();
             chFont.setPointSize(7);
             painter.setFont(chFont);
@@ -699,21 +699,36 @@ void TrackHeaderWidget::buildEmptyAreaMenu(const QPoint& globalPos)
     const auto& plugins = pluginManager.getPlugins();
     if (!plugins.empty())
     {
-        auto* pluginTrk = addFxs->addMenu("Plugin");
+        auto addPluginToSubmenu = [&](QMenu* parent, const juce::PluginDescription& d)
+        {
+            QString label = QString("[%1] %2")
+                .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
+                .arg(QString::fromUtf8(d.name.toRawUTF8()));
+            auto* act = parent->addAction(label);
+            connect(act, &QAction::triggered, this,
+                [this, d]() {
+                    emit addTrackWithPlugin(d.fileOrIdentifier, d.pluginFormatName);
+                });
+        };
+
+        auto* instMenu = addFxs->addMenu("Instrument");
+        auto* fxMenu = addFxs->addMenu("Effect");
         for (const auto& desc : plugins)
         {
             if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
                 continue;
 
-            QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(desc.name.toRawUTF8()));
-            auto* act = pluginTrk->addAction(label);
-            connect(act, &QAction::triggered, this,
-                [this, desc]() {
-                    emit addTrackWithPlugin(desc.fileOrIdentifier, desc.pluginFormatName);
-                });
+            if (desc.isInstrument)
+                addPluginToSubmenu(instMenu, desc);
+            else
+                addPluginToSubmenu(fxMenu, desc);
         }
+
+        // Remove empty submenus
+        if (instMenu->actions().isEmpty())
+            addFxs->removeAction(instMenu->menuAction());
+        if (fxMenu->actions().isEmpty())
+            addFxs->removeAction(fxMenu->menuAction());
     }
 
     menu.exec(globalPos);
@@ -771,28 +786,44 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
     auto* delayAction = fxMenu->addAction("Delay");
     connect(delayAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "delay"); });
 
-    // Plugin submenu (skip blacklisted)
+    // Plugin submenus (skip blacklisted)
     auto& pluginManager = engine.getPluginManager();
     const auto& plugins = pluginManager.getPlugins();
     if (!plugins.empty())
     {
         fxMenu->addSeparator();
+
+        auto addPluginToSubmenu = [&](QMenu* parent, const juce::PluginDescription& d)
+        {
+            QString label = QString("[%1] %2")
+                .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
+                .arg(QString::fromUtf8(d.name.toRawUTF8()));
+            auto* pluginAction = parent->addAction(label);
+            connect(pluginAction, &QAction::triggered, this,
+                [this, trackIdx, d]() {
+                    addPluginToTrack(trackIdx,
+                        d.fileOrIdentifier,
+                        d.pluginFormatName);
+                });
+        };
+
+        auto* instMenu = fxMenu->addMenu("Instrument");
+        auto* effMenu = fxMenu->addMenu("Effect");
         for (const auto& desc : plugins)
         {
             if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
                 continue;
 
-            QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(desc.pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(desc.name.toRawUTF8()));
-            auto* pluginAction = fxMenu->addAction(label);
-            connect(pluginAction, &QAction::triggered, this,
-                [this, trackIdx, desc]() {
-                    addPluginToTrack(trackIdx,
-                        desc.fileOrIdentifier,
-                        desc.pluginFormatName);
-                });
+            if (desc.isInstrument)
+                addPluginToSubmenu(instMenu, desc);
+            else
+                addPluginToSubmenu(effMenu, desc);
         }
+
+        if (instMenu->actions().isEmpty())
+            fxMenu->removeAction(instMenu->menuAction());
+        if (effMenu->actions().isEmpty())
+            fxMenu->removeAction(effMenu->menuAction());
     }
 
     menu.addSeparator();

@@ -53,25 +53,34 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     QRectF r(0, 0, w, h);
     auto color = QColor::fromRgba(getColor());
 
-    // Shadow
-    QRectF shadowR = r.translated(1, 1);
+    // Shadow (softer, more diffused)
     painter->setPen(Qt::NoPen);
-    painter->setBrush(QColor(0, 0, 0, 80));
-    painter->drawRoundedRect(shadowR, cornerRadius, cornerRadius);
+    painter->setBrush(QColor(0, 0, 0, 60));
+    painter->drawRoundedRect(r.translated(0, 2).adjusted(-1, -1, 1, 1), cornerRadius + 1, cornerRadius + 1);
+    painter->drawRoundedRect(r.translated(0, 1).adjusted(0, 0, 0, 0), cornerRadius, cornerRadius);
 
-    // Main fill
-    painter->setBrush(color.lighter(130));
+    // Main fill (subtle vertical gradient)
+    QLinearGradient grad(r.topLeft(), r.bottomLeft());
+    grad.setColorAt(0, color.lighter(140));
+    grad.setColorAt(1, color.lighter(110));
+    painter->setBrush(grad);
     painter->drawRoundedRect(r, cornerRadius, cornerRadius);
 
+    // Top highlight (subtle inner glow)
+    painter->setPen(QPen(QColor(255, 255, 255, 20), 1));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawLine(QPointF(r.left() + cornerRadius, r.top() + 0.5),
+                      QPointF(r.right() - cornerRadius, r.top() + 0.5));
+
     // Inner border
-    painter->setPen(QPen(color.darker(120), 1));
+    painter->setPen(QPen(color.darker(130), 1));
     painter->setBrush(Qt::NoBrush);
     painter->drawRoundedRect(r.adjusted(0.5, 0.5, -0.5, -0.5), cornerRadius, cornerRadius);
 
-    // Selection highlight
+    // Selection highlight (white outline)
     if (isSelected())
     {
-        painter->setPen(QPen(ThemeColors::accent(), 2));
+        painter->setPen(QPen(QColor(0xe8, 0xe8, 0xec), 2));
         painter->setBrush(Qt::NoBrush);
         painter->drawRoundedRect(r.adjusted(1, 1, -1, -1), cornerRadius, cornerRadius);
     }
@@ -81,15 +90,21 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     if (contentRect.width() > 4 && contentRect.height() > 4)
         paintContent(*painter, contentRect);
 
-    // Name label
+    // Name label (with text shadow for readability)
     if (w > 30)
     {
-        painter->setPen(Qt::white);
         QFont f = painter->font();
         f.setPointSize((std::max)(7, (std::min)(10, static_cast<int>(h / 6))));
         painter->setFont(f);
         QString clipName = QString::fromUtf8(
             clipTree.getProperty(IDs::name).toString().toRawUTF8());
+
+        // Shadow
+        painter->setPen(QColor(0, 0, 0, 120));
+        painter->drawText(r.adjusted(5, 3, -3, -1),
+                          Qt::AlignLeft | Qt::AlignTop, clipName);
+        // Text
+        painter->setPen(Qt::white);
         painter->drawText(r.adjusted(4, 2, -4, -2),
                           Qt::AlignLeft | Qt::AlignTop, clipName);
     }
@@ -103,7 +118,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
         QPolygonF tri;
         tri << QPointF(0, 0) << QPointF(fw, 0) << QPointF(0, h);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0, 0, 0, 100));
+        painter->setBrush(QColor(0, 0, 0, 80));
         painter->drawPolygon(tri);
     }
     if (fadeOut > 0.001 && w > 10)
@@ -112,7 +127,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
         QPolygonF tri;
         tri << QPointF(w, 0) << QPointF(w - fw, 0) << QPointF(w, h);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(0, 0, 0, 100));
+        painter->setBrush(QColor(0, 0, 0, 80));
         painter->drawPolygon(tri);
     }
 }

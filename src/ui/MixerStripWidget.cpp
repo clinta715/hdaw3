@@ -158,7 +158,7 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
         painter.drawRoundedRect(rect, 2, 2);
         painter.setPen(active ? Qt::white : ThemeColors::textSecondary());
         QFont sf = painter.font();
-        sf.setPointSize(6);
+        sf.setPointSize(7);
         sf.setBold(true);
         painter.setFont(sf);
         painter.drawText(rect, Qt::AlignCenter, label);
@@ -173,7 +173,7 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
     painter.drawRoundedRect(fxBtnRect, 2, 2);
     painter.setPen(ThemeColors::accentBright());
     QFont sf2 = painter.font();
-    sf2.setPointSize(6);
+    sf2.setPointSize(7);
     sf2.setBold(true);
     painter.setFont(sf2);
     painter.drawText(fxBtnRect, Qt::AlignCenter, "FX");

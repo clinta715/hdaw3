@@ -195,20 +195,26 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
 
         QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), alpha);
 
-        painter.setPen(QPen(noteColor.darker(130), 1));
-        painter.setBrush(noteColor);
-        painter.drawRoundedRect(r.adjusted(0, 0, -1, -1), 2, 2);
-    }
+        // Note shadow
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 40));
+        painter.drawRoundedRect(r.adjusted(0, 1, -1, 0), 2, 2);
 
-    // Draw selection
-    for (int i = 0; i < model.getNumNotes(); ++i)
-    {
-        if (!model.isSelected(i)) continue;
-        auto r = noteRect(i);
-        if (r.right() < 0 || r.left() > w || r.bottom() < 0 || r.top() > h) continue;
-        painter.setPen(QPen(ThemeColors::warning(), 2));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(r.adjusted(1, 1, -1, -1), 2, 2);
+        // Note body (gradient)
+        QLinearGradient noteGrad(r.topLeft(), r.bottomLeft());
+        noteGrad.setColorAt(0, noteColor.lighter(120));
+        noteGrad.setColorAt(1, noteColor);
+        painter.setPen(QPen(noteColor.darker(130), 1));
+        painter.setBrush(noteGrad);
+        painter.drawRoundedRect(r.adjusted(0, 0, -1, -1), 2, 2);
+
+        // Selection highlight
+        if (model.isSelected(i))
+        {
+            painter.setPen(QPen(QColor(0xe8, 0xe8, 0xec), 2));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(r.adjusted(1, 1, -2, -2), 2, 2);
+        }
     }
 
     // Rubber-band selection rectangle
