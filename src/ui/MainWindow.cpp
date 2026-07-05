@@ -66,8 +66,10 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     toolbar->setSnap(PreferencesDialog::getSnapEnabled());
     toolbar->setSnapDivision(PreferencesDialog::getSnapDivision());
 
-    // Listen for transport property changes (loop toggle, etc.)
-    engine.getProjectModel().getTransportTree().addListener(this);
+    // Listen on the root project tree (not the TRANSPORT child) so the
+    // listener survives project rebuilds. Child-tree listeners become
+    // orphaned when the tree is cleared (e.g. on File→New).
+    engine.getProjectModel().getTree().addListener(this);
 
     // Startup dialog — let user choose new/open/recent before the main window appears
     {
@@ -101,9 +103,7 @@ MainWindow::~MainWindow()
         mcpHttp_ = nullptr;
     }
 
-    auto transportTree = engine.getProjectModel().getTransportTree();
-    if (transportTree.isValid())
-        transportTree.removeListener(this);
+    engine.getProjectModel().getTree().removeListener(this);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -978,6 +978,25 @@ void MainWindow::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Ide
     if (tree.hasType(IDs::TRANSPORT) && property == IDs::isLooping)
     {
         bool looping = tree.getProperty(IDs::isLooping);
+        timelineView->getToolbar()->setLoopEnabled(looping);
+        if (loopAction)
+        {
+            loopAction->blockSignals(true);
+            loopAction->setChecked(looping);
+            loopAction->blockSignals(false);
+        }
+    }
+}
+
+void MainWindow::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
+{
+    juce::ignoreUnused(parentTree);
+    // When a new TRANSPORT node is added (e.g. after File→New or project load),
+    // sync the UI to the initial transport state. Properties on the new child
+    // are set before addChild, so valueTreePropertyChanged never fires for them.
+    if (childWhichHasBeenAdded.hasType(IDs::TRANSPORT))
+    {
+        bool looping = childWhichHasBeenAdded.getProperty(IDs::isLooping);
         timelineView->getToolbar()->setLoopEnabled(looping);
         if (loopAction)
         {

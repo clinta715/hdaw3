@@ -89,6 +89,7 @@ private:
     void pumpJuceMessages();
 
     void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
 
     AudioEngine& engine;
 

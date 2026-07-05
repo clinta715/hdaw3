@@ -320,7 +320,20 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
 
 void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
 {
-    juce::ignoreUnused(childWhichHasBeenAdded);
+    juce::ignoreUnused(parentTree);
+    if (childWhichHasBeenAdded.hasType(IDs::TRANSPORT))
+    {
+        // A new transport node was added (e.g. after File→New).
+        // Properties were set before addChild, so valueTreePropertyChanged
+        // never fired for them. Push the initial state to the audio thread.
+        transportManager.setLooping(childWhichHasBeenAdded.getProperty(IDs::isLooping));
+        double sr = transportManager.getSampleRate();
+        transportManager.setLoopStartSample(static_cast<int64_t>(
+            static_cast<double>(childWhichHasBeenAdded.getProperty(IDs::loopStart)) * sr));
+        transportManager.setLoopEndSample(static_cast<int64_t>(
+            static_cast<double>(childWhichHasBeenAdded.getProperty(IDs::loopEnd)) * sr));
+        transportManager.setPlaying(childWhichHasBeenAdded.getProperty(IDs::isPlaying));
+    }
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
 }

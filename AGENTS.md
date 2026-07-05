@@ -903,6 +903,72 @@ expecting a context menu, and nothing happens.
 in the constructor. Right-click events fall through the marker to the ruler,
 which now handles them via its own `contextMenuEvent`.
 
+## ValueTree listener orphans after project rebuild — the silent desync
+
+**Symptom**: After File→New or loading a saved project, the loop button
+shows the wrong checked state and `Ctrl+L` may not toggle correctly.
+More generally: *any* `ValueTree::Listener` that was registered on a
+**child node** (e.g. TRANSPORT, TRACK_LIST) silently stops working
+when the project tree is rebuilt.
+
+**Root cause** (`MainWindow.cpp:70`, fixed v0.4.2):
+
+```cpp
+// BAD — listener on child node, orphaned after project rebuild:
+engine.getProjectModel().getTransportTree().addListener(this);
+
+// GOOD — listener on root tree survives rebuilds:
+engine.getProjectModel().getTree().addListener(this);
+```
+
+`ProjectSerializer::createNew()` and `ProjectSerializer::load()` call
+`projectTree.removeAllChildren()`, which detaches every child from the
+root tree. Any `ValueTree::Listener` registered on an orphaned child
+(TRANSPORT, TRACK_LIST, etc.) will **never fire again** — the old
+ValueTree instance is reference-counted but no longer part of the
+project hierarchy. Properties on the *new* child nodes are set *before*
+`addChild()`, so `valueTreePropertyChanged` never fires for their
+initial state either.
+
+**Correct pattern** — register on the root tree, then handle both
+property changes and child additions:
+
+```cpp
+// In constructor:
+engine.getProjectModel().getTree().addListener(this);
+
+// In valueTreePropertyChanged:
+if (tree.hasType(IDs::TRANSPORT) && property == IDs::isLooping)
+    syncLoopUI(tree.getProperty(IDs::isLooping));
+
+// In valueTreeChildAdded:
+if (childWhichHasBeenAdded.hasType(IDs::TRANSPORT))
+    syncLoopUI(childWhichHasBeenAdded.getProperty(IDs::isLooping));
+```
+
+`AudioEngine` already uses this root-tree pattern (`AudioEngine.cpp:7`)
+and was correct. `MainWindow` used the child-tree pattern and was broken.
+`TimelineScene` re-attaches via `attachListener()`/`detachListener()`
+in `rebuildFromValueTree()`, which is safe but must be kept in sync
+with every rebuild path.
+
+**Audit checklist** — every `SomeChildTree.addListener(this)` call
+is suspect. The safe approach is `getTree().addListener(this)` with
+`treeWhosePropertyHasChanged.hasType(IDs::XXX)` filters. If a child-
+tree listener is unavoidable (e.g. for scoping reasons), the listener
+*must* be re-registered every time the tree is rebuilt (see
+`TimelineScene::attachListener` for the pattern).
+
+**Engine-side pitfall** (same root cause, different manifestation):
+When a new TRANSPORT child is added, the `AudioEngine` root-tree
+listener hears the child addition via `valueTreeChildAdded`, but the
+method originally only handled `TEMPO_POINT_LIST`. The loop state
+atomics (`isLooping`, `loopStartSample`, `loopEndSample`, `isPlaying`)
+retained stale values from the previous project until the next user
+toggle or `prepareToPlay` call. **Fix**: `AudioEngine::valueTreeChildAdded`
+now syncs all transport properties to `TransportManager` when a
+TRANSPORT node is added.
+
 ## Codebase hardening (v0.3.x, 2026-06-30)
 
 The codebase hardening pass addressed 23 tasks across 6 phases:
