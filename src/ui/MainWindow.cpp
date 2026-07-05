@@ -690,6 +690,7 @@ void MainWindow::rebuildAllUI()
 {
     timelineView->getScene()->rebuildFromValueTree();
     mixerWidget->rebuild();
+    mixerWidget->updateMasterMeter();
     fxChainWidget->clear();
     pianoRollWidget->clear();
     audioEditorWidget->clear();

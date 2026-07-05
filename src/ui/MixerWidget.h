@@ -15,6 +15,7 @@ public:
     ~MixerWidget() override;
 
     void rebuild();
+    void updateMasterMeter();
 
 signals:
     void fxButtonClicked(int trackIndex);
@@ -24,4 +25,5 @@ private:
     QWidget* stripContainer;
     QHBoxLayout* stripLayout;
     QTimer vuTimer;
+    HDAW::VUMeter* masterVU = nullptr;
 };

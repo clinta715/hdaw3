@@ -6,7 +6,7 @@
 namespace HDAW {
 
 VUMeter::VUMeter(LevelMeter& meterToPoll, QWidget* parent)
-    : QWidget(parent), meter(meterToPoll)
+    : QWidget(parent), meter(&meterToPoll)
 {
     setMinimumWidth(20);
     setMinimumHeight(100);
@@ -21,8 +21,10 @@ VUMeter::~VUMeter()
 
 void VUMeter::updateLevels()
 {
-    float targetLeft = meter.getLeftLevel();
-    float targetRight = meter.getRightLevel();
+    if (meter == nullptr) return;
+
+    float targetLeft = meter->getLeftLevel();
+    float targetRight = meter->getRightLevel();
 
     // Fast rise, slow decay
     if (targetLeft > currentLeft) currentLeft = targetLeft;

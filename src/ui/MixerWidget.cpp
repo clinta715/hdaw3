@@ -25,11 +25,8 @@ MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     stripLayout->setContentsMargins(2, 2, 2, 2);
     stripLayout->setSpacing(2);
 
-    scrollArea->setWidget(stripContainer);
-    mainLayout->addWidget(scrollArea, 1);
-
-    // Master strip (non-scrollable, right side)
-    auto* masterWidget = new QWidget(this);
+    // Master strip (inside scroll area, right side, aligned with tracks)
+    auto* masterWidget = new QWidget(stripContainer);
     masterWidget->setFixedWidth(70);
     masterWidget->setStyleSheet(QString("background-color: %1;").arg(ThemeColors::bgPanel().name()));
     auto* masterLayout = new QVBoxLayout(masterWidget);
@@ -40,11 +37,12 @@ MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     masterLabel->setAlignment(Qt::AlignCenter);
     masterLayout->addWidget(masterLabel);
 
-    auto* masterVU = new HDAW::VUMeter(engine.getMainProcessor()->getMasterMeter(), masterWidget);
+    masterVU = new HDAW::VUMeter(engine.getMainProcessor()->getMasterMeter(), masterWidget);
     masterVU->setFixedHeight(80);
     masterLayout->addWidget(masterVU);
 
-    mainLayout->addWidget(masterWidget, 0, Qt::AlignRight);
+    scrollArea->setWidget(stripContainer);
+    mainLayout->addWidget(scrollArea, 1);
 
     rebuild();
 }
@@ -53,11 +51,11 @@ MixerWidget::~MixerWidget() = default;
 
 void MixerWidget::rebuild()
 {
-    // Clear existing strips
+    // Clear existing strips (but keep master widget)
     QLayoutItem* item;
     while ((item = stripLayout->takeAt(0)) != nullptr)
     {
-        if (item->widget())
+        if (item->widget() && item->widget() != masterVU->parentWidget())
             item->widget()->deleteLater();
         delete item;
     }
@@ -107,7 +105,18 @@ void MixerWidget::rebuild()
         stripLayout->addWidget(strip);
     }
 
+    // Add stretch before master so it stays at the right end
     stripLayout->addStretch();
+
+    // Re-add master widget at the end
+    if (masterVU != nullptr && masterVU->parentWidget() != nullptr)
+        stripLayout->addWidget(masterVU->parentWidget());
+}
+
+void MixerWidget::updateMasterMeter()
+{
+    if (masterVU != nullptr)
+        masterVU->setMeter(&engine.getMainProcessor()->getMasterMeter());
 }
 
 
