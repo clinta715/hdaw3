@@ -54,12 +54,22 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
 {
     painter->setRenderHint(QPainter::Antialiasing, false);
 
-    // Background
-    painter->fillRect(boundingRect(), ThemeColors::rulerBg());
+    // Compute the visible time window from the painter's clip rect so the
+    // tick/label loops below only iterate over on-screen content. Iterating
+    // across the full 300s boundingRect() every repaint caused noticeable
+    // redraw lag when scrolling horizontally at high zoom. The clip rect is
+    // in item coordinates (same frame as boundingRect).
+    QRectF clip = painter->clipBoundingRect();
+    double visLeftT = (std::max)(0.0, clip.left() / pixelsPerSecond);
+    double visRightT = clip.right() / pixelsPerSecond;
+    if (visRightT <= visLeftT) visRightT = boundingRect().width() / pixelsPerSecond;
 
-    // Bottom border
+    // Background — fill only the exposed clip region, not the full bounding rect.
+    painter->fillRect(clip, ThemeColors::rulerBg());
+
+    // Bottom border — span only the visible clip width.
     painter->setPen(QPen(ThemeColors::border(), 1));
-    painter->drawLine(QPointF(0, height - 1), QPointF(boundingRect().width(), height - 1));
+    painter->drawLine(QPointF(clip.left(), height - 1), QPointF(clip.right(), height - 1));
 
     // Loop region highlight
     double lx = xFromTime(loopStart);
@@ -101,6 +111,8 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
             auto pt = tempoPoints.getChild(i);
             double ptTime = pt.getProperty(IDs::startTime);
             double ptBpm = pt.getProperty(IDs::tempo);
+            // Skip tempo points outside the visible window.
+            if (ptTime < visLeftT - 1.0 || ptTime > visRightT + 1.0) continue;
             double ptX = xFromTime(ptTime);
             painter->setPen(QPen(ThemeColors::accentBright(), 2));
             painter->drawLine(QPointF(ptX, height - 12), QPointF(ptX, height - 3));
@@ -115,7 +127,6 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
 
     if (!showBeats)
     {
-        double visibleDuration = boundingRect().width() / pixelsPerSecond;
         double step = 1.0;
         if (pixelsPerSecond < 5) step = 5.0;
         if (pixelsPerSecond < 1) step = 10.0;
@@ -125,8 +136,11 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
         f.setPointSize(8);
         painter->setFont(f);
 
-        for (double t = 0; t < visibleDuration; t += step)
+        // Start from the first tick at/after the left edge of the visible
+        // window so we don't draw thousands of off-screen ticks at high zoom.
+        for (double t = std::floor(visLeftT / step) * step; t < visRightT; t += step)
         {
+            if (t < 0.0) continue;
             double x = xFromTime(t);
             int mins = static_cast<int>(t) / 60;
             int secs = static_cast<int>(t) % 60;
@@ -140,7 +154,6 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
     // Bars:Beats display
     double bpm = engine.getTransportManager().getBPM();
     double secondsPerBeat = 60.0 / (std::max)(1.0, bpm);
-    double visibleDuration = boundingRect().width() / pixelsPerSecond;
 
     double beatsPerDivision;
     double pxPerBeat = pixelsPerSecond * secondsPerBeat;
@@ -152,14 +165,18 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
     else
         beatsPerDivision = 0.25;
 
-    double totalBeats = (visibleDuration / secondsPerBeat);
+    // Iterate only over the visible beat window: start at the first beat
+    // division at/after the visible left edge, end at the visible right edge.
+    double startBeat = (std::max)(0.0, std::floor(visLeftT / secondsPerBeat / beatsPerDivision) * beatsPerDivision);
+    double endBeat = visRightT / secondsPerBeat;
 
     QFont f = painter->font();
     f.setPointSize(8);
     painter->setFont(f);
 
-    for (double beat = 0; beat < totalBeats; beat += beatsPerDivision)
+    for (double beat = startBeat; beat < endBeat; beat += beatsPerDivision)
     {
+        if (beat < 0.0) continue;
         double t = beat * secondsPerBeat;
         double x = xFromTime(t);
         bool isBar = (static_cast<int>(beat) % 4 == 0);

@@ -459,11 +459,11 @@ void MainWindow::setupBottomPanel()
     });
 
     connect(bottomStack, &QStackedWidget::currentChanged, this, [this](int index) {
-        if (index < 0 || index >= tabButtons.size()) return;
-        for (int i = 0; i < tabButtons.size(); ++i)
+        if (index < 0 || index >= static_cast<int>(tabButtons.size())) return;
+        for (int i = 0; i < static_cast<int>(tabButtons.size()); ++i)
             tabButtons[i]->setChecked(i == index);
     });
-    if (bottomStack->currentIndex() >= 0 && bottomStack->currentIndex() < tabButtons.size())
+    if (bottomStack->currentIndex() >= 0 && bottomStack->currentIndex() < static_cast<int>(tabButtons.size()))
         tabButtons[bottomStack->currentIndex()]->setChecked(true);
 
     bottomStack->setCurrentIndex(0);

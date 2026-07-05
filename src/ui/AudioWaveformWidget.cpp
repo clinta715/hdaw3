@@ -329,6 +329,9 @@ void AudioWaveformWidget::wheelEvent(QWheelEvent* event)
         scrollX = (std::max)(0, scrollX - delta);
         update();
     }
+    // Accept in both branches so the horizontal scroll doesn't also bubble up
+    // to an ancestor scroll area. Matches NoteGridWidget/AutomationLaneWidget.
+    event->accept();
 }
 
 void AudioWaveformWidget::focusOutEvent(QFocusEvent* event)

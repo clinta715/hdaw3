@@ -1068,7 +1068,11 @@ void TimelineView::valueTreeChildAdded(juce::ValueTree& parentTree,
         markerListTree = childWhichHasBeenAdded;
         syncMarkers();
     }
-    else if (parentTree == markerListTree && childWhichHasBeenAdded.hasType(IDs::MARKER))
+    // Filter by type rather than comparing against the stored markerListTree
+    // member: the member can be stale if the MARKER_LIST node was swapped by
+    // a path that didn't flow through the root-child-add branch above. The
+    // syncMarkers() orphan sweep reconciles any drift.
+    else if (parentTree.hasType(IDs::MARKER_LIST) && childWhichHasBeenAdded.hasType(IDs::MARKER))
     {
         onMarkerAdded(childWhichHasBeenAdded);
     }
@@ -1079,7 +1083,8 @@ void TimelineView::valueTreeChildRemoved(juce::ValueTree& parentTree,
                                          int indexFromWhichItWasRemoved)
 {
     juce::ignoreUnused(indexFromWhichItWasRemoved);
-    if (parentTree == markerListTree && childWhichHasBeenRemoved.hasType(IDs::MARKER))
+    // See valueTreeChildAdded for why we filter by type here.
+    if (parentTree.hasType(IDs::MARKER_LIST) && childWhichHasBeenRemoved.hasType(IDs::MARKER))
     {
         onMarkerRemoved(childWhichHasBeenRemoved);
     }

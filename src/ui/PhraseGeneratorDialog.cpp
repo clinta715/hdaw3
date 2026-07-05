@@ -84,7 +84,9 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
     auto updateLowPrefix = [this](int v) {
         lowNoteSpin->setPrefix(QString::fromUtf8(PhraseGenerator::noteName(v)));
     };
-    connect(lowNoteSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateLowPrefix);
+    // 4-arg connect form: pass `this` as the receiver context so Qt
+    // auto-disconnects if the dialog is destroyed (per AGENTS.md rule).
+    connect(lowNoteSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, updateLowPrefix);
     updateLowPrefix(48);
     rangeForm->addRow("Low:", lowNoteSpin);
 
@@ -94,7 +96,8 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
     auto updateHighPrefix = [this](int v) {
         highNoteSpin->setPrefix(QString::fromUtf8(PhraseGenerator::noteName(v)));
     };
-    connect(highNoteSpin, QOverload<int>::of(&QSpinBox::valueChanged), updateHighPrefix);
+    // 4-arg connect form (see lowNoteSpin note above).
+    connect(highNoteSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, updateHighPrefix);
     updateHighPrefix(84);
     rangeForm->addRow("High:", highNoteSpin);
 

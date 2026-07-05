@@ -45,7 +45,7 @@ private slots:
 private:
     void layoutRects();
 
-    int trackIndex;
+    int trackIndex = -1;
     AudioEngine& engine;
 
     QTimer vuTimer;
