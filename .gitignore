@@ -77,3 +77,11 @@ Desktop.ini
 *.swo
 *~
 .DS_Store
+
+# Local test artifacts (export/render scratch output)
+test_output.wav
+test_song.hdaw
+
+# Local tool state (Superpowers/Cline brainstorm sessions)
+.superpowers/
+
