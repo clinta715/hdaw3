@@ -1,4 +1,5 @@
 #include "Track.h"
+#include <cmath>
 
 namespace HDAW {
 
@@ -8,7 +9,7 @@ Track::Track()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
     volumeGain.setCurrentAndTargetValue(1.0f);
-    panPosition.setCurrentAndTargetValue(0.5f);
+    panPosition.setCurrentAndTargetValue(0.0f);
     modulationManager = std::make_unique<ModulationManager>();
 }
 
@@ -270,8 +271,14 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             float currentGain = std::clamp(baseGain + modGain, 0.0f, 1.0f);
             float currentPan  = std::clamp(basePan  + modPan,  -1.0f, 1.0f);
 
-            float leftGain = currentGain * (1.0f - currentPan);
-            float rightGain = currentGain * currentPan;
+            // Equal-power pan: pan is in [-1, +1] (the convention used by the
+            // mixer/header UI and stored in IDs::pan). Map to an angle and
+            // apply cosine/sine gains. The previous law leftGain*(1-pan)/
+            // rightGain*pan assumed a [0,1] pan and zeroed one channel at
+            // the default center pan (0.0) — causing missing/silent output.
+            float panAngle = (currentPan + 1.0f) * (juce::MathConstants<float>::pi * 0.25f);
+            float leftGain = currentGain * std::cos(panAngle);
+            float rightGain = currentGain * std::sin(panAngle);
 
             leftChannel[sample] *= leftGain;
             rightChannel[sample] *= rightGain;
