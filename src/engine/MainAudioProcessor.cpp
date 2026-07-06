@@ -10,6 +10,17 @@ MainAudioProcessor::MainAudioProcessor()
 
 MainAudioProcessor::~MainAudioProcessor() = default;
 
+bool MainAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    // Require at least one output bus (speaker feed). Match input/output
+    // channel counts on the main buses so the graph can route symmetrically.
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+    const auto& mainIn = layouts.getMainInputChannelSet();
+    if (mainOut.isDisabled()) return false;
+    if (!mainIn.isDisabled() && mainIn.size() != mainOut.size()) return false;
+    return true;
+}
+
 void MainAudioProcessor::setTransportManager(HDAW::TransportManager* tm)
 {
     transportManager = tm;
@@ -40,6 +51,13 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
             + " loopEnd=" + juce::String(le) + "s (" + juce::String(static_cast<int64_t>(le * sampleRate)) + " samples)");
     }
 
+    // Propagate this processor's host-negotiated bus layout to the graph.
+    // The graph's audioOutputNode reads its input-channel count from the
+    // graph's own output bus; without this, the IO node reports 0 channels
+    // and every master→IO addConnection is silently rejected (no audio
+    // reaches the speaker buffer even though the master meter moves).
+    graph.setBusesLayout(getBusesLayout());
+
     routingManager = std::make_unique<HDAW::RoutingManager>(
         graph, *projectModel, *formatManager, *transportManager, pluginManager);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
@@ -47,6 +65,11 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     graph.setPlayHead(internalPlayHead.get());
     graph.prepareToPlay(sampleRate, samplesPerBlock);
+
+    // Re-establish output-bound connections after prepareToPlay. Even with
+    // the bus layout set above, JUCE finalizes IO-node channel negotiation
+    // during prepareToPlay, so connections are re-added here to be safe.
+    routingManager->reconnectMasterToOutput();
 }
 
 void MainAudioProcessor::releaseResources()
@@ -335,12 +358,18 @@ void MainAudioProcessor::rebuildRoutingGraph()
         graphRebuildPending.store(true, std::memory_order_release);
         graphLock.enter();
         graph.clear();
+        graph.setBusesLayout(getBusesLayout());
         routingManager = std::make_unique<HDAW::RoutingManager>(
             graph, *projectModel, *formatManager, *transportManager, pluginManager);
         routingManager->rebuildFromValueTree();
         graph.setPlayHead(internalPlayHead.get());
         if (getSampleRate() > 0)
+        {
             graph.prepareToPlay(getSampleRate(), getBlockSize());
+            // Re-establish master→output after bus-layout negotiation (see
+            // prepareToPlay above for why this is required).
+            routingManager->reconnectMasterToOutput();
+        }
         graphLock.exit();
         graphRebuildPending.store(false, std::memory_order_release);
     }

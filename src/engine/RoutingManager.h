@@ -23,6 +23,12 @@ public:
     ~RoutingManager();
 
     void rebuildFromValueTree();
+    // Re-establish the master-bus → audio-output connections. Must be called
+    // AFTER AudioProcessorGraph::prepareToPlay, which is when the audioOutput
+    // IO node's input-channel count is negotiated with the host bus layout.
+    // Connections added before prepareToPlay are silently rejected (the IO
+    // node reports 0 channels until its bus layout is reconciled).
+    void reconnectMasterToOutput();
     void addTrack(int trackIndex, juce::ValueTree trackTree);
     void removeTrack(int trackIndex);
     void addBus(int busID, juce::ValueTree busTree);

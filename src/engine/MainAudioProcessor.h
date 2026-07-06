@@ -44,6 +44,13 @@ public:
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    // Accept any layout where the main input/output buses have equal channel
+    // counts (stereo↔stereo, mono↔mono, etc.). Without this override JUCE
+    // may disable the buses during host layout negotiation, which starves the
+    // AudioProcessorGraph's audioOutputNode of input channels and silently
+    // drops all audio output (the master meter still moves because the master
+    // bus processes its inputs, but no signal reaches the speaker buffer).
+    bool isBusesLayoutSupported(const juce::AudioProcessor::BusesLayout& layouts) const override;
 
     // Recording
     bool startRecording();

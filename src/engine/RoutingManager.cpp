@@ -59,10 +59,11 @@ void RoutingManager::rebuildFromValueTree()
     masterNode = graph.addNode(std::move(masterProc));
     masterBus = static_cast<MasterBusProcessor*>(masterNode->getProcessor());
 
-    auto* master = masterNode->getProcessor();
-    int numOut = master->getTotalNumOutputChannels();
-    for (int ch = 0; ch < numOut; ++ch)
-        graph.addConnection({ { masterNode->nodeID, ch }, { ioNode->nodeID, ch } });
+    // Master-bus → audio-output connections are established by
+    // reconnectMasterToOutput(), which must run after graph.prepareToPlay()
+    // (see MainAudioProcessor::prepareToPlay). The IO node reports 0 input
+    // channels until the graph negotiates its bus layout, so attempting the
+    // connection here would be silently rejected.
 
     auto busList = projectModel.getBusListTree();
     for (int i = 0; i < busList.getNumChildren(); ++i)
@@ -79,6 +80,27 @@ void RoutingManager::rebuildFromValueTree()
     {
         auto trackTree = trackList.getChild(t);
         addTrack(t, trackTree);
+    }
+}
+
+void RoutingManager::reconnectMasterToOutput()
+{
+    if (masterNode == nullptr || ioNode == nullptr) return;
+
+    // Re-establish master→IO connections after the graph's bus layout has
+    // been set and prepareToPlay has run. Use the IO node's negotiated
+    // input-channel count as the loop bound.
+    auto* master = masterNode->getProcessor();
+    int numOut = master->getTotalNumOutputChannels();
+    int ioInChannels = ioNode->getProcessor()->getTotalNumInputChannels();
+    int channelsToConnect = (ioInChannels > 0) ? juce::jmin(numOut, ioInChannels) : numOut;
+
+    for (int ch = 0; ch < channelsToConnect; ++ch)
+    {
+        auto conn = juce::AudioProcessorGraph::Connection{
+            { masterNode->nodeID, ch }, { ioNode->nodeID, ch } };
+        graph.removeConnection(conn);
+        graph.addConnection(conn);
     }
 }
 
