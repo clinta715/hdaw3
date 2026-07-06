@@ -1002,6 +1002,74 @@ toggle or `prepareToPlay` call. **Fix**: `AudioEngine::valueTreeChildAdded`
 now syncs all transport properties to `TransportManager` when a
 TRANSPORT node is added.
 
+## AudioProcessorGraph bus layout must be propagated — or output is silently zero
+
+**Symptom**: The master VU meter moves during playback, but the speaker
+buffer is silent (`peak=0.000000`). Every clip → track → master
+connection works (the meter moves!), yet no audio reaches the device.
+This looks exactly like a broken plugin or a muted track — it is
+neither.
+
+**Root cause** (`MainAudioProcessor`, fixed after v0.4.2):
+
+`juce::AudioProcessorGraph`'s `audioOutputNode` reads its input-channel
+count from the graph's *own* output bus, which is set by
+`setBusesLayout()` — **not** by `prepareToPlay()`. If the host
+processor (`MainAudioProcessor`) never propagates its negotiated bus
+layout to the graph, the IO node reports `getTotalNumInputChannels() ==
+0` and every `graph.addConnection({ { masterNode, ch }, { ioNode, ch } })`
+is **silently rejected** (returns `false`, no error, no log line). The
+master bus still processes its inputs (so its meter moves), but its
+output has nowhere to go.
+
+`prepareToPlay()` alone does **not** fix this — calling it on the graph
+re-negotiates node internals but does not copy the host layout in.
+
+**The fix** (two parts, both required):
+
+```cpp
+// 1. Accept the host layout during negotiation. Without this override,
+//    JUCE may disable the buses and the graph inherits a disabled layout.
+bool MainAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+{
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+    const auto& mainIn  = layouts.getMainInputChannelSet();
+    if (mainOut.isDisabled()) return false;
+    if (!mainIn.isDisabled() && mainIn.size() != mainOut.size()) return false;
+    return true;
+}
+
+// 2. Propagate the host layout to the graph BEFORE building topology.
+void MainAudioProcessor::prepareToPlay(double sr, int bs)
+{
+    ...
+    graph.setBusesLayout(getBusesLayout());          // ← the actual fix
+    routingManager = std::make_unique<...>(graph, ...);
+    routingManager->rebuildFromValueTree();          // adds master→IO etc.
+    graph.prepareToPlay(sr, bs);
+    routingManager->reconnectMasterToOutput();       // belt-and-suspenders
+}
+```
+
+`RoutingManager::reconnectMasterToOutput()` re-adds the master→IO
+connections after `prepareToPlay` finalizes channel negotiation. With
+the layout correctly propagated it's strictly redundant, but it guards
+against any future code path that rebuilds the topology without first
+calling `setBusesLayout`.
+
+**Diagnostic signature**: `[DIAG] reconnectMasterToOutput:
+masterNumOut=2 ioInChannels=0 connecting=2` followed by
+`reconnect ch=0 ok=0`. The `ioInChannels=0` and `ok=0` together are
+the fingerprint of this bug. After the fix they read `ioInChannels=2`
+and `ok=1`.
+
+**Why this is easy to re-introduce**: the symptom (meters move, no
+sound) is identical to a dozen other bugs — wrong audio device, muted
+master, broken plugin, phase-cancellation. The natural instinct is to
+chase the signal path *inside* the graph. The actual cause is one layer
+*above* the graph: the bus layout that the graph's IO node derives
+from. Nothing in the graph itself is wrong.
+
 ## Codebase hardening (v0.3.x, 2026-06-30)
 
 The codebase hardening pass addressed 23 tasks across 6 phases:
