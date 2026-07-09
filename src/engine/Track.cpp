@@ -223,6 +223,13 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                             panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
                         else if (pid == 3)
                             isMuted.store(value >= 0.5f);
+                        else if (pid >= 100)
+                        {
+                            int si = (pid - 100) / 100;
+                            int pi = (pid - 100) % 100;
+                            if (si < static_cast<int>(fxChain.size()) && fxChain[si])
+                                fxChain[si]->setAutomationParam(pi, static_cast<float>(value));
+                        }
                     }
                 }
                 stateLock.exit();
@@ -241,8 +248,13 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
     if (stateLock.tryEnter())
     {
         for (const auto& slot : fxChain)
+        {
             if (slot)
+            {
+                slot->applyAutomation();
                 slot->process(buffer, midiMessages);
+            }
+        }
         stateLock.exit();
     }
 
