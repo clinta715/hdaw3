@@ -252,7 +252,7 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     ParamUpdate update{ i, paramID, value };
                     spscBridge.pushUpdate(update);
 
-                    if (transportManager.isPlayingNow() && property != IDs::isMuted)
+                    if (transportManager.isPlayingNow())
                     {
                         auto autoList = treeWhosePropertyHasChanged.getChildWithName(IDs::AUTOMATION_LIST);
                         for (int a = 0; a < autoList.getNumChildren(); ++a)
