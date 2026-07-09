@@ -200,12 +200,8 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
 {
     juce::ignoreUnused(midiMessages);
 
-    if (isMuted.load())
-    {
-        buffer.clear();
-        return;
-    }
-
+    // Run automation loop BEFORE mute check so mute automation can both
+    // silence and un-silence the track.
     if (auto* ph = getPlayHead())
     {
         auto pos = ph->getPosition();
@@ -224,12 +220,21 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                         if (pid == 1)
                             volumeGain.setTargetValue(static_cast<float>(value));
                         else if (pid == 2)
-                            panPosition.setTargetValue(static_cast<float>(value));
+                            panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
+                        else if (pid == 3)
+                            isMuted.store(value >= 0.5f);
                     }
                 }
                 stateLock.exit();
             }
         }
+    }
+
+    // Mute check (after automation so mute can be toggled on/off)
+    if (isMuted.load())
+    {
+        buffer.clear();
+        return;
     }
 
     // Apply FX chain (DSP + plugins)
