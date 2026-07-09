@@ -245,7 +245,10 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
             for (int i = 0; i < static_cast<int>(chain.size()); ++i) {
                 auto& s2 = chain[i]; if (!s2) continue;
                 QJsonObject o{{"slot", i},{"type", jstr(s2->getType())}};
-                if (s2->isPlugin()) o["pluginId"] = jstr(s2->getPluginID());
+                if (s2->isPlugin()) {
+                    o["pluginId"] = jstr(s2->getPluginID());
+                    o["paramCount"] = static_cast<int>(s2->getAutomatableParams().size());
+                }
                 o["bypassed"] = s2->isBypassed();
                 arr.append(o);
             }
@@ -994,6 +997,64 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
             if (!tr) return McpToolResult::text("track not found", true);
             tr->setFXBypassed(a.value("slotIndex").toInt(), a.value("bypassed").toBool());
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"list_fx_params", "List all automatable parameters of a plugin FX slot.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
+            if (!tr) return McpToolResult::text("track not found", true);
+            auto& chain = tr->getFXChain();
+            int si = a.value("slotIndex").toInt();
+            if (si < 0 || si >= (int)chain.size())
+                return McpToolResult::text("slot not found", true);
+            auto& slot = chain[si];
+            if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+                return McpToolResult::text("slot has no plugin", true);
+            auto& params = slot->getAutomatableParams();
+            auto* plugin = slot->getPluginInstance();
+            QJsonArray arr;
+            for (const auto& pi : params) {
+                QJsonObject o;
+                o["index"] = pi.index;
+                o["name"] = jstr(pi.name);
+                if (pi.index >= 0 && pi.index < plugin->getParameters().size()) {
+                    auto* p = plugin->getParameters()[pi.index];
+                    o["value"] = static_cast<double>(p->getValue());
+                    o["defaultValue"] = static_cast<double>(p->getDefaultValue());
+                    o["text"] = jstr(p->getText(p->getValue(), 128));
+                }
+                arr.append(o);
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"set_fx_param", "Set a plugin FX parameter value (normalized 0..1).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"paramIndex",QJsonObject{{"type","integer"}}},
+                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
+            if (!tr) return McpToolResult::text("track not found", true);
+            auto& chain = tr->getFXChain();
+            int si = a.value("slotIndex").toInt();
+            if (si < 0 || si >= (int)chain.size())
+                return McpToolResult::text("slot not found", true);
+            auto& slot = chain[si];
+            if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+                return McpToolResult::text("slot has no plugin", true);
+            int pi = a.value("paramIndex").toInt();
+            auto& params = slot->getPluginInstance()->getParameters();
+            if (pi < 0 || pi >= params.size())
+                return McpToolResult::text("param index out of range", true);
+            float v = static_cast<float>(a.value("value").toDouble());
+            v = std::clamp(v, 0.0f, 1.0f);
+            params[pi]->setValue(v);
+            slot->setAutomationParam(pi, v);
             return McpToolResult::text("ok");
         }});
 }
