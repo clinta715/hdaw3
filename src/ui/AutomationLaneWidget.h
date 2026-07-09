@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QComboBox>
+#include <QPushButton>
 #include "../engine/AutomationManager.h"
 #include "../engine/AudioEngine.h"
 
@@ -44,10 +45,16 @@ private:
     void refreshParamCombo();
     juce::ValueTree currentAutoTree() const;
 
+    void addAutomationLane(const QString& name, int paramID);
+    void removeCurrentLane();
+    void showAddLaneMenu();
+
     AudioEngine& engine;
     int currentTrack = -1;
     int currentParamIndex = 0;
     QComboBox* paramCombo;
+    QPushButton* addLaneBtn;
+    QPushButton* removeLaneBtn;
 
     double pixelsPerSecond = 40.0;
     int scrollX = 0;

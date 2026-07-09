@@ -8,7 +8,13 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QApplication>
+#include <QMenu>
+#include <QAction>
+#include <QSet>
 #include <cmath>
+#include "../engine/RoutingManager.h"
+#include "../engine/Track.h"
+#include "../engine/TrackFXSlot.h"
 
 AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -31,6 +37,18 @@ AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     connect(paramCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &AutomationLaneWidget::onParamChanged);
     headerLayout->addWidget(paramCombo, 1);
+
+    addLaneBtn = new QPushButton("+", header);
+    addLaneBtn->setFixedSize(22, 22);
+    addLaneBtn->setToolTip("Add automation lane");
+    connect(addLaneBtn, &QPushButton::clicked, this, &AutomationLaneWidget::showAddLaneMenu);
+    headerLayout->addWidget(addLaneBtn);
+
+    removeLaneBtn = new QPushButton(QString::fromUtf8("\xe2\x88\x92"), header);
+    removeLaneBtn->setFixedSize(22, 22);
+    removeLaneBtn->setToolTip("Remove current automation lane");
+    connect(removeLaneBtn, &QPushButton::clicked, this, &AutomationLaneWidget::removeCurrentLane);
+    headerLayout->addWidget(removeLaneBtn);
 
     layout->addWidget(header);
     layout->addStretch();
@@ -305,6 +323,147 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
             painter.drawLine(phx, 30, phx, h);
         }
     }
+}
+
+void AutomationLaneWidget::showAddLaneMenu()
+{
+    if (currentTrack < 0) return;
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (currentTrack >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(currentTrack);
+    auto autoList = trackTree.getChildWithName(IDs::AUTOMATION_LIST);
+
+    QSet<int> existingParamIDs;
+    if (autoList.isValid())
+    {
+        for (int i = 0; i < autoList.getNumChildren(); ++i)
+            existingParamIDs.insert(static_cast<int>(autoList.getChild(i).getProperty(IDs::paramID)));
+    }
+
+    QMenu menu(this);
+
+    auto addEntry = [&](const QString& name, int paramID) {
+        if (!existingParamIDs.contains(paramID))
+        {
+            auto* action = menu.addAction(name);
+            connect(action, &QAction::triggered, this, [this, name, paramID]() {
+                addAutomationLane(name, paramID);
+            });
+        }
+    };
+
+    QAction* trackHeader = menu.addAction("Track Parameters");
+    trackHeader->setEnabled(false);
+    QFont f = menu.font();
+    f.setBold(true);
+    trackHeader->setFont(f);
+
+    addEntry("Volume", 1);
+    addEntry("Pan", 2);
+    addEntry("Mute", 3);
+
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    if (rm != nullptr)
+    {
+        auto* track = rm->getTrackNode(currentTrack);
+        if (track != nullptr)
+        {
+            auto& fxChain = track->getFXChain();
+            for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
+            {
+                auto& slot = fxChain[si];
+                if (!slot || !slot->isPlugin() || slot->isBypassed()) continue;
+
+                auto params = slot->getAutomatableParams();
+                if (params.empty()) continue;
+
+                menu.addSeparator();
+
+                juce::String slotName = "Slot " + juce::String(si + 1);
+                if (auto* inst = slot->getPluginInstance())
+                    slotName += ": " + inst->getName();
+                QAction* slotHeader = menu.addAction(QString::fromUtf8(slotName.toRawUTF8()));
+                slotHeader->setEnabled(false);
+                slotHeader->setFont(f);
+
+                for (const auto& p : params)
+                {
+                    int compoundID = 100 + si * 100 + p.index;
+                    QString paramName = QString::fromUtf8(p.name.toRawUTF8());
+                    if (paramName.trimmed().isEmpty())
+                        paramName = QString("Param %1").arg(p.index);
+                    if (!existingParamIDs.contains(compoundID))
+                    {
+                        auto* action = menu.addAction(paramName);
+                        connect(action, &QAction::triggered, this, [this, paramName, compoundID]() {
+                            addAutomationLane(paramName, compoundID);
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if (menu.actions().size() <= 1)
+    {
+        menu.addAction("(no available parameters)")->setEnabled(false);
+    }
+
+    menu.exec(addLaneBtn->mapToGlobal(QPoint(0, addLaneBtn->height())));
+}
+
+void AutomationLaneWidget::addAutomationLane(const QString& name, int paramID)
+{
+    if (currentTrack < 0) return;
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (currentTrack >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(currentTrack);
+
+    juce::ValueTree autoTree(IDs::AUTOMATION);
+    autoTree.setProperty(IDs::name, juce::String(name.toUtf8().constData()), nullptr);
+    autoTree.setProperty(IDs::paramID, paramID, nullptr);
+    autoTree.setProperty(IDs::curveType, "linear", nullptr);
+    autoTree.setProperty(IDs::automationEnabled, false, nullptr);
+
+    juce::ValueTree pointList(IDs::POINT_LIST);
+    juce::ValueTree pt(IDs::POINT);
+    pt.setProperty(IDs::startTime, 0.0, nullptr);
+    pt.setProperty(IDs::gain, 0.5, nullptr);
+    pointList.addChild(pt, -1, nullptr);
+    autoTree.addChild(pointList, -1, nullptr);
+
+    auto autoList = trackTree.getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid())
+    {
+        autoList = juce::ValueTree(IDs::AUTOMATION_LIST);
+        trackTree.addChild(autoList, -1, &engine.getProjectModel().getUndoManager());
+    }
+    int newIdx = autoList.getNumChildren();
+    autoList.addChild(autoTree, -1, &engine.getProjectModel().getUndoManager());
+    currentParamIndex = newIdx;
+    refreshParamCombo();
+    emit automationChanged();
+    update();
+}
+
+void AutomationLaneWidget::removeCurrentLane()
+{
+    if (currentTrack < 0 || currentParamIndex < 0) return;
+    auto autoTree = currentAutoTree();
+    if (!autoTree.isValid()) return;
+
+    auto autoList = autoTree.getParent();
+    if (!autoList.isValid()) return;
+
+    autoList.removeChild(currentParamIndex, &engine.getProjectModel().getUndoManager());
+
+    if (currentParamIndex >= autoList.getNumChildren())
+        currentParamIndex = std::max(0, autoList.getNumChildren() - 1);
+
+    refreshParamCombo();
+    emit automationChanged();
+    update();
 }
 
 void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
