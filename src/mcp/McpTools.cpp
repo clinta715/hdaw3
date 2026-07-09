@@ -357,7 +357,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             t.setProperty(IDs::color, color, &um);
             t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, &um);
             t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
-            t.addChild(juce::ValueTree(IDs::AUTOMATION_LIST), -1, &um);
+            t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
             m.getTrackListTree().addChild(t, -1, &um);
             // Wire up the routing manager so the track processor is created
             // and getTrack() / add_fx etc. work on freshly-added tracks.
