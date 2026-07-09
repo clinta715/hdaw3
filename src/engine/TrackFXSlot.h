@@ -90,6 +90,7 @@ public:
     {
         HDAW_LOG("FXSlotCtor", QString::fromStdString((juce::String("ctor2 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " pluginID=" + pluginID.toStdString() + " isolated=" + (isIsolated?"true":"false") + " pluginInstance=" + (pluginInstance?"ok":"null")).toStdString()));
         activeType = ActiveType::Plugin;
+        rebuildParamCache();
     }
 
     ~TrackFXSlot();
@@ -104,11 +105,42 @@ public:
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
+    struct ParamInfo {
+        juce::String name;
+        int index;
+    };
+
+    const std::vector<ParamInfo>& getAutomatableParams() const
+    {
+        return cachedParams;
+    }
+
+    void setAutomationParam(int paramIndex, float normalizedValue)
+    {
+        if (paramIndex >= 0 && paramIndex < numParams)
+            paramValues[paramIndex].store(normalizedValue, std::memory_order_relaxed);
+    }
+
+    void applyAutomation()
+    {
+        if (!isExternal || !pluginInstance) return;
+        auto& params = pluginInstance->getParameters();
+        int n = (std::min)(numParams,
+                           static_cast<int>(params.size()));
+        for (int i = 0; i < n; ++i)
+        {
+            float v = paramValues[i].load(std::memory_order_relaxed);
+            if (v >= 0.0f && v <= 1.0f)
+                params[i]->setValue(v);
+        }
+    }
+
     void prepare(const juce::dsp::ProcessSpec& spec)
     {
         if (isExternal && pluginInstance)
         {
             pluginInstance->prepareToPlay(spec.sampleRate, spec.maximumBlockSize);
+            rebuildParamCache();
             return;
         }
 
@@ -277,6 +309,31 @@ private:
     std::unique_ptr<juce::dsp::DelayLine<float>> delay;
     std::unique_ptr<EQProcessor> eq;
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
+
+    mutable std::vector<ParamInfo> cachedParams;
+    int numParams = 0;
+    std::unique_ptr<std::atomic<float>[]> paramValues;
+
+    void rebuildParamCache()
+    {
+        cachedParams.clear();
+        if (!isExternal || !pluginInstance)
+        {
+            numParams = 0;
+            paramValues.reset();
+            return;
+        }
+        auto& params = pluginInstance->getParameters();
+        int n = params.size();
+        cachedParams.reserve(n);
+        paramValues = std::make_unique<std::atomic<float>[]>(n);
+        numParams = n;
+        for (int i = 0; i < n; ++i)
+        {
+            cachedParams.push_back({params[i]->getName(64), i});
+            paramValues[i].store(params[i]->getValue(), std::memory_order_relaxed);
+        }
+    }
 };
 
 } // namespace HDAW
