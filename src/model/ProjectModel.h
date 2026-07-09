@@ -177,6 +177,7 @@ public:
     // Returns a color from a curated rotating palette so each track (and thus
     // its clips) gets a distinct, stable color without clashing.
     static juce::uint32 trackColorForIndex(int index);
+    static juce::ValueTree createTrackAutomationList();
     void scanAndSyncClipIDs();
     void scanAndSyncNoteIDs();
 

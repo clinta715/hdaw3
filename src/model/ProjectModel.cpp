@@ -30,26 +30,27 @@ static juce::ValueTree createPoint(double time, double value)
     return point;
 }
 
-static juce::ValueTree createVolumeAutomation()
+static juce::ValueTree createAutomationLane(const juce::String& name, int paramID, double defaultVal)
 {
     juce::ValueTree autoTree(IDs::AUTOMATION);
-    autoTree.setProperty(IDs::name, "Volume", nullptr);
-    autoTree.setProperty(IDs::paramID, 1, nullptr);
+    autoTree.setProperty(IDs::name, name, nullptr);
+    autoTree.setProperty(IDs::paramID, paramID, nullptr);
     autoTree.setProperty(IDs::curveType, "linear", nullptr);
     autoTree.setProperty(IDs::automationEnabled, false, nullptr);
 
     juce::ValueTree pointList(IDs::POINT_LIST);
-    pointList.addChild(createPoint(0.0, 1.0), -1, nullptr);
-    pointList.addChild(createPoint(16.0, 1.0), -1, nullptr);
+    pointList.addChild(createPoint(0.0, defaultVal), -1, nullptr);
+    pointList.addChild(createPoint(16.0, defaultVal), -1, nullptr);
     autoTree.addChild(pointList, -1, nullptr);
-
     return autoTree;
 }
 
-static juce::ValueTree createAutomationList()
+juce::ValueTree ProjectModel::createTrackAutomationList()
 {
     juce::ValueTree list(IDs::AUTOMATION_LIST);
-    list.addChild(createVolumeAutomation(), -1, nullptr);
+    list.addChild(createAutomationLane("Volume", 1, 1.0), -1, nullptr);
+    list.addChild(createAutomationLane("Pan", 2, 0.5), -1, nullptr);
+    list.addChild(createAutomationLane("Mute", 3, 0.0), -1, nullptr);
     return list;
 }
 
@@ -335,7 +336,7 @@ void ProjectModel::createDefaultProject()
         juce::ValueTree clipList(IDs::CLIP_LIST);
         track1.addChild(clipList, -1, nullptr);
         track1.addChild(createFXChain(), -1, nullptr);
-        track1.addChild(createAutomationList(), -1, nullptr);
+        track1.addChild(createTrackAutomationList(), -1, nullptr);
     }
     trackList.addChild(track1, -1, nullptr);
 
@@ -355,7 +356,7 @@ void ProjectModel::createDefaultProject()
         clipList.addChild(createMidiClip("Chords", 4.0, 4.0), -1, nullptr);
         track2.addChild(clipList, -1, nullptr);
         track2.addChild(createFXChain(), -1, nullptr);
-        track2.addChild(createAutomationList(), -1, nullptr);
+        track2.addChild(createTrackAutomationList(), -1, nullptr);
     }
     trackList.addChild(track2, -1, nullptr);
 
@@ -372,7 +373,7 @@ void ProjectModel::createDefaultProject()
         juce::ValueTree clipList(IDs::CLIP_LIST);
         track3.addChild(clipList, -1, nullptr);
         track3.addChild(createFXChain(), -1, nullptr);
-        track3.addChild(createAutomationList(), -1, nullptr);
+        track3.addChild(createTrackAutomationList(), -1, nullptr);
     }
     trackList.addChild(track3, -1, nullptr);
 }
