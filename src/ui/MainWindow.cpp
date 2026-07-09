@@ -1038,23 +1038,7 @@ void MainWindow::onAddTrack()
     juce::ValueTree fxChain(IDs::FX_CHAIN);
     track.addChild(fxChain, -1, &model.getUndoManager());
 
-    juce::ValueTree autoList(IDs::AUTOMATION_LIST);
-    juce::ValueTree autoTree(IDs::AUTOMATION);
-    autoTree.setProperty(IDs::name, "Volume", nullptr);
-    autoTree.setProperty(IDs::paramID, 1, nullptr);
-    autoTree.setProperty(IDs::curveType, "linear", nullptr);
-    autoTree.setProperty(IDs::automationEnabled, false, nullptr);
-    juce::ValueTree pointList(IDs::POINT_LIST);
-    juce::ValueTree point1(IDs::POINT);
-    point1.setProperty(IDs::startTime, 0.0, nullptr);
-    point1.setProperty(IDs::gain, 1.0, nullptr);
-    pointList.addChild(point1, -1, nullptr);
-    juce::ValueTree point2(IDs::POINT);
-    point2.setProperty(IDs::startTime, 16.0, nullptr);
-    point2.setProperty(IDs::gain, 1.0, nullptr);
-    pointList.addChild(point2, -1, nullptr);
-    autoTree.addChild(pointList, -1, nullptr);
-    autoList.addChild(autoTree, -1, nullptr);
+    auto autoList = ProjectModel::createTrackAutomationList();
     track.addChild(autoList, -1, &model.getUndoManager());
 
     trackList.addChild(track, -1, &model.getUndoManager());
