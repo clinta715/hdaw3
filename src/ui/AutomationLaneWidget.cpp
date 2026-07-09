@@ -426,11 +426,20 @@ void AutomationLaneWidget::addAutomationLane(const QString& name, int paramID)
     autoTree.setProperty(IDs::curveType, "linear", nullptr);
     autoTree.setProperty(IDs::automationEnabled, false, nullptr);
 
+    double defaultVal = 0.5;
+    if (paramID == 1)      defaultVal = 1.0; // Volume
+    else if (paramID == 2) defaultVal = 0.5; // Pan (center)
+    else if (paramID == 3) defaultVal = 0.0; // Mute (unmuted)
+
     juce::ValueTree pointList(IDs::POINT_LIST);
-    juce::ValueTree pt(IDs::POINT);
-    pt.setProperty(IDs::startTime, 0.0, nullptr);
-    pt.setProperty(IDs::gain, 0.5, nullptr);
-    pointList.addChild(pt, -1, nullptr);
+    juce::ValueTree pt1(IDs::POINT);
+    pt1.setProperty(IDs::startTime, 0.0, nullptr);
+    pt1.setProperty(IDs::gain, defaultVal, nullptr);
+    pointList.addChild(pt1, -1, nullptr);
+    juce::ValueTree pt2(IDs::POINT);
+    pt2.setProperty(IDs::startTime, 16.0, nullptr);
+    pt2.setProperty(IDs::gain, defaultVal, nullptr);
+    pointList.addChild(pt2, -1, nullptr);
     autoTree.addChild(pointList, -1, nullptr);
 
     auto autoList = trackTree.getChildWithName(IDs::AUTOMATION_LIST);

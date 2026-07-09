@@ -125,7 +125,7 @@ public:
     {
         if (!isExternal || !pluginInstance) return;
         auto& params = pluginInstance->getParameters();
-        int n = (std::min)(numParams,
+        int n = (std::min)(static_cast<int>(numParams.load(std::memory_order_relaxed)),
                            static_cast<int>(params.size()));
         for (int i = 0; i < n; ++i)
         {
@@ -311,7 +311,7 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
 
     mutable std::vector<ParamInfo> cachedParams;
-    int numParams = 0;
+    std::atomic<int> numParams{ 0 };
     std::unique_ptr<std::atomic<float>[]> paramValues;
 
     void rebuildParamCache()
