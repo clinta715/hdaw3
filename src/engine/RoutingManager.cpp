@@ -157,7 +157,7 @@ void RoutingManager::removeTrack(int trackIndex)
     auto nodeIt = trackNodes.find(trackIndex);
     if (nodeIt != trackNodes.end())
     {
-        graph.removeNode(nodeIt->second);
+        graph.removeNode(nodeIt->second.get());
         trackNodes.erase(nodeIt);
     }
     trackProcessors.erase(trackIndex);
@@ -169,7 +169,7 @@ void RoutingManager::removeSendsForTrack(int trackIndex)
     {
         if (it->first.first == trackIndex)
         {
-            graph.removeNode(it->second.node);
+            graph.removeNode(it->second.node.get());
             it = sendConnections.erase(it);
         }
         else
@@ -186,7 +186,7 @@ void RoutingManager::removeClipsForTrack(int trackIndex)
         auto audioIt = audioClipNodes.find({trackIndex, ci});
         if (audioIt != audioClipNodes.end())
         {
-            graph.removeNode(audioIt->second);
+            graph.removeNode(audioIt->second.get());
             audioClipNodes.erase(audioIt);
             audioClipSources.erase({trackIndex, ci});
         }
@@ -201,7 +201,7 @@ void RoutingManager::removeClipsForTrack(int trackIndex)
         auto midiIt = midiClipNodes.find({trackIndex, ci});
         if (midiIt != midiClipNodes.end())
         {
-            graph.removeNode(midiIt->second);
+            graph.removeNode(midiIt->second.get());
             midiClipNodes.erase(midiIt);
             midiClipSources.erase({trackIndex, ci});
         }
@@ -239,7 +239,7 @@ void RoutingManager::removeBus(int busID)
     auto busIt = busNodes.find(busID);
     if (busIt != busNodes.end())
     {
-        graph.removeNode(busIt->second);
+        graph.removeNode(busIt->second.get());
         busNodes.erase(busIt);
     }
     groupBuses.erase(busID);
@@ -331,7 +331,7 @@ void RoutingManager::removeSend(int trackIndex, int sendIndex)
     auto it = sendConnections.find({trackIndex, sendIndex});
     if (it != sendConnections.end())
     {
-        graph.removeNode(it->second.node);
+        graph.removeNode(it->second.node.get());
         sendConnections.erase(it);
     }
 }
