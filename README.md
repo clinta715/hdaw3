@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.4.1
+**Current version**: 0.5.0
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.4.1)
+## What works today (v0.5.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -83,7 +83,9 @@ pipeline and the rationale.
 - Per-track FX chain editor in the FX Chain panel. Drag the handle
   to reorder slots, or use the up/down arrows.
 - Per-track MIDI channel routing (1-16) via track header context menu.
-- Per-track automation lane editor in the Automation panel.
+- Per-track automation lane editor in the Automation panel
+  (Volume, Pan, Mute are default lanes; plugin FX parameters
+  available via the Add Lane button).
 - MIDI CC automation recording (CC Rec toolbar button captures
   incoming controller events during playback).
 
@@ -105,7 +107,7 @@ pipeline and the rationale.
 - MIDI hardware input with device selection and persistence across
   launches.
 - Per-track input monitoring toggle.
-- Automation recording — fader/knob movements captured during
+- Automation recording — fader/knob/mute movements captured during
   playback.
 - Preferences dialog with Audio Settings (driver, output/input
   device, sample rate, buffer size, latency display), MIDI device
@@ -190,8 +192,6 @@ In priority order:
   two MIDI clips; the two audio tracks exist as empty lanes
   ready to receive dropped-in audio.
 - **No bundled sample library.** See "Goals" item 3.
-- **No automation mute** — volume and pan automation work but
-  mute automation is not yet supported.
 - **No audio crossfades** — adjacent clips don't auto-crossfade.
 
 ## Project layout

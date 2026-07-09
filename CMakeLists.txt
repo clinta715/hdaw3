@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.4.1 LANGUAGES CXX)
+project(HDAW VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -98,6 +98,11 @@ target_link_libraries(HDAW_lib PUBLIC
 target_compile_definitions(HDAW_lib PUBLIC
     JUCE_PLUGINHOST_VST3=1
     JUCE_MODAL_LOOPS_PERMITTED=1
+    JUCE_USE_CURL=0
+    JUCE_WEB_BROWSER=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_REPORT_APP_USAGE=0
+    JUCE_STRICT_REFCOUNTEDPOINTER=1
 )
 
 add_executable(HDAW
@@ -216,11 +221,20 @@ target_link_libraries(HDAW
     HDAW_lib
 )
 
+# Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime speedup)
+include(CheckIPOSupported)
+check_ipo_supported(RESULT ipo_supported)
+if(ipo_supported)
+    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
 # JUCE_PLUGINHOST_VST3 / JUCE_MODAL_LOOPS_PERMITTED are inherited from HDAW_lib (PUBLIC)
 
-# Enable modern C++ features for MSVC
+# Enable modern C++ features for MSVC; /MP enables parallel compilation
 if(MSVC)
-    target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa)
+    target_compile_options(HDAW_lib PRIVATE /MP)
+    target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa /MP)
 endif()
 
 set_target_properties(HDAW PROPERTIES

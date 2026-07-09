@@ -5,16 +5,21 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.4.1**. The core engine (project model, transport, routing,
+**0.5.0**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the basic UI shell
 (track headers, timeline, mixer, piano roll, FX chain,
 automation) work end-to-end. v0.3.x added the MCP server and a
-gtest test suite. **v0.4.x** adds multi-clip selection, clipboard,
+gtest test suite. v0.4.x adds multi-clip selection, clipboard,
 markers, MIDI CC recording, MIDI channel routing, FX drag-reorder,
 status bar, zoom-to-fit, expanded preferences (audio settings,
 MIDI persistence, count-in), and a bugfix pass (11 bugs fixed in
-v0.4.1). For the full list of working features and the
-priority-ordered roadmap, see `README.md`.
+v0.4.1). **v0.5.0** adds full automation parameters (Volume, Pan,
+Mute as default lanes; plugin FX parameter automation via
+`TrackFXSlot` atomic cache and compound paramID scheme),
+Mute automation recording, and compile-time build optimizations
+(LTO, `/MP` parallel builds, JUCE define cleanup). For the full
+list of working features and the priority-ordered roadmap, see
+`README.md`.
 
 ## Build
 
@@ -130,6 +135,17 @@ contracts that future contributors should know about.
   atomic the audio thread polls. Numbers 4–9 and 17+ are
   currently unallocated; reserve ranges for future track-side vs.
   clip-side additions to keep the numbering legible.
+
+- **Plugin param automation (v0.5.0).** Plugin FX parameters
+  use compound paramIDs `>= 100`:
+  `paramID = 100 + slotIndex * 100 + paramIndex`.
+  `TrackFXSlot` stores a `std::unique_ptr<std::atomic<float>[]>`
+  `paramValues` array (one per automatable param), written by
+  the UI thread and read lock-free by the audio thread.
+  `TrackFXSlot::applyAutomation()` is called before each
+  `slot->process()` in `Track::processBlock`. The
+  `AutomationLaneWidget` `+` button opens a menu listing all
+  automatable parameters (track-level + per-slot plugin params).
 
 - **`ClipSourceProcessor` gain-loop bound (Task 18).** The audio-
   thread gain smoother loop iterates only `numToRead` samples —
