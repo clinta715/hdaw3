@@ -221,8 +221,16 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
 
     int laneArea = h - 30;
 
+    // paintEvent fires on every mouseMove during a drag, so reserve up front
+    // to avoid per-paint heap reallocation. The sort is kept (cheap for the
+    // typical 2–20 points) because clicking can insert a point out of order.
+    // We deliberately read from the ValueTree rather than the engine's
+    // AutomationManager cache: the widget just wrote to the tree and must see
+    // its own edit immediately, while the engine cache lags one
+    // rebuildAutomationCache behind.
     struct AP { double time; double value; };
     std::vector<AP> pts;
+    pts.reserve(static_cast<size_t>(pointList.getNumChildren()));
     for (int i = 0; i < pointList.getNumChildren(); ++i)
     {
         auto p = pointList.getChild(i);
@@ -363,7 +371,8 @@ void AutomationLaneWidget::showAddLaneMenu()
     addEntry("Pan", 2);
     addEntry("Mute", 3);
 
-    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    auto* mp = engine.getMainProcessor();
+    auto* rm = mp ? mp->getRoutingManager() : nullptr;
     if (rm != nullptr)
     {
         auto* track = rm->getTrackNode(currentTrack);
@@ -389,6 +398,15 @@ void AutomationLaneWidget::showAddLaneMenu()
 
                 for (const auto& p : params)
                 {
+                    // Skip output-only/meter params the plugin marks non-automatable.
+                    if (!p.automatable) continue;
+
+                    // The compound paramID scheme reserves 100 indices per slot,
+                    // so a plugin exposing >= 100 automatable params would alias
+                    // the next slot. Guard against that rather than silently
+                    // corrupting the dispatch.
+                    if (p.index >= 100) continue;
+
                     int compoundID = 100 + si * 100 + p.index;
                     QString paramName = QString::fromUtf8(p.name.toRawUTF8());
                     if (paramName.trimmed().isEmpty())
@@ -482,7 +500,15 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
     if (event->button() == Qt::LeftButton)
     {
         int idx = pointAtPos(event->pos());
-        if (idx >= 0) { dragPoint = idx; }
+        if (idx >= 0)
+        {
+            // Begin a transaction on press so the entire drag (all the
+            // property writes in mouseMoveEvent) collapses into one undo
+            // step. Without this, each mouse-move is a separate step and
+            // the user must Ctrl+Z dozens of times to revert one drag.
+            dragPoint = idx;
+            engine.getProjectModel().getUndoManager().beginNewTransaction("drag automation point");
+        }
         else
         {
             double t = timeFromX(event->pos().x());
@@ -492,17 +518,22 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             auto autoTree = currentAutoTree();
             if (autoTree.isValid())
             {
+                // One transaction for the whole add-and-enable so a single
+                // Ctrl+Z removes the point (matches the drag coalescing below).
+                auto& um = engine.getProjectModel().getUndoManager();
+                um.beginNewTransaction("add automation point");
+
                 auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
                 if (!pointList.isValid())
                 {
                     pointList = juce::ValueTree(IDs::POINT_LIST);
-                    autoTree.addChild(pointList, -1, &engine.getProjectModel().getUndoManager());
+                    autoTree.addChild(pointList, -1, &um);
                 }
                 juce::ValueTree pt(IDs::POINT);
-                pt.setProperty(IDs::startTime, t, &engine.getProjectModel().getUndoManager());
-                pt.setProperty(IDs::gain, v, &engine.getProjectModel().getUndoManager());
-                pointList.addChild(pt, -1, &engine.getProjectModel().getUndoManager());
-                autoTree.setProperty(IDs::automationEnabled, true, &engine.getProjectModel().getUndoManager());
+                pt.setProperty(IDs::startTime, t, &um);
+                pt.setProperty(IDs::gain, v, &um);
+                pointList.addChild(pt, -1, &um);
+                autoTree.setProperty(IDs::automationEnabled, true, &um);
                 emit automationChanged();
                 update();
             }

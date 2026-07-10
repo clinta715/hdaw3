@@ -1020,6 +1020,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                 QJsonObject o;
                 o["index"] = pi.index;
                 o["name"] = jstr(pi.name);
+                o["automatable"] = pi.automatable;
                 if (pi.index >= 0 && pi.index < plugin->getParameters().size()) {
                     auto* p = plugin->getParameters()[pi.index];
                     o["value"] = static_cast<double>(p->getValue());

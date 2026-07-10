@@ -108,8 +108,14 @@ public:
     struct ParamInfo {
         juce::String name;
         int index;
+        bool automatable = true;
     };
 
+    // Returns the plugin's parameters that report isAutomatable()==true.
+    // The cache still indexes by the raw plugin parameter position (so
+    // setAutomationParam/applyAutomation use the same indices as
+    // pluginInstance->getParameters()); the flag is informational and lets
+    // the UI/MCP surface filter out output-only or meter parameters.
     const std::vector<ParamInfo>& getAutomatableParams() const
     {
         return cachedParams;
@@ -117,8 +123,11 @@ public:
 
     void setAutomationParam(int paramIndex, float normalizedValue)
     {
-        if (paramIndex >= 0 && paramIndex < numParams)
+        if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
+        {
             paramValues[paramIndex].store(normalizedValue, std::memory_order_relaxed);
+            paramDirty[paramIndex].store(true, std::memory_order_relaxed);
+        }
     }
 
     void applyAutomation()
@@ -129,6 +138,15 @@ public:
                            static_cast<int>(params.size()));
         for (int i = 0; i < n; ++i)
         {
+            // Per-param dirty flag: only push the cached value into the plugin
+            // when an automation source (lane playback, MCP set_fx_param) has
+            // updated it since the last block. This preserves plugin-GUI edits
+            // — without it, applyAutomation runs every block and reverts any
+            // knob the user moves in the VST editor back to the stale cache.
+            if (!paramDirty[i].load(std::memory_order_relaxed))
+                continue;
+            paramDirty[i].store(false, std::memory_order_relaxed);
+
             float v = paramValues[i].load(std::memory_order_relaxed);
             if (v >= 0.0f && v <= 1.0f)
                 params[i]->setValue(v);
@@ -313,6 +331,7 @@ private:
     mutable std::vector<ParamInfo> cachedParams;
     std::atomic<int> numParams{ 0 };
     std::unique_ptr<std::atomic<float>[]> paramValues;
+    std::unique_ptr<std::atomic<bool>[]> paramDirty;
 
     void rebuildParamCache()
     {
@@ -321,17 +340,20 @@ private:
         {
             numParams = 0;
             paramValues.reset();
+            paramDirty.reset();
             return;
         }
         auto& params = pluginInstance->getParameters();
         int n = params.size();
         cachedParams.reserve(n);
         paramValues = std::make_unique<std::atomic<float>[]>(n);
+        paramDirty = std::make_unique<std::atomic<bool>[]>(n);
         numParams = n;
         for (int i = 0; i < n; ++i)
         {
-            cachedParams.push_back({params[i]->getName(64), i});
+            cachedParams.push_back({params[i]->getName(64), i, params[i]->isAutomatable()});
             paramValues[i].store(params[i]->getValue(), std::memory_order_relaxed);
+            paramDirty[i].store(false, std::memory_order_relaxed);
         }
     }
 };
