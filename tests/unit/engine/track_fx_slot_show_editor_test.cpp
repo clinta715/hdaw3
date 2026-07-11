@@ -4,11 +4,6 @@
 #include <memory>
 #include <vector>
 
-// Helper: juce::String -> std::string -> QString for HDAW_LOG
-static inline QString j2q(const juce::String& s) {
-    return QString::fromStdString(s.toStdString());
-}
-
 // Minimal mock juce::AudioProcessorEditor. We override paint and
 // setSize in the ctor so the PluginEditorWindow has a size to
 // centre on.
@@ -81,18 +76,18 @@ public:
 };
 
 TEST(TrackFXSlotShowEditor, ShowEditorTriggersEditorCreation) {
-    HDAW_LOG("ShowEditorTest", j2q("case1: creating FakePlugin"));
+    HDAW_LOG("ShowEditorTest", juce::String("case1: creating FakePlugin").toStdString().c_str());
     auto plugin = std::make_unique<FakePlugin>();
     HDAW::TrackFXSlot slot(std::move(plugin), "Fake");
-    HDAW_LOG("ShowEditorTest", j2q("case1: ctor done; isEditorOpen=" +
-        juce::String(slot.isEditorOpen() ? "true" : "false") + " (expect false)"));
+    HDAW_LOG("ShowEditorTest", (juce::String("case1: ctor done; isEditorOpen=") +
+        juce::String(slot.isEditorOpen() ? "true" : "false") + " (expect false)").toStdString().c_str());
     EXPECT_FALSE(slot.isEditorOpen());
 
-    HDAW_LOG("ShowEditorTest", j2q("case1: calling showEditor"));
+    HDAW_LOG("ShowEditorTest", juce::String("case1: calling showEditor").toStdString().c_str());
     slot.showEditor();
-    HDAW_LOG("ShowEditorTest", j2q("case1: isEditorOpen=" +
-        juce::String(slot.isEditorOpen() ? "true" : "false") + " (expect true)"));
+    HDAW_LOG("ShowEditorTest", (juce::String("case1: isEditorOpen=") +
+        juce::String(slot.isEditorOpen() ? "true" : "false") + " (expect true)").toStdString().c_str());
     EXPECT_TRUE(slot.isEditorOpen());
 
-    HDAW_LOG("ShowEditorTest", j2q("case1: slot will now be destroyed; check FXSlotDtor log for rawPtr"));
+    HDAW_LOG("ShowEditorTest", juce::String("case1: slot will now be destroyed; check FXSlotDtor log for rawPtr").toStdString().c_str());
 }

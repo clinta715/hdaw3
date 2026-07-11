@@ -5,7 +5,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
-#include "../ui/DebugLog.h"
+#include "../common/DebugLog.h"
 
 namespace HDAW {
 
@@ -65,7 +65,7 @@ public:
     TrackFXSlot(const juce::String& type)
         : slotType(type)
     {
-        HDAW_LOG("FXSlotCtor", QString::fromStdString((juce::String("ctor1 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " type=" + type.toStdString() + " editorWindow(before)=0x" + juce::String::toHexString((juce::pointer_sized_int)editorWindow.get())).toStdString()));
+        HDAW_LOG("FXSlotCtor", (juce::String("ctor1 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " type=" + type.toStdString() + " editorWindow(before)=0x" + juce::String::toHexString((juce::pointer_sized_int)editorWindow.get())).toStdString().c_str());
         if (type == "eq")
             activeType = ActiveType::EQ;
         else if (type == "compressor")
@@ -88,7 +88,7 @@ public:
           isolated(isIsolated),
           pluginIdentifier(pluginID)
     {
-        HDAW_LOG("FXSlotCtor", QString::fromStdString((juce::String("ctor2 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " pluginID=" + pluginID.toStdString() + " isolated=" + (isIsolated?"true":"false") + " pluginInstance=" + (pluginInstance?"ok":"null")).toStdString()));
+        HDAW_LOG("FXSlotCtor", (juce::String("ctor2 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " pluginID=" + pluginID.toStdString() + " isolated=" + (isIsolated?"true":"false") + " pluginInstance=" + (pluginInstance?"ok":"null")).toStdString().c_str());
         activeType = ActiveType::Plugin;
         rebuildParamCache();
     }
@@ -270,7 +270,7 @@ public:
 
     void closeEditor()
     {
-        HDAW_LOG("FXSlotCloseEditor", QString::fromStdString((juce::String("entry this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " editorWindow(before)=" + (editorWindow?"set":"null")).toStdString()));
+        HDAW_LOG("FXSlotCloseEditor", (juce::String("entry this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " editorWindow(before)=" + (editorWindow?"set":"null")).toStdString().c_str());
         // Direct assignment (was: juce::MessageManager::callAsync([this]() { editorWindow = nullptr; })).
         // The async form captured a raw `this`; if the TrackFXSlot was destroyed
         // before the message was delivered, the lambda ran on a dead object

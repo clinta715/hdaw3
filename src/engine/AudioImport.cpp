@@ -1,7 +1,7 @@
 #include "AudioImport.h"
 #include "../model/ProjectModel.h"
 #include "../engine/ProjectPool.h"
-#include "../ui/DebugLog.h"
+#include "../common/DebugLog.h"
 #include <QFileInfo>
 #include <juce_audio_formats/juce_audio_formats.h>
 
