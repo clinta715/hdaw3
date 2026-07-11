@@ -44,6 +44,7 @@ endfunction()
 option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" OFF)
 add_library(HDAW_lib STATIC
     src/engine/AudioEngine.cpp
+    src/engine/AudioEngineCommands.cpp
     src/engine/AudioRecorder.cpp
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp

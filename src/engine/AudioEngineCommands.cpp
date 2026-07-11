@@ -1,0 +1,781 @@
+#include "AudioEngineCommands.h"
+#include "AudioEngine.h"
+#include "MainAudioProcessor.h"
+#include "../engine/ProjectSerializer.h"
+#include "../model/ProjectModel.h"
+#include <juce_core/juce_core.h>
+#include <algorithm>
+
+AudioEngineCommands::AudioEngineCommands(AudioEngine& engine)
+    : engine_(engine) {}
+
+AudioEngineCommands::~AudioEngineCommands() = default;
+
+// ─── Helper methods ──────────────────────────────────────────────
+
+juce::ValueTree AudioEngineCommands::findClipById(int clipId, int& outTrackIndex) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            if (static_cast<int>(clip.getProperty(IDs::clipID, 0)) == clipId)
+            {
+                outTrackIndex = t;
+                return clip;
+            }
+        }
+    }
+    outTrackIndex = -1;
+    return {};
+}
+
+juce::ValueTree AudioEngineCommands::findNoteById(int noteId, int& outClipId) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!noteList.isValid()) continue;
+            for (int n = 0; n < noteList.getNumChildren(); ++n)
+            {
+                auto note = noteList.getChild(n);
+                if (static_cast<int>(note.getProperty(IDs::noteID, 0)) == noteId)
+                {
+                    outClipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+                    return note;
+                }
+            }
+        }
+    }
+    outClipId = -1;
+    return {};
+}
+
+juce::ValueTree AudioEngineCommands::findFxSlot(int trackIndex, int slotIndex) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return {};
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid()) return {};
+    if (slotIndex < 0 || slotIndex >= fxChain.getNumChildren())
+        return {};
+    return fxChain.getChild(slotIndex);
+}
+
+juce::ValueTree AudioEngineCommands::findAutomationLane(int trackIndex, const std::string& lane) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return {};
+    auto autoList = trackList.getChild(trackIndex).getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid()) return {};
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        auto autoLane = autoList.getChild(i);
+        if (autoLane.getProperty(IDs::name, "").toString().toStdString() == lane)
+            return autoLane;
+    }
+    return {};
+}
+
+juce::ValueTree AudioEngineCommands::createTrackValueTree(const std::string& name, int color, int parentBus)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    if (parentBus >= 0)
+        track.setProperty(IDs::parentBus, parentBus, nullptr);
+    if (color >= 0)
+        track.setProperty(IDs::color, color, nullptr);
+    else
+        track.setProperty(IDs::color, static_cast<int>(
+            ProjectModel::trackColorForIndex(engine_.getProjectModel().getTrackListTree().getNumChildren())), nullptr);
+
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+
+    juce::ValueTree fxChain(IDs::FX_CHAIN);
+    track.addChild(fxChain, -1, nullptr);
+
+    juce::ValueTree autoList = ProjectModel::createTrackAutomationList();
+    track.addChild(autoList, -1, nullptr);
+
+    return track;
+}
+
+// ─── ProjectCommands — Track operations ───────────────────────────
+
+int AudioEngineCommands::addTrack(const std::string& name, int color, int parentBus)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    auto track = createTrackValueTree(name, color, parentBus);
+    int idx = trackList.getNumChildren();
+    trackList.addChild(track, idx, &um);
+    return idx;
+}
+
+void AudioEngineCommands::removeTrack(int trackIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.removeChild(trackIndex, &um);
+}
+
+void AudioEngineCommands::moveTrack(int trackIndex, int newIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    if (newIndex < 0 || newIndex >= trackList.getNumChildren()) return;
+    if (trackIndex == newIndex) return;
+    auto track = trackList.getChild(trackIndex);
+    trackList.removeChild(trackIndex, &um);
+    if (newIndex > trackIndex) --newIndex;
+    trackList.addChild(track, newIndex, &um);
+}
+
+void AudioEngineCommands::setTrackName(int trackIndex, const std::string& name)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::name, juce::String(name), &um);
+}
+
+void AudioEngineCommands::setTrackColor(int trackIndex, int color)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::color, color, &um);
+}
+
+void AudioEngineCommands::setTrackVolume(int trackIndex, float volume)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::volume, static_cast<double>(volume), &um);
+}
+
+void AudioEngineCommands::setTrackPan(int trackIndex, float pan)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::pan, static_cast<double>(pan), &um);
+}
+
+void AudioEngineCommands::setTrackMuted(int trackIndex, bool muted)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::isMuted, muted, &um);
+}
+
+void AudioEngineCommands::setTrackSoloed(int trackIndex, bool soloed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::isSoloed, soloed, &um);
+}
+
+void AudioEngineCommands::setTrackArmed(int trackIndex, bool armed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::isArm, armed, &um);
+}
+
+void AudioEngineCommands::setTrackInputMonitor(int trackIndex, bool monitor)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::inputMonitor, monitor, &um);
+}
+
+void AudioEngineCommands::setTrackHeight(int trackIndex, int height)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::trackHeight, static_cast<double>(height), &um);
+}
+
+void AudioEngineCommands::setTrackMidiChannel(int trackIndex, int channel)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex >= 0 && trackIndex < trackList.getNumChildren())
+        trackList.getChild(trackIndex).setProperty(IDs::midiChannel, channel, &um);
+}
+
+// ─── ProjectCommands — Clip operations ────────────────────────────
+
+int AudioEngineCommands::addAudioClip(int trackIndex, double start, double duration,
+                                      const std::string& sourceFile, const std::string& name)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
+
+    auto clip = ProjectModel::createAudioClip(
+        juce::String(name), start, duration, juce::String(sourceFile));
+
+    auto track = trackList.getChild(trackIndex);
+    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        track.addChild(clipList, -1, &um);
+    }
+    int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+    clipList.addChild(clip, -1, &um);
+    return clipId;
+}
+
+int AudioEngineCommands::addMidiClip(int trackIndex, double start, double duration,
+                                     const std::string& name)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
+
+    auto clip = ProjectModel::createMidiClipEmpty(
+        juce::String(name), start, duration);
+
+    auto track = trackList.getChild(trackIndex);
+    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        track.addChild(clipList, -1, &um);
+    }
+    int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+    clipList.addChild(clip, -1, &um);
+    return clipId;
+}
+
+void AudioEngineCommands::removeClip(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+    clip.getParent().removeChild(clip, &um);
+}
+
+void AudioEngineCommands::moveClip(int clipId, int newTrackIndex, double newStart)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int oldTrackIdx = -1;
+    auto clip = findClipById(clipId, oldTrackIdx);
+    if (!clip.isValid()) return;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
+
+    clip.setProperty(IDs::startTime, newStart, &um);
+
+    if (newTrackIndex != oldTrackIdx)
+    {
+        auto oldParent = clip.getParent();
+        auto newTrack = trackList.getChild(newTrackIndex);
+        auto newClipList = newTrack.getChildWithName(IDs::CLIP_LIST);
+        if (!newClipList.isValid())
+        {
+            newClipList = juce::ValueTree(IDs::CLIP_LIST);
+            newTrack.addChild(newClipList, -1, &um);
+        }
+        oldParent.removeChild(clip, &um);
+        newClipList.addChild(clip, -1, &um);
+    }
+}
+
+void AudioEngineCommands::setClipStart(int clipId, double start)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::startTime, start, &um);
+}
+
+void AudioEngineCommands::setClipDuration(int clipId, double duration)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::duration, duration, &um);
+}
+
+void AudioEngineCommands::setClipGain(int clipId, float gain)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::gain, static_cast<double>(gain), &um);
+}
+
+void AudioEngineCommands::setClipFadeIn(int clipId, double fadeIn)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::fadeIn, fadeIn, &um);
+}
+
+void AudioEngineCommands::setClipFadeOut(int clipId, double fadeOut)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::fadeOut, fadeOut, &um);
+}
+
+void AudioEngineCommands::setClipLooping(int clipId, bool looping)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::looping, looping, &um);
+}
+
+int AudioEngineCommands::duplicateClip(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return -1;
+
+    auto newClip = clip.createCopy();
+    newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    double start = newClip.getProperty(IDs::startTime, 0.0);
+    double duration = newClip.getProperty(IDs::duration, 0.0);
+    newClip.setProperty(IDs::startTime, start + duration, nullptr);
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid()) return -1;
+    clipList.addChild(newClip, -1, &um);
+    return static_cast<int>(newClip.getProperty(IDs::clipID, 0));
+}
+
+// ─── ProjectCommands — MIDI note operations ───────────────────────
+
+int AudioEngineCommands::addNote(int clipId, int pitch, int velocity,
+                                 double startBeat, double durationBeats)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return -1;
+
+    auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    if (!noteList.isValid())
+    {
+        noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+        clip.addChild(noteList, -1, nullptr);
+    }
+
+    auto note = ProjectModel::createMidiNote(
+        pitch, static_cast<float>(velocity) / 127.0f, startBeat, durationBeats);
+    int noteId = static_cast<int>(note.getProperty(IDs::noteID, 0));
+    noteList.addChild(note, -1, &um);
+    return noteId;
+}
+
+void AudioEngineCommands::removeNote(int noteId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto note = findNoteById(noteId, clipId);
+    if (note.isValid())
+        note.getParent().removeChild(note, &um);
+}
+
+void AudioEngineCommands::setNotePitch(int noteId, int pitch)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto note = findNoteById(noteId, clipId);
+    if (note.isValid())
+        note.setProperty(IDs::noteNumber, pitch, &um);
+}
+
+void AudioEngineCommands::setNoteVelocity(int noteId, int velocity)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto note = findNoteById(noteId, clipId);
+    if (note.isValid())
+        note.setProperty(IDs::velocity, static_cast<float>(velocity) / 127.0f, &um);
+}
+
+void AudioEngineCommands::setNoteStart(int noteId, double startBeat)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto note = findNoteById(noteId, clipId);
+    if (note.isValid())
+        note.setProperty(IDs::startBeat, startBeat, &um);
+}
+
+void AudioEngineCommands::setNoteDuration(int noteId, double durationBeats)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto note = findNoteById(noteId, clipId);
+    if (note.isValid())
+        note.setProperty(IDs::durationBeats, durationBeats, &um);
+}
+
+void AudioEngineCommands::clearNotes(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    if (noteList.isValid())
+        noteList.removeAllChildren(&um);
+}
+
+// ─── ProjectCommands — FX operations ──────────────────────────────
+
+void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
+                                    const std::string& pluginId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto fxChain = track.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        track.addChild(fxChain, -1, &um);
+    }
+
+    // Map integer type to string
+    std::string typeStr;
+    switch (type)
+    {
+        case 0: typeStr = "eq"; break;
+        case 1: typeStr = "compressor"; break;
+        case 2: typeStr = "reverb"; break;
+        case 3: typeStr = "delay"; break;
+        default: typeStr = "plugin"; break;
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(typeStr), &um);
+    if (typeStr == "plugin" && !pluginId.empty())
+    {
+        slot.setProperty(IDs::pluginID, juce::String(pluginId), &um);
+        slot.setProperty(IDs::pluginFormat,
+            juce::String(engine_.getProjectModel().resolvePluginFormat(pluginId)), &um);
+    }
+    slot.setProperty(IDs::bypassed, false, &um);
+
+    int n = fxChain.getNumChildren();
+    int insertIdx = (position < 0 || position > n) ? n : position;
+    fxChain.addChild(slot, insertIdx, &um);
+}
+
+void AudioEngineCommands::removeFxSlot(int trackIndex, int slotIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (slot.isValid())
+        slot.getParent().removeChild(slot, &um);
+}
+
+void AudioEngineCommands::setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (slot.isValid())
+        slot.setProperty(IDs::bypassed, bypassed, &um);
+}
+
+void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
+                                         float value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    auto paramList = slot.getChildWithName(IDs::FX_SLOT);
+    // FX params are stored as a property — "param_N"
+    juce::String propName = "param_" + juce::String(paramIndex);
+    slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
+}
+
+// ─── ProjectCommands — Automation ─────────────────────────────────
+
+void AudioEngineCommands::addAutomationPoint(int trackIndex, const std::string& lane,
+                                             double time, float value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, lane);
+    if (!autoLane.isValid()) return;
+
+    auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
+    if (!pointList.isValid())
+    {
+        pointList = juce::ValueTree(IDs::POINT_LIST);
+        autoLane.addChild(pointList, -1, nullptr);
+    }
+
+    juce::ValueTree point(IDs::POINT);
+    point.setProperty(IDs::startTime, time, nullptr);
+    point.setProperty(IDs::gain, static_cast<double>(value), nullptr);
+    pointList.addChild(point, -1, &um);
+}
+
+void AudioEngineCommands::removeAutomationPoint(int trackIndex, const std::string& lane,
+                                                double time)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, lane);
+    if (!autoLane.isValid()) return;
+
+    auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
+    if (!pointList.isValid()) return;
+
+    for (int i = 0; i < pointList.getNumChildren(); ++i)
+    {
+        auto pt = pointList.getChild(i);
+        if (static_cast<double>(pt.getProperty(IDs::startTime, 0.0)) == time)
+        {
+            pointList.removeChild(i, &um);
+            return;
+        }
+    }
+}
+
+void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string& lane,
+                                               bool enabled)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, lane);
+    if (autoLane.isValid())
+        autoLane.setProperty(IDs::automationEnabled, enabled, &um);
+}
+
+// ─── ProjectCommands — Transport properties ───────────────────────
+
+void AudioEngineCommands::setTempo(double bpm)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    engine_.getProjectModel().getTree().setProperty(IDs::tempo, bpm, &um);
+}
+
+void AudioEngineCommands::setLoopStart(double beat)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::loopStart, beat, &um);
+}
+
+void AudioEngineCommands::setLoopEnd(double beat)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::loopEnd, beat, &um);
+}
+
+void AudioEngineCommands::setLooping(bool looping)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::isLooping, looping, &um);
+}
+
+void AudioEngineCommands::setMetronomeEnabled(bool enabled)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::metronomeEnabled, enabled, &um);
+}
+
+// ─── ProjectCommands — Undo/redo ──────────────────────────────────
+
+void AudioEngineCommands::undo()  { engine_.getProjectModel().getUndoManager().undo(); }
+void AudioEngineCommands::redo()  { engine_.getProjectModel().getUndoManager().redo(); }
+bool AudioEngineCommands::canUndo() const { return engine_.getProjectModel().getUndoManager().canUndo(); }
+bool AudioEngineCommands::canRedo() const { return engine_.getProjectModel().getUndoManager().canRedo(); }
+
+// ─── ProjectCommands — Project lifecycle ──────────────────────────
+
+void AudioEngineCommands::newProject()
+{
+    HDAW::ProjectSerializer::createNew(engine_.getProjectModel());
+}
+
+bool AudioEngineCommands::saveProject(const std::string& filePath)
+{
+    return HDAW::ProjectSerializer::save(engine_.getProjectModel(), juce::File(filePath));
+}
+
+bool AudioEngineCommands::loadProject(const std::string& filePath)
+{
+    return HDAW::ProjectSerializer::load(engine_.getProjectModel(), juce::File(filePath));
+}
+
+// ─── ProjectCommands — Scale ──────────────────────────────────────
+
+void AudioEngineCommands::setScaleRoot(int root) { engine_.getProjectModel().setScaleRoot(root); }
+void AudioEngineCommands::setScaleMode(int mode) { engine_.getProjectModel().setScaleMode(mode); }
+
+// ─── TransportCommands ────────────────────────────────────────────
+
+void AudioEngineCommands::play()
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::isPlaying, true, &um);
+}
+
+void AudioEngineCommands::stop()
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+    {
+        transport.setProperty(IDs::isPlaying, false, &um);
+        transport.setProperty(IDs::position, 0.0, &um);
+    }
+}
+
+void AudioEngineCommands::pause()
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::isPlaying, false, &um);
+}
+
+void AudioEngineCommands::rewind()
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::position, 0.0, &um);
+}
+
+void AudioEngineCommands::toggleLoop()
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+    {
+        bool current = transport.getProperty(IDs::isLooping, false);
+        transport.setProperty(IDs::isLooping, !current, &um);
+    }
+}
+
+void AudioEngineCommands::seekToSample(int64_t sample)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+    {
+        double sr = engine_.getTransportManager().getSampleRate();
+        transport.setProperty(IDs::position, static_cast<double>(sample) / sr, &um);
+    }
+}
+
+void AudioEngineCommands::seekToSeconds(double seconds)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+        transport.setProperty(IDs::position, seconds, &um);
+}
+
+void AudioEngineCommands::startRecording()
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->startRecording();
+}
+
+void AudioEngineCommands::stopRecording()
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->stopRecording();
+}
+
+bool AudioEngineCommands::isRecording() const
+{
+    if (auto* proc = engine_.getMainProcessor())
+        return proc->isRecording();
+    return false;
+}
+
+// ─── AudioGraphCommands ───────────────────────────────────────────
+
+void AudioEngineCommands::rebuildRoutingGraph()
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+}
+
+void AudioEngineCommands::rebuildTrackFX(int trackIndex)
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::rebuildAutomationCache(int trackIndex)
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildAutomationCache(trackIndex);
+}
+
+void AudioEngineCommands::rebuildModulation(int trackIndex)
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildModulation(trackIndex);
+}
+
+void AudioEngineCommands::toggleFXEditor(int trackIndex, int slotIndex)
+{
+    if (auto* proc = engine_.getMainProcessor())
+        proc->toggleFXEditor(trackIndex, slotIndex);
+}

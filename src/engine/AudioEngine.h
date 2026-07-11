@@ -7,6 +7,8 @@
 #include "ProjectPool.h"
 #include "PluginManager.h"
 #include "MidiInputManager.h"
+#include "AudioEngineCommands.h"
+#include "ReadModelImpl.h"
 #include "../model/ProjectModel.h"
 #include <functional>
 #include <memory>
@@ -28,6 +30,14 @@ public:
     HDAW::PluginManager& getPluginManager() { return pluginManager; }
     HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
+
+    // Command interfaces (returning references for polymorphic use)
+    ProjectCommands& getProjectCommands();
+    TransportCommands& getTransportCommands();
+    AudioGraphCommands& getAudioGraphCommands();
+
+    // Read-only model snapshot
+    ReadModel& getReadModel();
 
     // Facade methods
     int getTrackCount() const { return mainProcessor ? mainProcessor->getNumTracks() : 0; }
@@ -69,4 +79,6 @@ private:
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;
+    std::unique_ptr<AudioEngineCommands> commands;
+    std::unique_ptr<ReadModelImpl> readModel;
 };

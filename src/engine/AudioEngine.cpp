@@ -80,6 +80,9 @@ void AudioEngine::initialize()
         }
         mainProcessor->addExternalMidiMessage(msg);
     });
+
+    commands = std::make_unique<AudioEngineCommands>(*this);
+    readModel = std::make_unique<ReadModelImpl>(projectModel);
 }
 
 void AudioEngine::shutdown()
@@ -316,11 +319,23 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             }
         }
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::MIDI_NOTE))
+    {
+        auto noteList = treeWhosePropertyHasChanged.getParent();
+        if (noteList.isValid() && noteList.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = noteList.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP) && mainProcessor != nullptr)
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
 }
 
 void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
 {
-    juce::ignoreUnused(parentTree);
     if (childWhichHasBeenAdded.hasType(IDs::TRANSPORT))
     {
         // A new transport node was added (e.g. after File→New).
@@ -336,13 +351,39 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
     }
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
+
+    if (childWhichHasBeenAdded.hasType(IDs::MIDI_NOTE) && mainProcessor != nullptr)
+    {
+        if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
 }
 
 void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
 {
-    juce::ignoreUnused(childWhichHasBeenRemoved, indexFromWhichItWasRemoved);
+    juce::ignoreUnused(indexFromWhichItWasRemoved);
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
+
+    if (childWhichHasBeenRemoved.hasType(IDs::MIDI_NOTE) && mainProcessor != nullptr)
+    {
+        if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
 }
 
 void AudioEngine::rebuildTempoMap()
@@ -367,3 +408,8 @@ void AudioEngine::rebuildTempoMap()
 
     transportManager.setTempoMap(map);
 }
+
+ProjectCommands& AudioEngine::getProjectCommands()  { return *commands; }
+TransportCommands& AudioEngine::getTransportCommands() { return *commands; }
+AudioGraphCommands& AudioEngine::getAudioGraphCommands() { return *commands; }
+ReadModel& AudioEngine::getReadModel() { return *readModel; }
