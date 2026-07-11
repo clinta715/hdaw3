@@ -1,4 +1,5 @@
 #include "TimelineView.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include <QScrollBar>
 #include <QInputDialog>
@@ -23,6 +24,10 @@
 TimelineView::TimelineView(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setupUI();
     connectSignals();
 

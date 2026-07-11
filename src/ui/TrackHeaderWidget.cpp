@@ -1,4 +1,5 @@
 #include "TrackHeaderWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "../engine/LevelMeter.h"
 #include "../engine/PluginManager.h"
@@ -16,6 +17,10 @@
 TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
     setMouseTracking(true);

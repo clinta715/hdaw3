@@ -40,6 +40,7 @@ public:
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);
     void rebuildTrackFX(int trackIndex);
     void setTrackMidiChannel(int trackIndex, int channel);
+    void rebuildMidiClipCache(juce::ValueTree clipTree);
 
     MasterBusProcessor* getMasterBus() { return masterBus; }
     HDAW::Track* getTrackNode(int trackIndex) const;

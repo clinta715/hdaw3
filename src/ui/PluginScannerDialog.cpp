@@ -1,4 +1,5 @@
 #include "PluginScannerDialog.h"
+#include "../engine/AudioEngine.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QApplication>
@@ -7,6 +8,10 @@
 PluginScannerDialog::PluginScannerDialog(AudioEngine& ae, QWidget* parent)
     : QDialog(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setWindowTitle("Plugin Manager");
     setMinimumSize(550, 450);
     setModal(true);

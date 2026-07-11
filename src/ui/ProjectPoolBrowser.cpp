@@ -1,4 +1,5 @@
 #include "ProjectPoolBrowser.h"
+#include "../engine/AudioEngine.h"
 #include "PreferencesDialog.h"
 #include <QVBoxLayout>
 #include <QLabel>
@@ -10,6 +11,10 @@
 ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setupUI();
 }
 

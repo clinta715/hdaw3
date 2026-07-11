@@ -1,4 +1,5 @@
 #include "AudioClipEditorWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "DebugLog.h"
 #include <QVBoxLayout>
@@ -8,6 +9,10 @@
 AudioClipEditorWidget::AudioClipEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     HDAW_LOG("AECtor", "Enter AudioClipEditorWidget ctor");
     setupUI();
     HDAW_LOG("AECtor", "After setupUI");

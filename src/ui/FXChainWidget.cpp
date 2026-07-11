@@ -1,4 +1,5 @@
 #include "FXChainWidget.h"
+#include "../engine/AudioEngine.h"
 #include <QHBoxLayout>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -9,6 +10,10 @@
 FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);

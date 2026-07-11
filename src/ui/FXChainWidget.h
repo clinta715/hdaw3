@@ -7,7 +7,13 @@
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
-#include "../engine/AudioEngine.h"
+#include <juce_core/juce_core.h>
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 #include "FXSlotRow.h"
 
 class FXChainWidget : public QWidget
@@ -32,6 +38,10 @@ private:
     int indexAtDropY(int y) const;
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     int currentTrack = -1;
     QVBoxLayout* slotLayout;
     QScrollArea* scrollArea;

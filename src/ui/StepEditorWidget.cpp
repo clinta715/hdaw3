@@ -1,4 +1,5 @@
 #include "StepEditorWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "PreferencesDialog.h"
 #include "DebugLog.h"
@@ -11,6 +12,10 @@
 StepEditorWidget::StepEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setupUI();
 }
 

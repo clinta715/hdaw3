@@ -1,4 +1,5 @@
 #include "ModulationWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "../model/ProjectModel.h"
 #include <QScrollArea>
@@ -6,6 +7,10 @@
 ModulationWidget::ModulationWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
 

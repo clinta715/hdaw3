@@ -1,4 +1,5 @@
 #include "NoteGridWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "../engine/PhraseGenerator.h"
 #include "../model/ProjectModel.h"
@@ -12,6 +13,10 @@
 NoteGridWidget::NoteGridWidget(PianoRollModel& m, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), model(m), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
     // Install global filter to catch mouse releases outside this widget

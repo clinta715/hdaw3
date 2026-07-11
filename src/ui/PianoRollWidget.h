@@ -1,13 +1,19 @@
 #pragma once
 #include <QWidget>
 #include <QScrollBar>
+#include <juce_core/juce_core.h>
 #include "PianoRollModel.h"
 #include "PianoKeysWidget.h"
 #include "NoteGridWidget.h"
 #include "VelocityLaneWidget.h"
 #include "CCLaneWidget.h"
 #include "PianoRollRuler.h"
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class QPushButton;
 class QComboBox;
@@ -34,6 +40,10 @@ private:
     void updateZoom(double factor);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     PianoRollModel model;
 
     PianoRollRuler* ruler;

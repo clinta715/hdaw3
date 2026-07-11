@@ -1,4 +1,5 @@
 #include "MixerWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include <QPainter>
 #include <QScrollBar>
@@ -8,6 +9,11 @@
 MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
+
     auto* mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);

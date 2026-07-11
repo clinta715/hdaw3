@@ -4,7 +4,12 @@
 #include <QComboBox>
 #include <QPushButton>
 #include "../engine/AutomationManager.h"
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class AutomationLaneWidget : public QWidget
 {
@@ -50,6 +55,10 @@ private:
     void showAddLaneMenu();
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     int currentTrack = -1;
     int currentParamIndex = 0;
     QComboBox* paramCombo;

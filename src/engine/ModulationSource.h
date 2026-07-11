@@ -1,5 +1,7 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include <juce_data_structures/juce_data_structures.h>
+#include "../model/ProjectModel.h"
 #include <cmath>
 #include <atomic>
 #include <random>

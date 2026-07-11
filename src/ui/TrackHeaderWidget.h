@@ -3,7 +3,13 @@
 #include <QTimer>
 #include <QLineEdit>
 #include <QFont>
-#include "../engine/AudioEngine.h"
+#include <juce_core/juce_core.h>
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 #include <vector>
 
 class TrackHeaderWidget : public QWidget
@@ -83,6 +89,10 @@ private:
     void buildTrackMenu(int trackIdx, const QPoint& globalPos);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     QTimer vuTimer;
     std::vector<TrackHeader> tracks;
     int dragTrack = -1;

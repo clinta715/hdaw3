@@ -1,10 +1,15 @@
 #include "TimelineScene.h"
+#include "../engine/AudioEngine.h"
 #include "DebugLog.h"
 #include <QGraphicsSceneMouseEvent>
 
 TimelineScene::TimelineScene(AudioEngine& ae, QObject* parent)
     : QGraphicsScene(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     rebuildFromValueTree();
     setSceneRect(0, 0, 4000, (std::max)(sceneRect().height(), 2000.0));
     HDAW_LOG("TSCtor", QString("sceneRect=(%1,%2) items=%3")

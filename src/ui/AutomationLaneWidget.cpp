@@ -1,4 +1,5 @@
 #include "AutomationLaneWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include <QPainter>
 #include <QPainterPath>
@@ -19,6 +20,10 @@
 AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setMouseTracking(true);
     qApp->installEventFilter(this);
     auto* layout = new QVBoxLayout(this);

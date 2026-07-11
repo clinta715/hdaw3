@@ -1,4 +1,5 @@
 #include "ExportDialog.h"
+#include "../engine/AudioEngine.h"
 #include "PreferencesDialog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -11,6 +12,10 @@
 ExportDialog::ExportDialog(AudioEngine& ae, QWidget* parent)
     : QDialog(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setWindowTitle("Export Audio");
     setMinimumWidth(420);
     setModal(true);

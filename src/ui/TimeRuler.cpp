@@ -1,4 +1,5 @@
 #include "TimeRuler.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include <QPainter>
 #include <QCursor>
@@ -11,6 +12,10 @@
 TimeRuler::TimeRuler(AudioEngine& ae, double h)
     : engine(ae), height(h)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setCursor(Qt::PointingHandCursor);
     setAcceptHoverEvents(true);
 }

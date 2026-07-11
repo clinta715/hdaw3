@@ -8,7 +8,13 @@
 #include <QWidget>
 #include <thread>
 #include <atomic>
-#include "../engine/AudioEngine.h"
+#include "../engine/PluginManager.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class PluginScannerDialog : public QDialog
 {
@@ -28,6 +34,10 @@ private:
     void refreshList();
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     QListWidget* pluginList;
     QPushButton* rescanBtn;
     QPushButton* toggleBlacklistBtn;

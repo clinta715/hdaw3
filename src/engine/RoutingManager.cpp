@@ -481,6 +481,15 @@ void RoutingManager::setTrackMidiChannel(int trackIndex, int channel)
     }
 }
 
+void RoutingManager::rebuildMidiClipCache(juce::ValueTree clipTree)
+{
+    for (auto& kv : midiClipSources)
+    {
+        if (kv.second != nullptr && kv.second->getClipTree() == clipTree)
+            kv.second->setClipTree(clipTree);
+    }
+}
+
 void RoutingManager::setInputMonitoring(int trackIndex, bool enabled)
 {
     auto trackIt = trackNodes.find(trackIndex);

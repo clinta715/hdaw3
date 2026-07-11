@@ -5,7 +5,12 @@
 #include <QFileSystemModel>
 #include <QSplitter>
 #include <QPushButton>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 #include "../model/ProjectModel.h"
 
 class ProjectPoolBrowser : public QWidget
@@ -27,6 +32,10 @@ private:
     void onPoolItemDoubleClicked(QListWidgetItem* item);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     QFileSystemModel* fsModel;
     QTreeView* fileTree;

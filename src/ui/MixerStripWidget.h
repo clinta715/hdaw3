@@ -3,7 +3,12 @@
 #include <QTimer>
 #include <QResizeEvent>
 #include <juce_data_structures/juce_data_structures.h>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class MixerStripWidget : public QWidget
 {
@@ -47,6 +52,10 @@ private:
 
     int trackIndex = -1;
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     QTimer vuTimer;
     float currentLeft = 0.0f;

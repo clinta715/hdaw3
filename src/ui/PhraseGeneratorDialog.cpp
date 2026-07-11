@@ -1,4 +1,5 @@
 #include "PhraseGeneratorDialog.h"
+#include "../engine/AudioEngine.h"
 #include "../engine/PhraseGenerator.h"
 #include "../model/ProjectModel.h"
 #include "Theme.h"
@@ -11,6 +12,10 @@
 PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackIndex, QWidget* parent)
     : QDialog(parent), engine(ae), trackIndex(targetTrackIndex)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setWindowTitle("Generator");
     setFixedSize(440, 580);
     setModal(true);

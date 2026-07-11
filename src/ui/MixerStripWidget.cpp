@@ -1,4 +1,5 @@
 #include "MixerStripWidget.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include "../engine/LevelMeter.h"
 #include <QPainter>
@@ -12,6 +13,10 @@
 MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), trackIndex(idx), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setFixedSize(stripWidth, stripHeight);
     setMinimumWidth(stripWidth);
     setMouseTracking(true);

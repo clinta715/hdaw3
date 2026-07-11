@@ -1,6 +1,7 @@
 #include "TimelineInteraction.h"
 #include "TimelineScene.h"
 #include "ClipItem.h"
+#include "../engine/AudioEngine.h"
 #include "DebugLog.h"
 #include "Theme.h"
 #include <QGraphicsSceneMouseEvent>

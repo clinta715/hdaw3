@@ -1,4 +1,5 @@
 #include "PianoRollWidget.h"
+#include "../engine/AudioEngine.h"
 #include "../engine/PhraseGenerator.h"
 #include "DebugLog.h"
 #include <QVBoxLayout>
@@ -12,6 +13,10 @@
 PianoRollWidget::PianoRollWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setupUI();
     connectSignals();
     clear();

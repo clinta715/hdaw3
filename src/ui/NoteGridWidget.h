@@ -5,7 +5,12 @@
 #include <QContextMenuEvent>
 #include <bitset>
 #include "PianoRollModel.h"
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class NoteGridWidget : public QWidget
 {
@@ -63,6 +68,10 @@ private:
 
     PianoRollModel& model;
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     double pixelsPerBeat = 40.0;
     double keyHeight = 10.0;

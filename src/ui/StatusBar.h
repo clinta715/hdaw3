@@ -1,7 +1,12 @@
 #pragma once
 #include <QWidget>
 #include <QLabel>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class StatusBar : public QWidget
 {
@@ -20,6 +25,10 @@ public slots:
 
 private:
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     QLabel* bpmLabel;
     QLabel* timeSigLabel;

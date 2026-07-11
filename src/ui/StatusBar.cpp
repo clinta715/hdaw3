@@ -1,4 +1,5 @@
 #include "StatusBar.h"
+#include "../engine/AudioEngine.h"
 #include "Theme.h"
 #include <QHBoxLayout>
 #include <QFrame>
@@ -28,6 +29,11 @@ QFrame* makeSeparator(QWidget* parent)
 StatusBar::StatusBar(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
+
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 2, 8, 2);
     layout->setSpacing(0);
