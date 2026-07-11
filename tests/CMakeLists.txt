@@ -25,6 +25,7 @@ add_executable(hdaw_tests
     unit/engine/isolated_scanner_test.cpp
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/markers_test.cpp
+    unit/common/read_model_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
