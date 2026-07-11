@@ -23,10 +23,6 @@
 TimelineView::TimelineView(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
-    transportCmds = &engine.getTransportCommands();
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
     setupUI();
     connectSignals();
 

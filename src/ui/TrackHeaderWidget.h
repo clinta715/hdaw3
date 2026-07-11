@@ -3,12 +3,8 @@
 #include <QTimer>
 #include <QLineEdit>
 #include <QFont>
-#include "../common/ProjectCommands.h"
-#include "../common/AudioGraphCommands.h"
-#include "../common/ReadModel.h"
+#include "../engine/AudioEngine.h"
 #include <vector>
-
-class AudioEngine;
 
 class TrackHeaderWidget : public QWidget
 {
@@ -45,6 +41,7 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
@@ -86,9 +83,6 @@ private:
     void buildTrackMenu(int trackIdx, const QPoint& globalPos);
 
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    AudioGraphCommands* audioGraphCmds = nullptr;
-    ReadModel* readModel = nullptr;
     QTimer vuTimer;
     std::vector<TrackHeader> tracks;
     int dragTrack = -1;

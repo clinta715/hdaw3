@@ -1,12 +1,13 @@
 #pragma once
 #include <QWidget>
 #include <QLabel>
+#include "../engine/AudioEngine.h"
 
 class StatusBar : public QWidget
 {
     Q_OBJECT
 public:
-    explicit StatusBar(QWidget* parent = nullptr);
+    explicit StatusBar(AudioEngine& engine, QWidget* parent = nullptr);
 
 public slots:
     void setBPM(double bpm);
@@ -18,6 +19,8 @@ public slots:
     void setSelectionCount(int count);
 
 private:
+    AudioEngine& engine;
+
     QLabel* bpmLabel;
     QLabel* timeSigLabel;
     QLabel* sampleRateLabel;

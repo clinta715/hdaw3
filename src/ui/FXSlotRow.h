@@ -14,7 +14,6 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../model/ProjectModel.h"
-#include "../common/ProjectCommands.h"
 
 class AudioEngine;
 class QTimer;
@@ -52,7 +51,6 @@ private:
     int slotIndex;
     int trackIndex;
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
     QLineEdit* filterEdit;
     QComboBox* typeCombo;
     QPushButton* bypassBtn;

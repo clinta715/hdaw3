@@ -11,9 +11,6 @@
 TimeRuler::TimeRuler(AudioEngine& ae, double h)
     : engine(ae), height(h)
 {
-    projectCmds = &engine.getProjectCommands();
-    transportCmds = &engine.getTransportCommands();
-    readModel = &engine.getReadModel();
     setCursor(Qt::PointingHandCursor);
     setAcceptHoverEvents(true);
 }
@@ -155,7 +152,7 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
     }
 
     // Bars:Beats display
-    double bpm = readModel->getTransport().bpm;
+    double bpm = engine.getTransportManager().getBPM();
     double secondsPerBeat = 60.0 / (std::max)(1.0, bpm);
 
     double beatsPerDivision;
@@ -224,7 +221,10 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
     else
     {
         dragMode = Seek;
-        transportCmds->seekToSeconds(t);
+        auto& tm = engine.getTransportManager();
+        tm.setCurrentSample(static_cast<int64_t>(t * tm.getSampleRate()));
+        auto transportTree = engine.getProjectModel().getTransportTree();
+        transportTree.setProperty(IDs::position, t, &engine.getProjectModel().getUndoManager());
         emit seekRequested(t);
     }
 }
@@ -259,8 +259,9 @@ void TimeRuler::mouseReleaseEvent(QGraphicsSceneMouseEvent*)
 
 void TimeRuler::commitLoopBounds()
 {
-    projectCmds->setLoopStart(loopStart);
-    projectCmds->setLoopEnd(loopEnd);
+    auto transportTree = engine.getProjectModel().getTransportTree();
+    transportTree.setProperty(IDs::loopStart, loopStart, &engine.getProjectModel().getUndoManager());
+    transportTree.setProperty(IDs::loopEnd, loopEnd, &engine.getProjectModel().getUndoManager());
 }
 
 void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
@@ -287,9 +288,11 @@ void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
 
     auto* toggleLoop = menu.addAction("Toggle Loop");
     toggleLoop->setCheckable(true);
-    toggleLoop->setChecked(readModel->getTransport().isLooping);
+    toggleLoop->setChecked(engine.getTransportManager().isLoopingNow());
     connect(toggleLoop, &QAction::triggered, this, [this](bool checked) {
-        projectCmds->setLooping(checked);
+        auto transportTree = engine.getProjectModel().getTransportTree();
+        transportTree.setProperty(IDs::isLooping, checked,
+            &engine.getProjectModel().getUndoManager());
     });
 
     menu.addSeparator();

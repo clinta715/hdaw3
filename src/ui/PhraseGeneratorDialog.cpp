@@ -11,9 +11,6 @@
 PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackIndex, QWidget* parent)
     : QDialog(parent), engine(ae), trackIndex(targetTrackIndex)
 {
-    projectCmds = &engine.getProjectCommands();
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
     setWindowTitle("Generator");
     setFixedSize(440, 580);
     setModal(true);

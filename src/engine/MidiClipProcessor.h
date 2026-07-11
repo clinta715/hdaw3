@@ -35,8 +35,6 @@ public:
         rebuildNoteCache();
     }
 
-    void rebuildClipCache() { rebuildNoteCache(); }
-
     juce::ValueTree getClipTree() const { return clipTree; }
 
     void setStartTime(double t) { startTime.store(t); }

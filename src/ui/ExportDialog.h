@@ -5,10 +5,8 @@
 #include <QProgressBar>
 #include <QLabel>
 #include <QComboBox>
-#include "../common/ReadModel.h"
+#include "../engine/AudioEngine.h"
 #include "../engine/ExportManager.h"
-
-class AudioEngine;
 
 class ExportDialog : public QDialog
 {
@@ -27,7 +25,6 @@ private:
     QString defaultExtension() const;
 
     AudioEngine& engine;
-    ReadModel* readModel = nullptr;
     QLineEdit* pathEdit;
     QComboBox* formatCombo;
     QComboBox* bitDepthCombo;

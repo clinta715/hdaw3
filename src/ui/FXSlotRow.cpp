@@ -11,7 +11,6 @@
 FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), slotTree(tree), slotIndex(index), trackIndex(trackIdx), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(4, 2, 4, 2);
     mainLayout->setSpacing(2);
@@ -91,7 +90,7 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
 
     connect(bypassBtn, &QPushButton::toggled, this, [this](bool checked) {
         bypassed = !checked;
-        projectCmds->setFxSlotBypassed(trackIndex, slotIndex, bypassed);
+        slotTree.setProperty(IDs::bypassed, bypassed, &engine.getProjectModel().getUndoManager());
         bypassBtn->setText(bypassed ? "Off" : "On");
         emit slotChanged();
     });
@@ -281,7 +280,6 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
         {
             if (desc.fileOrIdentifier == type)
             {
-                projectCmds->setFxSlotParam(trackIndex, slotIndex, 0, 0.0f); // placeholder to route through commands
                 slotTree.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
                 slotTree.setProperty(IDs::pluginID, desc.fileOrIdentifier, &engine.getProjectModel().getUndoManager());
                 slotTree.setProperty(IDs::pluginFormat, desc.pluginFormatName, &engine.getProjectModel().getUndoManager());

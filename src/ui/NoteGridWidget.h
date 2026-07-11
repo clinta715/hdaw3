@@ -5,11 +5,7 @@
 #include <QContextMenuEvent>
 #include <bitset>
 #include "PianoRollModel.h"
-#include "../common/ProjectCommands.h"
-#include "../common/TransportCommands.h"
-#include "../common/ReadModel.h"
-
-class AudioEngine;
+#include "../engine/AudioEngine.h"
 
 class NoteGridWidget : public QWidget
 {
@@ -53,13 +49,12 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
-    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
-    void focusInEvent(QFocusEvent* event) override;
     void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     QRectF noteRect(int noteIndex) const;
@@ -68,9 +63,6 @@ private:
 
     PianoRollModel& model;
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    TransportCommands* transportCmds = nullptr;
-    ReadModel* readModel = nullptr;
 
     double pixelsPerBeat = 40.0;
     double keyHeight = 10.0;
@@ -96,19 +88,6 @@ private:
     int dragStartNoteNumber = 0;
     QPoint rubberBandEnd{0, 0};
     double lastNoteDuration = 1.0;
-
-    // Click vs drag state machine: press sets pendingClick/pendingPos;
-    // drag only starts once the mouse moves past dragThreshold.
-    bool pendingClick = false;
-    QPoint pendingPos;
-    static constexpr int dragThreshold = 5;
-
-    // Deferred note creation: first click sets pendingCreateBeat/Note;
-    // timer fires to confirm unless double-click cancels it.
-    QTimer createNoteTimer;
-    bool pendingCreate = false;
-    int pendingCreateNoteNum = 0;
-    double pendingCreateBeat = 0.0;
 
     // Chord stamp state
     bool chordStampEnabled = false;

@@ -8,9 +8,7 @@
 #include <QWidget>
 #include <thread>
 #include <atomic>
-#include "../common/ReadModel.h"
-
-class AudioEngine;
+#include "../engine/AudioEngine.h"
 
 class PluginScannerDialog : public QDialog
 {
@@ -30,7 +28,6 @@ private:
     void refreshList();
 
     AudioEngine& engine;
-    ReadModel* readModel = nullptr;
     QListWidget* pluginList;
     QPushButton* rescanBtn;
     QPushButton* toggleBlacklistBtn;

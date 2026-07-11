@@ -7,11 +7,8 @@
 #include <QLabel>
 #include <juce_core/juce_core.h>
 #include "../model/ProjectModel.h"
-#include "../common/ProjectCommands.h"
-#include "../common/ReadModel.h"
+#include "../engine/AudioEngine.h"
 #include "AudioWaveformWidget.h"
-
-class AudioEngine;
 
 class AudioClipEditorWidget : public QWidget
 {
@@ -33,8 +30,6 @@ private:
     void updateControls();
 
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    ReadModel* readModel = nullptr;
     juce::ValueTree currentClip;
 
     AudioWaveformWidget* waveform;

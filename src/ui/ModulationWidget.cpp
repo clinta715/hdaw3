@@ -6,8 +6,6 @@
 ModulationWidget::ModulationWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
     auto* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
 

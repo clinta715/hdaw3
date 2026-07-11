@@ -12,7 +12,6 @@
 PianoRollWidget::PianoRollWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
     setupUI();
     connectSignals();
     clear();

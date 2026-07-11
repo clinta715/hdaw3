@@ -357,7 +357,7 @@ void MainWindow::setupLayout()
     // via statusBar()->showMessage().
     auto* qsb = new QStatusBar(this);
     setStatusBar(qsb);
-    statusBarWidget = new StatusBar(this);
+    statusBarWidget = new StatusBar(engine, this);
     qsb->addWidget(statusBarWidget, 1);
 
     // Keep a QLabel for transient messages alongside the permanent widget.

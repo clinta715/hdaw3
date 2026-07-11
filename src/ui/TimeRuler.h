@@ -3,11 +3,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsSceneContextMenuEvent>
 #include <QMenu>
-#include "../common/ProjectCommands.h"
-#include "../common/TransportCommands.h"
-#include "../common/ReadModel.h"
-
-class AudioEngine;
+#include "../engine/AudioEngine.h"
 
 class TimeRuler : public QGraphicsObject
 {
@@ -49,9 +45,6 @@ protected:
 private:
 
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    TransportCommands* transportCmds = nullptr;
-    ReadModel* readModel = nullptr;
     double height;
     double pixelsPerSecond = 10.0;
     bool showBeats = true;

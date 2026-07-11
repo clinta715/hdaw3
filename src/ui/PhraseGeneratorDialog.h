@@ -8,11 +8,7 @@
 #include <QCheckBox>
 #include <QStackedWidget>
 #include <QWidget>
-#include "../common/ProjectCommands.h"
-#include "../common/AudioGraphCommands.h"
-#include "../common/ReadModel.h"
-
-class AudioEngine;
+#include "../engine/AudioEngine.h"
 
 class PhraseGeneratorDialog : public QDialog
 {
@@ -33,9 +29,6 @@ private:
     void createProgressionControls(QWidget* parent);
 
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    AudioGraphCommands* audioGraphCmds = nullptr;
-    ReadModel* readModel = nullptr;
     int trackIndex;
 
     // Common

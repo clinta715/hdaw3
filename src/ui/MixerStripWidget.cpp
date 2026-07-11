@@ -6,33 +6,32 @@
 #include <QMenu>
 #include <QAction>
 #include <QInputDialog>
+#include <QApplication>
 #include <cmath>
 
 MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), trackIndex(idx), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
-
     setFixedSize(stripWidth, stripHeight);
     setMinimumWidth(stripWidth);
     setMouseTracking(true);
+    qApp->installEventFilter(this);
 
     layoutRects();
 
     connect(&vuTimer, &QTimer::timeout, this, &MixerStripWidget::updateVU);
     vuTimer.start(16);
 
-    // Read initial values from ReadModel
-    if (trackIndex < readModel->getTrackCount())
+    // Read initial values from ValueTree
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < trackList.getNumChildren())
     {
-        auto snap = readModel->getTrack(trackIndex);
-        name = QString::fromStdString(snap.name);
-        volume = static_cast<float>(snap.volume);
-        pan = static_cast<float>(snap.pan);
-        muted = snap.muted;
-        soloed = snap.soloed;
+        auto tree = trackList.getChild(trackIndex);
+        name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+        volume = tree.getProperty(IDs::volume);
+        pan = tree.getProperty(IDs::pan);
+        muted = tree.getProperty(IDs::isMuted);
+        soloed = tree.getProperty(IDs::isSoloed);
     }
 }
 
@@ -101,14 +100,15 @@ void MixerStripWidget::updateVU()
 
 void MixerStripWidget::paintEvent(QPaintEvent*)
 {
-    if (trackIndex < readModel->getTrackCount())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < trackList.getNumChildren())
     {
-        auto snap = readModel->getTrack(trackIndex);
-        name = QString::fromStdString(snap.name);
-        volume = static_cast<float>(snap.volume);
-        pan = static_cast<float>(snap.pan);
-        muted = snap.muted;
-        soloed = snap.soloed;
+        auto tree = trackList.getChild(trackIndex);
+        name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+        volume = tree.getProperty(IDs::volume);
+        pan = tree.getProperty(IDs::pan);
+        muted = tree.getProperty(IDs::isMuted);
+        soloed = tree.getProperty(IDs::isSoloed);
     }
 
     QPainter painter(this);
@@ -242,13 +242,11 @@ void MixerStripWidget::mousePressEvent(QMouseEvent* event)
     else if (faderRect.contains(pos))
     {
         draggingVol = true;
-        grabMouse();
         event->accept();
     }
     else if (panTrackRect.contains(pos))
     {
         draggingPan = true;
-        grabMouse();
         event->accept();
     }
     else
@@ -297,8 +295,9 @@ void MixerStripWidget::mouseMoveEvent(QMouseEvent* event)
 
 void MixerStripWidget::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (draggingVol || draggingPan)
-        releaseMouse();
+    // We only get here when a press was accepted by this widget (started a
+    // fader/pan drag). Consume the matching release so it doesn't propagate
+    // to the parent scroll area.
     draggingVol = false;
     draggingPan = false;
     event->accept();
@@ -310,15 +309,17 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
 
     auto* renameAction = menu.addAction("Rename Track");
     connect(renameAction, &QAction::triggered, this, [this]() {
-        if (trackIndex >= readModel->getTrackCount()) return;
-        auto snap = readModel->getTrack(trackIndex);
-        QString current = QString::fromStdString(snap.name);
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIndex >= trackList.getNumChildren()) return;
+        auto tree = trackList.getChild(trackIndex);
+        QString current = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
         bool ok = false;
         QString newName = QInputDialog::getText(this, "Rename Track", "Track name:",
             QLineEdit::Normal, current, &ok);
         if (ok && !newName.isEmpty())
         {
-            projectCmds->setTrackName(trackIndex, newName.toUtf8().constData());
+            tree.setProperty(IDs::name, newName.toUtf8().constData(),
+                &engine.getProjectModel().getUndoManager());
             update();
         }
     });
@@ -332,10 +333,13 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
 
     auto* deleteAction = menu.addAction("Delete Track");
     connect(deleteAction, &QAction::triggered, this, [this]() {
-        if (trackIndex < readModel->getTrackCount())
+        auto& model = engine.getProjectModel();
+        auto trackList = model.getTrackListTree();
+        if (trackIndex < trackList.getNumChildren())
         {
-            projectCmds->removeTrack(trackIndex);
-            audioGraphCmds->rebuildRoutingGraph();
+            trackList.removeChild(trackList.getChild(trackIndex),
+                &model.getUndoManager());
+            engine.getMainProcessor()->rebuildRoutingGraph();
             emit trackDeleted();
         }
     });
@@ -347,9 +351,32 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
 void MixerStripWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
+    if (draggingVol || draggingPan)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
 }
 
 void MixerStripWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
+    if (draggingVol || draggingPan)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
+}
+
+bool MixerStripWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && (draggingVol || draggingPan) && obj != this)
+    {
+        draggingVol = false;
+        draggingPan = false;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

@@ -2,6 +2,7 @@
 #include "Theme.h"
 #include <QPainter>
 #include <QMouseEvent>
+#include <QApplication>
 #include <cmath>
 
 CCLaneWidget::CCLaneWidget(PianoRollModel& m, QWidget* parent)
@@ -9,7 +10,7 @@ CCLaneWidget::CCLaneWidget(PianoRollModel& m, QWidget* parent)
 {
     setFixedHeight(laneHeight);
     setMouseTracking(true);
-    setFocusPolicy(Qt::NoFocus);
+    qApp->installEventFilter(this);
 }
 
 int CCLaneWidget::pointIndexAtBeat(double beat) const
@@ -111,7 +112,6 @@ void CCLaneWidget::mousePressEvent(QMouseEvent* event)
         if (idx >= 0)
         {
             dragging = true;
-            grabMouse();
             dragPointIndex = idx;
             auto pt = model.getCcPoint(controllerNumber, idx);
             int val = 127 - static_cast<int>(127.0 * event->pos().y() / laneHeight);
@@ -126,7 +126,6 @@ void CCLaneWidget::mousePressEvent(QMouseEvent* event)
             val = (std::max)(0, (std::min)(127, val));
             model.addCcPoint(controllerNumber, beat, val);
             dragging = true;
-            grabMouse();
             dragPointIndex = pointIndexAtBeat(beat);
             emit ccChanged();
             update();
@@ -159,8 +158,6 @@ void CCLaneWidget::mouseMoveEvent(QMouseEvent* event)
 
 void CCLaneWidget::mouseReleaseEvent(QMouseEvent*)
 {
-    if (dragging)
-        releaseMouse();
     dragging = false;
     dragPointIndex = -1;
 }
@@ -168,9 +165,32 @@ void CCLaneWidget::mouseReleaseEvent(QMouseEvent*)
 void CCLaneWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
+    if (dragging)
+    {
+        dragging = false;
+        dragPointIndex = -1;
+        update();
+    }
 }
 
 void CCLaneWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
+    if (dragging)
+    {
+        dragging = false;
+        dragPointIndex = -1;
+        update();
+    }
+}
+
+bool CCLaneWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && dragging && obj != this)
+    {
+        dragging = false;
+        dragPointIndex = -1;
+        update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

@@ -8,9 +8,6 @@
 MixerWidget::MixerWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
     auto* mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
@@ -71,35 +68,39 @@ void MixerWidget::rebuild()
     }
 
     // Add strips for each track
-    int trackCount = readModel->getTrackCount();
-    for (int i = 0; i < trackCount; ++i)
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
     {
         auto* strip = new MixerStripWidget(i, engine, stripContainer);
 
         connect(strip, &MixerStripWidget::volumeChanged, this,
             [this](int trackIdx, float vol) {
-                int count = readModel->getTrackCount();
-                if (trackIdx < count)
-                    projectCmds->setTrackVolume(trackIdx, vol);
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx < trackList.getNumChildren())
+                {
+                    trackList.getChild(trackIdx).setProperty(IDs::volume, static_cast<double>(vol), &engine.getProjectModel().getUndoManager());
+                }
             });
 
         connect(strip, &MixerStripWidget::muteToggled, this,
             [this](int trackIdx, bool muted) {
-                projectCmds->setTrackMuted(trackIdx, muted);
+                engine.setTrackMuted(trackIdx, muted);
             });
 
         connect(strip, &MixerStripWidget::soloToggled, this,
             [this](int trackIdx, bool soloed) {
-                int count = readModel->getTrackCount();
-                if (trackIdx < count)
-                    projectCmds->setTrackSoloed(trackIdx, soloed);
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx < trackList.getNumChildren())
+                    trackList.getChild(trackIdx).setProperty(IDs::isSoloed, soloed, &engine.getProjectModel().getUndoManager());
             });
 
         connect(strip, &MixerStripWidget::panChanged, this,
             [this](int trackIdx, float pan) {
-                int count = readModel->getTrackCount();
-                if (trackIdx < count)
-                    projectCmds->setTrackPan(trackIdx, pan);
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx < trackList.getNumChildren())
+                {
+                    trackList.getChild(trackIdx).setProperty(IDs::pan, static_cast<double>(pan), &engine.getProjectModel().getUndoManager());
+                }
             });
 
         connect(strip, &MixerStripWidget::fxButtonClicked, this,

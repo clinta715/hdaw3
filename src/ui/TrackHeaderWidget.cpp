@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QVBoxLayout>
+#include <QApplication>
 #include <QMenu>
 #include <QAction>
 #include <QTimer>
@@ -15,13 +16,10 @@
 TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
-    audioGraphCmds = &engine.getAudioGraphCommands();
-    readModel = &engine.getReadModel();
-
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
     setMouseTracking(true);
+    qApp->installEventFilter(this);
 
     nameFont = font();
     nameFont.setPointSize(9);
@@ -53,17 +51,18 @@ void TrackHeaderWidget::rebuild()
         }
     }
     tracks.clear();
-    int count = readModel->getTrackCount();
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int count = trackList.getNumChildren();
 
     for (int i = 0; i < count; ++i)
     {
-        auto snap = readModel->getTrack(i);
+        auto tree = trackList.getChild(i);
         TrackHeader h;
         h.trackIndex = i;
-        h.volValue = static_cast<float>(snap.volume);
-        h.panValue = static_cast<float>(snap.pan);
-        h.isMuted = snap.muted;
-        h.isSoloed = snap.soloed;
+        h.volValue = tree.getProperty(IDs::volume);
+        h.panValue = tree.getProperty(IDs::pan);
+        h.isMuted = tree.getProperty(IDs::isMuted);
+        h.isSoloed = tree.getProperty(IDs::isSoloed);
         h.nameEdit = nullptr;
         tracks.push_back(h);
     }
@@ -75,9 +74,11 @@ void TrackHeaderWidget::rebuild()
 
 void TrackHeaderWidget::setTrackHeight(int index, double height)
 {
-    if (index >= 0 && index < readModel->getTrackCount())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (index >= 0 && index < trackList.getNumChildren())
     {
-        projectCmds->setTrackHeight(index, static_cast<int>((std::max)(40.0, height)));
+        trackList.getChild(index).setProperty(IDs::trackHeight,
+            (std::max)(40.0, height), &engine.getProjectModel().getUndoManager());
         layoutRects();
         update();
     }
@@ -85,10 +86,11 @@ void TrackHeaderWidget::setTrackHeight(int index, double height)
 
 double TrackHeaderWidget::getTrackHeight(int index) const
 {
-    if (index >= 0 && index < readModel->getTrackCount())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (index >= 0 && index < trackList.getNumChildren())
     {
-        auto snap = readModel->getTrack(index);
-        return (std::max)(40.0, snap.height);
+        double h = trackList.getChild(index).getProperty(IDs::trackHeight, defaultTrackHeight);
+        return (std::max)(40.0, h);
     }
     return defaultTrackHeight;
 }
@@ -121,7 +123,8 @@ void TrackHeaderWidget::resizeEvent(QResizeEvent* event)
 void TrackHeaderWidget::layoutRects()
 {
     int w = width();
-    int count = readModel->getTrackCount();
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int count = trackList.getNumChildren();
 
     if (static_cast<int>(tracks.size()) != count)
         return;
@@ -209,9 +212,11 @@ TrackHeaderWidget::TrackHeader& TrackHeaderWidget::headerFor(int trackIndex)
 void TrackHeaderWidget::commitVolume(int trackIndex, float vol)
 {
     if (trackIndex < 0) return;
-    if (trackIndex < readModel->getTrackCount())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < trackList.getNumChildren())
     {
-        projectCmds->setTrackVolume(trackIndex, vol);
+        auto tree = trackList.getChild(trackIndex);
+        tree.setProperty(IDs::volume, vol, &engine.getProjectModel().getUndoManager());
 
         ParamUpdate update{ trackIndex, 1, vol };
         engine.getBridge().pushUpdate(update);
@@ -221,9 +226,11 @@ void TrackHeaderWidget::commitVolume(int trackIndex, float vol)
 void TrackHeaderWidget::commitPan(int trackIndex, float pan)
 {
     if (trackIndex < 0) return;
-    if (trackIndex < readModel->getTrackCount())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < trackList.getNumChildren())
     {
-        projectCmds->setTrackPan(trackIndex, pan);
+        auto tree = trackList.getChild(trackIndex);
+        tree.setProperty(IDs::pan, pan, &engine.getProjectModel().getUndoManager());
     }
 }
 
@@ -248,7 +255,8 @@ void TrackHeaderWidget::setSelectedTrack(int index)
 
 QSize TrackHeaderWidget::sizeHint() const
 {
-    int count = readModel->getTrackCount();
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int count = trackList.getNumChildren();
     double totalH = rulerHeight;
     for (int i = 0; i < count; ++i)
         totalH += getTrackHeight(i);
@@ -268,7 +276,8 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     painter.setRenderHint(QPainter::Antialiasing);
 
     int w = width();
-    int count = readModel->getTrackCount();
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    int count = trackList.getNumChildren();
 
     if (count != static_cast<int>(tracks.size()))
     {
@@ -283,8 +292,7 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
 
     for (int i = 0; i < count; ++i)
     {
-        auto snap = readModel->getTrack(i);
-        auto tree = engine.getProjectModel().getTrackListTree().getChild(i);
+        auto tree = trackList.getChild(i);
         double trackH = getTrackHeight(i);
 
         auto& header = headerFor(i);
@@ -465,9 +473,10 @@ void TrackHeaderWidget::mouseDoubleClickEvent(QMouseEvent* event)
         auto& header = headerFor(trackIdx);
         if (header.nameEdit == nullptr)
         {
-            auto snap = readModel->getTrack(trackIdx);
+            auto trackList = engine.getProjectModel().getTrackListTree();
+            auto tree = trackList.getChild(trackIdx);
             header.nameEdit = new QLineEdit(
-                QString::fromStdString(snap.name), this);
+                QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8()), this);
             header.nameEdit->setGeometry(header.nameRect);
             header.nameEdit->selectAll();
             header.nameEdit->show();
@@ -490,8 +499,9 @@ void TrackHeaderWidget::mouseDoubleClickEvent(QMouseEvent* event)
                     if (hdr.nameEdit == edit)
                         hdr.nameEdit = nullptr;
                 }
-                if (trackIdx >= 0 && trackIdx < readModel->getTrackCount())
-                    projectCmds->setTrackName(trackIdx, newName.toUtf8().constData());
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx >= 0 && trackIdx < trackList.getNumChildren())
+                    trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
                 update();
             });
         }
@@ -512,28 +522,32 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     }
 
     auto& header = headerFor(trackIdx);
+    auto trackList = engine.getProjectModel().getTrackListTree();
 
     if (type == 1) // Mute
     {
         header.isMuted = !header.isMuted;
-        if (trackIdx < readModel->getTrackCount())
-            projectCmds->setTrackMuted(trackIdx, header.isMuted);
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
+            trackList.getChild(trackIdx).setProperty(IDs::isMuted, header.isMuted, &engine.getProjectModel().getUndoManager());
         update();
     }
     else if (type == 2) // Solo
     {
         header.isSoloed = !header.isSoloed;
-        if (trackIdx < readModel->getTrackCount())
-            projectCmds->setTrackSoloed(trackIdx, header.isSoloed);
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
+            trackList.getChild(trackIdx).setProperty(IDs::isSoloed, header.isSoloed, &engine.getProjectModel().getUndoManager());
         update();
     }
     else if (type == 3) // Record arm
     {
-        if (trackIdx < readModel->getTrackCount())
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
         {
-            auto snap = readModel->getTrack(trackIdx);
-            bool armed = !snap.armed;
-            projectCmds->setTrackArmed(trackIdx, armed);
+            auto tree = trackList.getChild(trackIdx);
+            bool armed = !tree.getProperty(IDs::isArm);
+            tree.setProperty(IDs::isArm, armed, &engine.getProjectModel().getUndoManager());
         }
         update();
     }
@@ -543,11 +557,12 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     }
     else if (type == 8) // Input monitor
     {
-        if (trackIdx < readModel->getTrackCount())
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
         {
-            auto snap = readModel->getTrack(trackIdx);
-            bool mon = !snap.inputMonitor;
-            projectCmds->setTrackInputMonitor(trackIdx, mon);
+            auto tree = trackList.getChild(trackIdx);
+            bool mon = !tree.getProperty(IDs::inputMonitor);
+            tree.setProperty(IDs::inputMonitor, mon, &engine.getProjectModel().getUndoManager());
             emit inputMonitoringChanged(trackIdx, mon);
         }
     }
@@ -556,22 +571,14 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
         engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust volume");
         dragTrack = trackIdx;
         dragStart = event->pos();
-        {
-            auto snap = readModel->getTrack(trackIdx);
-            dragStartValue = static_cast<float>(snap.volume);
-        }
-        grabMouse();
+        dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::volume));
     }
     else if (type == 5) // Pan drag
     {
         engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust pan");
         dragTrack = trackIdx;
         dragStart = event->pos();
-        {
-            auto snap = readModel->getTrack(trackIdx);
-            dragStartValue = static_cast<float>(snap.pan);
-        }
-        grabMouse();
+        dragStartValue = static_cast<float>(trackList.getChild(trackIdx).getProperty(IDs::pan));
     }
     else if (type == 0) // Track body — check for resize at bottom edge
     {
@@ -581,7 +588,6 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
         {
             resizeTrack = trackIdx;
             dragStart = event->pos();
-            grabMouse();
         }
         else
         {
@@ -594,10 +600,11 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
     {
         if (header.nameEdit == nullptr)
         {
-            auto snap = readModel->getTrack(trackIdx);
+            auto trackList = engine.getProjectModel().getTrackListTree();
+            auto tree = trackList.getChild(trackIdx);
 
             header.nameEdit = new QLineEdit(
-                QString::fromStdString(snap.name), this);
+                QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8()), this);
             header.nameEdit->setGeometry(header.nameRect);
             header.nameEdit->selectAll();
             header.nameEdit->show();
@@ -616,8 +623,9 @@ void TrackHeaderWidget::mousePressEvent(QMouseEvent* event)
                     if (hdr.nameEdit == edit)
                         hdr.nameEdit = nullptr;
                 }
-                if (trackIdx >= 0 && trackIdx < readModel->getTrackCount())
-                    projectCmds->setTrackName(trackIdx, newName.toUtf8().constData());
+                auto trackList = engine.getProjectModel().getTrackListTree();
+                if (trackIdx >= 0 && trackIdx < trackList.getNumChildren())
+                    trackList.getChild(trackIdx).setProperty(IDs::name, newName.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
                 update();
             });
         }
@@ -682,8 +690,6 @@ void TrackHeaderWidget::mouseMoveEvent(QMouseEvent* event)
 void TrackHeaderWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     Q_UNUSED(event);
-    if (dragTrack >= 0 || resizeTrack >= 0)
-        releaseMouse();
     dragTrack = -1;
     resizeTrack = -1;
 }
@@ -763,32 +769,35 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
 
     auto* renameAction = menu.addAction("Rename Track");
     connect(renameAction, &QAction::triggered, this, [this, trackIdx]() {
-        if (trackIdx >= readModel->getTrackCount()) return;
-        auto snap = readModel->getTrack(trackIdx);
-        QString current = QString::fromStdString(snap.name);
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx >= trackList.getNumChildren()) return;
+        auto tree = trackList.getChild(trackIdx);
+        QString current = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
         bool ok = false;
         QString newName = QInputDialog::getText(const_cast<QWidget*>(static_cast<const QWidget*>(this)),
             "Rename Track", "Track name:", QLineEdit::Normal, current, &ok);
         if (ok && !newName.isEmpty())
         {
-            projectCmds->setTrackName(trackIdx, newName.toUtf8().constData());
+            tree.setProperty(IDs::name, newName.toUtf8().constData(),
+                &engine.getProjectModel().getUndoManager());
             update();
         }
     });
 
     auto* colorAction = menu.addAction("Track Color...");
     connect(colorAction, &QAction::triggered, this, [this, trackIdx]() {
-        if (trackIdx >= readModel->getTrackCount()) return;
-        auto snap = readModel->getTrack(trackIdx);
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx >= trackList.getNumChildren()) return;
+        auto tree = trackList.getChild(trackIdx);
 
-        int currentColor = snap.color;
+        int currentColor = tree.getProperty(IDs::color, static_cast<int>(0xFF4488CC));
         QColor initial((currentColor >> 16) & 0xFF, (currentColor >> 8) & 0xFF, currentColor & 0xFF);
         QColor chosen = QColorDialog::getColor(initial, const_cast<QWidget*>(static_cast<const QWidget*>(this)),
             "Choose Track Color");
         if (chosen.isValid())
         {
             int newColor = (0xFF << 24) | (chosen.red() << 16) | (chosen.green() << 8) | chosen.blue();
-            projectCmds->setTrackColor(trackIdx, newColor);
+            tree.setProperty(IDs::color, newColor, &engine.getProjectModel().getUndoManager());
             update();
         }
     });
@@ -850,9 +859,10 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
 
     auto* midiChAction = menu.addAction("MIDI Channel...");
     connect(midiChAction, &QAction::triggered, this, [this, trackIdx]() {
-        if (trackIdx >= readModel->getTrackCount()) return;
-        auto snap = readModel->getTrack(trackIdx);
-        int current = snap.midiChannel;
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        if (trackIdx >= trackList.getNumChildren()) return;
+        auto tree = trackList.getChild(trackIdx);
+        int current = tree.getProperty(IDs::midiChannel, 1);
         bool ok = false;
         int channel = QInputDialog::getInt(
             const_cast<QWidget*>(static_cast<const QWidget*>(this)),
@@ -861,17 +871,21 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
             current, 1, 16, 1, &ok);
         if (ok)
         {
-            projectCmds->setTrackMidiChannel(trackIdx, channel);
+            tree.setProperty(IDs::midiChannel, channel,
+                &engine.getProjectModel().getUndoManager());
             update();
         }
     });
 
     auto* deleteAction = menu.addAction("Delete Track");
     connect(deleteAction, &QAction::triggered, this, [this, trackIdx]() {
-        if (trackIdx < readModel->getTrackCount())
+        auto& model = engine.getProjectModel();
+        auto trackList = model.getTrackListTree();
+        if (trackIdx < trackList.getNumChildren())
         {
-            projectCmds->removeTrack(trackIdx);
-            audioGraphCmds->rebuildRoutingGraph();
+            trackList.removeChild(trackList.getChild(trackIdx),
+                &model.getUndoManager());
+            engine.getMainProcessor()->rebuildRoutingGraph();
             rebuild();
         }
     });
@@ -881,18 +895,18 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)
 {
-    projectCmds->addFxSlot(trackIndex, type.toStdString());
+    if (engine.getProjectModel().addFxSlot(trackIndex, type.toStdString()) < 0) return;
 
-    audioGraphCmds->rebuildTrackFX(trackIndex);
+    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }
 
 void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
-    projectCmds->addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString());
+    if (engine.getProjectModel().addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString()) < 0) return;
 
-    audioGraphCmds->rebuildTrackFX(trackIndex);
+    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }
@@ -909,11 +923,6 @@ void TrackHeaderWidget::focusOutEvent(QFocusEvent* event)
             t.draggingPan = false;
             wasDragging = true;
         }
-    }
-    if (dragTrack >= 0 || resizeTrack >= 0)
-    {
-        releaseMouse();
-        wasDragging = true;
     }
     dragTrack = -1;
     resizeTrack = -1;
@@ -934,4 +943,29 @@ void TrackHeaderWidget::leaveEvent(QEvent* event)
         }
     }
     if (wasDragging) update();
+}
+
+bool TrackHeaderWidget::eventFilter(QObject* obj, QEvent* event)
+{
+    if (event->type() == QEvent::MouseButtonRelease && obj != this)
+    {
+        bool wasDragging = false;
+        for (auto& t : tracks)
+        {
+            if (t.draggingVol || t.draggingPan)
+            {
+                t.draggingVol = false;
+                t.draggingPan = false;
+                wasDragging = true;
+            }
+        }
+        if (dragTrack >= 0 || resizeTrack >= 0)
+        {
+            dragTrack = -1;
+            resizeTrack = -1;
+            wasDragging = true;
+        }
+        if (wasDragging) update();
+    }
+    return QWidget::eventFilter(obj, event);
 }

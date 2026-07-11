@@ -11,7 +11,6 @@
 StepEditorWidget::StepEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
-    projectCmds = &engine.getProjectCommands();
     setupUI();
 }
 

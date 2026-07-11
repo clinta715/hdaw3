@@ -4,11 +4,7 @@
 #include <QComboBox>
 #include <QPushButton>
 #include "../engine/AutomationManager.h"
-#include "../common/ProjectCommands.h"
-#include "../common/AudioGraphCommands.h"
-#include "../common/ReadModel.h"
-
-class AudioEngine;
+#include "../engine/AudioEngine.h"
 
 class AutomationLaneWidget : public QWidget
 {
@@ -35,6 +31,7 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void onParamChanged(int index);
@@ -53,9 +50,6 @@ private:
     void showAddLaneMenu();
 
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
-    AudioGraphCommands* audioGraphCmds = nullptr;
-    ReadModel* readModel = nullptr;
     int currentTrack = -1;
     int currentParamIndex = 0;
     QComboBox* paramCombo;
