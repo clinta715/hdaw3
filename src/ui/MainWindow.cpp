@@ -52,6 +52,11 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     engine.getProjectModel().setPluginManager(&engine.getPluginManager());
     mcp::registerAllTools(*mcpServer_);
 
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
+
     setupLayout();
     setupMenuBar();
 
@@ -509,9 +514,9 @@ void MainWindow::connectTimelineSignals()
                 modulationWidget->loadTrack(trackIndex);
             if (statusBarWidget)
             {
-                QString name = (trackIndex >= 0)
-                    ? QString::fromUtf8(engine.getTrackName(trackIndex).toRawUTF8())
-                    : QString();
+                QString name;
+                if (trackIndex >= 0 && trackIndex < readModel->getTrackCount())
+                    name = QString::fromStdString(readModel->getTrack(trackIndex).name);
                 statusBarWidget->setSelectedTrack(trackIndex, name);
             }
         });
@@ -584,19 +589,16 @@ void MainWindow::connectBottomPanelSignals()
 
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
         [this]() {
-            auto trackList = engine.getProjectModel().getTrackListTree();
-            auto* routing = engine.getMainProcessor()->getRoutingManager();
-            if (routing == nullptr) return;
-            int numTracks = (std::min)(trackList.getNumChildren(), routing->getNumTracks());
+            int numTracks = readModel->getTrackCount();
             for (int i = 0; i < numTracks; ++i)
-                engine.getMainProcessor()->rebuildTrackFX(i);
+                audioGraphCmds->rebuildTrackFX(i);
         });
 
     connect(automationWidget, &AutomationLaneWidget::automationChanged, this,
         [this]() {
             int track = automationWidget->currentTrackIndex();
             if (track >= 0)
-                engine.getMainProcessor()->rebuildAutomationCache(track);
+                audioGraphCmds->rebuildAutomationCache(track);
         });
 }
 
@@ -696,12 +698,11 @@ void MainWindow::rebuildAllUI()
     audioEditorWidget->clear();
     automationWidget->clear();
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    int numTracks = trackList.getNumChildren();
+    int numTracks = readModel->getTrackCount();
 
     // Ensure all track FX are built in the engine
     for (int i = 0; i < numTracks; ++i)
-        engine.getMainProcessor()->rebuildTrackFX(i);
+        audioGraphCmds->rebuildTrackFX(i);
 
     if (selectedTrack >= numTracks)
         selectedTrack = numTracks - 1;
@@ -740,7 +741,7 @@ void MainWindow::onNew()
 
     HDAW::ProjectSerializer::createNew(engine.getProjectModel());
     currentFile = {};
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
     setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
 }
@@ -786,7 +787,7 @@ void MainWindow::openProjectFile(const QString& path)
     auto& settings = PreferencesDialog::settings();
     settings.setValue(PreferencesDialog::kKeyLastProjectDir, QFileInfo(path).absolutePath());
     currentFile = file;
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
     setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
         .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
@@ -872,61 +873,54 @@ void MainWindow::onSaveAs()
 
 void MainWindow::onUndo()
 {
-    auto& um = engine.getProjectModel().getUndoManager();
-    if (um.canUndo())
+    if (projectCmds->canUndo())
     {
-        um.undo();
+        projectCmds->undo();
         rebuildAllUI();
     }
 }
 
 void MainWindow::onRedo()
 {
-    auto& um = engine.getProjectModel().getUndoManager();
-    if (um.canRedo())
+    if (projectCmds->canRedo())
     {
-        um.redo();
+        projectCmds->redo();
         rebuildAllUI();
     }
 }
 
 void MainWindow::onPlayToggle()
 {
-    auto& tm = engine.getTransportManager();
-    if (tm.isPlayingNow())
+    if (readModel->getTransport().isPlaying)
     {
-        tm.setPlaying(false);
+        transportCmds->stop();
         statusBar()->showMessage("Stopped", 3000);
     }
     else
     {
-        tm.setPlaying(true);
+        transportCmds->play();
         statusBar()->showMessage("Playing", 3000);
     }
 }
 
 void MainWindow::onStop()
 {
-    auto& tm = engine.getTransportManager();
-    if (engine.getMainProcessor()->isRecording())
-        engine.getMainProcessor()->stopRecording();
-    tm.setPlaying(false);
+    if (transportCmds->isRecording())
+        transportCmds->stopRecording();
+    transportCmds->stop();
     statusBar()->showMessage("Stopped", 3000);
 }
 
 void MainWindow::onRewind()
 {
-    auto& tm = engine.getTransportManager();
-    tm.setCurrentSample(0);
+    transportCmds->rewind();
 }
 
 void MainWindow::onLoopToggle()
 {
-    auto transportTree = engine.getProjectModel().getTransportTree();
-    bool current = transportTree.getProperty(IDs::isLooping);
+    bool current = readModel->getTransport().isLooping;
     bool next = !current;
-    transportTree.setProperty(IDs::isLooping, next,
-        &engine.getProjectModel().getUndoManager());
+    projectCmds->setLooping(next);
 
     if (loopAction)
     {
@@ -938,11 +932,11 @@ void MainWindow::onLoopToggle()
 
 void MainWindow::updateTimecode()
 {
-    auto& tm = engine.getTransportManager();
-    int64_t samples = tm.getCurrentSample();
-    double sr = tm.getSampleRate();
+    auto transport = readModel->getTransport();
+    int64_t samples = static_cast<int64_t>(transport.currentSample);
+    double sr = transport.sampleRate;
     double seconds = sr > 0 ? static_cast<double>(samples) / sr : 0.0;
-    double bpm = tm.getBPM();
+    double bpm = transport.bpm;
 
     int mins = static_cast<int>(seconds) / 60;
     int secs = static_cast<int>(seconds) % 60;
@@ -952,7 +946,7 @@ void MainWindow::updateTimecode()
     snprintf(buf, sizeof(buf), "%02d:%02d:%03d", mins, secs, millis);
 
     timelineView->getToolbar()->setTimecode(QString::fromUtf8(buf));
-    timelineView->getToolbar()->setPlaying(tm.isPlayingNow());
+    timelineView->getToolbar()->setPlaying(transport.isPlaying);
     timelineView->getToolbar()->setBPM(bpm);
 
     timelineView->scrollToPlayhead();
@@ -1016,38 +1010,17 @@ void MainWindow::onExport()
 void MainWindow::onAddTrack()
 {
     HDAW_LOG("MWAddTrk", "ENTER");
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    int before = trackList.getNumChildren();
+    int before = readModel->getTrackCount();
     HDAW_LOG("MWAddTrk", QString("before count=%1").arg(before));
 
-    int trackNum = trackList.getNumChildren() + 1;
+    int trackNum = before + 1;
+    projectCmds->addTrack("Track " + std::to_string(trackNum));
 
-    juce::ValueTree track(IDs::TRACK);
-    track.setProperty(IDs::name, ("Track " + juce::String(trackNum)).toRawUTF8(), &model.getUndoManager());
-    track.setProperty(IDs::volume, 0.85, &model.getUndoManager());
-    track.setProperty(IDs::pan, 0.0, &model.getUndoManager());
-    track.setProperty(IDs::isMuted, false, &model.getUndoManager());
-    track.setProperty(IDs::isSoloed, false, &model.getUndoManager());
-    track.setProperty(IDs::parentBus, 0, &model.getUndoManager());
-    track.setProperty(IDs::color, static_cast<int>(model.trackColorForIndex(before)), &model.getUndoManager());
-
-    juce::ValueTree clipList(IDs::CLIP_LIST);
-    track.addChild(clipList, -1, &model.getUndoManager());
-
-    juce::ValueTree fxChain(IDs::FX_CHAIN);
-    track.addChild(fxChain, -1, &model.getUndoManager());
-
-    auto autoList = ProjectModel::createTrackAutomationList();
-    track.addChild(autoList, -1, &model.getUndoManager());
-
-    trackList.addChild(track, -1, &model.getUndoManager());
-
-    int after = trackList.getNumChildren();
+    int after = readModel->getTrackCount();
     HDAW_LOG("MWAddTrk", QString("after count=%1 (expected %2)")
         .arg(after).arg(before + 1));
 
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
     HDAW_LOG("MWAddTrk", "EXIT");
 }
@@ -1056,13 +1029,12 @@ void MainWindow::onAddTrackWithFX(const juce::String& fxType)
 {
     onAddTrack();
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    int last = trackList.getNumChildren() - 1;
+    int last = readModel->getTrackCount() - 1;
     if (last < 0) return;
 
     engine.getProjectModel().addFxSlot(last, fxType.toStdString());
 
-    engine.getMainProcessor()->rebuildTrackFX(last);
+    audioGraphCmds->rebuildTrackFX(last);
     rebuildAllUI();
 }
 
@@ -1070,58 +1042,55 @@ void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::
 {
     onAddTrack();
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    int last = trackList.getNumChildren() - 1;
+    int last = readModel->getTrackCount() - 1;
     if (last < 0) return;
 
     engine.getProjectModel().addFxSlot(last, "plugin", -1, pluginID.toStdString());
 
-    engine.getMainProcessor()->rebuildTrackFX(last);
+    audioGraphCmds->rebuildTrackFX(last);
     rebuildAllUI();
 }
 
 void MainWindow::onDeleteTrack()
 {
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (trackList.getNumChildren() <= 0) return;
+    int numTracks = readModel->getTrackCount();
+    if (numTracks <= 0) return;
 
-    int last = trackList.getNumChildren() - 1;
-    trackList.removeChild(trackList.getChild(last), &model.getUndoManager());
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    projectCmds->removeTrack(numTracks - 1);
+    audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
 }
 
 void MainWindow::onRenameTrack()
 {
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (trackList.getNumChildren() <= 0) return;
+    int numTracks = readModel->getTrackCount();
+    if (numTracks <= 0) return;
 
-    int last = trackList.getNumChildren() - 1;
-    auto tree = trackList.getChild(last);
-    QString current = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
+    int last = numTracks - 1;
+    auto snap = readModel->getTrack(last);
+    QString current = QString::fromStdString(snap.name);
     bool ok = false;
     QString newName = QInputDialog::getText(this, "Rename Track", "Track name:",
         QLineEdit::Normal, current, &ok);
     if (ok && !newName.isEmpty())
     {
-        tree.setProperty(IDs::name, newName.toUtf8().constData(), &model.getUndoManager());
+        projectCmds->setTrackName(last, newName.toStdString());
         rebuildAllUI();
     }
 }
 
 void MainWindow::onDuplicateTrack()
 {
+    int numTracks = readModel->getTrackCount();
+    if (numTracks <= 0) return;
+
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
-    if (trackList.getNumChildren() <= 0) return;
-
-    int last = trackList.getNumChildren() - 1;
+    int last = numTracks - 1;
     auto source = trackList.getChild(last);
     auto copy = source.createCopy();
     trackList.addChild(copy, -1, &model.getUndoManager());
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
 }
 
@@ -1160,8 +1129,7 @@ void MainWindow::onImportAudio()
         "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
     if (path.isEmpty()) return;
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackList.getNumChildren() == 0)
+    if (readModel->getTrackCount() == 0)
         onAddTrack();
 
     int trackIdx = promptForImportTrack(this, engine, "Import Audio");
@@ -1179,8 +1147,7 @@ void MainWindow::onImportMIDI()
         "MIDI Files (*.mid *.midi)");
     if (path.isEmpty()) return;
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackList.getNumChildren() == 0)
+    if (readModel->getTrackCount() == 0)
         onAddTrack();
 
     int trackIdx = promptForImportTrack(this, engine, "Import MIDI");
@@ -1192,15 +1159,12 @@ void MainWindow::onImportMIDI()
 
 void MainWindow::onBPMChanged(double bpm)
 {
-    auto& model = engine.getProjectModel();
-    model.getTree().setProperty(IDs::tempo, bpm, &model.getUndoManager());
+    projectCmds->setTempo(bpm);
 }
 
 void MainWindow::onMetronomeToggled(bool enabled)
 {
-    auto& model = engine.getProjectModel();
-    auto transport = model.getTransportTree();
-    transport.setProperty(IDs::metronomeEnabled, enabled, &model.getUndoManager());
+    projectCmds->setMetronomeEnabled(enabled);
 }
 
 void MainWindow::onCountInToggled(bool enabled)
@@ -1242,22 +1206,19 @@ void MainWindow::onMidiDeviceChanged(const QString& deviceIdentifier)
 
 void MainWindow::onRecordToggle()
 {
-    auto* proc = engine.getMainProcessor();
-    if (proc->isRecording())
+    if (transportCmds->isRecording())
     {
-        proc->stopRecording();
-        engine.getTransportManager().setPlaying(false);
+        transportCmds->stopRecording();
+        transportCmds->stop();
         if (statusBarWidget) statusBarWidget->setRecording(false);
         statusBar()->showMessage("Recording stopped", 3000);
     }
     else
     {
-        if (proc->startRecording())
-        {
-            engine.getTransportManager().setPlaying(true);
-            if (statusBarWidget) statusBarWidget->setRecording(true);
-            statusBar()->showMessage("Recording...", 0);
-        }
+        transportCmds->startRecording();
+        transportCmds->play();
+        if (statusBarWidget) statusBarWidget->setRecording(true);
+        statusBar()->showMessage("Recording...", 0);
     }
 }
 
@@ -1271,15 +1232,16 @@ void MainWindow::onCcRecordToggled(bool armed)
         // the audio engine's MIDI input callback.
         engine.setMidiCcCallback([this](int controller, int value) {
             if (selectedTrack < 0) return;
+            if (selectedTrack >= readModel->getTrackCount()) return;
             auto trackList = engine.getProjectModel().getTrackListTree();
-            if (selectedTrack >= trackList.getNumChildren()) return;
             auto trackTree = trackList.getChild(selectedTrack);
             auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
             if (!clipList.isValid()) return;
 
-            double sr = engine.getTransportManager().getSampleRate();
+            auto transport = readModel->getTransport();
+            double sr = transport.sampleRate;
             if (sr <= 0) return;
-            double currentTime = static_cast<double>(engine.getTransportManager().getCurrentSample()) / sr;
+            double currentTime = transport.currentSample / sr;
 
             // Find the clip at the current time on the selected track.
             for (int i = 0; i < clipList.getNumChildren(); ++i)
@@ -1295,7 +1257,7 @@ void MainWindow::onCcRecordToggled(bool armed)
                         ccList = juce::ValueTree(IDs::CC_LIST);
                         clip.addChild(ccList, -1, nullptr);
                     }
-                    double bpm = engine.getTransportManager().getBPM();
+                    double bpm = transport.bpm;
                     if (bpm <= 0) bpm = 120.0;
                     double currentBeat = currentTime * bpm / 60.0;
 

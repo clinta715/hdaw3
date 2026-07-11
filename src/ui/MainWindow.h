@@ -10,7 +10,13 @@
 #include <QPushButton>
 #include <QList>
 #include <juce_core/juce_core.h>
+// Follow-up: forward-declare AudioEngine once UI headers no longer
+// transitively include AudioEngine.h (all UI headers pull it in today).
 #include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
 #include "../mcp/McpTransportHttp.h"
 
 namespace mcp { class McpServer; }
@@ -92,6 +98,10 @@ private:
     void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     QSplitter* mainHorizontalSplitter;
     QSplitter* mainVerticalSplitter;
