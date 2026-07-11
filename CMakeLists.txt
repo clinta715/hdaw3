@@ -71,6 +71,7 @@ add_library(HDAW_lib STATIC
     src/mcp/McpTransportHttp.cpp
     src/proxy/ProxyPipe.cpp
     src/proxy/ProxySharedMemory.cpp
+    src/ui/PluginEditorWindow.cpp
 )
 
 if(HDAW_PLUGIN_ISOLATION)
