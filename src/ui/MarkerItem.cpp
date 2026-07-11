@@ -11,6 +11,7 @@
 MarkerItem::MarkerItem(juce::ValueTree tree, AudioEngine& ae, double h)
     : markerTree(tree), engine(ae), pixelsPerSecond(10.0), height(h)
 {
+    projectCmds = &engine.getProjectCommands();
     setAcceptHoverEvents(true);
     setCursor(Qt::SizeHorCursor);
     setFlag(QGraphicsItem::ItemSendsScenePositionChanges);

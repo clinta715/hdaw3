@@ -10,8 +10,11 @@
 #include <QButtonGroup>
 #include <QScrollArea>
 #include <QTimer>
-#include "../engine/AudioEngine.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
 #include "../engine/ModulationManager.h"
+
+class AudioEngine;
 #include <vector>
 
 class ModulationWidget : public QWidget
@@ -53,6 +56,8 @@ private:
     void syncModulationToAudio();
 
     AudioEngine& engine;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     int currentTrack = -1;
     QVBoxLayout* listLayout;
     QWidget* listWidget;

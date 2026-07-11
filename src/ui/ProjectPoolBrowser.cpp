@@ -10,6 +10,8 @@
 ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setupUI();
 }
 

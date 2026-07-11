@@ -11,6 +11,7 @@
 ExportDialog::ExportDialog(AudioEngine& ae, QWidget* parent)
     : QDialog(parent), engine(ae)
 {
+    readModel = &engine.getReadModel();
     setWindowTitle("Export Audio");
     setMinimumWidth(420);
     setModal(true);

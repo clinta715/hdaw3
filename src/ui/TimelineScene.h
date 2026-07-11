@@ -2,7 +2,10 @@
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
 #include "../model/ProjectModel.h"
 #include "ClipItem.h"
 #include "AudioClipItem.h"
@@ -56,6 +59,10 @@ private:
     void updateClipItem(juce::ValueTree clipTree);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     double pixelsPerSecond = 10.0;
     int trackCount = 0;
 

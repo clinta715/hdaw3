@@ -25,8 +25,8 @@ QFrame* makeSeparator(QWidget* parent)
 }
 }
 
-StatusBar::StatusBar(AudioEngine& ae, QWidget* parent)
-    : QWidget(parent), engine(ae)
+StatusBar::StatusBar(QWidget* parent)
+    : QWidget(parent)
 {
     auto* layout = new QHBoxLayout(this);
     layout->setContentsMargins(8, 2, 8, 2);

@@ -3,7 +3,9 @@
 #include <QPushButton>
 #include <QLabel>
 #include <juce_data_structures/juce_data_structures.h>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+
+class AudioEngine;
 
 class StepEditorWidget : public QWidget
 {
@@ -37,6 +39,7 @@ private:
     void commitNote(int row, int step, bool add);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
     juce::ValueTree currentClip;
     bool isLoaded = false;
 

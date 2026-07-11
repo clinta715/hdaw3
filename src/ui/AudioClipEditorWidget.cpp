@@ -8,6 +8,8 @@
 AudioClipEditorWidget::AudioClipEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    readModel = &engine.getReadModel();
     HDAW_LOG("AECtor", "Enter AudioClipEditorWidget ctor");
     setupUI();
     HDAW_LOG("AECtor", "After setupUI");

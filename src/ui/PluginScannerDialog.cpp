@@ -7,6 +7,7 @@
 PluginScannerDialog::PluginScannerDialog(AudioEngine& ae, QWidget* parent)
     : QDialog(parent), engine(ae)
 {
+    readModel = &engine.getReadModel();
     setWindowTitle("Plugin Manager");
     setMinimumSize(550, 450);
     setModal(true);

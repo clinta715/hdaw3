@@ -5,6 +5,10 @@
 TimelineScene::TimelineScene(AudioEngine& ae, QObject* parent)
     : QGraphicsScene(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    transportCmds = &engine.getTransportCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     rebuildFromValueTree();
     setSceneRect(0, 0, 4000, (std::max)(sceneRect().height(), 2000.0));
     HDAW_LOG("TSCtor", QString("sceneRect=(%1,%2) items=%3")
@@ -191,6 +195,16 @@ void TimelineScene::valueTreePropertyChanged(juce::ValueTree& tree, const juce::
         for (int i = 0; i < clipList.getNumChildren(); ++i)
             updateClipItem(clipList.getChild(i));
     }
+    else if (tree.hasType(IDs::MIDI_NOTE))
+    {
+        auto noteList = tree.getParent();
+        if (noteList.isValid() && noteList.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = noteList.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+                updateClipItem(clipTree);
+        }
+    }
 }
 
 void TimelineScene::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
@@ -231,18 +245,38 @@ void TimelineScene::valueTreeChildAdded(juce::ValueTree& parentTree, juce::Value
             clipItemMap[clipID] = item;
         }
     }
+    else if (childWhichHasBeenAdded.hasType(IDs::MIDI_NOTE))
+    {
+        if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+                updateClipItem(clipTree);
+        }
+    }
 }
 
 void TimelineScene::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int)
 {
-    juce::ignoreUnused(parentTree);
     if (childWhichHasBeenRemoved.hasType(IDs::CLIP))
+    {
         removeClipItem(childWhichHasBeenRemoved);
+    }
+    else if (childWhichHasBeenRemoved.hasType(IDs::MIDI_NOTE))
+    {
+        if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+                updateClipItem(clipTree);
+        }
+    }
 }
 
-void TimelineScene::valueTreeChildOrderChanged(juce::ValueTree&, int, int)
+void TimelineScene::valueTreeChildOrderChanged(juce::ValueTree& treeWhoseChildrenHaveBeenMoved, int, int)
 {
-    rebuildFromValueTree();
+    if (treeWhoseChildrenHaveBeenMoved.hasType(IDs::TRACK_LIST))
+        rebuildFromValueTree();
 }
 
 void TimelineScene::mousePressEvent(QGraphicsSceneMouseEvent* e)

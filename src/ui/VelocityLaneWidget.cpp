@@ -2,7 +2,6 @@
 #include "Theme.h"
 #include <QPainter>
 #include <QMouseEvent>
-#include <QApplication>
 #include <cmath>
 
 VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, QWidget* parent)
@@ -10,7 +9,7 @@ VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, QWidget* parent)
 {
     setFixedHeight(laneHeight);
     setMouseTracking(true);
-    qApp->installEventFilter(this);
+    setFocusPolicy(Qt::NoFocus);
 }
 
 int VelocityLaneWidget::noteIndexAtBeat(double beat) const
@@ -125,6 +124,7 @@ void VelocityLaneWidget::mousePressEvent(QMouseEvent* event)
     if (event->button() == Qt::LeftButton)
     {
         dragging = true;
+        grabMouse();
         double beat = (event->pos().x() + scrollX) / pixelsPerBeat;
         int idx = noteIndexAtBeat(beat);
         if (idx >= 0)
@@ -163,35 +163,17 @@ void VelocityLaneWidget::mouseMoveEvent(QMouseEvent* event)
 
 void VelocityLaneWidget::mouseReleaseEvent(QMouseEvent*)
 {
+    if (dragging)
+        releaseMouse();
     dragging = false;
 }
 
 void VelocityLaneWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
-    if (dragging)
-    {
-        dragging = false;
-        update();
-    }
 }
 
 void VelocityLaneWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
-    if (dragging)
-    {
-        dragging = false;
-        update();
-    }
-}
-
-bool VelocityLaneWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    if (event->type() == QEvent::MouseButtonRelease && dragging && obj != this)
-    {
-        dragging = false;
-        update();
-    }
-    return QWidget::eventFilter(obj, event);
 }

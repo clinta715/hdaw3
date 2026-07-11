@@ -4,7 +4,6 @@
 #include <QPainterPath>
 #include <QImage>
 #include <QWheelEvent>
-#include <QApplication>
 #include <cmath>
 
 AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* parent)
@@ -12,7 +11,6 @@ AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* paren
 {
     setMouseTracking(true);
     setMinimumHeight(80);
-    qApp->installEventFilter(this);
 }
 
 AudioWaveformWidget::~AudioWaveformWidget() = default;
@@ -245,12 +243,14 @@ void AudioWaveformWidget::mousePressEvent(QMouseEvent* event)
         dragMode = DragMode::FadeIn;
         dragStart = pos;
         dragStartFade = currentClip.getProperty(IDs::fadeIn);
+        grabMouse();
     }
     else if (isOverFadeOut(pos))
     {
         dragMode = DragMode::FadeOut;
         dragStart = pos;
         dragStartFade = currentClip.getProperty(IDs::fadeOut);
+        grabMouse();
     }
     else
     {
@@ -258,6 +258,7 @@ void AudioWaveformWidget::mousePressEvent(QMouseEvent* event)
         dragStart = pos;
         selStart = beatAtPos(pos.x());
         selEnd = selStart;
+        grabMouse();
         update();
     }
 }
@@ -311,6 +312,8 @@ void AudioWaveformWidget::mouseReleaseEvent(QMouseEvent*)
         update();
     }
 
+    if (dragMode != DragMode::None)
+        releaseMouse();
     dragMode = DragMode::None;
 }
 
@@ -337,29 +340,9 @@ void AudioWaveformWidget::wheelEvent(QWheelEvent* event)
 void AudioWaveformWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
-    if (dragMode != DragMode::None)
-    {
-        dragMode = DragMode::None;
-        update();
-    }
 }
 
 void AudioWaveformWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
-    if (dragMode != DragMode::None)
-    {
-        dragMode = DragMode::None;
-        update();
-    }
-}
-
-bool AudioWaveformWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    if (event->type() == QEvent::MouseButtonRelease && dragMode != DragMode::None && obj != this)
-    {
-        dragMode = DragMode::None;
-        update();
-    }
-    return QWidget::eventFilter(obj, event);
 }

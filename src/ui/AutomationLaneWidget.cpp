@@ -7,7 +7,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QApplication>
 #include <QMenu>
 #include <QAction>
 #include <QSet>
@@ -19,8 +18,10 @@
 AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     setMouseTracking(true);
-    qApp->installEventFilter(this);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -507,6 +508,7 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             // step. Without this, each mouse-move is a separate step and
             // the user must Ctrl+Z dozens of times to revert one drag.
             dragPoint = idx;
+            grabMouse();
             engine.getProjectModel().getUndoManager().beginNewTransaction("drag automation point");
         }
         else
@@ -591,6 +593,8 @@ void AutomationLaneWidget::mouseMoveEvent(QMouseEvent* event)
 
 void AutomationLaneWidget::mouseReleaseEvent(QMouseEvent*)
 {
+    if (dragPoint >= 0)
+        releaseMouse();
     dragPoint = -1;
 }
 
@@ -614,29 +618,9 @@ void AutomationLaneWidget::wheelEvent(QWheelEvent* event)
 void AutomationLaneWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
-    if (dragPoint >= 0)
-    {
-        dragPoint = -1;
-        update();
-    }
 }
 
 void AutomationLaneWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
-    if (dragPoint >= 0)
-    {
-        dragPoint = -1;
-        update();
-    }
-}
-
-bool AutomationLaneWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    if (event->type() == QEvent::MouseButtonRelease && dragPoint >= 0 && obj != this)
-    {
-        dragPoint = -1;
-        update();
-    }
-    return QWidget::eventFilter(obj, event);
 }

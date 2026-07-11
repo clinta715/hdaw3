@@ -6,17 +6,30 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QWheelEvent>
-#include <QApplication>
 #include <cmath>
 
 NoteGridWidget::NoteGridWidget(PianoRollModel& m, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), model(m), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
-    // Install global filter to catch mouse releases outside this widget
-    qApp->installEventFilter(this);
-    setMouseTracking(true);
+
+    createNoteTimer.setSingleShot(true);
+    createNoteTimer.setInterval(200);
+    connect(&createNoteTimer, &QTimer::timeout, this, [this]()
+    {
+        if (!pendingCreate)
+            return;
+        pendingCreate = false;
+
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Create note");
+        auto newNote = model.addNote(pendingCreateNoteNum, 100.0f, pendingCreateBeat, lastNoteDuration);
+        model.deselectAll();
+        model.selectNote(newNote);
+        emit notesChanged();
+        update();
+    });
 }
 
 void NoteGridWidget::setPixelsPerBeat(double ppb)
@@ -252,6 +265,14 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
             painter.drawLine(phx, 0, phx, h);
         }
     }
+
+    // Focus indicator border
+    if (hasFocus())
+    {
+        painter.setPen(QPen(ThemeColors::accent(), 2));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    }
 }
 
 void NoteGridWidget::mousePressEvent(QMouseEvent* event)
@@ -264,45 +285,27 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
         int idx = noteIndexAtPos(pos);
         if (idx >= 0)
         {
-            engine.getProjectModel().getUndoManager().beginNewTransaction("Edit note");
-
-            auto note = model.getNote(idx);
-            double localX = pos.x() - (noteRect(idx).x());
-            double noteW = noteRect(idx).width();
-            double edgeThreshold = 5.0;
-
-            if (localX < edgeThreshold)
-            {
-                dragMode = ResizeLeft;
-            }
-            else if (localX > noteW - edgeThreshold)
-            {
-                dragMode = ResizeRight;
-            }
-            else
-            {
-                dragMode = Move;
-            }
-
-            dragNoteIndex = idx;
-            dragStart = pos;
-            dragStartBeat = note.getProperty(IDs::startBeat);
-            dragStartDuration = note.getProperty(IDs::durationBeats);
-            dragStartNoteNumber = note.getProperty(IDs::noteNumber);
-
+            // Click on note — select only; drag starts on mouse-move threshold
             if (!(event->modifiers() & Qt::ShiftModifier))
                 model.deselectAll();
-            model.selectNote(note, event->modifiers() & Qt::ShiftModifier);
-
+            model.selectNote(model.getNote(idx), event->modifiers() & Qt::ShiftModifier);
             emit noteSelected(idx);
             update();
+
+            pendingClick = true;
+            pendingPos = pos;
         }
         else
         {
-            // Start rubber-band selection (or click-to-create on release)
-            dragMode = Select;
+            // Click on empty space — deselect; rubber-band or create on release
+            model.deselectAll();
+            update();
+
+            pendingClick = true;
+            pendingPos = pos;
             dragStart = pos;
             rubberBandEnd = pos;
+            grabMouse();
         }
     }
     else if (event->button() == Qt::RightButton)
@@ -310,8 +313,13 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
         int idx = noteIndexAtPos(pos);
         if (idx >= 0)
         {
-            model.removeSelectedNotes();
-            update();
+            if (!model.isSelected(idx))
+            {
+                model.deselectAll();
+                model.selectNote(model.getNote(idx));
+                update();
+            }
+            emit noteSelected(idx);
         }
     }
 }
@@ -319,6 +327,46 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
 void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
 {
     QPoint pos = event->pos();
+
+    // Pending click → check drag threshold before entering any drag mode
+    if (pendingClick && dragMode == None)
+    {
+        if ((pos - pendingPos).manhattanLength() > dragThreshold)
+        {
+            int idx = noteIndexAtPos(pendingPos);
+            if (idx >= 0)
+            {
+                // Start dragging an existing note
+                engine.getProjectModel().getUndoManager().beginNewTransaction("Edit note");
+                auto note = model.getNote(idx);
+                double localX = pendingPos.x() - noteRect(idx).x();
+                double noteW = noteRect(idx).width();
+                double edgeThreshold = 5.0;
+
+                if (localX < edgeThreshold)
+                    dragMode = ResizeLeft;
+                else if (localX > noteW - edgeThreshold)
+                    dragMode = ResizeRight;
+                else
+                    dragMode = Move;
+
+                dragNoteIndex = idx;
+                dragStart = pendingPos;
+                dragStartBeat = note.getProperty(IDs::startBeat);
+                dragStartDuration = note.getProperty(IDs::durationBeats);
+                dragStartNoteNumber = note.getProperty(IDs::noteNumber);
+            }
+            else
+            {
+                // Start rubber-band selection on empty space
+                dragMode = Select;
+                rubberBandEnd = pos;
+            }
+            pendingClick = false;
+        }
+        else
+            return; // still within threshold — no action yet
+    }
 
     if (dragMode == Move && dragNoteIndex >= 0)
     {
@@ -410,7 +458,7 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
         QPoint releasePos = event->pos();
         int dragDist = (releasePos - dragStart).manhattanLength();
 
-        if (dragDist > 5)
+        if (dragDist > dragThreshold)
         {
             // Rubber-band select
             QRect selRect = QRect(dragStart, rubberBandEnd).normalized();
@@ -428,22 +476,28 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
         }
         else
         {
-            // Click — create note (or chord stamp)
-            int noteNum = noteNumberAtPos(releasePos.y());
-            if (noteNum < 0)
-            {
-                // Click fell outside the MIDI range (ruler spacer or below
-                // the grid) — don't create a stray note. Treat as a no-op.
-                dragMode = None;
-                return;
-            }
-            double beat = (releasePos.x() + scrollX) / pixelsPerBeat;
+            // Click on empty space — deselect (already done in press)
+        }
+    }
+    else if (dragMode == None && pendingClick)
+    {
+        // Click on note without dragging — just select (already done in press)
+    }
+    else if (dragMode == None && !pendingClick)
+    {
+        // Click on empty space after grabMouse (no drag started) — defer note create
+        int noteNum = noteNumberAtPos(event->pos().y());
+        if (noteNum >= 0)
+        {
+            double beat = (event->pos().x() + scrollX) / pixelsPerBeat;
             beat = (std::max)(0.0, beat);
             if (snapEnabled)
                 beat = snapToGrid(beat);
 
             if (chordStampEnabled)
             {
+                // Chord stamp — create immediately (no defer)
+                engine.getProjectModel().getUndoManager().beginNewTransaction("Create chord");
                 PhraseGenerator::ChordParams cp;
                 cp.scaleRoot = engine.getProjectModel().getScaleRoot();
                 cp.scaleMode = engine.getProjectModel().getScaleMode();
@@ -461,33 +515,23 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
                 int lastIdx = -1;
                 for (const auto& cn : chordNotes)
                 {
-                    auto newNote = model.addNote(cn.noteNumber, static_cast<float>(cn.velocity),
-                                                  beat, cn.durationBeats);
+                    model.addNote(cn.noteNumber, static_cast<float>(cn.velocity), beat, cn.durationBeats);
                     lastIdx = model.getNumNotes() - 1;
                 }
                 model.deselectAll();
                 if (lastIdx >= 0)
                     model.selectNote(model.getNote(lastIdx));
-
                 emit notesChanged();
                 update();
-                return;
             }
-
-            auto newNote = model.addNote(noteNum, 100.0f, beat, lastNoteDuration);
-            model.deselectAll();
-            model.selectNote(newNote);
-
-            dragMode = ResizeRight;
-            dragNoteIndex = model.getNumNotes() - 1;
-            dragStart = releasePos;
-            dragStartBeat = beat;
-            dragStartDuration = lastNoteDuration;
-            dragStartNoteNumber = noteNum;
-
-            emit notesChanged();
-            update();
-            return;
+            else
+            {
+                // Single note — defer to allow double-click cancellation
+                pendingCreate = true;
+                pendingCreateNoteNum = noteNum;
+                pendingCreateBeat = beat;
+                createNoteTimer.start();
+            }
         }
     }
 
@@ -498,8 +542,36 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
             lastNoteDuration = static_cast<double>(note.getProperty(IDs::durationBeats));
     }
 
+    if (dragMode != None)
+        releaseMouse();
     dragMode = None;
     dragNoteIndex = -1;
+    pendingClick = false;
+}
+
+void NoteGridWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() != Qt::LeftButton)
+        return;
+
+    createNoteTimer.stop();
+    pendingCreate = false;
+
+    QPoint pos = event->pos();
+    int idx = noteIndexAtPos(pos);
+    if (idx >= 0)
+    {
+        // Double-click on existing note → delete it
+        engine.getProjectModel().getUndoManager().beginNewTransaction("Delete note");
+        model.deselectAll();
+        model.selectNote(model.getNote(idx));
+        model.removeSelectedNotes();
+        emit notesChanged();
+        update();
+    }
+    // Double-click on empty space: the deferred single-click create was
+    // cancelled by stopping the timer above. We do NOT create a note on
+    // double-click on empty space — that's a DAW convention.
 }
 
 void NoteGridWidget::keyPressEvent(QKeyEvent* event)
@@ -644,37 +716,17 @@ void NoteGridWidget::contextMenuEvent(QContextMenuEvent* event)
 void NoteGridWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
-    if (dragMode != None)
-    {
-        dragMode = None;
-        dragNoteIndex = -1;
-        update();
-    }
+    update();
+}
+
+void NoteGridWidget::focusInEvent(QFocusEvent* event)
+{
+    QWidget::focusInEvent(event);
+    update();
 }
 
 void NoteGridWidget::leaveEvent(QEvent* event)
 {
     QWidget::leaveEvent(event);
-    if (dragMode != None)
-    {
-        dragMode = None;
-        dragNoteIndex = -1;
-        update();
-    }
-}
-
-bool NoteGridWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    // Catch mouse button release anywhere in the app to reset stuck drag modes
-    if (event->type() == QEvent::MouseButtonRelease && dragMode != None)
-    {
-        // Only reset if the release is not on this widget (this widget handles its own releases)
-        if (obj != this)
-        {
-            dragMode = None;
-            dragNoteIndex = -1;
-            update();
-        }
-    }
-    return QWidget::eventFilter(obj, event);
+    setCursor(Qt::ArrowCursor);
 }

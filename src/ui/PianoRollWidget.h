@@ -7,7 +7,10 @@
 #include "VelocityLaneWidget.h"
 #include "CCLaneWidget.h"
 #include "PianoRollRuler.h"
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class QPushButton;
 class QComboBox;
@@ -34,6 +37,8 @@ private:
     void updateZoom(double factor);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    ReadModel* readModel = nullptr;
     PianoRollModel model;
 
     PianoRollRuler* ruler;

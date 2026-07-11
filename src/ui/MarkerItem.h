@@ -4,6 +4,7 @@
 #include <QGraphicsSceneContextMenuEvent>
 #include <juce_data_structures/juce_data_structures.h>
 #include "../model/ProjectModel.h"
+#include "../common/ProjectCommands.h"
 
 class AudioEngine;
 
@@ -41,6 +42,7 @@ protected:
 private:
     juce::ValueTree markerTree;
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
     double pixelsPerSecond;
     double height;
     bool dragging = false;

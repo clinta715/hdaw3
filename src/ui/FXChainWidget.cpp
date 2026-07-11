@@ -9,6 +9,9 @@
 FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
 {
+    projectCmds = &engine.getProjectCommands();
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
@@ -60,15 +63,15 @@ FXChainWidget::~FXChainWidget() = default;
 void FXChainWidget::loadTrack(int trackIndex)
 {
     currentTrack = trackIndex;
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    int trackCount = readModel->getTrackCount();
+    if (trackIndex < 0 || trackIndex >= trackCount)
     {
         clear();
         return;
     }
 
-    auto trackTree = trackList.getChild(trackIndex);
-    QString name = QString::fromUtf8(trackTree.getProperty(IDs::name).toString().toRawUTF8());
+    auto snap = readModel->getTrack(trackIndex);
+    QString name = QString::fromStdString(snap.name);
     headerLabel->setText(QString("FX Chain - %1").arg(name));
 
     rebuildUI();
@@ -127,7 +130,7 @@ void FXChainWidget::rebuildUI()
                 auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
                 if (c.isValid() && index < c.getNumChildren())
                 {
-                    c.removeChild(index, &engine.getProjectModel().getUndoManager());
+                    projectCmds->removeFxSlot(currentTrack, index);
                     rebuildUI();
                     emit chainChanged();
                 }
@@ -162,7 +165,7 @@ void FXChainWidget::rebuildUI()
             });
 
             connect(row, &FXSlotRow::editRequested, this, [this, index](int) {
-                engine.getMainProcessor()->toggleFXEditor(currentTrack, index);
+                audioGraphCmds->toggleFXEditor(currentTrack, index);
             });
 
             slotLayout->addWidget(row);
@@ -176,20 +179,7 @@ void FXChainWidget::addFXSlot(const juce::String& type)
 {
     if (currentTrack < 0) return;
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    auto trackTree = trackList.getChild(currentTrack);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    projectCmds->addFxSlot(currentTrack, type.toStdString());
 
     rebuildUI();
     emit chainChanged();
@@ -248,16 +238,13 @@ bool FXChainWidget::eventFilter(QObject* obj, QEvent* event)
             int toIndex = indexAtDropY(e->pos().y());
             if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex)
             {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (currentTrack >= 0 && currentTrack < trackList.getNumChildren())
+                int trackCount = readModel->getTrackCount();
+                if (currentTrack >= 0 && currentTrack < trackCount)
                 {
+                    auto trackList = engine.getProjectModel().getTrackListTree();
                     auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
                     if (c.isValid() && fromIndex < c.getNumChildren())
                     {
-                        // moveChild rotates the element to position
-                        // toIndex, but indexAtDropY returns an insertion
-                        // point. For downward drags the source removal
-                        // shifts items, so decrement to compensate.
                         if (fromIndex < toIndex)
                             toIndex--;
                         toIndex = std::clamp(toIndex, 0, c.getNumChildren() - 1);

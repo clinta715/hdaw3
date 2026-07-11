@@ -5,7 +5,10 @@
 #include <QHBoxLayout>
 #include <QScrollBar>
 #include <vector>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/TransportCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
 #include "../engine/ClipClipboard.h"
 #include "TimelineScene.h"
 #include "TimelineToolbar.h"
@@ -93,6 +96,10 @@ private:
     void handleDrop(QDropEvent* event);
 
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    TransportCommands* transportCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     TimelineToolbar* toolbar;
     TrackHeaderWidget* trackHeaders;

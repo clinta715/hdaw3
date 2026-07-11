@@ -3,7 +3,11 @@
 #include <QTimer>
 #include <QResizeEvent>
 #include <juce_data_structures/juce_data_structures.h>
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
+
+class AudioEngine;
 
 class MixerStripWidget : public QWidget
 {
@@ -37,7 +41,6 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void leaveEvent(QEvent* event) override;
-    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void updateVU();
@@ -47,6 +50,9 @@ private:
 
     int trackIndex = -1;
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
 
     QTimer vuTimer;
     float currentLeft = 0.0f;
