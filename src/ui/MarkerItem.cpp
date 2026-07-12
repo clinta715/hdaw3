@@ -1,6 +1,6 @@
 #include "MarkerItem.h"
 #include "Theme.h"
-#include "../engine/AudioEngine.h"
+#include "../common/ProjectCommands.h"
 #include <QPainter>
 #include <QAction>
 #include <QMenu>
@@ -8,8 +8,9 @@
 #include <QApplication>
 #include <QCursor>
 
-MarkerItem::MarkerItem(juce::ValueTree tree, AudioEngine& ae, double h)
-    : markerTree(tree), engine(ae), pixelsPerSecond(10.0), height(h)
+MarkerItem::MarkerItem(juce::ValueTree tree, AudioEngine& ae,
+                       ProjectCommands* cmds, double h)
+    : markerTree(tree), engine(ae), projectCmds(cmds), height(h)
 {
     setAcceptHoverEvents(true);
     setCursor(Qt::SizeHorCursor);
@@ -78,8 +79,8 @@ void MarkerItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
         dragMoved = false;
         dragStartX = event->scenePos().x();
         dragStartTime = markerTree.getProperty(IDs::markerTime);
-        auto& um = engine.getProjectModel().getUndoManager();
-        um.beginNewTransaction("Move marker");
+        if (projectCmds)
+            projectCmds->beginTransaction("Move marker");
         event->accept();
     }
     else if (event->button() == Qt::RightButton)
@@ -95,8 +96,12 @@ void MarkerItem::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
     if (std::abs(dx) > 1.0)
         dragMoved = true;
     double newTime = (std::max)(0.0, dragStartTime + dx / pixelsPerSecond);
-    auto& um = engine.getProjectModel().getUndoManager();
-    markerTree.setProperty(IDs::markerTime, newTime, &um);
+    if (projectCmds)
+    {
+        int idx = findMarkerIndex();
+        if (idx >= 0)
+            projectCmds->setMarkerTime(idx, newTime);
+    }
     event->accept();
 }
 
@@ -139,4 +144,11 @@ void MarkerItem::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         emit markerRenameRequested(markerTree);
     else if (chosen == deleteAct)
         emit markerDeleteRequested(markerTree);
+}
+
+int MarkerItem::findMarkerIndex() const
+{
+    auto parent = markerTree.getParent();
+    if (!parent.isValid()) return -1;
+    return parent.indexOf(markerTree);
 }

@@ -1009,7 +1009,7 @@ MarkerItem* TimelineView::findMarkerItem(const juce::ValueTree& markerTree)
 
 void TimelineView::onMarkerAdded(const juce::ValueTree& markerTree)
 {
-    auto* m = new MarkerItem(markerTree, engine);
+    auto* m = new MarkerItem(markerTree, engine, projectCmds);
     m->setPixelsPerSecond(pixelsPerSecond);
     timelineScene->addItem(m);
 
@@ -1027,8 +1027,13 @@ void TimelineView::onMarkerAdded(const juce::ValueTree& markerTree)
         transport.setProperty(IDs::position, time, nullptr);
     });
     connect(m, &MarkerItem::markerDeleteRequested, this, [this](juce::ValueTree tree) {
-        if (markerListTree.isValid() && tree.getParent() == markerListTree)
-            markerListTree.removeChild(tree, &engine.getProjectModel().getUndoManager());
+        auto parent = tree.getParent();
+        if (parent.isValid())
+        {
+            int idx = parent.indexOf(tree);
+            if (idx >= 0)
+                projectCmds->removeMarker(idx);
+        }
     });
     connect(m, &MarkerItem::markerRenameRequested, this, [this](juce::ValueTree tree) {
         bool ok = false;
@@ -1037,8 +1042,15 @@ void TimelineView::onMarkerAdded(const juce::ValueTree& markerTree)
             QLineEdit::Normal, QString::fromUtf8(tree.getProperty(IDs::markerName).toString().toRawUTF8()),
             &ok);
         if (ok)
-            tree.setProperty(IDs::markerName, newName.toUtf8().constData(),
-                             &engine.getProjectModel().getUndoManager());
+        {
+            auto parent = tree.getParent();
+            if (parent.isValid())
+            {
+                int idx = parent.indexOf(tree);
+                if (idx >= 0)
+                    projectCmds->setMarkerName(idx, newName.toStdString());
+            }
+        }
     });
 
     markerItems.push_back(m);

@@ -10,6 +10,7 @@
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
 #include "PluginServiceImpl.h"
+#include "PluginParamServiceImpl.h"
 #include "MidiServiceImpl.h"
 #include "../model/ProjectModel.h"
 #include <functional>
@@ -40,6 +41,7 @@ public:
 
     // Service interfaces
     PluginService& getPluginService() { return *pluginService; }
+    PluginParamService& getPluginParamService() { return *paramService; }
     MidiService& getMidiService() { return *midiService; }
 
     // Read-only model snapshot
@@ -88,5 +90,6 @@ private:
     std::unique_ptr<AudioEngineCommands> commands;
     std::unique_ptr<ReadModelImpl> readModel;
     std::unique_ptr<PluginService> pluginService;
+    std::unique_ptr<PluginParamService> paramService;
     std::unique_ptr<MidiService> midiService;
 };

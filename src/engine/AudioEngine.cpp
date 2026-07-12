@@ -86,6 +86,7 @@ void AudioEngine::initialize()
     static_cast<ReadModelImpl*>(readModel.get())->setEngine(this);
 
     pluginService = std::make_unique<PluginServiceImpl>(pluginManager);
+    paramService = std::make_unique<PluginParamServiceImpl>(*mainProcessor);
     midiService = std::make_unique<MidiServiceImpl>(midiInputManager);
 
     // Wiring that previously lived in MainWindow

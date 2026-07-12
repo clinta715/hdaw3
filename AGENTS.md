@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.6.0**. The core engine (project model, transport, routing,
+**0.7.0**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the UI shell (track headers,
 timeline, mixer, piano roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
@@ -15,11 +15,11 @@ preferences, and a bugfix pass. v0.5.0 added full automation
 parameters (Volume, Pan, Mute as default lanes; plugin FX parameter
 automation via `TrackFXSlot` atomic cache and compound paramID scheme),
 Mute automation recording, and compile-time build optimizations
-(LTO, `/MP` parallel builds, JUCE define cleanup). **v0.6.0** adds
-GUI-engine decoupling via abstract command interfaces and ReadModel,
-service interfaces for plugin/MIDI discovery, automation copy-paste
-and selection model, snap persistence across editors, file browser
-drive navigation, and several bug fixes. For the full list of working
+(LTO, `/MP` parallel builds, JUCE define cleanup). **v0.7.0** adds
+GUI-engine decoupling via abstract command interfaces, ReadModel,
+PluginParamService, and PluginService/MidiService interfaces;
+automation copy-paste and selection model, snap persistence across
+editors, file browser drive navigation, and several bug fixes. For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Build
@@ -1223,7 +1223,7 @@ take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
 - `docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
 - `docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md`
 
-## GUI-Engine Decoupling (v0.6.0)
+## GUI-Engine Decoupling (v0.7.0)
 
 The GUI layer (`src/ui/`) is decoupled from the audio engine layer
 (`src/engine/`) via four abstract command interfaces and a ReadModel.
@@ -1235,7 +1235,7 @@ pointers rather than `engine.getProjectModel()` /
 
 | Interface | Methods | Purpose |
 |-----------|---------|---------|
-| `ProjectCommands` | 53 | All mutations: tracks, clips, notes, FX, automation, markers, tempo, loop, undo, save/load |
+| `ProjectCommands` | 66 | All mutations: tracks, clips, notes, FX, automation, markers, tempo, loop, undo, save/load |
 | `TransportCommands` | 9 | Play/stop/pause/rewind, seek, record, toggle loop |
 | `AudioGraphCommands` | 6 | Routing rebuild, FX rebuild, automation cache, modulation, toggle editor, clip take |
 | `ReadModel` | 19 | Read-only snapshots: tracks, clips, notes, transport, FX slots, automation lanes/points, markers, tempo points, automatable params, meters, dirty state |
@@ -1260,7 +1260,7 @@ wiring; full .cpp decoupling is deferred.
    etc. instead of `engine.getProjectModel().getTrackListTree()`.
 5. Include `AudioEngine.h` in the .cpp for constructor wiring only.
 
-### Decoupling progress & remaining debt (post-v0.6.0 audit)
+### Decoupling progress & remaining debt (post-v0.7.0 audit)
 
 **Done — paint/timer paths migrated to `ReadModel`:**
 - `TrackHeaderWidget::paintEvent` / `sizeHint` / `updateVU` now use
@@ -1280,12 +1280,16 @@ wiring; full .cpp decoupling is deferred.
   `setProperty(..., &um)` edits. The full migration requires adding a
   transaction API to `ProjectCommands` (the "Aggressive" decoupling
   option). Until then, event-handler undo coupling is expected.
-- **`FXSlotRow` live plugin param polling.** `pollParamUpdates` /
+- ~~**`FXSlotRow` live plugin param polling.** `pollParamUpdates` /
   `rebuildParamUI` walk `engine.getMainProcessor()->getTrack()->getFXChain()`
   to read/write the live `AudioPluginInstance`. This is bidirectional
   (read current values + `setValueNotifyingHost` writes) and already
   decoupled from the audio thread via `ParamUpdateRing`. A proper fix
-  needs a new `PluginParamService` interface, not a `ReadModel` accessor.
+  needs a new `PluginParamService` interface, not a `ReadModel` accessor.~~
+  **Resolved v0.7.0+**: `PluginParamServiceImpl` via `PluginParamService`
+  interface in `src/common/PluginParamService.h`, wired through
+  `AudioEngine::getPluginParamService()`. `FXSlotRow` no longer includes
+  `juce_audio_processors` or accesses `MainAudioProcessor` directly.
 - **`MainWindow.h:15`** still `#include`s `AudioEngine.h` (the only
   widget header to do so), blocked on all UI headers forward-declaring.
 

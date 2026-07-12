@@ -14,6 +14,8 @@ FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
     transportCmds = &engine.getTransportCommands();
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
+    pluginService = &engine.getPluginService();
+    paramService = &engine.getPluginParamService();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
@@ -127,7 +129,7 @@ void FXChainWidget::rebuildUI()
         for (int i = 0; i < fxChain.getNumChildren(); ++i)
         {
             auto slotTree = fxChain.getChild(i);
-            auto* row = new FXSlotRow(slotTree, i, currentTrack, engine, slotContainer);
+            auto* row = new FXSlotRow(slotTree, i, currentTrack, paramService, pluginService, projectCmds, slotContainer);
             int index = i;
 
             connect(row, &FXSlotRow::removeRequested, this, [this, index](int) {
@@ -178,20 +180,9 @@ void FXChainWidget::addFXSlot(const juce::String& type)
 {
     if (currentTrack < 0) return;
 
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    auto trackTree = trackList.getChild(currentTrack);
-    auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
-
-    if (!fxChain.isValid())
-    {
-        fxChain = juce::ValueTree(IDs::FX_CHAIN);
-        trackTree.addChild(fxChain, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    juce::ValueTree slot(IDs::FX_SLOT);
-    slot.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
-    slot.setProperty(IDs::bypassed, false, &engine.getProjectModel().getUndoManager());
-    fxChain.addChild(slot, -1, &engine.getProjectModel().getUndoManager());
+    int typeInt = (type == "eq") ? 0 : (type == "compressor") ? 1
+                  : (type == "reverb") ? 2 : (type == "delay") ? 3 : 4;
+    projectCmds->addFxSlot(currentTrack, typeInt, -1, "");
 
     rebuildUI();
     emit chainChanged();

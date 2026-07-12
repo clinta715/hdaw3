@@ -12,9 +12,9 @@
 #include <atomic>
 #include <cstddef>
 #include <juce_data_structures/juce_data_structures.h>
-#include <juce_audio_processors/juce_audio_processors.h>
-#include "../model/ProjectModel.h"
+#include "../common/ProjectCommands.h"
 #include "../common/PluginService.h"
+#include "../common/PluginParamService.h"
 
 class AudioEngine;
 class QTimer;
@@ -23,7 +23,9 @@ class FXSlotRow : public QWidget
 {
     Q_OBJECT
 public:
-    FXSlotRow(juce::ValueTree slotTree, int index, int trackIdx, AudioEngine& engine, QWidget* parent = nullptr);
+    FXSlotRow(juce::ValueTree slotTree, int index, int trackIdx,
+              PluginParamService* paramSvc, PluginService* plugSvc,
+              ProjectCommands* cmds, QWidget* parent = nullptr);
     ~FXSlotRow() override;
 
     int getSlotIndex() const { return slotIndex; }
@@ -53,8 +55,9 @@ private:
     juce::ValueTree slotTree;
     int slotIndex;
     int trackIndex;
-    AudioEngine& engine;
+    PluginParamService* paramService = nullptr;
     PluginService* pluginService = nullptr;
+    ProjectCommands* projectCmds = nullptr;
     QLineEdit* filterEdit;
     QComboBox* typeCombo;
     QPushButton* bypassBtn;
@@ -63,40 +66,26 @@ private:
     QWidget* paramContainer;
     bool bypassed = false;
 
-    // Listens to plugin param changes from the audio thread and forwards to Qt main thread
-    struct ParamListener : public juce::AudioProcessorListener {
-        std::function<void(int,float)> onChanged;
-        void audioProcessorParameterChanged(juce::AudioProcessor*, int idx, float v) override {
-            if (onChanged) onChanged(idx, v);
-        }
-        void audioProcessorParameterChangeGestureBegin(juce::AudioProcessor*, int) override {}
-        void audioProcessorParameterChangeGestureEnd(juce::AudioProcessor*, int) override {}
-        void audioProcessorChanged(juce::AudioProcessor*, const juce::AudioProcessorListener::ChangeDetails&) override {}
-    };
-    std::unique_ptr<ParamListener> paramListener;
-    juce::AudioPluginInstance* registeredInstance = nullptr;
-
     // Lock-free SPSC bridge for audio-thread param changes → UI timer.
-    // Producer: AudioProcessorListener (audio thread). Consumer: pollTimer (UI thread).
-    // No allocation, no locks on the audio path (mirrors the LevelMeter atomic pattern).
+    // Producer: PluginParamService callback (audio thread). Consumer: pollTimer (UI thread).
     struct ParamUpdateRing {
         static constexpr size_t capacity = 256;
         struct Entry { int idx = 0; float value = 0.0f; };
         std::array<Entry, capacity> buffer{};
-        std::atomic<size_t> head{0}; // consumer read position
-        std::atomic<size_t> tail{0}; // producer write position
+        std::atomic<size_t> head{0};
+        std::atomic<size_t> tail{0};
 
         void push(int idx, float value) noexcept {
             const size_t t = tail.load(std::memory_order_relaxed);
             const size_t h = head.load(std::memory_order_acquire);
-            if (t - h == capacity) return; // full → drop oldest-in-flight; timer still reaches newest
+            if (t - h == capacity) return;
             buffer[t % capacity] = Entry{ idx, value };
             tail.store(t + 1, std::memory_order_release);
         }
         bool pop(Entry& out) noexcept {
             const size_t h = head.load(std::memory_order_relaxed);
             const size_t t = tail.load(std::memory_order_acquire);
-            if (h == t) return false; // empty
+            if (h == t) return false;
             out = buffer[h % capacity];
             head.store(h + 1, std::memory_order_release);
             return true;

@@ -1,6 +1,5 @@
 #include "FXSlotRow.h"
-#include "../engine/AudioEngine.h"
-#include "../engine/PluginManager.h"
+#include "../model/ProjectModel.h"
 #include <QHBoxLayout>
 #include <QTimer>
 #include <QMouseEvent>
@@ -8,15 +7,16 @@
 #include <QMimeData>
 #include <QApplication>
 
-FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine& ae, QWidget* parent)
-    : QWidget(parent), slotTree(tree), slotIndex(index), trackIndex(trackIdx), engine(ae)
+FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx,
+                     PluginParamService* paramSvc, PluginService* plugSvc,
+                     ProjectCommands* cmds, QWidget* parent)
+    : QWidget(parent), slotTree(tree), slotIndex(index), trackIndex(trackIdx),
+      paramService(paramSvc), pluginService(plugSvc), projectCmds(cmds)
 {
-    pluginService = &engine.getPluginService();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(4, 2, 4, 2);
     mainLayout->setSpacing(2);
 
-    // Search filter for plugin list
     filterEdit = new QLineEdit(this);
     filterEdit->setPlaceholderText("Search plugins...");
     filterEdit->setClearButtonEnabled(true);
@@ -29,12 +29,10 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
 
-    // Slot number label
     auto* numLabel = new QLabel(QString("#%1").arg(index + 1), topRow);
     numLabel->setFixedWidth(24);
     layout->addWidget(numLabel);
 
-    // FX type combobox
     typeCombo = new QComboBox(topRow);
     populateTypeCombo();
 
@@ -58,7 +56,6 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
     connect(filterEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
         juce::String currentType = slotTree.getProperty(IDs::fxType).toString();
         populateTypeCombo(text);
-        // Restore selection
         if (currentType == "plugin")
         {
             juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
@@ -81,7 +78,6 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
         onTypeChanged(type);
     });
 
-    // Bypass toggle
     bypassed = slotTree.getProperty(IDs::bypassed);
     bypassBtn = new QPushButton(bypassed ? "Off" : "On", topRow);
     bypassBtn->setCheckable(true);
@@ -91,24 +87,21 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
 
     connect(bypassBtn, &QPushButton::toggled, this, [this](bool checked) {
         bypassed = !checked;
-        slotTree.setProperty(IDs::bypassed, bypassed, &engine.getProjectModel().getUndoManager());
+        projectCmds->setFxSlotBypassed(trackIndex, slotIndex, bypassed);
         bypassBtn->setText(bypassed ? "Off" : "On");
         emit slotChanged();
     });
 
-    // Move up
     auto* upBtn = new QPushButton("\xE2\x86\x91", topRow);
     upBtn->setFixedSize(20, 22);
     connect(upBtn, &QPushButton::clicked, this, [this]() { emit moveUpRequested(slotIndex); });
     layout->addWidget(upBtn);
 
-    // Move down
     auto* downBtn = new QPushButton("\xE2\x86\x93", topRow);
     downBtn->setFixedSize(20, 22);
     connect(downBtn, &QPushButton::clicked, this, [this]() { emit moveDownRequested(slotIndex); });
     layout->addWidget(downBtn);
 
-    // Drag handle — click and drag to reorder slots within the chain.
     auto* dragHandle = new QPushButton("\xE2\x96\xB6", topRow);
     dragHandle->setFixedSize(20, 22);
     dragHandle->setToolTip("Drag to reorder");
@@ -117,20 +110,17 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
     dragHandle->setProperty("dragHandleSlotIndex", slotIndex);
     layout->addWidget(dragHandle);
 
-    // Remove
     auto* removeBtn = new QPushButton("X", topRow);
     removeBtn->setFixedSize(20, 22);
     connect(removeBtn, &QPushButton::clicked, this, [this]() { emit removeRequested(slotIndex); });
     layout->addWidget(removeBtn);
 
-    // Edit button (for plugins) — opens native GUI window
     editBtn = new QPushButton("Edit", topRow);
     editBtn->setFixedSize(32, 22);
     editBtn->setVisible(currentType == "plugin");
     connect(editBtn, &QPushButton::clicked, this, [this]() { emit editRequested(slotIndex); });
     layout->addWidget(editBtn);
 
-    // Params button (for plugins) — shows/hides parameter sliders
     paramsBtn = new QPushButton("Params", topRow);
     paramsBtn->setFixedSize(42, 22);
     paramsBtn->setVisible(currentType == "plugin");
@@ -142,12 +132,10 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
 
     mainLayout->addWidget(topRow);
 
-    // Parameter container (shown for plugins when Params is toggled)
     paramContainer = new QWidget(this);
     paramContainer->setVisible(false);
     mainLayout->addWidget(paramContainer);
 
-    // Lock-free bridge: audio-thread listener pushes (idx,value); UI timer drains.
     paramRing = std::make_unique<ParamUpdateRing>();
     pollTimer = new QTimer(this);
     pollTimer->setTimerType(Qt::PreciseTimer);
@@ -159,19 +147,18 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
 
 void FXSlotRow::cleanup()
 {
-    // Called from FXChainWidget::rebuildUI() before deleteLater().
-    // The engine-owned plugin instance may already be destroyed (e.g.,
-    // removeFxSlot destroys the TrackFXSlot which frees the plugin
-    // before rebuildUI runs). The plugin's destructor handles its own
-    // listener cleanup, so we only need to stop the timer and nullify
-    // our pointers — never call registeredInstance->removeListener() here.
     if (pollTimer != nullptr)
     {
         pollTimer->stop();
         pollTimer = nullptr;
     }
-    paramListener.reset();
-    registeredInstance = nullptr;
+    if (paramRing != nullptr)
+        paramRing->clear();
+    if (paramService != nullptr)
+    {
+        juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
+        paramService->setParamChangeCallback(trackIndex, pluginID.toStdString(), nullptr);
+    }
 }
 
 FXSlotRow::~FXSlotRow()
@@ -181,8 +168,6 @@ FXSlotRow::~FXSlotRow()
 
 bool FXSlotRow::eventFilter(QObject* obj, QEvent* event)
 {
-    // Drag handle — initiate a QDrag when the user moves the mouse
-    // a few pixels while holding the left button down.
     if (obj != nullptr && obj->property("dragHandleSlotIndex").isValid())
     {
         if (event->type() == QEvent::MouseButtonPress)
@@ -228,7 +213,6 @@ void FXSlotRow::populateTypeCombo(const QString& filter)
     if (plugInfos.empty())
         return;
 
-    // Collect instrument and effect plugins separately
     std::vector<PluginInfo> instruments, effects;
     for (const auto& info : plugInfos)
     {
@@ -271,22 +255,18 @@ void FXSlotRow::populateTypeCombo(const QString& filter)
 
 void FXSlotRow::onTypeChanged(const juce::String& type)
 {
-    // Clear existing param UI
     paramSliders.clear();
 
     if (type == "eq" || type == "compressor" || type == "reverb" || type == "delay")
     {
-        slotTree.setProperty(IDs::fxType, type, &engine.getProjectModel().getUndoManager());
-        slotTree.removeProperty(IDs::pluginID, &engine.getProjectModel().getUndoManager());
-        slotTree.removeProperty(IDs::pluginFormat, &engine.getProjectModel().getUndoManager());
-        slotTree.removeProperty(IDs::pluginPath, &engine.getProjectModel().getUndoManager());
+        projectCmds->setFxSlotPlugin(trackIndex, slotIndex,
+            type.toStdString(), "", "", "");
         paramContainer->setVisible(false);
         editBtn->setVisible(false);
         paramsBtn->setVisible(false);
     }
     else
     {
-        // It's a plugin — find the description
         auto plugins = pluginService->getPlugins();
         bool found = false;
         auto typeStr = type.toStdString();
@@ -294,10 +274,8 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
         {
             if (info.fileOrIdentifier == typeStr)
             {
-                slotTree.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginID, juce::String(info.fileOrIdentifier), &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginFormat, juce::String(info.format), &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginPath, juce::String(info.fileOrIdentifier), &engine.getProjectModel().getUndoManager());
+                projectCmds->setFxSlotPlugin(trackIndex, slotIndex,
+                    "plugin", info.fileOrIdentifier, info.format, info.fileOrIdentifier);
                 found = true;
                 break;
             }
@@ -322,17 +300,16 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
 
 void FXSlotRow::rebuildParamUI()
 {
-    // Stop polling and tear down the old listener before rebuilding.
     if (pollTimer != nullptr)
         pollTimer->stop();
-    if (registeredInstance && paramListener)
-        registeredInstance->removeListener(paramListener.get());
-    registeredInstance = nullptr;
-    paramListener.reset();
     if (paramRing != nullptr)
         paramRing->clear();
+    if (paramService != nullptr)
+    {
+        juce::String oldPluginID = slotTree.getProperty(IDs::pluginID).toString();
+        paramService->setParamChangeCallback(trackIndex, oldPluginID.toStdString(), nullptr);
+    }
 
-    // Clear existing param widgets
     if (auto* layout = paramContainer->layout())
     {
         QLayoutItem* child;
@@ -345,137 +322,81 @@ void FXSlotRow::rebuildParamUI()
     }
     paramSliders.clear();
 
-    auto* proc = engine.getMainProcessor();
-    auto* track = proc->getTrack(trackIndex);
-    if (track == nullptr) return;
+    juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
+    auto params = paramService->getParams(trackIndex, pluginID.toStdString());
+    if (params.empty()) return;
 
-    // Find the matching slot in the track's FX chain
-    auto& fxChain = track->getFXChain();
-    for (const auto& slot : fxChain)
+    auto* paramLayout = new QVBoxLayout(paramContainer);
+    paramLayout->setContentsMargins(20, 2, 4, 2);
+    paramLayout->setSpacing(2);
+
+    for (const auto& snap : params)
     {
-        if (slot && slot->isPlugin() && slot->getPluginID() == slotTree.getProperty(IDs::pluginID).toString())
-        {
-            auto* instance = slot->getPluginInstance();
-            if (instance == nullptr) return;
+        auto* row = new QWidget(paramContainer);
+        auto* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(4);
 
-            auto params = instance->getParameters();
-            auto* paramLayout = new QVBoxLayout(paramContainer);
-            paramLayout->setContentsMargins(20, 2, 4, 2);
-            paramLayout->setSpacing(2);
+        auto* nameLabel = new QLabel(QString::fromStdString(snap.name), row);
+        nameLabel->setFixedWidth(80);
+        rowLayout->addWidget(nameLabel);
 
-            for (int i = 0; i < params.size(); ++i)
-            {
-                auto* p = params[i];
-                auto* row = new QWidget(paramContainer);
-                auto* rowLayout = new QHBoxLayout(row);
-                rowLayout->setContentsMargins(0, 0, 0, 0);
-                rowLayout->setSpacing(4);
+        auto* slider = new QSlider(Qt::Horizontal, row);
+        slider->setRange(0, 1000);
+        slider->setValue(static_cast<int>(snap.value * 1000.0f));
+        slider->setFixedHeight(16);
+        rowLayout->addWidget(slider, 1);
 
-                juce::String pName = p->getName(128);
-                auto* nameLabel = new QLabel(QString::fromUtf8(pName.toRawUTF8()), row);
-                nameLabel->setFixedWidth(80);
-                rowLayout->addWidget(nameLabel);
+        auto* valLabel = new QLabel(row);
+        QString displayText = QString::fromStdString(snap.text);
+        if (!snap.label.empty())
+            displayText += " " + QString::fromStdString(snap.label);
+        valLabel->setText(displayText);
+        valLabel->setFixedWidth(80);
+        rowLayout->addWidget(valLabel);
 
-                auto* slider = new QSlider(Qt::Horizontal, row);
-                slider->setRange(0, 1000);
-                slider->setValue(static_cast<int>(p->getValue() * 1000.0f));
-                slider->setFixedHeight(16);
-                rowLayout->addWidget(slider, 1);
+        paramLayout->addWidget(row);
 
-                juce::String pLabel = p->getLabel();
-                auto* valLabel = new QLabel(row);
-                QString displayText = QString::fromUtf8(p->getText(p->getValue(), 128).toRawUTF8());
-                if (pLabel.isNotEmpty())
-                    displayText += " " + QString::fromUtf8(pLabel.toRawUTF8());
-                valLabel->setText(displayText);
-                valLabel->setFixedWidth(80);
-                rowLayout->addWidget(valLabel);
+        ParamSlider ps;
+        ps.slider = slider;
+        ps.valueLabel = valLabel;
+        ps.paramIdx = snap.index;
+        paramSliders.push_back(ps);
 
-                paramLayout->addWidget(row);
-
-                ParamSlider ps;
-                ps.slider = slider;
-                ps.valueLabel = valLabel;
-                ps.paramIdx = i;
-                paramSliders.push_back(ps);
-
-                int idx = i;
-                connect(slider, &QSlider::valueChanged, this,
-                    [this, idx](int val) {
-                        auto* proc = engine.getMainProcessor();
-                        auto* track = proc->getTrack(trackIndex);
-                        if (track == nullptr) return;
-                        auto& fxChain = track->getFXChain();
-                        juce::AudioPluginInstance* liveInstance = nullptr;
-                        for (const auto& slot : fxChain)
-                        {
-                            if (slot && slot->isPlugin() &&
-                                slot->getPluginID() == slotTree.getProperty(IDs::pluginID).toString())
-                            {
-                                liveInstance = slot->getPluginInstance();
-                                break;
-                            }
-                        }
-                        if (liveInstance == nullptr) return;
-                        auto params = liveInstance->getParameters();
-                        if (idx < 0 || idx >= params.size()) return;
-                        auto* p = params[idx];
-                        float normalized = val / 1000.0f;
-                        p->beginChangeGesture();
-                        p->setValueNotifyingHost(normalized);
-                        p->endChangeGesture();
-                        for (const auto& ps : paramSliders)
-                        {
-                            if (ps.paramIdx == idx)
-                            {
-                                juce::String label = p->getLabel();
-                                QString txt = QString::fromUtf8(p->getText(normalized, 128).toRawUTF8());
-                                if (label.isNotEmpty())
-                                    txt += " " + QString::fromUtf8(label.toRawUTF8());
-                                ps.valueLabel->setText(txt);
-                            }
-                        }
-                    });
-            }
-
-            // Register AudioProcessorListener. The callback may fire on the audio
-            // thread (see juce_AudioProcessorListener.h), so it MUST NOT allocate
-            // or lock — it only pushes into the lock-free ring. A UI timer drains it.
-            registeredInstance = instance;
-            paramListener = std::make_unique<ParamListener>();
-            paramListener->onChanged = [this](int idx, float val) {
-                if (paramRing) paramRing->push(idx, val);
-            };
-            instance->addListener(paramListener.get());
-            if (pollTimer != nullptr)
-                pollTimer->start(33); // ~30 Hz UI refresh
-
-            break;
-        }
+        int idx = snap.index;
+        connect(slider, &QSlider::valueChanged, this,
+            [this, idx](int val) {
+                float normalized = val / 1000.0f;
+                juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
+                std::string pid = pluginID.toStdString();
+                paramService->setParam(trackIndex, pid, idx, normalized);
+                std::string text = paramService->getParamText(trackIndex, pid, idx, normalized);
+                for (const auto& ps : paramSliders)
+                {
+                    if (ps.paramIdx == idx)
+                        ps.valueLabel->setText(QString::fromStdString(text));
+                }
+            });
     }
+
+    // Register callback for audio-thread parameter changes via the service.
+    // The callback pushes into the lock-free ring; the UI timer drains it.
+    paramService->setParamChangeCallback(trackIndex, pluginID.toStdString(),
+        [this](int idx, float val) {
+            if (paramRing) paramRing->push(idx, val);
+        });
+
+    if (pollTimer != nullptr)
+        pollTimer->start(33);
 }
 
 void FXSlotRow::pollParamUpdates()
 {
-    if (paramRing == nullptr || paramSliders.empty())
+    if (paramRing == nullptr || paramSliders.empty() || paramService == nullptr)
         return;
 
-    // Resolve the live plugin instance once per tick for text formatting.
-    juce::AudioPluginInstance* liveInstance = nullptr;
-    auto* proc = engine.getMainProcessor();
-    if (auto* track = (proc != nullptr) ? proc->getTrack(trackIndex) : nullptr)
-    {
-        auto& fxChain = track->getFXChain();
-        for (const auto& slot : fxChain)
-        {
-            if (slot && slot->isPlugin() &&
-                slot->getPluginID() == slotTree.getProperty(IDs::pluginID).toString())
-            {
-                liveInstance = slot->getPluginInstance();
-                break;
-            }
-        }
-    }
+    juce::String pluginID = slotTree.getProperty(IDs::pluginID).toString();
+    std::string pid = pluginID.toStdString();
 
     ParamUpdateRing::Entry e;
     while (paramRing->pop(e))
@@ -489,15 +410,8 @@ void FXSlotRow::pollParamUpdates()
             ps.slider->setValue(static_cast<int>(e.value * 1000.0f));
             ps.slider->blockSignals(false);
 
-            if (liveInstance != nullptr && e.idx < liveInstance->getParameters().size())
-            {
-                auto* p = liveInstance->getParameters()[e.idx];
-                juce::String label = p->getLabel();
-                QString txt = QString::fromUtf8(p->getText(e.value, 128).toRawUTF8());
-                if (label.isNotEmpty())
-                    txt += " " + QString::fromUtf8(label.toRawUTF8());
-                ps.valueLabel->setText(txt);
-            }
+            std::string text = paramService->getParamText(trackIndex, pid, e.idx, e.value);
+            ps.valueLabel->setText(QString::fromStdString(text));
         }
     }
 }

@@ -113,10 +113,9 @@ void CCLaneWidget::mousePressEvent(QMouseEvent* event)
         {
             dragging = true;
             dragPointIndex = idx;
-            auto pt = model.getCcPoint(controllerNumber, idx);
             int val = 127 - static_cast<int>(127.0 * event->pos().y() / laneHeight);
             val = (std::max)(0, (std::min)(127, val));
-            pt.setProperty(IDs::value, val, model.getUndoManager());
+            model.setCcPointValue(controllerNumber, idx, val);
             emit ccChanged();
             update();
         }
@@ -144,13 +143,12 @@ void CCLaneWidget::mouseMoveEvent(QMouseEvent* event)
             return;
         }
 
-        auto pt = model.getCcPoint(controllerNumber, dragPointIndex);
         double newBeat = (event->pos().x() + scrollX) / pixelsPerBeat;
         newBeat = (std::max)(0.0, newBeat);
         int newVal = 127 - static_cast<int>(127.0 * event->pos().y() / laneHeight);
         newVal = (std::max)(0, (std::min)(127, newVal));
-        pt.setProperty(IDs::beat, newBeat, model.getUndoManager());
-        pt.setProperty(IDs::value, newVal, model.getUndoManager());
+        model.setCcPointBeat(controllerNumber, dragPointIndex, newBeat);
+        model.setCcPointValue(controllerNumber, dragPointIndex, newVal);
         emit ccChanged();
         update();
     }

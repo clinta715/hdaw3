@@ -6,6 +6,7 @@
 #include "../model/ProjectModel.h"
 
 class AudioEngine;
+class ProjectCommands;
 
 // Visual representation of a single marker in the time ruler. The
 // marker holds a ValueTree reference so position and name changes
@@ -14,7 +15,8 @@ class MarkerItem : public QGraphicsObject
 {
     Q_OBJECT
 public:
-    MarkerItem(juce::ValueTree markerTree, AudioEngine& engine, double height = 18.0);
+    MarkerItem(juce::ValueTree markerTree, AudioEngine& engine,
+               ProjectCommands* cmds, double height = 18.0);
     ~MarkerItem() override;
 
     void setPixelsPerSecond(double pps);
@@ -39,8 +41,11 @@ protected:
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
 
 private:
+    int findMarkerIndex() const;
+
     juce::ValueTree markerTree;
     AudioEngine& engine;
+    ProjectCommands* projectCmds = nullptr;
     double pixelsPerSecond;
     double height;
     bool dragging = false;

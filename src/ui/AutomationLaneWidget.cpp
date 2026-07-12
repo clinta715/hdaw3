@@ -539,7 +539,7 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             }
             dragPoint = idx;
             grabMouse();
-            engine.getProjectModel().getUndoManager().beginNewTransaction("drag automation point");
+            projectCmds->beginTransaction("drag automation point");
         }
         else
         {
@@ -550,21 +550,13 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             auto autoTree = currentAutoTree();
             if (autoTree.isValid())
             {
-                auto& um = engine.getProjectModel().getUndoManager();
-                um.beginNewTransaction("add automation point");
+                auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+                projectCmds->beginTransaction("add automation point");
+                projectCmds->addAutomationPoint(currentTrack, laneName, t, v);
+                projectCmds->setAutomationEnabled(currentTrack, laneName, true);
 
                 auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
-                if (!pointList.isValid())
-                {
-                    pointList = juce::ValueTree(IDs::POINT_LIST);
-                    autoTree.addChild(pointList, -1, &um);
-                }
-                juce::ValueTree pt(IDs::POINT);
-                pt.setProperty(IDs::startTime, t, &um);
-                pt.setProperty(IDs::gain, v, &um);
-                pointList.addChild(pt, -1, &um);
-                autoTree.setProperty(IDs::automationEnabled, true, &um);
-                int newIdx = pointList.getNumChildren() - 1;
+                int newIdx = pointList.isValid() ? pointList.getNumChildren() - 1 : 0;
                 if (!ctrl)
                     selectedPoints.clear();
                 selectedPoints.insert(newIdx);
@@ -584,21 +576,27 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
                 auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
                 if (pointList.isValid())
                 {
+                    auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
                     // If the clicked point is in the selection, delete all selected.
                     if (selectedPoints.count(idx))
                     {
-                        engine.getProjectModel().getUndoManager().beginNewTransaction(
-                            "delete automation points");
+                        projectCmds->beginTransaction("delete automation points");
                         for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
                         {
                             if (*it >= 0 && *it < pointList.getNumChildren())
-                                pointList.removeChild(*it, &engine.getProjectModel().getUndoManager());
+                            {
+                                auto pt = pointList.getChild(*it);
+                                double t = pt.getProperty(IDs::startTime);
+                                projectCmds->removeAutomationPoint(currentTrack, laneName, t);
+                            }
                         }
                         selectedPoints.clear();
                     }
                     else if (idx < pointList.getNumChildren())
                     {
-                        pointList.removeChild(idx, &engine.getProjectModel().getUndoManager());
+                        auto pt = pointList.getChild(idx);
+                        double t = pt.getProperty(IDs::startTime);
+                        projectCmds->removeAutomationPoint(currentTrack, laneName, t);
                     }
                     emit automationChanged();
                     update();
@@ -619,15 +617,8 @@ void AutomationLaneWidget::mouseMoveEvent(QMouseEvent* event)
         auto autoTree = currentAutoTree();
         if (autoTree.isValid())
         {
-            auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
-            if (pointList.isValid() && dragPoint >= 0 && dragPoint < pointList.getNumChildren())
-            {
-                auto p = pointList.getChild(dragPoint);
-                p.setProperty(IDs::startTime, (std::max)(0.0, t), &engine.getProjectModel().getUndoManager());
-                p.setProperty(IDs::gain, v, &engine.getProjectModel().getUndoManager());
-                emit automationChanged();
-                update();
-            }
+            auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+            projectCmds->setAutomationPointValue(currentTrack, laneName, t, v);
         }
     }
     else
@@ -678,12 +669,16 @@ void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
             auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
             if (pointList.isValid())
             {
-                auto& um = engine.getProjectModel().getUndoManager();
-                um.beginNewTransaction("delete automation points");
+                auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+                projectCmds->beginTransaction("delete automation points");
                 for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
                 {
                     if (*it >= 0 && *it < pointList.getNumChildren())
-                        pointList.removeChild(*it, &um);
+                    {
+                        auto pt = pointList.getChild(*it);
+                        double t = pt.getProperty(IDs::startTime);
+                        projectCmds->removeAutomationPoint(currentTrack, laneName, t);
+                    }
                 }
                 selectedPoints.clear();
                 emit automationChanged();
@@ -754,8 +749,8 @@ void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
             autoTree.addChild(pointList, -1, nullptr);
         }
 
-        auto& um = engine.getProjectModel().getUndoManager();
-        um.beginNewTransaction("paste automation points");
+        auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+        projectCmds->beginTransaction("paste automation points");
 
         double origin = playheadSeconds >= 0.0 ? playheadSeconds
             : timeFromX(scrollX + width() / 2);
@@ -768,14 +763,18 @@ void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
         {
             double newTime = origin + (pt.time - minTime);
             if (newTime < 0.0) newTime = 0.0;
-            juce::ValueTree newPt(IDs::POINT);
-            newPt.setProperty(IDs::startTime, newTime, &um);
-            newPt.setProperty(IDs::gain, static_cast<double>(pt.value), &um);
-            pointList.addChild(newPt, -1, &um);
+            projectCmds->addAutomationPoint(currentTrack, laneName, newTime, pt.value);
             newSelection.insert(baseIdx++);
         }
 
-        autoTree.setProperty(IDs::automationEnabled, true, &um);
+        projectCmds->setAutomationEnabled(currentTrack, laneName, true);
+        // Re-query to get actual point count after bulk add
+        if (pointList.isValid())
+        {
+            newSelection.clear();
+            for (int i = 0; i < pointList.getNumChildren(); ++i)
+                newSelection.insert(i);
+        }
         selectedPoints = newSelection;
         emit automationChanged();
         update();
@@ -795,12 +794,16 @@ void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
             auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
             if (pointList.isValid())
             {
-                auto& um = engine.getProjectModel().getUndoManager();
-                um.beginNewTransaction("cut automation points");
+                auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+                projectCmds->beginTransaction("cut automation points");
                 for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
                 {
                     if (*it >= 0 && *it < pointList.getNumChildren())
-                        pointList.removeChild(*it, &um);
+                    {
+                        auto pt = pointList.getChild(*it);
+                        double t = pt.getProperty(IDs::startTime);
+                        projectCmds->removeAutomationPoint(currentTrack, laneName, t);
+                    }
                 }
                 selectedPoints.clear();
                 emit automationChanged();
@@ -832,25 +835,27 @@ void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
             return;
         }
 
-        auto& um = engine.getProjectModel().getUndoManager();
-        um.beginNewTransaction("duplicate automation points");
+        auto laneName = autoTree.getProperty(IDs::name).toString().toStdString();
+        projectCmds->beginTransaction("duplicate automation points");
 
         std::set<int> newSelection;
         for (int idx : selectedPoints)
         {
             if (idx < 0 || idx >= pointList.getNumChildren()) continue;
             auto p = pointList.getChild(idx);
-            juce::ValueTree newPt(IDs::POINT);
-            newPt.setProperty(IDs::startTime,
-                static_cast<double>(p.getProperty(IDs::startTime)) + 0.25, &um);
-            newPt.setProperty(IDs::gain,
-                static_cast<double>(p.getProperty(IDs::gain)), &um);
-            int newIdx = pointList.getNumChildren();
-            pointList.addChild(newPt, -1, &um);
-            newSelection.insert(newIdx);
+            double t = static_cast<double>(p.getProperty(IDs::startTime)) + 0.25;
+            float v = static_cast<float>(static_cast<double>(p.getProperty(IDs::gain)));
+            projectCmds->addAutomationPoint(currentTrack, laneName, t, v);
         }
 
-        autoTree.setProperty(IDs::automationEnabled, true, &um);
+        // Re-query new point indices
+        if (pointList.isValid())
+        {
+            for (int i = 0; i < pointList.getNumChildren(); ++i)
+                newSelection.insert(i);
+        }
+
+        projectCmds->setAutomationEnabled(currentTrack, laneName, true);
         selectedPoints = newSelection;
         emit automationChanged();
         update();

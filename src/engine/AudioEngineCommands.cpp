@@ -233,6 +233,18 @@ void AudioEngineCommands::setTrackMidiChannel(int trackIndex, int channel)
         trackList.getChild(trackIndex).setProperty(IDs::midiChannel, channel, &um);
 }
 
+int AudioEngineCommands::duplicateTrack(int trackIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
+    auto source = trackList.getChild(trackIndex);
+    auto copy = source.createCopy();
+    int newIdx = trackList.getNumChildren();
+    trackList.addChild(copy, newIdx, &um);
+    return newIdx;
+}
+
 // ─── ProjectCommands — Clip operations ────────────────────────────
 
 int AudioEngineCommands::addAudioClip(int trackIndex, double start, double duration,
@@ -478,6 +490,27 @@ void AudioEngineCommands::clearNotes(int clipId)
         noteList.removeAllChildren(&um);
 }
 
+void AudioEngineCommands::addCcPoint(int clipId, int controllerNumber, double beat, int value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto ccList = clip.getChildWithName(IDs::CC_LIST);
+    if (!ccList.isValid())
+    {
+        ccList = juce::ValueTree(IDs::CC_LIST);
+        clip.addChild(ccList, -1, nullptr);
+    }
+
+    juce::ValueTree pt(IDs::CC_POINT);
+    pt.setProperty(IDs::controllerNumber, controllerNumber, &um);
+    pt.setProperty(IDs::beat, beat, &um);
+    pt.setProperty(IDs::value, value, &um);
+    ccList.addChild(pt, -1, &um);
+}
+
 // ─── ProjectCommands — FX operations ──────────────────────────────
 
 void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
@@ -562,6 +595,20 @@ void AudioEngineCommands::reorderFxSlots(int trackIndex, int fromSlot, int toSlo
     fxChain.removeChild(fromSlot, &um);
     if (toSlot > fromSlot) --toSlot;
     fxChain.addChild(slot, toSlot, &um);
+}
+
+void AudioEngineCommands::setFxSlotPlugin(int trackIndex, int slotIndex,
+    const std::string& fxType, const std::string& pluginID,
+    const std::string& pluginFormat, const std::string& pluginPath)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    slot.setProperty(IDs::fxType, juce::String(fxType), &um);
+    slot.setProperty(IDs::pluginID, juce::String(pluginID), &um);
+    slot.setProperty(IDs::pluginFormat, juce::String(pluginFormat), &um);
+    slot.setProperty(IDs::pluginPath, juce::String(pluginPath), &um);
 }
 
 // ─── ProjectCommands — Automation ─────────────────────────────────
@@ -664,6 +711,30 @@ void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string
     }
 }
 
+void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::string& lane,
+                                                  double time, float value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, lane);
+    if (!autoLane.isValid()) return;
+
+    auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
+    if (!pointList.isValid()) return;
+
+    for (int i = 0; i < pointList.getNumChildren(); ++i)
+    {
+        auto pt = pointList.getChild(i);
+        if (static_cast<double>(pt.getProperty(IDs::startTime, 0.0)) == time)
+        {
+            pt.setProperty(IDs::startTime, time, &um);
+            pt.setProperty(IDs::gain, static_cast<double>(value), &um);
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildAutomationCache(trackIndex);
+            return;
+        }
+    }
+}
+
 // ─── ProjectCommands — Transport properties ───────────────────────
 
 void AudioEngineCommands::setTempo(double bpm)
@@ -702,6 +773,17 @@ void AudioEngineCommands::setMetronomeEnabled(bool enabled)
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
         transport.setProperty(IDs::metronomeEnabled, enabled, &um);
+}
+
+void AudioEngineCommands::setTimeSignature(int numerator, int denominator)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto transport = engine_.getProjectModel().getTransportTree();
+    if (transport.isValid())
+    {
+        transport.setProperty(IDs::timeSigNumerator, numerator, &um);
+        transport.setProperty(IDs::timeSigDenominator, denominator, &um);
+    }
 }
 
 // ─── ProjectCommands — Markers ────────────────────────────────────
@@ -761,6 +843,11 @@ void AudioEngineCommands::undo()  { engine_.getProjectModel().getUndoManager().u
 void AudioEngineCommands::redo()  { engine_.getProjectModel().getUndoManager().redo(); }
 bool AudioEngineCommands::canUndo() const { return engine_.getProjectModel().getUndoManager().canUndo(); }
 bool AudioEngineCommands::canRedo() const { return engine_.getProjectModel().getUndoManager().canRedo(); }
+
+void AudioEngineCommands::beginTransaction(const std::string& name)
+{
+    engine_.getProjectModel().getUndoManager().beginNewTransaction(juce::String(name));
+}
 
 // ─── ProjectCommands — Project lifecycle ──────────────────────────
 

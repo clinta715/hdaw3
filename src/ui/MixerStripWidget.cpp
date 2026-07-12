@@ -364,8 +364,7 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
             QLineEdit::Normal, current, &ok);
         if (ok && !newName.isEmpty())
         {
-            tree.setProperty(IDs::name, newName.toUtf8().constData(),
-                &engine.getProjectModel().getUndoManager());
+            projectCmds->setTrackName(trackIndex, newName.toStdString());
             update();
         }
     });

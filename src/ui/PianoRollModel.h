@@ -227,6 +227,20 @@ public:
         return pt;
     }
 
+    void setCcPointValue(int controllerNumber, int index, int value)
+    {
+        auto pt = getCcPoint(controllerNumber, index);
+        if (pt.isValid())
+            pt.setProperty(IDs::value, value, undoManager);
+    }
+
+    void setCcPointBeat(int controllerNumber, int index, double beat)
+    {
+        auto pt = getCcPoint(controllerNumber, index);
+        if (pt.isValid())
+            pt.setProperty(IDs::beat, beat, undoManager);
+    }
+
 private:
     juce::ValueTree clipTree;
     juce::ValueTree noteList;

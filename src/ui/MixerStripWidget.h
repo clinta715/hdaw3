@@ -66,6 +66,7 @@ private:
     int trackIndex = -1;
     AudioEngine& engine;
     juce::ValueTree trackTree;
+    ProjectCommands* projectCmds = nullptr;
     TransportCommands* transportCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;

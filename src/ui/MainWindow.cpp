@@ -1083,15 +1083,9 @@ void MainWindow::onRenameTrack()
 
 void MainWindow::onDuplicateTrack()
 {
-    int numTracks = readModel->getTrackCount();
-    if (numTracks <= 0) return;
-
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    int last = numTracks - 1;
-    auto source = trackList.getChild(last);
-    auto copy = source.createCopy();
-    trackList.addChild(copy, -1, &model.getUndoManager());
+    int last = readModel->getTrackCount() - 1;
+    if (last < 0) return;
+    projectCmds->duplicateTrack(last);
     audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
 }
@@ -1177,10 +1171,7 @@ void MainWindow::onCountInToggled(bool enabled)
 
 void MainWindow::onTimeSigChanged(int numerator, int denominator)
 {
-    auto& model = engine.getProjectModel();
-    auto transport = model.getTransportTree();
-    transport.setProperty(IDs::timeSigNumerator, numerator, &model.getUndoManager());
-    transport.setProperty(IDs::timeSigDenominator, denominator, &model.getUndoManager());
+    projectCmds->setTimeSignature(numerator, denominator);
     if (statusBarWidget)
         statusBarWidget->setTimeSignature(numerator, denominator);
 }
@@ -1250,24 +1241,11 @@ void MainWindow::onCcRecordToggled(bool armed)
                 double clipDur = clip.getProperty(IDs::duration);
                 if (currentTime >= clipStart && currentTime < clipStart + clipDur)
                 {
-                    auto ccList = clip.getChildWithName(IDs::CC_LIST);
-                    if (!ccList.isValid())
-                    {
-                        ccList = juce::ValueTree(IDs::CC_LIST);
-                        clip.addChild(ccList, -1, nullptr);
-                    }
+                    int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
                     double bpm = transport.bpm;
                     if (bpm <= 0) bpm = 120.0;
                     double currentBeat = currentTime * bpm / 60.0;
-
-                    juce::ValueTree pt(IDs::CC_POINT);
-                    pt.setProperty(IDs::controllerNumber, controller,
-                                   &engine.getProjectModel().getUndoManager());
-                    pt.setProperty(IDs::beat, currentBeat,
-                                   &engine.getProjectModel().getUndoManager());
-                    pt.setProperty(IDs::value, value,
-                                   &engine.getProjectModel().getUndoManager());
-                    ccList.addChild(pt, -1, &engine.getProjectModel().getUndoManager());
+                    projectCmds->addCcPoint(clipId, controller, currentBeat, value);
                     break;
                 }
             }

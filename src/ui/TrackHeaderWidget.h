@@ -4,6 +4,7 @@
 #include <QLineEdit>
 #include <QFont>
 #include <juce_core/juce_core.h>
+#include <juce_data_structures/juce_data_structures.h>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"

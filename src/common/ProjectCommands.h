@@ -74,17 +74,38 @@ public:
     virtual void setLooping(bool looping) = 0;
     virtual void setMetronomeEnabled(bool enabled) = 0;
 
+    // Time signature
+    virtual void setTimeSignature(int numerator, int denominator) = 0;
+
     // Markers
     virtual int addMarker(const std::string& name, double time, int color = 0xFF59e0c4) = 0;
     virtual void removeMarker(int index) = 0;
     virtual void setMarkerName(int index, const std::string& name) = 0;
     virtual void setMarkerTime(int index, double time) = 0;
 
+    // Track operations — advanced
+    virtual int duplicateTrack(int trackIndex) = 0;
+
+    // FX — advanced
+    virtual void setFxSlotPlugin(int trackIndex, int slotIndex, const std::string& fxType,
+        const std::string& pluginID, const std::string& pluginFormat,
+        const std::string& pluginPath) = 0;
+
+    // Automation — point mutation by time (for drag)
+    virtual void setAutomationPointValue(int trackIndex, const std::string& lane,
+        double time, float value) = 0;
+
+    // MIDI CC
+    virtual void addCcPoint(int clipId, int controllerNumber, double beat, int value) = 0;
+
     // Undo/redo
     virtual void undo() = 0;
     virtual void redo() = 0;
     virtual bool canUndo() const = 0;
     virtual bool canRedo() const = 0;
+
+    // Transaction lifecycle (wraps UndoManager::beginNewTransaction)
+    virtual void beginTransaction(const std::string& name) = 0;
 
     // Project lifecycle
     virtual void newProject() = 0;

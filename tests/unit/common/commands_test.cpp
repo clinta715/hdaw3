@@ -369,3 +369,79 @@ TEST(Commands, ReadModelExtensions)
     markers = rm.getMarkers();
     EXPECT_EQ(markers.size(), 1u);
 }
+
+TEST(Commands, SetTimeSignature)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.setTimeSignature(3, 8);
+    auto transport = engine.getProjectModel().getTransportTree();
+    EXPECT_EQ(static_cast<int>(transport.getProperty(IDs::timeSigNumerator, 0)), 3);
+    EXPECT_EQ(static_cast<int>(transport.getProperty(IDs::timeSigDenominator, 0)), 8);
+}
+
+TEST(Commands, DuplicateTrack)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int before = engine.getReadModel().getTrackCount();
+    int newIdx = cmds.duplicateTrack(0);
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before + 1);
+    EXPECT_EQ(newIdx, before);
+}
+
+TEST(Commands, SetAutomationPointValue)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addAutomationLane(0, "VolLane");
+    cmds.addAutomationPoint(0, "VolLane", 4.0, 0.75f);
+    cmds.setAutomationPointValue(0, "VolLane", 4.0, 0.5f);
+    auto points = engine.getReadModel().getAutomationPoints(0, "VolLane");
+    bool found = false;
+    for (const auto& pt : points)
+    {
+        if (std::abs(pt.time - 4.0) < 0.001)
+        {
+            EXPECT_FLOAT_EQ(pt.value, 0.5f);
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(Commands, SetFxSlotPlugin)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, 0);  // EQ slot
+    cmds.setFxSlotPlugin(0, 0, "plugin", "test.plugin", "VST3", "/path/test.vst3");
+    auto fxSlots = engine.getReadModel().getFxSlots(0);
+    ASSERT_FALSE(fxSlots.empty());
+    EXPECT_EQ(fxSlots[0].fxType, "plugin");
+}
+
+TEST(Commands, AddCcPoint)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int clipId = cmds.addMidiClip(0, 0.0, 8.0, "CC Test");
+    cmds.addCcPoint(clipId, 1, 2.0, 64);
+    // Verify through the project model directly
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
+    ASSERT_TRUE(clipList.isValid());
+    ASSERT_GE(clipList.getNumChildren(), 1);
+    auto clip = clipList.getChild(0);
+    auto ccList = clip.getChildWithName(IDs::CC_LIST);
+    ASSERT_TRUE(ccList.isValid());
+    EXPECT_EQ(ccList.getNumChildren(), 1);
+    EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::controllerNumber)), 1);
+    EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::value)), 64);
+}

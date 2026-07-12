@@ -80,12 +80,22 @@ public:
     void setLoopEnd(double beat) override;
     void setLooping(bool looping) override;
     void setMetronomeEnabled(bool enabled) override;
+    void setTimeSignature(int numerator, int denominator) override;
 
-    // ProjectCommands — Markers
-    int addMarker(const std::string& name, double time, int color) override;
-    void removeMarker(int index) override;
-    void setMarkerName(int index, const std::string& name) override;
-    void setMarkerTime(int index, double time) override;
+    // ProjectCommands — Track operations advanced
+    int duplicateTrack(int trackIndex) override;
+
+    // ProjectCommands — FX advanced
+    void setFxSlotPlugin(int trackIndex, int slotIndex, const std::string& fxType,
+        const std::string& pluginID, const std::string& pluginFormat,
+        const std::string& pluginPath) override;
+
+    // ProjectCommands — Automation point mutation
+    void setAutomationPointValue(int trackIndex, const std::string& lane,
+        double time, float value) override;
+
+    // ProjectCommands — MIDI CC
+    void addCcPoint(int clipId, int controllerNumber, double beat, int value) override;
 
     // ProjectCommands — Undo/redo
     void undo() override;
@@ -93,7 +103,16 @@ public:
     bool canUndo() const override;
     bool canRedo() const override;
 
-    // ProjectCommands — Project lifecycle
+    // ProjectCommands — Transaction lifecycle
+    void beginTransaction(const std::string& name) override;
+
+    // ProjectCommands — Markers
+    int addMarker(const std::string& name, double time, int color) override;
+    void removeMarker(int index) override;
+    void setMarkerName(int index, const std::string& name) override;
+    void setMarkerTime(int index, double time) override;
+
+    // ProjectCommands — Project persistence
     void newProject() override;
     bool saveProject(const std::string& filePath) override;
     bool loadProject(const std::string& filePath) override;

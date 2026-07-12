@@ -12,6 +12,8 @@
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
 #include "../common/ReadModel.h"
+#include "../common/PluginService.h"
+#include "../common/PluginParamService.h"
 
 class AudioEngine;
 #include "FXSlotRow.h"
@@ -42,6 +44,8 @@ private:
     TransportCommands* transportCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;
+    PluginService* pluginService = nullptr;
+    PluginParamService* paramService = nullptr;
     int currentTrack = -1;
     QVBoxLayout* slotLayout;
     QScrollArea* scrollArea;
