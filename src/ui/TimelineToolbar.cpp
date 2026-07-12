@@ -384,40 +384,39 @@ void TimelineToolbar::setCcRecordArmed(bool armed)
     ccRecBtn->setChecked(armed);
 }
 
-void TimelineToolbar::addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager)
+void TimelineToolbar::addTrackPluginMenu(QMenu* parentMenu, PluginService& pluginService)
 {
     if (parentMenu == nullptr)
         parentMenu = trackMenu;
 
-    const auto& plugins = pluginManager.getPlugins();
+    auto plugins = pluginService.getPlugins();
     if (plugins.empty()) return;
 
     auto* pluginMenu = parentMenu->addMenu("Track with Plugin");
 
-    auto addPlugin = [&](QMenu* parent, const juce::PluginDescription& d)
+    auto addPlugin = [&](QMenu* parent, const PluginInfo& info)
     {
         QString label = QString("[%1] %2")
-            .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
-            .arg(QString::fromUtf8(d.name.toRawUTF8()));
+            .arg(QString::fromStdString(info.format))
+            .arg(QString::fromStdString(info.name));
         auto* act = parent->addAction(label);
         connect(act, &QAction::triggered, this,
-            [this, id = juce::String(d.fileOrIdentifier),
-                    fmt = juce::String(d.pluginFormatName)]() {
-                emit addTrackWithPlugin(id, fmt);
+            [this, id = info.fileOrIdentifier, fmt = info.format]() {
+                emit addTrackWithPlugin(juce::String(id), juce::String(fmt));
             });
     };
 
     auto* instMenu = pluginMenu->addMenu("Instrument");
     auto* effMenu = pluginMenu->addMenu("Effect");
-    for (const auto& desc : plugins)
+    for (const auto& info : plugins)
     {
-        if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+        if (pluginService.isBlacklisted(info.fileOrIdentifier))
             continue;
 
-        if (desc.isInstrument)
-            addPlugin(instMenu, desc);
+        if (info.isInstrument)
+            addPlugin(instMenu, info);
         else
-            addPlugin(effMenu, desc);
+            addPlugin(effMenu, info);
     }
 
     if (instMenu->actions().isEmpty())

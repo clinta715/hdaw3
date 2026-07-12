@@ -49,8 +49,7 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
     mcpServer_ = new mcp::McpServer(this);
     mcpServer_->setEngine(&engine);
-    engine.getProjectModel().setPluginManager(&engine.getPluginManager());
-    mcp::registerAllTools(*mcpServer_);
+    // PluginManager wiring moved to AudioEngine::initialize()    mcp::registerAllTools(*mcpServer_);
 
     projectCmds = &engine.getProjectCommands();
     transportCmds = &engine.getTransportCommands();
@@ -66,7 +65,7 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     timelineView->getInteraction()->setDefaultClipDuration(clipDur);
 
     auto* toolbar = timelineView->getToolbar();
-    toolbar->addTrackPluginMenu(nullptr, engine.getPluginManager());
+    toolbar->addTrackPluginMenu(nullptr, engine.getPluginService());
 
     toolbar->setSnap(PreferencesDialog::getSnapEnabled());
     toolbar->setSnapDivision(PreferencesDialog::getSnapDivision());
@@ -125,6 +124,12 @@ void MainWindow::closeEvent(QCloseEvent* event)
             settings.setValue(PreferencesDialog::kKeyVerticalSplitter, mainVerticalSplitter->saveState());
         if (bottomStack != nullptr)
             settings.setValue(PreferencesDialog::kKeyBottomPanelIndex, bottomStack->currentIndex());
+        auto* tlb = timelineView->getToolbar();
+        if (tlb != nullptr)
+        {
+            PreferencesDialog::setSnapEnabled(tlb->isSnapEnabled());
+            PreferencesDialog::setSnapDivision(tlb->getSnapDivisionIndex());
+        }
         event->accept();
     }
     else
@@ -543,10 +548,10 @@ void MainWindow::connectTimelineSignals()
     jucePumpTimer.start(10);
 
     // Populate MIDI devices and restore last selection
-    auto midiDevices = engine.getMidiInputManager().getAvailableDevices();
+    auto midiDevices = engine.getMidiService().getAvailableDevices();
     QStringList devList;
     for (const auto& d : midiDevices)
-        devList << QString::fromStdString(d.toStdString());
+        devList << QString::fromStdString(d);
     timelineView->getToolbar()->populateMidiDevices(devList);
     QString lastMidi = PreferencesDialog::settings().value(PreferencesDialog::kKeyMidiDevice).toString();
     if (!lastMidi.isEmpty() && devList.contains(lastMidi))
@@ -933,9 +938,7 @@ void MainWindow::onLoopToggle()
 void MainWindow::updateTimecode()
 {
     auto transport = readModel->getTransport();
-    int64_t samples = static_cast<int64_t>(transport.currentSample);
-    double sr = transport.sampleRate;
-    double seconds = sr > 0 ? static_cast<double>(samples) / sr : 0.0;
+    double seconds = transport.currentTimeSeconds;
     double bpm = transport.bpm;
 
     int mins = static_cast<int>(seconds) / 60;
@@ -963,7 +966,6 @@ void MainWindow::updateTimecode()
     if (statusBarWidget)
     {
         statusBarWidget->setBPM(bpm);
-        statusBarWidget->setSampleRate(sr);
     }
 }
 
@@ -1194,11 +1196,10 @@ void MainWindow::onInputMonitoringChanged(int trackIndex, bool enabled)
 
 void MainWindow::onMidiDeviceChanged(const QString& deviceIdentifier)
 {
-    auto& midiMgr = engine.getMidiInputManager();
     if (deviceIdentifier.isEmpty())
-        midiMgr.closeDevice();
+        engine.getMidiService().closeDevice();
     else
-        midiMgr.openDevice(deviceIdentifier.toStdString().c_str());
+        engine.getMidiService().openDevice(deviceIdentifier.toStdString());
     if (statusBarWidget)
         statusBarWidget->setMidiDevice(deviceIdentifier);
     PreferencesDialog::settings().setValue(PreferencesDialog::kKeyMidiDevice, deviceIdentifier);
@@ -1239,9 +1240,7 @@ void MainWindow::onCcRecordToggled(bool armed)
             if (!clipList.isValid()) return;
 
             auto transport = readModel->getTransport();
-            double sr = transport.sampleRate;
-            if (sr <= 0) return;
-            double currentTime = transport.currentSample / sr;
+            double currentTime = transport.currentTimeSeconds;
 
             // Find the clip at the current time on the selected track.
             for (int i = 0; i < clipList.getNumChildren(); ++i)

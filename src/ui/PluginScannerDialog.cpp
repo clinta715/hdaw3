@@ -8,6 +8,7 @@
 PluginScannerDialog::PluginScannerDialog(AudioEngine& ae, QWidget* parent)
     : QDialog(parent), engine(ae)
 {
+    pluginService = &engine.getPluginService();
     projectCmds = &engine.getProjectCommands();
     transportCmds = &engine.getTransportCommands();
     audioGraphCmds = &engine.getAudioGraphCommands();
@@ -54,14 +55,14 @@ PluginScannerDialog::PluginScannerDialog(AudioEngine& ae, QWidget* parent)
 
     layout->addLayout(btnLayout);
 
-    if (engine.getPluginManager().isLoading())
+    if (pluginService->isLoading())
     {
         statusLabel->setText("Scanning...");
         progressBar->show();
     }
 
-    previousCallback = engine.getPluginManager().getScanCompleteCallback();
-    engine.getPluginManager().setScanCompleteCallback([this]() {
+    previousCallback = pluginService->getScanCompleteCallback();
+    pluginService->setScanCompleteCallback([this]() {
         QMetaObject::invokeMethod(this, "onScanFinished", Qt::QueuedConnection);
     });
 
@@ -73,7 +74,7 @@ PluginScannerDialog::~PluginScannerDialog()
     dialogAlive = false;
     if (scanThread.joinable())
         scanThread.join();
-    engine.getPluginManager().setScanCompleteCallback(previousCallback);
+    pluginService->setScanCompleteCallback(previousCallback);
 }
 
 void PluginScannerDialog::refreshList()
@@ -81,8 +82,7 @@ void PluginScannerDialog::refreshList()
     pluginList->blockSignals(true);
     pluginList->clear();
 
-    auto& pluginManager = engine.getPluginManager();
-    const auto& plugins = pluginManager.getPlugins();
+    auto plugins = pluginService->getPlugins();
 
     if (plugins.empty())
     {
@@ -93,21 +93,22 @@ void PluginScannerDialog::refreshList()
 
     bool showBlacklisted = showBlacklistedCheck->isChecked();
 
-    for (const auto& desc : plugins)
+    for (const auto& info : plugins)
     {
-        bool bl = pluginManager.isBlacklisted(desc.fileOrIdentifier);
+        bool bl = pluginService->isBlacklisted(info.fileOrIdentifier);
         if (bl && !showBlacklisted)
             continue;
 
-        auto name = juce::String(desc.name) + " (" + juce::String(desc.manufacturerName) + ")";
+        auto displayName = QString::fromStdString(info.name) +
+            " (" + QString::fromStdString(info.manufacturer) + ")";
         if (bl)
         {
-            auto reason = pluginManager.getBlacklistReason(desc.fileOrIdentifier);
+            auto reason = pluginService->getBlacklistReason(info.fileOrIdentifier);
             if (reason == "crash")
-                name += " — crashed during scan";
+                displayName += " — crashed during scan";
         }
-        auto* item = new QListWidgetItem(QString::fromUtf8(name.toRawUTF8()));
-        item->setData(Qt::UserRole, QString::fromUtf8(desc.fileOrIdentifier.toRawUTF8()));
+        auto* item = new QListWidgetItem(displayName);
+        item->setData(Qt::UserRole, QString::fromStdString(info.fileOrIdentifier));
         item->setData(Qt::UserRole + 1, bl);
 
         if (bl)
@@ -136,7 +137,7 @@ void PluginScannerDialog::onRescan()
     rescanBtn->setEnabled(false);
 
     scanThread = std::thread([this]() {
-        engine.getPluginManager().scanAll();
+        pluginService->scanAll();
         if (dialogAlive.load())
             QMetaObject::invokeMethod(this, "onScanFinished", Qt::QueuedConnection);
     });
@@ -171,9 +172,9 @@ void PluginScannerDialog::onToggleBlacklist()
     bool isBlacklisted = item->data(Qt::UserRole + 1).toBool();
 
     if (isBlacklisted)
-        engine.getPluginManager().unblacklistPlugin(pluginID);
+        pluginService->unblacklistPlugin(pluginID.toStdString());
     else
-        engine.getPluginManager().blacklistPlugin(pluginID);
+        pluginService->blacklistPlugin(pluginID.toStdString());
 
     refreshList();
 }

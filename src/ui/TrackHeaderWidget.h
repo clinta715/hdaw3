@@ -8,6 +8,7 @@
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
 #include "../common/ReadModel.h"
+#include "../common/PluginService.h"
 
 class AudioEngine;
 #include <vector>
@@ -93,6 +94,7 @@ private:
     TransportCommands* transportCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;
+    PluginService* pluginService = nullptr;
     QTimer vuTimer;
     std::vector<TrackHeader> tracks;
     int dragTrack = -1;

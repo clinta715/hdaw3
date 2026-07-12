@@ -34,6 +34,7 @@ public:
     virtual void setClipGain(int clipId, float gain) = 0;
     virtual void setClipFadeIn(int clipId, double fadeIn) = 0;
     virtual void setClipFadeOut(int clipId, double fadeOut) = 0;
+    virtual void setClipOffset(int clipId, double offset) = 0;
     virtual void setClipLooping(int clipId, bool looping) = 0;
     virtual int duplicateClip(int clipId) = 0;
 
@@ -54,14 +55,17 @@ public:
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                 float value) = 0;
+    virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
 
     // Automation
+    virtual void addAutomationLane(int trackIndex, const std::string& laneName) = 0;
+    virtual void removeAutomationLane(int trackIndex, const std::string& laneName) = 0;
     virtual void addAutomationPoint(int trackIndex, const std::string& lane,
-                                    double time, float value) = 0;
+                                     double time, float value) = 0;
     virtual void removeAutomationPoint(int trackIndex, const std::string& lane,
-                                       double time) = 0;
+                                        double time) = 0;
     virtual void setAutomationEnabled(int trackIndex, const std::string& lane,
-                                      bool enabled) = 0;
+                                       bool enabled) = 0;
 
     // Transport properties
     virtual void setTempo(double bpm) = 0;
@@ -69,6 +73,12 @@ public:
     virtual void setLoopEnd(double beat) = 0;
     virtual void setLooping(bool looping) = 0;
     virtual void setMetronomeEnabled(bool enabled) = 0;
+
+    // Markers
+    virtual int addMarker(const std::string& name, double time, int color = 0xFF59e0c4) = 0;
+    virtual void removeMarker(int index) = 0;
+    virtual void setMarkerName(int index, const std::string& name) = 0;
+    virtual void setMarkerTime(int index, double time) = 0;
 
     // Undo/redo
     virtual void undo() = 0;

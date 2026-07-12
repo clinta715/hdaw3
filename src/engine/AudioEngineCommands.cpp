@@ -359,6 +359,15 @@ void AudioEngineCommands::setClipFadeOut(int clipId, double fadeOut)
         clip.setProperty(IDs::fadeOut, fadeOut, &um);
 }
 
+void AudioEngineCommands::setClipOffset(int clipId, double offset)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::offset, offset, &um);
+}
+
 void AudioEngineCommands::setClipLooping(int clipId, bool looping)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
@@ -535,13 +544,67 @@ void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int para
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (!slot.isValid()) return;
 
-    auto paramList = slot.getChildWithName(IDs::FX_SLOT);
-    // FX params are stored as a property — "param_N"
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
 }
 
+void AudioEngineCommands::reorderFxSlots(int trackIndex, int fromSlot, int toSlot)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid()) return;
+    int n = fxChain.getNumChildren();
+    if (fromSlot < 0 || fromSlot >= n || toSlot < 0 || toSlot >= n) return;
+    if (fromSlot == toSlot) return;
+    auto slot = fxChain.getChild(fromSlot);
+    fxChain.removeChild(fromSlot, &um);
+    if (toSlot > fromSlot) --toSlot;
+    fxChain.addChild(slot, toSlot, &um);
+}
+
 // ─── ProjectCommands — Automation ─────────────────────────────────
+
+void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid())
+    {
+        autoList = juce::ValueTree(IDs::AUTOMATION_LIST);
+        track.addChild(autoList, -1, &um);
+    }
+
+    // Don't add duplicate lanes
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        if (autoList.getChild(i).getProperty(IDs::name, "").toString().toStdString() == laneName)
+            return;
+    }
+
+    juce::ValueTree lane(IDs::AUTOMATION);
+    lane.setProperty(IDs::name, juce::String(laneName), &um);
+    lane.setProperty(IDs::automationEnabled, true, &um);
+    lane.addChild(juce::ValueTree(IDs::POINT_LIST), -1, nullptr);
+    autoList.addChild(lane, -1, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildAutomationCache(trackIndex);
+}
+
+void AudioEngineCommands::removeAutomationLane(int trackIndex, const std::string& laneName)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, laneName);
+    if (autoLane.isValid())
+        autoLane.getParent().removeChild(autoLane, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildAutomationCache(trackIndex);
+}
 
 void AudioEngineCommands::addAutomationPoint(int trackIndex, const std::string& lane,
                                              double time, float value)
@@ -561,6 +624,8 @@ void AudioEngineCommands::addAutomationPoint(int trackIndex, const std::string& 
     point.setProperty(IDs::startTime, time, nullptr);
     point.setProperty(IDs::gain, static_cast<double>(value), nullptr);
     pointList.addChild(point, -1, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildAutomationCache(trackIndex);
 }
 
 void AudioEngineCommands::removeAutomationPoint(int trackIndex, const std::string& lane,
@@ -579,6 +644,8 @@ void AudioEngineCommands::removeAutomationPoint(int trackIndex, const std::strin
         if (static_cast<double>(pt.getProperty(IDs::startTime, 0.0)) == time)
         {
             pointList.removeChild(i, &um);
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildAutomationCache(trackIndex);
             return;
         }
     }
@@ -590,7 +657,11 @@ void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string
     auto& um = engine_.getProjectModel().getUndoManager();
     auto autoLane = findAutomationLane(trackIndex, lane);
     if (autoLane.isValid())
+    {
         autoLane.setProperty(IDs::automationEnabled, enabled, &um);
+        if (auto* proc = engine_.getMainProcessor())
+            proc->rebuildAutomationCache(trackIndex);
+    }
 }
 
 // ─── ProjectCommands — Transport properties ───────────────────────
@@ -631,6 +702,57 @@ void AudioEngineCommands::setMetronomeEnabled(bool enabled)
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
         transport.setProperty(IDs::metronomeEnabled, enabled, &um);
+}
+
+// ─── ProjectCommands — Markers ────────────────────────────────────
+
+int AudioEngineCommands::addMarker(const std::string& name, double time, int color)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto projectTree = engine_.getProjectModel().getTree();
+    auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
+    if (!markerList.isValid())
+    {
+        markerList = juce::ValueTree(IDs::MARKER_LIST);
+        projectTree.addChild(markerList, -1, &um);
+    }
+    juce::ValueTree marker(IDs::MARKER);
+    marker.setProperty(IDs::markerName, juce::String(name), &um);
+    marker.setProperty(IDs::markerTime, time, &um);
+    marker.setProperty(IDs::markerColor, color, &um);
+    int idx = markerList.getNumChildren();
+    markerList.addChild(marker, -1, &um);
+    return idx;
+}
+
+void AudioEngineCommands::removeMarker(int index)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto projectTree = engine_.getProjectModel().getTree();
+    auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
+    if (!markerList.isValid()) return;
+    if (index >= 0 && index < markerList.getNumChildren())
+        markerList.removeChild(index, &um);
+}
+
+void AudioEngineCommands::setMarkerName(int index, const std::string& name)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto projectTree = engine_.getProjectModel().getTree();
+    auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
+    if (!markerList.isValid()) return;
+    if (index >= 0 && index < markerList.getNumChildren())
+        markerList.getChild(index).setProperty(IDs::markerName, juce::String(name), &um);
+}
+
+void AudioEngineCommands::setMarkerTime(int index, double time)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto projectTree = engine_.getProjectModel().getTree();
+    auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
+    if (!markerList.isValid()) return;
+    if (index >= 0 && index < markerList.getNumChildren())
+        markerList.getChild(index).setProperty(IDs::markerTime, time, &um);
 }
 
 // ─── ProjectCommands — Undo/redo ──────────────────────────────────
@@ -717,6 +839,7 @@ void AudioEngineCommands::seekToSample(int64_t sample)
     if (transport.isValid())
     {
         double sr = engine_.getTransportManager().getSampleRate();
+        if (sr <= 0.0) return;
         transport.setProperty(IDs::position, static_cast<double>(sample) / sr, &um);
     }
 }
@@ -778,4 +901,34 @@ void AudioEngineCommands::toggleFXEditor(int trackIndex, int slotIndex)
 {
     if (auto* proc = engine_.getMainProcessor())
         proc->toggleFXEditor(trackIndex, slotIndex);
+}
+
+void AudioEngineCommands::switchClipTake(int clipId)
+{
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return;
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid()) return;
+
+    int clipIdx = -1;
+    for (int c = 0; c < clipList.getNumChildren(); ++c)
+    {
+        if (static_cast<int>(clipList.getChild(c).getProperty(IDs::clipID, 0)) == clipId)
+        {
+            clipIdx = c;
+            break;
+        }
+    }
+    if (clipIdx < 0) return;
+
+    juce::String sourceFile = clip.getProperty(IDs::sourceFile, "").toString();
+
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* rm = proc->getRoutingManager())
+            rm->switchClipTake(trackIdx, clipIdx, sourceFile);
+    }
 }

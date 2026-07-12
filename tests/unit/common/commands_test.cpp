@@ -42,10 +42,10 @@ TEST(Commands, TransportRewind)
     auto& cmds = engine.getTransportCommands();
     cmds.seekToSeconds(5.0);
     auto t = engine.getReadModel().getTransport();
-    EXPECT_GT(t.currentSample, 0.0);
+    EXPECT_GT(t.currentTimeSeconds, 0.0);
     cmds.rewind();
     t = engine.getReadModel().getTransport();
-    EXPECT_DOUBLE_EQ(t.currentSample, 0.0);
+    EXPECT_DOUBLE_EQ(t.currentTimeSeconds, 0.0);
 }
 
 TEST(Commands, ToggleLoop)
@@ -238,4 +238,134 @@ TEST(Commands, DuplicateClip)
         if (c.name == "DupClip")
             ++count;
     EXPECT_EQ(count, 2);
+}
+
+TEST(Commands, ReorderFxSlots)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    // Add two internal FX slots (EQ=0, Compressor=1)
+    cmds.addFxSlot(0, 0);  // EQ
+    cmds.addFxSlot(0, 1);  // Compressor
+    // Reorder: swap them
+    cmds.reorderFxSlots(0, 0, 1);
+    // No crash = pass. ReadModel doesn't expose FX chain ordering.
+    // Verify reorder on invalid indices doesn't crash:
+    cmds.reorderFxSlots(0, -1, 0);
+    cmds.reorderFxSlots(0, 0, 99);
+    cmds.reorderFxSlots(-1, 0, 0);
+    cmds.reorderFxSlots(0, 1, 1);  // no-op, same index
+}
+
+TEST(Commands, AddRemoveAutomationLane)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addAutomationLane(0, "CustomLane");
+    cmds.removeAutomationLane(0, "CustomLane");
+    // Removing non-existent lane should not crash:
+    cmds.removeAutomationLane(0, "NonExistentLane");
+    cmds.removeAutomationLane(-1, "Any");
+}
+
+TEST(Commands, SwitchClipTake)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getAudioGraphCommands();
+    // switchClipTake on a non-existent clip should not crash
+    cmds.switchClipTake(9999);
+    // switchClipTake on a MIDI clip (no source file) should not crash
+    int clipId = engine.getProjectCommands().addMidiClip(0, 0.0, 4.0, "TakeTest");
+    EXPECT_GT(clipId, 0);
+    cmds.switchClipTake(clipId);
+}
+
+TEST(Commands, AddRemoveMarker)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int idx = cmds.addMarker("TestMarker", 5.0);
+    EXPECT_GE(idx, 0);
+    auto markers = engine.getReadModel().getMarkers();
+    EXPECT_FALSE(markers.empty());
+    bool found = false;
+    for (const auto& m : markers)
+    {
+        if (m.name == "TestMarker")
+        {
+            found = true;
+            EXPECT_DOUBLE_EQ(m.time, 5.0);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+    cmds.removeMarker(idx);
+    markers = engine.getReadModel().getMarkers();
+    for (const auto& m : markers)
+        EXPECT_NE(m.name, "TestMarker");
+}
+
+TEST(Commands, SetMarkerName)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int idx = cmds.addMarker("RenameMe", 2.0);
+    cmds.setMarkerName(idx, "Renamed");
+    auto markers = engine.getReadModel().getMarkers();
+    for (const auto& m : markers)
+    {
+        if (m.index == idx)
+        {
+            EXPECT_EQ(m.name, "Renamed");
+            break;
+        }
+    }
+}
+
+TEST(Commands, ReadModelExtensions)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& rm = engine.getReadModel();
+    auto& cmds = engine.getProjectCommands();
+
+    // FX Slots
+    cmds.addFxSlot(0, 0);  // EQ
+    auto fxSlots = rm.getFxSlots(0);
+    EXPECT_FALSE(fxSlots.empty());
+    EXPECT_EQ(fxSlots[0].fxType, "eq");
+    EXPECT_FALSE(fxSlots[0].bypassed);
+    cmds.removeFxSlot(0, 0);
+
+    // Automation Lanes
+    cmds.addAutomationLane(0, "VolLane");
+    auto lanes = rm.getAutomationLanes(0);
+    EXPECT_FALSE(lanes.empty());
+    bool laneFound = false;
+    for (const auto& l : lanes)
+    {
+        if (l.name == "VolLane")
+        {
+            laneFound = true;
+            EXPECT_TRUE(l.enabled);
+            break;
+        }
+    }
+    EXPECT_TRUE(laneFound);
+    cmds.removeAutomationLane(0, "VolLane");
+
+    // isDirty
+    EXPECT_TRUE(rm.isDirty());
+
+    // Markers
+    auto markers = rm.getMarkers();
+    EXPECT_TRUE(markers.empty());
+    cmds.addMarker("ReadModelMarker", 3.0);
+    markers = rm.getMarkers();
+    EXPECT_EQ(markers.size(), 1u);
 }

@@ -83,6 +83,13 @@ void AudioEngine::initialize()
 
     commands = std::make_unique<AudioEngineCommands>(*this);
     readModel = std::make_unique<ReadModelImpl>(projectModel);
+    static_cast<ReadModelImpl*>(readModel.get())->setEngine(this);
+
+    pluginService = std::make_unique<PluginServiceImpl>(pluginManager);
+    midiService = std::make_unique<MidiServiceImpl>(midiInputManager);
+
+    // Wiring that previously lived in MainWindow
+    projectModel.setPluginManager(&pluginManager);
 }
 
 void AudioEngine::shutdown()
@@ -275,6 +282,8 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                                 pt.setProperty(IDs::startTime, timeSec, nullptr);
                                 pt.setProperty(IDs::gain, static_cast<double>(value), nullptr);
                                 pointList.addChild(pt, -1, nullptr);
+                                if (mainProcessor != nullptr)
+                                    mainProcessor->rebuildAutomationCache(i);
                                 break;
                             }
                         }

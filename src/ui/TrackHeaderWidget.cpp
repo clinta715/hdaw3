@@ -21,6 +21,7 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     transportCmds = &engine.getTransportCommands();
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
+    pluginService = &engine.getPluginService();
     setFixedWidth(static_cast<int>(headerWidth));
     setMinimumHeight(100);
     setMouseTracking(true);
@@ -729,33 +730,32 @@ void TrackHeaderWidget::buildEmptyAreaMenu(const QPoint& globalPos)
     auto* delTrk = addFxs->addAction("Delay");
     connect(delTrk, &QAction::triggered, this, [this]() { emit addTrackWithFX("delay"); });
 
-    auto& pluginManager = engine.getPluginManager();
-    const auto& plugins = pluginManager.getPlugins();
+    auto plugins = pluginService->getPlugins();
     if (!plugins.empty())
     {
-        auto addPluginToSubmenu = [&](QMenu* parent, const juce::PluginDescription& d)
+        auto addPluginToSubmenu = [&](QMenu* parent, const PluginInfo& info)
         {
             QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(d.name.toRawUTF8()));
+                .arg(QString::fromStdString(info.format))
+                .arg(QString::fromStdString(info.name));
             auto* act = parent->addAction(label);
             connect(act, &QAction::triggered, this,
-                [this, d]() {
-                    emit addTrackWithPlugin(d.fileOrIdentifier, d.pluginFormatName);
+                [this, id = info.fileOrIdentifier, fmt = info.format]() {
+                    emit addTrackWithPlugin(juce::String(id), juce::String(fmt));
                 });
         };
 
         auto* instMenu = addFxs->addMenu("Instrument");
         auto* fxMenu = addFxs->addMenu("Effect");
-        for (const auto& desc : plugins)
+        for (const auto& info : plugins)
         {
-            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+            if (pluginService->isBlacklisted(info.fileOrIdentifier))
                 continue;
 
-            if (desc.isInstrument)
-                addPluginToSubmenu(instMenu, desc);
+            if (info.isInstrument)
+                addPluginToSubmenu(instMenu, info);
             else
-                addPluginToSubmenu(fxMenu, desc);
+                addPluginToSubmenu(fxMenu, info);
         }
 
         // Remove empty submenus
@@ -821,37 +821,36 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
     connect(delayAction, &QAction::triggered, this, [this, trackIdx]() { addFXToTrack(trackIdx, "delay"); });
 
     // Plugin submenus (skip blacklisted)
-    auto& pluginManager = engine.getPluginManager();
-    const auto& plugins = pluginManager.getPlugins();
+    auto plugins = pluginService->getPlugins();
     if (!plugins.empty())
     {
         fxMenu->addSeparator();
 
-        auto addPluginToSubmenu = [&](QMenu* parent, const juce::PluginDescription& d)
+        auto addPluginToSubmenu = [&](QMenu* parent, const PluginInfo& info)
         {
             QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(d.pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(d.name.toRawUTF8()));
+                .arg(QString::fromStdString(info.format))
+                .arg(QString::fromStdString(info.name));
             auto* pluginAction = parent->addAction(label);
             connect(pluginAction, &QAction::triggered, this,
-                [this, trackIdx, d]() {
+                [this, trackIdx, id = info.fileOrIdentifier, fmt = info.format]() {
                     addPluginToTrack(trackIdx,
-                        d.fileOrIdentifier,
-                        d.pluginFormatName);
+                        juce::String(id),
+                        juce::String(fmt));
                 });
         };
 
         auto* instMenu = fxMenu->addMenu("Instrument");
         auto* effMenu = fxMenu->addMenu("Effect");
-        for (const auto& desc : plugins)
+        for (const auto& info : plugins)
         {
-            if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+            if (pluginService->isBlacklisted(info.fileOrIdentifier))
                 continue;
 
-            if (desc.isInstrument)
-                addPluginToSubmenu(instMenu, desc);
+            if (info.isInstrument)
+                addPluginToSubmenu(instMenu, info);
             else
-                addPluginToSubmenu(effMenu, desc);
+                addPluginToSubmenu(effMenu, info);
         }
 
         if (instMenu->actions().isEmpty())

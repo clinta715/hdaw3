@@ -46,6 +46,16 @@ bool ProjectSerializer::load(ProjectModel& model, const juce::File& file)
     model.getUndoManager().clearUndoHistory();
     model.scanAndSyncClipIDs();
     model.scanAndSyncNoteIDs();
+
+    // Never auto-play on load — clear any stale isPlaying/position that
+    // may have been serialized from a project that was playing on save.
+    auto transportTree = model.getTransportTree();
+    if (transportTree.isValid())
+    {
+        transportTree.setProperty(IDs::isPlaying, false, nullptr);
+        transportTree.setProperty(IDs::position, 0.0, nullptr);
+    }
+
     model.markAsSaved();
     return true;
 }

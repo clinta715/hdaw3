@@ -12,7 +12,9 @@
 #include <QMenu>
 #include <QAction>
 #include <QSet>
+#include <QKeyEvent>
 #include <cmath>
+#include "../engine/AutomationClipboard.h"
 #include "../engine/RoutingManager.h"
 #include "../engine/Track.h"
 #include "../engine/TrackFXSlot.h"
@@ -25,7 +27,7 @@ AutomationLaneWidget::AutomationLaneWidget(AudioEngine& ae, QWidget* parent)
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
     setMouseTracking(true);
-    qApp->installEventFilter(this);
+    setFocusPolicy(Qt::StrongFocus);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
@@ -287,9 +289,20 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
         int px = xFromTime(pts[i].time);
         int py = yFromValue(pts[i].value);
         bool hovered = (static_cast<int>(i) == hoverPoint);
-        painter.setPen(QPen(curveColor.darker(150), hovered ? 2 : 1));
-        painter.setBrush(hovered ? ThemeColors::warning() : ThemeColors::textSecondary());
-        painter.drawEllipse(QPointF(px, py), pointRadius + (hovered ? 2 : 0), pointRadius + (hovered ? 2 : 0));
+        bool selected = selectedPoints.count(static_cast<int>(i)) > 0;
+        if (selected)
+        {
+            painter.setPen(QPen(ThemeColors::accentBright(), 2));
+            painter.setBrush(ThemeColors::accentBright());
+        }
+        else
+        {
+            painter.setPen(QPen(curveColor.darker(150), hovered ? 2 : 1));
+            painter.setBrush(hovered ? ThemeColors::warning() : ThemeColors::textSecondary());
+        }
+        painter.drawEllipse(QPointF(px, py),
+            pointRadius + (hovered ? 2 : 0),
+            pointRadius + (hovered ? 2 : 0));
     }
 
     // Value labels
@@ -310,7 +323,7 @@ void AutomationLaneWidget::paintEvent(QPaintEvent*)
         QString::fromUtf8(name.toRawUTF8()) + QString(enabled ? " (A)" : ""));
 
     // Grid (beat lines)
-    double bpm = engine.getTransportManager().getBPM();
+    double bpm = readModel->getTransport().bpm;
     double beatsPerSec = bpm / 60.0;
     for (int b = 0; b < 1000; ++b)
     {
@@ -485,12 +498,12 @@ void AutomationLaneWidget::removeCurrentLane()
     auto autoTree = currentAutoTree();
     if (!autoTree.isValid()) return;
 
-    auto autoList = autoTree.getParent();
-    if (!autoList.isValid()) return;
+    auto name = autoTree.getProperty(IDs::name).toString().toStdString();
+    projectCmds->removeAutomationLane(currentTrack, name);
 
-    autoList.removeChild(currentParamIndex, &engine.getProjectModel().getUndoManager());
-
-    if (currentParamIndex >= autoList.getNumChildren())
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto autoList = trackList.getChild(currentTrack).getChildWithName(IDs::AUTOMATION_LIST);
+    if (autoList.isValid() && currentParamIndex >= autoList.getNumChildren())
         currentParamIndex = std::max(0, autoList.getNumChildren() - 1);
 
     refreshParamCombo();
@@ -500,18 +513,30 @@ void AutomationLaneWidget::removeCurrentLane()
 
 void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
 {
+    setFocus();
     if (event->pos().y() < 30) { QWidget::mousePressEvent(event); return; }
 
     if (event->button() == Qt::LeftButton)
     {
         int idx = pointAtPos(event->pos());
+        bool ctrl = event->modifiers() & Qt::ControlModifier;
+
         if (idx >= 0)
         {
-            // Begin a transaction on press so the entire drag (all the
-            // property writes in mouseMoveEvent) collapses into one undo
-            // step. Without this, each mouse-move is a separate step and
-            // the user must Ctrl+Z dozens of times to revert one drag.
+            if (ctrl)
+            {
+                if (selectedPoints.count(idx))
+                    selectedPoints.erase(idx);
+                else
+                    selectedPoints.insert(idx);
+            }
+            else if (!selectedPoints.count(idx))
+            {
+                selectedPoints.clear();
+                selectedPoints.insert(idx);
+            }
             dragPoint = idx;
+            grabMouse();
             engine.getProjectModel().getUndoManager().beginNewTransaction("drag automation point");
         }
         else
@@ -523,8 +548,6 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             auto autoTree = currentAutoTree();
             if (autoTree.isValid())
             {
-                // One transaction for the whole add-and-enable so a single
-                // Ctrl+Z removes the point (matches the drag coalescing below).
                 auto& um = engine.getProjectModel().getUndoManager();
                 um.beginNewTransaction("add automation point");
 
@@ -539,6 +562,10 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
                 pt.setProperty(IDs::gain, v, &um);
                 pointList.addChild(pt, -1, &um);
                 autoTree.setProperty(IDs::automationEnabled, true, &um);
+                int newIdx = pointList.getNumChildren() - 1;
+                if (!ctrl)
+                    selectedPoints.clear();
+                selectedPoints.insert(newIdx);
                 emit automationChanged();
                 update();
             }
@@ -553,9 +580,24 @@ void AutomationLaneWidget::mousePressEvent(QMouseEvent* event)
             if (autoTree.isValid())
             {
                 auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
-                if (pointList.isValid() && idx < pointList.getNumChildren())
+                if (pointList.isValid())
                 {
-                    pointList.removeChild(idx, &engine.getProjectModel().getUndoManager());
+                    // If the clicked point is in the selection, delete all selected.
+                    if (selectedPoints.count(idx))
+                    {
+                        engine.getProjectModel().getUndoManager().beginNewTransaction(
+                            "delete automation points");
+                        for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
+                        {
+                            if (*it >= 0 && *it < pointList.getNumChildren())
+                                pointList.removeChild(*it, &engine.getProjectModel().getUndoManager());
+                        }
+                        selectedPoints.clear();
+                    }
+                    else if (idx < pointList.getNumChildren())
+                    {
+                        pointList.removeChild(idx, &engine.getProjectModel().getUndoManager());
+                    }
                     emit automationChanged();
                     update();
                 }
@@ -596,7 +638,12 @@ void AutomationLaneWidget::mouseMoveEvent(QMouseEvent* event)
 
 void AutomationLaneWidget::mouseReleaseEvent(QMouseEvent*)
 {
-    dragPoint = -1;
+    if (dragPoint >= 0)
+    {
+        releaseMouse();
+        dragPoint = -1;
+        update();
+    }
 }
 
 void AutomationLaneWidget::wheelEvent(QWheelEvent* event)
@@ -616,11 +663,208 @@ void AutomationLaneWidget::wheelEvent(QWheelEvent* event)
     }
 }
 
+void AutomationLaneWidget::keyPressEvent(QKeyEvent* event)
+{
+    auto autoTree = currentAutoTree();
+    const auto mods = event->modifiers();
+
+    // Delete / Backspace — remove selected points
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
+    {
+        if (!selectedPoints.empty() && autoTree.isValid())
+        {
+            auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+            if (pointList.isValid())
+            {
+                auto& um = engine.getProjectModel().getUndoManager();
+                um.beginNewTransaction("delete automation points");
+                for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
+                {
+                    if (*it >= 0 && *it < pointList.getNumChildren())
+                        pointList.removeChild(*it, &um);
+                }
+                selectedPoints.clear();
+                emit automationChanged();
+                update();
+            }
+        }
+        event->accept();
+        return;
+    }
+
+    // Ctrl+A — select all
+    if (event->key() == Qt::Key_A && (mods & Qt::ControlModifier))
+    {
+        selectedPoints.clear();
+        if (autoTree.isValid())
+        {
+            auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+            if (pointList.isValid())
+            {
+                for (int i = 0; i < pointList.getNumChildren(); ++i)
+                    selectedPoints.insert(i);
+            }
+        }
+        update();
+        event->accept();
+        return;
+    }
+
+    // Escape — clear selection
+    if (event->key() == Qt::Key_Escape)
+    {
+        selectedPoints.clear();
+        update();
+        event->accept();
+        return;
+    }
+
+    auto doCopy = [&]() -> bool {
+        if (selectedPoints.empty() || !autoTree.isValid())
+            return false;
+        auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+        if (!pointList.isValid())
+            return false;
+        std::vector<HDAW::AutomationPointEntry> entries;
+        for (int idx : selectedPoints)
+        {
+            if (idx >= 0 && idx < pointList.getNumChildren())
+            {
+                auto p = pointList.getChild(idx);
+                entries.push_back({
+                    static_cast<double>(p.getProperty(IDs::startTime)),
+                    static_cast<float>(static_cast<double>(p.getProperty(IDs::gain)))
+                });
+            }
+        }
+        int paramID = static_cast<int>(autoTree.getProperty(IDs::paramID));
+        HDAW::AutomationClipboard::copyPoints(entries, paramID);
+        return true;
+    };
+
+    auto doPaste = [&]() {
+        if (!HDAW::AutomationClipboard::hasContent() || !autoTree.isValid())
+            return;
+        auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+        if (!pointList.isValid())
+        {
+            pointList = juce::ValueTree(IDs::POINT_LIST);
+            autoTree.addChild(pointList, -1, nullptr);
+        }
+
+        auto& um = engine.getProjectModel().getUndoManager();
+        um.beginNewTransaction("paste automation points");
+
+        double origin = playheadSeconds >= 0.0 ? playheadSeconds
+            : timeFromX(scrollX + width() / 2);
+        double minTime = HDAW::AutomationClipboard::getMeta().minTime;
+
+        std::set<int> newSelection;
+        int baseIdx = pointList.getNumChildren();
+
+        for (const auto& pt : HDAW::AutomationClipboard::getPoints())
+        {
+            double newTime = origin + (pt.time - minTime);
+            if (newTime < 0.0) newTime = 0.0;
+            juce::ValueTree newPt(IDs::POINT);
+            newPt.setProperty(IDs::startTime, newTime, &um);
+            newPt.setProperty(IDs::gain, static_cast<double>(pt.value), &um);
+            pointList.addChild(newPt, -1, &um);
+            newSelection.insert(baseIdx++);
+        }
+
+        autoTree.setProperty(IDs::automationEnabled, true, &um);
+        selectedPoints = newSelection;
+        emit automationChanged();
+        update();
+    };
+
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_C)
+    {
+        doCopy();
+        event->accept();
+        return;
+    }
+
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_X)
+    {
+        if (doCopy() && autoTree.isValid())
+        {
+            auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+            if (pointList.isValid())
+            {
+                auto& um = engine.getProjectModel().getUndoManager();
+                um.beginNewTransaction("cut automation points");
+                for (auto it = selectedPoints.rbegin(); it != selectedPoints.rend(); ++it)
+                {
+                    if (*it >= 0 && *it < pointList.getNumChildren())
+                        pointList.removeChild(*it, &um);
+                }
+                selectedPoints.clear();
+                emit automationChanged();
+                update();
+            }
+        }
+        event->accept();
+        return;
+    }
+
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_V)
+    {
+        doPaste();
+        event->accept();
+        return;
+    }
+
+    if ((mods & Qt::ControlModifier) && event->key() == Qt::Key_D)
+    {
+        if (selectedPoints.empty() || !autoTree.isValid())
+        {
+            event->accept();
+            return;
+        }
+        auto pointList = autoTree.getChildWithName(IDs::POINT_LIST);
+        if (!pointList.isValid())
+        {
+            event->accept();
+            return;
+        }
+
+        auto& um = engine.getProjectModel().getUndoManager();
+        um.beginNewTransaction("duplicate automation points");
+
+        std::set<int> newSelection;
+        for (int idx : selectedPoints)
+        {
+            if (idx < 0 || idx >= pointList.getNumChildren()) continue;
+            auto p = pointList.getChild(idx);
+            juce::ValueTree newPt(IDs::POINT);
+            newPt.setProperty(IDs::startTime,
+                static_cast<double>(p.getProperty(IDs::startTime)) + 0.25, &um);
+            newPt.setProperty(IDs::gain,
+                static_cast<double>(p.getProperty(IDs::gain)), &um);
+            int newIdx = pointList.getNumChildren();
+            pointList.addChild(newPt, -1, &um);
+            newSelection.insert(newIdx);
+        }
+
+        autoTree.setProperty(IDs::automationEnabled, true, &um);
+        selectedPoints = newSelection;
+        emit automationChanged();
+        update();
+        event->accept();
+        return;
+    }
+
+    QWidget::keyPressEvent(event);
+}
+
 void AutomationLaneWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
     if (dragPoint >= 0)
     {
+        releaseMouse();
         dragPoint = -1;
         update();
     }
@@ -631,17 +875,10 @@ void AutomationLaneWidget::leaveEvent(QEvent* event)
     QWidget::leaveEvent(event);
     if (dragPoint >= 0)
     {
+        releaseMouse();
         dragPoint = -1;
         update();
     }
 }
 
-bool AutomationLaneWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    if (event->type() == QEvent::MouseButtonRelease && dragPoint >= 0 && obj != this)
-    {
-        dragPoint = -1;
-        update();
-    }
-    return QWidget::eventFilter(obj, event);
-}
+// eventFilter removed — using grabMouse/releaseMouse instead of global qApp filter

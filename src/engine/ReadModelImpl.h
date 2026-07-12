@@ -3,10 +3,12 @@
 #include <juce_data_structures/juce_data_structures.h>
 
 class ProjectModel;
+class AudioEngine;
 
 class ReadModelImpl : public ReadModel {
 public:
     explicit ReadModelImpl(ProjectModel& model);
+    void setEngine(AudioEngine* engine) { engine_ = engine; }
 
     ProjectSnapshot snapshot() const override;
     int getTrackCount() const override;
@@ -17,6 +19,16 @@ public:
     int getScaleRoot() const override;
     int getScaleMode() const override;
 
+    std::vector<FxSlotSnapshot> getFxSlots(int trackIndex) const override;
+    std::vector<AutomationLaneSnapshot> getAutomationLanes(int trackIndex) const override;
+    std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
+        const std::string& laneName) const override;
+    std::vector<MarkerSnapshot> getMarkers() const override;
+    MeterSnapshot getTrackMeter(int trackIndex) const override;
+    MeterSnapshot getMasterMeter() const override;
+    bool isDirty() const override;
+
 private:
     ProjectModel& model_;
+    class AudioEngine* engine_ = nullptr;
 };

@@ -14,6 +14,8 @@
 TimelineInteraction::TimelineInteraction(TimelineScene* s, AudioEngine& ae, QObject* parent)
     : QObject(parent), engine(ae), scene(s)
 {
+    audioGraphCmds = &engine.getAudioGraphCommands();
+    readModel = &engine.getReadModel();
 }
 
 TimelineInteraction::~TimelineInteraction() = default;
@@ -23,7 +25,7 @@ double TimelineInteraction::snapToGrid(double timeSeconds) const
     if (!snapEnabled || snapDivision == Off)
         return timeSeconds;
 
-    double bpm = (std::max)(1.0, scene->getEngine().getTransportManager().getBPM());
+    double bpm = (std::max)(1.0, readModel->getTransport().bpm);
     double secondsPerBeat = 60.0 / bpm;
 
     double division;
@@ -344,7 +346,7 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     auto clipTree = ProjectModel::createMidiClipEmpty("MIDI Clip", snappedTime, duration);
 
     clipList.addChild(clipTree, -1, &model.getUndoManager());
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
 
     lastClipDuration = duration;
     emit scene->clipSelected(clipTree);

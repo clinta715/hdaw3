@@ -65,13 +65,13 @@ FXChainWidget::~FXChainWidget() = default;
 void FXChainWidget::loadTrack(int trackIndex)
 {
     currentTrack = trackIndex;
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    if (trackIndex < 0 || trackIndex >= readModel->getTrackCount())
     {
         clear();
         return;
     }
 
+    auto trackList = engine.getProjectModel().getTrackListTree();
     auto trackTree = trackList.getChild(trackIndex);
     QString name = QString::fromUtf8(trackTree.getProperty(IDs::name).toString().toRawUTF8());
     headerLabel->setText(QString("FX Chain - %1").arg(name));
@@ -103,8 +103,12 @@ void FXChainWidget::rebuildUI()
     QLayoutItem* item;
     while ((item = slotLayout->takeAt(0)) != nullptr)
     {
-        if (item->widget())
-            item->widget()->deleteLater();
+        if (auto* w = item->widget())
+        {
+            if (auto* row = dynamic_cast<FXSlotRow*>(w))
+                row->cleanup();
+            w->deleteLater();
+        }
         delete item;
     }
 
@@ -127,36 +131,29 @@ void FXChainWidget::rebuildUI()
             int index = i;
 
             connect(row, &FXSlotRow::removeRequested, this, [this, index](int) {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (currentTrack < 0 || currentTrack >= trackList.getNumChildren()) return;
-                auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
-                if (c.isValid() && index < c.getNumChildren())
-                {
-                    c.removeChild(index, &engine.getProjectModel().getUndoManager());
-                    rebuildUI();
-                    emit chainChanged();
-                }
+                if (currentTrack < 0 || currentTrack >= readModel->getTrackCount()) return;
+                projectCmds->removeFxSlot(currentTrack, index);
+                rebuildUI();
+                emit chainChanged();
             });
 
             connect(row, &FXSlotRow::moveUpRequested, this, [this, index](int) {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (currentTrack < 0 || currentTrack >= trackList.getNumChildren()) return;
-                auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
-                if (c.isValid() && index > 0)
+                if (currentTrack < 0 || currentTrack >= readModel->getTrackCount()) return;
+                if (index > 0)
                 {
-                    c.moveChild(index, index - 1, &engine.getProjectModel().getUndoManager());
+                    projectCmds->reorderFxSlots(currentTrack, index, index - 1);
                     rebuildUI();
                     emit chainChanged();
                 }
             });
 
             connect(row, &FXSlotRow::moveDownRequested, this, [this, index](int) {
+                if (currentTrack < 0 || currentTrack >= readModel->getTrackCount()) return;
                 auto trackList = engine.getProjectModel().getTrackListTree();
-                if (currentTrack < 0 || currentTrack >= trackList.getNumChildren()) return;
                 auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
                 if (c.isValid() && index < c.getNumChildren() - 1)
                 {
-                    c.moveChild(index, index + 1, &engine.getProjectModel().getUndoManager());
+                    projectCmds->reorderFxSlots(currentTrack, index, index + 1);
                     rebuildUI();
                     emit chainChanged();
                 }
@@ -167,7 +164,7 @@ void FXChainWidget::rebuildUI()
             });
 
             connect(row, &FXSlotRow::editRequested, this, [this, index](int) {
-                engine.getMainProcessor()->toggleFXEditor(currentTrack, index);
+                audioGraphCmds->toggleFXEditor(currentTrack, index);
             });
 
             slotLayout->addWidget(row);
@@ -253,24 +250,13 @@ bool FXChainWidget::eventFilter(QObject* obj, QEvent* event)
             int toIndex = indexAtDropY(e->pos().y());
             if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex)
             {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (currentTrack >= 0 && currentTrack < trackList.getNumChildren())
+                if (currentTrack >= 0 && currentTrack < readModel->getTrackCount())
                 {
-                    auto c = trackList.getChild(currentTrack).getChildWithName(IDs::FX_CHAIN);
-                    if (c.isValid() && fromIndex < c.getNumChildren())
-                    {
-                        // moveChild rotates the element to position
-                        // toIndex, but indexAtDropY returns an insertion
-                        // point. For downward drags the source removal
-                        // shifts items, so decrement to compensate.
-                        if (fromIndex < toIndex)
-                            toIndex--;
-                        toIndex = std::clamp(toIndex, 0, c.getNumChildren() - 1);
-                        c.moveChild(fromIndex, toIndex,
-                                    &engine.getProjectModel().getUndoManager());
-                        rebuildUI();
-                        emit chainChanged();
-                    }
+                    if (fromIndex < toIndex)
+                        toIndex--;
+                    projectCmds->reorderFxSlots(currentTrack, fromIndex, toIndex);
+                    rebuildUI();
+                    emit chainChanged();
                 }
             }
             e->acceptProposedAction();

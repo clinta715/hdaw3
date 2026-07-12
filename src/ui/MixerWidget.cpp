@@ -74,39 +74,32 @@ void MixerWidget::rebuild()
     }
 
     // Add strips for each track
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    int numTracks = readModel->getTrackCount();
+    for (int i = 0; i < numTracks; ++i)
     {
         auto* strip = new MixerStripWidget(i, engine, stripContainer);
 
         connect(strip, &MixerStripWidget::volumeChanged, this,
             [this](int trackIdx, float vol) {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (trackIdx < trackList.getNumChildren())
-                {
-                    trackList.getChild(trackIdx).setProperty(IDs::volume, static_cast<double>(vol), &engine.getProjectModel().getUndoManager());
-                }
+                if (trackIdx < readModel->getTrackCount())
+                    projectCmds->setTrackVolume(trackIdx, vol);
             });
 
         connect(strip, &MixerStripWidget::muteToggled, this,
             [this](int trackIdx, bool muted) {
-                engine.setTrackMuted(trackIdx, muted);
+                projectCmds->setTrackMuted(trackIdx, muted);
             });
 
         connect(strip, &MixerStripWidget::soloToggled, this,
             [this](int trackIdx, bool soloed) {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (trackIdx < trackList.getNumChildren())
-                    trackList.getChild(trackIdx).setProperty(IDs::isSoloed, soloed, &engine.getProjectModel().getUndoManager());
+                if (trackIdx < readModel->getTrackCount())
+                    projectCmds->setTrackSoloed(trackIdx, soloed);
             });
 
         connect(strip, &MixerStripWidget::panChanged, this,
             [this](int trackIdx, float pan) {
-                auto trackList = engine.getProjectModel().getTrackListTree();
-                if (trackIdx < trackList.getNumChildren())
-                {
-                    trackList.getChild(trackIdx).setProperty(IDs::pan, static_cast<double>(pan), &engine.getProjectModel().getUndoManager());
-                }
+                if (trackIdx < readModel->getTrackCount())
+                    projectCmds->setTrackPan(trackIdx, pan);
             });
 
         connect(strip, &MixerStripWidget::fxButtonClicked, this,

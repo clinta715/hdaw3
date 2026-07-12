@@ -1,5 +1,8 @@
-#include "engine/ReadModelImpl.h"
-#include "model/ProjectModel.h"
+#include "ReadModelImpl.h"
+#include "AudioEngine.h"
+#include "MainAudioProcessor.h"
+#include "Track.h"
+#include "../model/ProjectModel.h"
 
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
@@ -69,7 +72,11 @@ TrackSnapshot ReadModelImpl::getTrack(int index) const
 {
     auto trackList = model_.getTrackListTree();
     if (index < 0 || index >= trackList.getNumChildren())
-        return {};
+    {
+        TrackSnapshot ts;
+        ts.index = -1;
+        return ts;
+    }
 
     auto trackTree = trackList.getChild(index);
     TrackSnapshot ts;
@@ -165,7 +172,7 @@ TransportSnapshot ReadModelImpl::getTransport() const
         ts.isLooping = transport.getProperty(IDs::isLooping, false);
         ts.loopStart = transport.getProperty(IDs::loopStart, 0.0);
         ts.loopEnd = transport.getProperty(IDs::loopEnd, 8.0);
-        ts.currentSample = transport.getProperty(IDs::position, 0.0);
+        ts.currentTimeSeconds = transport.getProperty(IDs::position, 0.0);
     }
     return ts;
 }
@@ -178,4 +185,139 @@ int ReadModelImpl::getScaleRoot() const
 int ReadModelImpl::getScaleMode() const
 {
     return model_.getScaleMode();
+}
+
+std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
+{
+    std::vector<FxSlotSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid())
+        return result;
+
+    for (int i = 0; i < fxChain.getNumChildren(); ++i)
+    {
+        auto slot = fxChain.getChild(i);
+        FxSlotSnapshot s;
+        s.slotIndex = i;
+        s.fxType = slot.getProperty(IDs::fxType, "").toString().toStdString();
+        s.pluginId = slot.getProperty(IDs::pluginID, "").toString().toStdString();
+        s.pluginName = slot.getProperty(IDs::name, "").toString().toStdString();
+        s.bypassed = slot.getProperty(IDs::bypassed, false);
+        s.paramCount = slot.getNumChildren();
+        result.push_back(s);
+    }
+    return result;
+}
+
+std::vector<AutomationLaneSnapshot> ReadModelImpl::getAutomationLanes(int trackIndex) const
+{
+    std::vector<AutomationLaneSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+
+    auto autoList = trackList.getChild(trackIndex).getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid())
+        return result;
+
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        auto lane = autoList.getChild(i);
+        AutomationLaneSnapshot l;
+        l.laneIndex = i;
+        l.name = lane.getProperty(IDs::name, "").toString().toStdString();
+        l.paramID = static_cast<int>(lane.getProperty(IDs::paramID, 0));
+        l.enabled = lane.getProperty(IDs::automationEnabled, false);
+        result.push_back(l);
+    }
+    return result;
+}
+
+std::vector<AutomationPointSnapshot> ReadModelImpl::getAutomationPoints(
+    int trackIndex, const std::string& laneName) const
+{
+    std::vector<AutomationPointSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+
+    auto autoList = trackList.getChild(trackIndex).getChildWithName(IDs::AUTOMATION_LIST);
+    if (!autoList.isValid())
+        return result;
+
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        auto lane = autoList.getChild(i);
+        if (lane.getProperty(IDs::name, "").toString().toStdString() != laneName)
+            continue;
+
+        auto pointList = lane.getChildWithName(IDs::POINT_LIST);
+        if (!pointList.isValid())
+            return result;
+
+        for (int p = 0; p < pointList.getNumChildren(); ++p)
+        {
+            auto pt = pointList.getChild(p);
+            AutomationPointSnapshot aps;
+            aps.time = pt.getProperty(IDs::startTime, 0.0);
+            aps.value = static_cast<float>(
+                static_cast<double>(pt.getProperty(IDs::gain, 0.0)));
+            result.push_back(aps);
+        }
+        break;
+    }
+    return result;
+}
+
+std::vector<MarkerSnapshot> ReadModelImpl::getMarkers() const
+{
+    std::vector<MarkerSnapshot> result;
+    auto markerList = model_.getTree().getChildWithName(IDs::MARKER_LIST);
+    if (!markerList.isValid())
+        return result;
+
+    for (int i = 0; i < markerList.getNumChildren(); ++i)
+    {
+        auto marker = markerList.getChild(i);
+        MarkerSnapshot ms;
+        ms.index = i;
+        ms.time = marker.getProperty(IDs::markerTime, 0.0);
+        ms.name = marker.getProperty(IDs::markerName, "").toString().toStdString();
+        ms.color = static_cast<int>(marker.getProperty(IDs::markerColor, 0));
+        result.push_back(ms);
+    }
+    return result;
+}
+
+MeterSnapshot ReadModelImpl::getTrackMeter(int trackIndex) const
+{
+    if (engine_ == nullptr) return {};
+    auto* proc = engine_->getMainProcessor();
+    if (proc == nullptr) return {};
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr) return {};
+    MeterSnapshot ms;
+    ms.leftLevel = track->getMeter().getLeftLevel();
+    ms.rightLevel = track->getMeter().getRightLevel();
+    return ms;
+}
+
+MeterSnapshot ReadModelImpl::getMasterMeter() const
+{
+    if (engine_ == nullptr) return {};
+    auto* proc = engine_->getMainProcessor();
+    if (proc == nullptr) return {};
+    MeterSnapshot ms;
+    ms.leftLevel = proc->getMasterMeter().getLeftLevel();
+    ms.rightLevel = proc->getMasterMeter().getRightLevel();
+    return ms;
+}
+
+bool ReadModelImpl::isDirty() const
+{
+    return model_.isDirty();
 }

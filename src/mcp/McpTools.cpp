@@ -890,6 +890,8 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
             pt.setProperty(IDs::startTime, a.value("time").toDouble(), &um);
             pt.setProperty(IDs::gain, a.value("value").toDouble(), &um);
             pl.addChild(pt, -1, &um);
+            if (auto* proc = e->getMainProcessor())
+                proc->rebuildAutomationCache(a.value("trackId").toInt());
             return McpToolResult::text("ok");
         }});
 
@@ -904,6 +906,8 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
             lane.setProperty(IDs::automationEnabled, a.value("enabled").toBool(),
                              &e->getProjectModel().getUndoManager());
+            if (auto* proc = e->getMainProcessor())
+                proc->rebuildAutomationCache(a.value("trackId").toInt());
             return McpToolResult::text("ok");
         }});
 }

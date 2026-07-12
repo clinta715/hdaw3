@@ -159,15 +159,12 @@ void AudioClipEditorWidget::connectSignals()
     connect(zoomInBtn, &QPushButton::clicked, waveform, &AudioWaveformWidget::zoomIn);
     connect(zoomOutBtn, &QPushButton::clicked, waveform, &AudioWaveformWidget::zoomOut);
 
-    connect(gainSlider, &QSlider::sliderPressed, this, [this]() {
-        if (settingUi || !currentClip.isValid()) return;
-        engine.getProjectModel().getUndoManager().beginNewTransaction("Adjust gain");
-    });
     connect(gainSlider, &QSlider::valueChanged, this, [this](int val) {
         if (settingUi || !currentClip.isValid()) return;
         double dB = val / 100.0;
         double linear = std::pow(10.0, dB / 20.0);
-        currentClip.setProperty(IDs::gain, linear, &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipGain(clipId, static_cast<float>(linear));
         gainLabel->setText(QString("%1 dB").arg(dB, 0, 'f', 1));
     });
 
@@ -194,30 +191,35 @@ void AudioClipEditorWidget::connectSignals()
 
     connect(fadeInSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
         if (settingUi || !currentClip.isValid()) return;
-        currentClip.setProperty(IDs::fadeIn, val, &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipFadeIn(clipId, val);
         waveform->update();
     });
 
     connect(fadeOutSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
         if (settingUi || !currentClip.isValid()) return;
-        currentClip.setProperty(IDs::fadeOut, val, &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipFadeOut(clipId, val);
         waveform->update();
     });
 
     connect(loopCheck, &QCheckBox::toggled, this, [this](bool checked) {
         if (settingUi || !currentClip.isValid()) return;
-        currentClip.setProperty(IDs::looping, checked, &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipLooping(clipId, checked);
     });
 
     connect(offsetSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
         if (settingUi || !currentClip.isValid()) return;
-        currentClip.setProperty(IDs::offset, (std::max)(0.0, val), &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipOffset(clipId, std::max(0.0, val));
         waveform->update();
     });
 
     connect(durationSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
         if (settingUi || !currentClip.isValid()) return;
-        currentClip.setProperty(IDs::duration, (std::max)(0.001, val), &engine.getProjectModel().getUndoManager());
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipDuration(clipId, std::max(0.001, val));
         waveform->update();
     });
 }

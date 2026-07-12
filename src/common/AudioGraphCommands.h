@@ -10,4 +10,5 @@ public:
     virtual void rebuildAutomationCache(int trackIndex) = 0;
     virtual void rebuildModulation(int trackIndex) = 0;
     virtual void toggleFXEditor(int trackIndex, int slotIndex) = 0;
+    virtual void switchClipTake(int clipId) = 0;
 };

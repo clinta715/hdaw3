@@ -27,6 +27,10 @@ public:
 
     static int getSnapDivision();
     static void setSnapDivision(int idx);
+    static bool getPianoRollSnapEnabled();
+    static void setPianoRollSnapEnabled(bool en);
+    static int getPianoRollSnapDivision();
+    static void setPianoRollSnapDivision(int idx);
 
     static inline constexpr auto kKeyLastProjectDir = "lastProjectDirectory";
     static inline constexpr auto kKeyLastExportDir = "lastExportDirectory";

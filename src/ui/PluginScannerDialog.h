@@ -8,7 +8,7 @@
 #include <QWidget>
 #include <thread>
 #include <atomic>
-#include "../engine/PluginManager.h"
+#include "../common/PluginService.h"
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -34,6 +34,7 @@ private:
     void refreshList();
 
     AudioEngine& engine;
+    PluginService* pluginService = nullptr;
     ProjectCommands* projectCmds = nullptr;
     TransportCommands* transportCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
@@ -48,5 +49,5 @@ private:
 
     std::thread scanThread;
     std::atomic<bool> dialogAlive{true};
-    HDAW::PluginManager::ScanCallback previousCallback;
+    PluginService::ScanCallback previousCallback;
 };

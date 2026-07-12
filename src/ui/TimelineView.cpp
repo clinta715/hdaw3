@@ -144,7 +144,19 @@ void TimelineView::connectSignals()
     });
 
     connect(toolbar, &TimelineToolbar::snapDivisionChanged, this, [this](int idx) {
-        interaction->setSnapDivision(static_cast<TimelineInteraction::SnapDivision>(idx));
+        // Map combo index → SnapDivision enum.
+        // Combo: Bar(0), Beat(1), 1/4(2), 1/8(3), 1/16(4), Off(5)
+        // Enum:  Bar=0, Beat=1, Eighth=2, Sixteenth=3, Off=4
+        static const TimelineInteraction::SnapDivision map[] = {
+            TimelineInteraction::Bar,
+            TimelineInteraction::Beat,
+            TimelineInteraction::Beat,       // "1/4" = quarter = beat-level
+            TimelineInteraction::Eighth,     // "1/8" = eighth
+            TimelineInteraction::Sixteenth,  // "1/16" = sixteenth
+            TimelineInteraction::Off         // "Off"
+        };
+        if (idx >= 0 && idx < 6)
+            interaction->setSnapDivision(map[idx]);
     });
 
     connect(toolbar, &TimelineToolbar::zoomInClicked, this, &TimelineView::zoomIn);

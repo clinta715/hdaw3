@@ -10,6 +10,8 @@
 static const char* kKeyClipDur = "defaultClipDuration";
 static const char* kKeySnap = "snapEnabled";
 static const char* kKeySnapDiv = "snapDivision";
+static const char* kKeyPianoRollSnap = "pianoRoll/snapEnabled";
+static const char* kKeyPianoRollSnapDiv = "pianoRoll/snapDivision";
 static const char* kKeyMcpHost = "mcp/httpHost";
 static const char* kKeyMcpPort = "mcp/httpPort";
 static const char* kKeyMcpEnabled = "mcp/httpEnabled";
@@ -365,4 +367,28 @@ void PreferencesDialog::setSnapDivision(int idx)
 {
     auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeySnapDiv, idx);
+}
+
+bool PreferencesDialog::getPianoRollSnapEnabled()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyPianoRollSnap, true).toBool();
+}
+
+void PreferencesDialog::setPianoRollSnapEnabled(bool en)
+{
+    auto& settings = PreferencesDialog::settings();
+    settings.setValue(kKeyPianoRollSnap, en);
+}
+
+int PreferencesDialog::getPianoRollSnapDivision()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyPianoRollSnapDiv, 4).toInt(); // default: 1/16
+}
+
+void PreferencesDialog::setPianoRollSnapDivision(int idx)
+{
+    auto& settings = PreferencesDialog::settings();
+    settings.setValue(kKeyPianoRollSnapDiv, idx);
 }

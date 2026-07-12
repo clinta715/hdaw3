@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QComboBox>
 #include <QPushButton>
+#include <set>
 #include "../engine/AutomationManager.h"
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
@@ -34,9 +35,9 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     void leaveEvent(QEvent* event) override;
-    bool eventFilter(QObject* obj, QEvent* event) override;
 
 private slots:
     void onParamChanged(int index);
@@ -69,6 +70,7 @@ private:
     int scrollX = 0;
     int dragPoint = -1;
     int hoverPoint = -1;
+    std::set<int> selectedPoints;
     double playheadSeconds = -1.0;
 
     static constexpr int laneHeight = 120;

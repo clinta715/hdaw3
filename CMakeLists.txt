@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.5.0 LANGUAGES CXX)
+project(HDAW VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -60,6 +60,9 @@ add_library(HDAW_lib STATIC
     src/engine/Track.cpp
     src/engine/TrackFXSlot.cpp
     src/engine/ReadModelImpl.cpp
+    src/engine/PluginServiceImpl.cpp
+    src/engine/MidiServiceImpl.cpp
+    src/engine/AutomationClipboard.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

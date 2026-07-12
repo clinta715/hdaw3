@@ -50,13 +50,13 @@ PhraseGeneratorDialog::PhraseGeneratorDialog(AudioEngine& ae, int targetTrackInd
     const char* roots[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     for (int i = 0; i < 12; ++i)
         rootCombo->addItem(roots[i], i);
-    int projRoot = engine.getProjectModel().getScaleRoot();
+    int projRoot = readModel->getScaleRoot();
     rootCombo->setCurrentIndex(std::clamp(projRoot, 0, 11));
     scaleForm->addRow("Root:", rootCombo);
 
     modeCombo = new QComboBox(this);
     const auto& modes = PhraseGenerator::getScaleModes();
-    int projMode = engine.getProjectModel().getScaleMode();
+    int projMode = readModel->getScaleMode();
     int modeIdx = 0;
     for (const auto& m : modes)
     {
@@ -497,7 +497,7 @@ void PhraseGeneratorDialog::onGenerate()
         .arg(notes.size())
         .arg(QString::fromUtf8(trackTree.getProperty(IDs::name).toString().toRawUTF8())));
 
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
 
     accept();
 }

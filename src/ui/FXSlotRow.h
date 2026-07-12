@@ -14,6 +14,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../model/ProjectModel.h"
+#include "../common/PluginService.h"
 
 class AudioEngine;
 class QTimer;
@@ -27,6 +28,8 @@ public:
 
     int getSlotIndex() const { return slotIndex; }
     void setSlotIndex(int idx) { slotIndex = idx; }
+
+    void cleanup();
 
 signals:
     void removeRequested(int index);
@@ -51,6 +54,7 @@ private:
     int slotIndex;
     int trackIndex;
     AudioEngine& engine;
+    PluginService* pluginService = nullptr;
     QLineEdit* filterEdit;
     QComboBox* typeCombo;
     QPushButton* bypassBtn;

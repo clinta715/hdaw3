@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QTimer>
 #include <juce_core/juce_core.h>
+#include "../common/PluginService.h"
 
 namespace HDAW { class PluginManager; }
 
@@ -26,6 +27,8 @@ public slots:
     void setSnap(bool enabled);
     void setLoopEnabled(bool enabled);
     void setSnapDivision(int index);
+    bool isSnapEnabled() const { return snapBtn ? snapBtn->isChecked() : true; }
+    int  getSnapDivisionIndex() const { return snapCombo ? snapCombo->currentIndex() : 1; }
     void setCountInEnabled(bool enabled);
     void setTimeSig(int numerator, int denominator);
     void populateMidiDevices(const QStringList& devices);
@@ -57,7 +60,7 @@ signals:
     void ccRecordToggled(bool armed);
 
 public:
-    void addTrackPluginMenu(QMenu* parentMenu, HDAW::PluginManager& pluginManager);
+    void addTrackPluginMenu(QMenu* parentMenu, PluginService& pluginService);
 
 private slots:
     void onTimeSigChanged(int index);

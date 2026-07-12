@@ -47,8 +47,8 @@ struct TransportSnapshot {
     bool isRecording = false;
     double loopStart = 0.0;
     double loopEnd = 8.0;
-    double currentSample = 0.0;
-    double sampleRate = 44100.0;
+    double currentTimeSeconds = 0.0;
+    double sampleRate = 0.0;
 };
 
 struct ProjectSnapshot {
@@ -58,6 +58,39 @@ struct ProjectSnapshot {
     std::vector<ClipSnapshot> clips;
     int scaleRoot = 0;
     int scaleMode = 0;
+};
+
+struct FxSlotSnapshot {
+    int slotIndex = 0;
+    std::string fxType;
+    std::string pluginId;
+    std::string pluginName;
+    bool bypassed = false;
+    int paramCount = 0;
+};
+
+struct AutomationLaneSnapshot {
+    int laneIndex = 0;
+    std::string name;
+    int paramID = 0;
+    bool enabled = false;
+};
+
+struct AutomationPointSnapshot {
+    double time = 0.0;
+    float value = 0.0f;
+};
+
+struct MarkerSnapshot {
+    int index = 0;
+    double time = 0.0;
+    std::string name;
+    int color = 0;
+};
+
+struct MeterSnapshot {
+    float leftLevel = 0.0f;
+    float rightLevel = 0.0f;
 };
 
 class ReadModel {
@@ -72,4 +105,13 @@ public:
     virtual TransportSnapshot getTransport() const = 0;
     virtual int getScaleRoot() const = 0;
     virtual int getScaleMode() const = 0;
+
+    virtual std::vector<FxSlotSnapshot> getFxSlots(int trackIndex) const = 0;
+    virtual std::vector<AutomationLaneSnapshot> getAutomationLanes(int trackIndex) const = 0;
+    virtual std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
+        const std::string& laneName) const = 0;
+    virtual std::vector<MarkerSnapshot> getMarkers() const = 0;
+    virtual MeterSnapshot getTrackMeter(int trackIndex) const = 0;
+    virtual MeterSnapshot getMasterMeter() const = 0;
+    virtual bool isDirty() const = 0;
 };

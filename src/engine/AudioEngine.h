@@ -9,6 +9,8 @@
 #include "MidiInputManager.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
+#include "PluginServiceImpl.h"
+#include "MidiServiceImpl.h"
 #include "../model/ProjectModel.h"
 #include <functional>
 #include <memory>
@@ -35,6 +37,10 @@ public:
     ProjectCommands& getProjectCommands();
     TransportCommands& getTransportCommands();
     AudioGraphCommands& getAudioGraphCommands();
+
+    // Service interfaces
+    PluginService& getPluginService() { return *pluginService; }
+    MidiService& getMidiService() { return *midiService; }
 
     // Read-only model snapshot
     ReadModel& getReadModel();
@@ -81,4 +87,6 @@ private:
     MidiCcCallback midiCcCallback;
     std::unique_ptr<AudioEngineCommands> commands;
     std::unique_ptr<ReadModelImpl> readModel;
+    std::unique_ptr<PluginService> pluginService;
+    std::unique_ptr<MidiService> midiService;
 };

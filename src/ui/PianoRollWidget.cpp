@@ -1,6 +1,7 @@
 #include "PianoRollWidget.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/PhraseGenerator.h"
+#include "PreferencesDialog.h"
 #include "DebugLog.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -49,14 +50,21 @@ void PianoRollWidget::setupUI()
 
     snapBtn = new QPushButton("Snap", header);
     snapBtn->setCheckable(true);
-    snapBtn->setChecked(true);
+    {
+        const QSignalBlocker blocker(snapBtn);
+        snapBtn->setChecked(PreferencesDialog::getPianoRollSnapEnabled());
+    }
     snapBtn->setFixedHeight(22);
     headerLayout->addWidget(snapBtn);
 
     snapCombo = new QComboBox(header);
     snapCombo->addItems({"1/1", "1/2", "1/4", "1/8", "1/16", "1/32",
                          "1/3", "1/6", "1/12", "1/24"});
-    snapCombo->setCurrentIndex(4); // 1/16
+    {
+        const QSignalBlocker blocker(snapCombo);
+        int savedIdx = PreferencesDialog::getPianoRollSnapDivision();
+        snapCombo->setCurrentIndex(savedIdx);
+    }
     snapCombo->setFixedHeight(22);
     headerLayout->addWidget(snapCombo);
 
@@ -179,14 +187,34 @@ void PianoRollWidget::connectSignals()
         velocityLane->update();
     });
 
-    connect(snapBtn, &QPushButton::toggled, noteGrid, &NoteGridWidget::setSnapEnabled);
+    connect(snapBtn, &QPushButton::toggled, this, [this](bool en) {
+        noteGrid->setSnapEnabled(en);
+        PreferencesDialog::setPianoRollSnapEnabled(en);
+    });
 
     connect(snapCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
         double divisions[] = {1.0, 0.5, 0.25, 1.0/8.0, 1.0/16.0, 1.0/32.0,
                               1.0/3.0, 1.0/6.0, 1.0/12.0, 1.0/24.0};
         if (idx >= 0 && idx < 10)
+        {
             noteGrid->setSnapDivision(divisions[idx]);
+            PreferencesDialog::setPianoRollSnapDivision(idx);
+        }
     });
+
+    // Propagate initial state: the QComboBox::setCurrentIndex and
+    // QPushButton::setChecked calls in setupUI() were blocked from
+    // emitting signals, so the note grid never received the initial
+    // values. Without this, snapDivision and snapEnabled only match
+    // the defaults by coincidence (both default to 1/16, enabled).
+    noteGrid->setSnapEnabled(snapBtn->isChecked());
+    {
+        double divisions[] = {1.0, 0.5, 0.25, 1.0/8.0, 1.0/16.0, 1.0/32.0,
+                              1.0/3.0, 1.0/6.0, 1.0/12.0, 1.0/24.0};
+        int idx = snapCombo->currentIndex();
+        if (idx >= 0 && idx < 10)
+            noteGrid->setSnapDivision(divisions[idx]);
+    }
 
     // Chord stamp wiring
     connect(chordStampChk, &QCheckBox::toggled, noteGrid, &NoteGridWidget::setChordStampEnabled);

@@ -41,6 +41,7 @@ public:
     void setClipGain(int clipId, float gain) override;
     void setClipFadeIn(int clipId, double fadeIn) override;
     void setClipFadeOut(int clipId, double fadeOut) override;
+    void setClipOffset(int clipId, double offset) override;
     void setClipLooping(int clipId, bool looping) override;
     int duplicateClip(int clipId) override;
 
@@ -61,8 +62,11 @@ public:
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                         float value) override;
+    void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
 
     // ProjectCommands — Automation
+    void addAutomationLane(int trackIndex, const std::string& laneName) override;
+    void removeAutomationLane(int trackIndex, const std::string& laneName) override;
     void addAutomationPoint(int trackIndex, const std::string& lane,
                             double time, float value) override;
     void removeAutomationPoint(int trackIndex, const std::string& lane,
@@ -76,6 +80,12 @@ public:
     void setLoopEnd(double beat) override;
     void setLooping(bool looping) override;
     void setMetronomeEnabled(bool enabled) override;
+
+    // ProjectCommands — Markers
+    int addMarker(const std::string& name, double time, int color) override;
+    void removeMarker(int index) override;
+    void setMarkerName(int index, const std::string& name) override;
+    void setMarkerTime(int index, double time) override;
 
     // ProjectCommands — Undo/redo
     void undo() override;
@@ -110,6 +120,7 @@ public:
     void rebuildAutomationCache(int trackIndex) override;
     void rebuildModulation(int trackIndex) override;
     void toggleFXEditor(int trackIndex, int slotIndex) override;
+    void switchClipTake(int clipId) override;
 
 private:
     // Find clip by ID across all tracks. Sets outTrackIndex to the

@@ -19,9 +19,6 @@ NoteGridWidget::NoteGridWidget(PianoRollModel& m, AudioEngine& ae, QWidget* pare
     readModel = &engine.getReadModel();
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
-    // Install global filter to catch mouse releases outside this widget
-    qApp->installEventFilter(this);
-    setMouseTracking(true);
 }
 
 void NoteGridWidget::setPixelsPerBeat(double ppb)
@@ -126,9 +123,8 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
 
     // Scale highlighting
     {
-        auto& projModel = engine.getProjectModel();
-        int scaleRoot = projModel.getScaleRoot();
-        int scaleMode = projModel.getScaleMode();
+        int scaleRoot = readModel->getScaleRoot();
+        int scaleMode = readModel->getScaleMode();
         if (scaleRoot != cachedScaleRoot || scaleMode != cachedScaleMode)
         {
             cachedScaleRoot = scaleRoot;
@@ -243,18 +239,17 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
     }
 
     // Playhead line
-    if (engine.getTransportManager().isPlayingNow())
     {
-        int64_t sample = engine.getTransportManager().getCurrentSample();
-        double sr = engine.getTransportManager().getSampleRate();
-        double timeSec = sr > 0 ? static_cast<double>(sample) / sr : 0.0;
-        double bpm = engine.getTransportManager().getBPM();
-        double beat = timeSec * bpm / 60.0;
-        int phx = static_cast<int>(beat * pixelsPerBeat - scrollX);
-        if (phx >= 0 && phx <= w)
+        auto transport = readModel->getTransport();
+        if (transport.isPlaying)
         {
-            painter.setPen(QPen(ThemeColors::accent(), 1));
-            painter.drawLine(phx, 0, phx, h);
+            double beat = transport.currentTimeSeconds * transport.bpm / 60.0;
+            int phx = static_cast<int>(beat * pixelsPerBeat - scrollX);
+            if (phx >= 0 && phx <= w)
+            {
+                painter.setPen(QPen(ThemeColors::accent(), 1));
+                painter.drawLine(phx, 0, phx, h);
+            }
         }
     }
 }
@@ -450,8 +445,8 @@ void NoteGridWidget::mouseReleaseEvent(QMouseEvent* event)
             if (chordStampEnabled)
             {
                 PhraseGenerator::ChordParams cp;
-                cp.scaleRoot = engine.getProjectModel().getScaleRoot();
-                cp.scaleMode = engine.getProjectModel().getScaleMode();
+                cp.scaleRoot = readModel->getScaleRoot();
+                cp.scaleMode = readModel->getScaleMode();
                 cp.lowNote = 0;
                 cp.highNote = 127;
                 cp.minVelocity = 80;
@@ -666,20 +661,4 @@ void NoteGridWidget::leaveEvent(QEvent* event)
         dragNoteIndex = -1;
         update();
     }
-}
-
-bool NoteGridWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    // Catch mouse button release anywhere in the app to reset stuck drag modes
-    if (event->type() == QEvent::MouseButtonRelease && dragMode != None)
-    {
-        // Only reset if the release is not on this widget (this widget handles its own releases)
-        if (obj != this)
-        {
-            dragMode = None;
-            dragNoteIndex = -1;
-            update();
-        }
-    }
-    return QWidget::eventFilter(obj, event);
 }

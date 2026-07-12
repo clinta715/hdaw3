@@ -138,7 +138,7 @@ TEST(ReadModel, OutOfRangeTrackReturnsDefault)
     ReadModelImpl readModel(model);
     auto track = readModel.getTrack(999);
     EXPECT_TRUE(track.name.empty());
-    EXPECT_EQ(track.index, 0);
+    EXPECT_EQ(track.index, -1);
 }
 
 TEST(ReadModel, ClipCountPerTrack)

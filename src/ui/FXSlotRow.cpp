@@ -11,6 +11,7 @@
 FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine& ae, QWidget* parent)
     : QWidget(parent), slotTree(tree), slotIndex(index), trackIndex(trackIdx), engine(ae)
 {
+    pluginService = &engine.getPluginService();
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(4, 2, 4, 2);
     mainLayout->setSpacing(2);
@@ -156,12 +157,26 @@ FXSlotRow::FXSlotRow(juce::ValueTree tree, int index, int trackIdx, AudioEngine&
         rebuildParamUI();
 }
 
+void FXSlotRow::cleanup()
+{
+    // Called from FXChainWidget::rebuildUI() before deleteLater().
+    // The engine-owned plugin instance may already be destroyed (e.g.,
+    // removeFxSlot destroys the TrackFXSlot which frees the plugin
+    // before rebuildUI runs). The plugin's destructor handles its own
+    // listener cleanup, so we only need to stop the timer and nullify
+    // our pointers — never call registeredInstance->removeListener() here.
+    if (pollTimer != nullptr)
+    {
+        pollTimer->stop();
+        pollTimer = nullptr;
+    }
+    paramListener.reset();
+    registeredInstance = nullptr;
+}
+
 FXSlotRow::~FXSlotRow()
 {
-    if (pollTimer != nullptr)
-        pollTimer->stop();
-    if (registeredInstance && paramListener)
-        registeredInstance->removeListener(paramListener.get());
+    cleanup();
 }
 
 bool FXSlotRow::eventFilter(QObject* obj, QEvent* event)
@@ -209,35 +224,34 @@ void FXSlotRow::populateTypeCombo(const QString& filter)
     typeCombo->addItem("Reverb");
     typeCombo->addItem("Delay");
 
-    auto& pluginManager = engine.getPluginManager();
-    const auto& plugInfos = pluginManager.getPlugins();
+    auto plugInfos = pluginService->getPlugins();
     if (plugInfos.empty())
         return;
 
     // Collect instrument and effect plugins separately
-    std::vector<const juce::PluginDescription*> instruments, effects;
-    for (const auto& desc : plugInfos)
+    std::vector<PluginInfo> instruments, effects;
+    for (const auto& info : plugInfos)
     {
-        if (pluginManager.isBlacklisted(desc.fileOrIdentifier))
+        if (pluginService->isBlacklisted(info.fileOrIdentifier))
             continue;
-        if (desc.isInstrument)
-            instruments.push_back(&desc);
+        if (info.isInstrument)
+            instruments.push_back(info);
         else
-            effects.push_back(&desc);
+            effects.push_back(info);
     }
 
-    auto addPlugins = [&](const std::vector<const juce::PluginDescription*>& list)
+    auto addPlugins = [&](const std::vector<PluginInfo>& list)
     {
-        for (auto* desc : list)
+        for (const auto& info : list)
         {
             QString label = QString("[%1] %2")
-                .arg(QString::fromUtf8(desc->pluginFormatName.toRawUTF8()))
-                .arg(QString::fromUtf8(desc->name.toRawUTF8()));
+                .arg(QString::fromStdString(info.format))
+                .arg(QString::fromStdString(info.name));
 
             if (!filter.isEmpty() && !label.contains(filter, Qt::CaseInsensitive))
                 continue;
 
-            QString pluginID = QString::fromUtf8(desc->fileOrIdentifier.toRawUTF8());
+            QString pluginID = QString::fromStdString(info.fileOrIdentifier);
             typeCombo->addItem(label, QVariant(pluginID));
         }
     };
@@ -273,17 +287,17 @@ void FXSlotRow::onTypeChanged(const juce::String& type)
     else
     {
         // It's a plugin — find the description
-        auto& pluginManager = engine.getPluginManager();
-        const auto& plugins = pluginManager.getPlugins();
+        auto plugins = pluginService->getPlugins();
         bool found = false;
-        for (const auto& desc : plugins)
+        auto typeStr = type.toStdString();
+        for (const auto& info : plugins)
         {
-            if (desc.fileOrIdentifier == type)
+            if (info.fileOrIdentifier == typeStr)
             {
                 slotTree.setProperty(IDs::fxType, "plugin", &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginID, desc.fileOrIdentifier, &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginFormat, desc.pluginFormatName, &engine.getProjectModel().getUndoManager());
-                slotTree.setProperty(IDs::pluginPath, desc.fileOrIdentifier, &engine.getProjectModel().getUndoManager());
+                slotTree.setProperty(IDs::pluginID, juce::String(info.fileOrIdentifier), &engine.getProjectModel().getUndoManager());
+                slotTree.setProperty(IDs::pluginFormat, juce::String(info.format), &engine.getProjectModel().getUndoManager());
+                slotTree.setProperty(IDs::pluginPath, juce::String(info.fileOrIdentifier), &engine.getProjectModel().getUndoManager());
                 found = true;
                 break;
             }

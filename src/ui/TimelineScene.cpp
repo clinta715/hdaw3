@@ -150,7 +150,7 @@ void TimelineScene::detachListener()
 ClipItem* TimelineScene::createClipItem(juce::ValueTree clipTree)
 {
     juce::String type = clipTree.getProperty(IDs::clipType).toString();
-    double bpm = engine.getTransportManager().getBPM();
+    double bpm = readModel->getTransport().bpm;
     if (type == "audio")
         return new AudioClipItem(clipTree, pixelsPerSecond, engine.getProjectPool());
     else if (type == "midi")

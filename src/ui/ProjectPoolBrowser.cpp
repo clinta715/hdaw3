@@ -39,13 +39,12 @@ void ProjectPoolBrowser::setupUI()
     browserLayout->addWidget(browserTitle);
 
     fsModel = new QFileSystemModel(this);
-    fsModel->setRootPath(QDir::homePath());
+    fsModel->setRootPath("");
     fsModel->setNameFilters({"*.wav", "*.aiff", "*.aif", "*.mp3", "*.flac", "*.ogg"});
     fsModel->setNameFilterDisables(false);
 
     fileTree = new QTreeView(browserContainer);
     fileTree->setModel(fsModel);
-    fileTree->setRootIndex(fsModel->index(QDir::homePath()));
     fileTree->setDragEnabled(true);
     fileTree->setAnimated(true);
     fileTree->setIndentation(16);
@@ -139,43 +138,25 @@ void ProjectPoolBrowser::importFile(const QString& path)
     }
 
     // Create clip on the first track
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackList.getNumChildren() > 0)
+    if (readModel->getTrackCount() > 0)
     {
-        auto firstTrack = trackList.getChild(0);
-        auto clipList = firstTrack.getChildWithName(IDs::CLIP_LIST);
-        if (!clipList.isValid())
-        {
-            clipList = juce::ValueTree(IDs::CLIP_LIST);
-            firstTrack.addChild(clipList, -1, &engine.getProjectModel().getUndoManager());
-        }
-
         // Find the next position (after the last clip)
         double startTime = 0.0;
-        for (int i = 0; i < clipList.getNumChildren(); ++i)
+        auto snap = readModel->snapshot();
+        for (const auto& clip : snap.clips)
         {
-            auto c = clipList.getChild(i);
-            double end = static_cast<double>(c.getProperty(IDs::startTime))
-                       + static_cast<double>(c.getProperty(IDs::duration));
-            startTime = (std::max)(startTime, end);
+            if (clip.trackIndex == 0)
+            {
+                double end = clip.startBeat + clip.durationBeats;
+                startTime = (std::max)(startTime, end);
+            }
         }
 
-        juce::ValueTree clip(IDs::CLIP);
-        clip.setProperty(IDs::name, fi.baseName().toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::startTime, startTime, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::duration, 4.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::offset, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::clipType, "audio", &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::sourceFile, path.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::gain, 1.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeIn, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::fadeOut, 0.0, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::looping, false, &engine.getProjectModel().getUndoManager());
-        clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), &engine.getProjectModel().getUndoManager());
-        clipList.addChild(clip, -1, &engine.getProjectModel().getUndoManager());
+        projectCmds->addAudioClip(0, startTime, 4.0,
+            path.toUtf8().constData(),
+            fi.baseName().toUtf8().constData());
 
-        // Rebuild routing to activate the clip
-        engine.getMainProcessor()->rebuildRoutingGraph();
+        audioGraphCmds->rebuildRoutingGraph();
     }
 
     emit fileImported(path);

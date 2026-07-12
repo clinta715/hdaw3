@@ -5,21 +5,22 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.5.0**. The core engine (project model, transport, routing,
-JUCE plugin hosting, internal FX) and the basic UI shell
-(track headers, timeline, mixer, piano roll, FX chain,
-automation) work end-to-end. v0.3.x added the MCP server and a
-gtest test suite. v0.4.x adds multi-clip selection, clipboard,
-markers, MIDI CC recording, MIDI channel routing, FX drag-reorder,
-status bar, zoom-to-fit, expanded preferences (audio settings,
-MIDI persistence, count-in), and a bugfix pass (11 bugs fixed in
-v0.4.1). **v0.5.0** adds full automation parameters (Volume, Pan,
-Mute as default lanes; plugin FX parameter automation via
-`TrackFXSlot` atomic cache and compound paramID scheme),
+**0.6.0**. The core engine (project model, transport, routing,
+JUCE plugin hosting, internal FX) and the UI shell (track headers,
+timeline, mixer, piano roll, FX chain, automation) work end-to-end.
+v0.3.x added the MCP server and a gtest test suite. v0.4.x added
+multi-clip selection, clipboard, markers, MIDI CC recording, MIDI
+channel routing, FX drag-reorder, status bar, zoom-to-fit, expanded
+preferences, and a bugfix pass. v0.5.0 added full automation
+parameters (Volume, Pan, Mute as default lanes; plugin FX parameter
+automation via `TrackFXSlot` atomic cache and compound paramID scheme),
 Mute automation recording, and compile-time build optimizations
-(LTO, `/MP` parallel builds, JUCE define cleanup). For the full
-list of working features and the priority-ordered roadmap, see
-`README.md`.
+(LTO, `/MP` parallel builds, JUCE define cleanup). **v0.6.0** adds
+GUI-engine decoupling via abstract command interfaces and ReadModel,
+service interfaces for plugin/MIDI discovery, automation copy-paste
+and selection model, snap persistence across editors, file browser
+drive navigation, and several bug fixes. For the full list of working
+features and the priority-ordered roadmap, see `README.md`.
 
 ## Build
 
@@ -1222,3 +1223,100 @@ take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
 **Spec / plan:**
 - `docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
 - `docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md`
+
+## GUI-Engine Decoupling (v0.6.0)
+
+The GUI layer (`src/ui/`) is decoupled from the audio engine layer
+(`src/engine/`) via four abstract command interfaces and a ReadModel.
+Widgets no longer call `engine.getProjectModel()` or
+`engine.getMainProcessor()` directly — they go through the abstract
+interfaces stored as member pointers.
+
+### Abstract Command Interfaces (`src/common/`)
+
+| Interface | Methods | Purpose |
+|-----------|---------|---------|
+| `ProjectCommands` | 53 | All mutations: tracks, clips, notes, FX, automation, markers, tempo, loop, undo, save/load |
+| `TransportCommands` | 9 | Play/stop/pause/rewind, seek, record, toggle loop |
+| `AudioGraphCommands` | 6 | Routing rebuild, FX rebuild, automation cache, modulation, toggle editor, clip take |
+| `ReadModel` | 17 | Read-only snapshots: tracks, clips, notes, transport, FX slots, automation lanes/points, markers, meters, dirty state |
+
+**Concrete implementation:** `AudioEngineCommands` (inherits all three
+command interfaces) + `ReadModelImpl` (backed by `ProjectModel`), both
+in `src/engine/`. `AudioEngine` exposes `getProjectCommands()`,
+`getTransportCommands()`, `getAudioGraphCommands()`, `getReadModel()`.
+
+**Widget pattern:** Every widget stores `ProjectCommands*`,
+`TransportCommands*`, `AudioGraphCommands*`, `ReadModel*` as members,
+initialized in the constructor from the engine. Headers
+forward-declare `AudioEngine` — no `#include "../engine/AudioEngine.h"`
+in any widget header. The .cpp files still include it for construction
+wiring; full .cpp decoupling is deferred.
+
+**When adding a new widget:**
+1. Forward-declare `class AudioEngine;` in the header.
+2. Include the four command interfaces (`ProjectCommands.h`, etc.).
+3. Store four pointer members, initialize them in the ctor body.
+4. Use `readModel->getTrackCount()`, `projectCmds->setTrackVolume(...)`,
+   etc. instead of `engine.getProjectModel().getTrackListTree()`.
+5. Include `AudioEngine.h` in the .cpp for constructor wiring only.
+
+### Service Interfaces (`src/common/`)
+
+Two additional abstract interfaces expose engine services without
+coupling the UI to concrete engine types:
+
+| Interface | Methods | Used By |
+|-----------|---------|---------|
+| `PluginService` | 11 | Plugin discovery, scanning, blacklist management |
+| `MidiService` | 3 | MIDI device enumeration, open/close |
+
+**Concrete implementation:** `PluginServiceImpl` (+ `MidiServiceImpl`)
+in `src/engine/`, delegating to `PluginManager` (+ `MidiInputManager`).
+`AudioEngine` exposes `getPluginService()`, `getMidiService()`.
+
+**Widget pattern:** Same as command interfaces — `PluginService*` member,
+initialized in the constructor. Widgets use `pluginService->getPlugins()`
+instead of `engine.getPluginManager().getPlugins()`.
+
+### Automation Clipboard (`src/engine/AutomationClipboard.h`)
+
+| Type | Detail |
+|------|--------|
+| Storage | Static global `std::vector<AutomationPointEntry>` (value-type, no heap) |
+| Copy | `copyPoints(points, paramID)` — computes `minTime` for paste offset |
+| Paste | Points are offset by `playhead - minTime`, pasted at play position |
+
+**Widget integration:** `AutomationLaneWidget::keyPressEvent` handles
+Ctrl+C (copy), Ctrl+X (cut), Ctrl+V (paste), Ctrl+D (duplicate),
+Delete (remove selected), Ctrl+A (select all), Escape (clear selection).
+The selection model uses `std::set<int> selectedPoints` with
+click-to-select, Ctrl+click-to-toggle, and selected-point highlighting
+in `paintEvent`.
+
+### Snap Persistence
+
+| Editor | QSettings Key | Default |
+|--------|--------------|---------|
+| Timeline | `snapEnabled` / `snapDivision` | true / Beat(1) |
+| Piano roll | `pianoRoll/snapEnabled` / `pianoRoll/snapDivision` | true / 1/16(4) |
+
+Timeline snap is saved in both `PreferencesDialog::onApply()` and
+`MainWindow::closeEvent`. Piano roll snap persists on every change
+via the signal handlers. On load, both editors restore their last
+snap values from QSettings.
+
+### Automation Cache Rebuild Post-Mutation
+
+`AudioEngineCommands` calls `rebuildAutomationCache(trackIndex)` after
+every automation mutation (add/remove lane, add/remove point, toggle
+enabled). The MCP tools and the recording path in
+`AudioEngine::valueTreePropertyChanged` also trigger cache rebuilds.
+Without this, automation points are stored in the ValueTree but silently
+ignored during playback until a UI interaction forces a rebuild.
+
+### Project Load — No Auto-Play
+
+`ProjectSerializer::load()` explicitly clears `isPlaying=false` and
+`position=0.0` on the transport tree after loading, preventing a
+project saved while playing from auto-starting on the next load.

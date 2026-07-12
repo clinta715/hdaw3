@@ -4,6 +4,8 @@
 #include <QRectF>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
+#include "../common/AudioGraphCommands.h"
+#include "../common/ReadModel.h"
 
 class TimelineScene;
 class ClipItem;
@@ -58,6 +60,8 @@ private:
     bool snapEnabled = true;
     SnapDivision snapDivision = Beat;
 
+    AudioGraphCommands* audioGraphCmds = nullptr;
+    ReadModel* readModel = nullptr;
     juce::UndoManager* undoManager = nullptr;
 
     DragMode dragMode = None;
