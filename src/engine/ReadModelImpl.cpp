@@ -293,6 +293,59 @@ std::vector<MarkerSnapshot> ReadModelImpl::getMarkers() const
     return result;
 }
 
+std::vector<TempoPointSnapshot> ReadModelImpl::getTempoPoints() const
+{
+    std::vector<TempoPointSnapshot> result;
+    auto tempoList = model_.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid())
+        return result;
+
+    for (int i = 0; i < tempoList.getNumChildren(); ++i)
+    {
+        auto pt = tempoList.getChild(i);
+        TempoPointSnapshot tps;
+        tps.timeSeconds = pt.getProperty(IDs::startTime, 0.0);
+        tps.bpm = pt.getProperty(IDs::tempo, 120.0);
+        result.push_back(tps);
+    }
+    return result;
+}
+
+std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int trackIndex) const
+{
+    std::vector<AutomatableParamSnapshot> result;
+    if (engine_ == nullptr) return result;
+    auto* proc = engine_->getMainProcessor();
+    if (proc == nullptr) return result;
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr) return result;
+
+    // Walk the live FX chain. Each slot's getAutomatableParams() returns the
+    // cached {name, index, automatable} triples built from the plugin's own
+    // parameter metadata (TrackFXSlot::rebuildParamCache). The slot index is
+    // preserved so callers can reconstruct the compound paramID
+    // (100 + slotIndex*100 + paramIndex) used by the automation system.
+    auto& fxChain = track->getFXChain();
+    for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
+    {
+        auto& slot = fxChain[si];
+        if (!slot || !slot->isPlugin() || slot->isBypassed())
+            continue;
+
+        const auto& params = slot->getAutomatableParams();
+        for (const auto& p : params)
+        {
+            AutomatableParamSnapshot aps;
+            aps.slotIndex = si;
+            aps.paramIndex = p.index;
+            aps.name = p.name.toStdString();
+            aps.automatable = p.automatable;
+            result.push_back(aps);
+        }
+    }
+    return result;
+}
+
 MeterSnapshot ReadModelImpl::getTrackMeter(int trackIndex) const
 {
     if (engine_ == nullptr) return {};

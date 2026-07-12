@@ -13,7 +13,7 @@
 class AudioEngine;
 #include <vector>
 
-class TrackHeaderWidget : public QWidget
+class TrackHeaderWidget : public QWidget, public juce::ValueTree::Listener
 {
     Q_OBJECT
 public:
@@ -52,12 +52,27 @@ protected:
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 
+    // -- juce::ValueTree::Listener --
+    // Registered on the project ROOT tree so the listener survives project
+    // rebuilds (createNew/load removeAllChildren would orphan a child-tree
+    // listener — see AGENTS.md). Triggers update() so the header repaints
+    // when any tracked property changes (from MCP, the mixer, automation,
+    // or this widget's own drags).
+    void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged,
+                                  const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree,
+                             juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree,
+                               juce::ValueTree& childWhichHasBeenRemoved,
+                               int indexFromWhichItWasRemoved) override;
+
 private slots:
     void updateVU();
 
 private:
     struct TrackHeader {
         int trackIndex;
+        juce::ValueTree tree;  // identity handle for listener matching + cached reads
         QRect bounds;
         QRect muteRect;
         QRect soloRect;

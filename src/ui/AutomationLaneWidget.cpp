@@ -389,54 +389,56 @@ void AutomationLaneWidget::showAddLaneMenu()
     addEntry("Pan", 2);
     addEntry("Mute", 3);
 
-    auto* mp = engine.getMainProcessor();
-    auto* rm = mp ? mp->getRoutingManager() : nullptr;
-    if (rm != nullptr)
+    // Enumerate automatable plugin params via the decoupled ReadModel
+    // accessors (getFxSlots for slot/plugin names, getAutomatableParams for
+    // the per-param name/index list). This replaces the direct walk of
+    // engine.getMainProcessor()->getRoutingManager()->getTrackNode().
+    auto fxSlots = readModel->getFxSlots(currentTrack);
+    auto params = readModel->getAutomatableParams(currentTrack);
+
+    // Group params by slotIndex so each plugin gets its own menu section.
+    for (const auto& slot : fxSlots)
     {
-        auto* track = rm->getTrackNode(currentTrack);
-        if (track != nullptr)
+        // Only plugin slots expose automatable params; internal FX (eq,
+        // reverb, etc.) are handled by dedicated track-level lanes above.
+        if (slot.fxType != "plugin" || slot.bypassed)
+            continue;
+
+        // Collect this slot's automatable params.
+        std::vector<AutomatableParamSnapshot> slotParams;
+        for (const auto& p : params)
         {
-            auto& fxChain = track->getFXChain();
-            for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
+            if (p.slotIndex == slot.slotIndex && p.automatable && p.paramIndex < 100)
+                slotParams.push_back(p);
+        }
+        if (slotParams.empty())
+            continue;
+
+        menu.addSeparator();
+
+        QString slotName = QString("Slot %1").arg(slot.slotIndex + 1);
+        if (!slot.pluginName.empty())
+            slotName += ": " + QString::fromStdString(slot.pluginName);
+        QAction* slotHeader = menu.addAction(slotName);
+        slotHeader->setEnabled(false);
+        slotHeader->setFont(f);
+
+        for (const auto& p : slotParams)
+        {
+            // The compound paramID scheme reserves 100 indices per slot,
+            // so a plugin exposing >= 100 automatable params would alias
+            // the next slot. Guard against that (p.paramIndex < 100 above)
+            // rather than silently corrupting the dispatch.
+            int compoundID = 100 + slot.slotIndex * 100 + p.paramIndex;
+            QString paramName = QString::fromStdString(p.name);
+            if (paramName.trimmed().isEmpty())
+                paramName = QString("Param %1").arg(p.paramIndex);
+            if (!existingParamIDs.contains(compoundID))
             {
-                auto& slot = fxChain[si];
-                if (!slot || !slot->isPlugin() || slot->isBypassed()) continue;
-
-                auto params = slot->getAutomatableParams();
-                if (params.empty()) continue;
-
-                menu.addSeparator();
-
-                juce::String slotName = "Slot " + juce::String(si + 1);
-                if (auto* inst = slot->getPluginInstance())
-                    slotName += ": " + inst->getName();
-                QAction* slotHeader = menu.addAction(QString::fromUtf8(slotName.toRawUTF8()));
-                slotHeader->setEnabled(false);
-                slotHeader->setFont(f);
-
-                for (const auto& p : params)
-                {
-                    // Skip output-only/meter params the plugin marks non-automatable.
-                    if (!p.automatable) continue;
-
-                    // The compound paramID scheme reserves 100 indices per slot,
-                    // so a plugin exposing >= 100 automatable params would alias
-                    // the next slot. Guard against that rather than silently
-                    // corrupting the dispatch.
-                    if (p.index >= 100) continue;
-
-                    int compoundID = 100 + si * 100 + p.index;
-                    QString paramName = QString::fromUtf8(p.name.toRawUTF8());
-                    if (paramName.trimmed().isEmpty())
-                        paramName = QString("Param %1").arg(p.index);
-                    if (!existingParamIDs.contains(compoundID))
-                    {
-                        auto* action = menu.addAction(paramName);
-                        connect(action, &QAction::triggered, this, [this, paramName, compoundID]() {
-                            addAutomationLane(paramName, compoundID);
-                        });
-                    }
-                }
+                auto* action = menu.addAction(paramName);
+                connect(action, &QAction::triggered, this, [this, paramName, compoundID]() {
+                    addAutomationLane(paramName, compoundID);
+                });
             }
         }
     }

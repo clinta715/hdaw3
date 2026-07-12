@@ -13,6 +13,8 @@
 #include <QTimer>
 #include <QInputDialog>
 #include <QColorDialog>
+#include <cmath>
+#include <algorithm>
 
 TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -42,9 +44,64 @@ TrackHeaderWidget::TrackHeaderWidget(AudioEngine& ae, QWidget* parent)
     vuTimer.start(static_cast<int>(vuUpdateInterval));
 
     rebuild();
+
+    // Attach the listener to the project ROOT tree (not the per-track child)
+    // so the listener survives project rebuilds (createNew/load removeAllChildren
+    // would orphan a child-tree listener — see AGENTS.md).
+    engine.getProjectModel().getTree().addListener(this);
 }
 
-TrackHeaderWidget::~TrackHeaderWidget() = default;
+TrackHeaderWidget::~TrackHeaderWidget()
+{
+    engine.getProjectModel().getTree().removeListener(this);
+}
+
+void TrackHeaderWidget::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged,
+                                                 const juce::Identifier& property)
+{
+    // Find the header whose track identity matches the changed node and
+    // refresh its cached display fields. juce::ValueTree equality is
+    // reference-based (same underlying SharedObject), so this is a cheap
+    // identity check, not a deep compare.
+    for (auto& h : tracks)
+    {
+        if (h.tree != treeWhosePropertyHasChanged)
+            continue;
+
+        if (property == IDs::volume)
+            h.volValue = static_cast<float>(static_cast<double>(
+                treeWhosePropertyHasChanged.getProperty(IDs::volume)));
+        else if (property == IDs::pan)
+            h.panValue = static_cast<float>(static_cast<double>(
+                treeWhosePropertyHasChanged.getProperty(IDs::pan)));
+        else if (property == IDs::isMuted)
+            h.isMuted = static_cast<bool>(treeWhosePropertyHasChanged.getProperty(IDs::isMuted));
+        else if (property == IDs::isSoloed)
+            h.isSoloed = static_cast<bool>(treeWhosePropertyHasChanged.getProperty(IDs::isSoloed));
+
+        update(h.bounds);
+        return;
+    }
+}
+
+void TrackHeaderWidget::valueTreeChildAdded(juce::ValueTree& parentTree,
+                                            juce::ValueTree& childWhichHasBeenAdded)
+{
+    // Track add/reorder changes the count and indices. Defer the rebuild to
+    // the next event-loop iteration so we don't mutate `tracks` while JUCE
+    // is still mid-callback dispatching.
+    if (parentTree.hasType(IDs::TRACK_LIST) && childWhichHasBeenAdded.hasType(IDs::TRACK))
+        QTimer::singleShot(0, this, &TrackHeaderWidget::rebuild);
+}
+
+void TrackHeaderWidget::valueTreeChildRemoved(juce::ValueTree& parentTree,
+                                              juce::ValueTree& childWhichHasBeenRemoved,
+                                              int indexFromWhichItWasRemoved)
+{
+    juce::ignoreUnused(indexFromWhichItWasRemoved);
+    if (parentTree.hasType(IDs::TRACK_LIST) && childWhichHasBeenRemoved.hasType(IDs::TRACK))
+        QTimer::singleShot(0, this, &TrackHeaderWidget::rebuild);
+}
 
 void TrackHeaderWidget::rebuild()
 {
@@ -65,12 +122,13 @@ void TrackHeaderWidget::rebuild()
         auto tree = trackList.getChild(i);
         TrackHeader h;
         h.trackIndex = i;
+        h.tree = tree;  // identity handle for the ValueTree listener
         h.volValue = tree.getProperty(IDs::volume);
         h.panValue = tree.getProperty(IDs::pan);
         h.isMuted = tree.getProperty(IDs::isMuted);
         h.isSoloed = tree.getProperty(IDs::isSoloed);
         h.nameEdit = nullptr;
-        tracks.push_back(h);
+        tracks.push_back(std::move(h));
     }
 
     setMinimumHeight(100);
@@ -103,15 +161,13 @@ double TrackHeaderWidget::getTrackHeight(int index) const
 
 void TrackHeaderWidget::updateVU()
 {
+    // readModel->getTrackMeter() is two atomic loads (no lock, no ValueTree
+    // walk) — the clean decoupled path for UI meter polling.
     for (auto& h : tracks)
     {
-        auto* track = engine.getMainProcessor()->getTrack(h.trackIndex);
-        if (track != nullptr)
-        {
-            auto& meter = track->getMeter();
-            h.vuLeft = meter.getLeftLevel();
-            h.vuRight = meter.getRightLevel();
-        }
+        auto meter = readModel->getTrackMeter(h.trackIndex);
+        h.vuLeft = meter.leftLevel;
+        h.vuRight = meter.rightLevel;
     }
     for (auto& h : tracks)
     {
@@ -261,8 +317,7 @@ void TrackHeaderWidget::setSelectedTrack(int index)
 
 QSize TrackHeaderWidget::sizeHint() const
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    int count = trackList.getNumChildren();
+    int count = readModel->getTrackCount();
     double totalH = rulerHeight;
     for (int i = 0; i < count; ++i)
         totalH += getTrackHeight(i);
@@ -282,10 +337,12 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     painter.setRenderHint(QPainter::Antialiasing);
 
     int w = width();
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    int count = trackList.getNumChildren();
+    int count = static_cast<int>(tracks.size());
 
-    if (count != static_cast<int>(tracks.size()))
+    // If the cached track count is stale vs the model, defer a rebuild.
+    // This can happen if a track add/remove raced ahead of the
+    // valueTreeChildAdded/Removed handler.
+    if (count != readModel->getTrackCount())
     {
         QTimer::singleShot(0, this, &TrackHeaderWidget::rebuild);
         return;
@@ -294,14 +351,22 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
     double trackY = rulerHeight - scrollOffset;
 
     painter.save();
-    painter.setClipRect(0, static_cast<int>(rulerHeight), w, height() - static_cast<int>(rulerHeight));
+    // Clamp the clip height so it can never go negative if the widget is
+    // momentarily sized smaller than rulerHeight during a layout pass —
+    // a negative height collapses every track row (the "tracks missing"
+    // startup symptom documented in AGENTS.md).
+    int clipH = (std::max)(0, height() - static_cast<int>(rulerHeight));
+    painter.setClipRect(0, static_cast<int>(rulerHeight), w, clipH);
 
     for (int i = 0; i < count; ++i)
     {
-        auto tree = trackList.getChild(i);
+        // Read from the cached identity handle (header.tree) rather than
+        // re-resolving getTrackListTree() on every paint — the handle is
+        // captured in rebuild() and refreshed by the ValueTree listener.
+        auto& header = headerFor(i);
+        auto tree = header.tree;
         double trackH = getTrackHeight(i);
 
-        auto& header = headerFor(i);
         const QRect& row = header.bounds;
 
         // Background
@@ -393,10 +458,12 @@ void TrackHeaderWidget::paintEvent(QPaintEvent*)
         painter.setBrush(ThemeColors::accent());
         painter.drawRoundedRect(thumb, 2, 2);
 
-        // Volume label
+        // Volume label. std::round before the cast so negative dB values
+        // don't truncate toward zero (e.g. -3.7 dB would otherwise read
+        // "-3dB" instead of "-4dB").
         painter.setPen(ThemeColors::textSecondary());
         painter.setFont(smallFont);
-        int db = static_cast<int>(20.0 * std::log10((std::max)(vol, 0.001f)));
+        int db = static_cast<int>(std::round(20.0 * std::log10((std::max)(vol, 0.001f))));
         painter.drawText(header.volRect.adjusted(2, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number(db) + "dB");
 

@@ -10,7 +10,7 @@
 
 class AudioEngine;
 
-class MixerStripWidget : public QWidget
+class MixerStripWidget : public QWidget, public juce::ValueTree::Listener
 {
     Q_OBJECT
 public:
@@ -44,6 +44,19 @@ protected:
     void leaveEvent(QEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
+    // -- juce::ValueTree::Listener --
+    // Registered on the project root tree (NOT the per-track child) so the
+    // listener survives project rebuilds (see AGENTS.md "ValueTree listener
+    // orphans after project rebuild"). Filters by identity against the
+    // watched trackTree. Cache updates drive update() via the setXxx setters.
+    void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged,
+                                  const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree,
+                             juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree,
+                               juce::ValueTree& childWhichHasBeenRemoved,
+                               int indexFromWhichItWasRemoved) override;
+
 private slots:
     void updateVU();
 
@@ -52,7 +65,7 @@ private:
 
     int trackIndex = -1;
     AudioEngine& engine;
-    ProjectCommands* projectCmds = nullptr;
+    juce::ValueTree trackTree;
     TransportCommands* transportCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;

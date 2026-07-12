@@ -27,20 +27,69 @@ MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
     connect(&vuTimer, &QTimer::timeout, this, &MixerStripWidget::updateVU);
     vuTimer.start(16);
 
-    // Read initial values from ValueTree
+    // Read initial values from ValueTree and capture the watched node.
     auto trackList = engine.getProjectModel().getTrackListTree();
     if (trackIndex < trackList.getNumChildren())
     {
-        auto tree = trackList.getChild(trackIndex);
-        name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
-        volume = tree.getProperty(IDs::volume);
-        pan = tree.getProperty(IDs::pan);
-        muted = tree.getProperty(IDs::isMuted);
-        soloed = tree.getProperty(IDs::isSoloed);
+        trackTree = trackList.getChild(trackIndex);
+        name = QString::fromUtf8(trackTree.getProperty(IDs::name).toString().toRawUTF8());
+        volume = trackTree.getProperty(IDs::volume);
+        pan = trackTree.getProperty(IDs::pan);
+        muted = trackTree.getProperty(IDs::isMuted);
+        soloed = trackTree.getProperty(IDs::isSoloed);
     }
+
+    // Attach the listener to the project ROOT tree (not the per-track child)
+    // so the listener survives project rebuilds (createNew/load removeAllChildren
+    // would orphan a child-tree listener — see AGENTS.md).
+    engine.getProjectModel().getTree().addListener(this);
 }
 
-MixerStripWidget::~MixerStripWidget() = default;
+MixerStripWidget::~MixerStripWidget()
+{
+    engine.getProjectModel().getTree().removeListener(this);
+}
+
+void MixerStripWidget::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged,
+                                                const juce::Identifier& property)
+{
+    // Only react to changes on our watched track node. juce::ValueTree equality
+    // is reference-based (same underlying SharedObject), so this filters out
+    // every other track and every non-track node.
+    if (treeWhosePropertyHasChanged != trackTree)
+        return;
+
+    if (property == IDs::name)
+        setTrackName(QString::fromUtf8(
+            treeWhosePropertyHasChanged.getProperty(IDs::name).toString().toRawUTF8()));
+    else if (property == IDs::volume)
+        setVolume(static_cast<float>(static_cast<double>(
+            treeWhosePropertyHasChanged.getProperty(IDs::volume))));
+    else if (property == IDs::pan)
+        setPan(static_cast<float>(static_cast<double>(
+            treeWhosePropertyHasChanged.getProperty(IDs::pan))));
+    else if (property == IDs::isMuted)
+        setMuted(static_cast<bool>(treeWhosePropertyHasChanged.getProperty(IDs::isMuted)));
+    else if (property == IDs::isSoloed)
+        setSoloed(static_cast<bool>(treeWhosePropertyHasChanged.getProperty(IDs::isSoloed)));
+}
+
+void MixerStripWidget::valueTreeChildAdded(juce::ValueTree& parentTree,
+                                           juce::ValueTree& childWhichHasBeenAdded)
+{
+    juce::ignoreUnused(parentTree, childWhichHasBeenAdded);
+    // Track add/remove is handled by MixerWidget::rebuild(), which tears down
+    // and reconstructs all strips. Nothing to do here; the parent owns the
+    // lifecycle and our trackTree is read-only after construction.
+}
+
+void MixerStripWidget::valueTreeChildRemoved(juce::ValueTree& parentTree,
+                                             juce::ValueTree& childWhichHasBeenRemoved,
+                                             int indexFromWhichItWasRemoved)
+{
+    juce::ignoreUnused(parentTree, childWhichHasBeenRemoved, indexFromWhichItWasRemoved);
+    // See valueTreeChildAdded — MixerWidget::rebuild() owns strip lifecycle.
+}
 
 void MixerStripWidget::resizeEvent(QResizeEvent* event)
 {
@@ -86,35 +135,26 @@ void MixerStripWidget::setSoloed(bool s) { soloed = s; update(); }
 
 void MixerStripWidget::updateVU()
 {
-    auto* track = engine.getMainProcessor()->getTrack(trackIndex);
-    if (track != nullptr)
-    {
-        auto& meter = track->getMeter();
-        float left = meter.getLeftLevel();
-        float right = meter.getRightLevel();
+    // readModel->getTrackMeter() is two atomic loads (no lock, no ValueTree
+    // walk) — the clean decoupled path for UI meter polling.
+    auto meter = readModel->getTrackMeter(trackIndex);
+    float left = meter.leftLevel;
+    float right = meter.rightLevel;
 
-        if (left > currentLeft) currentLeft = left;
-        else currentLeft *= 0.85f;
+    if (left > currentLeft) currentLeft = left;
+    else currentLeft *= 0.85f;
 
-        if (right > currentRight) currentRight = right;
-        else currentRight *= 0.85f;
+    if (right > currentRight) currentRight = right;
+    else currentRight *= 0.85f;
 
-        update();
-    }
+    update();
 }
 
 void MixerStripWidget::paintEvent(QPaintEvent*)
 {
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (trackIndex < trackList.getNumChildren())
-    {
-        auto tree = trackList.getChild(trackIndex);
-        name = QString::fromUtf8(tree.getProperty(IDs::name).toString().toRawUTF8());
-        volume = tree.getProperty(IDs::volume);
-        pan = tree.getProperty(IDs::pan);
-        muted = tree.getProperty(IDs::isMuted);
-        soloed = tree.getProperty(IDs::isSoloed);
-    }
+    // Paint reads only the cached members (name/volume/pan/muted/soloed),
+    // which are seeded in the ctor and kept current by the ValueTree listener.
+    // This avoids the "paint-during-read" anti-pattern flagged in AGENTS.md.
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -197,8 +237,9 @@ void MixerStripWidget::paintEvent(QPaintEvent*)
     painter.drawRoundedRect(QRect(faderTrackRect.x() - 2,
                                   faderTrackRect.y() + static_cast<int>(volPos), 12, 8), 2, 2);
 
-    // Volume db label
-    int db = static_cast<int>(20.0 * std::log10((std::max)(volume, 0.001f)));
+    // Volume db label. std::round before the cast so negative dB values
+    // don't truncate toward zero (e.g. -3.7 dB -> "-4dB", not "-3dB").
+    int db = static_cast<int>(std::round(20.0 * std::log10((std::max)(volume, 0.001f))));
     painter.setPen(ThemeColors::textSecondary());
     f.setPointSize(6);
     painter.setFont(f);

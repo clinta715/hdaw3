@@ -1141,18 +1141,14 @@ live in the "Hardening lessons learned" section above.
   per-clip waveform/properties editor. Adding one is a
   ~200-400-line feature, not a bug fix. (Main v0.4 candidate.)
 
-- **ValueTree listener gaps in `MixerWidget` / `FXChainWidget` /
-  `TrackHeaderWidget`.** These three widgets do not implement
-  `juce::ValueTree::Listener`. As a result, the 11
-  `rebuildAllUI()` calls in `MainWindow` (lines 659, 705, 794,
-  804, 947, 962, 976, 988, 1006, 1021, 1067, 1086) are still
-  load-bearing for TRACK add/remove/rename/duplicate. Task 14
-  (incremental rebuilds) removed the redundant
-  `rebuildAllUI()` calls that followed a single localized
-  mutation; the remaining calls cover cases the per-widget
-  listeners do not yet handle. Closing these gaps is the
-  v0.4 follow-up that unlocks the rest of the plan's stated
-  savings.
+- **ValueTree listener gaps in `MixerWidget` / `FXChainWidget`.**
+  `TrackHeaderWidget` and `MixerStripWidget` are now
+  `juce::ValueTree::Listener`s (attached to the project root tree,
+  filtering by `IDs::TRACK` identity — see the "GUI-Engine
+  Decoupling" section below). The remaining gap is `FXChainWidget`,
+  which still relies on the `rebuildAllUI()` calls in `MainWindow`
+  for FX-slot add/remove/bypass. Closing the `FXChainWidget` gap is
+  the last v0.4 follow-up here.
 
 - **`TimelineScene::valueTreeChildRemoved` ignores
   `IDs::TRACK`** (`src/ui/TimelineScene.cpp:236-241`). It only
@@ -1161,14 +1157,17 @@ live in the "Hardening lessons learned" section above.
   handle TRACK removal and remove the corresponding track row
   from the scene.
 
-- **`MixerStripWidget::paintEvent` reads model state from
-  `ValueTree` at the top** (`src/ui/MixerStripWidget.cpp:100-109`)
-  instead of via the `setXxx` setters. This paint-during-read
-  pattern bypasses the listener slots the setters implement.
-  If a future change closes the listener gap above,
-  `MixerStripWidget` will need to either implement
-  `ValueTree::Listener` or move these reads into a dedicated
-  `syncFromModel()` called from a listener slot.
+- **`MixerStripWidget::paintEvent` no longer reads model state
+  directly** (resolved). The widget is now a
+  `juce::ValueTree::Listener`; `paintEvent` reads only the cached
+  `name`/`volume`/`pan`/`muted`/`soloed` members, which are seeded in
+  the ctor and refreshed by `valueTreePropertyChanged` (filtered to
+  the strip's `trackTree` by identity). Same pattern applied to
+  `TrackHeaderWidget::paintEvent`, which reads from the per-track
+  `header.tree` handle captured in `rebuild()` instead of calling
+  `getTrackListTree()` on every paint. Both widgets attach the
+  listener to the project root tree (not the child) to survive
+  project rebuilds — see "ValueTree listener orphans" above.
 
 - **MCP server v1 follow-ups** (tracked in
   `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
@@ -1228,9 +1227,9 @@ take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
 
 The GUI layer (`src/ui/`) is decoupled from the audio engine layer
 (`src/engine/`) via four abstract command interfaces and a ReadModel.
-Widgets no longer call `engine.getProjectModel()` or
-`engine.getMainProcessor()` directly — they go through the abstract
-interfaces stored as member pointers.
+Paint paths and VU-meter timers go through `ReadModel`/command
+pointers rather than `engine.getProjectModel()` /
+`engine.getMainProcessor()` directly.
 
 ### Abstract Command Interfaces (`src/common/`)
 
@@ -1239,7 +1238,7 @@ interfaces stored as member pointers.
 | `ProjectCommands` | 53 | All mutations: tracks, clips, notes, FX, automation, markers, tempo, loop, undo, save/load |
 | `TransportCommands` | 9 | Play/stop/pause/rewind, seek, record, toggle loop |
 | `AudioGraphCommands` | 6 | Routing rebuild, FX rebuild, automation cache, modulation, toggle editor, clip take |
-| `ReadModel` | 17 | Read-only snapshots: tracks, clips, notes, transport, FX slots, automation lanes/points, markers, meters, dirty state |
+| `ReadModel` | 19 | Read-only snapshots: tracks, clips, notes, transport, FX slots, automation lanes/points, markers, tempo points, automatable params, meters, dirty state |
 
 **Concrete implementation:** `AudioEngineCommands` (inherits all three
 command interfaces) + `ReadModelImpl` (backed by `ProjectModel`), both
@@ -1260,6 +1259,35 @@ wiring; full .cpp decoupling is deferred.
 4. Use `readModel->getTrackCount()`, `projectCmds->setTrackVolume(...)`,
    etc. instead of `engine.getProjectModel().getTrackListTree()`.
 5. Include `AudioEngine.h` in the .cpp for constructor wiring only.
+
+### Decoupling progress & remaining debt (post-v0.6.0 audit)
+
+**Done — paint/timer paths migrated to `ReadModel`:**
+- `TrackHeaderWidget::paintEvent` / `sizeHint` / `updateVU` now use
+  `readModel->getTrackCount()` + cached per-track `header.tree` handles
+  + `readModel->getTrackMeter()`. The widget is a
+  `juce::ValueTree::Listener` (root tree) keeping the cache current.
+- `MixerStripWidget::paintEvent` reads only cached members (driven by a
+  `ValueTree::Listener`); `updateVU` uses `readModel->getTrackMeter()`.
+- `TimeRuler::paint` uses `readModel->getTempoPoints()`.
+- `AutomationLaneWidget::showAddLaneMenu` uses
+  `readModel->getFxSlots()` + `readModel->getAutomatableParams()`.
+
+**Remaining debt (documented, deferred):**
+- **Undo transactions in event handlers.** `ProjectCommands` has no
+  `beginTransaction()`, so ~18 widget files still call
+  `engine.getProjectModel().getUndoManager()` directly for fine-grained
+  `setProperty(..., &um)` edits. The full migration requires adding a
+  transaction API to `ProjectCommands` (the "Aggressive" decoupling
+  option). Until then, event-handler undo coupling is expected.
+- **`FXSlotRow` live plugin param polling.** `pollParamUpdates` /
+  `rebuildParamUI` walk `engine.getMainProcessor()->getTrack()->getFXChain()`
+  to read/write the live `AudioPluginInstance`. This is bidirectional
+  (read current values + `setValueNotifyingHost` writes) and already
+  decoupled from the audio thread via `ParamUpdateRing`. A proper fix
+  needs a new `PluginParamService` interface, not a `ReadModel` accessor.
+- **`MainWindow.h:15`** still `#include`s `AudioEngine.h` (the only
+  widget header to do so), blocked on all UI headers forward-declaring.
 
 ### Service Interfaces (`src/common/`)
 

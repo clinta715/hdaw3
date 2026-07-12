@@ -88,6 +88,18 @@ struct MarkerSnapshot {
     int color = 0;
 };
 
+struct TempoPointSnapshot {
+    double timeSeconds = 0.0;
+    double bpm = 120.0;
+};
+
+struct AutomatableParamSnapshot {
+    int slotIndex = 0;
+    int paramIndex = 0;
+    std::string name;
+    bool automatable = false;
+};
+
 struct MeterSnapshot {
     float leftLevel = 0.0f;
     float rightLevel = 0.0f;
@@ -111,6 +123,8 @@ public:
     virtual std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
         const std::string& laneName) const = 0;
     virtual std::vector<MarkerSnapshot> getMarkers() const = 0;
+    virtual std::vector<TempoPointSnapshot> getTempoPoints() const = 0;
+    virtual std::vector<AutomatableParamSnapshot> getAutomatableParams(int trackIndex) const = 0;
     virtual MeterSnapshot getTrackMeter(int trackIndex) const = 0;
     virtual MeterSnapshot getMasterMeter() const = 0;
     virtual bool isDirty() const = 0;

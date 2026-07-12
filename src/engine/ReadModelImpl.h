@@ -24,6 +24,8 @@ public:
     std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
         const std::string& laneName) const override;
     std::vector<MarkerSnapshot> getMarkers() const override;
+    std::vector<TempoPointSnapshot> getTempoPoints() const override;
+    std::vector<AutomatableParamSnapshot> getAutomatableParams(int trackIndex) const override;
     MeterSnapshot getTrackMeter(int trackIndex) const override;
     MeterSnapshot getMasterMeter() const override;
     bool isDirty() const override;

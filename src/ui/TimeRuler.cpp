@@ -106,28 +106,23 @@ void TimeRuler::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidge
             painter->drawText(QPointF(labelX, height - 2), loopLabel);
     }
 
-    // Draw tempo change points
-    auto tempoPoints = engine.getProjectModel().getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
-    if (tempoPoints.isValid())
+    // Draw tempo change points via the decoupled ReadModel accessor.
+    auto tempoPoints = readModel->getTempoPoints();
+    for (const auto& pt : tempoPoints)
     {
-        double currentBpm = readModel->getTransport().bpm;
-        for (int i = 0; i < tempoPoints.getNumChildren(); ++i)
-        {
-            auto pt = tempoPoints.getChild(i);
-            double ptTime = pt.getProperty(IDs::startTime);
-            double ptBpm = pt.getProperty(IDs::tempo);
-            // Skip tempo points outside the visible window.
-            if (ptTime < visLeftT - 1.0 || ptTime > visRightT + 1.0) continue;
-            double ptX = xFromTime(ptTime);
-            painter->setPen(QPen(ThemeColors::accentBright(), 2));
-            painter->drawLine(QPointF(ptX, height - 12), QPointF(ptX, height - 3));
-            painter->setPen(ThemeColors::accentBright());
-            QFont f = painter->font();
-            f.setPointSize(6);
-            painter->setFont(f);
-            painter->drawText(QPointF(ptX + 2, height - 5),
-                QString("%1").arg(static_cast<int>(ptBpm)));
-        }
+        double ptTime = pt.timeSeconds;
+        double ptBpm = pt.bpm;
+        // Skip tempo points outside the visible window.
+        if (ptTime < visLeftT - 1.0 || ptTime > visRightT + 1.0) continue;
+        double ptX = xFromTime(ptTime);
+        painter->setPen(QPen(ThemeColors::accentBright(), 2));
+        painter->drawLine(QPointF(ptX, height - 12), QPointF(ptX, height - 3));
+        painter->setPen(ThemeColors::accentBright());
+        QFont f = painter->font();
+        f.setPointSize(6);
+        painter->setFont(f);
+        painter->drawText(QPointF(ptX + 2, height - 5),
+            QString("%1").arg(static_cast<int>(ptBpm)));
     }
 
     if (!showBeats)

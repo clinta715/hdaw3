@@ -152,3 +152,60 @@ TEST(ReadModel, ClipCountPerTrack)
     auto t1 = readModel.getTrack(1);
     EXPECT_EQ(t1.clipCount, 2);
 }
+
+TEST(ReadModel, TempoPointsEmptyByDefault)
+{
+    ProjectModel model;
+    model.createDefaultProject();
+    ReadModelImpl readModel(model);
+    // The default project's createTempoPointList() adds one point, so the
+    // accessor must return exactly that.
+    auto pts = readModel.getTempoPoints();
+    ASSERT_EQ(pts.size(), 1u);
+    EXPECT_DOUBLE_EQ(pts[0].bpm, 120.0);
+}
+
+TEST(ReadModel, TempoPointsRoundTrip)
+{
+    ProjectModel model;
+    model.createDefaultProject();
+    auto projectTree = model.getTree();
+    // Replace the default tempo list with two known points.
+    auto existing = projectTree.getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (existing.isValid())
+        projectTree.removeChild(existing, nullptr);
+
+    auto tempoList = juce::ValueTree(IDs::TEMPO_POINT_LIST);
+    {
+        juce::ValueTree pt(IDs::TEMPO_POINT);
+        pt.setProperty(IDs::startTime, 0.0, nullptr);
+        pt.setProperty(IDs::tempo, 100.0, nullptr);
+        tempoList.addChild(pt, -1, nullptr);
+    }
+    {
+        juce::ValueTree pt(IDs::TEMPO_POINT);
+        pt.setProperty(IDs::startTime, 8.0, nullptr);
+        pt.setProperty(IDs::tempo, 140.0, nullptr);
+        tempoList.addChild(pt, -1, nullptr);
+    }
+    projectTree.addChild(tempoList, -1, nullptr);
+
+    ReadModelImpl readModel(model);
+    auto pts = readModel.getTempoPoints();
+    ASSERT_EQ(pts.size(), 2u);
+    EXPECT_DOUBLE_EQ(pts[0].timeSeconds, 0.0);
+    EXPECT_DOUBLE_EQ(pts[0].bpm, 100.0);
+    EXPECT_DOUBLE_EQ(pts[1].timeSeconds, 8.0);
+    EXPECT_DOUBLE_EQ(pts[1].bpm, 140.0);
+}
+
+TEST(ReadModel, AutomatableParamsEmptyWithoutEngine)
+{
+    // getAutomatableParams walks the live FX chain via the AudioEngine; with
+    // no engine attached it must return empty rather than crash.
+    ProjectModel model;
+    model.createDefaultProject();
+    ReadModelImpl readModel(model);
+    auto params = readModel.getAutomatableParams(0);
+    EXPECT_TRUE(params.empty());
+}
