@@ -16,9 +16,32 @@ ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
     setupUI();
+
+    // Restore last browsed directory
+    auto& settings = PreferencesDialog::settings();
+    currentRootDir = settings.value(PreferencesDialog::kKeyLastBrowserDir).toString();
+    if (currentRootDir.isEmpty())
+        currentRootDir = PreferencesDialog::getDefaultAudioDir();
+    if (!currentRootDir.isEmpty())
+    {
+        fsModel->setRootPath(currentRootDir);
+        fileTree->setRootIndex(fsModel->index(currentRootDir));
+    }
+
+    // Save current directory on navigation
+    connect(fileTree, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
+        if (fsModel->isDir(idx))
+        {
+            currentRootDir = fsModel->filePath(idx);
+            saveBrowsedDir();
+        }
+    });
 }
 
-ProjectPoolBrowser::~ProjectPoolBrowser() = default;
+ProjectPoolBrowser::~ProjectPoolBrowser()
+{
+    saveBrowsedDir();
+}
 
 void ProjectPoolBrowser::setupUI()
 {
@@ -83,8 +106,11 @@ void ProjectPoolBrowser::setupUI()
     addBtn = new QPushButton("Add File to Pool", poolContainer);
     connect(addBtn, &QPushButton::clicked, this, [this]() {
         auto& settings = PreferencesDialog::settings();
+        auto fileDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
+        if (fileDir.isEmpty())
+            fileDir = PreferencesDialog::getDefaultAudioDir();
         QString file = QFileDialog::getOpenFileName(this, "Import Audio",
-            settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+            fileDir,
             "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
         if (!file.isEmpty())
             importFile(file);
@@ -191,4 +217,12 @@ void ProjectPoolBrowser::refreshPool()
             }
         }
     }
+}
+
+void ProjectPoolBrowser::saveBrowsedDir() const
+{
+    if (currentRootDir.isEmpty())
+        return;
+    auto& settings = PreferencesDialog::settings();
+    settings.setValue(PreferencesDialog::kKeyLastBrowserDir, currentRootDir);
 }

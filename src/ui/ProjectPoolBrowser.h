@@ -31,6 +31,9 @@ private:
     void onFileActivated(const QModelIndex& index);
     void onPoolItemDoubleClicked(QListWidgetItem* item);
 
+    void saveBrowsedDir() const;
+    QString currentRootDir;
+
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;
     TransportCommands* transportCmds = nullptr;
