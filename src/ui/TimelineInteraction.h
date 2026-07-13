@@ -44,7 +44,7 @@ public:
     void deleteSelectedClips();
 
 private:
-    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut, RubberBand };
+    enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut, RubberBand, Duplicate };
 
     void selectClipsInRect(const QRectF& rect, bool additive);
     void startRubberBand(const QPointF& scenePos, bool additive);
@@ -77,4 +77,8 @@ private:
     bool rubberBandAdditive = false;
     QPointF rubberBandStartPos;
     QGraphicsRectItem* rubberBandRectItem = nullptr;
+
+    // Duplicate-drag state
+    QList<ClipItem*> duplicateItems;
+    bool duplicatesCreated = false;
 };

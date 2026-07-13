@@ -54,6 +54,7 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
     Qt::KeyboardModifiers mods = e->modifiers();
     bool additive = mods & Qt::ControlModifier;
     bool range = mods & Qt::ShiftModifier;
+    bool duplicate = mods & Qt::AltModifier;
 
     QGraphicsItem* item = scene->itemAt(e->scenePos(), QTransform());
     HDAW_LOG("TIPress", QString("itemAt type=%1 mods=%2").arg(item ? item->type() : -1).arg(int(mods)));
@@ -153,6 +154,23 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
             }
         }
 
+        // Default: move or duplicate (Alt+drag)
+        if (duplicate)
+        {
+            dragMode = Duplicate;
+            // Store selected clips for duplication
+            duplicateItems = getSelectedClips();
+            if (duplicateItems.isEmpty())
+            {
+                // If somehow no selection, just this clip
+                duplicateItems.append(clip);
+            }
+            duplicatesCreated = false;
+            dragStartPos = e->scenePos();
+            e->accept();
+            return true;
+        }
+
         // Default: move
         dragMode = Move;
         dragItem = clip;
@@ -220,6 +238,66 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
             dragItem->getClipTree().setProperty(IDs::startTime, newTime, undoManager);
             dragItem->setPos(newTime * pps, dragItem->pos().y());
         }
+        e->accept();
+        return true;
+    }
+    {
+        double pps = dragPPS;
+        QPointF delta = e->scenePos() - dragStartPos;
+        double timeDelta = delta.x() / pps;
+        timeDelta = snapToGrid(timeDelta);
+
+        if (!duplicatesCreated)
+        {
+            // First move: create duplicates in the ValueTree
+            auto* um = undoManager;
+            for (auto* clip : duplicateItems)
+            {
+                if (!clip) continue;
+
+                juce::ValueTree originalTree = clip->getClipTree();
+                juce::ValueTree duplicateTree = originalTree.createCopy();
+
+                double originalStart = originalTree.getProperty(IDs::startTime);
+                double newStart = originalStart + timeDelta;
+                newStart = (std::max)(0.0, newStart);
+
+                duplicateTree.setProperty(IDs::startTime, newStart, um);
+
+                auto trackTree = ProjectModel::getTrackOfClip(originalTree);
+                int trackIndex = -1;
+                if (trackTree.isValid())
+                {
+                    auto trackList = engine.getProjectModel().getTrackListTree();
+                    for (int i = 0; i < trackList.getNumChildren(); ++i)
+                        if (trackList.getChild(i) == trackTree)
+                            trackIndex = i;
+                }
+
+                if (trackIndex >= 0)
+                {
+                    auto track = engine.getProjectModel().getTrackListTree().getChild(trackIndex);
+                    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+                    if (!clipList.isValid())
+                    {
+                        clipList = juce::ValueTree(IDs::CLIP_LIST);
+                        track.addChild(clipList, -1, um);
+                    }
+                    clipList.addChild(duplicateTree, -1, um);
+                }
+            }
+            duplicatesCreated = true;
+        }
+
+        // Update positions of the duplicates visually
+        for (auto* clip : duplicateItems)
+        {
+            if (!clip) continue;
+            double originalStart = clip->getClipTree().getProperty(IDs::startTime);
+            double newStart = originalStart + timeDelta;
+            clip->setPos(newStart * pps, clip->pos().y());
+        }
+
         e->accept();
         return true;
     }
@@ -292,6 +370,8 @@ bool TimelineInteraction::handleMouseRelease(QGraphicsSceneMouseEvent* e)
     }
     if (dragMode != None)
     {
+        if (dragMode == Duplicate)
+            duplicateItems.clear();
         dragMode = None;
         dragItem = nullptr;
         return true;

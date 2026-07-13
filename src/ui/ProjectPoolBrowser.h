@@ -28,6 +28,7 @@ signals:
 
 public slots:
     void importFile(const QString& path);
+    void addToPool(const QString& path);
 
 private:
     void keyPressEvent(QKeyEvent* event) override;

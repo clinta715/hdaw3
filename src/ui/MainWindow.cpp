@@ -224,7 +224,7 @@ void MainWindow::setupMenuBar()
     renameTrackAction->setShortcut(QKeySequence(Qt::Key_F2));
 
     auto* dupTrackAction = trackMenu->addAction(tr("&Duplicate Track"), this, &MainWindow::onDuplicateTrack);
-    dupTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    // dupTrackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D)); // Conflicts with clip duplicate in TimelineView
 
     // ── View ──
     auto* viewMenu = menuBar()->addMenu(tr("&View"));
@@ -541,7 +541,7 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
     connect(timelineView, &TimelineView::rewindRequested, this, &MainWindow::onRewind);
 
-    connect(timelineView, &TimelineView::fileImported, browserPanel, &ProjectPoolBrowser::importFile);
+    connect(timelineView, &TimelineView::fileImported, browserPanel, &ProjectPoolBrowser::addToPool);
 
     connect(&timecodeTimer, &QTimer::timeout, this, &MainWindow::updateTimecode);
     timecodeTimer.start(33);

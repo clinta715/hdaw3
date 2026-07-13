@@ -231,24 +231,7 @@ void ProjectPoolBrowser::importFile(const QString& path)
     QFileInfo fi(path);
     if (!fi.exists()) return;
 
-    // Add to pool list if not already present
-    bool exists = false;
-    for (int i = 0; i < poolList->count(); ++i)
-    {
-        if (poolList->item(i)->data(Qt::UserRole).toString() == path)
-        {
-            exists = true;
-            break;
-        }
-    }
-
-    if (!exists)
-    {
-        auto* item = new QListWidgetItem(fi.fileName());
-        item->setData(Qt::UserRole, path);
-        item->setToolTip(path);
-        poolList->addItem(item);
-    }
+    addToPool(path);
 
     // Create clip on the first track
     if (readModel->getTrackCount() > 0)
@@ -273,6 +256,33 @@ void ProjectPoolBrowser::importFile(const QString& path)
     }
 
     emit fileImported(path);
+}
+
+void ProjectPoolBrowser::addToPool(const QString& path)
+{
+    if (path.isEmpty()) return;
+
+    QFileInfo fi(path);
+    if (!fi.exists()) return;
+
+    // Add to pool list if not already present
+    bool exists = false;
+    for (int i = 0; i < poolList->count(); ++i)
+    {
+        if (poolList->item(i)->data(Qt::UserRole).toString() == path)
+        {
+            exists = true;
+            break;
+        }
+    }
+
+    if (!exists)
+    {
+        auto* item = new QListWidgetItem(fi.fileName());
+        item->setData(Qt::UserRole, path);
+        item->setToolTip(path);
+        poolList->addItem(item);
+    }
 }
 
 void ProjectPoolBrowser::refreshPool()
