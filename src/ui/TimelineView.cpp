@@ -20,6 +20,7 @@
 #include <QShowEvent>
 #include "DebugLog.h"
 #include "../engine/AudioImport.h"
+#include "PreferencesDialog.h"
 
 TimelineView::TimelineView(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -937,6 +938,25 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
                                               (std::max)(0.0, timeSeconds), duration,
                                               filePath.toUtf8().constData());
     clipList.addChild(clip, -1, &model.getUndoManager());
+
+    if (reader != nullptr)
+    {
+        double bpm = HDAW::readBpmFromMetadata(reader.get());
+        if (bpm > 0.0)
+        {
+            clip.setProperty(IDs::sourceBpm, bpm, &model.getUndoManager());
+            if (PreferencesDialog::getAutoTempoMatch())
+            {
+                double projectBpm = model.getTree().getProperty(IDs::tempo, 120.0);
+                double ratio = bpm / projectBpm;
+                double sourceDur = clip.getProperty(IDs::sourceDuration, 0.0);
+                clip.setProperty(IDs::stretchMode, 1, &model.getUndoManager());
+                clip.setProperty(IDs::stretchRatio, ratio, &model.getUndoManager());
+                if (sourceDur > 0.0)
+                    clip.setProperty(IDs::duration, sourceDur * ratio, &model.getUndoManager());
+            }
+        }
+    }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
 }

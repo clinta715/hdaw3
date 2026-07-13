@@ -9,6 +9,7 @@
 #include "SendProcessor.h"
 #include "ClipSourceProcessor.h"
 #include "MidiClipProcessor.h"
+#include "StretchCache.h"
 #include "../model/ProjectModel.h"
 #include <map>
 
@@ -19,7 +20,8 @@ class RoutingManager
 public:
     RoutingManager(juce::AudioProcessorGraph& graph, ProjectModel& model,
                    juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
-                   HDAW::PluginManager* pm = nullptr);
+                   HDAW::PluginManager* pm = nullptr,
+                   StretchCache* stretchCache = nullptr);
     ~RoutingManager();
 
     void rebuildFromValueTree();
@@ -61,6 +63,7 @@ private:
     juce::AudioFormatManager& formatManager;
     HDAW::TransportManager& transportManager;
     HDAW::PluginManager* pluginManager = nullptr;
+    StretchCache* stretchCache = nullptr;
 
     double sampleRate = 44100.0;
     int blockSize = 512;

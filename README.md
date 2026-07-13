@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.7.0
+**Current version**: 0.8.0
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.7.0)
+## What works today (v0.8.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -100,9 +100,15 @@ pipeline and the rationale.
 - Plugin delay compensation (PDC) — track latency is computed
   from the FX chain and compensated automatically.
 - Audio file import (WAV, AIFF, MP3, FLAC, OGG) into a project
-  pool with thumbnail caching.
+  pool with thumbnail caching. BPM metadata extracted on import;
+  optional auto tempo-match places imported clips at the project
+  tempo.
 - MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
 - Audio export to WAV (Export dialog).
+- Pitch-preserving audio clip timestretch via SoundTouch (Manual
+  Ratio, Fit to Loop, Tempo Match modes). BPM-aware: matches
+  imported clips to project tempo; tracks project tempo changes
+  for existing tempo-matched clips.
 - Metronome with count-in/pre-roll, time signature support.
 - MIDI hardware input with device selection and persistence across
   launches.

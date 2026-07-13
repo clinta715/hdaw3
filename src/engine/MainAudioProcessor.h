@@ -24,6 +24,7 @@ public:
     void setProjectModel(ProjectModel* model) { projectModel = model; }
     void setFormatManager(juce::AudioFormatManager& fm) { formatManager = &fm; }
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager = pm; }
+    void setStretchCache(HDAW::StretchCache* sc) { stretchCache = sc; }
 
     // Track Management (delegated to RoutingManager)
     HDAW::Track* getTrack(int index) const;
@@ -86,6 +87,7 @@ private:
     ProjectModel* projectModel = nullptr;
     juce::AudioFormatManager* formatManager = nullptr;
     HDAW::PluginManager* pluginManager = nullptr;
+    HDAW::StretchCache* stretchCache = nullptr;
     std::unique_ptr<HDAW::InternalPlayHead> internalPlayHead;
 
     juce::AudioProcessorGraph graph;

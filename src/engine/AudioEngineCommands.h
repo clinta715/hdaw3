@@ -45,6 +45,13 @@ public:
     void setClipLooping(int clipId, bool looping) override;
     int duplicateClip(int clipId) override;
 
+    // ProjectCommands — audio clip timestretch
+    void setClipSourceBpm(int clipId, double bpm) override;
+    void setClipStretchMode(int clipId, int mode) override;
+    void setClipStretchRatio(int clipId, double ratio) override;
+    void tempoMatchClip(int clipId) override;
+    void fitClipToLoop(int clipId) override;
+
     // ProjectCommands — MIDI note operations
     int addNote(int clipId, int pitch, int velocity,
                 double startBeat, double durationBeats) override;

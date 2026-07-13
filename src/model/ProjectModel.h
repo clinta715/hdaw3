@@ -139,6 +139,12 @@ namespace IDs {
     DECLARE_ID(targetParamID)
     DECLARE_ID(targetClipIndex)
     DECLARE_ID(enabled)
+
+    // Audio clip timestretch
+    DECLARE_ID(sourceBpm)      // musical tempo of the source file; 0 = unknown
+    DECLARE_ID(stretchMode)    // 0=Off, 1=TempoMatch, 2=ManualRatio
+    DECLARE_ID(stretchRatio)   // time ratio vs original source (targetDuration/sourceDuration)
+    DECLARE_ID(sourceDuration) // original source length in seconds (cached at import)
     #undef DECLARE_ID
 }
 

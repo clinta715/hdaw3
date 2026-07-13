@@ -30,6 +30,11 @@ struct ClipSnapshot {
     double fadeOut = 0.0;
     bool looping = false;
     bool isMidi = false;
+    // Timestretch (audio clips only; zeroed for MIDI).
+    double sourceBpm = 0.0;      // 0 = unknown
+    int stretchMode = 0;         // 0=Off, 1=TempoMatch, 2=ManualRatio
+    double stretchRatio = 1.0;   // time ratio vs original source
+    double sourceDuration = 0.0; // original source length in seconds
 };
 
 struct NoteSnapshot {

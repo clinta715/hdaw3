@@ -56,6 +56,10 @@ ProjectSnapshot ReadModelImpl::snapshot() const
             cs.fadeOut = clipTree.getProperty(IDs::fadeOut, 0.0);
             cs.looping = clipTree.getProperty(IDs::looping, false);
             cs.isMidi = clipTree.getProperty(IDs::clipType, "audio").toString() == "midi";
+            cs.sourceBpm = clipTree.getProperty(IDs::sourceBpm, 0.0);
+            cs.stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
+            cs.stretchRatio = clipTree.getProperty(IDs::stretchRatio, 1.0);
+            cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
             snap.clips.push_back(cs);
         }
     }
@@ -120,6 +124,10 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 cs.fadeOut = clipTree.getProperty(IDs::fadeOut, 0.0);
                 cs.looping = clipTree.getProperty(IDs::looping, false);
                 cs.isMidi = clipTree.getProperty(IDs::clipType, "audio").toString() == "midi";
+                cs.sourceBpm = clipTree.getProperty(IDs::sourceBpm, 0.0);
+                cs.stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
+                cs.stretchRatio = clipTree.getProperty(IDs::stretchRatio, 1.0);
+                cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
                 return cs;
             }
         }

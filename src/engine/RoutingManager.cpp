@@ -4,8 +4,9 @@ namespace HDAW {
 
 RoutingManager::RoutingManager(juce::AudioProcessorGraph& g, ProjectModel& model,
                                juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
-                               HDAW::PluginManager* pm)
-    : graph(g), projectModel(model), formatManager(fm), transportManager(tm), pluginManager(pm)
+                               HDAW::PluginManager* pm, StretchCache* sc)
+    : graph(g), projectModel(model), formatManager(fm), transportManager(tm),
+      pluginManager(pm), stretchCache(sc)
 {
 }
 
@@ -370,6 +371,38 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setFadeIn(clipTree.getProperty(IDs::fadeIn));
             clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
             clipProc->setLooping(clipTree.getProperty(IDs::looping));
+
+            // Resolve stretch intent from the ValueTree. clipID lets the
+            // processor be identified by StretchCache; stretchRatio keys
+            // the cache lookup. If a matching rendered entry is ready,
+            // adopt it now so the realtime path reads the stretched audio
+            // from the first block. The processor retains its original
+            // preloadedData as a fallback (activeBuffer=0).
+            int cid = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+            clipProc->setClipID(cid);
+            int stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
+            double ratio = static_cast<double>(clipTree.getProperty(IDs::stretchRatio, 1.0));
+            if (stretchMode != 0 && std::abs(ratio - 1.0) > 1e-4 && stretchCache != nullptr)
+            {
+                clipProc->setStretchRatio(ratio);
+                if (sampleRate > 0.0)
+                {
+                    if (const auto* entry = stretchCache->lookup(cid, ratio, sampleRate))
+                    {
+                        clipProc->adoptStretchedBuffer(
+                            entry->data[0].get(), entry->data[1].get(),
+                            entry->length, entry->channels);
+                    }
+                    else
+                    {
+                        // Cache miss: request a render. When it completes,
+                        // AudioEngine triggers rebuildRoutingGraph, which
+                        // rebuilds this clip and adopts the buffer.
+                        stretchCache->requestRender(cid, sourcePath, ratio,
+                                                    sampleRate, formatManager);
+                    }
+                }
+            }
 
             auto node = graph.addNode(std::move(clipProc));
             audioClipNodes[{trackIndex, ci}] = node;

@@ -1,16 +1,20 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.7.0 LANGUAGES CXX)
+project(HDAW VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Qt 6 Configuration
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer Test)
 qt_standard_project_setup()
 
 # JUCE Configuration
 include(cmake/JUCEHelper.cmake)
+
+# SoundTouch (LGPL-2.1) for pitch-preserving audio timestretch.
+# Isolated behind HDAW's StretchRenderer interface (see AGENTS.md).
+include(cmake/SoundTouchHelper.cmake)
 
 # Deploy Qt DLLs alongside an executable on Windows via windeployqt.
 # Skipped silently on non-Windows or when windeployqt isn't found.
@@ -64,6 +68,8 @@ add_library(HDAW_lib STATIC
     src/engine/PluginParamServiceImpl.cpp
     src/engine/MidiServiceImpl.cpp
     src/engine/AutomationClipboard.cpp
+    src/engine/StretchRenderer.cpp
+    src/engine/StretchCache.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -99,6 +105,7 @@ target_link_libraries(HDAW_lib PUBLIC
     Qt6::Network
     Qt6::HttpServer
     clap_juce_extensions
+    HDAW::SoundTouch
 )
 
 # Enable VST3 plugin hosting (needed by PluginManager.cpp -> juce::VST3PluginFormat)

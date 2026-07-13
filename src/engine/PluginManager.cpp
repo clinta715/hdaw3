@@ -174,9 +174,9 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
             else if (scanResult.error == "Scanner timed out (30s)" ||
                      scanResult.error.startsWith("Scanner exited with code"))
             {
-                // Crash or timeout — read pedal and blacklist
                 if (pedalFile.existsAsFile())
                 {
+                    // Scanner crashed — blacklist as crash
                     auto crashedPath = pedalFile.loadFileAsString().trim();
                     if (crashedPath.isNotEmpty())
                     {
@@ -188,6 +188,15 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                             progressCb("CRASHED: " + juce::File(crashedPath).getFileName(), ++completed, 0);
                     }
                     pedalFile.deleteFile();
+                }
+                else if (scanResult.error.startsWith("Scanner exited with code"))
+                {
+                    // Scanner ran but plugin failed to load (e.g. exit code 1).
+                    // Blacklist as scan_failure to avoid re-scanning every startup.
+                    blacklistPlugin(path, "scan_failure");
+                    juce::Logger::writeToLog(
+                        "PluginManager: scan failed (isolated), blacklisted: " + path
+                        + " - " + scanResult.error);
                 }
             }
             else

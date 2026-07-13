@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.7.0**. The core engine (project model, transport, routing,
+**0.8.0**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the UI shell (track headers,
 timeline, mixer, piano roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
@@ -15,11 +15,15 @@ preferences, and a bugfix pass. v0.5.0 added full automation
 parameters (Volume, Pan, Mute as default lanes; plugin FX parameter
 automation via `TrackFXSlot` atomic cache and compound paramID scheme),
 Mute automation recording, and compile-time build optimizations
-(LTO, `/MP` parallel builds, JUCE define cleanup). **v0.7.0** adds
+(LTO, `/MP` parallel builds, JUCE define cleanup). v0.7.0 added
 GUI-engine decoupling via abstract command interfaces, ReadModel,
 PluginParamService, and PluginService/MidiService interfaces;
 automation copy-paste and selection model, snap persistence across
-editors, file browser drive navigation, and several bug fixes. For the full list of working
+editors, file browser drive navigation, and several bug fixes. **v0.8.0**
+adds pitch-preserving audio clip timestretch (SoundTouch, off-thread
+render), BPM metadata extraction on import, auto tempo-match on import,
+project-tempo tracking for existing tempo-matched clips, and fixes
+the waveform visibility dark-background issue. For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Build
@@ -204,6 +208,8 @@ contracts that future contributors should know about.
 | CLAP hosting | `src/engine/CLAPPluginInstance.h` | `CLAPPluginInstance` |
 | Recording | `src/engine/AudioRecorder.h` | `AudioRecorder` |
 | Export | `src/engine/ExportManager.h` | `ExportManager` |
+| Timestretch renderer (SoundTouch wrapper + worker thread) | `src/engine/StretchRenderer.h` | `HDAW::StretchRenderer` |
+| Timestretch cache (keyed entry store + `entryReady` signal) | `src/engine/StretchCache.h` | `HDAW::StretchCache` |
 | Composition (phrase / chord / progression generator) | `src/engine/PhraseGenerator.h` | `PhraseGenerator` |
 | UI→Audio bridge | `src/engine/SPSCBridge.h` | `SPSCBridge` |
 | Level metering | `src/engine/LevelMeter.h` | `LevelMeter` |
@@ -470,6 +476,20 @@ Set it in `setupUI`, right after constructing the QGraphicsView:
 ```cpp
 graphicsView->setAlignment(Qt::AlignTop | Qt::AlignLeft);
 ```
+
+## VST3 scan failures must be blacklisted — or they repeat every startup
+
+`PluginManager::scanAll` in `src/engine/PluginManager.cpp` finds all `.vst3` and `.clap` files, then iterates. For each file, the isolated scanner (`hdaw_plugin_scanner.exe`) is spawned. If the scanner exits with code 1 (plugin can't be instantiated by the scanner, e.g. missing dependency), the file was **not** blacklisted — so it gets scanned again on the next launch.
+
+The fix (v0.7.0+): also blacklist files when the scanner exits with a non-zero code, using reason `"scan_failure"`. This joins the existing "crash" blacklist and skips re-scanning.
+
+The relevant code path in `scanAll()` (`src/engine/PluginManager.cpp:174-198`):
+- **Exit code 0** → success, parsed JSON → `knownPluginList.addType`
+- **Exit code 1** → normal failure, pedal deleted → now blacklisted as `"scan_failure"`
+- **Exit code ≥2** → crash, pedal preserved → blacklisted as `"crash"` (existing logic)
+- **Timeout** → kill child, pedal preserved → blacklisted as `"crash"` (existing logic)
+
+If a user manually fixes the scanner/plugin setup, they can un-blacklist via `PluginManager::unblacklistPlugin` or by editing the `plugin_blacklist.xml` file in the HDAW app data directory.
 
 ## Default project should not reference non-existent sample files
 
@@ -1352,3 +1372,169 @@ ignored during playback until a UI interaction forces a rebuild.
 `ProjectSerializer::load()` explicitly clears `isPlaying=false` and
 `position=0.0` on the transport tree after loading, preventing a
 project saved while playing from auto-starting on the next load.
+
+## Audio Clip Timestretch (v0.8.0)
+
+Pitch-preserving time-stretch for audio clips, built on **SoundTouch**
+(LGPL-2.1, dynamically linked). Each audio clip carries a stretch
+*intent* in the ValueTree; a stretched copy of the source is rendered
+**off the audio thread** and adopted during the normal
+`rebuildRoutingGraph()` path, so the realtime `processBlock` stays a
+cheap 1:1 copy.
+
+### ValueTree properties (audio clips only)
+
+All on the CLIP node (`src/model/ProjectModel.h`):
+
+| ID | Type | Default | Meaning |
+|----|------|---------|---------|
+| `sourceBpm` | double | `0.0` | Musical tempo of the source file. `0` = unknown. |
+| `stretchMode` | int | `0` | `0=Off`, `1=TempoMatch`, `2=ManualRatio` |
+| `stretchRatio` | double | `1.0` | Time ratio vs. original source (`targetDuration/sourceDuration`). TempoMatch derives it; ManualRatio is user-set. |
+| `sourceDuration` | double | (set at import) | Original source length in seconds; cached so re-renders don't re-open the file. |
+
+`createAudioClip` (`ProjectModel.cpp`) seeds these defaults. **Once
+stretched, the clip's existing `duration` = `sourceDuration * stretchRatio`**
+(timeline-visible length); `offset`/`gain`/`fade` window into the
+stretched buffer exactly as before. MIDI clips are untouched.
+
+### Realtime path — the minimal change
+
+`ClipSourceProcessor` (`src/engine/ClipSourceProcessor.h`) gained:
+
+- `juce::HeapBlock<int> stretchedData[2]`, `int64_t stretchedLength`,
+  `std::atomic<int> activeBuffer{0}` (0=original, 1=stretched), `int clipID`.
+- `processBlock` does **one** `activeBuffer.load(acquire)` per block and
+  picks the read pointer/length from it. The existing read loop, gain/
+  fade envelope, and bounds/loop checks are unchanged — they just
+  operate on the selected buffer.
+
+That's the entire RT impact: **one atomic load + one pointer select**.
+No allocation, no locks, no resampling on the audio thread. The
+swap-in happens on the message thread inside `rebuildRoutingGraph()`
+(under `graphLock`, where the audio thread already emits silence).
+
+### Why stretch has no SPSC paramID
+
+Unlike volume/pan/gain/fade, stretch is **decided at graph-build time**,
+not per-sample. Changing stretchMode/ratio writes to the ValueTree; the
+`AudioEngine` CLIP-property listener
+(`src/engine/AudioEngine.cpp`, the `stretchMode || stretchRatio`
+branch) triggers `rebuildRoutingGraph()`, and `RoutingManager::
+rebuildClipsForTrack` reads the resolved ratio and either adopts a
+cached buffer or requests a background render. There is no realtime
+paramID for stretch, and none should be added — stretch is too expensive
+to apply mid-block.
+
+### Off-thread render — `StretchRenderer` + `StretchCache`
+
+`StretchRenderer` (`src/engine/StretchRenderer.{h,cpp}`) mirrors
+`ExportManager` exactly: `std::thread renderThread`,
+`std::atomic<bool> active/cancelFlag`, `std::function<void(float)>
+onProgress`, `std::function<void(const Result&)> onComplete` (both
+invoked on the worker thread). The worker decodes the source via
+`formatManager.createReaderFor` → `juce::AudioBuffer<float>`, feeds it
+through `soundtouch::SoundTouch` (`setTempo(1.0/ratio)`, pitch
+untouched), and emits two `HeapBlock<int>` matching
+`ClipSourceProcessor::preloadedData`'s int PCM format (divide-by-32768
+on read). Cancellation is cooperative (polls `cancelFlag` per block).
+
+`StretchCache` (`src/engine/StretchCache.{h,cpp}`, a `QObject` owned by
+`AudioEngine`) keys entries by `(clipID, ratio, sampleRate)`. On
+`requestRender`, if a matching ready entry exists it's a no-op;
+otherwise it spawns a render. `onComplete` (worker thread) stores the
+result, then hops to the message thread via
+`QMetaObject::invokeMethod(this, ..., Qt::QueuedConnection)` to emit
+`entryReady(clipID)`. `AudioEngine::initialize` connects that signal to
+`mainProcessor->rebuildRoutingGraph()`. The cache coalesces overlapping
+requests (one render at a time; the most recent request wins).
+
+`RoutingManager::rebuildClipsForTrack` calls `stretchCache->lookup()`
+after setting `clipID`/`stretchRatio` on the new processor; on a hit it
+calls `clipProc->adoptStretchedBuffer(...)`, on a miss it calls
+`stretchCache->requestRender(...)`. The processor falls back to its
+original `preloadedData` (`activeBuffer=0`) until the next rebuild.
+
+### Commands
+
+`ProjectCommands` gains: `setClipSourceBpm`, `setClipStretchMode`,
+`setClipStretchRatio`, `tempoMatchClip`, `fitClipToLoop`. Each writes
+the ValueTree props via the `UndoManager` (so `Ctrl+Z` rolls back) and
+keeps `duration` consistent with `sourceDuration * ratio`. `ReadModel::
+ClipSnapshot` carries `sourceBpm`/`stretchMode`/`stretchRatio`/
+`sourceDuration` for the editor to populate widgets.
+
+`fitClipToLoop(clipId)` stretches the **entire source** to span the
+current loop region (`ratio = (loopEnd-loopStart)/sourceDuration`,
+mode=ManualRatio, duration=loopLength, offset=0). No-op if the loop
+region is empty.
+
+### UI
+
+`AudioClipEditorWidget` (`src/ui/AudioClipEditorWidget.cpp`) — the
+audio-clip properties panel (bottom stack tab index 4, shown on audio-
+clip select) — gained four controls in its control bar: **Src BPM**
+spin (0–400), **Stretch** combo (Off / Tempo Match / Manual), a
+**ratio** spin (0.25–4.0, enabled only in Manual mode), and a **Fit to
+Loop** button. The existing `settingUi` guard suppresses feedback when
+populating widgets programmatically.
+
+### Build
+
+`cmake/SoundTouchHelper.cmake` fetches the SoundTouch source and
+builds it as a **shared library (DLL on Windows)** to satisfy the
+LGPL-2.1 dynamic-linking obligation cleanly. Two gotchas documented
+in the helper:
+
+1. **`CMAKE_POLICY_VERSION_MINIMUM=3.5`** must be set before
+   `FetchContent_MakeAvailable` — SoundTouch's `cmake_minimum_required`
+   predates the CMake 3.5 compatibility removal.
+2. **`SOUNDTOUCH_FLOAT_SAMPLES`** must be propagated as a PUBLIC define
+   on the `SoundTouch` target. SoundTouch's own CMakeLists sets it
+   PRIVATE, but `SAMPLETYPE` (float vs short) is part of the public ABI
+   exposed via `STTypes.h` — consumers MUST see the same sample type or
+   `putSamples`/`receiveSamples` overload resolution breaks at the
+   call site. (The fetched fork's `STTypes.h` lines 77–78 also
+   unconditionally force `SOUNDTOUCH_INTEGER_SAMPLES`; the renderer
+   declares its buffers as `soundtouch::SAMPLETYPE` so it adapts to
+   whichever path the header resolves to.)
+
+`StretchRenderer` isolates the SoundTouch dependency behind HDAW's own
+interface, so swapping to Rubber Band (paid commercial license, higher
+quality) later is a one-file change in `StretchRenderer.cpp`. The LGPL
+note: SoundTouch is dynamically linked; do not statically link it
+without revisiting the LGPL obligation.
+
+### Testing
+
+`tests/unit/engine/stretch_test.cpp` covers the renderer (ratio 2.0
+≈ doubles length; cancellation is deadlock-free), the cache
+(request → `entryReady` → `lookup` hit, via `QSignalSpy` +
+`QCoreApplication::processEvents`, never `sleep`), and the command math
+(fit-to-loop and tempo-match ratios). The test target links `Qt6::Test`
+(added to the top-level `find_package(Qt6 ... COMPONENTS ... Test)`).
+
+### Phasing
+
+- **Phase 1 (done, v0.8.0):** properties, renderer, cache, RT path,
+  commands, editor UI (Manual Ratio + Fit to Loop + Source BPM +
+  Tempo Match via the combo), tests.
+- **Phase 2 (deferred):** **Tempo-match on import** — read BPM from
+  WAV `bext`/`INFO`/ID3v2 `TBPM` metadata (first `getMetadataValues()`
+  use in the codebase) at the import/drop sites (`AudioImport.cpp`,
+  `TimelineView::handleFileDrop`), plus an `autoTempoMatchOnImport`
+  preference (default off). Infrastructure is ready; this is import-
+  path glue.
+- **Phase 3 (deferred):** **Follow project tempo** — extend the
+  `AudioEngine` project-tempo listener to iterate TempoMatch clips,
+  re-derive `stretchRatio = sourceBpm/newBpm`, and re-render.
+
+### Out of scope (noted, not built)
+
+- Realtime stretch-during-playback without rebuild (would need SPSC +
+  lock-free buffer swap; changing stretch mid-playback does a brief
+  silence blip, same as clip add today).
+- Persisting rendered buffers in the `.hdaw` file (re-rendered from
+  props on load).
+- Per-clip "preview original vs stretched" A/B UI.
+- MCP tools (`set_clip_stretch`, `fit_clip_to_loop`).

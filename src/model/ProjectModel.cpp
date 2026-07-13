@@ -201,6 +201,10 @@ juce::ValueTree ProjectModel::createAudioClip(juce::String name, double start, d
     clip.setProperty(IDs::fadeOut, 0.0, nullptr);
     clip.setProperty(IDs::looping, false, nullptr);
     clip.setProperty(IDs::color, static_cast<int>(0xFF4488CC), nullptr);
+    clip.setProperty(IDs::sourceBpm, 0.0, nullptr);
+    clip.setProperty(IDs::stretchMode, 0, nullptr);
+    clip.setProperty(IDs::stretchRatio, 1.0, nullptr);
+    clip.setProperty(IDs::sourceDuration, dur, nullptr);
     return clip;
 }
 

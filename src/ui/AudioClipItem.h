@@ -3,9 +3,10 @@
 #include "../engine/ProjectPool.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <QPixmap>
+#include <atomic>
+#include <memory>
 
-class AudioClipItem : public ClipItem,
-                       private juce::ChangeListener
+class AudioClipItem : public ClipItem
 {
 public:
     AudioClipItem(juce::ValueTree clipTree, double pixelsPerSecond, HDAW::ProjectPool& pool);
@@ -16,7 +17,6 @@ protected:
 
 private:
     void loadThumbnail();
-    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void invalidateCache();
 
     HDAW::ProjectPool& projectPool;
@@ -28,4 +28,16 @@ private:
     double cacheDuration = -1.0;
     int cacheWidth = 0;
     int cacheHeight = 0;
+
+    struct ThumbnailListener : public juce::ChangeListener
+    {
+        ThumbnailListener(AudioClipItem& owner);
+        ~ThumbnailListener() override;
+        void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+
+        AudioClipItem* item;
+        std::atomic<bool> alive{ true };
+    };
+
+    std::shared_ptr<ThumbnailListener> thumbListener;
 };

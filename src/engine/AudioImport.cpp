@@ -1,9 +1,30 @@
 #include "AudioImport.h"
+#include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 #include "../engine/ProjectPool.h"
 #include "../common/DebugLog.h"
+#include "../ui/PreferencesDialog.h"
 #include <QFileInfo>
 #include <juce_audio_formats/juce_audio_formats.h>
+
+double HDAW::readBpmFromMetadata(juce::AudioFormatReader* reader)
+{
+    if (reader == nullptr) return 0.0;
+    auto& metadata = reader->metadataValues;
+    auto keys = metadata.getAllKeys();
+    for (int i = 0; i < keys.size(); ++i)
+    {
+        auto key = keys[i];
+        if (key.toLowerCase().contains("bpm"))
+        {
+            auto val = metadata.getValue(keys[i], {}).trim();
+            double bpm = val.getDoubleValue();
+            if (bpm > 0.0 && bpm < 1000.0)
+                return bpm;
+        }
+    }
+    return 0.0;
+}
 
 bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackIdx)
 {
@@ -60,6 +81,25 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
                                               startTime, duration,
                                               path.toUtf8().constData());
     clipList.addChild(clip, -1, &model.getUndoManager());
+
+    if (reader != nullptr)
+    {
+        double bpm = readBpmFromMetadata(reader.get());
+        if (bpm > 0.0)
+        {
+            clip.setProperty(IDs::sourceBpm, bpm, &model.getUndoManager());
+            if (PreferencesDialog::getAutoTempoMatch())
+            {
+                double projectBpm = model.getTree().getProperty(IDs::tempo, 120.0);
+                double ratio = bpm / projectBpm;
+                double sourceDur = clip.getProperty(IDs::sourceDuration, 0.0);
+                clip.setProperty(IDs::stretchMode, 1, &model.getUndoManager());
+                clip.setProperty(IDs::stretchRatio, ratio, &model.getUndoManager());
+                if (sourceDur > 0.0)
+                    clip.setProperty(IDs::duration, sourceDur * ratio, &model.getUndoManager());
+            }
+        }
+    }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
     return true;

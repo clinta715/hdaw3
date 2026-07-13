@@ -18,6 +18,20 @@ void AudioEngine::initialize()
     mainProcessor->setProjectModel(&projectModel);
     mainProcessor->setFormatManager(projectPool.getFormatManager());
     mainProcessor->setPluginManager(&pluginManager);
+    mainProcessor->setStretchCache(&stretchCache);
+
+    // When a background stretch render completes, swap the stretched buffer
+    // into the playing clip via a routing graph rebuild. The signal is emitted
+    // on the message thread (StretchCache hops internally), so this slot is
+    // safe to call rebuildRoutingGraph directly. Use StretchCache (a QObject)
+    // as the connection context so Qt cleans up the connection when the cache
+    // is destroyed; mainProcessor is owned by AudioEngine and outlives it.
+    QObject::connect(&stretchCache, &HDAW::StretchCache::entryReady,
+                     &stretchCache, [this](int)
+    {
+        if (mainProcessor)
+            mainProcessor->rebuildRoutingGraph();
+    });
 
     // Setup transport
     transportManager.setBPM(projectModel.getTree().getProperty(IDs::tempo));
@@ -220,7 +234,59 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     {
         if (property == IDs::tempo)
         {
-            transportManager.setBPM(treeWhosePropertyHasChanged.getProperty(IDs::tempo));
+            double newBpm = treeWhosePropertyHasChanged.getProperty(IDs::tempo);
+            transportManager.setBPM(newBpm);
+
+            // Phase 3 — Follow project tempo: iterate all TempoMatch clips and
+            // re-derive their stretch ratios. Temporarily remove the ValueTree
+            // listener so the batch property writes don't trigger individual
+            // rebuildRoutingGraph calls; we issue one explicit rebuild at the end.
+            projectModel.getTree().removeListener(this);
+            bool anyDirty = false;
+            auto trackList = projectModel.getTrackListTree();
+            for (int t = 0; t < trackList.getNumChildren(); ++t)
+            {
+                auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                if (!clipList.isValid()) continue;
+                for (int c = 0; c < clipList.getNumChildren(); ++c)
+                {
+                    auto clip = clipList.getChild(c);
+                    if (static_cast<int>(clip.getProperty(IDs::stretchMode, 0)) != 1)
+                        continue;
+                    double sourceBpm = clip.getProperty(IDs::sourceBpm, 0.0);
+                    if (sourceBpm <= 0.0) continue;
+
+                    double ratio = sourceBpm / newBpm;
+                    double sourceDur = clip.getProperty(IDs::sourceDuration, 0.0);
+                    clip.setProperty(IDs::stretchRatio, ratio, nullptr);
+                    if (sourceDur > 0.0)
+                        clip.setProperty(IDs::duration, sourceDur * ratio, nullptr);
+                    anyDirty = true;
+                }
+            }
+            projectModel.getTree().addListener(this);
+
+            if (anyDirty && mainProcessor != nullptr)
+            {
+                // Invalidate the stretch cache for these clips so they are
+                // re-rendered with the new ratio.
+                for (int t = 0; t < trackList.getNumChildren(); ++t)
+                {
+                    auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                    if (!clipList.isValid()) continue;
+                    for (int c = 0; c < clipList.getNumChildren(); ++c)
+                    {
+                        auto clip = clipList.getChild(c);
+                        if (static_cast<int>(clip.getProperty(IDs::stretchMode, 0)) != 1)
+                            continue;
+                        if (static_cast<double>(clip.getProperty(IDs::sourceBpm, 0.0)) <= 0.0)
+                            continue;
+                        int clipId = clip.getProperty(IDs::clipID);
+                        stretchCache.invalidate(clipId);
+                    }
+                }
+                mainProcessor->rebuildRoutingGraph();
+            }
         }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TEMPO_POINT))
@@ -327,6 +393,16 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     }
                 }
             }
+        }
+        else if (property == IDs::stretchMode || property == IDs::stretchRatio)
+        {
+            // Stretch is decided at graph-build time (not RT-parametric),
+            // so we don't push an SPSC update. Instead, trigger a rebuild:
+            // RoutingManager::rebuildClipsForTrack reads the resolved ratio
+            // and either adopts a cached stretched buffer or requests a
+            // background render via StretchCache.
+            if (mainProcessor != nullptr)
+                mainProcessor->rebuildRoutingGraph();
         }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::MIDI_NOTE))

@@ -7,6 +7,7 @@
 #include "ProjectPool.h"
 #include "PluginManager.h"
 #include "MidiInputManager.h"
+#include "StretchCache.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
 #include "PluginServiceImpl.h"
@@ -33,6 +34,7 @@ public:
     HDAW::PluginManager& getPluginManager() { return pluginManager; }
     HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
+    HDAW::StretchCache& getStretchCache() { return stretchCache; }
 
     // Command interfaces (returning references for polymorphic use)
     ProjectCommands& getProjectCommands();
@@ -84,6 +86,7 @@ private:
     HDAW::ProjectPool projectPool;
     HDAW::PluginManager pluginManager;
     HDAW::MidiInputManager midiInputManager;
+    HDAW::StretchCache stretchCache;
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;

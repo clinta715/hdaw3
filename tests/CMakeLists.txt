@@ -25,6 +25,7 @@ add_executable(hdaw_tests
     unit/engine/isolated_scanner_test.cpp
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/markers_test.cpp
+    unit/engine/stretch_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
 )
@@ -32,6 +33,7 @@ add_executable(hdaw_tests
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(hdaw_tests PRIVATE
     Qt6::Core
+    Qt6::Test
     HDAW_lib
     GTest::gtest_main
 )

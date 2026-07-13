@@ -5,6 +5,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFileInfo>
+#include <QFrame>
 
 AudioClipEditorWidget::AudioClipEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -149,6 +150,55 @@ void AudioClipEditorWidget::setupUI()
     durationSpin->setFixedHeight(20);
     controlLayout->addWidget(durationSpin);
 
+    // --- Timestretch controls ---
+    auto* sep2 = new QFrame(controlBar);
+    sep2->setFrameShape(QFrame::VLine);
+    sep2->setFixedHeight(20);
+    controlLayout->addWidget(sep2);
+
+    auto* bpmLbl = new QLabel("Src BPM:", controlBar);
+    bpmLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
+    controlLayout->addWidget(bpmLbl);
+
+    sourceBpmSpin = new QDoubleSpinBox(controlBar);
+    sourceBpmSpin->setRange(0.0, 400.0);
+    sourceBpmSpin->setDecimals(1);
+    sourceBpmSpin->setSingleStep(0.5);
+    sourceBpmSpin->setValue(0.0);
+    sourceBpmSpin->setSuffix("");
+    sourceBpmSpin->setFixedWidth(56);
+    sourceBpmSpin->setFixedHeight(20);
+    sourceBpmSpin->setToolTip("Musical tempo of the source file (0 = unknown).");
+    controlLayout->addWidget(sourceBpmSpin);
+
+    auto* modeLbl = new QLabel("Stretch:", controlBar);
+    modeLbl->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
+    controlLayout->addWidget(modeLbl);
+
+    stretchModeCombo = new QComboBox(controlBar);
+    stretchModeCombo->addItem("Off", 0);
+    stretchModeCombo->addItem("Tempo Match", 1);
+    stretchModeCombo->addItem("Manual", 2);
+    stretchModeCombo->setFixedHeight(20);
+    stretchModeCombo->setToolTip("Off = no stretch. Tempo Match = follow project BPM. "
+                                  "Manual = use the ratio below.");
+    controlLayout->addWidget(stretchModeCombo);
+
+    stretchRatioSpin = new QDoubleSpinBox(controlBar);
+    stretchRatioSpin->setRange(0.25, 4.0);
+    stretchRatioSpin->setDecimals(3);
+    stretchRatioSpin->setSingleStep(0.01);
+    stretchRatioSpin->setValue(1.0);
+    stretchRatioSpin->setFixedWidth(56);
+    stretchRatioSpin->setFixedHeight(20);
+    stretchRatioSpin->setToolTip("Time stretch ratio vs. original source (>1 longer, <1 shorter).");
+    controlLayout->addWidget(stretchRatioSpin);
+
+    fitToLoopBtn = new QPushButton("Fit to Loop", controlBar);
+    fitToLoopBtn->setFixedHeight(20);
+    fitToLoopBtn->setToolTip("Stretch the entire source to span the current loop region.");
+    controlLayout->addWidget(fitToLoopBtn);
+
     mainLayout->addWidget(controlBar);
 }
 
@@ -221,6 +271,40 @@ void AudioClipEditorWidget::connectSignals()
         int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
         projectCmds->setClipDuration(clipId, std::max(0.001, val));
         waveform->update();
+    });
+
+    // --- Timestretch connections ---
+    connect(sourceBpmSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        if (settingUi || !currentClip.isValid()) return;
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->setClipSourceBpm(clipId, val);
+        // If currently tempo-matching, re-derive the ratio.
+        int mode = stretchModeCombo->currentData().toInt();
+        if (mode == 1 && val > 0.0)
+            projectCmds->tempoMatchClip(clipId);
+    });
+
+    connect(stretchModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (settingUi || !currentClip.isValid()) return;
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        int mode = stretchModeCombo->currentData().toInt();
+        projectCmds->setClipStretchMode(clipId, mode);
+        // Ratio spin enabled only in Manual mode.
+        stretchRatioSpin->setEnabled(mode == 2);
+    });
+
+    connect(stretchRatioSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        if (settingUi || !currentClip.isValid()) return;
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        // Only apply when in Manual mode — TempoMatch derives the ratio itself.
+        if (stretchModeCombo->currentData().toInt() == 2)
+            projectCmds->setClipStretchRatio(clipId, val);
+    });
+
+    connect(fitToLoopBtn, &QPushButton::clicked, this, [this] {
+        if (settingUi || !currentClip.isValid()) return;
+        int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+        projectCmds->fitClipToLoop(clipId);
     });
 }
 
@@ -295,6 +379,10 @@ void AudioClipEditorWidget::updateControls()
         loopCheck->setChecked(false);
         offsetSpin->setValue(0);
         durationSpin->setValue(1);
+        sourceBpmSpin->setValue(0.0);
+        stretchModeCombo->setCurrentIndex(0);
+        stretchRatioSpin->setValue(1.0);
+        stretchRatioSpin->setEnabled(false);
         settingUi = false;
         return;
     }
@@ -309,6 +397,15 @@ void AudioClipEditorWidget::updateControls()
     loopCheck->setChecked(currentClip.getProperty(IDs::looping));
     offsetSpin->setValue(static_cast<double>(currentClip.getProperty(IDs::offset)));
     durationSpin->setValue(static_cast<double>(currentClip.getProperty(IDs::duration)));
+
+    double srcBpm = currentClip.getProperty(IDs::sourceBpm, 0.0);
+    int mode = static_cast<int>(currentClip.getProperty(IDs::stretchMode, 0));
+    double ratio = currentClip.getProperty(IDs::stretchRatio, 1.0);
+    sourceBpmSpin->setValue(srcBpm);
+    int comboIdx = stretchModeCombo->findData(mode);
+    stretchModeCombo->setCurrentIndex(comboIdx >= 0 ? comboIdx : 0);
+    stretchRatioSpin->setValue(ratio);
+    stretchRatioSpin->setEnabled(mode == 2);
 
     settingUi = false;
 }

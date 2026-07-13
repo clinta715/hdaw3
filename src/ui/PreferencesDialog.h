@@ -32,6 +32,9 @@ public:
     static int getPianoRollSnapDivision();
     static void setPianoRollSnapDivision(int idx);
 
+    static bool getAutoTempoMatch();
+    static void setAutoTempoMatch(bool en);
+
     static QString getDefaultProjectDir();
     static QString getDefaultAudioDir();
     static QString getDefaultMidiDir();
@@ -53,6 +56,7 @@ public:
     static inline constexpr auto kKeyGridType = "gridType";
     static inline constexpr auto kKeyFollowPlayhead = "followPlayhead";
     static inline constexpr auto kKeyCountInBars = "countInBars";
+    static inline constexpr auto kKeyAutoTempoMatch = "autoTempoMatch";
     static inline constexpr auto kKeyPluginScanPaths = "pluginScanPaths";
     static inline constexpr auto kSettingsOrg = "HDAW";
     static inline constexpr auto kSettingsApp = "HDAW";
@@ -94,6 +98,8 @@ private:
     QCheckBox* mcpAutoStartCheck;
 
     QSpinBox* countInBarsSpin = nullptr;
+
+    QCheckBox* autoTempoMatchCheck = nullptr;
 
     QLineEdit* defaultProjectDirEdit = nullptr;
     QLineEdit* defaultAudioDirEdit = nullptr;

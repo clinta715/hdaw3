@@ -38,6 +38,22 @@ public:
     virtual void setClipLooping(int clipId, bool looping) = 0;
     virtual int duplicateClip(int clipId) = 0;
 
+    // Audio clip timestretch. Stretch is resolved at graph-build time and
+    // rendered off-thread via StretchCache; it is NOT RT-parametric (no
+    // SPSC update), so changing these triggers rebuildRoutingGraph.
+    // setClipSourceBpm stores the source file's musical tempo (0=unknown).
+    virtual void setClipSourceBpm(int clipId, double bpm) = 0;
+    // setClipStretchMode: 0=Off, 1=TempoMatch, 2=ManualRatio.
+    virtual void setClipStretchMode(int clipId, int mode) = 0;
+    // setClipStretchRatio sets the manual time-stretch ratio (target/source).
+    virtual void setClipStretchRatio(int clipId, double ratio) = 0;
+    // tempoMatchClip sets Mode=TempoMatch and derives the ratio from
+    // sourceBpm/projectBpm (no-op if sourceBpm<=0).
+    virtual void tempoMatchClip(int clipId) = 0;
+    // fitClipToLoop stretches the entire source to span the loop region
+    // exactly (Mode=ManualRatio, ratio=loopLength/sourceDuration).
+    virtual void fitClipToLoop(int clipId) = 0;
+
     // MIDI note operations
     virtual int addNote(int clipId, int pitch, int velocity,
                         double startBeat, double durationBeats) = 0;

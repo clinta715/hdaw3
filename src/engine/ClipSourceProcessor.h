@@ -67,6 +67,53 @@ public:
     void setFadeOut(float f) { fadeOut.store(f); }
     void setLooping(bool l) { looping.store(l); }
 
+    // Identifies this clip for StretchCache lookups. Set by RoutingManager
+    // when the processor is built/updated from the ValueTree.
+    void setClipID(int id) { clipID = id; }
+    int getClipID() const { return clipID; }
+
+    // Stretch ratio as resolved from the ValueTree by RoutingManager
+    // (1.0 = no stretch). Used by RoutingManager to key StretchCache.
+    void setStretchRatio(double r) { stretchRatio = r; }
+    double getStretchRatio() const { return stretchRatio; }
+
+    // Adopts a stretched buffer produced by StretchCache. Called on the
+    // message thread during rebuildRoutingGraph's prepareToPlay. After
+    // this call, processBlock reads from stretchedData instead of
+    // preloadedData; the original preloadedData is retained so a later
+    // cache miss (e.g. ratio reverted to 1.0) can fall back to it.
+    // `length` is per-channel sample count; `channels` is 1 or 2.
+    void adoptStretchedBuffer(const int* ch0, const int* ch1,
+                              int64_t length, int channels)
+    {
+        if (length <= 0)
+        {
+            clearStretchedBuffer();
+            return;
+        }
+        stretchedData[0].free();
+        stretchedData[1].free();
+        stretchedData[0].malloc(static_cast<size_t>(length));
+        stretchedData[1].malloc(static_cast<size_t>(length));
+        std::copy_n(ch0, static_cast<size_t>(length), stretchedData[0].get());
+        if (channels > 1 && ch1 != nullptr)
+            std::copy_n(ch1, static_cast<size_t>(length), stretchedData[1].get());
+        else
+            std::copy_n(ch0, static_cast<size_t>(length), stretchedData[1].get());
+        stretchedChannels = juce::jmax(1, channels);
+        stretchedLength = length;
+        activeBuffer.store(1, std::memory_order_release);
+    }
+
+    void clearStretchedBuffer()
+    {
+        activeBuffer.store(0, std::memory_order_release);
+        stretchedData[0].free();
+        stretchedData[1].free();
+        stretchedChannels = 0;
+        stretchedLength = 0;
+    }
+
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
         (void) samplesPerBlock;
@@ -106,6 +153,11 @@ public:
         preloadedData[1].free();
         preloadedChannels = 0;
         preloadedLength = 0;
+        stretchedData[0].free();
+        stretchedData[1].free();
+        stretchedChannels = 0;
+        stretchedLength = 0;
+        activeBuffer.store(0, std::memory_order_release);
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
@@ -148,17 +200,39 @@ public:
 
         int64_t sourceSample = offsetSamples + clipLocalSample;
 
-        // Read from preloaded in-memory buffer (RT-safe: no disk I/O on audio thread)
-        int numToRead = 0;
-        if (preloadedLength > 0 && sourceSample < preloadedLength)
+        // Select the active source buffer. The audio thread reads exactly one
+        // pointer per block; swap-in happens during rebuildRoutingGraph on the
+        // message thread, so this load is lock-free and allocation-free.
+        const int buf = activeBuffer.load(std::memory_order_acquire);
+        const int* srcPtrs[2];
+        int srcChannels;
+        int64_t srcLength;
+        if (buf == 1 && stretchedLength > 0)
         {
-            numToRead = (std::min)(numSamples, static_cast<int>(preloadedLength - sourceSample));
+            srcPtrs[0] = stretchedData[0];
+            srcPtrs[1] = stretchedData[1];
+            srcChannels = stretchedChannels;
+            srcLength = stretchedLength;
+        }
+        else
+        {
+            srcPtrs[0] = preloadedData[0];
+            srcPtrs[1] = preloadedData[1];
+            srcChannels = preloadedChannels;
+            srcLength = preloadedLength;
+        }
+
+        // Read from in-memory buffer (RT-safe: no disk I/O on audio thread)
+        int numToRead = 0;
+        if (srcLength > 0 && sourceSample < srcLength)
+        {
+            numToRead = (std::min)(numSamples, static_cast<int>(srcLength - sourceSample));
 
             buffer.clear();
             for (int ch = 0; ch < numChannels; ++ch)
             {
-                int srcCh = (preloadedChannels > 1) ? (std::min)(ch, preloadedChannels - 1) : 0;
-                const int* src = preloadedData[srcCh];
+                int srcCh = (srcChannels > 1) ? (std::min)(ch, srcChannels - 1) : 0;
+                const int* src = srcPtrs[srcCh];
                 float* dest = buffer.getWritePointer(ch);
                 for (int s = 0; s < numToRead; ++s)
                     dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
@@ -236,6 +310,18 @@ private:
     juce::HeapBlock<int> preloadedData[2];
     int preloadedChannels = 0;
     int64_t preloadedLength = 0;
+
+    // Stretched buffer produced off-thread by StretchCache and adopted
+    // during rebuildRoutingGraph. processBlock selects between this and
+    // preloadedData via `activeBuffer` (one atomic load per block).
+    juce::HeapBlock<int> stretchedData[2];
+    int stretchedChannels = 0;
+    int64_t stretchedLength = 0;
+    std::atomic<int> activeBuffer{ 0 }; // 0 = preloaded, 1 = stretched
+
+    int clipID = -1;
+    double stretchRatio = 1.0; // resolved at rebuild; not RT-parametric
+
     juce::LinearSmoothedValue<float> gainSmooth;
     double sr = 44100.0;
 

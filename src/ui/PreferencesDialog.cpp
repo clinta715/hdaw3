@@ -54,6 +54,9 @@ PreferencesDialog::PreferencesDialog(AudioEngine* engine, QWidget* parent)
     countInBarsSpin->setToolTip("0 = no count-in");
     midiLayout->addRow("Count-in:", countInBarsSpin);
 
+    autoTempoMatchCheck = new QCheckBox("Auto tempo-match imported audio", midiGroup);
+    midiLayout->addRow("Import:", autoTempoMatchCheck);
+
     mainLayout->addWidget(midiGroup);
 
     // Timeline section
@@ -349,6 +352,8 @@ void PreferencesDialog::loadSettings()
     mcpAutoStartCheck->setChecked(settings.value(kKeyMcpEnabled, false).toBool());
     if (countInBarsSpin != nullptr)
         countInBarsSpin->setValue(settings.value(kKeyCountInBars, 1).toInt());
+    if (autoTempoMatchCheck != nullptr)
+        autoTempoMatchCheck->setChecked(settings.value(kKeyAutoTempoMatch, false).toBool());
     defaultProjectDirEdit->setText(settings.value(kKeyDefaultProjectDir).toString());
     defaultAudioDirEdit->setText(settings.value(kKeyDefaultAudioDir).toString());
     defaultMidiDirEdit->setText(settings.value(kKeyDefaultMidiDir).toString());
@@ -371,6 +376,8 @@ void PreferencesDialog::onApply()
     settings.setValue(kKeyMcpEnabled, mcpAutoStartCheck->isChecked());
     if (countInBarsSpin != nullptr)
         settings.setValue(kKeyCountInBars, countInBarsSpin->value());
+    if (autoTempoMatchCheck != nullptr)
+        settings.setValue(kKeyAutoTempoMatch, autoTempoMatchCheck->isChecked());
     settings.setValue(kKeyDefaultProjectDir, defaultProjectDirEdit->text());
     settings.setValue(kKeyDefaultAudioDir, defaultAudioDirEdit->text());
     settings.setValue(kKeyDefaultMidiDir, defaultMidiDirEdit->text());
@@ -454,4 +461,16 @@ QString PreferencesDialog::getDefaultMidiDir()
 {
     auto& settings = PreferencesDialog::settings();
     return settings.value(kKeyDefaultMidiDir).toString();
+}
+
+bool PreferencesDialog::getAutoTempoMatch()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyAutoTempoMatch, false).toBool();
+}
+
+void PreferencesDialog::setAutoTempoMatch(bool en)
+{
+    auto& settings = PreferencesDialog::settings();
+    settings.setValue(kKeyAutoTempoMatch, en);
 }

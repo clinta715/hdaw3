@@ -4,6 +4,7 @@
 #include <QSlider>
 #include <QDoubleSpinBox>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QLabel>
 #include <juce_core/juce_core.h>
 #include "../model/ProjectModel.h"
@@ -56,6 +57,12 @@ private:
     QDoubleSpinBox* durationSpin;
     QLabel* sourceLabel;
     QLabel* infoLabel;
+
+    // Timestretch controls
+    QDoubleSpinBox* sourceBpmSpin;
+    QComboBox* stretchModeCombo;
+    QDoubleSpinBox* stretchRatioSpin;
+    QPushButton* fitToLoopBtn;
 
     bool settingUi = false;
     bool isLoaded = false;

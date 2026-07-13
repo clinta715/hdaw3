@@ -59,7 +59,7 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     graph.setBusesLayout(getBusesLayout());
 
     routingManager = std::make_unique<HDAW::RoutingManager>(
-        graph, *projectModel, *formatManager, *transportManager, pluginManager);
+        graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
     routingManager->rebuildFromValueTree();
 
@@ -360,7 +360,7 @@ void MainAudioProcessor::rebuildRoutingGraph()
         graph.clear();
         graph.setBusesLayout(getBusesLayout());
         routingManager = std::make_unique<HDAW::RoutingManager>(
-            graph, *projectModel, *formatManager, *transportManager, pluginManager);
+            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
         routingManager->rebuildFromValueTree();
         graph.setPlayHead(internalPlayHead.get());
         if (getSampleRate() > 0)
