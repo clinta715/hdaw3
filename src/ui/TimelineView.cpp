@@ -978,6 +978,8 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
     }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
+
+    emit fileImported(filePath);
 }
 
 // ------------------------------------------------------------------

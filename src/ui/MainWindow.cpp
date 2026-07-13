@@ -541,6 +541,8 @@ void MainWindow::connectTimelineSignals()
     connect(timelineView, &TimelineView::stopRequested, this, &MainWindow::onStop);
     connect(timelineView, &TimelineView::rewindRequested, this, &MainWindow::onRewind);
 
+    connect(timelineView, &TimelineView::fileImported, browserPanel, &ProjectPoolBrowser::importFile);
+
     connect(&timecodeTimer, &QTimer::timeout, this, &MainWindow::updateTimecode);
     timecodeTimer.start(33);
 

@@ -26,12 +26,14 @@ public:
 signals:
     void fileImported(const QString& path);
 
-protected:
+public slots:
+    void importFile(const QString& path);
+
+private:
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void setupUI();
-    void importFile(const QString& path);
     void onFileActivated(const QModelIndex& index);
     void onPoolItemDoubleClicked(QListWidgetItem* item);
     void navigateUp();

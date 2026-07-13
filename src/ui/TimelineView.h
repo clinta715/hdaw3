@@ -61,6 +61,7 @@ signals:
     void timeSigChanged(int numerator, int denominator);
     void midiDeviceChanged(const QString& deviceIdentifier);
     void defaultClipLenChanged(double beats);
+    void fileImported(const QString& path);
 
 public slots:
     void setZoom(double factor);
