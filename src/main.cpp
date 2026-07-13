@@ -105,12 +105,25 @@ int main(int argc, char *argv[])
         MainWindow window(engine);
         window.show();
 
-        // Fire scan progress dialog on next event loop iteration
-        // (after the main window has painted)
-        QTimer::singleShot(0, [&engine]() {
-            ScanProgressDialog dialog(engine.getPluginManager());
-            dialog.exec();
-        });
+        // Restore the plugin cache silently. If the cache exists and has
+        // plugins registered, skip the full scan entirely — the user can
+        // trigger a rescan via the Preferences dialog or the MCP tools.
+        engine.getPluginManager().loadCache();
+
+        if (engine.getPluginManager().getPlugins().empty())
+        {
+            // Fire scan progress dialog on next event loop iteration
+            // (after the main window has painted)
+            QTimer::singleShot(0, [&engine]() {
+                ScanProgressDialog dialog(engine.getPluginManager());
+                dialog.exec();
+            });
+        }
+        else
+        {
+            HDAW_LOG("main", QString("Plugin cache loaded: %1 plugins").arg(
+                static_cast<int>(engine.getPluginManager().getPlugins().size())));
+        }
 
         result = app.exec();
     }
