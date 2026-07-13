@@ -94,4 +94,8 @@ private:
     QCheckBox* mcpAutoStartCheck;
 
     QSpinBox* countInBarsSpin = nullptr;
+
+    QLineEdit* defaultProjectDirEdit = nullptr;
+    QLineEdit* defaultAudioDirEdit = nullptr;
+    QLineEdit* defaultMidiDirEdit = nullptr;
 };

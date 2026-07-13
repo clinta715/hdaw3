@@ -6,6 +6,8 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QGroupBox>
+#include <QDir>
+#include <QFileDialog>
 
 static const char* kKeyClipDur = "defaultClipDuration";
 static const char* kKeySnap = "snapEnabled";
@@ -93,6 +95,43 @@ PreferencesDialog::PreferencesDialog(AudioEngine* engine, QWidget* parent)
     mcpLayout->addRow("", mcpAutoStartCheck);
 
     mainLayout->addWidget(mcpGroup);
+
+    // Default Directories section
+    auto* dirsGroup = new QGroupBox("Default Directories", this);
+    auto* dirsLayout = new QFormLayout(dirsGroup);
+
+    auto makeDirRow = [&](const QString& label, QLineEdit*& edit) {
+        auto* row = new QWidget(dirsGroup);
+        auto* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        edit = new QLineEdit(row);
+        edit->setPlaceholderText("(not set)");
+        edit->setReadOnly(true);
+        rowLayout->addWidget(edit, 1);
+
+        auto* browseBtn = new QPushButton("Browse...", row);
+        auto* clearBtn = new QPushButton("Clear", row);
+        rowLayout->addWidget(browseBtn);
+        rowLayout->addWidget(clearBtn);
+
+        connect(browseBtn, &QPushButton::clicked, this, [this, edit]() {
+            QString dir = QFileDialog::getExistingDirectory(this, "Choose Directory",
+                edit->text().isEmpty() ? QDir::homePath() : edit->text());
+            if (!dir.isEmpty())
+                edit->setText(QDir::toNativeSeparators(dir));
+        });
+        connect(clearBtn, &QPushButton::clicked, this, [edit]() {
+            edit->clear();
+        });
+
+        return row;
+    };
+
+    dirsLayout->addRow("Project folder:", makeDirRow("Project folder", defaultProjectDirEdit));
+    dirsLayout->addRow("Audio samples:", makeDirRow("Audio samples", defaultAudioDirEdit));
+    dirsLayout->addRow("MIDI files:", makeDirRow("MIDI files", defaultMidiDirEdit));
+
+    mainLayout->addWidget(dirsGroup);
 
     mainLayout->addStretch();
 
@@ -310,6 +349,9 @@ void PreferencesDialog::loadSettings()
     mcpAutoStartCheck->setChecked(settings.value(kKeyMcpEnabled, false).toBool());
     if (countInBarsSpin != nullptr)
         countInBarsSpin->setValue(settings.value(kKeyCountInBars, 1).toInt());
+    defaultProjectDirEdit->setText(settings.value(kKeyDefaultProjectDir).toString());
+    defaultAudioDirEdit->setText(settings.value(kKeyDefaultAudioDir).toString());
+    defaultMidiDirEdit->setText(settings.value(kKeyDefaultMidiDir).toString());
 }
 
 void PreferencesDialog::onSave()
@@ -329,6 +371,9 @@ void PreferencesDialog::onApply()
     settings.setValue(kKeyMcpEnabled, mcpAutoStartCheck->isChecked());
     if (countInBarsSpin != nullptr)
         settings.setValue(kKeyCountInBars, countInBarsSpin->value());
+    settings.setValue(kKeyDefaultProjectDir, defaultProjectDirEdit->text());
+    settings.setValue(kKeyDefaultAudioDir, defaultAudioDirEdit->text());
+    settings.setValue(kKeyDefaultMidiDir, defaultMidiDirEdit->text());
     emit preferencesApplied();
 }
 
@@ -391,4 +436,22 @@ void PreferencesDialog::setPianoRollSnapDivision(int idx)
 {
     auto& settings = PreferencesDialog::settings();
     settings.setValue(kKeyPianoRollSnapDiv, idx);
+}
+
+QString PreferencesDialog::getDefaultProjectDir()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyDefaultProjectDir).toString();
+}
+
+QString PreferencesDialog::getDefaultAudioDir()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyDefaultAudioDir).toString();
+}
+
+QString PreferencesDialog::getDefaultMidiDir()
+{
+    auto& settings = PreferencesDialog::settings();
+    return settings.value(kKeyDefaultMidiDir).toString();
 }
