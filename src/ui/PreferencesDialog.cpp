@@ -100,7 +100,7 @@ PreferencesDialog::PreferencesDialog(AudioEngine* engine, QWidget* parent)
     auto* dirsGroup = new QGroupBox("Default Directories", this);
     auto* dirsLayout = new QFormLayout(dirsGroup);
 
-    auto makeDirRow = [&](const QString& label, QLineEdit*& edit) {
+    auto makeDirRow = [&](QLineEdit*& edit) {
         auto* row = new QWidget(dirsGroup);
         auto* rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);
@@ -127,9 +127,9 @@ PreferencesDialog::PreferencesDialog(AudioEngine* engine, QWidget* parent)
         return row;
     };
 
-    dirsLayout->addRow("Project folder:", makeDirRow("Project folder", defaultProjectDirEdit));
-    dirsLayout->addRow("Audio samples:", makeDirRow("Audio samples", defaultAudioDirEdit));
-    dirsLayout->addRow("MIDI files:", makeDirRow("MIDI files", defaultMidiDirEdit));
+    dirsLayout->addRow("Project folder:", makeDirRow(defaultProjectDirEdit));
+    dirsLayout->addRow("Audio samples:", makeDirRow(defaultAudioDirEdit));
+    dirsLayout->addRow("MIDI files:", makeDirRow(defaultMidiDirEdit));
 
     mainLayout->addWidget(dirsGroup);
 
