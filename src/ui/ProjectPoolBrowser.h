@@ -39,6 +39,7 @@ private:
     void navigateUp();
     void navigateToDir(const QString& dir);
     void updateCurrentDir(const QString& dir);
+    void goToDefaultDir(int index);
 
     void saveBrowsedDir() const;
     QString currentRootDir;

@@ -60,7 +60,7 @@ void ProjectPoolBrowser::setupUI()
     titleRow->addStretch();
     browserLayout->addLayout(titleRow);
 
-    // Navigation toolbar: Up, current path
+    // Navigation toolbar: Up, current path, quick dirs
     auto* navRow = new QHBoxLayout;
     navRow->setSpacing(4);
 
@@ -74,6 +74,16 @@ void ProjectPoolBrowser::setupUI()
     pathLabel->setStyleSheet("color: #888; font-size: 11px;");
     pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     navRow->addWidget(pathLabel, 1);
+
+    // Quick-access dirs
+    auto* dirCombo = new QComboBox(browserContainer);
+    dirCombo->setToolTip("Quick navigate to default directories");
+    dirCombo->addItem("Audio samples dir", PreferencesDialog::getDefaultAudioDir());
+    dirCombo->addItem("MIDI files dir", PreferencesDialog::getDefaultMidiDir());
+    dirCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    dirCombo->setCurrentIndex(-1);
+    connect(dirCombo, QOverload<int>::of(&QComboBox::activated), this, &ProjectPoolBrowser::goToDefaultDir);
+    navRow->addWidget(dirCombo);
 
     browserLayout->addLayout(navRow);
 
@@ -196,6 +206,16 @@ void ProjectPoolBrowser::updateCurrentDir(const QString& dir)
     fileTree->setRootIndex(fsModel->index(dir));
     pathLabel->setText(dir);
     saveBrowsedDir();
+}
+
+void ProjectPoolBrowser::goToDefaultDir(int index)
+{
+    if (index < 0) return;
+    QComboBox* combo = qobject_cast<QComboBox*>(sender());
+    if (!combo) return;
+    QString dir = combo->itemData(index).toString();
+    if (!dir.isEmpty())
+        navigateToDir(dir);
 }
 
 void ProjectPoolBrowser::onPoolItemDoubleClicked(QListWidgetItem* item)
