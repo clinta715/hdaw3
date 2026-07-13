@@ -28,14 +28,20 @@ ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
         fileTree->setRootIndex(fsModel->index(currentRootDir));
     }
 
-    // Save current directory on navigation
-    connect(fileTree, &QTreeView::clicked, this, [this](const QModelIndex& idx) {
+    // Save current directory on navigation (mouse + keyboard)
+    auto saveDirOnNav = [this](const QModelIndex& idx) {
         if (fsModel->isDir(idx))
         {
-            currentRootDir = fsModel->filePath(idx);
-            saveBrowsedDir();
+            QString newDir = fsModel->filePath(idx);
+            if (newDir != currentRootDir)
+            {
+                currentRootDir = newDir;
+                saveBrowsedDir();
+            }
         }
-    });
+    };
+    connect(fileTree, &QTreeView::clicked, this, saveDirOnNav);
+    connect(fileTree, &QTreeView::activated, this, saveDirOnNav);
 }
 
 ProjectPoolBrowser::~ProjectPoolBrowser()
