@@ -756,8 +756,11 @@ void MainWindow::onOpen()
     if (!checkSaveBeforeAction()) return;
 
     auto& settings = PreferencesDialog::settings();
+    auto openDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
+    if (openDir.isEmpty())
+        openDir = PreferencesDialog::getDefaultProjectDir();
     auto path = QFileDialog::getOpenFileName(this, "Open Project",
-        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        openDir,
         "HDAW Projects (*.hdaw)");
     if (path.isEmpty()) return;
 
@@ -856,8 +859,11 @@ bool MainWindow::onSave()
 void MainWindow::onSaveAs()
 {
     auto& settings = PreferencesDialog::settings();
+    auto saveDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
+    if (saveDir.isEmpty())
+        saveDir = PreferencesDialog::getDefaultProjectDir();
     auto path = QFileDialog::getSaveFileName(this, "Save Project As",
-        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        saveDir,
         "HDAW Projects (*.hdaw)");
     if (path.isEmpty()) return;
 
@@ -1120,8 +1126,11 @@ int MainWindow::promptForImportTrack(QWidget* parent, AudioEngine& eng, const QS
 void MainWindow::onImportAudio()
 {
     auto& settings = PreferencesDialog::settings();
+    auto audioDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
+    if (audioDir.isEmpty())
+        audioDir = PreferencesDialog::getDefaultAudioDir();
     auto path = QFileDialog::getOpenFileName(this, "Import Audio",
-        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        audioDir,
         "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
     if (path.isEmpty()) return;
 
@@ -1138,8 +1147,11 @@ void MainWindow::onImportAudio()
 void MainWindow::onImportMIDI()
 {
     auto& settings = PreferencesDialog::settings();
+    auto midiDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
+    if (midiDir.isEmpty())
+        midiDir = PreferencesDialog::getDefaultMidiDir();
     auto path = QFileDialog::getOpenFileName(this, "Import MIDI",
-        settings.value(PreferencesDialog::kKeyLastProjectDir).toString(),
+        midiDir,
         "MIDI Files (*.mid *.midi)");
     if (path.isEmpty()) return;
 
