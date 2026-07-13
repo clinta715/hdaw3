@@ -5,6 +5,12 @@
 AudioClipItem::AudioClipItem(juce::ValueTree tree, double pps, HDAW::ProjectPool& pool)
     : ClipItem(tree, pps), projectPool(pool)
 {
+    // Don't use DeviceCoordinateCache: the thumbnail loads asynchronously and
+    // fires changeListenerCallback to update the waveform. DeviceCoordinateCache
+    // can silently swallow content-only updates (no geometry change), leaving
+    // the cached pixmap stale. AudioClipItem already maintains its own waveform
+    // cache (cachedWaveform QPixmap), so the performance hit is minimal.
+    setCacheMode(NoCache);
     loadThumbnail();
 }
 
