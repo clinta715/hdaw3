@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include <QTimer>
+#include <QIcon>
 #include "ui/MainWindow.h"
 #include "ui/ScanProgressDialog.h"
 #include "ui/Theme.h"
@@ -89,6 +90,7 @@ int main(int argc, char *argv[])
     }
 
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(":/app.ico"));
 
     if (noMcp) {
         app.setProperty("hdaw.noMcp", true);

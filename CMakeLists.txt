@@ -193,6 +193,8 @@ add_executable(HDAW
     src/ui/ScanProgressDialog.cpp
     src/ui/PreferencesDialog.h
     src/ui/PreferencesDialog.cpp
+    src/resources/resources.rc
+    src/resources/resources.qrc
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp
     src/engine/BusProcessorBase.h
