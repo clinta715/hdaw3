@@ -32,9 +32,17 @@ public:
     static int getPianoRollSnapDivision();
     static void setPianoRollSnapDivision(int idx);
 
+    static QString getDefaultProjectDir();
+    static QString getDefaultAudioDir();
+    static QString getDefaultMidiDir();
+
     static inline constexpr auto kKeyLastProjectDir = "lastProjectDirectory";
     static inline constexpr auto kKeyLastExportDir = "lastExportDirectory";
     static inline constexpr auto kKeyRecentProjects = "recentProjects";
+    static inline constexpr auto kKeyDefaultProjectDir = "defaultProjectDirectory";
+    static inline constexpr auto kKeyDefaultAudioDir = "defaultAudioDirectory";
+    static inline constexpr auto kKeyDefaultMidiDir = "defaultMidiDirectory";
+    static inline constexpr auto kKeyLastBrowserDir = "lastBrowserDirectory";
     static inline constexpr auto kKeyWindowGeometry = "windowGeometry";
     static inline constexpr auto kKeyWindowState = "windowState";
     static inline constexpr auto kKeyHorizontalSplitter = "horizontalSplitter";
