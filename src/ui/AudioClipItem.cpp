@@ -75,7 +75,7 @@ void AudioClipItem::paintContent(QPainter& painter, const QRectF& contentRect)
 {
     if (!thumbnail || thumbnail->getTotalLength() <= 0)
     {
-        painter.fillRect(contentRect, QColor(255, 255, 255, 10));
+        painter.fillRect(contentRect, QColor(255, 255, 255, 40));
         return;
     }
 

@@ -5,6 +5,7 @@
 #include <QFileSystemModel>
 #include <QSplitter>
 #include <QPushButton>
+#include <QLabel>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -25,11 +26,17 @@ public:
 signals:
     void fileImported(const QString& path);
 
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
+
 private:
     void setupUI();
     void importFile(const QString& path);
     void onFileActivated(const QModelIndex& index);
     void onPoolItemDoubleClicked(QListWidgetItem* item);
+    void navigateUp();
+    void navigateToDir(const QString& dir);
+    void updateCurrentDir(const QString& dir);
 
     void saveBrowsedDir() const;
     QString currentRootDir;
@@ -45,4 +52,5 @@ private:
     QListWidget* poolList;
     QSplitter* splitter;
     QPushButton* addBtn;
+    QLabel* pathLabel;
 };

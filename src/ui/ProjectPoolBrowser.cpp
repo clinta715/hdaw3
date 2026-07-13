@@ -2,11 +2,15 @@
 #include "../engine/AudioEngine.h"
 #include "PreferencesDialog.h"
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QSettings>
 #include <QMessageBox>
+#include <QDir>
+#include <QKeyEvent>
+#include <QStyle>
 
 ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -17,31 +21,16 @@ ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     readModel = &engine.getReadModel();
     setupUI();
 
-    // Restore last browsed directory
+    // Restore last browsed directory; fallback chain: saved → default → home
     auto& settings = PreferencesDialog::settings();
     currentRootDir = settings.value(PreferencesDialog::kKeyLastBrowserDir).toString();
     if (currentRootDir.isEmpty())
         currentRootDir = PreferencesDialog::getDefaultAudioDir();
-    if (!currentRootDir.isEmpty())
-    {
-        fsModel->setRootPath(currentRootDir);
-        fileTree->setRootIndex(fsModel->index(currentRootDir));
-    }
+    if (currentRootDir.isEmpty())
+        currentRootDir = QDir::homePath();
 
-    // Save current directory on navigation (mouse + keyboard)
-    auto saveDirOnNav = [this](const QModelIndex& idx) {
-        if (fsModel->isDir(idx))
-        {
-            QString newDir = fsModel->filePath(idx);
-            if (newDir != currentRootDir)
-            {
-                currentRootDir = newDir;
-                saveBrowsedDir();
-            }
-        }
-    };
-    connect(fileTree, &QTreeView::clicked, this, saveDirOnNav);
-    connect(fileTree, &QTreeView::activated, this, saveDirOnNav);
+    if (!currentRootDir.isEmpty())
+        navigateToDir(currentRootDir);
 }
 
 ProjectPoolBrowser::~ProjectPoolBrowser()
@@ -64,8 +53,29 @@ void ProjectPoolBrowser::setupUI()
     browserLayout->setContentsMargins(4, 4, 4, 4);
     browserLayout->setSpacing(2);
 
+    // Title row with path label
+    auto* titleRow = new QHBoxLayout;
     auto* browserTitle = new QLabel("File Browser", browserContainer);
-    browserLayout->addWidget(browserTitle);
+    titleRow->addWidget(browserTitle);
+    titleRow->addStretch();
+    browserLayout->addLayout(titleRow);
+
+    // Navigation toolbar: Up, current path
+    auto* navRow = new QHBoxLayout;
+    navRow->setSpacing(4);
+
+    auto* upBtn = new QPushButton("\xe2\x86\x91 Up", browserContainer);
+    upBtn->setFixedWidth(60);
+    upBtn->setToolTip("Go to parent directory (Backspace)");
+    connect(upBtn, &QPushButton::clicked, this, &ProjectPoolBrowser::navigateUp);
+    navRow->addWidget(upBtn);
+
+    pathLabel = new QLabel(browserContainer);
+    pathLabel->setStyleSheet("color: #888; font-size: 11px;");
+    pathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    navRow->addWidget(pathLabel, 1);
+
+    browserLayout->addLayout(navRow);
 
     fsModel = new QFileSystemModel(this);
     fsModel->setRootPath("");
@@ -83,6 +93,7 @@ void ProjectPoolBrowser::setupUI()
     fileTree->setColumnHidden(3, true);
     fileTree->header()->setStretchLastSection(false);
     fileTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    fileTree->setFocusPolicy(Qt::StrongFocus);
 
     connect(fileTree, &QTreeView::activated, this, &ProjectPoolBrowser::onFileActivated);
     connect(fileTree, &QTreeView::doubleClicked, this, &ProjectPoolBrowser::onFileActivated);
@@ -115,6 +126,8 @@ void ProjectPoolBrowser::setupUI()
         auto fileDir = settings.value(PreferencesDialog::kKeyLastProjectDir).toString();
         if (fileDir.isEmpty())
             fileDir = PreferencesDialog::getDefaultAudioDir();
+        if (fileDir.isEmpty())
+            fileDir = QDir::homePath();
         QString file = QFileDialog::getOpenFileName(this, "Import Audio",
             fileDir,
             "Audio Files (*.wav *.aiff *.aif *.mp3 *.flac *.ogg)");
@@ -128,13 +141,61 @@ void ProjectPoolBrowser::setupUI()
     layout->addWidget(splitter, 1);
 }
 
+void ProjectPoolBrowser::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Backspace)
+    {
+        navigateUp();
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
+}
+
 void ProjectPoolBrowser::onFileActivated(const QModelIndex& index)
 {
-    if (!fsModel->isDir(index))
+    if (fsModel->isDir(index))
+    {
+        // Enter the directory
+        QString dir = fsModel->filePath(index);
+        navigateToDir(dir);
+    }
+    else
     {
         QString path = fsModel->filePath(index);
         importFile(path);
     }
+}
+
+void ProjectPoolBrowser::navigateUp()
+{
+    QDir dir(currentRootDir);
+    if (dir.isRoot())
+        return;
+    QString parent = dir.absolutePath();
+    QDir parentDir(parent);
+    if (parentDir.cdUp())
+    {
+        QString newDir = parentDir.absolutePath();
+        if (!newDir.isEmpty() && newDir != currentRootDir)
+            navigateToDir(newDir);
+    }
+}
+
+void ProjectPoolBrowser::navigateToDir(const QString& dir)
+{
+    if (dir.isEmpty() || dir == currentRootDir)
+        return;
+    updateCurrentDir(dir);
+}
+
+void ProjectPoolBrowser::updateCurrentDir(const QString& dir)
+{
+    currentRootDir = dir;
+    fsModel->setRootPath(dir);
+    fileTree->setRootIndex(fsModel->index(dir));
+    pathLabel->setText(dir);
+    saveBrowsedDir();
 }
 
 void ProjectPoolBrowser::onPoolItemDoubleClicked(QListWidgetItem* item)
