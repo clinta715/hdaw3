@@ -18,7 +18,8 @@ LoopMarker::~LoopMarker() = default;
 
 QRectF LoopMarker::boundingRect() const
 {
-    return QRectF(-markerWidth, -markerHeight, markerWidth * 2, markerHeight + 8);
+    return QRectF(-markerWidth - hitMargin, -markerHeight - hitMargin,
+                  (markerWidth + hitMargin) * 2, markerHeight + 8 + hitMargin * 2);
 }
 
 void LoopMarker::paint(QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*)
@@ -62,8 +63,7 @@ void LoopMarker::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     if (!dragging) return;
 
-    double x = event->scenePos().x();
-    double t = ruler.mapFromScene(QPointF(x, 0)).x();
+    double t = ruler.mapFromScene(event->scenePos()).x();
     double seconds = t / ruler.getPixelsPerSecond();
     seconds = (std::max)(0.0, seconds);
 

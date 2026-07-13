@@ -21,6 +21,7 @@ public:
 
     static constexpr double markerWidth = 14.0;
     static constexpr double markerHeight = 22.0;
+    static constexpr double hitMargin = 6.0; // extra clickable margin
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
