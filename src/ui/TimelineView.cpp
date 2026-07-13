@@ -629,6 +629,12 @@ void TimelineView::handleContextMenu(QContextMenuEvent* event)
 
 void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos)
 {
+    // Select the right-clicked clip so that clipboard/duplicate actions work
+    if (interaction != nullptr)
+    {
+        interaction->clearSelection();
+        clip->setSelected(true);
+    }
     QMenu menu;
 
     auto clipTree = clip->getClipTree();
