@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "hdaw": {
-      "command": "D:\\pdf\\roo projects\\hdaw3\\build\\Debug\\HDAW.exe",
-      "args": ["--mcp-stdio"]
-    }
-  }
-}
