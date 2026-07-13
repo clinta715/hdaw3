@@ -161,6 +161,25 @@ void TimelineView::connectSignals()
     });
 
     connect(toolbar, &TimelineToolbar::zoomInClicked, this, &TimelineView::zoomIn);
+    // Push the toolbar's current (saved-from-Preferences) state into the
+    // interaction.  The toolbar blocks signals during its own setSnap/setSnapDivision
+    // (called from MainWindow ctor), so the lambdas above never fire on startup —
+    // without this push the interaction would always use its compile-time defaults.
+    interaction->setSnapEnabled(toolbar->isSnapEnabled());
+    {
+        int idx = toolbar->getSnapDivisionIndex();
+        static const TimelineInteraction::SnapDivision map[] = {
+            TimelineInteraction::Bar,
+            TimelineInteraction::Beat,
+            TimelineInteraction::Beat,
+            TimelineInteraction::Eighth,
+            TimelineInteraction::Sixteenth,
+            TimelineInteraction::Off
+        };
+        if (idx >= 0 && idx < 6)
+            interaction->setSnapDivision(map[idx]);
+    }
+
     connect(toolbar, &TimelineToolbar::zoomOutClicked, this, &TimelineView::zoomOut);
     connect(toolbar, static_cast<void (TimelineToolbar::*)(bool)>(&TimelineToolbar::zoomFitClicked),
             this, [this](bool fitAll) {
