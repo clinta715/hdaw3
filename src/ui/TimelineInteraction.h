@@ -46,7 +46,6 @@ public:
 private:
     enum DragMode { None, Move, TrimLeft, TrimRight, FadeIn, FadeOut, RubberBand, Duplicate };
 
-    void selectClipsInRect(const QRectF& rect, bool additive);
     void startRubberBand(const QPointF& scenePos, bool additive);
     void updateRubberBand(const QPointF& scenePos);
     void endRubberBand();

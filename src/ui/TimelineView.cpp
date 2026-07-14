@@ -865,10 +865,7 @@ void TimelineView::handleKeyPress(QKeyEvent* event)
     if (event->key() == Qt::Key_Escape)
     {
         if (interaction != nullptr)
-        {
-            for (auto* item : timelineScene->items())
-                item->setSelected(false);
-        }
+            interaction->clearSelection();
         event->accept();
         return;
     }
