@@ -58,7 +58,6 @@ private:
     DragMode dragMode = DragMode::None;
     QPoint dragStart;
     double dragStartFade = 0.0;
-    double dragStartBeat = 0.0;
 
     double selStart = -1.0;
     double selEnd = -1.0;

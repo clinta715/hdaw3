@@ -13,7 +13,6 @@
 bool CLAPModule::load(const juce::String& path)
 {
     unload();
-    loadedPath = path;
 
 #if JUCE_WINDOWS
     auto* wPath = static_cast<const wchar_t*>(path.toWideCharPointer());
@@ -228,6 +227,7 @@ void CLAPPluginFormat::createPluginInstance(
     double sampleRate, int blockSize,
     PluginCreationCallback callback)
 {
+    (void) sampleRate; (void) blockSize; // signature fixed by AudioPluginFormat override
     juce::String error;
 
     auto module = std::make_shared<CLAPModule>();
@@ -277,7 +277,7 @@ void CLAPPluginFormat::createPluginInstance(
     }
 
     auto instance = std::make_unique<CLAPPluginInstance>(
-        module, plugin, std::move(host), sampleRate, blockSize);
+        module, plugin, std::move(host));
     instance->initialize();
 
     callback(std::move(instance), {});

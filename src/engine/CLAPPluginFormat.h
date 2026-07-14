@@ -15,9 +15,6 @@ struct CLAPModule
 
     bool load(const juce::String& path);
     void unload();
-
-private:
-    juce::String loadedPath;
 };
 
 class CLAPPluginFormat : public juce::AudioPluginFormat

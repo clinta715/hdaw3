@@ -12,21 +12,6 @@ namespace {
 #if JUCE_WINDOWS
 #include <windows.h>
 
-namespace {
-// __try/__except must live in its own function with no local C++ objects
-// (C2712 restriction: cannot mix SEH with C++ object unwinding in the same function).
-bool scanNextFileSafe(juce::PluginDirectoryScanner& scanner, juce::String& name, bool& crashed)
-{
-    crashed = false;
-    __try {
-        return scanner.scanNextFile(false, name);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        crashed = true;
-        return false;
-    }
-}
-} // anonymous namespace
-
 // SEH-to-C++ exception translator. Registered with _set_se_translator before calling
 // into buggy VST3 code. Must NOT return — throws a C++ exception instead.
 void __cdecl sehPluginCrashTranslator(unsigned int, struct _EXCEPTION_POINTERS*)

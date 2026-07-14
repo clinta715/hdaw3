@@ -342,16 +342,13 @@ bool CLAP_ABI CLAPOutputEvents::tryPushFn(
 
 CLAPPluginInstance::CLAPPluginInstance(std::shared_ptr<CLAPModule> mod,
                                        const clap_plugin_t* p,
-                                       std::unique_ptr<CLAPHost> h,
-                                       double sampleRate, int blockSize)
+                                       std::unique_ptr<CLAPHost> h)
     : AudioPluginInstance(BusesProperties()
           .withInput("Main Input", juce::AudioChannelSet::stereo(), true)
           .withOutput("Main Output", juce::AudioChannelSet::stereo(), true)),
       module(std::move(mod)),
       plugin(p),
-      host(std::move(h)),
-      currentSampleRate(sampleRate),
-      currentBlockSize(blockSize)
+      host(std::move(h))
 {
     paramsExt = static_cast<const clap_plugin_params_t*>(
         plugin->get_extension(plugin, CLAP_EXT_PARAMS));
@@ -457,9 +454,6 @@ void CLAPPluginInstance::buildBuses()
 
 void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    currentSampleRate = sampleRate;
-    currentBlockSize = samplesPerBlock;
-
     if (plugin == nullptr)
         return;
 
@@ -472,8 +466,6 @@ void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
         plugin->start_processing(plugin);
         processing = true;
     }
-
-    scratchBuffer.setSize((std::max)(numInputs, numOutputs), samplesPerBlock);
 }
 
 void CLAPPluginInstance::releaseResources()

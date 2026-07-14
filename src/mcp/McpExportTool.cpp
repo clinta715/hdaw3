@@ -17,11 +17,6 @@
 
 namespace mcp {
 
-static QString jstr(const juce::String& s)
-{
-    return QString::fromUtf8(s.toRawUTF8());
-}
-
 static QJsonObject objSchema(const QJsonObject& props, const QJsonArray& required = {})
 {
     QJsonObject s{{"type","object"},{"properties", props},{"additionalProperties", false}};

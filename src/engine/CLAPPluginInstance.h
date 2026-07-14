@@ -176,8 +176,7 @@ class CLAPPluginInstance : public juce::AudioPluginInstance
 public:
     CLAPPluginInstance(std::shared_ptr<CLAPModule> module,
                        const clap_plugin_t* plugin,
-                       std::unique_ptr<CLAPHost> host,
-                       double sampleRate, int blockSize);
+                       std::unique_ptr<CLAPHost> host);
     ~CLAPPluginInstance() override;
 
     void initialize();
@@ -239,11 +238,8 @@ private:
     std::vector<CLAPParameter*> parameters;
 
     // Audio config
-    juce::AudioBuffer<float> scratchBuffer;
     int numInputs = 0;
     int numOutputs = 0;
-    double currentSampleRate = 44100.0;
-    int currentBlockSize = 512;
 
     // Lifecycle state
     bool activated = false;

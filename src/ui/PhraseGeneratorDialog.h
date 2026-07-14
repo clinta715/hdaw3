@@ -28,7 +28,6 @@ private slots:
     void onGenerate();
 
 private:
-    void updateChordControls();
     void createPhraseControls(QWidget* parent);
     void createChordControls(QWidget* parent);
     void createProgressionControls(QWidget* parent);

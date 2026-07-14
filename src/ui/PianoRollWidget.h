@@ -36,7 +36,6 @@ signals:
 private:
     void setupUI();
     void connectSignals();
-    void syncScrollBars();
     void updateZoom(double factor);
 
     AudioEngine& engine;
