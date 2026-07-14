@@ -6,7 +6,7 @@
 ClipItem::ClipItem(juce::ValueTree tree, double pps)
     : clipTree(tree), pixelsPerSecond(pps)
 {
-    setFlags(ItemSendsGeometryChanges);
+    setFlags(ItemSendsGeometryChanges | ItemIsSelectable);
     setAcceptHoverEvents(true);
     setCacheMode(DeviceCoordinateCache);
 }
@@ -44,6 +44,15 @@ QRectF ClipItem::boundingRect() const
 {
     double w = (std::max)(getDuration() * pixelsPerSecond, minClipWidth);
     return QRectF(0, 0, w, trackHeight).adjusted(-1, -1, 1, 1);
+}
+
+void ClipItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+    // Ignore the event so TimelineInteraction (via TimelineScene
+    // overrides) handles all clip interaction. The default handler
+    // would accept the event for items with ItemIsSelectable,
+    // starving the scene of mouse events.
+    event->ignore();
 }
 
 void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget*)
@@ -85,7 +94,7 @@ void ClipItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, 
     // Selection highlight (white outline)
     if (isSelected())
     {
-        painter->setPen(QPen(QColor(0xe8, 0xe8, 0xec), 2));
+        painter->setPen(QPen(QColor(0xe8, 0xe8, 0xec), 3));
         painter->setBrush(Qt::NoBrush);
         painter->drawRoundedRect(r.adjusted(1, 1, -1, -1), cornerRadius, cornerRadius);
     }

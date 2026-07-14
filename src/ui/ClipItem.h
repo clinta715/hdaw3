@@ -29,6 +29,7 @@ public:
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override;
 
 protected:
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     virtual void paintContent(QPainter& painter, const QRectF& contentRect) = 0;
 
     juce::ValueTree clipTree;
