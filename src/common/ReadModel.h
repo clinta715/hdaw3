@@ -35,6 +35,10 @@ struct ClipSnapshot {
     int stretchMode = 0;         // 0=Off, 1=TempoMatch, 2=ManualRatio
     double stretchRatio = 1.0;   // time ratio vs original source
     double sourceDuration = 0.0; // original source length in seconds
+
+    // Gain envelope
+    struct GainEnvelopePoint { double time; double gain; };
+    std::vector<GainEnvelopePoint> gainEnvelope;
 };
 
 struct NoteSnapshot {
@@ -119,6 +123,7 @@ public:
     virtual TrackSnapshot getTrack(int index) const = 0;
     virtual ClipSnapshot getClip(int clipId) const = 0;
     virtual std::vector<NoteSnapshot> getNotes(int clipId) const = 0;
+    virtual std::vector<ClipSnapshot::GainEnvelopePoint> getClipGainEnvelope(int clipId) const = 0;
     virtual TransportSnapshot getTransport() const = 0;
     virtual int getScaleRoot() const = 0;
     virtual int getScaleMode() const = 0;

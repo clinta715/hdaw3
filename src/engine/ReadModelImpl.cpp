@@ -170,6 +170,37 @@ std::vector<NoteSnapshot> ReadModelImpl::getNotes(int clipId) const
     return {};
 }
 
+std::vector<ReadModel::ClipSnapshot::GainEnvelopePoint> ReadModelImpl::getClipGainEnvelope(int clipId) const
+{
+    auto trackList = model_.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t) {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid())
+            continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c) {
+            auto clipTree = clipList.getChild(c);
+            if (static_cast<int>(clipTree.getProperty(IDs::clipID, 0)) != clipId)
+                continue;
+
+            std::vector<ReadModel::ClipSnapshot::GainEnvelopePoint> points;
+            auto envelope = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
+            if (!envelope.isValid())
+                return points;
+
+            points.reserve(envelope.getNumChildren());
+            for (int i = 0; i < envelope.getNumChildren(); ++i) {
+                auto pt = envelope.getChild(i);
+                ReadModel::ClipSnapshot::GainEnvelopePoint p;
+                p.time = pt.getProperty(IDs::pointTime);
+                p.gain = pt.getProperty(IDs::pointGain);
+                points.push_back(p);
+            }
+            return points;
+        }
+    }
+    return {};
+}
+
 TransportSnapshot ReadModelImpl::getTransport() const
 {
     TransportSnapshot ts;
