@@ -98,6 +98,12 @@ namespace IDs {
     DECLARE_ID(POINT)
     DECLARE_ID(curveType)
     DECLARE_ID(automationEnabled)
+
+    // Gain Envelope (per-clip volume automation)
+    DECLARE_ID(GAIN_ENVELOPE)
+    DECLARE_ID(GAIN_ENVELOPE_POINT)
+    DECLARE_ID(pointTime)
+    DECLARE_ID(pointGain)
     DECLARE_ID(paramID)
 
     // Track UI state
