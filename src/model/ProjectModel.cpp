@@ -478,3 +478,63 @@ std::string ProjectModel::resolvePluginFormat(const std::string& pluginID) const
     }
     return {};
 }
+
+std::vector<juce::ValueTree> ProjectModel::sliceClipAtTimes(juce::ValueTree clip, const std::vector<double>& times, juce::UndoManager* um)
+{
+    std::vector<juce::ValueTree> result;
+    if (!clip.isValid() || !clip.hasType(IDs::CLIP)) return result;
+
+    double clipStart = clip.getProperty(IDs::startTime);
+    double clipDur = clip.getProperty(IDs::duration);
+    double clipOffset = clip.getProperty(IDs::offset);
+    double clipEnd = clipStart + clipDur;
+
+    // Filter and sort valid slice times
+    std::vector<double> validTimes;
+    for (double t : times)
+    {
+        if (t > clipStart && t < clipEnd)
+            validTimes.push_back(t);
+    }
+    std::sort(validTimes.begin(), validTimes.end());
+    validTimes.erase(std::unique(validTimes.begin(), validTimes.end()), validTimes.end());
+
+    if (validTimes.empty()) return result;
+
+    auto clipList = clip.getParent();  // CLIP_LIST
+    int clipIndex = clipList.indexOf(clip);
+
+    double prevTime = clipStart;
+    double prevOffset = clipOffset;
+    int newIndex = clipIndex;
+
+    for (double sliceTime : validTimes)
+    {
+        double sliceDur = sliceTime - prevTime;
+        auto newClip = clip.createCopy();
+        newClip.setProperty(IDs::startTime, prevTime, um);
+        newClip.setProperty(IDs::duration, sliceDur, um);
+        newClip.setProperty(IDs::offset, prevOffset, um);
+        newClip.setProperty(IDs::clipID, allocateClipID(), um);  // new unique ID
+        clipList.addChild(newClip, newIndex++, um);
+        result.push_back(newClip);
+
+        prevTime = sliceTime;
+        prevOffset += sliceDur;
+    }
+
+    // Final slice
+    double finalDur = clipEnd - prevTime;
+    auto finalClip = clip.createCopy();
+    finalClip.setProperty(IDs::startTime, prevTime, um);
+    finalClip.setProperty(IDs::duration, finalDur, um);
+    finalClip.setProperty(IDs::offset, prevOffset, um);
+    finalClip.setProperty(IDs::clipID, allocateClipID(), um);
+    clipList.addChild(finalClip, newIndex++, um);
+    result.push_back(finalClip);
+
+    // Remove original
+    clipList.removeChild(clipIndex, um);
+
+    return result;
+}

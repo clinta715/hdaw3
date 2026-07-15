@@ -203,6 +203,9 @@ public:
     static void removeGainEnvelopePoint(juce::ValueTree envelope, int index, juce::UndoManager* um);
     static void clearGainEnvelope(juce::ValueTree envelope, juce::UndoManager* um);
 
+    // Slicing
+    static std::vector<juce::ValueTree> sliceClipAtTimes(juce::ValueTree clip, const std::vector<double>& times, juce::UndoManager* um);
+
     // Wire the engine's PluginManager so addFxSlot can resolve plugin formats.
     // Pass nullptr to clear. The pointer is not owned.
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager_ = pm; }
