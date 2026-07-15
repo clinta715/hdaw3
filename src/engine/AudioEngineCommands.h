@@ -2,6 +2,7 @@
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
+#include "../model/ProjectModel.h"
 #include <juce_data_structures/juce_data_structures.h>
 
 class AudioEngine;
@@ -51,6 +52,10 @@ public:
     void setClipStretchRatio(int clipId, double ratio) override;
     void tempoMatchClip(int clipId) override;
     void fitClipToLoop(int clipId) override;
+
+    // ProjectCommands — Slicing
+    void sliceClipAtTimes(int clipId, const std::vector<double>& times) override;
+    void sliceClipAtTransients(int clipId) override;
 
     // ProjectCommands — Gain Envelope
     void addGainEnvelopePoint(int clipId, double time, double gain) override;

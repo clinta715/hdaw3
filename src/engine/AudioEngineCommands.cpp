@@ -1196,7 +1196,7 @@ void AudioEngineCommands::fitClipToLoop(int clipId)
 
 // ─── ProjectCommands — Gain Envelope ────────────────────────────────
 
-void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double gain) override
+void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double gain)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     int trackIdx = -1;
@@ -1208,7 +1208,7 @@ void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double g
     notifyClipGainEnvelopeChanged(clipId);
 }
 
-void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override
+void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     int trackIdx = -1;
@@ -1223,7 +1223,7 @@ void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, doub
     notifyClipGainEnvelopeChanged(clipId);
 }
 
-void AudioEngineCommands::removeGainEnvelopePoint(int clipId, int pointIndex) override
+void AudioEngineCommands::removeGainEnvelopePoint(int clipId, int pointIndex)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     int trackIdx = -1;
@@ -1235,21 +1235,17 @@ void AudioEngineCommands::removeGainEnvelopePoint(int clipId, int pointIndex) ov
     notifyClipGainEnvelopeChanged(clipId);
 }
 
-void AudioEngineCommands::clearGainEnvelope(int clipId) override
+void AudioEngineCommands::clearGainEnvelope(int clipId)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    clip.removeChildWithName(IDs::GAIN_ENVELOPE, &um);
+    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (envelope.isValid())
+        clip.removeChild(envelope, &um);
     notifyClipGainEnvelopeChanged(clipId);
-}
-
-void AudioEngineCommands::notifyClipGainEnvelopeChanged(int clipId)
-{
-    auto* proc = engine_.getMainProcessor();
-    if (proc) proc->updateClipGainEnvelope(clipId, getGainEnvelopePoints(clipId));
 }
 
 std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelopePoints(int clipId)
@@ -1260,4 +1256,46 @@ std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelop
 
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     return ProjectModel::getGainEnvelopePoints(envelope);
+}
+
+void AudioEngineCommands::sliceClipAtTimes(int clipId, const std::vector<double>& times)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto slices = ProjectModel::sliceClipAtTimes(clip, times, &um);
+    
+    // Rebuild routing for new clips
+    if (mainProcessor)
+        mainProcessor->rebuildRoutingGraph();
+}
+
+void AudioEngineCommands::sliceClipAtTransients(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    juce::String sourceFile = clip.getProperty(IDs::sourceFile);
+    if (sourceFile.isEmpty()) return;
+
+    // Run transient detection off-thread (reuse StretchCache worker pattern)
+    auto* pool = &engine_.getProjectPool();
+    auto* fm = &pool->getFormatManager();
+
+    // For now, run synchronously (TODO: async with callback)
+    HDAW::TransientDetector detector;
+    auto result = detector.detectFromFile(sourceFile, *fm);
+
+    if (result.transientTimes.empty()) return;
+
+    // Slice at detected transients
+    auto slices = ProjectModel::sliceClipAtTimes(clip, result.transientTimes, &um);
+    
+    // Rebuild routing for new clips
+    if (mainProcessor)
+        mainProcessor->rebuildRoutingGraph();
 }

@@ -117,6 +117,10 @@ public:
     virtual void removeGainEnvelopePoint(int clipId, int pointIndex) = 0;
     virtual void clearGainEnvelope(int clipId) = 0;
 
+    // Slicing
+    virtual void sliceClipAtTimes(int clipId, const std::vector<double>& times) = 0;
+    virtual void sliceClipAtTransients(int clipId) = 0;
+
     // MIDI CC
     virtual void addCcPoint(int clipId, int controllerNumber, double beat, int value) = 0;
 
