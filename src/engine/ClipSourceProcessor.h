@@ -4,6 +4,8 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <atomic>
 #include <algorithm>
+#include <vector>
+#include <mutex>
 #include "TransportManager.h"
 
 namespace HDAW {
@@ -45,8 +47,8 @@ public:
                 {
                     preloadedData[0].malloc(total);
                     preloadedData[1].malloc(total);
-                    int* const ptrs[2] = { preloadedData[0], preloadedData[1] };
-                    r->read(ptrs, preloadedChannels, 0, total, true);
+                    float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
+                    r->read(ptrs, preloadedChannels, 0, total);
                     preloadedLength = static_cast<int64_t>(total);
                 }
             }
@@ -136,8 +138,8 @@ public:
                 {
                     preloadedData[0].malloc(total);
                     preloadedData[1].malloc(total);
-                    int* const ptrs[2] = { preloadedData[0], preloadedData[1] };
-                    r->read(ptrs, preloadedChannels, 0, total, true);
+                    float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
+                    r->read(ptrs, preloadedChannels, 0, total);
                     preloadedLength = static_cast<int64_t>(total);
                 }
             }
@@ -204,38 +206,60 @@ public:
         // pointer per block; swap-in happens during rebuildRoutingGraph on the
         // message thread, so this load is lock-free and allocation-free.
         const int buf = activeBuffer.load(std::memory_order_acquire);
-        const int* srcPtrs[2];
+        const float* preloadedPtrs[2];
+        const int* stretchedPtrs[2];
         int srcChannels;
         int64_t srcLength;
+        bool useFloatBuffer = false;
         if (buf == 1 && stretchedLength > 0)
         {
-            srcPtrs[0] = stretchedData[0];
-            srcPtrs[1] = stretchedData[1];
+            stretchedPtrs[0] = stretchedData[0];
+            stretchedPtrs[1] = stretchedData[1];
             srcChannels = stretchedChannels;
             srcLength = stretchedLength;
         }
         else
         {
-            srcPtrs[0] = preloadedData[0];
-            srcPtrs[1] = preloadedData[1];
+            preloadedPtrs[0] = preloadedData[0];
+            preloadedPtrs[1] = preloadedData[1];
             srcChannels = preloadedChannels;
             srcLength = preloadedLength;
+            useFloatBuffer = true;
         }
 
-        // Read from in-memory buffer (RT-safe: no disk I/O on audio thread)
+        // Read from in-memory buffer (RT-safe: no disk I/O on audio thread).
+        // The audible window is the number of samples remaining within the
+        // clip's *duration* from the current read position. Clamping to this
+        // (in addition to the source-file length) prevents the read loop from
+        // pulling samples past the clip end when the source file is longer
+        // than the clip (the normal "trimmed clip" case). Without this clamp
+        // the fade-out envelope below goes negative past durSamples, inverting
+        // the phase of a tail that should not be audible at all.
+        int64_t audibleRemaining = durSamples - clipLocalSample;
         int numToRead = 0;
-        if (srcLength > 0 && sourceSample < srcLength)
+        if (srcLength > 0 && sourceSample < srcLength && audibleRemaining > 0)
         {
-            numToRead = (std::min)(numSamples, static_cast<int>(srcLength - sourceSample));
+            int availFromSource = static_cast<int>(srcLength - sourceSample);
+            numToRead = (std::min)((std::min)(numSamples, availFromSource),
+                                   static_cast<int>(audibleRemaining));
 
             buffer.clear();
             for (int ch = 0; ch < numChannels; ++ch)
             {
                 int srcCh = (srcChannels > 1) ? (std::min)(ch, srcChannels - 1) : 0;
-                const int* src = srcPtrs[srcCh];
                 float* dest = buffer.getWritePointer(ch);
-                for (int s = 0; s < numToRead; ++s)
-                    dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
+                if (useFloatBuffer)
+                {
+                    const float* src = preloadedPtrs[srcCh];
+                    for (int s = 0; s < numToRead; ++s)
+                        dest[s] = src[sourceSample + s];
+                }
+                else
+                {
+                    const int* src = stretchedPtrs[srcCh];
+                    for (int s = 0; s < numToRead; ++s)
+                        dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
+                }
                 for (int s = numToRead; s < numSamples; ++s)
                     dest[s] = 0.0f;
             }
@@ -265,16 +289,27 @@ public:
             if (fadeInSamples > 0 && localPos < fadeInSamples)
                 envelope *= static_cast<float>(localPos) / static_cast<float>(fadeInSamples);
 
-            // Fade out
+            // Fade out. Clamp to >= 0 so the envelope can never go negative
+            // (which would invert phase of the tail). At localPos == durSamples
+            // the envelope is 0; beyond it the clamp keeps it at 0 instead of
+            // turning negative.
             if (fadeOutSamples > 0 && localPos > durSamples - fadeOutSamples)
-                envelope *= static_cast<float>(durSamples - localPos) / static_cast<float>(fadeOutSamples);
+            {
+                float fadePos = static_cast<float>(durSamples - localPos)
+                              / static_cast<float>(fadeOutSamples);
+                envelope *= (std::max)(0.0f, fadePos);
+            }
+
+            // Gain envelope (per-clip automation)
+            double clipLocalTime = static_cast<double>(localPos) / sr;
+            double envGain = getGainAtTime(clipLocalTime);
 
             float g = gainSmooth.getNextValue();
 
             for (int ch = 0; ch < numChannels; ++ch)
             {
                 float* channelData = buffer.getWritePointer(ch);
-                channelData[s] *= g * envelope;
+                channelData[s] *= g * envelope * static_cast<float>(envGain);
             }
         }
     }
@@ -294,6 +329,40 @@ public:
     void getStateInformation(juce::MemoryBlock&) override {}
     void setStateInformation(const void*, int) override {}
 
+    // Gain envelope support
+public:
+    struct GainPoint { double time; double gain; };
+    void setGainEnvelopePoints(const std::vector<GainPoint>& points)
+    {
+        std::lock_guard<std::mutex> lock(envelopeMutex);
+        gainEnvelopePoints = points;
+    }
+
+    double getGainAtTime(double time) const
+    {
+        std::lock_guard<std::mutex> lock(envelopeMutex);
+        if (gainEnvelopePoints.empty())
+            return 1.0;
+        if (gainEnvelopePoints.size() == 1)
+            return gainEnvelopePoints[0].gain;
+
+        for (size_t i = 0; i < gainEnvelopePoints.size() - 1; ++i)
+        {
+            double t0 = gainEnvelopePoints[i].time;
+            double t1 = gainEnvelopePoints[i + 1].time;
+            if (time >= t0 && time <= t1)
+            {
+                double g0 = gainEnvelopePoints[i].gain;
+                double g1 = gainEnvelopePoints[i + 1].gain;
+                double alpha = (time - t0) / (t1 - t0);
+                return g0 + alpha * (g1 - g0);
+            }
+        }
+        if (time < gainEnvelopePoints.front().time)
+            return gainEnvelopePoints.front().gain;
+        return gainEnvelopePoints.back().gain;
+    }
+
 private:
     HDAW::TransportManager& transportManager;
     juce::AudioFormatManager& formatManager;
@@ -307,7 +376,7 @@ private:
     std::atomic<float> fadeOut{ 0.0f };
     std::atomic<bool> looping{ false };
 
-    juce::HeapBlock<int> preloadedData[2];
+    juce::HeapBlock<float> preloadedData[2];
     int preloadedChannels = 0;
     int64_t preloadedLength = 0;
 
@@ -321,6 +390,10 @@ private:
 
     int clipID = -1;
     double stretchRatio = 1.0; // resolved at rebuild; not RT-parametric
+
+    // Gain envelope support
+    mutable std::vector<GainPoint> gainEnvelopePoints;
+    mutable std::mutex envelopeMutex;
 
     juce::LinearSmoothedValue<float> gainSmooth;
     double sr = 44100.0;
