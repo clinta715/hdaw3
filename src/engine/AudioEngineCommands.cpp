@@ -401,6 +401,9 @@ int AudioEngineCommands::duplicateClip(int clipId)
     double start = newClip.getProperty(IDs::startTime, 0.0);
     double duration = newClip.getProperty(IDs::duration, 0.0);
     newClip.setProperty(IDs::startTime, start + duration, nullptr);
+    juce::String origName = newClip.getProperty(IDs::name).toString();
+    if (!origName.endsWith(" copy"))
+        newClip.setProperty(IDs::name, origName + " copy", nullptr);
 
     auto trackList = engine_.getProjectModel().getTrackListTree();
     auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
@@ -712,7 +715,7 @@ void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string
 }
 
 void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::string& lane,
-                                                  double time, float value)
+                                                   double time, float value)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto autoLane = findAutomationLane(trackIndex, lane);
@@ -733,6 +736,62 @@ void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::str
             return;
         }
     }
+}
+
+// ─── ProjectCommands — MIDI CC ──────────────────────────────────────────
+
+int AudioEngineCommands::addModulation(int trackIndex, const juce::ValueTree& modulationTree)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
+
+    auto track = trackList.getChild(trackIndex);
+    auto modList = track.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid())
+    {
+        modList = juce::ValueTree(IDs::MODULATION_LIST);
+        track.addChild(modList, -1, &um);
+    }
+
+    int lfoIndex = modList.getNumChildren();
+    auto newMod = modulationTree.createCopy();
+    modList.addChild(newMod, -1, &um);
+    return lfoIndex;
+}
+
+void AudioEngineCommands::removeModulation(int trackIndex, int lfoIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto modList = track.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren()) return;
+
+    modList.removeChild(modList.getChild(lfoIndex), &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildModulation(trackIndex);
+}
+
+void AudioEngineCommands::setModulationProperty(int trackIndex, int lfoIndex,
+    const std::string& propertyID, float value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto modList = track.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren()) return;
+
+    auto modTree = modList.getChild(lfoIndex);
+    auto propName = juce::Identifier(juce::String(propertyID));
+    modTree.setProperty(propName, static_cast<double>(value), &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildModulation(trackIndex);
 }
 
 // ─── ProjectCommands — Transport properties ───────────────────────
@@ -847,6 +906,14 @@ bool AudioEngineCommands::canRedo() const { return engine_.getProjectModel().get
 void AudioEngineCommands::beginTransaction(const std::string& name)
 {
     engine_.getProjectModel().getUndoManager().beginNewTransaction(juce::String(name));
+}
+
+void AudioEngineCommands::endTransaction()
+{
+    // UndoManager's beginNewTransaction implicitly ends the previous one.
+    // Calling beginNewTransaction with an empty name is the standard way
+    // to close the current transaction without starting a new named one.
+    engine_.getProjectModel().getUndoManager().beginNewTransaction({});
 }
 
 // ─── ProjectCommands — Project lifecycle ──────────────────────────
@@ -1125,4 +1192,72 @@ void AudioEngineCommands::fitClipToLoop(int clipId)
     clip.setProperty(IDs::stretchRatio, ratio, &um);
     clip.setProperty(IDs::duration, loopLen, &um);
     clip.setProperty(IDs::offset, 0.0, &um);
+}
+
+// ─── ProjectCommands — Gain Envelope ────────────────────────────────
+
+void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double gain) override
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto envelope = ProjectModel::ensureGainEnvelope(clip);
+    ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
+    notifyClipGainEnvelopeChanged(clipId);
+}
+
+void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (!envelope.isValid() || pointIndex < 0 || pointIndex >= envelope.getNumChildren()) return;
+    auto pt = envelope.getChild(pointIndex);
+    pt.setProperty(IDs::pointTime, time, &um);
+    pt.setProperty(IDs::pointGain, gain, &um);
+    notifyClipGainEnvelopeChanged(clipId);
+}
+
+void AudioEngineCommands::removeGainEnvelopePoint(int clipId, int pointIndex) override
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    ProjectModel::removeGainEnvelopePoint(envelope, pointIndex, &um);
+    notifyClipGainEnvelopeChanged(clipId);
+}
+
+void AudioEngineCommands::clearGainEnvelope(int clipId) override
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    clip.removeChildWithName(IDs::GAIN_ENVELOPE, &um);
+    notifyClipGainEnvelopeChanged(clipId);
+}
+
+void AudioEngineCommands::notifyClipGainEnvelopeChanged(int clipId)
+{
+    auto* proc = engine_.getMainProcessor();
+    if (proc) proc->updateClipGainEnvelope(clipId, getGainEnvelopePoints(clipId));
+}
+
+std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelopePoints(int clipId)
+{
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return {};
+
+    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    return ProjectModel::getGainEnvelopePoints(envelope);
 }

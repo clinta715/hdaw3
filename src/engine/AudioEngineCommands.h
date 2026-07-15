@@ -52,6 +52,12 @@ public:
     void tempoMatchClip(int clipId) override;
     void fitClipToLoop(int clipId) override;
 
+    // ProjectCommands — Gain Envelope
+    void addGainEnvelopePoint(int clipId, double time, double gain) override;
+    void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override;
+    void removeGainEnvelopePoint(int clipId, int pointIndex) override;
+    void clearGainEnvelope(int clipId) override;
+
     // ProjectCommands — MIDI note operations
     int addNote(int clipId, int pitch, int velocity,
                 double startBeat, double durationBeats) override;
@@ -97,7 +103,7 @@ public:
         const std::string& pluginID, const std::string& pluginFormat,
         const std::string& pluginPath) override;
 
-    // ProjectCommands — Automation point mutation
+        // ProjectCommands — Automation point mutation
     void setAutomationPointValue(int trackIndex, const std::string& lane,
         double time, float value) override;
 
@@ -112,6 +118,7 @@ public:
 
     // ProjectCommands — Transaction lifecycle
     void beginTransaction(const std::string& name) override;
+    void endTransaction() override;
 
     // ProjectCommands — Markers
     int addMarker(const std::string& name, double time, int color) override;
@@ -148,6 +155,15 @@ public:
     void toggleFXEditor(int trackIndex, int slotIndex) override;
     void switchClipTake(int clipId) override;
 
+    // Modulation (LFO) — concrete-class mutation methods. These mutate the
+    // track's MODULATION_LIST ValueTree via the UndoManager but take a
+    // juce::ValueTree argument, so they live on the concrete class rather
+    // than the JUCE-free abstract ProjectCommands interface.
+    int addModulation(int trackIndex, const juce::ValueTree& modulationTree);
+    void removeModulation(int trackIndex, int lfoIndex);
+    void setModulationProperty(int trackIndex, int lfoIndex,
+                               const std::string& propertyID, float value);
+
 private:
     // Find clip by ID across all tracks. Sets outTrackIndex to the
     // parent track index. Returns a valid ValueTree on success.
@@ -165,6 +181,10 @@ private:
 
     // Add a new track ValueTree to the project. Returns the new index.
     juce::ValueTree createTrackValueTree(const std::string& name, int color, int parentBus);
+
+    // Gain envelope helpers
+    std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);
+    void notifyClipGainEnvelopeChanged(int clipId);
 
     AudioEngine& engine_;
 };

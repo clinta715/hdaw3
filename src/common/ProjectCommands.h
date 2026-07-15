@@ -111,6 +111,12 @@ public:
     virtual void setAutomationPointValue(int trackIndex, const std::string& lane,
         double time, float value) = 0;
 
+    // Gain envelope (per-clip volume automation)
+    virtual void addGainEnvelopePoint(int clipId, double time, double gain) = 0;
+    virtual void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) = 0;
+    virtual void removeGainEnvelopePoint(int clipId, int pointIndex) = 0;
+    virtual void clearGainEnvelope(int clipId) = 0;
+
     // MIDI CC
     virtual void addCcPoint(int clipId, int controllerNumber, double beat, int value) = 0;
 
@@ -120,8 +126,9 @@ public:
     virtual bool canUndo() const = 0;
     virtual bool canRedo() const = 0;
 
-    // Transaction lifecycle (wraps UndoManager::beginNewTransaction)
+    // Transaction lifecycle (wraps UndoManager::beginNewTransaction / endTransaction)
     virtual void beginTransaction(const std::string& name) = 0;
+    virtual void endTransaction() = 0;
 
     // Project lifecycle
     virtual void newProject() = 0;
