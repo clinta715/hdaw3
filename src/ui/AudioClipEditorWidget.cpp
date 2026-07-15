@@ -199,6 +199,11 @@ void AudioClipEditorWidget::setupUI()
     fitToLoopBtn->setToolTip("Stretch the entire source to span the current loop region.");
     controlLayout->addWidget(fitToLoopBtn);
 
+    // Gain envelope editor (placed in a new section below control bar)
+    gainEnvelopeEditor = new GainEnvelopeEditor(this);
+    gainEnvelopeEditor->setFixedHeight(80);
+    mainLayout->addWidget(gainEnvelopeEditor);
+
     mainLayout->addWidget(controlBar);
 }
 
@@ -306,6 +311,9 @@ void AudioClipEditorWidget::connectSignals()
         int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
         projectCmds->fitClipToLoop(clipId);
     });
+
+    // Gain envelope connections
+    connect(gainEnvelopeEditor, &GainEnvelopeEditor::pointsChanged, this, &AudioClipEditorWidget::onGainEnvelopeChanged);
 }
 
 void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
@@ -347,6 +355,7 @@ void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
     }
 
     updateControls();
+    loadGainEnvelope();
     show();
 }
 
@@ -358,6 +367,7 @@ void AudioClipEditorWidget::clear()
     titleLabel->setText("Audio Editor - No clip selected");
     sourceLabel->setText("No file");
     infoLabel->setText("");
+    gainEnvelopeEditor->setPoints({});
     updateControls();
 }
 
@@ -408,4 +418,36 @@ void AudioClipEditorWidget::updateControls()
     stretchRatioSpin->setEnabled(mode == 2);
 
     settingUi = false;
+}
+
+void AudioClipEditorWidget::loadGainEnvelope()
+{
+    if (!isLoaded) return;
+    auto envelope = currentClip.getChildWithName(IDs::GAIN_ENVELOPE);
+    QVector<GainEnvelopeEditor::Point> points;
+    for (int i = 0; i < envelope.getNumChildren(); ++i)
+    {
+        auto pt = envelope.getChild(i);
+        points.append({ pt.getProperty(IDs::pointTime), pt.getProperty(IDs::pointGain) });
+    }
+    gainEnvelopeEditor->setPoints(points);
+    gainEnvelopeEditor->setDuration(currentClip.getProperty(IDs::duration));
+}
+
+void AudioClipEditorWidget::onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points)
+{
+    if (settingUi || !currentClip.isValid()) return;
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    auto envelope = ProjectModel::ensureGainEnvelope(currentClip);
+    ProjectModel::clearGainEnvelope(envelope, &engine.getProjectModel().getUndoManager());
+    for (const auto& pt : points)
+    {
+        ProjectModel::addGainEnvelopePoint(envelope, pt.time, pt.gain, &engine.getProjectModel().getUndoManager());
+    }
+    // Update processor
+    std::vector<ClipSourceProcessor::GainPoint> procPoints;
+    procPoints.reserve(points.size());
+    for (const auto& pt : points)
+        procPoints.push_back({pt.time, pt.gain});
+    engine.getMainProcessor()->updateClipGainEnvelope(clipId, procPoints);
 }

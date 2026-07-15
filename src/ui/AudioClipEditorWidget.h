@@ -15,6 +15,7 @@
 
 class AudioEngine;
 #include "AudioWaveformWidget.h"
+#include "GainEnvelopeEditor.h"
 
 class AudioClipEditorWidget : public QWidget
 {
@@ -34,6 +35,8 @@ private:
     void setupUI();
     void connectSignals();
     void updateControls();
+    void loadGainEnvelope();
+    void onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points);
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;
@@ -63,6 +66,9 @@ private:
     QComboBox* stretchModeCombo;
     QDoubleSpinBox* stretchRatioSpin;
     QPushButton* fitToLoopBtn;
+
+    // Gain envelope editor
+    GainEnvelopeEditor* gainEnvelopeEditor = nullptr;
 
     bool settingUi = false;
     bool isLoaded = false;
