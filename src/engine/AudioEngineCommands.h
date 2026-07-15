@@ -56,6 +56,7 @@ public:
     // ProjectCommands — Slicing
     void sliceClipAtTimes(int clipId, const std::vector<double>& times) override;
     void sliceClipAtTransients(int clipId) override;
+    void sliceClipAtPlayhead(int clipId) override;
 
     // ProjectCommands — Gain Envelope
     void addGainEnvelopePoint(int clipId, double time, double gain) override;

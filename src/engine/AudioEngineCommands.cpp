@@ -53,7 +53,27 @@ juce::ValueTree AudioEngineCommands::findNoteById(int noteId, int& outClipId) co
                 {
                     outClipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
                     return note;
-                }
+}
+
+void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    double playhead = transportManager.getCurrentPositionSeconds();
+    double clipStart = clip.getProperty(IDs::startTime);
+    double clipEnd = clipStart + clip.getProperty(IDs::duration);
+    
+    if (playhead <= clipStart || playhead >= clipEnd) return;
+    
+    auto slices = ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
+    
+    // Rebuild routing for new clips
+    if (mainProcessor)
+        mainProcessor->rebuildRoutingGraph();
+}
             }
         }
     }
@@ -1294,6 +1314,26 @@ void AudioEngineCommands::sliceClipAtTransients(int clipId)
 
     // Slice at detected transients
     auto slices = ProjectModel::sliceClipAtTimes(clip, result.transientTimes, &um);
+    
+    // Rebuild routing for new clips
+    if (mainProcessor)
+        mainProcessor->rebuildRoutingGraph();
+}
+
+void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    double playhead = transportManager.getCurrentPositionSeconds();
+    double clipStart = clip.getProperty(IDs::startTime);
+    double clipEnd = clipStart + clip.getProperty(IDs::duration);
+    
+    if (playhead <= clipStart || playhead >= clipEnd) return;
+    
+    auto slices = ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
     
     // Rebuild routing for new clips
     if (mainProcessor)

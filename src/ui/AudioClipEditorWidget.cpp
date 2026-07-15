@@ -199,6 +199,28 @@ void AudioClipEditorWidget::setupUI()
     fitToLoopBtn->setToolTip("Stretch the entire source to span the current loop region.");
     controlLayout->addWidget(fitToLoopBtn);
 
+    // Slicing controls
+    auto* sep3 = new QFrame(controlBar);
+    sep3->setFrameShape(QFrame::VLine);
+    sep3->setFixedHeight(20);
+    controlLayout->addWidget(sep3);
+
+    sliceAtPlayheadBtn = new QPushButton("Slice at Playhead", controlBar);
+    sliceAtPlayheadBtn->setFixedHeight(20);
+    sliceAtPlayheadBtn->setToolTip("Split clip at current playhead position.");
+    controlLayout->addWidget(sliceAtPlayheadBtn);
+
+    sliceAtTransientsBtn = new QPushButton("Slice at Transients", controlBar);
+    sliceAtTransientsBtn->setFixedHeight(20);
+    sliceAtTransientsBtn->setToolTip("Auto-slice clip at detected transients.");
+    controlLayout->addWidget(sliceAtTransientsBtn);
+
+    sliceAtSelectionBtn = new QPushButton("Slice at Selection", controlBar);
+    sliceAtSelectionBtn->setFixedHeight(20);
+    sliceAtSelectionBtn->setToolTip("Split clip at selected region boundaries.");
+    sliceAtSelectionBtn->setEnabled(false);
+    controlLayout->addWidget(sliceAtSelectionBtn);
+
     // Gain envelope editor (placed in a new section below control bar)
     gainEnvelopeEditor = new GainEnvelopeEditor(this);
     gainEnvelopeEditor->setFixedHeight(80);
@@ -311,6 +333,11 @@ void AudioClipEditorWidget::connectSignals()
         int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
         projectCmds->fitClipToLoop(clipId);
     });
+
+    // Slicing connections
+    connect(sliceAtPlayheadBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onSliceAtPlayhead);
+    connect(sliceAtTransientsBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onSliceAtTransients);
+    connect(sliceAtSelectionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onSliceAtSelection);
 
     // Gain envelope connections
     connect(gainEnvelopeEditor, &GainEnvelopeEditor::pointsChanged, this, &AudioClipEditorWidget::onGainEnvelopeChanged);
@@ -450,4 +477,34 @@ void AudioClipEditorWidget::onGainEnvelopeChanged(const QVector<GainEnvelopeEdit
     for (const auto& pt : points)
         procPoints.push_back({pt.time, pt.gain});
     engine.getMainProcessor()->updateClipGainEnvelope(clipId, procPoints);
+}
+
+void AudioClipEditorWidget::onSliceAtPlayhead()
+{
+    if (!currentClip.isValid()) return;
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    projectCmds->sliceClipAtPlayhead(clipId);
+    // Reload clip list or refresh
+    reloadClip();
+}
+
+void AudioClipEditorWidget::onSliceAtTransients()
+{
+    if (!currentClip.isValid()) return;
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    projectCmds->sliceClipAtTransients(clipId);
+    reloadClip();
+}
+
+void AudioClipEditorWidget::onSliceAtSelection()
+{
+    if (!currentClip.isValid()) return;
+    // Get selection from waveform
+    double selStart = waveform->getSelectionStart();
+    double selEnd = waveform->getSelectionEnd();
+    if (selEnd <= selStart) return;
+    
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    projectCmds->sliceClipAtTimes(clipId, {selStart, selEnd});
+    reloadClip();
 }

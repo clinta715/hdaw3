@@ -38,6 +38,11 @@ private:
     void loadGainEnvelope();
     void onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points);
 
+    // Slicing handlers
+    void onSliceAtPlayhead();
+    void onSliceAtTransients();
+    void onSliceAtSelection();
+
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;
     TransportCommands* transportCmds = nullptr;
@@ -66,6 +71,11 @@ private:
     QComboBox* stretchModeCombo;
     QDoubleSpinBox* stretchRatioSpin;
     QPushButton* fitToLoopBtn;
+
+    // Slicing controls
+    QPushButton* sliceAtPlayheadBtn = nullptr;
+    QPushButton* sliceAtTransientsBtn = nullptr;
+    QPushButton* sliceAtSelectionBtn = nullptr;
 
     // Gain envelope editor
     GainEnvelopeEditor* gainEnvelopeEditor = nullptr;
