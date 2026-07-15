@@ -15,6 +15,7 @@ public:
     TrackSnapshot getTrack(int index) const override;
     ClipSnapshot getClip(int clipId) const override;
     std::vector<NoteSnapshot> getNotes(int clipId) const override;
+    std::vector<ClipSnapshot::GainEnvelopePoint> getClipGainEnvelope(int clipId) const override;
     TransportSnapshot getTransport() const override;
     int getScaleRoot() const override;
     int getScaleMode() const override;
