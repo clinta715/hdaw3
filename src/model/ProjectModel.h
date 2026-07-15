@@ -195,6 +195,14 @@ public:
 
     void createDefaultProject();
 
+    struct GainEnvelopePoint { double time; double gain; };
+
+    static juce::ValueTree ensureGainEnvelope(juce::ValueTree clip);
+    static juce::ValueTree addGainEnvelopePoint(juce::ValueTree envelope, double time, double gain, juce::UndoManager* um);
+    static std::vector<GainEnvelopePoint> getGainEnvelopePoints(const juce::ValueTree& envelope);
+    static void removeGainEnvelopePoint(juce::ValueTree envelope, int index, juce::UndoManager* um);
+    static void clearGainEnvelope(juce::ValueTree envelope, juce::UndoManager* um);
+
     // Wire the engine's PluginManager so addFxSlot can resolve plugin formats.
     // Pass nullptr to clear. The pointer is not owned.
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager_ = pm; }

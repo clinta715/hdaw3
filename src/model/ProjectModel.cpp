@@ -409,6 +409,64 @@ int ProjectModel::addFxSlot(int trackIdx, const std::string& type, int pos,
     return insertIdx;
 }
 
+juce::ValueTree ProjectModel::ensureGainEnvelope(juce::ValueTree clip)
+{
+    if (!clip.isValid()) return {};
+    auto env = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (!env.isValid())
+    {
+        env = juce::ValueTree(IDs::GAIN_ENVELOPE);
+        clip.addChild(env, -1, nullptr);
+    }
+    return env;
+}
+
+juce::ValueTree ProjectModel::addGainEnvelopePoint(juce::ValueTree envelope, double time, double gain, juce::UndoManager* um)
+{
+    if (!envelope.isValid() || !envelope.hasType(IDs::GAIN_ENVELOPE)) return {};
+    juce::ValueTree point(IDs::GAIN_ENVELOPE_POINT);
+    point.setProperty(IDs::pointTime, time, um);
+    point.setProperty(IDs::pointGain, gain, um);
+    // Insert sorted by time
+    int insertIdx = 0;
+    for (int i = 0; i < envelope.getNumChildren(); ++i)
+    {
+        if (static_cast<double>(envelope.getChild(i).getProperty(IDs::pointTime)) < time)
+            insertIdx = i + 1;
+        else
+            break;
+    }
+    envelope.addChild(point, insertIdx, um);
+    return point;
+}
+
+std::vector<ProjectModel::GainEnvelopePoint> ProjectModel::getGainEnvelopePoints(const juce::ValueTree& envelope)
+{
+    std::vector<GainEnvelopePoint> result;
+    if (!envelope.isValid()) return result;
+    for (int i = 0; i < envelope.getNumChildren(); ++i)
+    {
+        auto child = envelope.getChild(i);
+        if (child.hasType(IDs::GAIN_ENVELOPE_POINT))
+        {
+            result.push_back({ child.getProperty(IDs::pointTime), child.getProperty(IDs::pointGain) });
+        }
+    }
+    return result;
+}
+
+void ProjectModel::removeGainEnvelopePoint(juce::ValueTree envelope, int index, juce::UndoManager* um)
+{
+    if (!envelope.isValid() || index < 0 || index >= envelope.getNumChildren()) return;
+    envelope.removeChild(index, um);
+}
+
+void ProjectModel::clearGainEnvelope(juce::ValueTree envelope, juce::UndoManager* um)
+{
+    if (!envelope.isValid()) return;
+    envelope.removeAllChildren(um);
+}
+
 std::string ProjectModel::resolvePluginFormat(const std::string& pluginID) const
 {
     if (pluginManager_ == nullptr) return {};
