@@ -26,8 +26,15 @@ add_executable(hdaw_tests
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/markers_test.cpp
     unit/engine/stretch_test.cpp
+    unit/engine/transient_detector_test.cpp
+    unit/engine/modulation_test.cpp
+    unit/engine/clip_source_processor_test.cpp
+    unit/engine/transient_detector_test.cpp
+    unit/engine/region_clipboard_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
+    unit/model/project_model_test.cpp
+    unit/model/clip_slicing_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

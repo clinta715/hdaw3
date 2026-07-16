@@ -68,8 +68,9 @@ add_library(HDAW_lib STATIC
     src/engine/PluginParamServiceImpl.cpp
     src/engine/MidiServiceImpl.cpp
     src/engine/AutomationClipboard.cpp
-    src/engine/StretchRenderer.cpp
+src/engine/StretchRenderer.cpp
     src/engine/StretchCache.cpp
+    src/engine/TransientDetector.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -82,6 +83,7 @@ add_library(HDAW_lib STATIC
     src/proxy/ProxyPipe.cpp
     src/proxy/ProxySharedMemory.cpp
     src/ui/PluginEditorWindow.cpp
+    src/engine/RegionClipboard.cpp
 )
 
 if(HDAW_PLUGIN_ISOLATION)
@@ -187,6 +189,8 @@ add_executable(HDAW
     src/ui/ModulationWidget.cpp
     src/ui/AudioClipEditorWidget.h
     src/ui/AudioClipEditorWidget.cpp
+    src/ui/GainEnvelopeEditor.h
+    src/ui/GainEnvelopeEditor.cpp
     src/ui/AudioWaveformWidget.h
     src/ui/AudioWaveformWidget.cpp
     src/ui/Theme.h
@@ -223,6 +227,8 @@ add_executable(HDAW
     src/engine/MidiInputManager.cpp
     src/engine/ClipClipboard.h
     src/engine/ClipClipboard.cpp
+    src/engine/RegionClipboard.h
+    src/engine/RegionClipboard.cpp
 )
 
 target_link_libraries(HDAW
