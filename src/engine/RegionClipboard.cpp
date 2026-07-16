@@ -23,8 +23,4 @@ void RegionClipboard::clear() {
     g_entry = {};
     g_hasContent = false;
 }
-
-RegionClipboardEntry& RegionClipboard::entry() {
-    return g_entry;
-}
 } // namespace HDAW

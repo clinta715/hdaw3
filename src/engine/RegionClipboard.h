@@ -15,9 +15,6 @@ public:
     static const RegionClipboardEntry& get();
     static bool hasContent();
     static void clear();
-
-private:
-    static RegionClipboardEntry& entry();
 };
 
 } // namespace HDAW

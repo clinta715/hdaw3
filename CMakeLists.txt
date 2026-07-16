@@ -228,7 +228,6 @@ add_executable(HDAW
     src/engine/ClipClipboard.h
     src/engine/ClipClipboard.cpp
     src/engine/RegionClipboard.h
-    src/engine/RegionClipboard.cpp
 )
 
 target_link_libraries(HDAW
