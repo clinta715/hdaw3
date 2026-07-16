@@ -61,6 +61,9 @@ void AudioClipEditorWidget::setupUI()
 
     // Waveform
     waveform = new AudioWaveformWidget(engine.getProjectPool(), this);
+    // Wire the UndoManager so fade-handle drags are undoable (one undo step
+    // per drag). See AudioWaveformWidget::setUndoManager.
+    waveform->setUndoManager(&engine.getProjectModel().getUndoManager());
     mainLayout->addWidget(waveform, 1);
 
     // Control bar
@@ -383,11 +386,11 @@ void AudioClipEditorWidget::connectSignals()
     connect(gainEnvelopeEditor, &GainEnvelopeEditor::pointsChanged, this, &AudioClipEditorWidget::onGainEnvelopeChanged);
 
     // Region selection tracking
-    connect(waveform, &AudioWaveformWidget::regionSelected, this, [this](double startBeat, double endBeat) {
+    connect(waveform, &AudioWaveformWidget::regionSelected, this, [this](double startTime, double endTime) {
         if (isLoaded) {
-            double dur = endBeat - startBeat;
+            double dur = endTime - startTime;
             selectionLabel->setText(QString("Sel: %1s-%2s (%3s)")
-                .arg(startBeat, 0, 'f', 2).arg(endBeat, 0, 'f', 2).arg(dur, 0, 'f', 2));
+                .arg(startTime, 0, 'f', 2).arg(endTime, 0, 'f', 2).arg(dur, 0, 'f', 2));
             copyRegionBtn->setEnabled(true);
             cutRegionBtn->setEnabled(true);
         }
@@ -397,14 +400,20 @@ void AudioClipEditorWidget::connectSignals()
     connect(cutRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onCutRegion);
     connect(pasteRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onPasteRegion);
 
-    // Region keyboard shortcuts (QShortcut works regardless of focus)
+    // Region keyboard shortcuts. Use WidgetWithChildrenShortcut context so
+    // these only fire when the audio editor (or a child) has focus — the
+    // default WindowShortcut would also fire while the Mixer/Piano-roll/etc.
+    // tab is shown, hijacking Ctrl+C/X/V from text fields elsewhere.
     auto* copyShortcut = new QShortcut(QKeySequence::Copy, this);
+    copyShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(copyShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onCopyRegion);
 
     auto* cutShortcut = new QShortcut(QKeySequence::Cut, this);
+    cutShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(cutShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onCutRegion);
 
     auto* pasteShortcut = new QShortcut(QKeySequence::Paste, this);
+    pasteShortcut->setContext(Qt::WidgetWithChildrenShortcut);
     connect(pasteShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onPasteRegion);
 }
 
@@ -620,8 +629,20 @@ void AudioClipEditorWidget::onPasteRegion()
     if (!currentClip.isValid() || !HDAW::RegionClipboard::hasContent()) return;
 
     int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+
+    // Paste target time: use the playhead if it sits inside the source clip's
+    // span, otherwise default to just past the source clip's end. Previously
+    // this always used the absolute transport position, so a stopped transport
+    // (playhead at 0) pasted every region at timeline 0, overlapping whatever
+    // was there. The clip's own position is a predictable, in-track fallback.
+    double clipStart = currentClip.getProperty(IDs::startTime, 0.0);
+    double clipDur = currentClip.getProperty(IDs::duration, 0.0);
+    double clipEnd = clipStart + clipDur;
+
     auto transport = readModel->getTransport();
     double pasteTime = transport.currentTimeSeconds;
+    if (pasteTime < clipStart || pasteTime > clipEnd)
+        pasteTime = clipEnd; // just after the source clip
 
     projectCmds->pasteAudioClipRegion(clipId, pasteTime);
     reloadClip();

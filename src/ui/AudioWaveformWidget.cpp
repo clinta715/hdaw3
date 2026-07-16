@@ -5,7 +5,6 @@
 #include <QPainterPath>
 #include <QImage>
 #include <QWheelEvent>
-#include <QApplication>
 #include <cmath>
 #include <cstring>
 
@@ -14,7 +13,11 @@ AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* paren
 {
     setMouseTracking(true);
     setMinimumHeight(80);
-    qApp->installEventFilter(this);
+    // Note: no global qApp event filter. Fade/region drags use grabMouse() on
+    // press so all mouse events route here until release — this is the Qt
+    // idiom for "capture the drag" and means leaving the widget no longer
+    // abandons an in-progress drag (the previous leaveEvent cancel left the
+    // selection/fade stuck if the cursor crossed the widget edge mid-drag).
 }
 
 void AudioWaveformWidget::ThumbnailListener::changeListenerCallback(juce::ChangeBroadcaster* source)
@@ -35,8 +38,6 @@ AudioWaveformWidget::~AudioWaveformWidget()
         thumbListener->alive.store(false, std::memory_order_release);
     if (thumbnail && thumbListener)
         thumbnail->removeChangeListener(thumbListener.get());
-    if (auto* app = QApplication::instance())
-        app->removeEventFilter(this);
 }
 
 void AudioWaveformWidget::setClip(juce::ValueTree clip)
@@ -94,8 +95,11 @@ void AudioWaveformWidget::invalidateWaveformCache()
     cachedWaveform = QPixmap();
 }
 
-double AudioWaveformWidget::beatAtPos(int x) const
+double AudioWaveformWidget::timeAtPos(int x) const
 {
+    // Returns seconds within the clip's local timeline (0 = clip start),
+    // NOT beats despite the historical "beat" naming elsewhere. The selection
+    // is in clip-local seconds and consumed as such by the region commands.
     return (static_cast<double>(x) + scrollX) / pixelsPerSecond;
 }
 
@@ -291,19 +295,26 @@ void AudioWaveformWidget::mousePressEvent(QMouseEvent* event)
         dragMode = DragMode::FadeIn;
         dragStart = pos;
         dragStartFade = currentClip.getProperty(IDs::fadeIn);
+        // Begin a new undo transaction on press so the entire fade drag is a
+        // single undo step (AGENTS.md: "each drag should be one undo step").
+        if (undoManager) undoManager->beginNewTransaction();
+        grabMouse(); // capture all mouse events until release (H6)
     }
     else if (isOverFadeOut(pos))
     {
         dragMode = DragMode::FadeOut;
         dragStart = pos;
         dragStartFade = currentClip.getProperty(IDs::fadeOut);
+        if (undoManager) undoManager->beginNewTransaction();
+        grabMouse();
     }
     else
     {
         dragMode = DragMode::SelectRegion;
         dragStart = pos;
-        selStart = beatAtPos(pos.x());
+        selStart = timeAtPos(pos.x());
         selEnd = selStart;
+        grabMouse();
         update();
     }
 }
@@ -323,7 +334,11 @@ void AudioWaveformWidget::mouseMoveEvent(QMouseEvent* event)
     {
         double dx = (pos.x() - dragStart.x()) / pixelsPerSecond;
         double newFade = (std::max)(0.0, (std::min)(duration * 0.5, dragStartFade + dx));
-        currentClip.setProperty(IDs::fadeIn, newFade, nullptr);
+        // Write through the UndoManager so the drag is undoable. Previously
+        // this used nullptr, making the drag non-undoable and inconsistent
+        // with the spinbox path (projectCmds->setClipFadeIn). The transaction
+        // was begun on press above.
+        currentClip.setProperty(IDs::fadeIn, newFade, undoManager);
         emit fadeInChanged(newFade);
         update();
     }
@@ -331,19 +346,25 @@ void AudioWaveformWidget::mouseMoveEvent(QMouseEvent* event)
     {
         double dx = (dragStart.x() - pos.x()) / pixelsPerSecond;
         double newFade = (std::max)(0.0, (std::min)(duration * 0.5, dragStartFade + dx));
-        currentClip.setProperty(IDs::fadeOut, newFade, nullptr);
+        currentClip.setProperty(IDs::fadeOut, newFade, undoManager);
         emit fadeOutChanged(newFade);
         update();
     }
     else if (dragMode == DragMode::SelectRegion)
     {
-        selEnd = beatAtPos(pos.x());
+        selEnd = timeAtPos(pos.x());
         update();
     }
 }
 
 void AudioWaveformWidget::mouseReleaseEvent(QMouseEvent*)
 {
+    // Always release the mouse grab acquired on press (H6). With grabMouse the
+    // release always lands here even if the cursor left the widget, so a drag
+    // can no longer be abandoned mid-way by crossing the widget edge.
+    if (dragMode != DragMode::None)
+        releaseMouse();
+
     bool hasSel = currentClip.isValid() && selStart >= 0.0 && selEnd >= 0.0 && selEnd > selStart;
 
     if (hasSel)
@@ -355,6 +376,13 @@ void AudioWaveformWidget::mouseReleaseEvent(QMouseEvent*)
             emit regionSelected(selStart, selEnd);
         else
             selStart = selEnd = -1.0;
+    }
+    else
+    {
+        // No valid selection (e.g. a click without drag): clear stale state so
+        // a subsequent Copy doesn't read a leftover single-point selection.
+        selStart = -1.0;
+        selEnd = -1.0;
     }
 
     dragMode = DragMode::None;
@@ -384,30 +412,16 @@ void AudioWaveformWidget::wheelEvent(QWheelEvent* event)
 void AudioWaveformWidget::focusOutEvent(QFocusEvent* event)
 {
     QWidget::focusOutEvent(event);
+    // If a drag is in progress when focus is lost (e.g. Alt-Tab), cancel it
+    // cleanly and release the mouse grab so the widget isn't left in a
+    // captured-mouse state. Note: we intentionally do NOT cancel on
+    // leaveEvent — grabMouse() keeps the drag alive across widget-edge
+    // crossings, which is the whole point (the old leaveEvent cancel abandoned
+    // mid-drag region/fade selections).
     if (dragMode != DragMode::None)
     {
+        releaseMouse();
         dragMode = DragMode::None;
         update();
     }
-}
-
-void AudioWaveformWidget::leaveEvent(QEvent* event)
-{
-    QWidget::leaveEvent(event);
-    if (dragMode != DragMode::None)
-    {
-        dragMode = DragMode::None;
-        update();
-    }
-}
-
-bool AudioWaveformWidget::eventFilter(QObject* obj, QEvent* event)
-{
-    if (destroyed_) return QWidget::eventFilter(obj, event);
-    if (event->type() == QEvent::MouseButtonRelease && dragMode != DragMode::None && obj != this)
-    {
-        dragMode = DragMode::None;
-        update();
-    }
-    return QWidget::eventFilter(obj, event);
 }

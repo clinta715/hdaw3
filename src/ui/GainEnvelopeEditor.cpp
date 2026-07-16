@@ -70,11 +70,15 @@ void GainEnvelopeEditor::paintEvent(QPaintEvent*)
 
 int GainEnvelopeEditor::hitTest(const QPoint& pos) const
 {
+    // Measure distance from `pos` to each point, not from the origin.
+    // (QPoint(x,y).manhattanLength() is |x|+|y| — distance from (0,0) — which
+    // is always >= 10 and therefore never matched, making every point
+    // undraggable. Compute (point - pos) first.)
     for (int i = 0; i < points.size(); ++i)
     {
         int x = timeToX(points[i].time);
         int y = gainToY(points[i].gain);
-        if (QPoint(x, y).manhattanLength() < 10)
+        if ((QPoint(x, y) - pos).manhattanLength() < 10)
             return i;
     }
     return -1;

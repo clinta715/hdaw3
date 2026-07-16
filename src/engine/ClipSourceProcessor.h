@@ -5,7 +5,6 @@
 #include <atomic>
 #include <algorithm>
 #include <vector>
-#include <mutex>
 #include "TransportManager.h"
 
 namespace HDAW {
@@ -329,38 +328,73 @@ public:
     void getStateInformation(juce::MemoryBlock&) override {}
     void setStateInformation(const void*, int) override {}
 
-    // Gain envelope support
+    // Gain envelope support.
+    //
+    // RT contract: `getGainAtTime` is called once per sample on the audio
+    // thread (see processBlock). It MUST NOT allocate or lock. We mirror the
+    // AutomationManager pattern: a juce::SpinLock guards the point vector,
+    // the audio-thread read uses `tryEnter()` and returns a safe default
+    // (1.0 — i.e. "no envelope") if it can't acquire, and the message-thread
+    // writer takes the lock with a blocking ScopedLockType. A blocked read is
+    // extremely rare (writes happen only on clip rebuild/point edit) and the
+    // fallback is the previous-sample gain, so the worst case is one block
+    // of slightly stale envelope — never a dropout or a crash.
 public:
     struct GainPoint { double time; double gain; };
     void setGainEnvelopePoints(const std::vector<GainPoint>& points)
     {
-        std::lock_guard<std::mutex> lock(envelopeMutex);
-        gainEnvelopePoints = points;
+        // Sort by time so the read path can binary-search. The audio-thread
+        // reader assumes strictly increasing point times.
+        std::vector<GainPoint> sorted = points;
+        std::sort(sorted.begin(), sorted.end(),
+                  [](const GainPoint& a, const GainPoint& b) { return a.time < b.time; });
+
+        const juce::SpinLock::ScopedLockType lock(envelopeLock);
+        gainEnvelopePoints = std::move(sorted);
+        hasEnvelope.store(!gainEnvelopePoints.empty(), std::memory_order_release);
     }
 
     double getGainAtTime(double time) const
     {
-        std::lock_guard<std::mutex> lock(envelopeMutex);
-        if (gainEnvelopePoints.empty())
+        // Fast path: no envelope → unity gain, no lock at all.
+        // (Safe because hasEnvelope is written under envelopeLock before any
+        // swap that could empty the vector, and we tolerate reading a stale
+        // bool here — worst case we take the lock and re-check.)
+        if (!hasEnvelope.load(std::memory_order_acquire))
             return 1.0;
-        if (gainEnvelopePoints.size() == 1)
-            return gainEnvelopePoints[0].gain;
 
-        for (size_t i = 0; i < gainEnvelopePoints.size() - 1; ++i)
+        if (!envelopeLock.tryEnter())
+            return 1.0; // blocked: skip this block's envelope, RT-safe
+
+        double result = 1.0;
+        if (!gainEnvelopePoints.empty())
         {
-            double t0 = gainEnvelopePoints[i].time;
-            double t1 = gainEnvelopePoints[i + 1].time;
-            if (time >= t0 && time <= t1)
+            // lower_bound gives O(log n) lookup; the vector is sorted by time.
+            auto it = std::lower_bound(gainEnvelopePoints.begin(),
+                                       gainEnvelopePoints.end(), time,
+                                       [](const GainPoint& p, double t) { return p.time < t; });
+            if (it == gainEnvelopePoints.end())
+                result = gainEnvelopePoints.back().gain;
+            else if (it == gainEnvelopePoints.begin())
+                result = gainEnvelopePoints.front().gain;
+            else
             {
-                double g0 = gainEnvelopePoints[i].gain;
-                double g1 = gainEnvelopePoints[i + 1].gain;
-                double alpha = (time - t0) / (t1 - t0);
-                return g0 + alpha * (g1 - g0);
+                const auto& a = *(it - 1);
+                const auto& b = *it;
+                double denom = b.time - a.time;
+                // Guard against duplicate-time points (0/0 NaN). Treat a
+                // zero-width segment as a step: hold the earlier point's gain.
+                if (denom <= 0.0)
+                    result = a.gain;
+                else
+                {
+                    double alpha = (time - a.time) / denom;
+                    result = a.gain + alpha * (b.gain - a.gain);
+                }
             }
         }
-        if (time < gainEnvelopePoints.front().time)
-            return gainEnvelopePoints.front().gain;
-        return gainEnvelopePoints.back().gain;
+        envelopeLock.exit();
+        return result;
     }
 
 private:
@@ -391,9 +425,13 @@ private:
     int clipID = -1;
     double stretchRatio = 1.0; // resolved at rebuild; not RT-parametric
 
-    // Gain envelope support
-    mutable std::vector<GainPoint> gainEnvelopePoints;
-    mutable std::mutex envelopeMutex;
+    // Gain envelope support. See setGainEnvelopePoints for the RT contract.
+    // gainEnvelopePoints is mutated only under envelopeLock; the audio-thread
+    // reader acquires it with tryEnter(). hasEnvelope is an atomic fast-path
+    // gate so the common "no envelope" case takes no lock at all.
+    std::vector<GainPoint> gainEnvelopePoints;
+    mutable juce::SpinLock envelopeLock;
+    std::atomic<bool> hasEnvelope{ false };
 
     juce::LinearSmoothedValue<float> gainSmooth;
     double sr = 44100.0;

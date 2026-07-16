@@ -379,6 +379,26 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
             clipProc->setLooping(clipTree.getProperty(IDs::looping));
 
+            // Push the per-clip gain envelope to the freshly-built processor.
+            // A new ClipSourceProcessor starts with an empty envelope vector,
+            // so without this the envelope is silently dropped after every
+            // routing rebuild (stretch, transport change, slice, take switch).
+            // notifyClipGainEnvelopeChanged only updates the *existing*
+            // processor by clipID; it does not run during rebuild.
+            auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
+            if (envTree.isValid())
+            {
+                auto envPoints = ProjectModel::getGainEnvelopePoints(envTree);
+                if (!envPoints.empty())
+                {
+                    std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
+                    gpts.reserve(envPoints.size());
+                    for (const auto& p : envPoints)
+                        gpts.push_back({ p.time, p.gain });
+                    clipProc->setGainEnvelopePoints(gpts);
+                }
+            }
+
             // Resolve stretch intent from the ValueTree. clipID lets the
             // processor be identified by StretchCache; stretchRatio keys
             // the cache lookup. If a matching rendered entry is ready,

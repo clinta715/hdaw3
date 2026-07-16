@@ -504,6 +504,13 @@ std::vector<juce::ValueTree> ProjectModel::sliceClipAtTimes(juce::ValueTree clip
     auto clipList = clip.getParent();  // CLIP_LIST
     int clipIndex = clipList.indexOf(clip);
 
+    // Remove the ORIGINAL clip before inserting the slices. Inserting-then-
+    // removing-by-index corrupts the result: each addChild pushes the
+    // original further down, so a trailing removeChild(clipIndex) deletes
+    // the first inserted slice instead of the original. Removing first also
+    // gives the slices a stable insertion point at the original's index.
+    clipList.removeChild(clip, um);
+
     double prevTime = clipStart;
     double prevOffset = clipOffset;
     int newIndex = clipIndex;
@@ -523,7 +530,7 @@ std::vector<juce::ValueTree> ProjectModel::sliceClipAtTimes(juce::ValueTree clip
         prevOffset += sliceDur;
     }
 
-    // Final slice
+    // Final slice (the tail after the last cut point).
     double finalDur = clipEnd - prevTime;
     auto finalClip = clip.createCopy();
     finalClip.setProperty(IDs::startTime, prevTime, um);
@@ -532,9 +539,6 @@ std::vector<juce::ValueTree> ProjectModel::sliceClipAtTimes(juce::ValueTree clip
     finalClip.setProperty(IDs::clipID, allocateClipID(), um);
     clipList.addChild(finalClip, newIndex++, um);
     result.push_back(finalClip);
-
-    // Remove original
-    clipList.removeChild(clipIndex, um);
 
     return result;
 }

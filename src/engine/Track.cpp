@@ -193,6 +193,15 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 void Track::rebuildModulation(const juce::ValueTree& modulationListTree)
 {
     if (!modulationManager) return;
+    // Hold stateLock while mutating the source list: processBlock reads
+    // `modulationManager->getModulation(...)` per-sample (see the volume/pan
+    // loop). Without this lock an LFO add/remove/param change during playback
+    // races the audio thread's iteration over `sources` (a vector of
+    // unique_ptr that rebuild() clears + reallocates). Matches the
+    // rebuildFXChain / setAutomationTrees pattern. processBlock uses
+    // tryEnter() on the read side so a contested block skips modulation
+    // rather than blocking the audio thread.
+    juce::SpinLock::ScopedLockType lock(stateLock);
     modulationManager->rebuild(modulationListTree, getSampleRate());
 }
 
@@ -273,13 +282,22 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             if (auto pos = ph->getPosition())
                 bpm = pos->getBpm().orFallback(120.0);
 
+        // Modulation read path: modulationManager->getModulation() iterates
+        // the LFO `sources` vector and advances each LFO's phase per-sample.
+        // rebuildModulation (UI thread) mutates that vector under stateLock;
+        // we tryEnter() once per block and, on contention, skip modulation
+        // for the whole block (modGain/modPan stay 0.0). This matches the
+        // tryEnter()-or-skip pattern used for automation and the FX chain
+        // above, and avoids locking per-sample.
+        const bool modulationLocked = modulationManager && stateLock.tryEnter();
+
         for (int sample = 0; sample < numSamples; ++sample)
         {
             float baseGain = volumeGain.getNextValue();
             float basePan  = panPosition.getNextValue();
 
             float modGain = 0.0f, modPan = 0.0f;
-            if (modulationManager)
+            if (modulationLocked)
             {
                 modGain = modulationManager->getModulation(1, bpm, getSampleRate());
                 modPan  = modulationManager->getModulation(2, bpm, getSampleRate());
@@ -309,6 +327,11 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             leftChannel[sample] *= leftGain;
             rightChannel[sample] *= rightGain;
         }
+
+        // Release the modulation read lock acquired above (no-op for the
+        // block if tryEnter() failed). Must stay paired with the tryEnter().
+        if (modulationLocked)
+            stateLock.exit();
     }
 
     meter.update(buffer);

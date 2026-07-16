@@ -241,6 +241,7 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
         e->accept();
         return true;
     }
+    if (dragMode == Duplicate)
     {
         double pps = dragPPS;
         QPointF delta = e->scenePos() - dragStartPos;
