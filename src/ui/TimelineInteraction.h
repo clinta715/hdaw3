@@ -4,6 +4,7 @@
 #include <QRectF>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
+#include "../common/ProjectCommands.h"
 #include "../common/AudioGraphCommands.h"
 #include "../common/ReadModel.h"
 
@@ -59,6 +60,7 @@ private:
     bool snapEnabled = true;
     SnapDivision snapDivision = Beat;
 
+    ProjectCommands* projectCmds = nullptr;
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;
     juce::UndoManager* undoManager = nullptr;

@@ -41,8 +41,6 @@ public:
     void pasteClips();
     void duplicateSelectedClips();
 
-    static constexpr double duplicateOffsetSeconds = 0.25;
-
 signals:
     void trackSelectionChanged(int trackIndex);
     void addTrackClicked();

@@ -17,6 +17,7 @@ VUMeter::VUMeter(LevelMeter& meterToPoll, QWidget* parent)
 
 VUMeter::~VUMeter()
 {
+    timer.stop();
 }
 
 void VUMeter::updateLevels()

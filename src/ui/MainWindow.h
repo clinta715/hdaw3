@@ -10,9 +10,8 @@
 #include <QPushButton>
 #include <QList>
 #include <juce_core/juce_core.h>
-// Follow-up: forward-declare AudioEngine once UI headers no longer
-// transitively include AudioEngine.h (all UI headers pull it in today).
-#include "../engine/AudioEngine.h"
+#include <juce_data_structures/juce_data_structures.h>
+class AudioEngine;
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -39,6 +38,21 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(AudioEngine& engine, QWidget* parent = nullptr);
     ~MainWindow();
+
+    // Bottom-panel tab indices. The QStackedWidget inserts widgets in this
+    // exact order (see setupBottomPanel); these named constants replace the
+    // raw 0–6 magic numbers that were scattered across the signal handlers.
+    // Reordering a widget's addWidget() call MUST move its entry here too.
+    enum BottomPanel : int {
+        Mixer = 0,
+        PianoRoll = 1,
+        FxChain = 2,
+        Automation = 3,
+        AudioEditor = 4,
+        StepSequencer = 5,
+        Modulation = 6,
+        Count = 7
+    };
 
 protected:
     void closeEvent(QCloseEvent* event) override;

@@ -14,6 +14,7 @@
 TimelineInteraction::TimelineInteraction(TimelineScene* s, AudioEngine& ae, QObject* parent)
     : QObject(parent), engine(ae), scene(s)
 {
+    projectCmds = &engine.getProjectCommands();
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
 }
@@ -110,8 +111,7 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
             }
         }
 
-        if (undoManager)
-            undoManager->beginNewTransaction("Edit clip");
+        projectCmds->beginTransaction("Edit clip");
 
         dragPPS = pps;
 
@@ -423,13 +423,18 @@ bool TimelineInteraction::handleMouseDoubleClick(QGraphicsSceneMouseEvent* e)
     duration = snapToGrid(snappedTime + duration) - snappedTime;
     duration = (std::max)(0.5, duration);
 
-    auto clipTree = ProjectModel::createMidiClipEmpty("MIDI Clip", snappedTime, duration);
-
-    clipList.addChild(clipTree, -1, &model.getUndoManager());
+    int newClipId = projectCmds->addMidiClip(trackIndex, snappedTime, duration, "MIDI Clip");
     audioGraphCmds->rebuildRoutingGraph();
 
     lastClipDuration = duration;
-    emit scene->clipSelected(clipTree);
+    // addMidiClip returns a clipId; resolve the freshly-added clip tree
+    // (the last child of the track's CLIP_LIST) to emit clipSelected.
+    juce::ValueTree newClip;
+    auto clipsAfter = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (clipsAfter.isValid() && clipsAfter.getNumChildren() > 0)
+        newClip = clipsAfter.getChild(clipsAfter.getNumChildren() - 1);
+    juce::ignoreUnused(newClipId);
+    emit scene->clipSelected(newClip);
     e->accept();
     return true;
 }
@@ -511,16 +516,13 @@ QList<ClipItem*> TimelineInteraction::getSelectedClips() const
 
 void TimelineInteraction::deleteSelectedClips()
 {
-    auto& um = engine.getProjectModel().getUndoManager();
-    if (undoManager)
-        undoManager->beginNewTransaction("Delete clips");
+    projectCmds->beginTransaction("Delete clips");
     auto selected = getSelectedClips();
     for (auto* clip : selected)
     {
         auto clipTree = clip->getClipTree();
-        auto parentTree = clipTree.getParent();
-        if (parentTree.isValid())
-            parentTree.removeChild(clipTree, &um);
+        int clipId = clipTree.getProperty(IDs::clipID);
+        projectCmds->removeClip(clipId);
     }
 }
 

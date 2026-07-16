@@ -33,7 +33,7 @@ public slots:
 private slots:
     void onAddLFO();
     void onRemoveLFO(int lfoIndex);
-    void onLfoParamChanged();
+    void onLfoParamChanged(int lfoIndex);
     void flushChanges();
 
 private:
@@ -50,12 +50,19 @@ private:
         QComboBox* targetCombo;
         QPushButton* bypassBtn;
         QPushButton* removeBtn;
+        // Set when any control on this panel changes since the last flush,
+        // so flushChanges() only commits (and rebuilds audio for) panels that
+        // actually changed — not every panel on every 150ms tick.
+        bool dirty = false;
     };
 
     void clearPanels();
     void rebuildPanels();
     int addPanel(const juce::ValueTree& modTree, int index);
-    void writeLfoToTree(int lfoIndex);
+    // Commit only the properties that differ from the tree's current values.
+    // Returns true if anything was written (so the caller knows a rebuild is
+    // warranted).
+    bool writeLfoToTree(int lfoIndex);
     void syncModulationToAudio();
 
     AudioEngine& engine;

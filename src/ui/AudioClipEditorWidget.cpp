@@ -461,6 +461,12 @@ void AudioClipEditorWidget::loadGainEnvelope()
     gainEnvelopeEditor->setDuration(currentClip.getProperty(IDs::duration));
 }
 
+void AudioClipEditorWidget::reloadClip()
+{
+    if (currentClip.isValid())
+        loadClip(currentClip);
+}
+
 void AudioClipEditorWidget::onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points)
 {
     if (settingUi || !currentClip.isValid()) return;
@@ -471,12 +477,7 @@ void AudioClipEditorWidget::onGainEnvelopeChanged(const QVector<GainEnvelopeEdit
     {
         ProjectModel::addGainEnvelopePoint(envelope, pt.time, pt.gain, &engine.getProjectModel().getUndoManager());
     }
-    // Update processor
-    std::vector<ClipSourceProcessor::GainPoint> procPoints;
-    procPoints.reserve(points.size());
-    for (const auto& pt : points)
-        procPoints.push_back({pt.time, pt.gain});
-    engine.getMainProcessor()->updateClipGainEnvelope(clipId, procPoints);
+    projectCmds->notifyClipGainEnvelopeChanged(clipId);
 }
 
 void AudioClipEditorWidget::onSliceAtPlayhead()

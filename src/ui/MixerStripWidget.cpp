@@ -47,6 +47,10 @@ MixerStripWidget::MixerStripWidget(int idx, AudioEngine& ae, QWidget* parent)
 
 MixerStripWidget::~MixerStripWidget()
 {
+    destroyed_ = true;
+    vuTimer.stop();
+    if (auto* app = QApplication::instance())
+        app->removeEventFilter(this);
     engine.getProjectModel().getTree().removeListener(this);
 }
 
@@ -382,8 +386,7 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
         auto trackList = model.getTrackListTree();
         if (trackIndex < trackList.getNumChildren())
         {
-            trackList.removeChild(trackList.getChild(trackIndex),
-                &model.getUndoManager());
+            projectCmds->removeTrack(trackIndex);
             engine.getMainProcessor()->rebuildRoutingGraph();
             emit trackDeleted();
         }
@@ -417,6 +420,7 @@ void MixerStripWidget::leaveEvent(QEvent* event)
 
 bool MixerStripWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    if (destroyed_) return QWidget::eventFilter(obj, event);
     if (event->type() == QEvent::MouseButtonRelease && (draggingVol || draggingPan) && obj != this)
     {
         draggingVol = false;

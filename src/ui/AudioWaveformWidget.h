@@ -20,6 +20,8 @@ public:
     double getPixelsPerSecond() const { return pixelsPerSecond; }
     void setScrollX(int sx) { scrollX = sx; update(); }
     int getScrollX() const { return scrollX; }
+    double getSelectionStart() const { return selStart; }
+    double getSelectionEnd() const { return selEnd; }
     void zoomIn() { setPixelsPerSecond(pixelsPerSecond * 1.3); }
     void zoomOut() { setPixelsPerSecond(pixelsPerSecond / 1.3); }
 
@@ -50,6 +52,15 @@ private:
     HDAW::ProjectPool& projectPool;
     juce::ValueTree currentClip;
     std::unique_ptr<juce::AudioThumbnail> thumbnail;
+    bool destroyed_ = false;
+
+    struct ThumbnailListener : public juce::ChangeListener
+    {
+        AudioWaveformWidget* widget;
+        std::atomic<bool> alive{ true };
+        void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    };
+    std::shared_ptr<ThumbnailListener> thumbListener;
 
     double pixelsPerSecond = 20.0;
     int scrollX = 0;

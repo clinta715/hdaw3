@@ -64,6 +64,14 @@ public:
     double getSampleRate() const { return sampleRate.load(); }
     double getBPM() const { return bpm.load(); }
 
+    // Get current position in seconds
+    double getCurrentPositionSeconds() const
+    {
+        const int64_t currentSample = getCurrentSample();
+        const double sr = getSampleRate();
+        return sr > 0 ? static_cast<double>(currentSample) / sr : 0.0;
+    }
+
     void setTempoMap(std::shared_ptr<const std::vector<TempoPoint>> map)
     {
         std::atomic_store(&tempoMap, std::move(map));

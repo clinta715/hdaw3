@@ -139,18 +139,11 @@ void StepEditorWidget::commitNote(int row, int step, bool add)
 
     if (add)
     {
-        auto& um = engine.getProjectModel().getUndoManager();
-        juce::ValueTree note(IDs::MIDI_NOTE);
-        note.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
-        note.setProperty(IDs::noteNumber, noteNumber, &um);
-        note.setProperty(IDs::velocity, 100, &um);
-        note.setProperty(IDs::startBeat, stepBeat, &um);
-        note.setProperty(IDs::durationBeats, 1.0, &um);
-        noteList.addChild(note, -1, &um);
+        int clipId = currentClip.getProperty(IDs::clipID);
+        projectCmds->addNote(clipId, noteNumber, 100, stepBeat, 1.0);
     }
     else
     {
-        // Remove matching note
         for (int i = 0; i < noteList.getNumChildren(); ++i)
         {
             auto note = noteList.getChild(i);
@@ -158,7 +151,8 @@ void StepEditorWidget::commitNote(int row, int step, bool add)
             double sb = note.getProperty(IDs::startBeat, -1.0);
             if (nn == noteNumber && std::abs(sb - stepBeat) < 0.01)
             {
-                noteList.removeChild(i, &engine.getProjectModel().getUndoManager());
+                int noteId = note.getProperty(IDs::noteID);
+                projectCmds->removeNote(noteId);
                 return;
             }
         }

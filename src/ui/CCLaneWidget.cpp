@@ -13,6 +13,13 @@ CCLaneWidget::CCLaneWidget(PianoRollModel& m, QWidget* parent)
     qApp->installEventFilter(this);
 }
 
+CCLaneWidget::~CCLaneWidget()
+{
+    destroyed_ = true;
+    if (auto* app = QApplication::instance())
+        app->removeEventFilter(this);
+}
+
 int CCLaneWidget::pointIndexAtBeat(double beat) const
 {
     int count = model.getCcPointCount(controllerNumber);
@@ -184,6 +191,7 @@ void CCLaneWidget::leaveEvent(QEvent* event)
 
 bool CCLaneWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    if (destroyed_) return QWidget::eventFilter(obj, event);
     if (event->type() == QEvent::MouseButtonRelease && dragging && obj != this)
     {
         dragging = false;

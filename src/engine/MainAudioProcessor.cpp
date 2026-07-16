@@ -1,4 +1,5 @@
 #include "MainAudioProcessor.h"
+#include "ClipSourceProcessor.h"
 
 MainAudioProcessor::MainAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -160,10 +161,25 @@ bool MainAudioProcessor::startRecording()
         countInActive.store(true);
         wasMetronomeOn = metronome.isEnabled();
         metronome.setEnabled(true);
-        return true;
-    }
+return true;
+}
 
     return beginActualRecording();
+}
+
+void MainAudioProcessor::updateClipGainEnvelope(int clipId, const std::vector<HDAW::ClipSourceProcessor::GainPoint>& points)
+{
+    auto* routingManager = getRoutingManager();
+    if (!routingManager) return;
+    
+    for (auto& kv : routingManager->getAudioClipSources())
+    {
+        if (kv.second->getClipID() == clipId)
+        {
+            kv.second->setGainEnvelopePoints(points);
+            break;
+        }
+    }
 }
 
 bool MainAudioProcessor::beginActualRecording()

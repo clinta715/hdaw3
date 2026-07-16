@@ -454,42 +454,7 @@ void AutomationLaneWidget::showAddLaneMenu()
 void AutomationLaneWidget::addAutomationLane(const QString& name, int paramID)
 {
     if (currentTrack < 0) return;
-    auto trackList = engine.getProjectModel().getTrackListTree();
-    if (currentTrack >= trackList.getNumChildren()) return;
-    auto trackTree = trackList.getChild(currentTrack);
-
-    juce::ValueTree autoTree(IDs::AUTOMATION);
-    autoTree.setProperty(IDs::name, juce::String(name.toUtf8().constData()), nullptr);
-    autoTree.setProperty(IDs::paramID, paramID, nullptr);
-    autoTree.setProperty(IDs::curveType, "linear", nullptr);
-    autoTree.setProperty(IDs::automationEnabled, false, nullptr);
-
-    double defaultVal = 0.5;
-    if (paramID == 1)      defaultVal = 1.0; // Volume
-    else if (paramID == 2) defaultVal = 0.5; // Pan (center)
-    else if (paramID == 3) defaultVal = 0.0; // Mute (unmuted)
-
-    juce::ValueTree pointList(IDs::POINT_LIST);
-    juce::ValueTree pt1(IDs::POINT);
-    pt1.setProperty(IDs::startTime, 0.0, nullptr);
-    pt1.setProperty(IDs::gain, defaultVal, nullptr);
-    pointList.addChild(pt1, -1, nullptr);
-    juce::ValueTree pt2(IDs::POINT);
-    pt2.setProperty(IDs::startTime, 16.0, nullptr);
-    pt2.setProperty(IDs::gain, defaultVal, nullptr);
-    pointList.addChild(pt2, -1, nullptr);
-    autoTree.addChild(pointList, -1, nullptr);
-
-    auto autoList = trackTree.getChildWithName(IDs::AUTOMATION_LIST);
-    if (!autoList.isValid())
-    {
-        autoList = juce::ValueTree(IDs::AUTOMATION_LIST);
-        trackTree.addChild(autoList, -1, &engine.getProjectModel().getUndoManager());
-    }
-    int newIdx = autoList.getNumChildren();
-    autoList.addChild(autoTree, -1, &engine.getProjectModel().getUndoManager());
-    currentParamIndex = newIdx;
-    refreshParamCombo();
+    projectCmds->addAutomationLane(currentTrack, name.toStdString());
     emit automationChanged();
     update();
 }

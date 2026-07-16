@@ -1349,6 +1349,8 @@ int AudioEngineCommands::copyAudioClipRegion(int clipId, double regionStart, dou
 
 int AudioEngineCommands::cutAudioClipRegion(int clipId, double regionStart, double regionEnd)
 {
+    if (regionEnd <= regionStart) return -1;
+
     copyAudioClipRegion(clipId, regionStart, regionEnd);
 
     int trackIdx = -1;

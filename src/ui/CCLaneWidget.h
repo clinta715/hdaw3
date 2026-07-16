@@ -7,6 +7,7 @@ class CCLaneWidget : public QWidget
     Q_OBJECT
 public:
     CCLaneWidget(PianoRollModel& model, QWidget* parent = nullptr);
+    ~CCLaneWidget() override;
 
     void setPixelsPerBeat(double ppb) { pixelsPerBeat = ppb; update(); }
     void setScrollOffset(int x) { scrollX = x; update(); }
@@ -32,6 +33,7 @@ private:
     int pointIndexAtBeat(double beat) const;
     int pointIndexAtPos(const QPoint& pos) const;
 
+    bool destroyed_ = false;
     PianoRollModel& model;
     double pixelsPerBeat = 40.0;
     int scrollX = 0;

@@ -7,7 +7,10 @@ class GainEnvelopeEditor : public QWidget
 {
     Q_OBJECT
 public:
-    struct Point { double time; double gain; };
+    struct Point {
+        double time; double gain;
+        bool operator==(const Point& o) const { return time == o.time && gain == o.gain; }
+    };
 
     explicit GainEnvelopeEditor(QWidget* parent = nullptr);
     void setPoints(const QVector<Point>& points);

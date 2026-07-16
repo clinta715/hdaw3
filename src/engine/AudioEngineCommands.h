@@ -68,6 +68,7 @@ public:
     void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override;
     void removeGainEnvelopePoint(int clipId, int pointIndex) override;
     void clearGainEnvelope(int clipId) override;
+    void notifyClipGainEnvelopeChanged(int clipId) override;
 
     // ProjectCommands — MIDI note operations
     int addNote(int clipId, int pitch, int velocity,
@@ -195,7 +196,6 @@ private:
 
     // Gain envelope helpers
     std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);
-    void notifyClipGainEnvelopeChanged(int clipId) override;
 
     AudioEngine& engine_;
 };

@@ -143,7 +143,7 @@ void PianoRollWidget::setupUI()
     mainLayout->addWidget(contentRow, 1);
 
     // Velocity lane
-    velocityLane = new VelocityLaneWidget(model, this);
+    velocityLane = new VelocityLaneWidget(model, projectCmds, this);
     mainLayout->addWidget(velocityLane);
 
     // CC lane

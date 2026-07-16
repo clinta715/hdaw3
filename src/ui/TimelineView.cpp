@@ -193,8 +193,7 @@ void TimelineView::connectSignals()
     });
 
     connect(toolbar, &TimelineToolbar::loopToggleChanged, this, [this](bool en) {
-        auto transportTree = engine.getProjectModel().getTransportTree();
-        transportTree.setProperty(IDs::isLooping, en, &engine.getProjectModel().getUndoManager());
+        projectCmds->setLooping(en);
     });
 
     connect(toolbar, &TimelineToolbar::addTrackClicked, this, &TimelineView::addTrackClicked);
@@ -403,8 +402,7 @@ void TimelineView::cutSelectedClips()
 {
     if (interaction == nullptr)
         return;
-    auto& um = engine.getProjectModel().getUndoManager();
-    um.beginNewTransaction("Cut clips");
+    projectCmds->beginTransaction("Cut clips");
     copySelectedClips();
     interaction->deleteSelectedClips();
 }
@@ -436,8 +434,7 @@ void TimelineView::pasteClips()
     if (!HDAW::ClipClipboard::hasContent())
         return;
     auto& model = engine.getProjectModel();
-    auto& um = model.getUndoManager();
-    um.beginNewTransaction("Paste clips");
+    projectCmds->beginTransaction("Paste clips");
 
     // Paste origin: current playhead time, in seconds
     int64_t samples = engine.getTransportManager().getCurrentSample();
@@ -469,7 +466,7 @@ void TimelineView::pasteClips()
         if (!clipList.isValid())
         {
             clipList = juce::ValueTree(IDs::CLIP_LIST);
-            trackTree.addChild(clipList, -1, &um);
+            trackTree.addChild(clipList, -1, &model.getUndoManager());
         }
 
         // Offset paste so the earliest source start lands at origin.
@@ -480,13 +477,13 @@ void TimelineView::pasteClips()
 
         // Deep copy again so each paste is independent.
         auto newClip = entry.clipTree.createCopy();
-        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
-        newClip.setProperty(IDs::startTime, newStart, &um);
+        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &model.getUndoManager());
+        newClip.setProperty(IDs::startTime, newStart, &model.getUndoManager());
         // Append " copy" to the name to disambiguate.
         juce::String origName = newClip.getProperty(IDs::name).toString();
         if (!origName.endsWith(" copy"))
-            newClip.setProperty(IDs::name, origName + " copy", &um);
-        clipList.addChild(newClip, -1, &um);
+            newClip.setProperty(IDs::name, origName + " copy", &model.getUndoManager());
+        clipList.addChild(newClip, -1, &model.getUndoManager());
     }
 
     if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
@@ -497,50 +494,14 @@ void TimelineView::duplicateSelectedClips()
 {
     if (interaction == nullptr)
         return;
-    auto& um = engine.getProjectModel().getUndoManager();
-    um.beginNewTransaction("Duplicate clips");
-
-    // Build local copies without touching the global clipboard.
     auto selected = interaction->getSelectedClips();
     if (selected.isEmpty())
         return;
-    std::vector<HDAW::ClipboardEntry> entries;
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
+
+    projectCmds->beginTransaction("Duplicate clips");
     for (auto* clip : selected)
-    {
-        auto clipTree = clip->getClipTree();
-        auto trackTree = ProjectModel::getTrackOfClip(clipTree);
-        int trackIdx = trackList.indexOf(trackTree);
-        HDAW::ClipboardEntry entry = HDAW::ClipClipboard::deepCopy(clipTree);
-        entry.sourceTrackIndex = trackIdx;
-        entries.push_back(entry);
-    }
-
-    int numTracks = trackList.getNumChildren();
-
-    for (const auto& entry : entries)
-    {
-        if (!entry.clipTree.isValid()) continue;
-        int targetTrack = entry.sourceTrackIndex;
-        if (targetTrack < 0 || targetTrack >= numTracks) continue;
-        auto trackTree = trackList.getChild(targetTrack);
-        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-        if (!clipList.isValid()) continue;
-
-        auto newClip = entry.clipTree.createCopy();
-        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
-        double srcStart2 = entry.clipTree.getProperty(IDs::startTime);
-        double newStart = srcStart2 + duplicateOffsetSeconds;
-        newClip.setProperty(IDs::startTime, newStart, &um);
-        juce::String origName = newClip.getProperty(IDs::name).toString();
-        if (!origName.endsWith(" copy"))
-            newClip.setProperty(IDs::name, origName + " copy", &um);
-        clipList.addChild(newClip, -1, &um);
-    }
-
-    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
-        mainProc->rebuildRoutingGraph();
+        projectCmds->duplicateClip(clip->getClipTree().getProperty(IDs::clipID));
+    engine.getMainProcessor()->rebuildRoutingGraph();
 }
 
 void TimelineView::syncRulerWithScene()
@@ -678,8 +639,7 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
             QString outPath;
             if (HDAW::normalizeAudioFile(engine, sourcePath, outPath))
             {
-                auto& um = engine.getProjectModel().getUndoManager();
-                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &um);
+                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
                 if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
                     mainProc->rebuildRoutingGraph();
             }
@@ -691,8 +651,7 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
             QString outPath;
             if (HDAW::reverseAudioFile(engine, sourcePath, outPath))
             {
-                auto& um = engine.getProjectModel().getUndoManager();
-                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &um);
+                clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
                 if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
                     mainProc->rebuildRoutingGraph();
             }
@@ -724,9 +683,8 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
         if (interaction == nullptr)
         {
             auto ct = clip->getClipTree();
-            auto parentTree = ct.getParent();
-            if (parentTree.isValid())
-                parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
+            int clipId = ct.getProperty(IDs::clipID);
+            projectCmds->removeClip(clipId);
             return;
         }
         auto selected = interaction->getSelectedClips();
@@ -734,9 +692,8 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
         {
             // Single clip — use direct removal to preserve the focused clip
             auto ct = clip->getClipTree();
-            auto parentTree = ct.getParent();
-            if (parentTree.isValid())
-                parentTree.removeChild(ct, &engine.getProjectModel().getUndoManager());
+            int clipId = ct.getProperty(IDs::clipID);
+            projectCmds->removeClip(clipId);
         }
         else
         {
@@ -805,8 +762,7 @@ void TimelineView::handleEmptyAreaContextMenu(const QPointF& scenePos, const QPo
             QApplication::activeWindow(), "Tempo",
             "BPM:", engine.getTransportManager().getBPM(), 20.0, 999.0, 1, &ok);
         if (!ok) return;
-        engine.getProjectModel().getTree().setProperty(IDs::tempo, newBpm,
-            &engine.getProjectModel().getUndoManager());
+        projectCmds->setTempo(newBpm);
     });
 
     menu.addSeparator();
@@ -821,17 +777,7 @@ void TimelineView::handleEmptyAreaContextMenu(const QPointF& scenePos, const QPo
         if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
             return;
 
-        auto trackTree = trackList.getChild(trackIndex);
-        auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-        if (!clipList.isValid())
-        {
-            clipList = juce::ValueTree(IDs::CLIP_LIST);
-            trackTree.addChild(clipList, -1, &model.getUndoManager());
-        }
-
-        auto clip = ProjectModel::createMidiClipEmpty("MIDI Clip",
-            (std::max)(0.0, timeSeconds), 4.0);
-        clipList.addChild(clip, -1, &model.getUndoManager());
+        projectCmds->addMidiClip(trackIndex, (std::max)(0.0, timeSeconds), 4.0, "MIDI Clip");
         engine.getMainProcessor()->rebuildRoutingGraph();
     });
 
@@ -947,39 +893,30 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
         duration = reader->lengthInSamples / reader->sampleRate;
     }
 
-    auto trackTree = trackList.getChild(trackIndex);
-    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-    if (!clipList.isValid())
-    {
-        clipList = juce::ValueTree(IDs::CLIP_LIST);
-        trackTree.addChild(clipList, -1, &model.getUndoManager());
-    }
+    int newClipId = projectCmds->addAudioClip(
+        trackIndex,
+        (std::max)(0.0, timeSeconds),
+        duration,
+        filePath.toUtf8().constData(),
+        fi.baseName().toUtf8().constData());
 
-    auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
-                                              (std::max)(0.0, timeSeconds), duration,
-                                              filePath.toUtf8().constData());
-    clipList.addChild(clip, -1, &model.getUndoManager());
+    engine.getMainProcessor()->rebuildRoutingGraph();
 
-    if (reader != nullptr)
+    if (reader != nullptr && newClipId >= 0)
     {
         double bpm = HDAW::readBpmFromMetadata(reader.get());
         if (bpm > 0.0)
         {
-            clip.setProperty(IDs::sourceBpm, bpm, &model.getUndoManager());
+            projectCmds->setClipSourceBpm(newClipId, bpm);
             if (PreferencesDialog::getAutoTempoMatch())
             {
-                double projectBpm = model.getTree().getProperty(IDs::tempo, 120.0);
+                double projectBpm = engine.getTransportManager().getBPM();
                 double ratio = bpm / projectBpm;
-                double sourceDur = clip.getProperty(IDs::sourceDuration, 0.0);
-                clip.setProperty(IDs::stretchMode, 1, &model.getUndoManager());
-                clip.setProperty(IDs::stretchRatio, ratio, &model.getUndoManager());
-                if (sourceDur > 0.0)
-                    clip.setProperty(IDs::duration, sourceDur * ratio, &model.getUndoManager());
+                projectCmds->setClipStretchMode(newClipId, 1);
+                projectCmds->setClipStretchRatio(newClipId, ratio);
             }
         }
     }
-
-    engine.getMainProcessor()->rebuildRoutingGraph();
 
     emit fileImported(filePath);
 }

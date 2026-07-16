@@ -10,6 +10,7 @@
 #include "AudioRecorder.h"
 #include "ExportManager.h"
 #include "Metronome.h"
+#include "ClipSourceProcessor.h"
 #include "../model/ProjectModel.h"
 #include <memory>
 
@@ -40,6 +41,8 @@ public:
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph();
     void rebuildAutomationCache(int trackIndex);
+    void updateClipGainEnvelope(int clipId, const std::vector<HDAW::ClipSourceProcessor::GainPoint>& points);
+
     bool beginActualRecording();
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;

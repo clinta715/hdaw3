@@ -1,6 +1,35 @@
 #include "AudioEngine.h"
 #include <juce_events/juce_events.h>
 
+namespace {
+// Resolve the track index owning a MODULATION or MODULATION_LIST subtree.
+// `tree` may be the MODULATION node itself (parent = MODULATION_LIST) or the
+// MODULATION_LIST (parent = TRACK). Returns -1 if the track can't be found.
+int modulationTrackIndexOf(const juce::ValueTree& tree)
+{
+    if (!tree.isValid()) return -1;
+    auto parent = tree.getParent();
+    if (!parent.isValid()) return -1;
+
+    // MODULATION → MODULATION_LIST → TRACK
+    juce::ValueTree modList;
+    if (tree.hasType(IDs::MODULATION))
+        modList = parent;
+    else if (tree.hasType(IDs::MODULATION_LIST))
+        modList = tree;
+    else
+        return -1;
+
+    auto trackTree = modList.getParent();
+    if (!trackTree.isValid() || !trackTree.hasType(IDs::TRACK)) return -1;
+
+    auto trackList = trackTree.getParent();
+    if (!trackList.isValid()) return -1;
+    int idx = trackList.indexOf(trackTree);
+    return idx;
+}
+} // namespace
+
 AudioEngine::AudioEngine()
 {
     mainProcessor = std::make_unique<MainAudioProcessor>();
@@ -32,6 +61,15 @@ void AudioEngine::initialize()
         if (mainProcessor)
             mainProcessor->rebuildRoutingGraph();
     });
+
+    // Sync initial modulation state from the project model
+    auto trackList = projectModel.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto modList = trackList.getChild(t).getChildWithName(IDs::MODULATION_LIST);
+        if (modList.isValid() && mainProcessor)
+            mainProcessor->rebuildModulation(t);
+    }
 
     // Setup transport
     transportManager.setBPM(projectModel.getTree().getProperty(IDs::tempo));
@@ -418,6 +456,19 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             }
         }
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::MODULATION))
+    {
+        // Walk up CLIP_LIST is NOT the parent chain here: the MODULATION
+        // node lives under TRACK → MODULATION_LIST → MODULATION. Resolve the
+        // owning track so we can rebuild its modulation sources. This covers
+        // the MCP/undo/load paths that mutate the tree without going through
+        // ModulationWidget (which calls rebuildModulation directly).
+        if (mainProcessor != nullptr)
+        {
+            if (int tIdx = modulationTrackIndexOf(treeWhosePropertyHasChanged); tIdx >= 0)
+                mainProcessor->rebuildModulation(tIdx);
+        }
+    }
 }
 
 void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
@@ -450,6 +501,12 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
             }
         }
     }
+
+    if (childWhichHasBeenAdded.hasType(IDs::MODULATION) && mainProcessor != nullptr)
+    {
+        if (int tIdx = modulationTrackIndexOf(parentTree); tIdx >= 0)
+            mainProcessor->rebuildModulation(tIdx);
+    }
 }
 
 void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
@@ -469,6 +526,12 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
                     rm->rebuildMidiClipCache(clipTree);
             }
         }
+    }
+
+    if (childWhichHasBeenRemoved.hasType(IDs::MODULATION) && mainProcessor != nullptr)
+    {
+        if (int tIdx = modulationTrackIndexOf(parentTree); tIdx >= 0)
+            mainProcessor->rebuildModulation(tIdx);
     }
 }
 

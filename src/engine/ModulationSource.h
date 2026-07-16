@@ -14,7 +14,11 @@ class ModulationSource {
 public:
     virtual ~ModulationSource() = default;
     virtual void prepare(double sampleRate) = 0;
-    virtual float processSample(double phase) = 0;
+    // Generic phase-driven sample hook for future source types that advance
+    // from a precomputed phase. The LFO uses getNextValue(bpm, sr) instead
+    // because it needs BPM for beat-synced rate; subclasses that don't can
+    // override this. Default is a no-op so the base is usable as-is.
+    virtual float processSample(double /*phase*/) { return 0.0f; }
 };
 
 enum class LfoWaveform : int {
@@ -30,7 +34,9 @@ public:
     LFOModulationSource();
 
     void prepare(double sr) override;
-    float processSample(double phase) override;
+    // processSample is intentionally NOT overridden: the LFO advances from
+    // BPM/sr via getNextValue below, and inherits the base no-op for the
+    // phase-driven hook.
 
     // Called from the per-sample loop. Returns the modulation offset
     // for this sample. Handles phase accumulation internally.
@@ -77,28 +83,43 @@ private:
     double currentPhase = 0.0;
     double sampleRate = 44100.0;
 
-    // S&H state
-    double lastShValue = 0.0;
-    double shPhase = 0.0;
-    std::mt19937 rng{42};
+    // S&H state. The noise table is filled once in prepare() (message thread),
+    // never on the audio thread. The audio thread only indexes into it.
+    static constexpr int shTableSize = 4096;
+    std::array<float, shTableSize> shTable{};
+    float lastShValue = 0.0f;
+    double prevNormPhase = 0.0;   // for wrap detection (S&H re-roll)
 };
 
 // ── inline implementations ──
 
 inline LFOModulationSource::LFOModulationSource()
 {
-    std::uniform_real_distribution<double> dist(-1.0, 1.0);
-    lastShValue = dist(rng);
+    // Pre-fill the S&H noise table so a source is usable even before
+    // prepare() runs. prepare() re-fills it (deterministic seed).
+    std::mt19937 rng{ 42 };
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& v : shTable)
+        v = dist(rng);
+    lastShValue = shTable.front();
+    prevNormPhase = 0.0;
 }
 
 inline void LFOModulationSource::prepare(double sr)
 {
     sampleRate = sr;
     currentPhase = 0.0;
-    shPhase = 0.0;
-}
+    prevNormPhase = 0.0;
 
-inline float LFOModulationSource::processSample(double) { return 0.0f; } // unused, use getNextValue
+    // Re-fill the noise table here (message thread, not audio thread).
+    // No RNG runs on the audio thread afterwards — getNextValue only
+    // indexes into shTable.
+    std::mt19937 rng{ 42 };
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    for (auto& v : shTable)
+        v = dist(rng);
+    lastShValue = shTable.front();
+}
 
 inline float LFOModulationSource::getNextValue(double bpm, double sr)
 {
@@ -108,7 +129,9 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
     double phaseStep;
     if (rateSync.load(std::memory_order_relaxed))
     {
-        // rate = cycles per beat. 1.0 = quarter note, 4.0 = sixteenth.
+        // `rate` is cycles per beat when synced. freq = rate * beatsPerSec,
+        // so rate=1 → 1 cycle/beat (quarter-note period at 4/4), rate=4 →
+        // 4 cycles/beat (sixteenth-note period). Higher rate = faster.
         double freq = rate.load(std::memory_order_relaxed) * (bpm / 60.0);
         phaseStep = freq / sr;
     }
@@ -126,7 +149,30 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
     if (normPhase < 0.0) normPhase += 1.0;
 
     auto wf = waveform.load(std::memory_order_relaxed);
-    float value = lookupWaveform(normPhase, wf);
+    float value;
+    if (wf == 4)
+    {
+        // Sample & Hold: re-roll from the precomputed noise table when the
+        // normalized phase wraps around a cycle boundary. No RNG runs on the
+        // audio thread — only a table read. prevNormPhase tracks the previous
+        // normalized phase; a wrap is detected when normPhase < prevNormPhase
+        // (the phase wrapped from ~1.0 back to ~0.0 within this cycle window).
+        if (normPhase < prevNormPhase)
+        {
+            // Index the table with a position derived from currentPhase so the
+            // sequence advances across cycles. Use a hash of the integer cycle
+            // count to spread successive samples across the table.
+            int idx = static_cast<int>(currentPhase * shTableSize) % shTableSize;
+            if (idx < 0) idx += shTableSize;
+            lastShValue = shTable[static_cast<size_t>(idx)];
+        }
+        prevNormPhase = normPhase;
+        value = lastShValue;
+    }
+    else
+    {
+        value = lookupWaveform(normPhase, wf);
+    }
     float d = depth.load(std::memory_order_relaxed);
 
     if (!bipolar.load(std::memory_order_relaxed))
@@ -151,16 +197,8 @@ inline float LFOModulationSource::lookupWaveform(double p, int wf)
         case 3: // square
             return p < 0.5f ? 1.0f : -1.0f;
 
-        case 4: // sample & hold
-        {
-            if (p < shPhase)
-            {
-                std::uniform_real_distribution<double> dist(-1.0, 1.0);
-                lastShValue = dist(rng);
-            }
-            shPhase = p;
-            return static_cast<float>(lastShValue);
-        }
+        // case 4 (sample & hold) is handled inline in getNextValue so it can
+        // do RT-safe wrap detection against prevNormPhase without an RNG.
 
         default:
             return 0.0f;
@@ -192,7 +230,6 @@ inline juce::ValueTree LFOModulationSource::toValueTree(const juce::String& id) 
     tree.setProperty(IDs::bipolar, isBipolar(), nullptr);
     tree.setProperty(IDs::phaseOffset, static_cast<double>(getPhaseOffset()), nullptr);
     tree.setProperty(IDs::targetParamID, getTargetParamID(), nullptr);
-    tree.setProperty(IDs::targetClipIndex, -1, nullptr);
     tree.setProperty(IDs::enabled, isEnabled(), nullptr);
     return tree;
 }

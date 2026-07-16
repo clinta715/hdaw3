@@ -5,12 +5,19 @@
 #include <QApplication>
 #include <cmath>
 
-VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, QWidget* parent)
-    : QWidget(parent), model(m)
+VelocityLaneWidget::VelocityLaneWidget(PianoRollModel& m, ProjectCommands* cmds, QWidget* parent)
+    : QWidget(parent), model(m), projectCmds(cmds)
 {
     setFixedHeight(laneHeight);
     setMouseTracking(true);
     qApp->installEventFilter(this);
+}
+
+VelocityLaneWidget::~VelocityLaneWidget()
+{
+    destroyed_ = true;
+    if (auto* app = QApplication::instance())
+        app->removeEventFilter(this);
 }
 
 int VelocityLaneWidget::noteIndexAtBeat(double beat) const
@@ -33,7 +40,8 @@ void VelocityLaneWidget::setVelocityAtPos(const QPoint& pos, float vel)
     if (idx >= 0)
     {
         auto note = model.getNote(idx);
-        note.setProperty(IDs::velocity, (std::max)(0.0f, (std::min)(127.0f, vel)), model.getUndoManager());
+        int noteId = note.getProperty(IDs::noteID);
+        projectCmds->setNoteVelocity(noteId, static_cast<int>((std::max)(0.0f, (std::min)(127.0f, vel))));
         emit velocityChanged();
         update();
     }
@@ -132,7 +140,7 @@ void VelocityLaneWidget::mousePressEvent(QMouseEvent* event)
             float vel = 127.0f * (1.0f - static_cast<float>(event->pos().y()) / laneHeight);
             vel = (std::max)(1.0f, (std::min)(127.0f, vel));
             auto note = model.getNote(idx);
-            note.setProperty(IDs::velocity, vel, model.getUndoManager());
+            projectCmds->setNoteVelocity(note.getProperty(IDs::noteID), static_cast<int>(vel));
             model.deselectAll();
             model.selectNote(note);
             emit velocityChanged();
@@ -152,7 +160,7 @@ void VelocityLaneWidget::mouseMoveEvent(QMouseEvent* event)
             float vel = 127.0f * (1.0f - static_cast<float>(event->pos().y()) / laneHeight);
             vel = (std::max)(1.0f, (std::min)(127.0f, vel));
             auto note = model.getNote(idx);
-            note.setProperty(IDs::velocity, vel, model.getUndoManager());
+            projectCmds->setNoteVelocity(note.getProperty(IDs::noteID), static_cast<int>(vel));
             model.deselectAll();
             model.selectNote(note);
             emit velocityChanged();
@@ -188,6 +196,7 @@ void VelocityLaneWidget::leaveEvent(QEvent* event)
 
 bool VelocityLaneWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    if (destroyed_) return QWidget::eventFilter(obj, event);
     if (event->type() == QEvent::MouseButtonRelease && dragging && obj != this)
     {
         dragging = false;

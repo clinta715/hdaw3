@@ -36,6 +36,7 @@ private:
     void connectSignals();
     void updateControls();
     void loadGainEnvelope();
+    void reloadClip();
     void onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points);
 
     // Slicing handlers

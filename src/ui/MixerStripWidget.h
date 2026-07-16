@@ -95,6 +95,8 @@ private:
     QRect panTrackRect;
     QRect panLabelRect;
 
+    bool destroyed_ = false;
+
     static constexpr int stripWidth = 60;
     static constexpr int stripHeight = 200;
 };

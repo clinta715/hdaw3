@@ -111,6 +111,7 @@ private:
     AudioGraphCommands* audioGraphCmds = nullptr;
     ReadModel* readModel = nullptr;
     PluginService* pluginService = nullptr;
+    bool destroyed_ = false;
     QTimer vuTimer;
     std::vector<TrackHeader> tracks;
     int dragTrack = -1;

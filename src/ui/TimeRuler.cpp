@@ -218,6 +218,14 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
         dragMode = DragLoopStart;
     else if (std::abs(x - rx) < threshold)
         dragMode = DragLoopEnd;
+    else if (x >= lx && x <= rx)
+    {
+        // Click inside the loop region — drag the whole region
+        dragMode = DragLoopRegion;
+        dragStartLoopStart = loopStart;
+        dragStartLoopEnd = loopEnd;
+        dragStartX = x;
+    }
     else
     {
         dragMode = Seek;
@@ -245,11 +253,25 @@ void TimeRuler::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
         update();
         emit loopBoundsChanged(loopStart, loopEnd);
     }
+    else if (dragMode == DragLoopRegion)
+    {
+        double delta = t - timeFromX(dragStartX);
+        loopStart = dragStartLoopStart + delta;
+        loopEnd = dragStartLoopEnd + delta;
+        if (loopStart < 0.0)
+        {
+            double shift = -loopStart;
+            loopStart = 0.0;
+            loopEnd += shift;
+        }
+        update();
+        emit loopBoundsChanged(loopStart, loopEnd);
+    }
 }
 
 void TimeRuler::mouseReleaseEvent(QGraphicsSceneMouseEvent*)
 {
-    if (dragMode != Seek)
+    if (dragMode != Seek && dragMode != None)
         commitLoopBounds();
     dragMode = None;
 }
@@ -300,19 +322,7 @@ void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
             QString("Marker %1").arg(t, 0, 'f', 2), &ok);
         if (!ok) return;
 
-        auto& model = engine.getProjectModel();
-        auto projectTree = model.getTree();
-        auto markerList = projectTree.getChildWithName(IDs::MARKER_LIST);
-        if (!markerList.isValid())
-        {
-            markerList = juce::ValueTree(IDs::MARKER_LIST);
-            projectTree.addChild(markerList, -1, &model.getUndoManager());
-        }
-        juce::ValueTree marker(IDs::MARKER);
-        marker.setProperty(IDs::markerTime, t, &model.getUndoManager());
-        marker.setProperty(IDs::markerName, name.toUtf8().constData(), &model.getUndoManager());
-        marker.setProperty(IDs::markerColor, static_cast<int>(0xFF59e0c4), nullptr);
-        markerList.addChild(marker, -1, &model.getUndoManager());
+        projectCmds->addMarker(name.toStdString(), t);
     });
 
     menu.exec(event->screenPos());

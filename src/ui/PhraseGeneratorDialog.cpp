@@ -475,23 +475,12 @@ void PhraseGeneratorDialog::onGenerate()
         return;
     }
 
+    projectCmds->beginTransaction("Generate phrase");
+
     auto trackTree = trackList.getChild(trackIndex);
-    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-    if (!clipList.isValid())
-    {
-        clipList = juce::ValueTree(IDs::CLIP_LIST);
-        trackTree.addChild(clipList, -1, &engine.getProjectModel().getUndoManager());
-    }
-
-    auto& um = engine.getProjectModel().getUndoManager();
-
-    auto clipTree = ProjectModel::createMidiClipEmpty("Generated", 0.0, lengthBeats);
-    clipTree.setProperty(IDs::color, static_cast<int>(0xFF88CC44), nullptr);
-    auto midiNotes = clipTree.getChildWithName(IDs::MIDI_NOTE_LIST);
+    int clipId = projectCmds->addMidiClip(trackIndex, 0.0, lengthBeats, "Generated");
     for (const auto& n : notes)
-        midiNotes.addChild(ProjectModel::createMidiNote(n.noteNumber, n.velocity, n.startBeat, n.durationBeats), -1, nullptr);
-
-    clipList.addChild(clipTree, -1, &um);
+        projectCmds->addNote(clipId, n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
 
     previewLabel->setText(QString("Generated %1 notes in '%2'.")
         .arg(notes.size())

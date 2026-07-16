@@ -235,7 +235,7 @@ TEST(Commands, DuplicateClip)
     auto snap = engine.getReadModel().snapshot();
     int count = 0;
     for (const auto& c : snap.clips)
-        if (c.name == "DupClip")
+        if (c.name == "DupClip" || c.name == "DupClip copy")
             ++count;
     EXPECT_EQ(count, 2);
 }

@@ -6,6 +6,7 @@
 #include <QWheelEvent>
 #include <QApplication>
 #include <cmath>
+#include <cstring>
 
 AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* parent)
     : QWidget(parent), projectPool(pool)
@@ -15,7 +16,27 @@ AudioWaveformWidget::AudioWaveformWidget(HDAW::ProjectPool& pool, QWidget* paren
     qApp->installEventFilter(this);
 }
 
-AudioWaveformWidget::~AudioWaveformWidget() = default;
+void AudioWaveformWidget::ThumbnailListener::changeListenerCallback(juce::ChangeBroadcaster* source)
+{
+    if (!alive.load(std::memory_order_acquire))
+        return;
+    if (source == widget->thumbnail.get())
+    {
+        widget->invalidateWaveformCache();
+        widget->update();
+    }
+}
+
+AudioWaveformWidget::~AudioWaveformWidget()
+{
+    destroyed_ = true;
+    if (thumbListener)
+        thumbListener->alive.store(false, std::memory_order_release);
+    if (thumbnail && thumbListener)
+        thumbnail->removeChangeListener(thumbListener.get());
+    if (auto* app = QApplication::instance())
+        app->removeEventFilter(this);
+}
 
 void AudioWaveformWidget::setClip(juce::ValueTree clip)
 {
@@ -31,6 +52,9 @@ void AudioWaveformWidget::setClip(juce::ValueTree clip)
 
 void AudioWaveformWidget::reloadThumbnail()
 {
+    if (thumbnail && thumbListener)
+        thumbnail->removeChangeListener(thumbListener.get());
+    thumbListener.reset();
     thumbnail.reset();
     invalidateWaveformCache();
     if (!currentClip.isValid())
@@ -43,6 +67,10 @@ void AudioWaveformWidget::reloadThumbnail()
     thumbnail = projectPool.createThumbnail(1000, projectPool.getThumbnailCache());
     if (thumbnail == nullptr)
         return;
+
+    thumbListener = std::make_shared<ThumbnailListener>();
+    thumbListener->widget = this;
+    thumbnail->addChangeListener(thumbListener.get());
 
     auto file = juce::File(sourceFile);
     if (file.existsAsFile())
@@ -99,6 +127,8 @@ QRectF AudioWaveformWidget::fadeOutRect() const
 
 void AudioWaveformWidget::paintEvent(QPaintEvent*)
 {
+    if (destroyed_ || !updatesEnabled()) return;
+
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
@@ -110,8 +140,6 @@ void AudioWaveformWidget::paintEvent(QPaintEvent*)
 
     if (!currentClip.isValid())
     {
-        painter.setPen(ThemeColors::textMuted());
-        painter.drawText(rect(), Qt::AlignCenter, "No clip loaded");
         return;
     }
 
@@ -136,23 +164,40 @@ void AudioWaveformWidget::paintEvent(QPaintEvent*)
             else
             {
                 juce::Image juceImg(juce::Image::ARGB, w, h, true);
-                juce::Graphics g(juceImg);
-                g.setColour(juce::Colours::transparentBlack);
-                g.fillAll();
-
-                if (thumbnail->getNumChannels() > 0)
                 {
-                    thumbnail->drawChannels(g,
-                        juce::Rectangle<int>(0, 0, w, h),
-                        startTime, endTime,
-                        1.0f);
+                    juce::Graphics g(juceImg);
+                    // drawChannels paints with the Graphics context's current
+                    // colour (it does not set its own), so set a visible one
+                    // first — the JUCE image starts cleared, and without this
+                    // the waveform would render in the default (black) colour
+                    // and be invisible on the dark bgWidget() background. Same
+                    // fix applied to AudioClipItem::paintContent in v0.8.0.
+                    g.setColour(juce::Colours::white.withAlpha(0.85f));
+                    if (thumbnail->getNumChannels() > 0)
+                    {
+                        thumbnail->drawChannels(g,
+                            juce::Rectangle<int>(0, 0, w, h),
+                            startTime, endTime,
+                            1.0f);
+                    }
                 }
 
-                juce::Image::BitmapData bitmapData(juceImg, juce::Image::BitmapData::readOnly);
-                QImage qimg(reinterpret_cast<const uchar*>(bitmapData.data),
-                    w, h,
-                    static_cast<int>(bitmapData.lineStride),
-                    QImage::Format_ARGB32_Premultiplied);
+                // Copy the JUCE image into an independently-allocated QImage
+                // (row-by-row memcpy). The previous code wrapped JUCE's buffer
+                // in place via the QImage(data,stride,...) constructor: that
+                // shares memory with the local juceImg, and once juceImg goes
+                // out of scope the buffer is freed — leaving the QPixmap/
+                // drawPixmap reading freed memory and crashing inside Qt's
+                // raster paint engine. Mirrors the working AudioClipItem path.
+                QImage qimg(w, h, QImage::Format_ARGB32_Premultiplied);
+                qimg.fill(Qt::transparent);
+                {
+                    juce::Image::BitmapData bitmapData(juceImg, juce::Image::BitmapData::readOnly);
+                    for (int y = 0; y < h; ++y)
+                        std::memcpy(qimg.scanLine(y),
+                                    bitmapData.data + y * bitmapData.lineStride,
+                                    static_cast<size_t>(w) * 4);
+                }
 
                 cachedWaveform = QPixmap::fromImage(qimg);
                 cacheWidth = w;
@@ -356,6 +401,7 @@ void AudioWaveformWidget::leaveEvent(QEvent* event)
 
 bool AudioWaveformWidget::eventFilter(QObject* obj, QEvent* event)
 {
+    if (destroyed_) return QWidget::eventFilter(obj, event);
     if (event->type() == QEvent::MouseButtonRelease && dragMode != DragMode::None && obj != this)
     {
         dragMode = DragMode::None;

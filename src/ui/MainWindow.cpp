@@ -14,6 +14,7 @@
 #include "ProjectPoolBrowser.h"
 #include "VUMeter.h"
 #include "../engine/ProjectSerializer.h"
+#include "../engine/AudioEngine.h"
 #include "ExportDialog.h"
 #include "PluginScannerDialog.h"
 #include "PreferencesDialog.h"
@@ -100,6 +101,31 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
 
 MainWindow::~MainWindow()
 {
+    statusBarWidget = nullptr;
+
+    // Stop timers that fire JUCE message dispatch and UI updates.
+    // jucePumpTimer is especially dangerous — it runs the JUCE
+    // message loop which can trigger ValueTree callbacks and
+    // cross-thread notifications into partially-destroyed widgets.
+    jucePumpTimer.stop();
+    timecodeTimer.stop();
+
+    // Clear the MIDI CC recording callback — it captures raw `this`
+    // (MainWindow) and is stored in the engine, which may outlive us.
+    engine.setMidiCcCallback(nullptr);
+
+    // QGraphicsScene::selectionChanged fires when items are removed during
+    // scene destruction. The connected lambda accesses statusBarWidget
+    // and scene, which may be partially destroyed by this point. Disconnect
+    // explicitly so the signal is a no-op during child destruction.
+    if (timelineView != nullptr && timelineView->getScene() != nullptr)
+    {
+        disconnect(timelineView->getScene(), &QGraphicsScene::selectionChanged,
+                   this, nullptr);
+        disconnect(timelineView->getScene(), &TimelineScene::clipSelected,
+                   this, nullptr);
+    }
+
     if (mcpHttp_ != nullptr)
     {
         mcpHttp_->stop();
@@ -113,6 +139,7 @@ MainWindow::~MainWindow()
 void MainWindow::closeEvent(QCloseEvent* event)
 {
     timecodeTimer.stop();
+    jucePumpTimer.stop();
     if (checkSaveBeforeAction())
     {
         auto& settings = PreferencesDialog::settings();
@@ -135,6 +162,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     else
     {
         timecodeTimer.start(33);
+        jucePumpTimer.start(10);
         event->ignore();
     }
 }
@@ -423,13 +451,13 @@ void MainWindow::setupBottomPanel()
         return btn;
     };
 
-    auto* mixerTab = makeTab("Mixer", 0);
-    auto* pianoTab = makeTab("Piano Roll", 1);
-    auto* fxTab = makeTab("FX Chain", 2);
-    auto* autoTab = makeTab("Automation", 3);
-    auto* audioTab = makeTab("Audio Editor", 4);
-    auto* stepTab = makeTab("Step Seq", 5);
-    auto* modTab = makeTab("Modulation", 6);
+    auto* mixerTab = makeTab("Mixer", BottomPanel::Mixer);
+    auto* pianoTab = makeTab("Piano Roll", BottomPanel::PianoRoll);
+    auto* fxTab = makeTab("FX Chain", BottomPanel::FxChain);
+    auto* autoTab = makeTab("Automation", BottomPanel::Automation);
+    auto* audioTab = makeTab("Audio Editor", BottomPanel::AudioEditor);
+    auto* stepTab = makeTab("Step Seq", BottomPanel::StepSequencer);
+    auto* modTab = makeTab("Modulation", BottomPanel::Modulation);
     juce::ignoreUnused(mixerTab, pianoTab, fxTab, autoTab, audioTab, stepTab, modTab);
 
     tabLayout->addStretch();
@@ -459,11 +487,11 @@ void MainWindow::setupBottomPanel()
     bottomStack->addWidget(modulationWidget);
 
     connect(tabGroup, &QButtonGroup::idClicked, this, [this](int id) {
-        if (id == 2 && selectedTrack >= 0)
+        if (id == BottomPanel::FxChain && selectedTrack >= 0)
             fxChainWidget->loadTrack(selectedTrack);
-        if (id == 3 && selectedTrack >= 0)
+        if (id == BottomPanel::Automation && selectedTrack >= 0)
             automationWidget->loadTrack(selectedTrack);
-        if (id == 6 && selectedTrack >= 0)
+        if (id == BottomPanel::Modulation && selectedTrack >= 0)
             modulationWidget->loadTrack(selectedTrack);
         bottomStack->setCurrentIndex(id);
     });
@@ -476,7 +504,7 @@ void MainWindow::setupBottomPanel()
     if (bottomStack->currentIndex() >= 0 && bottomStack->currentIndex() < static_cast<int>(tabButtons.size()))
         tabButtons[bottomStack->currentIndex()]->setChecked(true);
 
-    bottomStack->setCurrentIndex(0);
+    bottomStack->setCurrentIndex(BottomPanel::Mixer);
     bottomLayout->addWidget(bottomStack);
 }
 
@@ -503,7 +531,7 @@ void MainWindow::connectTimelineSignals()
         [this](int trackIndex) {
             selectedTrack = trackIndex;
             automationWidget->loadTrack(trackIndex);
-            bottomStack->setCurrentIndex(3);
+            bottomStack->setCurrentIndex(BottomPanel::Automation);
         });
 
     connect(timelineView, &TimelineView::trackSelectionChanged, this,
@@ -511,11 +539,11 @@ void MainWindow::connectTimelineSignals()
             selectedTrack = trackIndex;
             timelineView->setSelectedTrack(trackIndex);
             int idx = bottomStack->currentIndex();
-            if (idx == 2 && selectedTrack >= 0)
+            if (idx == BottomPanel::FxChain && selectedTrack >= 0)
                 fxChainWidget->loadTrack(trackIndex);
-            if (idx == 3 && selectedTrack >= 0)
+            if (idx == BottomPanel::Automation && selectedTrack >= 0)
                 automationWidget->loadTrack(trackIndex);
-            if (idx == 6 && selectedTrack >= 0)
+            if (idx == BottomPanel::Modulation && selectedTrack >= 0)
                 modulationWidget->loadTrack(trackIndex);
             if (statusBarWidget)
             {
@@ -570,20 +598,20 @@ void MainWindow::connectTimelineSignals()
 void MainWindow::connectBottomPanelSignals()
 {
     connect(pianoRollWidget, &PianoRollWidget::clipClosed, this,
-        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(0); });
+        [this]() { pianoRollWidget->clear(); bottomStack->setCurrentIndex(BottomPanel::Mixer); });
 
     connect(audioEditorWidget, &AudioClipEditorWidget::clipClosed, this,
-        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+        [this]() { audioEditorWidget->clear(); bottomStack->setCurrentIndex(BottomPanel::Mixer); });
 
     connect(stepEditorWidget, &StepEditorWidget::clipClosed, this,
-        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(0); });
+        [this]() { stepEditorWidget->clear(); bottomStack->setCurrentIndex(BottomPanel::Mixer); });
 
     connect(stepEditorWidget, &StepEditorWidget::switchToPianoRoll, this,
         [this]() {
             if (stepEditorWidget->hasClip())
             {
                 pianoRollWidget->loadClip(stepEditorWidget->getClipTree());
-                bottomStack->setCurrentIndex(1);
+                bottomStack->setCurrentIndex(BottomPanel::PianoRoll);
             }
         });
 
@@ -591,7 +619,7 @@ void MainWindow::connectBottomPanelSignals()
         [this](int trackIndex) {
             selectedTrack = trackIndex;
             fxChainWidget->loadTrack(trackIndex);
-            bottomStack->setCurrentIndex(2);
+            bottomStack->setCurrentIndex(BottomPanel::FxChain);
         });
 
     connect(fxChainWidget, &FXChainWidget::chainChanged, this,
@@ -632,14 +660,14 @@ void MainWindow::restoreWindowGeometry()
     }
     if (bottomStack != nullptr)
     {
-        auto panelIdx = settings.value(PreferencesDialog::kKeyBottomPanelIndex, 0);
+        auto panelIdx = settings.value(PreferencesDialog::kKeyBottomPanelIndex, BottomPanel::Mixer);
         int idx = panelIdx.toInt();
         if (idx >= 0 && idx < bottomStack->count())
         {
             bottomStack->setCurrentIndex(idx);
-            if (idx == 2 && selectedTrack >= 0)
+            if (idx == BottomPanel::FxChain && selectedTrack >= 0)
                 fxChainWidget->loadTrack(selectedTrack);
-            if (idx == 3 && selectedTrack >= 0)
+            if (idx == BottomPanel::Automation && selectedTrack >= 0)
                 automationWidget->loadTrack(selectedTrack);
         }
     }
@@ -670,7 +698,7 @@ void MainWindow::onClipSelected(const juce::ValueTree& clipTree)
         if (mode == "step")
         {
             stepEditorWidget->loadClip(clipTree);
-            bottomStack->setCurrentIndex(5);
+            bottomStack->setCurrentIndex(BottomPanel::StepSequencer);
         }
         else
         {
@@ -681,7 +709,7 @@ void MainWindow::onClipSelected(const juce::ValueTree& clipTree)
                 .arg(pianoRollWidget->height())
                 .arg(pianoRollWidget->isVisible() ? 1 : 0));
             pianoRollWidget->loadClip(clipTree);
-            bottomStack->setCurrentIndex(1);
+            bottomStack->setCurrentIndex(BottomPanel::PianoRoll);
             HDAW_LOG("MWClipSel", QString("piano: after load stackIdx=%1 rollH=%2 rollVis=%3")
                 .arg(bottomStack->currentIndex())
                 .arg(pianoRollWidget->height())
@@ -691,7 +719,7 @@ void MainWindow::onClipSelected(const juce::ValueTree& clipTree)
     else
     {
         audioEditorWidget->loadClip(clipTree);
-        bottomStack->setCurrentIndex(4);
+        bottomStack->setCurrentIndex(BottomPanel::AudioEditor);
     }
 }
 
@@ -717,9 +745,9 @@ void MainWindow::rebuildAllUI()
     if (selectedTrack >= 0)
     {
         int idx = bottomStack->currentIndex();
-        if (idx == 2)
+        if (idx == BottomPanel::FxChain)
             fxChainWidget->loadTrack(selectedTrack);
-        else if (idx == 3)
+        else if (idx == BottomPanel::Automation)
             automationWidget->loadTrack(selectedTrack);
     }
 

@@ -35,7 +35,11 @@ public:
     void removeTrack(int trackIndex);
     void addBus(int busID, juce::ValueTree busTree);
     void removeBus(int busID);
-    void addSend(int trackIndex, const juce::ValueTree& sendTree);
+    // `sendIndex` is the per-track send position (0-based). Each send must
+    // use a distinct index; the previous implementation hardcoded 0, which
+    // clobbered the map entry and orphaned the earlier SendProcessor node
+    // for any track with more than one send.
+    void addSend(int trackIndex, int sendIndex, const juce::ValueTree& sendTree);
     void removeSend(int trackIndex, int sendIndex);
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
@@ -50,6 +54,8 @@ public:
     int getNumTracks() const { return static_cast<int>(trackProcessors.size()); }
     void setPlaybackInfo(double sr, int bs) { sampleRate = sr; blockSize = bs; }
     void setInputMonitoring(int trackIndex, bool enabled);
+
+    const std::map<std::pair<int, int>, ClipSourceProcessor*>& getAudioClipSources() const { return audioClipSources; }
 
 private:
     void connectTrackToBus(int trackIndex, int busID);

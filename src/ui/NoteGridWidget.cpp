@@ -1,3 +1,14 @@
+// src/ui/NoteGridWidget.cpp
+// This file currently uses projectCmds->beginTransaction() for note editing:
+// 1. Note creation/selection/horizontal movement (drag) 
+// 2. Note resizing (drag edges)
+// 3. Note property setting (velocity, pitch, start, duration)
+
+// Need to look at ProjectCommands.h to see if these methods exist and make them public if needed.
+// If they don't exist, we need to either:
+// - Add them to ProjectCommands, or
+// - Find an appropriate alternative approach
+
 #include "NoteGridWidget.h"
 #include "../engine/AudioEngine.h"
 #include "Theme.h"
@@ -201,7 +212,8 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         int alpha = static_cast<int>(vel / 127.0f * 200.0f + 55.0f);
         alpha = (std::min)(255, alpha);
 
-        QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(), ThemeColors::accent().blue(), alpha);
+        QColor noteColor(ThemeColors::accent().red(), ThemeColors::accent().green(),
+                          ThemeColors::accent().blue(), alpha);
 
         // Note shadow
         painter.setPen(Qt::NoPen);
@@ -264,7 +276,7 @@ void NoteGridWidget::mousePressEvent(QMouseEvent* event)
         int idx = noteIndexAtPos(pos);
         if (idx >= 0)
         {
-            engine.getProjectModel().getUndoManager().beginNewTransaction("Edit note");
+            projectCmds->beginTransaction("Edit note");
 
             auto note = model.getNote(idx);
             double localX = pos.x() - (noteRect(idx).x());
@@ -332,8 +344,9 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
             newBeat = snapToGrid(newBeat);
         int newNoteNum = (std::max)(0, (std::min)(127, dragStartNoteNumber + noteDelta));
 
-        note.setProperty(IDs::startBeat, newBeat, &engine.getProjectModel().getUndoManager());
-        note.setProperty(IDs::noteNumber, newNoteNum, &engine.getProjectModel().getUndoManager());
+        int noteId = note.getProperty(IDs::noteID);
+        projectCmds->setNoteStart(noteId, newBeat);
+        projectCmds->setNotePitch(noteId, newNoteNum);
         emit notesChanged();
         update();
     }
@@ -349,7 +362,7 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
             newDur = endBeat - dragStartBeat;
         }
         auto note = model.getNote(dragNoteIndex);
-        note.setProperty(IDs::durationBeats, newDur, &engine.getProjectModel().getUndoManager());
+        projectCmds->setNoteDuration(note.getProperty(IDs::noteID), newDur);
         emit notesChanged();
         update();
     }
@@ -378,8 +391,9 @@ void NoteGridWidget::mouseMoveEvent(QMouseEvent* event)
         }
         newStart = (std::max)(0.0, newStart);
         auto note = model.getNote(dragNoteIndex);
-        note.setProperty(IDs::startBeat, newStart, &engine.getProjectModel().getUndoManager());
-        note.setProperty(IDs::durationBeats, newDur, &engine.getProjectModel().getUndoManager());
+        int noteId = note.getProperty(IDs::noteID);
+        projectCmds->setNoteStart(noteId, newStart);
+        projectCmds->setNoteDuration(noteId, newDur);
         emit notesChanged();
         update();
     }

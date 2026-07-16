@@ -285,7 +285,16 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 modPan  = modulationManager->getModulation(2, bpm, getSampleRate());
             }
 
-            float currentGain = std::clamp(baseGain + modGain, 0.0f, 1.0f);
+            // Volume modulation is a depth-scaled MULTIPLIER, not an additive
+            // offset. The LFO returns a value in [-1,+1] (bipolar) or [0,1]
+            // (unipolar) scaled by depth; map it to a gain factor
+            // (1 + modGain) so a bipolar LFO sweeps the volume from 0 to 2x
+            // and a unipolar LFO from 1x to 2x. The previous `baseGain +
+            // modGain` clamped to [0,1] made volume modulation one-sided
+            // (could only ever reduce, never boost). Floor at 0 so a full
+            // negative bipolar swing silences rather than inverts.
+            float gainMul = std::max(1.0f + modGain, 0.0f);
+            float currentGain = baseGain * gainMul;
             float currentPan  = std::clamp(basePan  + modPan,  -1.0f, 1.0f);
 
             // Equal-power pan: pan is in [-1, +1] (the convention used by the

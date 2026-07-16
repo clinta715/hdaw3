@@ -1,12 +1,14 @@
 #pragma once
 #include <QWidget>
 #include "PianoRollModel.h"
+#include "../common/ProjectCommands.h"
 
 class VelocityLaneWidget : public QWidget
 {
     Q_OBJECT
 public:
-    VelocityLaneWidget(PianoRollModel& model, QWidget* parent = nullptr);
+    VelocityLaneWidget(PianoRollModel& model, ProjectCommands* cmds, QWidget* parent = nullptr);
+    ~VelocityLaneWidget() override;
 
     void setPixelsPerBeat(double ppb) { pixelsPerBeat = ppb; update(); }
     void setScrollOffset(int x) { scrollX = x; update(); }
@@ -30,7 +32,9 @@ private:
     int noteIndexAtBeat(double beat) const;
     void setVelocityAtPos(const QPoint& pos, float vel);
 
+    bool destroyed_ = false;
     PianoRollModel& model;
+    ProjectCommands* projectCmds = nullptr;
     double pixelsPerBeat = 40.0;
     int scrollX = 0;
     bool dragging = false;

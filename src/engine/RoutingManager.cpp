@@ -131,7 +131,7 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
         for (int s = 0; s < sendList.getNumChildren(); ++s)
         {
             auto sendTree = sendList.getChild(s);
-            addSend(trackIndex, sendTree);
+            addSend(trackIndex, s, sendTree);
         }
     }
 
@@ -149,6 +149,15 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
         trackProcessors[trackIndex]->rebuildFXChain(fxChainTree);
 
     rebuildClipsForTrack(trackIndex, trackTree);
+
+    // A routing-graph rebuild (graph.clear) destroys the physical
+    // inputNode→track monitor connections. Re-establish them here from the
+    // track's persisted inputMonitor intent (the ValueTree is the single
+    // source of truth — the in-memory monitorConnections map is wiped when
+    // rebuildRoutingGraph creates a fresh RoutingManager). This keeps input
+    // monitoring alive across clip/move/FX edits.
+    if (static_cast<bool>(trackTree.getProperty(IDs::inputMonitor, false)))
+        setInputMonitoring(trackIndex, true);
 }
 
 void RoutingManager::removeTrack(int trackIndex)
@@ -297,7 +306,7 @@ void RoutingManager::connectTrackToBus(int trackIndex, int busID)
     graph.addConnection({ { trackIt->second->nodeID, 1 }, { targetNode->nodeID, 1 } });
 }
 
-void RoutingManager::addSend(int trackIndex, const juce::ValueTree& sendTree)
+void RoutingManager::addSend(int trackIndex, int sendIndex, const juce::ValueTree& sendTree)
 {
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt == trackNodes.end()) return;
@@ -308,8 +317,6 @@ void RoutingManager::addSend(int trackIndex, const juce::ValueTree& sendTree)
 
     auto fxIt = busNodes.find(sendTarget);
     if (fxIt == busNodes.end()) return;
-
-    int sendIndex = 0;
 
     auto sendProc = std::make_unique<SendProcessor>();
     sendProc->setSendLevel(sendLevel);

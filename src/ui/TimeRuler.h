@@ -61,6 +61,9 @@ private:
     double loopStart = 0.0;
     double loopEnd = 8.0;
 
-    enum DragMode { None, Seek, DragLoopStart, DragLoopEnd };
+    enum DragMode { None, Seek, DragLoopStart, DragLoopEnd, DragLoopRegion };
     DragMode dragMode = None;
+    double dragStartLoopStart = 0.0;
+    double dragStartLoopEnd = 0.0;
+    double dragStartX = 0.0;
 };
