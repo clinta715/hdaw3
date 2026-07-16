@@ -6,7 +6,7 @@
 #include <QHBoxLayout>
 #include <QFileInfo>
 #include <QFrame>
-#include <QKeyEvent>
+#include <QShortcut>
 #include "../engine/RegionClipboard.h"
 
 AudioClipEditorWidget::AudioClipEditorWidget(AudioEngine& ae, QWidget* parent)
@@ -387,6 +387,16 @@ void AudioClipEditorWidget::connectSignals()
     connect(copyRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onCopyRegion);
     connect(cutRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onCutRegion);
     connect(pasteRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onPasteRegion);
+
+    // Region keyboard shortcuts (QShortcut works regardless of focus)
+    auto* copyShortcut = new QShortcut(QKeySequence::Copy, this);
+    connect(copyShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onCopyRegion);
+
+    auto* cutShortcut = new QShortcut(QKeySequence::Cut, this);
+    connect(cutShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onCutRegion);
+
+    auto* pasteShortcut = new QShortcut(QKeySequence::Paste, this);
+    connect(pasteShortcut, &QShortcut::activated, this, &AudioClipEditorWidget::onPasteRegion);
 }
 
 void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
@@ -588,6 +598,9 @@ void AudioClipEditorWidget::onCutRegion()
     projectCmds->cutAudioClipRegion(clipId, selStart, selEnd);
     pasteRegionBtn->setEnabled(true);
     waveform->clearSelection();
+    copyRegionBtn->setEnabled(false);
+    cutRegionBtn->setEnabled(false);
+    selectionLabel->setText("No selection");
     reloadClip();
 }
 
@@ -603,20 +616,4 @@ void AudioClipEditorWidget::onPasteRegion()
     reloadClip();
 }
 
-void AudioClipEditorWidget::keyPressEvent(QKeyEvent* event)
-{
-    if (event->modifiers() == Qt::ControlModifier) {
-        switch (event->key()) {
-        case Qt::Key_C:
-            onCopyRegion();
-            return;
-        case Qt::Key_X:
-            onCutRegion();
-            return;
-        case Qt::Key_V:
-            onPasteRegion();
-            return;
-        }
-    }
-    QWidget::keyPressEvent(event);
-}
+

@@ -46,7 +46,6 @@ private:
     void onSliceAtSelection();
 
     // Region clipboard handlers
-    void keyPressEvent(QKeyEvent* event) override;
     void onCopyRegion();
     void onCutRegion();
     void onPasteRegion();
