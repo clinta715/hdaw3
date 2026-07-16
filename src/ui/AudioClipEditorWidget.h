@@ -14,6 +14,7 @@
 #include "../common/ReadModel.h"
 
 class AudioEngine;
+class QKeyEvent;
 #include "AudioWaveformWidget.h"
 #include "GainEnvelopeEditor.h"
 
@@ -43,6 +44,12 @@ private:
     void onSliceAtPlayhead();
     void onSliceAtTransients();
     void onSliceAtSelection();
+
+    // Region clipboard handlers
+    void keyPressEvent(QKeyEvent* event) override;
+    void onCopyRegion();
+    void onCutRegion();
+    void onPasteRegion();
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;
@@ -77,6 +84,12 @@ private:
     QPushButton* sliceAtPlayheadBtn = nullptr;
     QPushButton* sliceAtTransientsBtn = nullptr;
     QPushButton* sliceAtSelectionBtn = nullptr;
+
+    // Region clipboard controls
+    QPushButton* copyRegionBtn = nullptr;
+    QPushButton* cutRegionBtn = nullptr;
+    QPushButton* pasteRegionBtn = nullptr;
+    QLabel* selectionLabel = nullptr;
 
     // Gain envelope editor
     GainEnvelopeEditor* gainEnvelopeEditor = nullptr;

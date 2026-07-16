@@ -22,6 +22,8 @@ public:
     int getScrollX() const { return scrollX; }
     double getSelectionStart() const { return selStart; }
     double getSelectionEnd() const { return selEnd; }
+    bool hasSelection() const { return selStart >= 0.0 && selEnd > selStart; }
+    void clearSelection() { selStart = -1.0; selEnd = -1.0; update(); }
     void zoomIn() { setPixelsPerSecond(pixelsPerSecond * 1.3); }
     void zoomOut() { setPixelsPerSecond(pixelsPerSecond / 1.3); }
 

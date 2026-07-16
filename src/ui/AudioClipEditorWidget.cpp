@@ -6,6 +6,8 @@
 #include <QHBoxLayout>
 #include <QFileInfo>
 #include <QFrame>
+#include <QKeyEvent>
+#include "../engine/RegionClipboard.h"
 
 AudioClipEditorWidget::AudioClipEditorWidget(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -221,6 +223,35 @@ void AudioClipEditorWidget::setupUI()
     sliceAtSelectionBtn->setEnabled(false);
     controlLayout->addWidget(sliceAtSelectionBtn);
 
+    // Region selection label
+    selectionLabel = new QLabel("No selection", controlBar);
+    selectionLabel->setStyleSheet("color: #a8a8b0; font-size: 7pt;");
+    controlLayout->addWidget(selectionLabel);
+
+    // Region copy/paste buttons
+    auto* sep4 = new QFrame(controlBar);
+    sep4->setFrameShape(QFrame::VLine);
+    sep4->setFixedHeight(20);
+    controlLayout->addWidget(sep4);
+
+    copyRegionBtn = new QPushButton("Copy Region", controlBar);
+    copyRegionBtn->setFixedHeight(20);
+    copyRegionBtn->setEnabled(false);
+    copyRegionBtn->setToolTip("Copy selected region");
+    controlLayout->addWidget(copyRegionBtn);
+
+    cutRegionBtn = new QPushButton("Cut Region", controlBar);
+    cutRegionBtn->setFixedHeight(20);
+    cutRegionBtn->setEnabled(false);
+    cutRegionBtn->setToolTip("Cut selected region");
+    controlLayout->addWidget(cutRegionBtn);
+
+    pasteRegionBtn = new QPushButton("Paste", controlBar);
+    pasteRegionBtn->setFixedHeight(20);
+    pasteRegionBtn->setEnabled(false);
+    pasteRegionBtn->setToolTip("Paste region at playhead");
+    controlLayout->addWidget(pasteRegionBtn);
+
     // Gain envelope editor (placed in a new section below control bar)
     gainEnvelopeEditor = new GainEnvelopeEditor(this);
     gainEnvelopeEditor->setFixedHeight(80);
@@ -341,12 +372,30 @@ void AudioClipEditorWidget::connectSignals()
 
     // Gain envelope connections
     connect(gainEnvelopeEditor, &GainEnvelopeEditor::pointsChanged, this, &AudioClipEditorWidget::onGainEnvelopeChanged);
+
+    // Region selection tracking
+    connect(waveform, &AudioWaveformWidget::regionSelected, this, [this](double startBeat, double endBeat) {
+        if (isLoaded) {
+            double dur = endBeat - startBeat;
+            selectionLabel->setText(QString("Sel: %1s-%2s (%3s)")
+                .arg(startBeat, 0, 'f', 2).arg(endBeat, 0, 'f', 2).arg(dur, 0, 'f', 2));
+            copyRegionBtn->setEnabled(true);
+            cutRegionBtn->setEnabled(true);
+        }
+    });
+
+    connect(copyRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onCopyRegion);
+    connect(cutRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onCutRegion);
+    connect(pasteRegionBtn, &QPushButton::clicked, this, &AudioClipEditorWidget::onPasteRegion);
 }
 
 void AudioClipEditorWidget::loadClip(juce::ValueTree clipTree)
 {
     currentClip = clipTree;
     isLoaded = currentClip.isValid();
+
+    if (isLoaded)
+        pasteRegionBtn->setEnabled(HDAW::RegionClipboard::hasContent());
 
     if (!isLoaded)
     {
@@ -395,6 +444,10 @@ void AudioClipEditorWidget::clear()
     sourceLabel->setText("No file");
     infoLabel->setText("");
     gainEnvelopeEditor->setPoints({});
+    copyRegionBtn->setEnabled(false);
+    cutRegionBtn->setEnabled(false);
+    pasteRegionBtn->setEnabled(false);
+    selectionLabel->setText("No selection");
     updateControls();
 }
 
@@ -508,4 +561,62 @@ void AudioClipEditorWidget::onSliceAtSelection()
     int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
     projectCmds->sliceClipAtTimes(clipId, {selStart, selEnd});
     reloadClip();
+}
+
+void AudioClipEditorWidget::onCopyRegion()
+{
+    if (!currentClip.isValid() || !waveform->hasSelection()) return;
+
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    double selStart = waveform->getSelectionStart();
+    double selEnd = waveform->getSelectionEnd();
+    if (selEnd <= selStart) return;
+
+    projectCmds->copyAudioClipRegion(clipId, selStart, selEnd);
+    pasteRegionBtn->setEnabled(true);
+}
+
+void AudioClipEditorWidget::onCutRegion()
+{
+    if (!currentClip.isValid() || !waveform->hasSelection()) return;
+
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    double selStart = waveform->getSelectionStart();
+    double selEnd = waveform->getSelectionEnd();
+    if (selEnd <= selStart) return;
+
+    projectCmds->cutAudioClipRegion(clipId, selStart, selEnd);
+    pasteRegionBtn->setEnabled(true);
+    waveform->clearSelection();
+    reloadClip();
+}
+
+void AudioClipEditorWidget::onPasteRegion()
+{
+    if (!currentClip.isValid() || !HDAW::RegionClipboard::hasContent()) return;
+
+    int clipId = static_cast<int>(currentClip.getProperty(IDs::clipID, 0));
+    auto transport = readModel->getTransport();
+    double pasteTime = transport.currentTimeSeconds;
+
+    projectCmds->pasteAudioClipRegion(clipId, pasteTime);
+    reloadClip();
+}
+
+void AudioClipEditorWidget::keyPressEvent(QKeyEvent* event)
+{
+    if (event->modifiers() == Qt::ControlModifier) {
+        switch (event->key()) {
+        case Qt::Key_C:
+            onCopyRegion();
+            return;
+        case Qt::Key_X:
+            onCutRegion();
+            return;
+        case Qt::Key_V:
+            onPasteRegion();
+            return;
+        }
+    }
+    QWidget::keyPressEvent(event);
 }
