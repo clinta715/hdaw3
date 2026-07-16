@@ -66,6 +66,9 @@ void AudioClipEditorWidget::setupUI()
     // Control bar
     auto* controlBar = new QWidget(this);
     controlBar->setFixedHeight(36);
+    // Ignore horizontal size hint: the ~30 children add up to a huge minimum
+    // width that would force the window wider whenever this tab is shown.
+    controlBar->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     auto* controlLayout = new QHBoxLayout(controlBar);
     controlLayout->setContentsMargins(8, 2, 8, 2);
     controlLayout->setSpacing(6);
