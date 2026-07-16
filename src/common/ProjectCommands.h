@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class ProjectCommands
 {
@@ -116,11 +117,17 @@ public:
     virtual void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) = 0;
     virtual void removeGainEnvelopePoint(int clipId, int pointIndex) = 0;
     virtual void clearGainEnvelope(int clipId) = 0;
+    virtual void notifyClipGainEnvelopeChanged(int clipId) = 0;
 
     // Slicing
     virtual void sliceClipAtTimes(int clipId, const std::vector<double>& times) = 0;
     virtual void sliceClipAtTransients(int clipId) = 0;
     virtual void sliceClipAtPlayhead(int clipId) = 0;
+
+    // Region cut/copy/paste (audio clip editor)
+    virtual int copyAudioClipRegion(int clipId, double regionStart, double regionEnd) = 0;
+    virtual int cutAudioClipRegion(int clipId, double regionStart, double regionEnd) = 0;
+    virtual int pasteAudioClipRegion(int clipId, double pasteTime) = 0;
 
     // MIDI CC
     virtual void addCcPoint(int clipId, int controllerNumber, double beat, int value) = 0;

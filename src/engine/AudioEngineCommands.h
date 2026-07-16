@@ -58,6 +58,11 @@ public:
     void sliceClipAtTransients(int clipId) override;
     void sliceClipAtPlayhead(int clipId) override;
 
+    // ProjectCommands — Region cut/copy/paste
+    int copyAudioClipRegion(int clipId, double regionStart, double regionEnd) override;
+    int cutAudioClipRegion(int clipId, double regionStart, double regionEnd) override;
+    int pasteAudioClipRegion(int clipId, double pasteTime) override;
+
     // ProjectCommands — Gain Envelope
     void addGainEnvelopePoint(int clipId, double time, double gain) override;
     void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override;
@@ -190,7 +195,7 @@ private:
 
     // Gain envelope helpers
     std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);
-    void notifyClipGainEnvelopeChanged(int clipId);
+    void notifyClipGainEnvelopeChanged(int clipId) override;
 
     AudioEngine& engine_;
 };

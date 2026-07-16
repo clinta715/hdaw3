@@ -1,6 +1,8 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
+#include "TransientDetector.h"
+#include "RegionClipboard.h"
 #include "../engine/ProjectSerializer.h"
 #include "../model/ProjectModel.h"
 #include <juce_core/juce_core.h>
@@ -53,30 +55,11 @@ juce::ValueTree AudioEngineCommands::findNoteById(int noteId, int& outClipId) co
                 {
                     outClipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
                     return note;
-}
-
-void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
-{
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    double playhead = transportManager.getCurrentPositionSeconds();
-    double clipStart = clip.getProperty(IDs::startTime);
-    double clipEnd = clipStart + clip.getProperty(IDs::duration);
-    
-    if (playhead <= clipStart || playhead >= clipEnd) return;
-    
-    auto slices = ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
-    
-    // Rebuild routing for new clips
-    if (mainProcessor)
-        mainProcessor->rebuildRoutingGraph();
-}
+                }
             }
         }
     }
+
     outClipId = -1;
     return {};
 }
@@ -1288,8 +1271,8 @@ void AudioEngineCommands::sliceClipAtTimes(int clipId, const std::vector<double>
     auto slices = ProjectModel::sliceClipAtTimes(clip, times, &um);
     
     // Rebuild routing for new clips
-    if (mainProcessor)
-        mainProcessor->rebuildRoutingGraph();
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
 }
 
 void AudioEngineCommands::sliceClipAtTransients(int clipId)
@@ -1302,13 +1285,19 @@ void AudioEngineCommands::sliceClipAtTransients(int clipId)
     juce::String sourceFile = clip.getProperty(IDs::sourceFile);
     if (sourceFile.isEmpty()) return;
 
-    // Run transient detection off-thread (reuse StretchCache worker pattern)
+    // Load the source file into a buffer for synchronous detection
     auto* pool = &engine_.getProjectPool();
     auto* fm = &pool->getFormatManager();
+    
+    auto reader = std::unique_ptr<juce::AudioFormatReader>(fm->createReaderFor(juce::File(sourceFile)));
+    if (!reader) return;
+    
+    juce::AudioBuffer<float> buffer(reader->numChannels, static_cast<int>(reader->lengthInSamples));
+    reader->read(&buffer, 0, static_cast<int>(reader->lengthInSamples), 0, true, true);
 
-    // For now, run synchronously (TODO: async with callback)
+    // Run transient detection synchronously
     HDAW::TransientDetector detector;
-    auto result = detector.detectFromFile(sourceFile, *fm);
+    auto result = detector.detect(buffer, reader->sampleRate);
 
     if (result.transientTimes.empty()) return;
 
@@ -1316,8 +1305,8 @@ void AudioEngineCommands::sliceClipAtTransients(int clipId)
     auto slices = ProjectModel::sliceClipAtTimes(clip, result.transientTimes, &um);
     
     // Rebuild routing for new clips
-    if (mainProcessor)
-        mainProcessor->rebuildRoutingGraph();
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
 }
 
 void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
@@ -1327,15 +1316,106 @@ void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    double playhead = transportManager.getCurrentPositionSeconds();
-    double clipStart = clip.getProperty(IDs::startTime);
-    double clipEnd = clipStart + clip.getProperty(IDs::duration);
+    double playhead = engine_.getTransportManager().getCurrentPositionSeconds();
+    double clipStart = static_cast<double>(clip.getProperty(IDs::startTime));
+    double clipEnd = clipStart + static_cast<double>(clip.getProperty(IDs::duration));
     
     if (playhead <= clipStart || playhead >= clipEnd) return;
     
     auto slices = ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
     
     // Rebuild routing for new clips
-    if (mainProcessor)
-        mainProcessor->rebuildRoutingGraph();
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+}
+
+int AudioEngineCommands::copyAudioClipRegion(int clipId, double regionStart, double regionEnd)
+{
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return -1;
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIdx >= trackList.getNumChildren()) return -1;
+
+    juce::String sourceFile = clip.getProperty(IDs::sourceFile).toString();
+    double clipOffset = clip.getProperty(IDs::offset, 0.0);
+    double regOffset = clipOffset + regionStart;
+    double regDuration = std::max(0.001, regionEnd - regionStart);
+
+    HDAW::RegionClipboard::store({sourceFile, regOffset, regDuration});
+    return 0;
+}
+
+int AudioEngineCommands::cutAudioClipRegion(int clipId, double regionStart, double regionEnd)
+{
+    copyAudioClipRegion(clipId, regionStart, regionEnd);
+
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return -1;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    double startTime = clip.getProperty(IDs::startTime, 0.0);
+    double slice1 = startTime + regionStart;
+    double slice2 = startTime + regionEnd;
+
+    ProjectModel::sliceClipAtTimes(clip, {slice1, slice2}, &um);
+
+    auto trackTree = trackList.getChild(trackIdx);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+
+    for (int i = 0; i < clipList.getNumChildren(); ++i) {
+        auto c = clipList.getChild(i);
+        double st = c.getProperty(IDs::startTime, 0.0);
+        if (std::abs(st - slice1) < 0.01) {
+            clipList.removeChild(i, &um);
+            break;
+        }
+    }
+
+    engine_.getMainProcessor()->rebuildRoutingGraph();
+    return 0;
+}
+
+int AudioEngineCommands::pasteAudioClipRegion(int clipId, double pasteTime)
+{
+    if (!HDAW::RegionClipboard::hasContent()) return -1;
+
+    int trackIdx = -1;
+    auto srcClip = findClipById(clipId, trackIdx);
+    if (!srcClip.isValid() || trackIdx < 0) return -1;
+
+    const auto& reg = HDAW::RegionClipboard::get();
+    juce::String clipName = srcClip.getProperty(IDs::name).toString();
+    juce::String newName = clipName + " (pasted)";
+
+    int newId = addAudioClip(trackIdx, pasteTime, reg.duration,
+                             reg.sourceFile.toStdString(), newName.toStdString());
+    if (newId < 0) return -1;
+
+    int newTrackIdx = -1;
+    auto newClip = findClipById(newId, newTrackIdx);
+    if (newClip.isValid()) {
+        auto& um = engine_.getProjectModel().getUndoManager();
+        newClip.setProperty(IDs::offset, reg.offset, &um);
+    }
+
+    engine_.getMainProcessor()->rebuildRoutingGraph();
+    return newId;
+}
+
+void AudioEngineCommands::notifyClipGainEnvelopeChanged(int clipId)
+{
+    auto* proc = engine_.getMainProcessor();
+    if (proc)
+    {
+        auto points = getGainEnvelopePoints(clipId);
+        std::vector<HDAW::ClipSourceProcessor::GainPoint> pointsToSend;
+        pointsToSend.reserve(points.size());
+        for (const auto& p : points)
+            pointsToSend.push_back({p.time, p.gain});
+        proc->updateClipGainEnvelope(clipId, pointsToSend);
+    }
 }
