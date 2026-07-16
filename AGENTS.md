@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.8.0**. The core engine (project model, transport, routing,
+**0.9.0**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the UI shell (track headers,
 timeline, mixer, piano roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
@@ -20,10 +20,15 @@ GUI-engine decoupling via abstract command interfaces, ReadModel,
 PluginParamService, and PluginService/MidiService interfaces;
 automation copy-paste and selection model, snap persistence across
 editors, file browser drive navigation, and several bug fixes. **v0.8.0**
-adds pitch-preserving audio clip timestretch (SoundTouch, off-thread
+added pitch-preserving audio clip timestretch (SoundTouch, off-thread
 render), BPM metadata extraction on import, auto tempo-match on import,
-project-tempo tracking for existing tempo-matched clips, and fixes
-the waveform visibility dark-background issue. For the full list of working
+project-tempo tracking for existing tempo-matched clips, and fixed
+the waveform visibility dark-background issue. **v0.9.0** adds the
+per-clip audio editor (waveform display, zoom, gain, fades, timestretch
+controls, loop, offset/duration), gain envelope editor with draggable
+control points, audio clip slicing (at playhead, at transients, at
+region boundaries), and the region clipboard (drag-select to copy/cut
+audio regions and paste at the playhead). For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Build

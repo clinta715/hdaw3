@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.8.0
+**Current version**: 0.9.0
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.8.0)
+## What works today (v0.9.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -74,6 +74,15 @@ pipeline and the rationale.
   fade-out. Right-click context menu provides Normalize and
   Reverse operations (creates new WAV files alongside originals).
   Take management via context menu when multiple takes exist.
+- **Audio clip editor**: double-click an audio clip to open a
+  dedicated editor panel with waveform display, zoom, gain slider,
+  fade-in/out controls, offset/duration editing, loop toggle, and
+  timestretch controls (Source BPM, Stretch Mode, Manual Ratio,
+  Fit to Loop). Region selection via drag on the waveform enables
+  copy/cut/paste of audio regions (inserted at the playhead).
+  Gain envelope editor for adding visual gain curve automation
+  points. Clip slicing at the playhead, at transients (beat-sync),
+  or at region selection boundaries.
 - Clip edits are wired through `juce::UndoManager`, so
   Edit → Undo / Redo work for every clip change.
 
@@ -165,11 +174,9 @@ authentication. Do not expose beyond loopback.
 
 In priority order:
 
-1. **A working per-clip audio editor** — currently, double-clicking
-   an audio clip routes the user to the global Mixer. The goal is
-   a per-clip editor panel with waveform display, gain, fade
-   curves, and source-file management. ~200-400 lines of new
-   code; flagged as the next feature after the v0.2 UX pass.
+1. *DONE in v0.9.0* — per-clip audio editor with waveform display,
+   gain, fade curves, timestretch controls, clip slicing, region
+   clipboard, and gain envelope editing.
 2. **A complete piano-roll feature set** — controller lanes
    (CC data), velocity editing, piano-roll zoom and scroll,
    snap-to-grid, multi-note selection, copy/paste. The
@@ -192,8 +199,6 @@ In priority order:
 
 ## Known limitations
 
-- **No per-clip audio editor.** Double-clicking an audio clip
-  routes to the Mixer.
 - **Default project has no audio.** The Synth track ships with
   two MIDI clips; the two audio tracks exist as empty lanes
   ready to receive dropped-in audio.

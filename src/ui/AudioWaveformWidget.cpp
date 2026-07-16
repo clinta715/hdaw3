@@ -1,5 +1,6 @@
 #include "AudioWaveformWidget.h"
 #include "Theme.h"
+#include "DebugLog.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <QImage>
@@ -343,7 +344,9 @@ void AudioWaveformWidget::mouseMoveEvent(QMouseEvent* event)
 
 void AudioWaveformWidget::mouseReleaseEvent(QMouseEvent*)
 {
-    if (dragMode == DragMode::SelectRegion && currentClip.isValid())
+    bool hasSel = currentClip.isValid() && selStart >= 0.0 && selEnd >= 0.0 && selEnd > selStart;
+
+    if (hasSel)
     {
         if (selStart > selEnd)
             std::swap(selStart, selEnd);
@@ -352,11 +355,10 @@ void AudioWaveformWidget::mouseReleaseEvent(QMouseEvent*)
             emit regionSelected(selStart, selEnd);
         else
             selStart = selEnd = -1.0;
-
-        update();
     }
 
     dragMode = DragMode::None;
+    update();
 }
 
 void AudioWaveformWidget::wheelEvent(QWheelEvent* event)

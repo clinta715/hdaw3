@@ -40,7 +40,7 @@
 #include <QInputDialog>
 
 // Keep this in sync with VERSION in CMakeLists.txt.
-static constexpr const char* APP_VERSION = "0.8.0";
+static constexpr const char* APP_VERSION = "0.9.0";
 
 MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     : QMainWindow(parent), engine(ae)
@@ -506,6 +506,11 @@ void MainWindow::setupBottomPanel()
 
     bottomStack->setCurrentIndex(BottomPanel::Mixer);
     bottomLayout->addWidget(bottomStack);
+
+    // Set a uniform minimum height so switching to any tab (especially Audio
+    // Editor, which has the largest minimum) doesn't force the splitter to
+    // rebalance and resize the window.
+    bottomContainer->setMinimumHeight(250);
 }
 
 void MainWindow::connectTimelineSignals()

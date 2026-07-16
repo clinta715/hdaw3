@@ -249,8 +249,14 @@ void AudioClipEditorWidget::setupUI()
     pasteRegionBtn = new QPushButton("Paste", controlBar);
     pasteRegionBtn->setFixedHeight(20);
     pasteRegionBtn->setEnabled(false);
-    pasteRegionBtn->setToolTip("Paste region at playhead");
+    pasteRegionBtn->setToolTip("Paste the copied region at the playhead position "
+                               "(click on the waveform or timeline to position the playhead)");
     controlLayout->addWidget(pasteRegionBtn);
+
+    playheadLabel = new QLabel("PH: --s", controlBar);
+    playheadLabel->setStyleSheet("color: #e8e8ec; font-size: 7pt;");
+    playheadLabel->setToolTip("Current playhead position — paste inserts here");
+    controlLayout->addWidget(playheadLabel);
 
     // Gain envelope editor (placed in a new section below control bar)
     gainEnvelopeEditor = new GainEnvelopeEditor(this);
@@ -464,6 +470,8 @@ void AudioClipEditorWidget::clear()
 void AudioClipEditorWidget::updatePlayhead(double seconds)
 {
     waveform->setPlayheadPosition(seconds);
+    if (playheadLabel)
+        playheadLabel->setText(QString("PH: %1s").arg(seconds, 0, 'f', 2));
 }
 
 void AudioClipEditorWidget::updateControls()

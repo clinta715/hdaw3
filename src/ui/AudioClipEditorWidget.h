@@ -89,6 +89,7 @@ private:
     QPushButton* cutRegionBtn = nullptr;
     QPushButton* pasteRegionBtn = nullptr;
     QLabel* selectionLabel = nullptr;
+    QLabel* playheadLabel = nullptr;
 
     // Gain envelope editor
     GainEnvelopeEditor* gainEnvelopeEditor = nullptr;
