@@ -1,5 +1,3 @@
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
 interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: number;
@@ -12,12 +10,6 @@ interface JsonRpcResponse {
   id: number;
   result?: unknown;
   error?: { code: number; message: string };
-}
-
-interface JsonRpcNotification {
-  jsonrpc: "2.0";
-  method: string;
-  params?: unknown;
 }
 
 type NotificationHandler = (method: string, params: unknown) => void;
@@ -35,24 +27,33 @@ export class RpcClient {
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private handlers = new Map<string, Set<NotificationHandler>>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 1000;
   private destroyed = false;
+  private connecting: Promise<void> | null = null;
 
   constructor(private port: number) {}
 
   connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.ws?.readyState === WebSocket.OPEN) return resolve();
+    if (this.connecting) return this.connecting;
+    if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.destroyed) return Promise.reject(new Error("client destroyed"));
 
+    this.connecting = new Promise((resolve, reject) => {
       const url = `ws://127.0.0.1:${this.port}`;
       this.ws = new WebSocket(url);
 
-      this.ws.onopen = () => resolve();
+      this.ws.onopen = () => {
+        this.connecting = null;
+        this.reconnectDelay = 1000;
+        resolve();
+      };
 
       this.ws.onmessage = (event) => {
         let msg: unknown;
         try {
           msg = JSON.parse(event.data as string);
         } catch {
+          console.warn("RPC: malformed JSON", event.data);
           return;
         }
         const obj = msg as Record<string, unknown>;
@@ -73,28 +74,36 @@ export class RpcClient {
       };
 
       this.ws.onerror = () => {
+        this.connecting = null;
         reject(new Error("WebSocket connection failed"));
       };
 
       this.ws.onclose = () => {
+        this.connecting = null;
         if (!this.destroyed) {
           this.scheduleReconnect();
         }
       };
     });
+
+    return this.connecting;
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
+    if (this.reconnectTimer || this.destroyed) return;
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+    const jitter = delay * (0.75 + Math.random() * 0.5);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.destroyed) return;
       this.connect().catch(() => this.scheduleReconnect());
-    }, 1000);
+    }, jitter);
   }
 
   disconnect() {
     this.destroyed = true;
+    this.connecting = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -108,9 +117,11 @@ export class RpcClient {
       pd.reject(new Error("disconnected"));
     }
     this.pending.clear();
+    this.handlers.clear();
   }
 
   async call(method: string, params?: unknown): Promise<unknown> {
+    if (this.destroyed) throw new Error("client destroyed");
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       await this.connect();
     }
@@ -119,7 +130,11 @@ export class RpcClient {
     if (params !== undefined) req.params = params;
 
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("RPC timeout"));
+      }, 30000);
+      this.pending.set(id, { resolve: (v) => { clearTimeout(timeout); resolve(v); }, reject: (e) => { clearTimeout(timeout); reject(e); } });
       this.ws!.send(JSON.stringify(req));
     });
   }
