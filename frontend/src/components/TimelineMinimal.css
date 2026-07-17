@@ -1,6 +1,130 @@
 .timeline-minimal {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* --- Toolbar --- */
+.tl-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-header);
+}
+
+.tl-tb-btn {
+  width: 24px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.tl-tb-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+}
+
+.tl-tb-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 56px;
+  text-align: center;
+}
+
+/* --- Body (ruler + tracks) --- */
+.tl-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* --- Ruler --- */
+.tl-ruler {
+  overflow: hidden;
+  background: var(--ruler-bg, var(--bg-panel));
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.tl-ruler-inner {
+  position: relative;
+  height: 100%;
+}
+
+.tl-ruler-mark {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+}
+
+.tl-ruler-beat {
+  background: var(--grid-line-beat, rgba(255,255,255,0.03));
+  height: 40%;
+  top: 60%;
+}
+
+.tl-ruler-bar {
+  background: var(--grid-line-bar, rgba(255,255,255,0.07));
+  height: 100%;
+  top: 0;
+}
+
+.tl-ruler-label {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  font-size: 9px;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* --- Loop region on ruler --- */
+.tl-loop-band {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(56, 178, 223, 0.12);
+  pointer-events: none;
+}
+
+.tl-loop-handle {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--info, #38b2df);
+  cursor: ew-resize;
+  z-index: 5;
+  border-radius: 1px;
+}
+
+.tl-loop-handle:hover {
+  background: var(--accent-bright, #f59e0b);
+}
+
+/* --- Tracks area --- */
+.tl-tracks {
+  position: relative;
   overflow: auto;
+}
+
+.tl-tracks-inner {
   position: relative;
 }
 
@@ -13,14 +137,10 @@
   font-size: 12px;
 }
 
-.tl-tracks {
-  position: relative;
-}
-
 .tl-track-row {
   position: absolute;
   left: 0;
-  right: 0;
+  width: 100%;
   border-bottom: 1px solid var(--border);
 }
 
@@ -30,6 +150,10 @@
 
 .tl-track-row:nth-child(even) {
   background: var(--track-fill2);
+}
+
+.tl-track-row--target {
+  background: var(--accent-dim, rgba(255,255,255,0.08));
 }
 
 .tl-clip {
@@ -60,10 +184,6 @@
   pointer-events: none;
 }
 
-.tl-track-row--target {
-  background: var(--accent-dim, rgba(255, 255, 255, 0.08));
-}
-
 .tl-clip-name {
   font-size: 10px;
   color: var(--text-secondary);
@@ -71,4 +191,37 @@
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+}
+
+/* --- Loop band on tracks --- */
+.tl-loop-band-tracks {
+  position: absolute;
+  top: 0;
+  background: rgba(56, 178, 223, 0.06);
+  pointer-events: none;
+  border-left: 1px solid var(--info, #38b2df);
+  border-right: 1px solid var(--info, #38b2df);
+}
+
+/* --- Playhead --- */
+.tl-playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--accent-bright, #f59e0b);
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* --- Scrollbar sync --- */
+.tl-ruler::-webkit-scrollbar,
+.tl-tracks::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tl-ruler::-webkit-scrollbar-thumb,
+.tl-tracks::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-handle);
+  border-radius: 4px;
 }
