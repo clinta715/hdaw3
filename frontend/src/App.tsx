@@ -3,6 +3,7 @@ import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
 import Mixer from "./components/Mixer";
 import PianoRoll from "./components/PianoRoll";
+import TimelineMinimal from "./components/TimelineMinimal";
 
 function App() {
   return (
@@ -13,7 +14,9 @@ function App() {
       <aside className="track-headers">
         <TrackHeaders />
       </aside>
-      <main className="timeline" />
+      <main className="timeline">
+        <TimelineMinimal />
+      </main>
       <footer className="bottom-panel">
         <section className="mixer">
           <Mixer />

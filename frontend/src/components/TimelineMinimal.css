@@ -1,0 +1,60 @@
+.timeline-minimal {
+  height: 100%;
+  overflow: auto;
+  position: relative;
+}
+
+.tl-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.tl-tracks {
+  position: relative;
+}
+
+.tl-track-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tl-track-row:nth-child(odd) {
+  background: var(--track-fill1);
+}
+
+.tl-track-row:nth-child(even) {
+  background: var(--track-fill2);
+}
+
+.tl-clip {
+  position: absolute;
+  border-radius: 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tl-clip--audio {
+  background: var(--track-color);
+  border: 1px solid var(--accent-dim);
+}
+
+.tl-clip--midi {
+  background: rgba(56, 178, 223, 0.2);
+  border: 1px solid rgba(56, 178, 223, 0.5);
+}
+
+.tl-clip-name {
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
