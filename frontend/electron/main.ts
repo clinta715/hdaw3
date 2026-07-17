@@ -4,9 +4,12 @@ import * as path from "path";
 import * as net from "net";
 
 const DEFAULT_PORT = 8766;
+const MAX_CRASHES = 3;
 
 let childProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
+let crashCount = 0;
+let showingCrashDialog = false;
 
 function getPort(): number {
   const idx = process.argv.indexOf("--port");
@@ -41,23 +44,47 @@ function waitForPort(port: number, timeoutMs = 8000): Promise<void> {
 }
 
 function spawnEngine(port: number): ChildProcess {
-  const enginePath = path.resolve(__dirname, "..", "..", "..", "build", "Debug", "HDAW.exe");
+  const enginePath = path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW.exe");
   const proc = spawn(enginePath, ["--headless", `--port=${port}`], {
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   proc.stdout?.on("data", (data) => console.log(`[engine] ${data}`));
   proc.stderr?.on("data", (data) => console.error(`[engine] ${data}`));
+
+  proc.on("error", (err) => {
+    console.error("[engine] spawn error:", err.message);
+    if (mainWindow && !showingCrashDialog) {
+      showingCrashDialog = true;
+      dialog.showErrorBox("Engine Failed to Start", err.message);
+      showingCrashDialog = false;
+      app.quit();
+    }
+  });
+
   proc.on("exit", (code, signal) => {
     console.log(`[engine] exited code=${code} signal=${signal}`);
-    if (mainWindow) {
+    if (mainWindow && !showingCrashDialog) {
+      showingCrashDialog = true;
+      crashCount++;
+      if (crashCount >= MAX_CRASHES) {
+        dialog.showErrorBox(
+          "Engine Crashed Too Many Times",
+          `The engine has crashed ${crashCount} times. Please check your setup and try again.`
+        );
+        showingCrashDialog = false;
+        app.quit();
+        return;
+      }
       dialog.showMessageBox(mainWindow, {
         type: "error",
         title: "Engine Crashed",
         message: "The audio engine has stopped unexpectedly.",
-        detail: `Exit code: ${code}${signal ? ` Signal: ${signal}` : ""}`,
+        detail: `Exit code: ${code}${signal ? ` Signal: ${signal}` : ""} (attempt ${crashCount}/${MAX_CRASHES})`,
         buttons: ["Restart", "Quit"],
         defaultId: 0,
       }).then(({ response }) => {
+        showingCrashDialog = false;
         if (response === 0) {
           childProcess = spawnEngine(port);
           waitForPort(port).then(() => {
