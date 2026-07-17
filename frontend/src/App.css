@@ -1,0 +1,60 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { height: 100%; overflow: hidden; }
+
+.app-shell {
+  display: grid;
+  grid-template-rows: 48px 1fr 200px;
+  grid-template-columns: 220px 1fr;
+  grid-template-areas:
+    "transport transport"
+    "headers   timeline"
+    "bottom    bottom";
+  height: 100%;
+  background: var(--bg-window);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+}
+
+.transport-bar {
+  grid-area: transport;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.track-headers {
+  grid-area: headers;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.timeline {
+  grid-area: timeline;
+  background: var(--bg-window);
+  overflow: auto;
+}
+
+.bottom-panel {
+  grid-area: bottom;
+  display: flex;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+}
+
+.mixer {
+  flex: 1;
+  overflow-x: auto;
+}
+
+.piano-roll {
+  flex: 1;
+  border-left: 1px solid var(--border);
+  overflow: auto;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-handle); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
