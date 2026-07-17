@@ -50,6 +50,20 @@
   border: 1px solid rgba(56, 178, 223, 0.5);
 }
 
+.tl-clip--dragging {
+  opacity: 0.3;
+}
+
+.tl-ghost {
+  opacity: 0.8;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.tl-track-row--target {
+  background: var(--accent-dim, rgba(255, 255, 255, 0.08));
+}
+
 .tl-clip-name {
   font-size: 10px;
   color: var(--text-secondary);
