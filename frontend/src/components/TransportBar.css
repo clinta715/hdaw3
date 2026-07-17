@@ -1,0 +1,74 @@
+.transport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 12px;
+}
+
+.transport-left, .transport-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transport-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tb-btn {
+  width: 32px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.tb-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+}
+
+.tb-btn.active {
+  background: var(--accent);
+  border-color: var(--accent-bright);
+  color: #fff;
+}
+
+.tb-btn.tb-play {
+  width: 40px;
+}
+
+.tb-btn.recording {
+  color: var(--danger);
+}
+
+.tb-btn.recording.active,
+.tb-btn.recording:hover {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.tb-time {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  min-width: 48px;
+}
+
+.tb-bpm {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
