@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDateTime>
 #include <QSignalSpy>
 #include <QUrl>
 #include <QVariantList>
@@ -88,10 +89,25 @@ public:
     // Drain and return all currently-queued messages (used to inspect push
     // notifications the server broadcasts independently of requests).
     QStringList drainMessages() {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         QStringList out;
         out.swap(messages_);
         return out;
+    }
+
+    // Wait for a specific notification method to arrive.
+    // Returns true if found within the timeout.
+    bool waitForNotification(const QString& method, int timeoutMs = 3000) {
+        auto deadline = QDateTime::currentMSecsSinceEpoch() + timeoutMs;
+        while (QDateTime::currentMSecsSinceEpoch() < deadline) {
+            auto msgs = drainMessages();
+            for (const auto& m : msgs) {
+                auto obj = QJsonDocument::fromJson(m.toUtf8()).object();
+                if (obj.value("method").toString() == method)
+                    return true;
+            }
+        }
+        return false;
     }
 
 private:
@@ -149,7 +165,9 @@ TEST(FrontendServer, AddTrackMutation) {
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
 
-    QJsonObject params{ { "name", "Synth" }, { "color", 0xFFAABBCC } };
+    QJsonObject params;
+    params.insert("name", "Synth");
+    params.insert("color", static_cast<double>(0xFFAABBCC));
     auto resp = client.call(7, "project.addTrack", params);
     ASSERT_FALSE(resp.isEmpty());
     ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
@@ -262,24 +280,18 @@ TEST(FrontendServer, MutationBroadcastsTreeChanged) {
     // Drain any pre-existing push notifications.
     client.drainMessages();
 
-    // Trigger a model mutation.
-    QJsonObject params{ { "name", "Pushed" } };
+    // Trigger a model mutation. Build params without initializer-list to
+    // avoid MSVC ambiguous-conversion issues with QJsonObject.
+    QJsonObject params;
+    params.insert("name", "Pushed");
     auto resp = client.call(1, "project.addTrack", params);
     ASSERT_FALSE(resp.contains("error"));
 
-    // The tree watcher debounces ~16ms; poll the message queue for up to 1s.
-    bool sawTreeChanged = false;
-    for (int waited = 0; waited < 1000 && !sawTreeChanged; waited += 20) {
-        const auto msgs = client.drainMessages();
-        for (const auto& m : msgs) {
-            auto obj = QJsonDocument::fromJson(m.toUtf8()).object();
-            if (obj.value("method").toString() == "notify.treeChanged") {
-                sawTreeChanged = true;
-                break;
-            }
-        }
-    }
-    EXPECT_TRUE(sawTreeChanged) << "did not receive notify.treeChanged after mutation";
+    // Wait for the tree watcher's debounced notify.treeChanged (~16ms +
+    // WebSocket in-process delivery). Times out after 3s if the broadcast
+    // never arrives.
+    EXPECT_TRUE(client.waitForNotification("notify.treeChanged"))
+        << "did not receive notify.treeChanged after mutation";
 
     client.close();
     s.tearDown();
