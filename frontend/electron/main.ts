@@ -43,9 +43,16 @@ function waitForPort(port: number, timeoutMs = 8000): Promise<void> {
   });
 }
 
+function enginePath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "engine", "HDAW.exe");
+  }
+  return path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW.exe");
+}
+
 function spawnEngine(port: number): ChildProcess {
-  const enginePath = path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW.exe");
-  const proc = spawn(enginePath, ["--headless", `--port=${port}`], {
+  const ep = enginePath();
+  const proc = spawn(ep, ["--headless", `--port=${port}`], {
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });

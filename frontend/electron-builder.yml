@@ -1,0 +1,32 @@
+appId: com.hdaw.daw
+productName: HDAW
+copyright: "Copyright 2026 HDAW"
+
+directories:
+  output: release
+  buildResources: build-resources
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+extraResources:
+  - from: ../build/Release/HDAW.exe
+    to: engine/HDAW.exe
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+portable:
+  artifactName: "${productName} ${version} Portable.exe"
