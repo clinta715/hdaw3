@@ -26,6 +26,8 @@ public:
                               juce::AudioFormatManager& formatManager,
                               DetectCallback callback);
 
+    ~TransientDetector();
+
 private:
     static constexpr int FFT_SIZE = 1024;
     static constexpr int HOP_SIZE = 256;

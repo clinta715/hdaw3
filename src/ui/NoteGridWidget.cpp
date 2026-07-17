@@ -237,6 +237,16 @@ void NoteGridWidget::paintEvent(QPaintEvent*)
         }
     }
 
+    // Placeholder text when no clip is loaded
+    if (!model.getClipTree().isValid())
+    {
+        painter.setPen(ThemeColors::placeholderText());
+        QFont f = painter.font();
+        f.setPointSize(11);
+        painter.setFont(f);
+        painter.drawText(rect(), Qt::AlignCenter, "No MIDI clip selected");
+    }
+
     // Rubber-band selection rectangle
     if (dragMode == Select)
     {

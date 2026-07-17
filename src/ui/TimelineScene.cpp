@@ -2,6 +2,7 @@
 #include "../engine/AudioEngine.h"
 #include "DebugLog.h"
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsView>
 
 TimelineScene::TimelineScene(AudioEngine& ae, QObject* parent)
     : QGraphicsScene(parent), engine(ae)
@@ -252,9 +253,33 @@ void TimelineScene::valueTreeChildOrderChanged(juce::ValueTree&, int, int)
 
 void TimelineScene::mousePressEvent(QGraphicsSceneMouseEvent* e)
 {
+    HDAW_LOG("TSCPress", QString("button=%1").arg(e->button()));
     if (interaction != nullptr && interaction->handleMousePress(e))
+    {
+        // Ensure the QGraphicsView viewport has keyboard focus so that
+        // Delete/Backspace and other shortcuts work after clicking a clip.
+        ensureViewportFocus();
         return;
-    QGraphicsScene::mousePressEvent(e);
+    }
+    // Only delegate non-left-button presses (e.g. right-click for context
+    // menus) to the base class if interaction did not handle them. The
+    // base class default handler clears selection for right-click on
+    // ItemIsSelectable items, which we do not want — right-click must
+    // preserve the current multi-selection.
+    if (e->button() == Qt::LeftButton)
+    {
+        QGraphicsScene::mousePressEvent(e);
+        ensureViewportFocus();
+    }
+}
+
+void TimelineScene::ensureViewportFocus()
+{
+    if (!views().isEmpty())
+    {
+        if (auto* vp = views().first()->viewport())
+            vp->setFocus();
+    }
 }
 
 void TimelineScene::mouseMoveEvent(QGraphicsSceneMouseEvent* e)
@@ -268,7 +293,11 @@ void TimelineScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* e)
 {
     if (interaction != nullptr && interaction->handleMouseRelease(e))
         return;
-    QGraphicsScene::mouseReleaseEvent(e);
+    // Only delegate left-button releases to the base class. For
+    // non-left buttons (e.g. right-click context menu), the base
+    // class default handler can interfere with the current selection.
+    if (e->button() == Qt::LeftButton)
+        QGraphicsScene::mouseReleaseEvent(e);
 }
 
 void TimelineScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* e)

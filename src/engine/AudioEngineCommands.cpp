@@ -560,6 +560,36 @@ void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
     fxChain.addChild(slot, insertIdx, &um);
 }
 
+void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
+                                    int position, const std::string& pluginId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto fxChain = track.getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid())
+    {
+        fxChain = juce::ValueTree(IDs::FX_CHAIN);
+        track.addChild(fxChain, -1, &um);
+    }
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(type), &um);
+    if (type == "plugin" && !pluginId.empty())
+    {
+        slot.setProperty(IDs::pluginID, juce::String(pluginId), &um);
+        slot.setProperty(IDs::pluginFormat,
+            juce::String(engine_.getProjectModel().resolvePluginFormat(pluginId)), &um);
+    }
+    slot.setProperty(IDs::bypassed, false, &um);
+
+    int n = fxChain.getNumChildren();
+    int insertIdx = (position < 0 || position > n) ? n : position;
+    fxChain.addChild(slot, insertIdx, &um);
+}
+
 void AudioEngineCommands::removeFxSlot(int trackIndex, int slotIndex)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
@@ -1206,7 +1236,7 @@ void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double g
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    auto envelope = ProjectModel::ensureGainEnvelope(clip);
+    auto envelope = ProjectModel::ensureGainEnvelope(clip, &um);
     ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
     notifyClipGainEnvelopeChanged(clipId);
 }
@@ -1468,4 +1498,187 @@ void AudioEngineCommands::notifyClipGainEnvelopeChanged(int clipId)
             pointsToSend.push_back({p.time, p.gain});
         proc->updateClipGainEnvelope(clipId, pointsToSend);
     }
+}
+
+// ─── ProjectCommands — Modulation (LFO) ──────────────────────────
+
+void AudioEngineCommands::addLfo(int trackIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid())
+    {
+        modList = juce::ValueTree(IDs::MODULATION_LIST);
+        trackTree.addChild(modList, -1, &um);
+    }
+
+    auto newMod = juce::ValueTree(IDs::MODULATION);
+    newMod.setProperty("id", juce::String("lfo_") + juce::String(modList.getNumChildren() + 1), nullptr);
+    newMod.setProperty("type", "lfo", nullptr);
+    newMod.setProperty(IDs::name, juce::String("LFO ") + juce::String(modList.getNumChildren() + 1), nullptr);
+    newMod.setProperty(IDs::waveform, 0, nullptr);
+    newMod.setProperty(IDs::rate, 1.0, nullptr);
+    newMod.setProperty(IDs::rateSync, true, nullptr);
+    newMod.setProperty(IDs::depth, 0.3, nullptr);
+    newMod.setProperty(IDs::bipolar, false, nullptr);
+    newMod.setProperty(IDs::phaseOffset, 0.0, nullptr);
+    newMod.setProperty(IDs::targetParamID, 1, nullptr);
+    newMod.setProperty(IDs::enabled, true, nullptr);
+    modList.addChild(newMod, -1, &um);
+}
+
+void AudioEngineCommands::removeLfo(int trackIndex, int lfoIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren()) return;
+
+    modList.removeChild(modList.getChild(lfoIndex), &um);
+}
+
+void AudioEngineCommands::setLfoParam(int trackIndex, int lfoIndex,
+                                      const std::string& paramName, double value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid() || lfoIndex < 0 || lfoIndex >= modList.getNumChildren()) return;
+
+    auto modTree = modList.getChild(lfoIndex);
+
+    // Map string parameter name to the corresponding Identifier
+    if (paramName == "waveform")
+        modTree.setProperty(IDs::waveform, static_cast<int>(value), &um);
+    else if (paramName == "rate")
+        modTree.setProperty(IDs::rate, value, &um);
+    else if (paramName == "rateSync")
+        modTree.setProperty(IDs::rateSync, value != 0.0, &um);
+    else if (paramName == "depth")
+        modTree.setProperty(IDs::depth, value, &um);
+    else if (paramName == "bipolar")
+        modTree.setProperty(IDs::bipolar, value != 0.0, &um);
+    else if (paramName == "phaseOffset")
+        modTree.setProperty(IDs::phaseOffset, value, &um);
+    else if (paramName == "targetParamID")
+        modTree.setProperty(IDs::targetParamID, static_cast<int>(value), &um);
+    else if (paramName == "enabled")
+        modTree.setProperty(IDs::enabled, value != 0.0, &um);
+}
+
+// ─── Missing source-file relinking ─────────────────────────────────
+
+static const juce::StringArray audioExtensions{".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"};
+
+static juce::String searchForFile(const juce::String& missingPath, const juce::File& dir)
+{
+    juce::File missingFile(missingPath);
+    auto name = missingFile.getFileName();
+    auto baseName = missingFile.getFileNameWithoutExtension();
+    auto ext = missingFile.getFileExtension();
+
+    // Exact filename match
+    juce::Array<juce::File> results;
+    dir.findChildFiles(results, juce::File::findFiles, true, name);
+    if (results.size() > 0)
+        return results[0].getFullPathName();
+
+    // Same basename, any audio extension
+    for (const auto& tryExt : audioExtensions)
+    {
+        if (tryExt.toLowerCase() == ext.toLowerCase())
+            continue;
+        auto tryName = baseName + tryExt;
+        dir.findChildFiles(results, juce::File::findFiles, true, tryName);
+        if (results.size() > 0)
+            return results[0].getFullPathName();
+    }
+
+    return {};
+}
+
+std::string AudioEngineCommands::findMissingClipSourceFile(int clipId, const std::string& searchDir)
+{
+    juce::File dir(searchDir.empty() ? "." : juce::String(searchDir));
+    if (!dir.isDirectory())
+        return {};
+
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid())
+        return {};
+
+    auto sourceFile = clip.getProperty(IDs::sourceFile).toString();
+    if (sourceFile.isEmpty())
+        return {};
+
+    juce::File current(sourceFile);
+    if (current.existsAsFile())
+        return sourceFile.toStdString();
+
+    auto found = searchForFile(sourceFile, dir);
+    if (found.isNotEmpty())
+    {
+        auto& um = engine_.getProjectModel().getUndoManager();
+        um.beginNewTransaction("Find missing clip source file");
+        clip.setProperty(IDs::sourceFile, found, &um);
+        engine_.getMainProcessor()->rebuildRoutingGraph();
+        return found.toStdString();
+    }
+    return {};
+}
+
+ProjectCommands::RelinkResult AudioEngineCommands::relinkAllMissingFiles(const std::string& searchDir)
+{
+    RelinkResult result{0, 0};
+    juce::File dir(searchDir.empty() ? "." : juce::String(searchDir));
+    if (!dir.isDirectory())
+        return result;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    um.beginNewTransaction("Relink missing files");
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    bool anyRelinked = false;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            if (clip.getProperty(IDs::clipType).toString() != "audio")
+                continue;
+            auto sourceFile = clip.getProperty(IDs::sourceFile).toString();
+            if (sourceFile.isEmpty())
+                continue;
+            juce::File current(sourceFile);
+            if (current.existsAsFile())
+                continue;
+
+            result.totalMissing++;
+            auto found = searchForFile(sourceFile, dir);
+            if (found.isNotEmpty())
+            {
+                clip.setProperty(IDs::sourceFile, found, &um);
+                result.found++;
+                anyRelinked = true;
+            }
+        }
+    }
+
+    if (anyRelinked)
+        engine_.getMainProcessor()->rebuildRoutingGraph();
+
+    return result;
 }

@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.9.0**. The core engine (project model, transport, routing,
+**0.9.1**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the UI shell (track headers,
 timeline, mixer, piano roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
@@ -28,8 +28,11 @@ per-clip audio editor (waveform display, zoom, gain, fades, timestretch
 controls, loop, offset/duration), gain envelope editor with draggable
 control points, audio clip slicing (at playhead, at transients, at
 region boundaries), and the region clipboard (drag-select to copy/cut
-audio regions and paste at the playhead). For the full list of working
-features and the priority-ordered roadmap, see `README.md`.
+audio regions and paste at the playhead). **v0.9.1** fixes the clip
+drag Y-tracking — clips now follow the mouse smoothly across tracks
+instead of snapping at track boundaries with a discrete jump. For the
+full list of working features and the priority-ordered roadmap, see
+`README.md`.
 
 ## Build
 
@@ -902,6 +905,37 @@ The fix (added in v0.2.2):
 
 The parent-traversal chain is: `CLIP` → `CLIP_LIST` → `TRACK`. Both
 intermediate parents must validate correctly or the index lookup returns -1.
+
+## Clip drag Y-tracking — discrete track-boundary jump vs continuous follow
+
+**Symptom**: When dragging a clip between tracks, the clip stays at its
+original Y position while the mouse moves vertically within the same
+track. At each track boundary, the clip **suddenly jumps** to
+`newTrackY + dragStartYOffset`, creating a "weird intermediate snap"
+sensation. The clip feels disconnected from the mouse cursor.
+
+**Root cause** (`TimelineInteraction::handleMouseMove`, v0.9.0): The old
+code only updated the clip's Y position when `targetTrack !=
+dragStartTrackIndex` (a track boundary crossing). Within the same track,
+`c->setPos(targetStart * pps, c->pos().y())` kept the Y frozen at the
+original press-time value. The Y offset at drag start
+(`dragStartYOffset`) was a constant used only at track-boundary jumps,
+so the clip never followed the mouse smoothly.
+
+**Fix** (`TimelineInteraction.{h,cpp}`, v0.9.1): Store each selected
+clip's Y position at drag start in a `QMap<ClipItem*, double>
+dragStartClipY`. During the drag, compute `yDelta = mouseY -
+dragStartPos.y()` each frame and set every clip's Y to `baseY + yDelta`,
+clamped to the target track's vertical bounds (`[trackTop, trackTop +
+trackH - 10px]`). This gives continuous Y tracking across the entire
+drag — no more discrete jumps at track boundaries.
+
+**Architectural note**: Per-clip Y storage (`QMap<ClipItem*, double>`
+keyed by pointer) is valid because `dragStartClipY` is populated at
+mouse press and cleared at mouse release, and `ClipItem` pointers are
+stable within a single drag session. The map is stored as a class member
+(not a local) because it must persist across the press→move→release
+sequence handled by separate calls.
 
 ## Loop playback ignores region if bounds aren't synced on init
 

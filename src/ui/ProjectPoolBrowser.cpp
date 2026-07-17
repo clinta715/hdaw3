@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QKeyEvent>
 #include <QStyle>
+#include <QFrame>
 
 ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     : QWidget(parent), engine(ae)
@@ -19,6 +20,11 @@ ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
     transportCmds = &engine.getTransportCommands();
     audioGraphCmds = &engine.getAudioGraphCommands();
     readModel = &engine.getReadModel();
+
+    // Create the preview player using the engine's device/format managers
+    previewPlayer = std::make_unique<HDAW::AudioPreviewPlayer>(
+        engine.getDeviceManager(), engine.getProjectPool().getFormatManager());
+
     setupUI();
 
     // Restore last browsed directory; fallback chain: saved → default → home
@@ -30,11 +36,12 @@ ProjectPoolBrowser::ProjectPoolBrowser(AudioEngine& ae, QWidget* parent)
         currentRootDir = QDir::homePath();
 
     if (!currentRootDir.isEmpty())
-        navigateToDir(currentRootDir);
+        updateCurrentDir(currentRootDir);
 }
 
 ProjectPoolBrowser::~ProjectPoolBrowser()
 {
+    stopPreview();
     saveBrowsedDir();
 }
 
@@ -97,18 +104,85 @@ void ProjectPoolBrowser::setupUI()
     fileTree->setDragEnabled(true);
     fileTree->setAnimated(true);
     fileTree->setIndentation(16);
-    fileTree->setSortingEnabled(true);
+    fileTree->setSortingEnabled(false);
     fileTree->setColumnHidden(1, true);
     fileTree->setColumnHidden(2, true);
     fileTree->setColumnHidden(3, true);
     fileTree->header()->setStretchLastSection(false);
-    fileTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    fileTree->header()->setSectionResizeMode(0, QHeaderView::Fixed);
+    fileTree->header()->resizeSection(0, 250);
     fileTree->setFocusPolicy(Qt::StrongFocus);
 
     connect(fileTree, &QTreeView::activated, this, &ProjectPoolBrowser::onFileActivated);
     connect(fileTree, &QTreeView::doubleClicked, this, &ProjectPoolBrowser::onFileActivated);
+    connect(fileTree, &QTreeView::clicked, this, &ProjectPoolBrowser::onFileClicked);
 
     browserLayout->addWidget(fileTree, 1);
+
+    // Preview toolbar
+    auto* previewBar = new QWidget(browserContainer);
+    previewBar->setFixedHeight(28);
+    auto* previewLayout = new QHBoxLayout(previewBar);
+    previewLayout->setContentsMargins(4, 2, 4, 2);
+    previewLayout->setSpacing(4);
+
+    previewPlayBtn = new QPushButton("\u25B6", previewBar);
+    previewPlayBtn->setFixedSize(24, 20);
+    previewPlayBtn->setToolTip("Preview selected file");
+    previewPlayBtn->setStyleSheet("QPushButton { font-size: 10pt; }");
+    previewLayout->addWidget(previewPlayBtn);
+
+    previewStopBtn = new QPushButton("\u25A0", previewBar);
+    previewStopBtn->setFixedSize(24, 20);
+    previewStopBtn->setToolTip("Stop preview");
+    previewStopBtn->setStyleSheet("QPushButton { font-size: 10pt; }");
+    previewStopBtn->setEnabled(false);
+    previewLayout->addWidget(previewStopBtn);
+
+    auto* sep = new QFrame(previewBar);
+    sep->setFrameShape(QFrame::VLine);
+    sep->setFixedHeight(18);
+    previewLayout->addWidget(sep);
+
+    tempoMatchCheck = new QCheckBox("At Tempo", previewBar);
+    tempoMatchCheck->setToolTip("Preview at project tempo (time-stretched)");
+    tempoMatchCheck->setStyleSheet("color: #a8a8b0; font-size: 8pt;");
+    previewLayout->addWidget(tempoMatchCheck);
+
+    auto* volLbl = new QLabel("Vol:", previewBar);
+    volLbl->setStyleSheet("color: #a8a8b0; font-size: 8pt;");
+    previewLayout->addWidget(volLbl);
+
+    previewVolumeSlider = new QSlider(Qt::Horizontal, previewBar);
+    previewVolumeSlider->setRange(0, 100);
+    previewVolumeSlider->setValue(80);
+    previewVolumeSlider->setFixedWidth(80);
+    previewVolumeSlider->setFixedHeight(16);
+    previewLayout->addWidget(previewVolumeSlider);
+
+    previewLabel = new QLabel(previewBar);
+    previewLabel->setStyleSheet("color: #787880; font-size: 8pt;");
+    previewLabel->setText("No preview");
+    previewLayout->addWidget(previewLabel, 1);
+
+    connect(previewPlayBtn, &QPushButton::clicked, this, [this]() {
+        if (lastClickedIndex.isValid() && !fsModel->isDir(lastClickedIndex))
+            startPreview(fsModel->filePath(lastClickedIndex));
+    });
+    connect(previewStopBtn, &QPushButton::clicked, this, &ProjectPoolBrowser::stopPreview);
+
+    connect(tempoMatchCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (previewPlayer)
+            previewPlayer->setTempoMatch(checked,
+                readModel->getTransport().bpm > 0 ? readModel->getTransport().bpm : 120.0);
+    });
+
+    connect(previewVolumeSlider, &QSlider::valueChanged, this, [this](int val) {
+        if (previewPlayer)
+            previewPlayer->setVolume(val / 100.0f);
+    });
+
+    browserLayout->addWidget(previewBar);
 
     splitter->addWidget(browserContainer);
 
@@ -177,6 +251,54 @@ void ProjectPoolBrowser::onFileActivated(const QModelIndex& index)
     }
 }
 
+void ProjectPoolBrowser::onFileClicked(const QModelIndex& index)
+{
+    lastClickedIndex = index;
+    if (!fsModel->isDir(index))
+    {
+        QString path = fsModel->filePath(index);
+        startPreview(path);
+    }
+}
+
+void ProjectPoolBrowser::startPreview(const QString& path)
+{
+    if (path.isEmpty() || !previewPlayer) return;
+
+    QFileInfo fi(path);
+    if (!fi.exists()) return;
+
+    // Stop any current preview
+    stopPreview();
+
+    previewPlayer->loadFile(juce::File(path.toUtf8().constData()));
+
+    // Set tempo match with project BPM
+    if (tempoMatchCheck->isChecked())
+    {
+        double bpm = readModel->getTransport().bpm;
+        if (bpm <= 0) bpm = 120.0;
+        previewPlayer->setTempoMatch(true, bpm);
+    }
+
+    previewPlayer->setVolume(previewVolumeSlider->value() / 100.0f);
+    previewPlayer->play();
+
+    previewPlayBtn->setEnabled(false);
+    previewStopBtn->setEnabled(true);
+    previewLabel->setText(fi.fileName());
+}
+
+void ProjectPoolBrowser::stopPreview()
+{
+    if (previewPlayer)
+        previewPlayer->stop();
+
+    previewPlayBtn->setEnabled(true);
+    previewStopBtn->setEnabled(false);
+    previewLabel->setText("No preview");
+}
+
 void ProjectPoolBrowser::navigateUp()
 {
     QDir dir(currentRootDir);
@@ -236,6 +358,14 @@ void ProjectPoolBrowser::importFile(const QString& path)
     // Create clip on the first track
     if (readModel->getTrackCount() > 0)
     {
+        // Read actual audio file duration
+        double duration = 4.0;
+        auto& pool = engine.getProjectPool();
+        auto reader = std::unique_ptr<juce::AudioFormatReader>(
+            pool.getFormatManager().createReaderFor(juce::File(path.toUtf8().constData())));
+        if (reader != nullptr)
+            duration = reader->lengthInSamples / reader->sampleRate;
+
         // Find the next position (after the last clip)
         double startTime = 0.0;
         auto snap = readModel->snapshot();
@@ -248,7 +378,7 @@ void ProjectPoolBrowser::importFile(const QString& path)
             }
         }
 
-        projectCmds->addAudioClip(0, startTime, 4.0,
+        projectCmds->addAudioClip(0, startTime, duration,
             path.toUtf8().constData(),
             fi.baseName().toUtf8().constData());
 

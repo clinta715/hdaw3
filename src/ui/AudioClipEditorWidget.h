@@ -6,6 +6,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QTimer>
 #include <juce_core/juce_core.h>
 #include "../model/ProjectModel.h"
 #include "../common/ProjectCommands.h"
@@ -39,6 +40,10 @@ private:
     void loadGainEnvelope();
     void reloadClip();
     void onGainEnvelopeChanged(const QVector<GainEnvelopeEditor::Point>& points);
+    void onEnvelopeDragStarted();
+    void onEnvelopeDragFinished();
+    void reloadEnvelopeEditorFromModel();
+    void replaceEnvelopeFromEditor();
 
     // Slicing handlers
     void onSliceAtPlayhead();
@@ -49,6 +54,12 @@ private:
     void onCopyRegion();
     void onCutRegion();
     void onPasteRegion();
+    void onSelectAllRegion();
+
+    // Local playback
+    void onPlayClicked();
+    void onStopClicked();
+    void onPlaybackTimer();
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;
@@ -72,6 +83,7 @@ private:
     QDoubleSpinBox* durationSpin;
     QLabel* sourceLabel;
     QLabel* infoLabel;
+    QPushButton* relinkBtn = nullptr;
 
     // Timestretch controls
     QDoubleSpinBox* sourceBpmSpin;
@@ -91,9 +103,17 @@ private:
     QLabel* selectionLabel = nullptr;
     QLabel* playheadLabel = nullptr;
 
+    // Local playback controls
+    QPushButton* playBtn = nullptr;
+    QPushButton* stopBtn = nullptr;
+    QTimer* playbackTimer = nullptr;
+    bool isPlayingLocally = false;
+
     // Gain envelope editor
     GainEnvelopeEditor* gainEnvelopeEditor = nullptr;
 
     bool settingUi = false;
     bool isLoaded = false;
+    bool envelopeDragging = false;
+    QVector<GainEnvelopeEditor::Point> pendingEnvelopePoints;
 };

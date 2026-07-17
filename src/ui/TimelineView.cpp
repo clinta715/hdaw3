@@ -18,6 +18,7 @@
 #include <QInputDialog>
 #include <QApplication>
 #include <QShowEvent>
+#include <QShortcut>
 #include "DebugLog.h"
 #include "../engine/AudioImport.h"
 #include "PreferencesDialog.h"
@@ -99,6 +100,7 @@ void TimelineView::setupUI()
     graphicsView->setFrameStyle(QFrame::NoFrame);
     graphicsView->setAcceptDrops(true);
     graphicsView->viewport()->installEventFilter(this);
+    graphicsView->installEventFilter(this);
 
     graphicsView->viewport()->setFocusPolicy(Qt::StrongFocus);
     graphicsView->setFocusPolicy(Qt::StrongFocus);
@@ -258,6 +260,20 @@ void TimelineView::connectSignals()
 
     connect(graphicsView->verticalScrollBar(), &QScrollBar::rangeChanged, this, [this](int, int) {
         syncRulerWithScene();
+    });
+
+    // Keyboard shortcuts — use QShortcut instead of eventFilter so they
+    // work regardless of which widget in the timeline has keyboard focus.
+    auto* deleteShortcut = new QShortcut(QKeySequence(Qt::Key_Delete), this, nullptr, nullptr, Qt::WidgetWithChildrenShortcut);
+    connect(deleteShortcut, &QShortcut::activated, this, [this]() {
+        if (interaction != nullptr)
+            interaction->deleteSelectedClips();
+    });
+
+    auto* backspaceShortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this, nullptr, nullptr, Qt::WidgetWithChildrenShortcut);
+    connect(backspaceShortcut, &QShortcut::activated, this, [this]() {
+        if (interaction != nullptr)
+            interaction->deleteSelectedClips();
     });
 }
 
@@ -486,8 +502,7 @@ void TimelineView::pasteClips()
         clipList.addChild(newClip, -1, &model.getUndoManager());
     }
 
-    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
-        mainProc->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
 }
 
 void TimelineView::duplicateSelectedClips()
@@ -501,7 +516,7 @@ void TimelineView::duplicateSelectedClips()
     projectCmds->beginTransaction("Duplicate clips");
     for (auto* clip : selected)
         projectCmds->duplicateClip(clip->getClipTree().getProperty(IDs::clipID));
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
 }
 
 void TimelineView::syncRulerWithScene()
@@ -524,6 +539,15 @@ void TimelineView::syncRulerWithScene()
 
 bool TimelineView::eventFilter(QObject* obj, QEvent* event)
 {
+    // Keyboard events arrive at the QGraphicsView (which holds focus),
+    // not the viewport. Handle them here so Delete/Backspace/Ctrl+A
+    // work regardless of which widget has focus.
+    if (obj == graphicsView && event->type() == QEvent::KeyPress)
+    {
+        handleKeyPress(static_cast<QKeyEvent*>(event));
+        return true;
+    }
+
     if (obj == graphicsView->viewport())
     {
         if (event->type() == QEvent::ContextMenu)
@@ -577,24 +601,30 @@ void TimelineView::handleContextMenu(QContextMenuEvent* event)
     QPointF scenePos = graphicsView->mapToScene(event->pos());
     QGraphicsItem* item = timelineScene->itemAt(scenePos, QTransform());
 
-    // No parentItem() walk: ClipItem is not grouped under track-lane containers.
     ClipItem* clip = dynamic_cast<ClipItem*>(item);
+    int selBefore = 0;
+    for (auto* i : timelineScene->selectedItems())
+        if (dynamic_cast<ClipItem*>(i) != nullptr) ++selBefore;
+    HDAW_LOG("TVCtx", QString("before: clip=%1 selCount=%2").arg(clip ? "yes" : "no").arg(selBefore));
 
     if (clip != nullptr)
         handleClipContextMenu(clip, event->globalPos());
     else
         handleEmptyAreaContextMenu(scenePos, event->globalPos());
 
+    int selAfter = 0;
+    for (auto* i : timelineScene->selectedItems())
+        if (dynamic_cast<ClipItem*>(i) != nullptr) ++selAfter;
+    HDAW_LOG("TVCtx", QString("after: selCount=%1").arg(selAfter));
+
     event->accept();
 }
 
 void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos)
 {
-    // Select the right-clicked clip so that clipboard/duplicate actions work
-    if (interaction != nullptr)
-    {
-        interaction->selectClip(clip, false);
-    }
+    // Preserve the existing selection so batch actions (copy/cut/delete)
+    // operate on the whole group. Right-clicking must never alter
+    // selection — that is the standard behaviour in DAWs and editors.
     QMenu menu;
 
     auto clipTree = clip->getClipTree();
@@ -618,15 +648,9 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
                 connect(action, &QAction::triggered, this, [this, clipTree, takeList, t, trackTree, &um]() mutable {
                     clipTree.setProperty(IDs::activeTake, t, &um);
                     auto sourceFile = takeList.getChild(t).getProperty(IDs::sourceFile).toString();
-                    auto trackList = engine.getProjectModel().getTrackListTree();
-                    int trackIdx = trackList.indexOf(trackTree);
-                    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-                    int clipIdx = clipList.indexOf(clipTree);
-                    if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
-                    {
-                        if (auto* rm = mainProc->getRoutingManager())
-                            rm->switchClipTake(trackIdx, clipIdx, sourceFile);
-                    }
+                    int clipId = static_cast<int>(clipTree.getProperty(IDs::clipID, 0));
+                    clipTree.setProperty(IDs::sourceFile, sourceFile, &um);
+                    audioGraphCmds->switchClipTake(clipId);
                 });
             }
             menu.addSeparator();
@@ -640,8 +664,7 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
             if (HDAW::normalizeAudioFile(engine, sourcePath, outPath))
             {
                 clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-                if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
-                    mainProc->rebuildRoutingGraph();
+                audioGraphCmds->rebuildRoutingGraph();
             }
         });
 
@@ -652,8 +675,7 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
             if (HDAW::reverseAudioFile(engine, sourcePath, outPath))
             {
                 clip->getClipTree().setProperty(IDs::sourceFile, outPath.toUtf8().constData(), &engine.getProjectModel().getUndoManager());
-                if (auto* mainProc = dynamic_cast<MainAudioProcessor*>(engine.getMainProcessor()))
-                    mainProc->rebuildRoutingGraph();
+                audioGraphCmds->rebuildRoutingGraph();
             }
         });
         menu.addSeparator();
@@ -713,6 +735,10 @@ void TimelineView::handleClipContextMenu(ClipItem* clip, const QPoint& globalPos
     });
 
     menu.exec(globalPos);
+    // Restore keyboard focus to the viewport so Delete/Backspace and
+    // other shortcuts work immediately after the context menu closes.
+    if (graphicsView != nullptr && graphicsView->viewport() != nullptr)
+        graphicsView->viewport()->setFocus();
 }
 
 void TimelineView::handleEmptyAreaContextMenu(const QPointF& scenePos, const QPoint& globalPos)
@@ -778,14 +804,20 @@ void TimelineView::handleEmptyAreaContextMenu(const QPointF& scenePos, const QPo
             return;
 
         projectCmds->addMidiClip(trackIndex, (std::max)(0.0, timeSeconds), 4.0, "MIDI Clip");
-        engine.getMainProcessor()->rebuildRoutingGraph();
+        audioGraphCmds->rebuildRoutingGraph();
     });
 
     menu.exec(globalPos);
+    if (graphicsView != nullptr && graphicsView->viewport() != nullptr)
+        graphicsView->viewport()->setFocus();
 }
 
 void TimelineView::handleKeyPress(QKeyEvent* event)
 {
+    HDAW_LOG("TVKey", QString("key=%1 viewport=%2").arg(event->key())
+        .arg(graphicsView != nullptr && graphicsView->viewport() != nullptr
+             ? (graphicsView->viewport()->hasFocus() ? "focused" : "no-focus")
+             : "null"));
     if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace)
     {
         if (interaction != nullptr)
@@ -900,7 +932,7 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
         filePath.toUtf8().constData(),
         fi.baseName().toUtf8().constData());
 
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    audioGraphCmds->rebuildRoutingGraph();
 
     if (reader != nullptr && newClipId >= 0)
     {

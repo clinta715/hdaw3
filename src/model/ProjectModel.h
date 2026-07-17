@@ -197,7 +197,7 @@ public:
 
     struct GainEnvelopePoint { double time; double gain; };
 
-    static juce::ValueTree ensureGainEnvelope(juce::ValueTree clip);
+    static juce::ValueTree ensureGainEnvelope(juce::ValueTree clip, juce::UndoManager* um = nullptr);
     static juce::ValueTree addGainEnvelopePoint(juce::ValueTree envelope, double time, double gain, juce::UndoManager* um);
     static std::vector<GainEnvelopePoint> getGainEnvelopePoints(const juce::ValueTree& envelope);
     static void removeGainEnvelopePoint(juce::ValueTree envelope, int index, juce::UndoManager* um);

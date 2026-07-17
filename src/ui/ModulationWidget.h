@@ -17,7 +17,6 @@
 #include "../common/ReadModel.h"
 
 class AudioEngine;
-#include "../engine/ModulationManager.h"
 #include <vector>
 
 class ModulationWidget : public QWidget
@@ -58,12 +57,8 @@ private:
 
     void clearPanels();
     void rebuildPanels();
-    int addPanel(const juce::ValueTree& modTree, int index);
-    // Commit only the properties that differ from the tree's current values.
-    // Returns true if anything was written (so the caller knows a rebuild is
-    // warranted).
+    int addPanel(const LfoSnapshot& lfo, int index);
     bool writeLfoToTree(int lfoIndex);
-    void syncModulationToAudio();
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;

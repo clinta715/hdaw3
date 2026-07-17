@@ -409,14 +409,14 @@ int ProjectModel::addFxSlot(int trackIdx, const std::string& type, int pos,
     return insertIdx;
 }
 
-juce::ValueTree ProjectModel::ensureGainEnvelope(juce::ValueTree clip)
+juce::ValueTree ProjectModel::ensureGainEnvelope(juce::ValueTree clip, juce::UndoManager* um)
 {
     if (!clip.isValid()) return {};
     auto env = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     if (!env.isValid())
     {
         env = juce::ValueTree(IDs::GAIN_ENVELOPE);
-        clip.addChild(env, -1, nullptr);
+        clip.addChild(env, -1, um);
     }
     return env;
 }

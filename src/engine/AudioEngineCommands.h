@@ -70,6 +70,12 @@ public:
     void clearGainEnvelope(int clipId) override;
     void notifyClipGainEnvelopeChanged(int clipId) override;
 
+    // ProjectCommands — Modulation (LFO)
+    void addLfo(int trackIndex) override;
+    void removeLfo(int trackIndex, int lfoIndex) override;
+    void setLfoParam(int trackIndex, int lfoIndex,
+                     const std::string& paramName, double value) override;
+
     // ProjectCommands — MIDI note operations
     int addNote(int clipId, int pitch, int velocity,
                 double startBeat, double durationBeats) override;
@@ -83,6 +89,8 @@ public:
     // ProjectCommands — FX operations
     void addFxSlot(int trackIndex, int type, int position,
                    const std::string& pluginId) override;
+    void addFxSlot(int trackIndex, const std::string& type,
+                   int position, const std::string& pluginId) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
@@ -146,6 +154,10 @@ public:
     // ProjectCommands — Scale
     void setScaleRoot(int root) override;
     void setScaleMode(int mode) override;
+
+    // ProjectCommands — Missing source-file relinking
+    std::string findMissingClipSourceFile(int clipId, const std::string& searchDir) override;
+    RelinkResult relinkAllMissingFiles(const std::string& searchDir) override;
 
     // TransportCommands
     void play() override;

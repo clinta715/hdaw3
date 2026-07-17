@@ -56,6 +56,9 @@ namespace ThemeColors {
     inline QColor gridLineBar()  { static const QColor c(255, 255, 255, 18); return c; }
     inline QColor gridLineBeat() { static const QColor c(255, 255, 255, 8); return c; }
     inline QColor gridLineSub()  { static const QColor c(255, 255, 255, 4); return c; }
+
+    // Placeholder text for empty editor areas
+    inline QColor placeholderText() { static const QColor c(255, 255, 255, 80); return c; }
 }
 
 inline QString getGlobalStyleSheet()

@@ -6,6 +6,8 @@
 #include <QSplitter>
 #include <QPushButton>
 #include <QLabel>
+#include <QSlider>
+#include <QCheckBox>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -13,6 +15,7 @@
 
 class AudioEngine;
 #include "../model/ProjectModel.h"
+#include "../engine/AudioPreviewPlayer.h"
 
 class ProjectPoolBrowser : public QWidget
 {
@@ -36,11 +39,15 @@ private:
 private:
     void setupUI();
     void onFileActivated(const QModelIndex& index);
+    void onFileClicked(const QModelIndex& index);
     void onPoolItemDoubleClicked(QListWidgetItem* item);
     void navigateUp();
     void navigateToDir(const QString& dir);
     void updateCurrentDir(const QString& dir);
     void goToDefaultDir(int index);
+
+    void startPreview(const QString& path);
+    void stopPreview();
 
     void saveBrowsedDir() const;
     QString currentRootDir;
@@ -57,4 +64,13 @@ private:
     QSplitter* splitter;
     QPushButton* addBtn;
     QLabel* pathLabel;
+
+    // Preview controls
+    std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
+    QPushButton* previewPlayBtn = nullptr;
+    QPushButton* previewStopBtn = nullptr;
+    QCheckBox* tempoMatchCheck = nullptr;
+    QSlider* previewVolumeSlider = nullptr;
+    QLabel* previewLabel = nullptr;
+    QModelIndex lastClickedIndex;
 };

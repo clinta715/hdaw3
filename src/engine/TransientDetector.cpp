@@ -6,6 +6,13 @@
 
 namespace HDAW {
 
+TransientDetector::~TransientDetector()
+{
+    cancelFlag = true;
+    if (detectThread.joinable())
+        detectThread.join();
+}
+
 HDAW::TransientDetector::Result HDAW::TransientDetector::detect(const juce::AudioBuffer<float>& buffer, double sampleRate)
 {
     return detectFromBuffer(buffer, sampleRate);
@@ -112,8 +119,15 @@ bool HDAW::TransientDetector::startDetectFromFile(const juce::String& filePath,
                                                     juce::AudioFormatManager& fm,
                                                     DetectCallback callback)
 {
-    if (active.load()) return false;
-    
+    // If a prior detection is still running, cancel it and wait.
+    if (active.load())
+    {
+        cancelFlag = true;
+        if (detectThread.joinable())
+            detectThread.join();
+        cancelFlag = false;
+    }
+
     auto r = std::unique_ptr<juce::AudioFormatReader>(fm.createReaderFor(juce::File(filePath)));
     if (!r) return false;
     
@@ -121,7 +135,6 @@ bool HDAW::TransientDetector::startDetectFromFile(const juce::String& filePath,
     formatManager = &fm;
     reader = std::move(r);
     completionCallback = std::move(callback);
-    cancelFlag = false;
     active = true;
     
     detectThread = std::thread(&TransientDetector::detectThreadFunc, this);

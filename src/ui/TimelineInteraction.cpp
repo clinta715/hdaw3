@@ -176,6 +176,23 @@ bool TimelineInteraction::handleMousePress(QGraphicsSceneMouseEvent* e)
         dragItem = clip;
         dragStartPos = e->scenePos();
         dragStartValue = clip->getStartTime();
+        dragStartTrackIndex = scene->trackIndexAtY(e->scenePos().y());
+        dragCurrentTrackIndex = dragStartTrackIndex;
+        // Y offset within the track so the clip doesn't snap to track top
+        if (dragStartTrackIndex >= 0)
+        {
+            double trackTop = scene->getTrackY(dragStartTrackIndex);
+            dragStartYOffset = e->scenePos().y() - trackTop;
+        }
+        else
+        {
+            dragStartYOffset = 0.0;
+        }
+        // Store per-clip Y positions at drag start for continuous Y tracking
+        dragStartClipY.clear();
+        dragStartClipY[clip] = clip->pos().y();
+        for (auto* sc : getSelectedClips())
+            dragStartClipY[sc] = sc->pos().y();
         e->accept();
         return true;
     }
@@ -214,30 +231,52 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
         newTime = snapToGrid(newTime);
         newTime = (std::max)(0.0, newTime);
 
+        // Determine target track from Y position; fallback to source track
+        // if the mouse is in the ruler area above all tracks.
+        int targetTrack = scene->trackIndexAtY(e->scenePos().y());
+        if (targetTrack < 0 && dragStartTrackIndex >= 0)
+            targetTrack = dragStartTrackIndex;
+
+        // Continuous Y: clip follows mouse smoothly within the target track
+        double yDelta = e->scenePos().y() - dragStartPos.y();
+
         // Move all selected clips by the same delta so multi-selection
         // drags stay aligned.
         double timeDelta = newTime - dragItem->getStartTime();
-        auto* um = undoManager;
-        if (um && !getSelectedClips().contains(dragItem))
-        {
-            // Drag was started on an unselected clip (we still let the
-            // move happen on dragItem only).
-        }
         auto selected = getSelectedClips();
         for (auto* c : selected)
         {
             double targetStart = c->getStartTime() + timeDelta;
             targetStart = (std::max)(0.0, targetStart);
-            c->getClipTree().setProperty(IDs::startTime, targetStart, um);
-            c->setPos(targetStart * pps, c->pos().y());
+            c->getClipTree().setProperty(IDs::startTime, targetStart, undoManager);
+
+            double baseY = dragStartClipY.value(c, c->pos().y());
+            double newY = baseY + yDelta;
+            if (targetTrack >= 0)
+            {
+                double trackTop = scene->getTrackY(targetTrack);
+                double trackH = scene->getTrackHeight(targetTrack);
+                newY = (std::max)(trackTop, (std::min)(newY, trackTop + trackH - 10.0));
+            }
+            c->setPos(targetStart * pps, newY);
         }
         // If the dragged clip wasn't in the selection (e.g. rubber band
         // selected nothing), still move it alone.
         if (!selected.contains(dragItem))
         {
             dragItem->getClipTree().setProperty(IDs::startTime, newTime, undoManager);
-            dragItem->setPos(newTime * pps, dragItem->pos().y());
+            double baseY = dragStartClipY.value(dragItem, dragItem->pos().y());
+            double newY = baseY + yDelta;
+            if (targetTrack >= 0)
+            {
+                double trackTop = scene->getTrackY(targetTrack);
+                double trackH = scene->getTrackHeight(targetTrack);
+                newY = (std::max)(trackTop, (std::min)(newY, trackTop + trackH - 10.0));
+            }
+            dragItem->setPos(newTime * pps, newY);
         }
+
+        dragCurrentTrackIndex = targetTrack;
         e->accept();
         return true;
     }
@@ -369,12 +408,57 @@ bool TimelineInteraction::handleMouseRelease(QGraphicsSceneMouseEvent* e)
         e->accept();
         return true;
     }
+    if (dragMode == Move && dragItem != nullptr)
+    {
+        // If the clip was dragged to a different track, commit the move
+        // in the ValueTree and rebuild routing.
+        // NOTE: moveClip triggers ValueTree listeners that remove/recreate
+        // ClipItems, so we must not reference any ClipItem pointers after
+        // calling moveClip.
+        if (dragCurrentTrackIndex >= 0 && dragCurrentTrackIndex != dragStartTrackIndex)
+        {
+            // Collect clip IDs and new start times before any move
+            // (the ClipItem pointers become invalid after moveClip fires)
+            struct ClipMove { int clipId; double newStart; };
+            QList<ClipMove> moves;
+
+            auto selected = getSelectedClips();
+            if (selected.isEmpty())
+                selected.append(dragItem);
+
+            for (auto* c : selected)
+            {
+                moves.append({
+                    c->getClipTree().getProperty(IDs::clipID),
+                    c->getClipTree().getProperty(IDs::startTime)
+                });
+            }
+
+            // Clear selection pointers before moveClip invalidates them
+            clearSelection();
+
+            for (const auto& m : moves)
+                projectCmds->moveClip(m.clipId, dragCurrentTrackIndex, m.newStart);
+
+            audioGraphCmds->rebuildRoutingGraph();
+        }
+
+        dragMode = None;
+        dragItem = nullptr;
+        dragStartTrackIndex = -1;
+        dragCurrentTrackIndex = -1;
+        dragStartClipY.clear();
+        return true;
+    }
     if (dragMode != None)
     {
         if (dragMode == Duplicate)
             duplicateItems.clear();
         dragMode = None;
         dragItem = nullptr;
+        dragStartTrackIndex = -1;
+        dragStartClipY.clear();
+        dragCurrentTrackIndex = -1;
         return true;
     }
     return false;
@@ -517,8 +601,9 @@ QList<ClipItem*> TimelineInteraction::getSelectedClips() const
 
 void TimelineInteraction::deleteSelectedClips()
 {
-    projectCmds->beginTransaction("Delete clips");
     auto selected = getSelectedClips();
+    HDAW_LOG("TIDel", QString("selected=%1").arg(selected.size()));
+    projectCmds->beginTransaction("Delete clips");
     for (auto* clip : selected)
     {
         auto clipTree = clip->getClipTree();

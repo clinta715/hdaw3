@@ -385,6 +385,35 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
     return result;
 }
 
+std::vector<LfoSnapshot> ReadModelImpl::getModulationLfos(int trackIndex) const
+{
+    std::vector<LfoSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return result;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+    if (!modList.isValid()) return result;
+
+    for (int i = 0; i < modList.getNumChildren(); ++i)
+    {
+        auto lfo = modList.getChild(i);
+        LfoSnapshot snap;
+        snap.index = i;
+        snap.name = lfo.getProperty(IDs::name, "").toString().toStdString();
+        snap.waveform = static_cast<int>(lfo.getProperty(IDs::waveform, 0));
+        snap.rate = lfo.getProperty(IDs::rate, 1.0);
+        snap.rateSync = lfo.getProperty(IDs::rateSync, true);
+        snap.depth = lfo.getProperty(IDs::depth, 0.3);
+        snap.bipolar = lfo.getProperty(IDs::bipolar, false);
+        snap.phaseOffset = lfo.getProperty(IDs::phaseOffset, 0.0);
+        snap.targetParamID = static_cast<int>(lfo.getProperty(IDs::targetParamID, 1));
+        snap.enabled = lfo.getProperty(IDs::enabled, true);
+        result.push_back(snap);
+    }
+    return result;
+}
+
 MeterSnapshot ReadModelImpl::getTrackMeter(int trackIndex) const
 {
     if (engine_ == nullptr) return {};

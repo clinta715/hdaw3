@@ -3,13 +3,13 @@
 // Bottom-panel UI for editing a track's LFO modulation sources. Add/remove
 // LFOs and tweak each one's waveform, rate, depth, target, etc. Parameter
 // edits are debounced (150ms) and committed per-panel via writeLfoToTree,
-// which diffs each control value against the ValueTree before writing — so
-// a settled drag doesn't rewrite all 8 properties × N panels every tick.
+// which diffs each control value against the ReadModel snapshot before
+// writing via projectCmds->setLfoParam — so a settled drag doesn't rewrite
+// all 8 properties × N panels every tick.
 
 #include "ModulationWidget.h"
 #include "../engine/AudioEngine.h"
 #include "Theme.h"
-#include "../model/ProjectModel.h"
 #include <QScrollArea>
 #include <cmath>
 
@@ -67,19 +67,15 @@ void ModulationWidget::loadTrack(int trackIndex)
 {
     currentTrack = trackIndex;
 
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    if (trackIndex < 0 || trackIndex >= readModel->getTrackCount())
     {
         trackLabel->setText("No track selected");
         clearPanels();
         return;
     }
 
-    auto trackTree = trackList.getChild(trackIndex);
-    juce::String trackName = trackTree.getProperty(IDs::name).toString();
-    trackLabel->setText(QString("Track: %1").arg(QString::fromUtf8(trackName.toRawUTF8())));
+    auto track = readModel->getTrack(trackIndex);
+    trackLabel->setText(QString("Track: %1").arg(QString::fromStdString(track.name)));
 
     rebuildPanels();
 }
@@ -100,19 +96,12 @@ void ModulationWidget::rebuildPanels()
 
     if (currentTrack < 0) return;
 
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (currentTrack >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(currentTrack);
-    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
-    if (!modList.isValid()) return;
-
-    for (int i = 0; i < modList.getNumChildren(); ++i)
-        addPanel(modList.getChild(i), i);
+    auto lfos = readModel->getModulationLfos(currentTrack);
+    for (int i = 0; i < static_cast<int>(lfos.size()); ++i)
+        addPanel(lfos[i], i);
 }
 
-int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
+int ModulationWidget::addPanel(const LfoSnapshot& lfo, int index)
 {
     auto* container = new QWidget(listWidget);
     auto* row = new QHBoxLayout(container);
@@ -128,15 +117,12 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     LfoPanel panel;
     panel.lfoIndex = index;
     panel.container = container;
-    // This panel's eventual index in `panels`. Captured by the control lambdas
-    // below so they can mark just this panel dirty.
     const int panelIdx = static_cast<int>(panels.size());
 
     // Waveform buttons
     auto* waveGroup = new QButtonGroup(container);
     panel.waveformGroup = waveGroup;
     QStringList waveLabels = {"Sin", "Tri", "Saw", "Sqr", "S&H"};
-    int currentWave = modTree.getProperty(IDs::waveform, 0);
     for (int w = 0; w < 5; ++w)
     {
         auto* btn = new QPushButton(waveLabels[w], container);
@@ -144,12 +130,9 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
         btn->setCheckable(true);
         btn->setStyleSheet("font-size: 7pt;");
         waveGroup->addButton(btn, w);
-        if (w == currentWave) btn->setChecked(true);
+        if (w == lfo.waveform) btn->setChecked(true);
         row->addWidget(btn);
     }
-    // Waveform selection. idClicked fires the integer button id (0–4); route
-    // it through the same debounced flush so the new shape reaches the audio
-    // side via writeLfoToTree (which reads waveformGroup->checkedId()).
     connect(waveGroup, &QButtonGroup::idClicked, this, [this, panelIdx](int) {
         onLfoParamChanged(panelIdx);
     });
@@ -157,7 +140,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Rate
     panel.rateSpin = new QDoubleSpinBox(container);
     panel.rateSpin->setRange(0.01, 100.0);
-    panel.rateSpin->setValue(static_cast<double>(modTree.getProperty(IDs::rate, 1.0)));
+    panel.rateSpin->setValue(lfo.rate);
     panel.rateSpin->setFixedWidth(70);
     panel.rateSpin->setSuffix(" Hz");
     row->addWidget(panel.rateSpin);
@@ -165,7 +148,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Sync toggle
     panel.syncBtn = new QPushButton("Sync", container);
     panel.syncBtn->setCheckable(true);
-    panel.syncBtn->setChecked(modTree.getProperty(IDs::rateSync, true));
+    panel.syncBtn->setChecked(lfo.rateSync);
     panel.syncBtn->setFixedHeight(22);
     connect(panel.syncBtn, &QPushButton::toggled, this, [this, panelIdx](bool checked) mutable {
         if (panelIdx < static_cast<int>(panels.size()))
@@ -179,7 +162,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Depth slider
     panel.depthSlider = new QSlider(Qt::Horizontal, container);
     panel.depthSlider->setRange(0, 100);
-    panel.depthSlider->setValue(static_cast<int>(static_cast<double>(modTree.getProperty(IDs::depth, 0.0)) * 100.0));
+    panel.depthSlider->setValue(static_cast<int>(lfo.depth * 100.0));
     panel.depthSlider->setFixedWidth(80);
     row->addWidget(panel.depthSlider);
 
@@ -198,9 +181,9 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Bipolar
     panel.bipolarBtn = new QPushButton("Bi", container);
     panel.bipolarBtn->setCheckable(true);
-    panel.bipolarBtn->setChecked(modTree.getProperty(IDs::bipolar, false));
+    panel.bipolarBtn->setChecked(lfo.bipolar);
     panel.bipolarBtn->setFixedSize(28, 22);
-    panel.bipolarBtn->setToolTip("Bipolar (±1) / Unipolar (0→1)");
+    panel.bipolarBtn->setToolTip(QString::fromUtf8("Bipolar (\xc2\xb1" "1) / Unipolar (0\xe2\x86\x92" "1)"));
     connect(panel.bipolarBtn, &QPushButton::toggled, this, [this, panelIdx](bool) {
         onLfoParamChanged(panelIdx);
     });
@@ -209,8 +192,8 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Phase offset
     panel.phaseSpin = new QDoubleSpinBox(container);
     panel.phaseSpin->setRange(0.0, 360.0);
-    panel.phaseSpin->setValue(static_cast<double>(modTree.getProperty(IDs::phaseOffset, 0.0)));
-    panel.phaseSpin->setSuffix("\xC2\xB0");
+    panel.phaseSpin->setValue(lfo.phaseOffset);
+    panel.phaseSpin->setSuffix("\xc2\xb0");
     panel.phaseSpin->setFixedWidth(60);
     panel.phaseSpin->setToolTip("Phase offset");
     connect(panel.phaseSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
@@ -221,8 +204,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     panel.targetCombo = new QComboBox(container);
     panel.targetCombo->addItem("Volume", 1);
     panel.targetCombo->addItem("Pan", 2);
-    int currentTarget = modTree.getProperty(IDs::targetParamID, 1);
-    int comboIdx = panel.targetCombo->findData(currentTarget);
+    int comboIdx = panel.targetCombo->findData(lfo.targetParamID);
     if (comboIdx >= 0) panel.targetCombo->setCurrentIndex(comboIdx);
     panel.targetCombo->setFixedWidth(90);
     connect(panel.targetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -232,7 +214,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     // Bypass
     panel.bypassBtn = new QPushButton("Byp", container);
     panel.bypassBtn->setCheckable(true);
-    panel.bypassBtn->setChecked(!static_cast<bool>(modTree.getProperty(IDs::enabled, true)));
+    panel.bypassBtn->setChecked(!lfo.enabled);
     panel.bypassBtn->setFixedSize(32, 22);
     connect(panel.bypassBtn, &QPushButton::toggled, this, [this, panelIdx](bool) {
         onLfoParamChanged(panelIdx);
@@ -240,7 +222,7 @@ int ModulationWidget::addPanel(const juce::ValueTree& modTree, int index)
     row->addWidget(panel.bypassBtn);
 
     // Remove
-    panel.removeBtn = new QPushButton("\xC3\x97", container);
+    panel.removeBtn = new QPushButton("\xc3\x97", container);
     panel.removeBtn->setFixedSize(22, 22);
     connect(panel.removeBtn, &QPushButton::clicked, this, [this, index]() {
         onRemoveLFO(index);
@@ -255,129 +237,82 @@ void ModulationWidget::onAddLFO()
 {
     if (currentTrack < 0) return;
 
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (currentTrack >= trackList.getNumChildren()) return;
-
     projectCmds->beginTransaction("Add LFO");
-
-    auto trackTree = trackList.getChild(currentTrack);
-    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
-    if (!modList.isValid())
-    {
-        modList = juce::ValueTree(IDs::MODULATION_LIST);
-        trackTree.addChild(modList, -1, &model.getUndoManager());
-    }
-
-    auto newMod = juce::ValueTree(IDs::MODULATION);
-    newMod.setProperty("id", juce::String("lfo_") + juce::String(modList.getNumChildren() + 1), nullptr);
-    newMod.setProperty("type", "lfo", nullptr);
-    newMod.setProperty(IDs::name, juce::String("LFO ") + juce::String(modList.getNumChildren() + 1), nullptr);
-    newMod.setProperty(IDs::waveform, 0, nullptr);
-    newMod.setProperty(IDs::rate, 1.0, nullptr);
-    newMod.setProperty(IDs::rateSync, true, nullptr);
-    newMod.setProperty(IDs::depth, 0.3, nullptr);
-    newMod.setProperty(IDs::bipolar, false, nullptr);
-    newMod.setProperty(IDs::phaseOffset, 0.0, nullptr);
-    newMod.setProperty(IDs::targetParamID, 1, nullptr);
-    newMod.setProperty(IDs::enabled, true, nullptr);
-    modList.addChild(newMod, -1, &model.getUndoManager());
-
+    projectCmds->addLfo(currentTrack);
     projectCmds->endTransaction();
 
     rebuildPanels();
-    syncModulationToAudio();
+    audioGraphCmds->rebuildModulation(currentTrack);
 }
 
 void ModulationWidget::onRemoveLFO(int lfoIndex)
 {
     if (currentTrack < 0) return;
 
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (currentTrack >= trackList.getNumChildren()) return;
-
-    auto trackTree = trackList.getChild(currentTrack);
-    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
-    if (!modList.isValid() || lfoIndex >= modList.getNumChildren()) return;
-
     projectCmds->beginTransaction("Remove LFO");
-    modList.removeChild(modList.getChild(lfoIndex), &model.getUndoManager());
+    projectCmds->removeLfo(currentTrack, lfoIndex);
     projectCmds->endTransaction();
 
     rebuildPanels();
-    syncModulationToAudio();
+    audioGraphCmds->rebuildModulation(currentTrack);
 }
 
 bool ModulationWidget::writeLfoToTree(int lfoIndex)
 {
     if (currentTrack < 0 || lfoIndex >= static_cast<int>(panels.size())) return false;
 
-    auto& model = engine.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (currentTrack >= trackList.getNumChildren()) return false;
+    auto lfos = readModel->getModulationLfos(currentTrack);
+    if (lfoIndex >= static_cast<int>(lfos.size())) return false;
 
-    auto trackTree = trackList.getChild(currentTrack);
-    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
-    if (!modList.isValid() || lfoIndex >= modList.getNumChildren()) return false;
-
-    auto modTree = modList.getChild(lfoIndex);
     auto& p = panels[lfoIndex];
-    auto& um = model.getUndoManager();
-
-    // Diff each control value against the tree's current value and only write
-    // what actually changed. Each setProperty would otherwise register a
-    // separate undoable action and (via the AudioEngine MODULATION listener)
-    // trigger a rebuildModulation — so a single slider drag settled into a
-    // no-op flush and still rewrote all 8 props × N panels every 150ms.
     bool wrote = false;
 
     int waveId = p.waveformGroup->checkedId();
-    if (waveId >= 0 && waveId != static_cast<int>(modTree.getProperty(IDs::waveform, 0)))
+    if (waveId >= 0 && waveId != lfos[lfoIndex].waveform)
     {
-        modTree.setProperty(IDs::waveform, waveId, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "waveform", static_cast<double>(waveId));
         wrote = true;
     }
     double rate = p.rateSpin->value();
-    if (rate != static_cast<double>(modTree.getProperty(IDs::rate, 1.0)))
+    if (rate != lfos[lfoIndex].rate)
     {
-        modTree.setProperty(IDs::rate, rate, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "rate", rate);
         wrote = true;
     }
     bool rateSync = p.syncBtn->isChecked();
-    if (rateSync != static_cast<bool>(modTree.getProperty(IDs::rateSync, true)))
+    if (rateSync != lfos[lfoIndex].rateSync)
     {
-        modTree.setProperty(IDs::rateSync, rateSync, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "rateSync", rateSync ? 1.0 : 0.0);
         wrote = true;
     }
     double depth = p.depthSlider->value() / 100.0;
-    if (std::abs(depth - static_cast<double>(modTree.getProperty(IDs::depth, 0.0))) > 1e-9)
+    if (std::abs(depth - lfos[lfoIndex].depth) > 1e-9)
     {
-        modTree.setProperty(IDs::depth, depth, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "depth", depth);
         wrote = true;
     }
     bool bipolar = p.bipolarBtn->isChecked();
-    if (bipolar != static_cast<bool>(modTree.getProperty(IDs::bipolar, false)))
+    if (bipolar != lfos[lfoIndex].bipolar)
     {
-        modTree.setProperty(IDs::bipolar, bipolar, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "bipolar", bipolar ? 1.0 : 0.0);
         wrote = true;
     }
     double phase = p.phaseSpin->value();
-    if (std::abs(phase - static_cast<double>(modTree.getProperty(IDs::phaseOffset, 0.0))) > 1e-9)
+    if (std::abs(phase - lfos[lfoIndex].phaseOffset) > 1e-9)
     {
-        modTree.setProperty(IDs::phaseOffset, phase, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "phaseOffset", phase);
         wrote = true;
     }
     int target = p.targetCombo->currentData().toInt();
-    if (target != static_cast<int>(modTree.getProperty(IDs::targetParamID, 1)))
+    if (target != lfos[lfoIndex].targetParamID)
     {
-        modTree.setProperty(IDs::targetParamID, target, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "targetParamID", static_cast<double>(target));
         wrote = true;
     }
     bool enabled = !p.bypassBtn->isChecked();
-    if (enabled != static_cast<bool>(modTree.getProperty(IDs::enabled, true)))
+    if (enabled != lfos[lfoIndex].enabled)
     {
-        modTree.setProperty(IDs::enabled, enabled, &um);
+        projectCmds->setLfoParam(currentTrack, lfoIndex, "enabled", enabled ? 1.0 : 0.0);
         wrote = true;
     }
 
@@ -393,10 +328,6 @@ void ModulationWidget::onLfoParamChanged(int lfoIndex)
 
 void ModulationWidget::flushChanges()
 {
-    // Only commit panels that actually changed since the last flush. This
-    // avoids rewriting every property on every panel on each 150ms tick —
-    // each setProperty is an undoable action and triggers an audio-side
-    // rebuildModulation via the AudioEngine listener.
     bool anyWrote = false;
     for (int i = 0; i < static_cast<int>(panels.size()); ++i)
     {
@@ -406,12 +337,5 @@ void ModulationWidget::flushChanges()
         panels[i].dirty = false;
     }
     if (anyWrote)
-        syncModulationToAudio();
-}
-
-void ModulationWidget::syncModulationToAudio()
-{
-    if (currentTrack < 0) return;
-    if (auto* mainProc = engine.getMainProcessor())
-        mainProc->rebuildModulation(currentTrack);
+        audioGraphCmds->rebuildModulation(currentTrack);
 }

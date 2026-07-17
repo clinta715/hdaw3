@@ -295,8 +295,6 @@ void TrackHeaderWidget::commitVolume(int trackIndex, float vol)
 {
     if (trackIndex < 0) return;
     projectCmds->setTrackVolume(trackIndex, vol);
-    ParamUpdate update{ trackIndex, 1, vol };
-    engine.getBridge().pushUpdate(update);
 }
 
 void TrackHeaderWidget::commitPan(int trackIndex, float pan)
@@ -953,18 +951,16 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
 
 void TrackHeaderWidget::addFXToTrack(int trackIndex, const juce::String& type)
 {
-    if (engine.getProjectModel().addFxSlot(trackIndex, type.toStdString()) < 0) return;
-
-    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
+    projectCmds->addFxSlot(trackIndex, type.toStdString());
+    audioGraphCmds->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }
 
 void TrackHeaderWidget::addPluginToTrack(int trackIndex, const juce::String& pluginID, const juce::String& /*pluginFormat*/)
 {
-    if (engine.getProjectModel().addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString()) < 0) return;
-
-    engine.getMainProcessor()->rebuildTrackFX(trackIndex);
+    projectCmds->addFxSlot(trackIndex, "plugin", -1, pluginID.toStdString());
+    audioGraphCmds->rebuildTrackFX(trackIndex);
     rebuild();
     emit fxSlotAdded(trackIndex);
 }

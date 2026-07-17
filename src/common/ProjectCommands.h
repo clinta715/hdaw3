@@ -65,9 +65,12 @@ public:
     virtual void setNoteDuration(int noteId, double durationBeats) = 0;
     virtual void clearNotes(int clipId) = 0;
 
-    // FX operations
+    // FX operations (integer type: 0=eq, 1=compressor, 2=reverb, 3=delay, else=plugin)
     virtual void addFxSlot(int trackIndex, int type, int position = -1,
                            const std::string& pluginId = "") = 0;
+    // FX operations (string type: "eq", "compressor", "reverb", "delay", "plugin")
+    virtual void addFxSlot(int trackIndex, const std::string& type,
+                           int position = -1, const std::string& pluginId = "") = 0;
     virtual void removeFxSlot(int trackIndex, int slotIndex) = 0;
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
@@ -119,6 +122,12 @@ public:
     virtual void clearGainEnvelope(int clipId) = 0;
     virtual void notifyClipGainEnvelopeChanged(int clipId) = 0;
 
+    // Modulation (LFO)
+    virtual void addLfo(int trackIndex) = 0;
+    virtual void removeLfo(int trackIndex, int lfoIndex) = 0;
+    virtual void setLfoParam(int trackIndex, int lfoIndex,
+                             const std::string& paramName, double value) = 0;
+
     // Slicing
     virtual void sliceClipAtTimes(int clipId, const std::vector<double>& times) = 0;
     virtual void sliceClipAtTransients(int clipId) = 0;
@@ -150,4 +159,15 @@ public:
     // Scale
     virtual void setScaleRoot(int root) = 0;
     virtual void setScaleMode(int mode) = 0;
+
+    // Missing source-file relinking. Searches the given directory (recursively)
+    // for a file matching either (a) the exact filename, or (b) the same
+    // basename with a different audio extension (wav/aiff/aif/mp3/flac/ogg).
+    // Returns the found path or empty string if no match.
+    virtual std::string findMissingClipSourceFile(int clipId, const std::string& searchDir) = 0;
+    // relinkAllMissingFiles runs findMissingClipSourceFile for every clip
+    // whose source file is missing and updates sourceFile on each hit.
+    // Returns {foundCount, totalMissing}.
+    struct RelinkResult { int found; int totalMissing; };
+    virtual RelinkResult relinkAllMissingFiles(const std::string& searchDir) = 0;
 };

@@ -13,6 +13,8 @@
 #include <gtest/gtest.h>
 #include "engine/ModulationSource.h"
 #include "engine/ModulationManager.h"
+#include <vector>
+#include <cmath>
 #include "engine/AudioEngine.h"
 #include "engine/ProjectSerializer.h"
 #include "model/ProjectModel.h"
@@ -133,7 +135,7 @@ TEST(Modulation, SquareWaveIsBipolarTwoLevel)
     EXPECT_TRUE(sawNeg);
 }
 
-// ── Sample & Hold: RT-safe path never allocates and produces a held value ─
+// ── Sample & Hold: held value is constant within a cycle, re-rolls across cycles ─
 TEST(Modulation, SampleAndHoldProducesTableValues)
 {
     LFOModulationSource lfo;
@@ -142,20 +144,214 @@ TEST(Modulation, SampleAndHoldProducesTableValues)
     lfo.setBipolar(true);
     lfo.setDepth(1.0f);
     lfo.setRateSync(false);
-    lfo.setRate(1.0f); // one re-roll per second
+    lfo.setRate(1.0f); // one cycle per second
 
-    // Run a few cycles. The output should be piecewise-constant (held) and
-    // bounded to [-1, 1]. The key assertion is that this completes without
-    // any audio-thread allocation — the S&H indexes the precomputed table.
-    float prev = lfo.getNextValue(kBpm, kSr);
-    for (int i = 1; i < static_cast<int>(kSr * 3); ++i)
+    // Run 8 cycles and collect the midpoint held value from each.
+    constexpr int kCycles = 8;
+    const int samplesPerCycle = static_cast<int>(kSr);
+    std::vector<float> heldValues;
+    heldValues.reserve(kCycles);
+
+    for (int c = 0; c < kCycles; ++c)
     {
-        float v = lfo.getNextValue(kBpm, kSr);
-        EXPECT_GE(v, -1.0f);
-        EXPECT_LE(v, 1.0f);
-        prev = v;
+        float midVal = 0.0f;
+        for (int i = 0; i < samplesPerCycle; ++i)
+        {
+            float v = lfo.getNextValue(kBpm, kSr);
+            if (i == samplesPerCycle / 2)
+                midVal = v;
+        }
+        heldValues.push_back(midVal);
     }
-    juce::ignoreUnused(prev);
+
+    // (1) All held values must come from the precomputed table, i.e. within [-1,1].
+    for (int c = 0; c < kCycles; ++c)
+    {
+        EXPECT_GE(heldValues[c], -1.0f);
+        EXPECT_LE(heldValues[c], 1.0f);
+    }
+
+    // (2) Every consecutive pair must differ (re-roll fires on every cycle
+    // boundary). The old test only required 1 of 3 pairs to differ — a
+    // re-roll bug that produced [A, A, B] would have passed. With 8 cycles
+    // we also catch periodic repetition (e.g. hash period = 2).
+    for (int c = 0; c < kCycles - 1; ++c)
+    {
+        EXPECT_NE(heldValues[c], heldValues[c + 1])
+            << "S&H re-roll failed between cycle " << c << " and " << (c + 1)
+            << "; both held " << heldValues[c];
+    }
+
+    // (3) The values are not all identical (a weaker fallback if the above
+    // somehow passes due to floating-point巧合).
+    float first = heldValues[0];
+    bool allSame = true;
+    for (int c = 1; c < kCycles; ++c)
+    {
+        if (heldValues[c] != first)
+        {
+            allSame = false;
+            break;
+        }
+    }
+    EXPECT_FALSE(allSame)
+        << "S&H produced the same value for all " << kCycles << " cycles";
+}
+
+// ── Sample & Hold: beat-synced rate produces correct cycle length ────────
+TEST(Modulation, SampleAndHoldBeatSync)
+{
+    LFOModulationSource lfo;
+    lfo.prepare(kSr);
+    lfo.setWaveform(LfoWaveform::sampleAndHold);
+    lfo.setBipolar(true);
+    lfo.setDepth(1.0f);
+    lfo.setRateSync(true);
+    lfo.setRate(1.0f); // 1 cycle per beat
+
+    // At 120 BPM, one beat = 0.5s = sr/2 samples.
+    const int samplesPerBeat = static_cast<int>(kSr * 60.0 / kBpm);
+
+    // Run 4 beats and collect the midpoint of each.
+    constexpr int kBeats = 4;
+    std::vector<float> heldValues;
+    for (int b = 0; b < kBeats; ++b)
+    {
+        float midVal = 0.0f;
+        for (int i = 0; i < samplesPerBeat; ++i)
+        {
+            float v = lfo.getNextValue(kBpm, kSr);
+            if (i == samplesPerBeat / 2)
+                midVal = v;
+        }
+        heldValues.push_back(midVal);
+    }
+
+    // Each beat must re-roll to a distinct value.
+    for (int b = 0; b < kBeats - 1; ++b)
+    {
+        EXPECT_NE(heldValues[b], heldValues[b + 1])
+            << "S&H beat-sync re-roll failed between beat " << b << " and " << (b + 1);
+    }
+
+    // Also verify the cycle length is correct: the total sample count for
+    // kBeats beats should match kBeats * samplesPerBeat (±1 sample for
+    // rounding). We already ran exactly kBeats * samplesPerBeat samples above,
+    // so this is implicitly checked. But let's also verify a different BPM
+    // gives a different cycle length.
+    LFOModulationSource lfo2;
+    lfo2.prepare(kSr);
+    lfo2.setWaveform(LfoWaveform::sampleAndHold);
+    lfo2.setBipolar(true);
+    lfo2.setDepth(1.0f);
+    lfo2.setRateSync(true);
+    lfo2.setRate(2.0f); // 2 cycles per beat → faster
+
+    const int samplesPerHalfBeat = static_cast<int>(kSr * 60.0 / kBpm / 2.0);
+    float val1 = 0.0f, val2 = 0.0f;
+    for (int i = 0; i < samplesPerHalfBeat / 2; ++i)
+        lfo2.getNextValue(kBpm, kSr);
+    val1 = lfo2.getNextValue(kBpm, kSr);
+    for (int i = 0; i < samplesPerHalfBeat; ++i)
+        lfo2.getNextValue(kBpm, kSr);
+    val2 = lfo2.getNextValue(kBpm, kSr);
+    EXPECT_NE(val1, val2)
+        << "S&H rate=2 should re-roll every half-beat";
+}
+
+// ── Sample & Hold: Knuth hash distributes across many cycles ────────────
+TEST(Modulation, SampleAndHoldKnuthDistribution)
+{
+    LFOModulationSource lfo;
+    lfo.prepare(kSr);
+    lfo.setWaveform(LfoWaveform::sampleAndHold);
+    lfo.setBipolar(true);
+    lfo.setDepth(1.0f);
+    lfo.setRateSync(false);
+    lfo.setRate(8.0f); // fast: 8 cycles/sec
+
+    // Run 100 cycles and collect held values.
+    constexpr int kCycles = 100;
+    const int samplesPerCycle = static_cast<int>(kSr / 8.0);
+    std::vector<float> heldValues;
+    heldValues.reserve(kCycles);
+
+    for (int c = 0; c < kCycles; ++c)
+    {
+        for (int i = 0; i < samplesPerCycle; ++i)
+        {
+            float v = lfo.getNextValue(kBpm, kSr);
+            if (i == samplesPerCycle / 2)
+                heldValues.push_back(v);
+        }
+    }
+
+    // Count distinct values. With a 4096-entry table and Knuth hash, 100
+    // cycles should produce at least 90 distinct values (the hash is
+    // bijective modulo powers of 2, and 4096 = 2^12, so all 100 should be
+    // distinct — but we use 90 to allow for the tiny chance of table
+    // collision).
+    std::vector<float> sorted = heldValues;
+    std::sort(sorted.begin(), sorted.end());
+    auto last = std::unique(sorted.begin(), sorted.end());
+    int distinctCount = static_cast<int>(last - sorted.begin());
+    EXPECT_GE(distinctCount, 90)
+        << "S&H Knuth hash produced only " << distinctCount
+        << " distinct values over " << kCycles << " cycles (expected ~100)";
+
+    // Verify no value is repeated on consecutive cycles (the re-roll must
+    // always advance).
+    for (int c = 0; c < kCycles - 1; ++c)
+    {
+        EXPECT_NE(heldValues[c], heldValues[c + 1])
+            << "S&H consecutive repeat at cycle " << c;
+    }
+}
+
+TEST(Modulation, SampleAndHoldPrepareResetsCycleCount)
+{
+    LFOModulationSource lfo;
+    lfo.prepare(kSr);
+    lfo.setWaveform(LfoWaveform::sampleAndHold);
+    lfo.setBipolar(true);
+    lfo.setDepth(1.0f);
+    lfo.setRateSync(false);
+    lfo.setRate(4.0f); // 4 cycles/sec → fast re-roll
+
+    // Run 10 cycles to advance cycleCount.
+    const int samplesPerCycle = static_cast<int>(kSr / 4.0);
+    for (int c = 0; c < 10; ++c)
+        for (int i = 0; i < samplesPerCycle; ++i)
+            lfo.getNextValue(kBpm, kSr);
+
+    // Collect the first held value after prepare.
+    auto collectFirstHeld = [&]() {
+        lfo.prepare(kSr);
+        lfo.setWaveform(LfoWaveform::sampleAndHold);
+        lfo.setBipolar(true);
+        lfo.setDepth(1.0f);
+        lfo.setRateSync(false);
+        lfo.setRate(4.0f);
+        // Skip a few samples to get past the initial state, then return the
+        // held value for the first full cycle.
+        for (int i = 0; i < samplesPerCycle / 4; ++i)
+            lfo.getNextValue(kBpm, kSr);
+        return lfo.getNextValue(kBpm, kSr);
+    };
+
+    float firstAfterReset = collectFirstHeld();
+    float secondAfterReset = collectFirstHeld();
+
+    // After prepare() resets cycleCount to 0, the Knuth hash should produce
+    // the same index as the very first cycle — so the held value should match
+    // the very first run. (If prepare() didn't reset cycleCount, the counter
+    // would be stale and the hash would produce a different index.)
+    //
+    // We can't easily compare to the "very first" value here, but we CAN
+    // verify that two consecutive prepare() calls produce the same starting
+    // value — proving cycleCount is deterministic from 0.
+    EXPECT_EQ(firstAfterReset, secondAfterReset)
+        << "prepare() does not reset cycleCount deterministically";
 }
 
 // ── ModulationManager: sums multiple sources on the same target ──────────

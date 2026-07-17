@@ -22,6 +22,7 @@ private:
     HDAW::ProjectPool& projectPool;
     std::unique_ptr<juce::AudioThumbnail> thumbnail;
     bool thumbnailLoaded = false;
+    double cachedSampleRate = 44100.0;
 
     QPixmap cachedWaveform;
     double cacheOffset = -1.0;

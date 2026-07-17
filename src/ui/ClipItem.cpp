@@ -8,7 +8,7 @@ ClipItem::ClipItem(juce::ValueTree tree, double pps)
 {
     setFlags(ItemSendsGeometryChanges | ItemIsSelectable);
     setAcceptHoverEvents(true);
-    setCacheMode(DeviceCoordinateCache);
+    setCacheMode(QGraphicsItem::NoCache);
 }
 
 ClipItem::~ClipItem() = default;

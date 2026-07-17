@@ -85,10 +85,15 @@ private:
 
     // S&H state. The noise table is filled once in prepare() (message thread),
     // never on the audio thread. The audio thread only indexes into it.
+    // cycleCount advances on each phase wrap so successive holds pick
+    // different table slots — without it, currentPhase has already wrapped
+    // back to ~0 at the wrap boundary, so the same slot (~0) is picked every
+    // cycle and S&H barely varies across holds.
     static constexpr int shTableSize = 4096;
     std::array<float, shTableSize> shTable{};
     float lastShValue = 0.0f;
     double prevNormPhase = 0.0;   // for wrap detection (S&H re-roll)
+    long long cycleCount = 0;     // incremented on each phase wrap (S&H re-roll)
 };
 
 // ── inline implementations ──
@@ -110,6 +115,7 @@ inline void LFOModulationSource::prepare(double sr)
     sampleRate = sr;
     currentPhase = 0.0;
     prevNormPhase = 0.0;
+    cycleCount = 0;
 
     // Re-fill the noise table here (message thread, not audio thread).
     // No RNG runs on the audio thread afterwards — getNextValue only
@@ -142,7 +148,10 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
 
     currentPhase += phaseStep;
     if (currentPhase >= 1.0)
+    {
         currentPhase -= std::floor(currentPhase);
+        cycleCount++; // a new LFO cycle begins (used by S&H re-roll below)
+    }
 
     float phaseOff = phaseOffset.load(std::memory_order_relaxed);
     double normPhase = std::fmod(currentPhase + phaseOff / 360.0, 1.0);
@@ -159,11 +168,15 @@ inline float LFOModulationSource::getNextValue(double bpm, double sr)
         // (the phase wrapped from ~1.0 back to ~0.0 within this cycle window).
         if (normPhase < prevNormPhase)
         {
-            // Index the table with a position derived from currentPhase so the
-            // sequence advances across cycles. Use a hash of the integer cycle
-            // count to spread successive samples across the table.
-            int idx = static_cast<int>(currentPhase * shTableSize) % shTableSize;
-            if (idx < 0) idx += shTableSize;
+            // Index the table by the cycle count so successive holds pick
+            // different slots. (Indexing by currentPhase doesn't work: at the
+            // wrap boundary currentPhase has already reset to ~0, so every
+            // cycle picked the same slot and S&H barely varied.) Knuth
+            // multiplicative hash spreads sequential cycle counts across the
+            // 4096-entry table.
+            int idx = static_cast<int>(
+                (static_cast<unsigned long long>(cycleCount) * 2654435761ULL)
+                % shTableSize);
             lastShValue = shTable[static_cast<size_t>(idx)];
         }
         prevNormPhase = normPhase;

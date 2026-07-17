@@ -59,6 +59,7 @@ private:
     ClipItem* createClipItem(juce::ValueTree clipTree);
     void removeClipItem(juce::ValueTree clipTree);
     void updateClipItem(juce::ValueTree clipTree);
+    void ensureViewportFocus();
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;

@@ -5,6 +5,8 @@
 #include <QPainterPath>
 #include <QImage>
 #include <QWheelEvent>
+#include <QMenu>
+#include <QAction>
 #include <cmath>
 #include <cstring>
 
@@ -54,25 +56,43 @@ void AudioWaveformWidget::setClip(juce::ValueTree clip)
 
 void AudioWaveformWidget::reloadThumbnail()
 {
+    auto sourceFile = currentClip.isValid()
+        ? currentClip.getProperty(IDs::sourceFile).toString()
+        : juce::String{};
+    if (sourceFile.isEmpty())
+    {
+        if (thumbnail && thumbListener)
+            thumbnail->removeChangeListener(thumbListener.get());
+        thumbListener.reset();
+        thumbnail.reset();
+        invalidateWaveformCache();
+        return;
+    }
+
+    // Create the new thumbnail before tearing down the old one, so paintEvent
+    // never sees a null thumbnail between destroy and re-create — it would
+    // paint an invisible 4% white rect in that gap.
+    auto newThumb = projectPool.createThumbnail(1000, projectPool.getThumbnailCache());
+    if (newThumb == nullptr)
+    {
+        if (thumbnail && thumbListener)
+            thumbnail->removeChangeListener(thumbListener.get());
+        thumbListener.reset();
+        thumbnail.reset();
+        invalidateWaveformCache();
+        return;
+    }
+
+    auto newListener = std::make_shared<ThumbnailListener>();
+    newListener->widget = this;
+    newThumb->addChangeListener(newListener.get());
+
+    // Now swap: tear down the old, install the new, start loading.
     if (thumbnail && thumbListener)
         thumbnail->removeChangeListener(thumbListener.get());
-    thumbListener.reset();
-    thumbnail.reset();
+    thumbListener = std::move(newListener);
+    thumbnail = std::move(newThumb);
     invalidateWaveformCache();
-    if (!currentClip.isValid())
-        return;
-
-    auto sourceFile = currentClip.getProperty(IDs::sourceFile).toString();
-    if (sourceFile.isEmpty())
-        return;
-
-    thumbnail = projectPool.createThumbnail(1000, projectPool.getThumbnailCache());
-    if (thumbnail == nullptr)
-        return;
-
-    thumbListener = std::make_shared<ThumbnailListener>();
-    thumbListener->widget = this;
-    thumbnail->addChangeListener(thumbListener.get());
 
     auto file = juce::File(sourceFile);
     if (file.existsAsFile())
@@ -145,6 +165,12 @@ void AudioWaveformWidget::paintEvent(QPaintEvent*)
 
     if (!currentClip.isValid())
     {
+        painter.fillRect(rect(), ThemeColors::bgWidget());
+        painter.setPen(ThemeColors::placeholderText());
+        QFont f = painter.font();
+        f.setPointSize(11);
+        painter.setFont(f);
+        painter.drawText(rect(), Qt::AlignCenter, "No audio clip selected");
         return;
     }
 
@@ -215,12 +241,27 @@ void AudioWaveformWidget::paintEvent(QPaintEvent*)
         }
         else
         {
-            painter.fillRect(rect(), QColor(255, 255, 255, 10));
+            painter.fillRect(rect(), QColor(40, 40, 45));
+            painter.setPen(QColor(255, 255, 255, 60));
+            painter.drawText(rect(), Qt::AlignCenter, "Waveform loading...");
         }
     }
     else
     {
-        painter.fillRect(rect(), QColor(255, 255, 255, 10));
+        auto sourceFile = currentClip.getProperty(IDs::sourceFile).toString();
+        if (!sourceFile.isEmpty() && !juce::File(sourceFile).existsAsFile())
+        {
+            painter.fillRect(rect(), QColor(50, 15, 15));
+            painter.setPen(QColor(255, 100, 100));
+            painter.drawText(rect(), Qt::AlignCenter,
+                             "Missing file:\n" + QString::fromUtf8(sourceFile.toRawUTF8()));
+        }
+        else
+        {
+            painter.fillRect(rect(), QColor(40, 40, 45));
+            painter.setPen(QColor(255, 255, 255, 60));
+            painter.drawText(rect(), Qt::AlignCenter, "Waveform loading...");
+        }
     }
 
     // Selection highlight
@@ -424,4 +465,34 @@ void AudioWaveformWidget::focusOutEvent(QFocusEvent* event)
         dragMode = DragMode::None;
         update();
     }
+}
+
+void AudioWaveformWidget::contextMenuEvent(QContextMenuEvent* event)
+{
+    if (!currentClip.isValid())
+    {
+        QWidget::contextMenuEvent(event);
+        return;
+    }
+
+    QMenu menu;
+
+    auto* copyAction = menu.addAction("Copy\tCtrl+C");
+    copyAction->setEnabled(hasSelection());
+    connect(copyAction, &QAction::triggered, this, &AudioWaveformWidget::copyRequested);
+
+    auto* cutAction = menu.addAction("Cut\tCtrl+X");
+    cutAction->setEnabled(hasSelection());
+    connect(cutAction, &QAction::triggered, this, &AudioWaveformWidget::cutRequested);
+
+    auto* pasteAction = menu.addAction("Paste\tCtrl+V");
+    connect(pasteAction, &QAction::triggered, this, &AudioWaveformWidget::pasteRequested);
+
+    menu.addSeparator();
+
+    auto* selectAllAction = menu.addAction("Select All\tCtrl+A");
+    connect(selectAllAction, &QAction::triggered, this, &AudioWaveformWidget::selectAllRequested);
+
+    menu.exec(event->globalPos());
+    event->accept();
 }

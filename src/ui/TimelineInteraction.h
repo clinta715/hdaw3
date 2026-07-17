@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QRectF>
+#include <QMap>
 #include <QGraphicsSceneMouseEvent>
 #include <juce_data_structures/juce_data_structures.h>
 #include "../common/ProjectCommands.h"
@@ -82,4 +83,10 @@ private:
     // Duplicate-drag state
     QList<ClipItem*> duplicateItems;
     bool duplicatesCreated = false;
+
+    // Cross-track drag state
+    int dragStartTrackIndex = -1;
+    int dragCurrentTrackIndex = -1;
+    double dragStartYOffset = 0.0;  // Y offset within the track at drag start
+    QMap<ClipItem*, double> dragStartClipY;  // per-clip Y at drag start for continuous tracking
 };

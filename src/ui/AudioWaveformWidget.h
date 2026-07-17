@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QScrollBar>
 #include <QPixmap>
+#include <QContextMenuEvent>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_data_structures/juce_data_structures.h>
 #include "../engine/ProjectPool.h"
@@ -25,6 +26,7 @@ public:
     double getSelectionEnd() const { return selEnd; }
     bool hasSelection() const { return selStart >= 0.0 && selEnd > selStart; }
     void clearSelection() { selStart = -1.0; selEnd = -1.0; update(); }
+    void selectAll() { selStart = 0.0; selEnd = currentClip.isValid() ? static_cast<double>(currentClip.getProperty(IDs::duration, 0.0)) : 0.0; update(); }
     void zoomIn() { setPixelsPerSecond(pixelsPerSecond * 1.3); }
     void zoomOut() { setPixelsPerSecond(pixelsPerSecond / 1.3); }
 
@@ -42,6 +44,10 @@ signals:
     // NOTE: parameter names say "beat" for historical reasons but the values
     // are SECONDS within the clip's local timeline (0 = clip start). See H7.
     void regionSelected(double startTime, double endTime);
+    void copyRequested();
+    void cutRequested();
+    void pasteRequested();
+    void selectAllRequested();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -50,6 +56,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
 
 private:
     enum class DragMode { None, FadeIn, FadeOut, SelectRegion };

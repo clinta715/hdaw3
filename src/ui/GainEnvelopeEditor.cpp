@@ -15,6 +15,11 @@ GainEnvelopeEditor::GainEnvelopeEditor(QWidget* parent)
 void GainEnvelopeEditor::setPoints(const QVector<Point>& pts)
 {
     points = pts;
+    // Assign fresh unique ids to externally-supplied points so they can be
+    // tracked across the sort below and through subsequent drags. External
+    // callers (e.g. loading from the ValueTree) don't know about ids.
+    for (auto& p : points)
+        p.id = nextPointId++;
     std::sort(points.begin(), points.end(),
               [](const Point& a, const Point& b) { return a.time < b.time; });
     update();
@@ -23,6 +28,14 @@ void GainEnvelopeEditor::setPoints(const QVector<Point>& pts)
 QVector<GainEnvelopeEditor::Point> GainEnvelopeEditor::getPoints() const
 {
     return points;
+}
+
+int GainEnvelopeEditor::indexOfId(long long id) const
+{
+    for (int i = 0; i < points.size(); ++i)
+        if (points[i].id == id)
+            return i;
+    return -1;
 }
 
 void GainEnvelopeEditor::paintEvent(QPaintEvent*)
@@ -96,16 +109,17 @@ void GainEnvelopeEditor::mousePressEvent(QMouseEvent* e)
     }
     else
     {
-        // Add new point
         double t = std::clamp(xToTime(e->x()), 0.0, duration);
         double g = std::clamp(yToGain(e->y()), 0.0, 1.0);
-        points.append({t, g});
+        Point p{ t, g, nextPointId++ };
+        points.append(p);
         std::sort(points.begin(), points.end(),
                   [](const Point& a, const Point& b) { return a.time < b.time; });
-        dragIndex = points.indexOf({t, g});
+        dragIndex = indexOfId(p.id);
         adding = true;
         emit pointAdded(t, g);
     }
+    emit dragStarted();
     update();
 }
 
@@ -116,10 +130,14 @@ void GainEnvelopeEditor::mouseMoveEvent(QMouseEvent* e)
 
     double t = std::clamp(xToTime(e->x()), 0.0, duration);
     double g = std::clamp(yToGain(e->y()), 0.0, 1.0);
-    points[dragIndex] = {t, g};
+    // Preserve the dragged point's id across the in-place update + sort so
+    // we can find it again by identity (indexOf({t,g}) would match a
+    // duplicate neighbor and rebind the drag to the wrong point).
+    long long draggedId = points[dragIndex].id;
+    points[dragIndex] = { t, g, draggedId };
     std::sort(points.begin(), points.end(),
               [](const Point& a, const Point& b) { return a.time < b.time; });
-    dragIndex = points.indexOf({t, g});
+    dragIndex = indexOfId(draggedId);
     emit pointMoved(dragIndex, t, g);
     emit pointsChanged(points);
     update();
@@ -132,6 +150,7 @@ void GainEnvelopeEditor::mouseReleaseEvent(QMouseEvent* e)
         if (adding)
             adding = false;
         dragIndex = -1;
+        emit dragFinished();
     }
     else if (e->button() == Qt::RightButton)
     {

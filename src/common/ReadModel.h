@@ -114,6 +114,19 @@ struct MeterSnapshot {
     float rightLevel = 0.0f;
 };
 
+struct LfoSnapshot {
+    int index = 0;
+    std::string name;
+    int waveform = 0;
+    double rate = 1.0;
+    bool rateSync = true;
+    double depth = 0.3;
+    bool bipolar = false;
+    double phaseOffset = 0.0;
+    int targetParamID = 1;
+    bool enabled = true;
+};
+
 class ReadModel {
 public:
     virtual ~ReadModel() = default;
@@ -135,6 +148,7 @@ public:
     virtual std::vector<MarkerSnapshot> getMarkers() const = 0;
     virtual std::vector<TempoPointSnapshot> getTempoPoints() const = 0;
     virtual std::vector<AutomatableParamSnapshot> getAutomatableParams(int trackIndex) const = 0;
+    virtual std::vector<LfoSnapshot> getModulationLfos(int trackIndex) const = 0;
     virtual MeterSnapshot getTrackMeter(int trackIndex) const = 0;
     virtual MeterSnapshot getMasterMeter() const = 0;
     virtual bool isDirty() const = 0;
