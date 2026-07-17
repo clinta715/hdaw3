@@ -1,6 +1,7 @@
 import "./App.css";
 import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
+import Mixer from "./components/Mixer";
 
 function App() {
   return (
@@ -13,7 +14,9 @@ function App() {
       </aside>
       <main className="timeline" />
       <footer className="bottom-panel">
-        <section className="mixer" />
+        <section className="mixer">
+          <Mixer />
+        </section>
         <section className="piano-roll" />
       </footer>
     </div>

@@ -1,0 +1,28 @@
+.mixer {
+  display: flex;
+  padding: 8px;
+  height: 100%;
+  gap: 8px;
+}
+
+.mixer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mixer-strips {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.mixer-master {
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
