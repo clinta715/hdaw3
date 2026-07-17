@@ -1,5 +1,6 @@
 import "./App.css";
 import TransportBar from "./components/TransportBar";
+import TrackHeaders from "./components/TrackHeaders";
 
 function App() {
   return (
@@ -7,7 +8,9 @@ function App() {
       <header className="transport-bar">
         <TransportBar />
       </header>
-      <aside className="track-headers" />
+      <aside className="track-headers">
+        <TrackHeaders />
+      </aside>
       <main className="timeline" />
       <footer className="bottom-panel">
         <section className="mixer" />

@@ -12,7 +12,10 @@ export interface TransportSnapshot {
 export interface TrackSnapshot {
   index: number;
   name: string;
+  type: string;
   color: number;
+  meterL: number;
+  meterR: number;
   volume: number;
   pan: number;
   muted: boolean;

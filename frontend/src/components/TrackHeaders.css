@@ -1,0 +1,97 @@
+.track-headers {
+  padding: 4px 0;
+}
+
+.th-title {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.th-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.th-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.th-row:hover {
+  background: var(--bg-elevated);
+}
+
+.th-color {
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.th-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.th-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.th-type {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.th-meters {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 28px;
+}
+
+.meter-track {
+  width: 4px;
+  height: 100%;
+  background: var(--bg-widget);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.meter-fill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background: var(--vu-green);
+  border-radius: 2px 2px 0 0;
+  transition: height 0.08s;
+}
+
+.meter-fill.meter-hot {
+  background: var(--vu-yellow);
+}
+
+.meter-fill.meter-clip {
+  background: var(--vu-red);
+}
