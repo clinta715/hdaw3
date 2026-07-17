@@ -47,7 +47,6 @@ private slots:
     void onNewConnection();
     void onTextMessageReceived(const QString& text);
     void onBinaryMessageReceived(const QByteArray& data);
-    void onSocketDisconnected();
     void onMeterTimer();
     void onTransportTimer();
 

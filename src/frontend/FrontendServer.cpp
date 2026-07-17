@@ -107,14 +107,6 @@ void FrontendServer::onBinaryMessageReceived(const QByteArray& data) {
         handleOneMessage(socket, data);
 }
 
-void FrontendServer::onSocketDisconnected() {
-    auto* socket = qobject_cast<QWebSocket*>(sender());
-    if (socket != nullptr) {
-        clients_.remove(socket);
-        socket->deleteLater();
-    }
-}
-
 void FrontendServer::handleOneMessage(QWebSocket* socket, const QByteArray& bytes) {
     // Reuse the MCP framing helpers: JSON-RPC 2.0 over WebSocket is the same
     // line protocol as over stdio. parseLine accepts a single JSON value.
