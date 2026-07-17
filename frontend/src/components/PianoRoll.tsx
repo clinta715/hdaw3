@@ -58,7 +58,7 @@ export default function PianoRoll() {
             </div>
           ))}
         </div>
-        <NoteGrid notes={notes} />
+        <NoteGrid notes={notes} rpc={rpc} clipId={activeClip?.clipId ?? null} />
       </div>
     </div>
   );
