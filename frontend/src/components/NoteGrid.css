@@ -1,0 +1,31 @@
+.note-grid {
+  flex: 1;
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 7px,
+      rgba(255,255,255,0.02) 7px,
+      rgba(255,255,255,0.02) 8px
+    );
+  background-color: var(--bg-window);
+  min-height: 128px;
+}
+
+.ng-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ng-note {
+  position: absolute;
+  background: var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}

@@ -2,6 +2,7 @@ import "./App.css";
 import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
 import Mixer from "./components/Mixer";
+import PianoRoll from "./components/PianoRoll";
 
 function App() {
   return (
@@ -17,7 +18,9 @@ function App() {
         <section className="mixer">
           <Mixer />
         </section>
-        <section className="piano-roll" />
+        <section className="piano-roll">
+          <PianoRoll />
+        </section>
       </footer>
     </div>
   );
