@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Qt 6 Configuration
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer Test)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer WebSockets Test)
 qt_standard_project_setup()
 
 # JUCE Configuration
@@ -85,6 +85,9 @@ src/engine/StretchRenderer.cpp
     src/proxy/ProxySharedMemory.cpp
     src/ui/PluginEditorWindow.cpp
     src/engine/RegionClipboard.cpp
+    src/frontend/FrontendRouter.cpp
+    src/frontend/FrontendServer.cpp
+    src/frontend/FrontendTreeWatcher.cpp
 )
 
 if(HDAW_PLUGIN_ISOLATION)
@@ -107,6 +110,7 @@ target_link_libraries(HDAW_lib PUBLIC
     Qt6::Core
     Qt6::Network
     Qt6::HttpServer
+    Qt6::WebSockets
     clap_juce_extensions
     HDAW::SoundTouch
 )

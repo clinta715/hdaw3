@@ -12,6 +12,7 @@
 #include "mcp/McpTools.h"
 #include "mcp/McpTransport.h"
 #include "mcp/McpTransportStdio.h"
+#include "frontend/FrontendServer.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>
@@ -27,6 +28,10 @@ class HDAW_JuceLogger : public juce::Logger
         HDAW_LOG("JUCE", message.toRawUTF8());
     }
 };
+
+// Default WebSocket port for the HTML/Electron frontend (--headless mode).
+// Kept distinct from the MCP HTTP port (8765) so the two servers can coexist.
+static constexpr quint16 kDefaultFrontendPort = 8766;
 
 static bool parseFlag(int argc, char** argv, const char* name)
 {
@@ -55,9 +60,13 @@ int main(int argc, char *argv[])
     juce::Logger::setCurrentLogger(&juceLogger);
 
     const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
+    const bool headlessFrontend = parseFlag(argc, argv, "--headless");
     const bool noMcp = parseFlag(argc, argv, "--no-mcp");
 
-    HDAW_LOG("main", QString("Mode: %1").arg(headlessMcp ? "HEADLESS MCP (--mcp-stdio)" : "GUI"));
+    HDAW_LOG("main", QString("Mode: %1").arg(
+        headlessMcp ? "HEADLESS MCP (--mcp-stdio)" :
+        headlessFrontend ? "HEADLESS FRONTEND (--headless)" :
+        "GUI"));
 
     if (headlessMcp) {
         QCoreApplication::setOrganizationName("HDAW");
@@ -81,6 +90,42 @@ int main(int argc, char *argv[])
             server.stop();
         });
         server.start();
+        return app.exec();
+    }
+
+    if (headlessFrontend) {
+        // Headless WebSocket server mode for the HTML/Electron frontend.
+        // Runs the engine without any Qt Widgets; the frontend connects to
+        // ws://127.0.0.1:<port> (default 8766) and drives it via JSON-RPC.
+        // Mirrors the --mcp-stdio shape: QCoreApplication, AudioEngine, then
+        // the FrontendServer instead of the MCP server.
+        QCoreApplication::setOrganizationName("HDAW");
+        QCoreApplication::setApplicationName("HDAW");
+        QCoreApplication app(argc, argv);
+
+        quint16 port = kDefaultFrontendPort;
+        if (const char* p = parseValue(argc, argv, "--port")) {
+            bool ok = false;
+            auto parsed = QString::fromUtf8(p).toUShort(&ok);
+            if (ok) port = parsed;
+        }
+
+        AudioEngine engine;
+        engine.initialize();
+        // Restore the plugin cache silently; if empty the frontend can
+        // trigger a rescan via the plugin.scanAll RPC.
+        engine.getPluginManager().loadCache();
+
+        frontend::FrontendServer server(engine);
+        if (!server.start(port)) {
+            HDAW_LOG("main", QString("FrontendServer failed to bind port %1").arg(port));
+            return 1;
+        }
+        HDAW_LOG("main", QString("FrontendServer listening on ws://127.0.0.1:%1").arg(server.port()));
+
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+            server.stop();
+        });
         return app.exec();
     }
 

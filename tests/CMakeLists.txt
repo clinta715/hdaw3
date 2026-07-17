@@ -35,11 +35,14 @@ add_executable(hdaw_tests
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp
     unit/model/clip_slicing_test.cpp
+    unit/frontend/frontend_server_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(hdaw_tests PRIVATE
     Qt6::Core
+    Qt6::Network
+    Qt6::WebSockets
     Qt6::Test
     HDAW_lib
     GTest::gtest_main
