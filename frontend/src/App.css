@@ -45,21 +45,14 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .bottom-panel {
   grid-area: bottom;
-  display: flex;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
+  overflow: hidden;
+  min-height: 0;
 }
 
-.mixer {
-  flex: 1;
-  overflow-x: auto;
-}
-
-.piano-roll {
-  flex: 1;
-  border-left: 1px solid var(--border);
-  overflow: auto;
-}
+.mixer { height: 100%; overflow-x: auto; }
+.piano-roll { height: 100%; overflow: auto; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-bg); }

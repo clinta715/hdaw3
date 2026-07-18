@@ -5,9 +5,17 @@ import Mixer from "./components/Mixer";
 import PianoRoll from "./components/PianoRoll";
 import TimelineMinimal from "./components/TimelineMinimal";
 import ClipEditor from "./components/ClipEditor";
+import AutomationPanel from "./components/AutomationPanel";
+import BottomTabs from "./components/BottomTabs";
 import { useUiStore } from "./store/uiStore";
 
 function App() {
+  const bottomTabs = [
+    { id: "mixer", label: "Mixer", content: <Mixer /> },
+    { id: "piano-roll", label: "Piano Roll", content: <PianoRoll /> },
+    { id: "automation", label: "Automation", content: <AutomationPanel /> },
+  ];
+
   return (
     <div className="app-shell">
       <header className="transport-bar">
@@ -25,12 +33,7 @@ function App() {
         </div>
       )}
       <footer className="bottom-panel">
-        <section className="mixer">
-          <Mixer />
-        </section>
-        <section className="piano-roll">
-          <PianoRoll />
-        </section>
+        <BottomTabs tabs={bottomTabs} defaultTab="mixer" />
       </footer>
     </div>
   );
