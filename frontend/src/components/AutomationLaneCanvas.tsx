@@ -59,7 +59,6 @@ export default function AutomationLaneCanvas({
   const [size, setSize] = useState({ w: 600, h: 80 });
   const [hoveredTime, setHoveredTime] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStartMouse, setDragStartMouse] = useState({ x: 0, y: 0 });
   const [dragOrigTime, setDragOrigTime] = useState(0);
   const [dragOrigValue, setDragOrigValue] = useState(0);
   const [dragCurrentTime, setDragCurrentTime] = useState(0);
@@ -253,7 +252,6 @@ export default function AutomationLaneCanvas({
       }
       dragOriginsRef.current = origins;
       setIsDragging(true);
-      setDragStartMouse({ x: mx, y: my });
       setDragOrigTime(hitTime);
       setDragOrigValue(points.find((p) => p.time === hitTime)?.value ?? 0);
       setDragCurrentTime(hitTime);
@@ -267,7 +265,7 @@ export default function AutomationLaneCanvas({
         store.clearSelection(laneName);
       }
     }
-  }, [getPointAt, laneName, points, store, addPointAt]);
+  }, [getPointAt, laneName, points, store, addPointAt, laneSel]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
