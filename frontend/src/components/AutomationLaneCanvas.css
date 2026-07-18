@@ -1,0 +1,27 @@
+.automation-lane-canvas {
+  display: flex;
+  align-items: stretch;
+  height: 80px;
+  border-bottom: 1px solid var(--border, #333);
+}
+
+.alc-header {
+  width: 100px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  border-right: 1px solid var(--border, #333);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alc-canvas {
+  flex: 1;
+  height: 80px;
+  display: block;
+  cursor: crosshair;
+}
