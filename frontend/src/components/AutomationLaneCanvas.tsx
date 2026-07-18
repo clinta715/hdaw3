@@ -226,8 +226,18 @@ export default function AutomationLaneCanvas({
 
     const hitTime = getPointAt(mx, my);
     if (hitTime !== null) {
-      // If point is already selected, keep selection; otherwise single-select
-      if (!laneSel.has(hitTime) && !e.shiftKey && !e.ctrlKey) {
+      // Ctrl+click = toggle selection, no drag
+      if (e.ctrlKey) {
+        store.selectPoint(laneName, hitTime, false, true);
+        return;
+      }
+      // Shift+click = range select, no drag
+      if (e.shiftKey) {
+        store.selectPoint(laneName, hitTime, true, false);
+        return;
+      }
+      // Plain click: if not already selected, single-select
+      if (!laneSel.has(hitTime)) {
         store.selectPoint(laneName, hitTime, false, false);
       }
       // Capture origins for all selected points (multi-move support)
