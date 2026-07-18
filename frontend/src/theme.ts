@@ -32,8 +32,8 @@ export const theme = {
   trackColor: "rgba(217, 119, 6, 0.16)",
   rulerBg: "#222226",
 
-  automationFill: "rgba(217, 119, 6, 0.16)",
-  automationLine: "rgba(217, 119, 6, 0.78)",
+  automationFill: "#4fc3f722",
+  automationLine: "#4fc3f7",
 
   scrollbarBg: "#1e1e22",
   scrollbarHandle: "#3a3a40",
