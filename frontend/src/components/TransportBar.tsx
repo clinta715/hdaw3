@@ -1,9 +1,12 @@
 import { useTransportStore } from "../store/transportStore";
+import { useProjectStore } from "../store/projectStore";
+import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
 import "./TransportBar.css";
 
 export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
+  const { snapEnabled, snapDivision, setSnapEnabled, setSnapDivision } = useUiStore();
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -38,6 +41,24 @@ export default function TransportBar() {
       <div className="transport-center">
         <span className="tb-time">{fmtTime(transport.currentTimeSeconds)}</span>
         <span className="tb-bpm">{transport.bpm.toFixed(1)} BPM</span>
+      </div>
+      <div className="transport-snap">
+        <button
+          className={`tb-snap-btn ${snapEnabled ? "active" : ""}`}
+          onClick={() => setSnapEnabled(!snapEnabled)}
+          title="Toggle Snap"
+        >Snap</button>
+        <select
+          className="tb-snap-select"
+          value={snapDivision}
+          onChange={(e) => setSnapDivision(Number(e.target.value))}
+        >
+          <option value={0}>Bar</option>
+          <option value={1}>Beat</option>
+          <option value={2}>1/8</option>
+          <option value={3}>1/16</option>
+          <option value={4}>1/32</option>
+        </select>
       </div>
       <div className="transport-right">
         <button
