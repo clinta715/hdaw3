@@ -265,6 +265,7 @@ export default function TimelineMinimal() {
   const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
     e.preventDefault();
     e.stopPropagation();
+    useUiStore.getState().selectClip(clip.clipId, clip.trackIndex);
     setContextMenu({ x: e.clientX, y: e.clientY, clip });
   }, []);
 
@@ -299,6 +300,8 @@ export default function TimelineMinimal() {
           rpc.call("project.redo").catch(() => {});
         else
           rpc.call("project.undo").catch(() => {});
+      } else if (e.key === "Escape") {
+        setContextMenu(null);
       } else if (e.key === " " && e.target === document.body) {
         e.preventDefault();
         if (isPlaying)
