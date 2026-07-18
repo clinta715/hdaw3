@@ -1,0 +1,43 @@
+.bottom-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.bt-tab-bar {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  padding: 0 4px;
+}
+
+.bt-tab {
+  padding: 4px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.bt-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.04);
+}
+
+.bt-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.bt-content {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
