@@ -4,6 +4,8 @@ import TrackHeaders from "./components/TrackHeaders";
 import Mixer from "./components/Mixer";
 import PianoRoll from "./components/PianoRoll";
 import TimelineMinimal from "./components/TimelineMinimal";
+import ClipEditor from "./components/ClipEditor";
+import { useUiStore } from "./store/uiStore";
 
 function App() {
   return (
@@ -17,6 +19,11 @@ function App() {
       <main className="timeline">
         <TimelineMinimal />
       </main>
+      {useUiStore((s) => s.selectedClipId) != null && (
+        <div className="clip-editor-container">
+          <ClipEditor />
+        </div>
+      )}
       <footer className="bottom-panel">
         <section className="mixer">
           <Mixer />

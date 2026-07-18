@@ -36,6 +36,13 @@ html, body, #root { height: 100%; overflow: hidden; }
   overflow: auto;
 }
 
+.clip-editor-container {
+  grid-column: 1 / -1;
+  flex-shrink: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
 .bottom-panel {
   grid-area: bottom;
   display: flex;

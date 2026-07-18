@@ -1,0 +1,112 @@
+.clip-editor {
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.ce-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ce-track {
+  font-weight: 400;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.ce-badge {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ce-midi {
+  background: rgba(56, 178, 223, 0.2);
+  color: #38b2df;
+}
+
+.ce-audio {
+  background: var(--track-color);
+  color: var(--accent-bright);
+}
+
+.ce-body {
+  display: flex;
+  gap: 24px;
+}
+
+.ce-left, .ce-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ce-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ce-row label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 60px;
+}
+
+.ce-row input[type="range"] {
+  flex: 1;
+  height: 16px;
+}
+
+.ce-row input[type="number"] {
+  width: 64px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.ce-row select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.ce-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.ce-val {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: right;
+}
+
+.ce-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.ce-envelope {
+  margin-top: 8px;
+}

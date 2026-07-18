@@ -1,0 +1,5 @@
+.gee-canvas {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
