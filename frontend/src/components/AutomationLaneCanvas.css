@@ -3,6 +3,7 @@
   align-items: stretch;
   height: 80px;
   border-bottom: 1px solid var(--border, #333);
+  user-select: none;
 }
 
 .alc-header {
@@ -24,4 +25,12 @@
   height: 80px;
   display: block;
   cursor: crosshair;
+}
+
+.alc-canvas.alc-dragging {
+  cursor: grabbing;
+}
+
+.alc-canvas.alc-hover-point {
+  cursor: grab;
 }
