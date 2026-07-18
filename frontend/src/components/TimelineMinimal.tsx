@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { rpc } from "../rpc";
@@ -61,6 +61,15 @@ export default function TimelineMinimal() {
   const [loopDrag, setLoopDrag] = useState<"start" | "end" | null>(null);
   const [dragBeat, setDragBeat] = useState(0);
   const dragBeatRef = useRef(0);
+
+  // --- Context menu ---
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clip: typeof clips[0] } | null>(null);
+
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, []);
 
   // --- Group clips by track ---
   const clipsByTrack = useMemo(() => {
@@ -252,6 +261,56 @@ export default function TimelineMinimal() {
 
   const handleMouseLeave = useCallback(() => updateDrag(null), [updateDrag]);
 
+  // --- Context menu handler ---
+  const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, clip });
+  }, []);
+
+  // --- Keyboard shortcuts ---
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+
+      const { selectedClipId } = useUiStore.getState();
+      const isPlaying = useTransportStore.getState().transport.isPlaying;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedClipId != null) {
+          e.preventDefault();
+          (async () => {
+            await rpc.call("project.removeClip", { clipId: selectedClipId }).catch(() => {});
+            await useProjectStore.getState().syncSnapshot(rpc);
+          })();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        if (selectedClipId != null) {
+          e.preventDefault();
+          (async () => {
+            await rpc.call("project.duplicateClip", { clipId: selectedClipId }).catch(() => {});
+            await useProjectStore.getState().syncSnapshot(rpc);
+          })();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey)
+          rpc.call("project.redo").catch(() => {});
+        else
+          rpc.call("project.undo").catch(() => {});
+      } else if (e.key === " " && e.target === document.body) {
+        e.preventDefault();
+        if (isPlaying)
+          rpc.call("transport.stop").catch(() => {});
+        else
+          rpc.call("transport.play").catch(() => {});
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // --- Ghost clip for drag ---
   let ghostStyle: React.CSSProperties | undefined;
   let ghostClip: (typeof clips)[0] | undefined;
@@ -338,6 +397,7 @@ export default function TimelineMinimal() {
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}`}
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined }}
                         onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId, idx); }}
+                        onContextMenu={(e) => handleContextMenu(e, clip)}
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
                         <span className="tl-clip-name">{clip.name ?? `Clip ${clip.clipId}`}</span>
@@ -370,6 +430,25 @@ export default function TimelineMinimal() {
           </div>
         </div>
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="clip-context-menu"
+          onClick={(e) => e.stopPropagation()}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+            Delete
+          </button>
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+            Duplicate
+          </button>
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+            Split
+          </button>
+        </div>
+      )}
     </div>
   );
 }

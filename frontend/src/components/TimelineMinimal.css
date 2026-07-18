@@ -238,3 +238,31 @@
   background: var(--scrollbar-handle);
   border-radius: 4px;
 }
+
+/* --- Context menu --- */
+.clip-context-menu {
+  position: fixed;
+  background: var(--bg-elevated, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  z-index: 1000;
+  min-width: 120px;
+}
+
+.clip-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.clip-context-menu button:hover {
+  background: var(--accent-dim, rgba(255, 152, 0, 0.15));
+}
