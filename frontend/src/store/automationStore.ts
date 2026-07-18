@@ -8,9 +8,17 @@ interface AutomationState {
   activeTrackIndex: number | null;
   loading: boolean;
   error: string | null;
+  selectedPointTimes: Map<string, Set<number>>;
 
   fetchForTrack: (trackIndex: number, rpc: RpcClient) => Promise<void>;
   clear: () => void;
+
+  selectPoint: (laneName: string, time: number, shift: boolean, ctrl: boolean) => void;
+  selectAll: (laneName: string) => void;
+  clearSelection: (laneName?: string) => void;
+  addPoint: (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => Promise<void>;
+  removePoints: (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => Promise<void>;
+  movePoint: (trackIndex: number, laneName: string, oldTime: number, newTime: number, newValue: number, rpc: RpcClient) => Promise<void>;
 }
 
 export const useAutomationStore = create<AutomationState>((set, get) => ({
@@ -19,6 +27,7 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   activeTrackIndex: null,
   loading: false,
   error: null,
+  selectedPointTimes: new Map(),
 
   fetchForTrack: async (trackIndex: number, rpc: RpcClient) => {
     set({ loading: true, error: null, activeTrackIndex: trackIndex });
@@ -36,6 +45,74 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   },
 
   clear: () => {
-    set({ lanes: [], pointsByLane: new Map(), activeTrackIndex: null, error: null });
+    set({ lanes: [], pointsByLane: new Map(), activeTrackIndex: null, error: null, selectedPointTimes: new Map() });
+  },
+
+  selectPoint: (laneName: string, time: number, shift: boolean, ctrl: boolean) => {
+    const sel = new Map(get().selectedPointTimes);
+    const laneSel = new Set(sel.get(laneName) ?? []);
+    if (ctrl) {
+      if (laneSel.has(time)) laneSel.delete(time);
+      else laneSel.add(time);
+    } else if (shift) {
+      const pts = get().pointsByLane.get(laneName) ?? [];
+      const sorted = pts.map((p) => p.time).sort((a, b) => a - b);
+      const clickIdx = sorted.indexOf(time);
+      if (laneSel.size > 0 && clickIdx >= 0) {
+        const existingTimes = [...laneSel].map((t) => sorted.indexOf(t)).filter((i) => i >= 0);
+        if (existingTimes.length > 0) {
+          const lastIdx = existingTimes[existingTimes.length - 1];
+          const minIdx = Math.min(lastIdx, clickIdx);
+          const maxIdx = Math.max(lastIdx, clickIdx);
+          for (let i = minIdx; i <= maxIdx; i++) laneSel.add(sorted[i]);
+        } else {
+          laneSel.add(time);
+        }
+      } else {
+        laneSel.add(time);
+      }
+    } else {
+      laneSel.clear();
+      laneSel.add(time);
+    }
+    sel.set(laneName, laneSel);
+    set({ selectedPointTimes: sel });
+  },
+
+  selectAll: (laneName: string) => {
+    const pts = get().pointsByLane.get(laneName) ?? [];
+    const sel = new Map(get().selectedPointTimes);
+    sel.set(laneName, new Set(pts.map((p) => p.time)));
+    set({ selectedPointTimes: sel });
+  },
+
+  clearSelection: (laneName?: string) => {
+    const sel = new Map(get().selectedPointTimes);
+    if (laneName) sel.delete(laneName);
+    else sel.clear();
+    set({ selectedPointTimes: sel });
+  },
+
+  addPoint: async (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => {
+    await rpc.call("project.addAutomationPoint", { trackIndex, lane: laneName, time, value });
+    await get().fetchForTrack(trackIndex, rpc);
+  },
+
+  removePoints: async (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => {
+    for (const t of times) {
+      await rpc.call("project.removeAutomationPoint", { trackIndex, lane: laneName, time: t });
+    }
+    await get().fetchForTrack(trackIndex, rpc);
+  },
+
+  movePoint: async (trackIndex: number, laneName: string, oldTime: number, newTime: number, newValue: number, rpc: RpcClient) => {
+    const needsTimeChange = Math.abs(oldTime - newTime) > 0.001;
+    if (needsTimeChange) {
+      await rpc.call("project.removeAutomationPoint", { trackIndex, lane: laneName, time: oldTime });
+      await rpc.call("project.addAutomationPoint", { trackIndex, lane: laneName, time: newTime, value: newValue });
+    } else {
+      await rpc.call("project.setAutomationPointValue", { trackIndex, lane: laneName, time: oldTime, value: newValue });
+    }
+    await get().fetchForTrack(trackIndex, rpc);
   },
 }));
