@@ -193,6 +193,22 @@
   display: block;
 }
 
+/* --- Clip trim handles --- */
+.clip-trim {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.clip-trim-left {
+  left: 0;
+}
+.clip-trim-right {
+  right: 0;
+}
+
 /* --- Loop band on tracks --- */
 .tl-loop-band-tracks {
   position: absolute;

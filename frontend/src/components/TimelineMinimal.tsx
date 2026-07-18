@@ -21,6 +21,15 @@ interface DragState {
   mouseY: number;
 }
 
+interface TrimState {
+  clipId: number;
+  side: "left" | "right";
+  initialStartBeat: number;
+  initialDuration: number;
+  currentStartBeat: number;
+  currentDuration: number;
+}
+
 export default function TimelineMinimal() {
   const [pps, setPps] = useState(DEFAULT_PPS);
 
@@ -38,6 +47,14 @@ export default function TimelineMinimal() {
   const updateDrag = useCallback((next: DragState | null) => {
     dragRef.current = next;
     setDragState(next);
+  }, []);
+
+  // --- Trim state ---
+  const [trimState, setTrimState] = useState<TrimState | null>(null);
+  const trimRef = useRef<TrimState | null>(null);
+  const updateTrim = useCallback((next: TrimState | null) => {
+    trimRef.current = next;
+    setTrimState(next);
   }, []);
 
   // --- Loop drag state ---
@@ -147,6 +164,66 @@ export default function TimelineMinimal() {
     [updateDrag]
   );
 
+  const handleTrimStart = useCallback(
+    (e: React.MouseEvent, clip: typeof clips[0], side: "left" | "right") => {
+      e.stopPropagation();
+      e.preventDefault();
+      updateTrim({
+        clipId: clip.clipId,
+        side,
+        initialStartBeat: clip.startBeat,
+        initialDuration: clip.durationBeats,
+        currentStartBeat: clip.startBeat,
+        currentDuration: clip.durationBeats,
+      });
+
+      const onMove = (ev: globalThis.MouseEvent) => {
+        const d = trimRef.current;
+        if (!d) return;
+        const el = tracksRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const scroll = el.scrollLeft;
+        const mouseBeat = (ev.clientX - rect.left + scroll) / pps;
+
+        if (d.side === "left") {
+          const maxStart = d.initialStartBeat + d.initialDuration - 0.5;
+          const newStart = Math.max(0, Math.min(mouseBeat, maxStart));
+          const newDuration = d.initialDuration + (d.initialStartBeat - newStart);
+          updateTrim({ ...d, currentStartBeat: newStart, currentDuration: newDuration });
+        } else {
+          const newDuration = Math.max(0.5, mouseBeat - d.initialStartBeat);
+          updateTrim({ ...d, currentDuration: newDuration });
+        }
+      };
+
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        const d = trimRef.current;
+        if (!d) return;
+        updateTrim(null);
+
+        if (d.side === "left") {
+          if (Math.abs(d.currentStartBeat - d.initialStartBeat) > 0.01) {
+            rpc.call("project.beginTransaction", { name: "trim clip" });
+            rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
+            rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
+            rpc.call("project.endTransaction");
+          }
+        } else {
+          if (Math.abs(d.currentDuration - d.initialDuration) > 0.01) {
+            rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
+          }
+        }
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [pps, updateTrim]
+  );
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const d = dragRef.current;
     if (!d) return;
@@ -246,17 +323,22 @@ export default function TimelineMinimal() {
                   className={`tl-track-row${isTarget ? " tl-track-row--target" : ""}`}
                   style={{ top: idx * TRACK_HEIGHT, height: TRACK_HEIGHT }}
                 >
-                  {trackClips.map((clip) => {
+                    {trackClips.map((clip) => {
                     const isDragging = dragState?.clipId === clip.clipId;
+                    const isTrimming = trimState?.clipId === clip.clipId;
+                    const dispLeft = isTrimming ? trimState.currentStartBeat * pps : clip.startBeat * pps;
+                    const dispWidth = isTrimming ? Math.max(4, trimState.currentDuration * pps) : Math.max(4, clip.durationBeats * pps);
                     return (
                       <div
                         key={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}`}
-                        style={{ left: clip.startBeat * pps, width: Math.max(4, clip.durationBeats * pps), height: TRACK_HEIGHT - 8, top: 4 }}
+                        style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined }}
                         onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId, idx); }}
-                        onMouseDown={(e) => handleClipMouseDown(e, clip.clipId, idx, clip.startBeat)}
+                        onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
                         <span className="tl-clip-name">{clip.name ?? `Clip ${clip.clipId}`}</span>
+                        <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} />
+                        <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} />
                       </div>
                     );
                   })}
