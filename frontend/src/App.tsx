@@ -8,12 +8,13 @@ import ClipEditor from "./components/ClipEditor";
 import AutomationPanel from "./components/AutomationPanel";
 import BottomTabs from "./components/BottomTabs";
 import { useUiStore } from "./store/uiStore";
+import { rpc } from "./rpc";
 
 function App() {
   const bottomTabs = [
     { id: "mixer", label: "Mixer", content: <Mixer /> },
     { id: "piano-roll", label: "Piano Roll", content: <PianoRoll /> },
-    { id: "automation", label: "Automation", content: <AutomationPanel /> },
+    { id: "automation", label: "Automation", content: <AutomationPanel rpc={rpc} /> },
   ];
 
   return (

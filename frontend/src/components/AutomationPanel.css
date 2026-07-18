@@ -1,0 +1,60 @@
+.automation-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ap-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary, #999);
+  font-size: 13px;
+}
+
+.ap-empty-no-lanes {
+  padding: 16px;
+  color: var(--text-secondary, #999);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-header, #1a1a1a);
+  border-bottom: 1px solid var(--border, #333);
+  flex-shrink: 0;
+}
+
+.ap-add-btn {
+  padding: 3px 12px;
+  background: var(--accent, #4fc3f7);
+  color: #000;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ap-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ap-track-label {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  margin-left: auto;
+}
+
+.ap-canvas-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
