@@ -206,10 +206,14 @@ export default function TimelineMinimal() {
 
         if (d.side === "left") {
           if (Math.abs(d.currentStartBeat - d.initialStartBeat) > 0.01) {
-            rpc.call("project.beginTransaction", { name: "trim clip" });
-            rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
-            rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
-            rpc.call("project.endTransaction");
+            (async () => {
+              try {
+                await rpc.call("project.beginTransaction", { name: "trim clip" });
+                await rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
+                await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
+                await rpc.call("project.endTransaction");
+              } catch (e) { console.error("trim failed", e); }
+            })();
           }
         } else {
           if (Math.abs(d.currentDuration - d.initialDuration) > 0.01) {

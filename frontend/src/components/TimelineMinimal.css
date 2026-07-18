@@ -195,13 +195,10 @@
 
 /* --- Clip trim handles --- */
 .clip-trim {
-  position: absolute;
-  top: 0;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 2;
+  position: absolute; top: 0; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 2; opacity: 0;
 }
+.clip-trim:hover { opacity: 0.3; background: white; }
 .clip-trim-left {
   left: 0;
 }
