@@ -74,6 +74,25 @@ export interface MeterLevels {
   r: number;
 }
 
+export interface AutomationLaneSnapshot {
+  laneIndex: number;
+  name: string;
+  paramID: number;
+  enabled: boolean;
+}
+
+export interface AutomationPointSnapshot {
+  time: number;
+  value: number;
+}
+
+export interface AutomatableParamSnapshot {
+  slotIndex: number;
+  paramIndex: number;
+  name: string;
+  automatable: boolean;
+}
+
 export interface MetersPayload {
   master: MeterLevels;
   tracks: MeterLevels[];
