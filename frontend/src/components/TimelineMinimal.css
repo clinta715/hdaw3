@@ -165,7 +165,7 @@
 }
 
 .tl-clip--audio {
-  background: var(--track-color);
+  background: transparent;
   border: 1px solid var(--accent-dim);
 }
 

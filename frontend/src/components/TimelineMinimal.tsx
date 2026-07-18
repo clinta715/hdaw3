@@ -3,6 +3,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
+import { WaveformCanvas } from "./WaveformCanvas";
 import "./TimelineMinimal.css";
 
 const DEFAULT_PPS = 40;
@@ -398,12 +399,15 @@ export default function TimelineMinimal() {
                       <div
                         key={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}`}
-                        style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined }}
+                        style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
                         onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId, idx); }}
                         onContextMenu={(e) => handleContextMenu(e, clip)}
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
-                        <span className="tl-clip-name">{clip.name ?? `Clip ${clip.clipId}`}</span>
+                        {!clip.isMidi && (
+                          <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
+                        )}
+                        <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{clip.name ?? `Clip ${clip.clipId}`}</span>
                         <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} />
                         <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} />
                       </div>
@@ -425,9 +429,12 @@ export default function TimelineMinimal() {
             {ghostStyle && ghostClip && (
               <div
                 className={`tl-clip tl-ghost ${ghostClip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}`}
-                style={ghostStyle}
+                style={{ ...ghostStyle, ...(ghostClip.isMidi ? {} : { background: "transparent" }) }}
               >
-                <span className="tl-clip-name">{ghostClip.name ?? `Clip ${ghostClip.clipId}`}</span>
+                {!ghostClip.isMidi && (
+                  <WaveformCanvas clip={ghostClip} width={Math.max(4, ghostClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
+                )}
+                <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{ghostClip.name ?? `Clip ${ghostClip.clipId}`}</span>
               </div>
             )}
           </div>
