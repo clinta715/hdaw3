@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { injectTheme } from "./theme";
 import { rpc } from "./rpc";
 import { useProjectStore } from "./store/projectStore";
+import { useAutomationStore } from "./store/automationStore";
 import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
 import { TransportSnapshot, MetersPayload } from "./rpc/types";
@@ -26,6 +27,11 @@ function setupSubscriptions() {
 
   cleanups.push(rpc.onNotification("notify.treeChanged", () => {
     useProjectStore.getState().syncSnapshot(rpc).catch(() => {});
+    // Refresh automation lanes when the project tree changes
+    const activeTrack = useAutomationStore.getState().activeTrackIndex;
+    if (activeTrack !== null) {
+      useAutomationStore.getState().fetchForTrack(activeTrack, rpc);
+    }
   }));
 }
 
