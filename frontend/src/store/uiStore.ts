@@ -2,10 +2,12 @@ import { create } from "zustand";
 
 interface UiState {
   selectedClipId: number | null;
-  selectClip: (id: number | null) => void;
+  selectedTrackIndex: number | null;
+  selectClip: (id: number | null, trackIndex?: number | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
   selectedClipId: null,
-  selectClip: (id) => set({ selectedClipId: id }),
+  selectedTrackIndex: null,
+  selectClip: (id, trackIndex) => set({ selectedClipId: id, selectedTrackIndex: trackIndex ?? null }),
 }));

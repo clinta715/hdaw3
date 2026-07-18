@@ -11,13 +11,12 @@ interface Props {
 }
 
 export default function AutomationPanel({ rpc }: Props) {
-  const selectedClipId = useUiStore((s) => s.selectedClipId);
+  const { selectedClipId, selectedTrackIndex } = useUiStore((s) => ({ selectedClipId: s.selectedClipId, selectedTrackIndex: s.selectedTrackIndex }));
   const [automatableParams, setAutomatableParams] = useState<AutomatableParamSnapshot[]>([]);
   const { lanes, pointsByLane, activeTrackIndex, loading, fetchForTrack } = useAutomationStore();
 
-  // Resolve trackIndex from selected clip. This assumes the store has a way to look up
-  // the parent track or that the backend returns trackIndex on the clip.
-  const clipTrackIndex = selectedClipId != null ? selectedClipId : null;
+  // Resolve trackIndex from selected clip
+  const clipTrackIndex = selectedTrackIndex;
 
   useEffect(() => {
     if (clipTrackIndex === null) {
@@ -107,7 +106,6 @@ export default function AutomationPanel({ rpc }: Props) {
             rpc={rpc}
             viewStartBeat={0}
             viewEndBeat={32}
-            paramID={lane.paramID}
           />
         ))}
       </div>

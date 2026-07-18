@@ -11,7 +11,6 @@ interface Props {
   rpc: RpcClient;
   viewStartBeat: number;
   viewEndBeat: number;
-  paramID: number;
   color?: string;
 }
 
@@ -32,7 +31,7 @@ function buildPath(pts: AutomationPointSnapshot[], vw: number, vh: number, viewS
 }
 
 function beatFromX(mx: number, cw: number, viewStart: number, viewEnd: number): number {
-  return viewStart + (mx / cw) * (viewEnd - viewStart);
+  return Math.max(viewStart, Math.min(viewEnd, viewStart + (mx / cw) * (viewEnd - viewStart)));
 }
 
 function valueFromY(my: number, ch: number): number {
@@ -55,7 +54,6 @@ export default function AutomationLaneCanvas({
   color = "var(--automation-line, #4fc3f7)",
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 600, h: 80 });
   const [hoveredTime, setHoveredTime] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -313,7 +311,7 @@ export default function AutomationLaneCanvas({
   }, [getPointAt, laneSel, trackIndex, laneName, rpc, store]);
 
   return (
-    <div className="automation-lane-canvas" ref={containerRef}>
+    <div className="automation-lane-canvas">
       <div className="alc-header">{laneName}</div>
       <canvas
         ref={canvasRef}

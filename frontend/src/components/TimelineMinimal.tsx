@@ -236,7 +236,7 @@ export default function TimelineMinimal() {
           onMouseLeave={handleMouseLeave}
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
-            onClick={() => useUiStore.getState().selectClip(null)}>
+            onClick={() => useUiStore.getState().selectClip(null, null)}>
             {tracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
               const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), tracks.length - 1);
@@ -253,7 +253,7 @@ export default function TimelineMinimal() {
                         key={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}`}
                         style={{ left: clip.startBeat * pps, width: Math.max(4, clip.durationBeats * pps), height: TRACK_HEIGHT - 8, top: 4 }}
-                        onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId); }}
+                        onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId, idx); }}
                         onMouseDown={(e) => handleClipMouseDown(e, clip.clipId, idx, clip.startBeat)}
                       >
                         <span className="tl-clip-name">{clip.name ?? `Clip ${clip.clipId}`}</span>

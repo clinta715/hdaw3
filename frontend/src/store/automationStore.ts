@@ -18,7 +18,6 @@ interface AutomationState {
   clearSelection: (laneName?: string) => void;
   addPoint: (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => Promise<void>;
   removePoints: (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => Promise<void>;
-  movePoint: (trackIndex: number, laneName: string, oldTime: number, newTime: number, newValue: number, rpc: RpcClient) => Promise<void>;
 }
 
 export const useAutomationStore = create<AutomationState>((set, get) => ({
@@ -101,17 +100,6 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   removePoints: async (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => {
     for (const t of times) {
       await rpc.call("project.removeAutomationPoint", { trackIndex, lane: laneName, time: t });
-    }
-    await get().fetchForTrack(trackIndex, rpc);
-  },
-
-  movePoint: async (trackIndex: number, laneName: string, oldTime: number, newTime: number, newValue: number, rpc: RpcClient) => {
-    const needsTimeChange = Math.abs(oldTime - newTime) > 0.001;
-    if (needsTimeChange) {
-      await rpc.call("project.removeAutomationPoint", { trackIndex, lane: laneName, time: oldTime });
-      await rpc.call("project.addAutomationPoint", { trackIndex, lane: laneName, time: newTime, value: newValue });
-    } else {
-      await rpc.call("project.setAutomationPointValue", { trackIndex, lane: laneName, time: oldTime, value: newValue });
     }
     await get().fetchForTrack(trackIndex, rpc);
   },
