@@ -63,6 +63,68 @@
   letter-spacing: 0.5px;
 }
 
+.th-controls {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.th-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-default, #444);
+  border-radius: 3px;
+  background: var(--bg-widget);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 22px;
+  text-align: center;
+  transition: background 0.1s, color 0.1s;
+}
+
+.th-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.th-mute.active {
+  background: #ffb300;
+  border-color: #ffb300;
+  color: #fff;
+}
+
+.th-solo.active {
+  background: #ffd600;
+  border-color: #ffd600;
+  color: #000;
+}
+
+.th-arm.active {
+  background: #e53935;
+  border-color: #e53935;
+  color: #fff;
+}
+
+.th-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  min-width: 44px;
+  gap: 1px;
+}
+
+.th-vol,
+.th-pan {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .th-meters {
   display: flex;
   gap: 2px;

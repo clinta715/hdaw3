@@ -1,9 +1,31 @@
 import { useProjectStore } from "../store/projectStore";
+import { rpc } from "../rpc";
 import "./TrackHeaders.css";
 
 export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const tracks = snapshot?.tracks ?? [];
+
+  const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    rpc.call("project.setTrackMuted", { trackIndex: idx, muted: !muted });
+  };
+
+  const handleSolo = (idx: number, soloed: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    rpc.call("project.setTrackSoloed", { trackIndex: idx, soloed: !soloed });
+  };
+
+  const handleArm = (idx: number, armed: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    rpc.call("project.setTrackArmed", { trackIndex: idx, armed: !armed });
+  };
+
+  const formatPan = (pan: number): string => {
+    if (pan === 0) return "C";
+    const pct = Math.round(Math.abs(pan) * 100);
+    return pan < 0 ? `L${pct}` : `R${pct}`;
+  };
 
   return (
     <div className="track-headers">
@@ -17,6 +39,35 @@ export default function TrackHeaders() {
           <div className="th-info">
             <div className="th-name">{track.name}</div>
             <div className="th-type">{track.type}</div>
+          </div>
+          {track.type !== "master" && (
+            <div className="th-controls">
+              <button
+                className={`th-btn th-mute${track.muted ? " active" : ""}`}
+                onClick={(e) => handleMute(track.index, track.muted, e)}
+                title="Mute"
+              >
+                M
+              </button>
+              <button
+                className={`th-btn th-solo${track.soloed ? " active" : ""}`}
+                onClick={(e) => handleSolo(track.index, track.soloed, e)}
+                title="Solo"
+              >
+                S
+              </button>
+              <button
+                className={`th-btn th-arm${track.armed ? " active" : ""}`}
+                onClick={(e) => handleArm(track.index, track.armed, e)}
+                title="Arm"
+              >
+                R
+              </button>
+            </div>
+          )}
+          <div className="th-values">
+            <span className="th-vol">V:{Math.round(track.volume * 100)}%</span>
+            <span className="th-pan">{formatPan(track.pan)}</span>
           </div>
           <div className="th-meters">
             <MeterBar value={track.meterL} />
