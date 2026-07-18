@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { RpcClient } from "../rpc/client";
 import { useUiStore } from "../store/uiStore";
 import { useAutomationStore } from "../store/automationStore";
@@ -48,9 +48,31 @@ export default function AutomationPanel({ rpc }: Props) {
     }
   };
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const { lanes, selectedPointTimes, activeTrackIndex, removePoints, selectAll, clearSelection } = useAutomationStore.getState();
+    if (activeTrackIndex === null) return;
+
+    for (const lane of lanes) {
+      const sel = selectedPointTimes.get(lane.name);
+      if (sel && sel.size > 0) {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          removePoints(activeTrackIndex, lane.name, [...sel], rpc);
+          clearSelection(lane.name);
+        } else if (e.key === "a" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          selectAll(lane.name);
+        } else if (e.key === "Escape") {
+          clearSelection(lane.name);
+        }
+        break;
+      }
+    }
+  }, [rpc]);
+
   if (clipTrackIndex === null) {
     return (
-      <div className="automation-panel">
+      <div className="automation-panel" tabIndex={0} onKeyDown={handleKeyDown}>
         <div className="ap-empty">Select a clip to edit automation lanes</div>
       </div>
     );
@@ -58,14 +80,14 @@ export default function AutomationPanel({ rpc }: Props) {
 
   if (loading) {
     return (
-      <div className="automation-panel">
+      <div className="automation-panel" tabIndex={0} onKeyDown={handleKeyDown}>
         <div className="ap-empty">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="automation-panel">
+    <div className="automation-panel" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="ap-toolbar">
         <button className="ap-add-btn" onClick={handleAddLane} disabled={lanes.length >= automatableParams.length}>
           + Add Lane
