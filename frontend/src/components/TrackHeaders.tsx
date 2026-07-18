@@ -8,18 +8,22 @@ export default function TrackHeaders() {
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackMuted", { trackIndex: idx, muted: !muted });
+    rpc.call("project.setTrackMuted", { trackIndex: idx, muted: !muted }).catch(console.error);
   };
 
   const handleSolo = (idx: number, soloed: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackSoloed", { trackIndex: idx, soloed: !soloed });
+    rpc.call("project.setTrackSoloed", { trackIndex: idx, soloed: !soloed }).catch(console.error);
   };
 
   const handleArm = (idx: number, armed: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
-    rpc.call("project.setTrackArmed", { trackIndex: idx, armed: !armed });
+    rpc.call("project.setTrackArmed", { trackIndex: idx, armed: !armed }).catch(console.error);
   };
+
+  function colorStr(c: number): string {
+    return "#" + c.toString(16).padStart(6, "0");
+  }
 
   const formatPan = (pan: number): string => {
     if (pan === 0) return "C";
@@ -35,7 +39,7 @@ export default function TrackHeaders() {
       )}
       {tracks.map((track) => (
         <div key={track.index} className="th-row">
-          <div className="th-color" style={{ background: track.color }} />
+          <div className="th-color" style={{ background: colorStr(track.color) }} />
           <div className="th-info">
             <div className="th-name">{track.name}</div>
             <div className="th-type">{track.type}</div>
