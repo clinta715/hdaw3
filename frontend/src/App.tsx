@@ -10,6 +10,7 @@ import AudioClipEditor from "./components/AudioClipEditor";
 import StepSequencer from "./components/StepSequencer";
 import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
+import ModulationPanel from "./components/ModulationPanel";
 import BottomTabs from "./components/BottomTabs";
 import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
@@ -50,6 +51,7 @@ function App() {
     { id: "automation", label: "Automation", content: <AutomationPanel rpc={rpc} /> },
     { id: "fx", label: "FX Chain", content: <FXChain /> },
     { id: "audio-editor", label: "Audio Editor", content: <AudioClipEditor /> },
+    { id: "modulation", label: "Modulation", content: <ModulationPanel /> },
     { id: "step-seq", label: "Step Seq", content: <StepSequencer /> },
   ];
 

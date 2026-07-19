@@ -1,0 +1,16 @@
+.modulation-panel { padding: 8px; height: 100%; overflow-y: auto; }
+.mod-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.mod-title { font-weight: 600; color: var(--text-primary); }
+.mod-add-btn { background: var(--accent); color: #fff; border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; }
+.mod-empty { color: var(--text-muted); font-size: 13px; }
+.mod-lfo-card {
+  background: var(--bg-widget); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; margin-bottom: 8px;
+}
+.mod-lfo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.mod-lfo-name { font-weight: 600; color: var(--accent); }
+.mod-remove-btn { background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; }
+.mod-lfo-controls { display: flex; flex-wrap: wrap; gap: 12px; }
+.mod-lfo-controls label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-secondary); }
+.mod-lfo-controls select, .mod-lfo-controls input[type="range"] { width: 120px; }
+.mod-checkbox { flex-direction: row !important; align-items: center; gap: 4px !important; }
