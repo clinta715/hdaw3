@@ -7,6 +7,7 @@ import PianoRoll from "./components/PianoRoll";
 import TimelineMinimal from "./components/TimelineMinimal";
 import ClipEditor from "./components/ClipEditor";
 import AudioClipEditor from "./components/AudioClipEditor";
+import StepSequencer from "./components/StepSequencer";
 import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
 import BottomTabs from "./components/BottomTabs";
@@ -49,6 +50,7 @@ function App() {
     { id: "automation", label: "Automation", content: <AutomationPanel rpc={rpc} /> },
     { id: "fx", label: "FX Chain", content: <FXChain /> },
     { id: "audio-editor", label: "Audio Editor", content: <AudioClipEditor /> },
+    { id: "step-seq", label: "Step Seq", content: <StepSequencer /> },
   ];
 
   return (
