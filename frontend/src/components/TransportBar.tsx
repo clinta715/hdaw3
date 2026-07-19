@@ -3,6 +3,7 @@ import { useTransportStore } from "../store/transportStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
+import FileMenu from "./FileMenu";
 import "./TransportBar.css";
 
 export default function TransportBar() {
@@ -25,6 +26,16 @@ export default function TransportBar() {
     await rpc.call("project.redo").catch(() => {});
     await useProjectStore.getState().syncDirtyFlag(rpc);
     await useProjectStore.getState().syncSnapshot(rpc);
+  };
+
+  const handleAddTrack = () => {
+    rpc.call("project.addTrack").catch(() => {});
+  };
+  const handleRemoveTrack = () => {
+    const idx = useUiStore.getState().selectedTrackIndex;
+    if (idx != null) {
+      rpc.call("project.removeTrack", { trackIndex: idx }).catch(() => {});
+    }
   };
 
   // BPM tap state
@@ -75,6 +86,7 @@ export default function TransportBar() {
   return (
     <div className="transport-bar">
       <div className="transport-left">
+        <FileMenu />
         <button className="tb-btn" onClick={cmd("transport.rewind")} title="Rewind">⏮</button>
         <button
           className={`tb-btn tb-play ${transport.isPlaying ? "active" : ""}`}
@@ -134,6 +146,10 @@ export default function TransportBar() {
           <option value={3}>1/16</option>
           <option value={4}>1/32</option>
         </select>
+      </div>
+      <div className="transport-track-ops">
+        <button className="tb-btn" onClick={handleAddTrack} title="Add Track">+T</button>
+        <button className="tb-btn" onClick={handleRemoveTrack} title="Remove Track">-T</button>
       </div>
       <div className="transport-right">
         <div className="tb-undo">
