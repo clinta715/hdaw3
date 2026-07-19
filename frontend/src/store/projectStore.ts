@@ -24,6 +24,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   syncSnapshot: async (rpc: RpcClient) => {
     const result = await rpc.call("read.snapshot") as ProjectSnapshot;
     set({ snapshot: result, lastSync: Date.now() });
+    // Sync markers after project snapshot loads
+    const { useMarkerStore } = await import("./markerStore");
+    useMarkerStore.getState().syncMarkers(rpc);
   },
 
   syncDirtyFlag: async (rpc: RpcClient) => {

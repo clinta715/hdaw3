@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
+import { useMarkerStore } from "../store/markerStore";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
@@ -39,6 +40,7 @@ export default function TimelineMinimal() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const transport = useTransportStore((s) => s.transport);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
+  const markers = useMarkerStore((s) => s.markers);
   const tracks = snapshot?.tracks ?? [];
   const clips = snapshot?.clips ?? [];
 
@@ -648,7 +650,19 @@ export default function TimelineMinimal() {
       {/* Body */}
       <div className="tl-body" onWheel={onWheel}>
         {/* Ruler */}
-        <div className={`tl-ruler${isScrubbing ? " tl-ruler--scrubbing" : ""}`} ref={rulerRef} style={{ height: RULER_HEIGHT }} onMouseDown={handleRulerMouseDown}>
+        <div className={`tl-ruler${isScrubbing ? " tl-ruler--scrubbing" : ""}`} ref={rulerRef} style={{ height: RULER_HEIGHT }} onMouseDown={handleRulerMouseDown} onContextMenu={(e) => {
+          e.preventDefault();
+          const el = tracksRef.current;
+          if (!el) return;
+          const rect = el.getBoundingClientRect();
+          const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
+          const name = prompt("Marker name:", "Marker");
+          if (name != null) {
+            rpc.call("project.addMarker", { name, time: beat }).then(() => {
+              useMarkerStore.getState().syncMarkers(rpc);
+            }).catch(() => {});
+          }
+        }}>
           <div className="tl-ruler-inner" style={{ width: totalW, position: "relative" }}>
             {rulerMarkers.map((m) => (
               <div
@@ -668,6 +682,28 @@ export default function TimelineMinimal() {
                 <div className="tl-loop-handle tl-loop-handle--end" style={{ left: loopRX }} onMouseDown={startLoopDrag("end")} />
               </>
             )}
+            {markers.map((m) => (
+              <div
+                key={m.index}
+                className="tl-marker-pin"
+                style={{ left: m.time * pps }}
+                title={m.name}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const sec = m.time * 60 / transport.bpm;
+                  rpc.call("transport.seekToSeconds", { seconds: sec }).catch(() => {});
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  const newName = prompt("Marker name:", m.name);
+                  if (newName != null) {
+                    rpc.call("project.setMarkerName", { index: m.index, name: newName }).then(() => {
+                      useMarkerStore.getState().syncMarkers(rpc);
+                    }).catch(() => {});
+                  }
+                }}
+              />
+            ))}
           </div>
         </div>
 

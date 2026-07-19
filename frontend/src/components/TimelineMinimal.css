@@ -301,3 +301,21 @@
   outline: 2px solid var(--accent, #d97706);
   outline-offset: -1px;
 }
+
+/* --- Marker pins --- */
+.tl-marker-pin {
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 10px solid #ef4444;
+  cursor: pointer;
+  z-index: 10;
+  transform: translateX(-6px);
+}
+
+.tl-marker-pin:hover {
+  border-top-color: #f87171;
+}
