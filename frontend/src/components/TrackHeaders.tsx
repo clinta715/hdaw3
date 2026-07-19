@@ -34,7 +34,7 @@ export default function TrackHeaders() {
     input.addEventListener("input", () => {
       const hex = input.value.replace("#", "");
       const color = parseInt(hex, 16);
-      rpc.call("project.setTrackColor", { trackIndex: idx, color });
+      rpc.call("project.setTrackColor", { trackIndex: idx, color }).catch(console.error);
     });
     input.click();
   };
