@@ -3,6 +3,7 @@ import { useProjectStore } from "../store/projectStore";
 import { rpc } from "../rpc";
 import NoteGrid from "./NoteGrid";
 import VelocityLane from "./VelocityLane";
+import CCLane from "./CCLane";
 import "./PianoRoll.css";
 
 export default function PianoRoll() {
@@ -12,6 +13,7 @@ export default function PianoRoll() {
   const keysRef = useRef<HTMLDivElement>(null);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
+  const [ccController, setCcController] = useState(1);
 
   const midiClips = snapshot?.clips.filter((c) => c.isMidi) ?? [];
   const activeClip = selectedClipId != null
@@ -19,6 +21,15 @@ export default function PianoRoll() {
     : midiClips[0];
 
   const notes = activeClip ? notesByClip.get(activeClip.clipId) ?? [] : [];
+  const gridWidth = useMemo(() => {
+    if (!notes.length) return 800;
+    let maxEnd = 0;
+    for (const n of notes) {
+      const end = n.startBeat + n.durationBeats;
+      if (end > maxEnd) maxEnd = end;
+    }
+    return Math.max(800, Math.ceil(maxEnd * 80) + 200);
+  }, [notes]);
 
   const loadNotes = (clipId: number) => {
     setSelectedClipId(clipId);
@@ -100,6 +111,22 @@ export default function PianoRoll() {
             scrollLeft={gridScrollLeft}
             onScrollChange={setGridScrollLeft}
           />
+          <div className="pr-cc-row">
+            <select value={ccController} onChange={(e) => setCcController(Number(e.target.value))}>
+              {Array.from({ length: 128 }, (_, i) => (
+                <option key={i} value={i}>CC{i}</option>
+              ))}
+            </select>
+            {activeClip && (
+              <CCLane
+                clipId={activeClip.clipId}
+                controllerNumber={ccController}
+                width={gridWidth}
+                pixelsPerBeat={80}
+                scrollX={gridScrollLeft}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

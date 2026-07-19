@@ -1,0 +1,3 @@
+.cc-lane { display: flex; align-items: center; gap: 4px; }
+.cc-label { font-size: 10px; color: var(--text-muted); width: 36px; text-align: right; }
+.cc-canvas { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 2px; cursor: crosshair; }
