@@ -17,6 +17,7 @@ import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
 import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
+import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
 
 function App() {
@@ -26,6 +27,8 @@ function App() {
   const setActiveBottomTab = useUiStore((s) => s.setActiveBottomTab);
   const snapshot = useProjectStore((s) => s.snapshot);
   const prevTabRef = useRef(activeBottomTab);
+  const browserVisible = useBrowserStore((s) => s.visible);
+  const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
 
   // Auto-switch bottom tab when a single clip is selected
   useEffect(() => {
@@ -64,6 +67,26 @@ function App() {
       <header className="transport-bar">
         <TransportBar />
       </header>
+      <button
+        className="browser-toggle-btn"
+        onClick={toggleBrowser}
+        title="Toggle File Browser (Ctrl+B)"
+        style={{
+          position: "fixed",
+          top: 10,
+          right: 10,
+          zIndex: 100,
+          background: browserVisible ? "#2a3a4a" : "#222",
+          border: "1px solid #555",
+          color: browserVisible ? "#fff" : "#aaa",
+          padding: "5px 10px",
+          borderRadius: "4px",
+          cursor: "pointer",
+          fontSize: "14px",
+        }}
+      >
+        📁
+      </button>
       <aside className="track-headers">
         <TrackHeaders />
       </aside>
