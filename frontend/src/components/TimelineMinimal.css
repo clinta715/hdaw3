@@ -208,6 +208,24 @@
   right: 0;
 }
 
+/* --- Clip fade handles --- */
+.fade-handle {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 5;
+}
+
+.fade-handle-in {
+  left: 0;
+}
+
+.fade-handle-out {
+  right: 0;
+}
+
 /* --- Loop band on tracks --- */
 .tl-loop-band-tracks {
   position: absolute;

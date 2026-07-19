@@ -61,6 +61,11 @@ export default function TimelineMinimal() {
     setTrimState(next);
   }, []);
 
+  // --- Fade drag state ---
+  const [fadeDrag, setFadeDrag] = useState<{ clipId: number; side: "in" | "out"; initialValue: number; startBeat: number; durationBeats: number } | null>(null);
+  const fadeDragRef = useRef(fadeDrag);
+  fadeDragRef.current = fadeDrag;
+
   // --- Loop drag state ---
   const [loopDrag, setLoopDrag] = useState<"start" | "end" | null>(null);
   const [dragBeat, setDragBeat] = useState(0);
@@ -340,6 +345,54 @@ export default function TimelineMinimal() {
     },
     [pps, updateTrim]
   );
+
+  const handleFadeStart = useCallback((e: React.MouseEvent, clip: typeof clips[0], side: "in" | "out") => {
+    e.stopPropagation();
+    e.preventDefault();
+    setFadeDrag({
+      clipId: clip.clipId,
+      side,
+      initialValue: side === "in" ? clip.fadeIn : clip.fadeOut,
+      startBeat: clip.startBeat,
+      durationBeats: clip.durationBeats,
+    });
+
+    const onMove = (ev: globalThis.MouseEvent) => {
+      const el = tracksRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const scroll = el.scrollLeft;
+      const d = fadeDragRef.current;
+      if (!d) return;
+      const clipStartPx = d.startBeat * pps;
+      const clipEndPx = (d.startBeat + d.durationBeats) * pps;
+      const mousePx = ev.clientX - rect.left + scroll;
+      if (d.side === "in") {
+        const newFade = Math.max(0, Math.min(d.durationBeats / 2, (mousePx - clipStartPx) / pps));
+        setFadeDrag(prev => prev ? { ...prev, initialValue: newFade } : null);
+      } else {
+        const newFade = Math.max(0, Math.min(d.durationBeats / 2, (clipEndPx - mousePx) / pps));
+        setFadeDrag(prev => prev ? { ...prev, initialValue: newFade } : null);
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const d = fadeDragRef.current;
+      if (d) {
+        const method = d.side === "in" ? "project.setClipFadeIn" : "project.setClipFadeOut";
+        rpc.call(method, { clipId: d.clipId, [d.side === "in" ? "fadeIn" : "fadeOut"]: d.initialValue }).then(() => {
+          useProjectStore.getState().syncDirtyFlag(rpc);
+          useProjectStore.getState().syncSnapshot(rpc);
+        }).catch(() => {});
+      }
+      setFadeDrag(null);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [pps]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const d = dragRef.current;
@@ -680,7 +733,19 @@ export default function TimelineMinimal() {
                         {!clip.isMidi && (
                           <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
                         )}
+                        {(clip.fadeIn > 0 || clip.fadeOut > 0 || (fadeDrag?.clipId === clip.clipId)) && (
+                          <svg viewBox="0 0 100 48" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+                            <path
+                              d={`M0,48 L${((fadeDrag?.clipId === clip.clipId && fadeDrag.side === "in" ? fadeDrag.initialValue : clip.fadeIn) / clip.durationBeats) * 100},0 L${100 - ((fadeDrag?.clipId === clip.clipId && fadeDrag.side === "out" ? fadeDrag.initialValue : clip.fadeOut) / clip.durationBeats) * 100},0 L100,48`}
+                              fill="rgba(255,255,255,0.1)"
+                              stroke="rgba(255,255,255,0.3)"
+                              strokeWidth="1"
+                            />
+                          </svg>
+                        )}
                         <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{clip.name ?? `Clip ${clip.clipId}`}</span>
+                        <div className="fade-handle fade-handle-in" onMouseDown={(e) => handleFadeStart(e, clip, "in")} />
+                        <div className="fade-handle fade-handle-out" onMouseDown={(e) => handleFadeStart(e, clip, "out")} />
                         <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} />
                         <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} />
                       </div>
