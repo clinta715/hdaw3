@@ -29,6 +29,7 @@
   border-radius: 4px;
   cursor: pointer;
   transition: background 0.12s;
+  position: relative;
 }
 
 .th-row:hover {
@@ -156,4 +157,39 @@
 
 .meter-fill.meter-clip {
   background: var(--vu-red);
+}
+
+.th-monitor {
+  background: #3a3a3e;
+  color: #aaa;
+}
+
+.th-monitor.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.th-midi-ch {
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.th-midi-ch:hover {
+  color: #d97706;
+}
+
+.th-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  background: transparent;
+}
+
+.th-resize-handle:hover {
+  background: rgba(217, 119, 6, 0.3);
 }

@@ -21,6 +21,38 @@ export default function TrackHeaders() {
     rpc.call("project.setTrackArmed", { trackIndex: idx, armed: !armed }).catch(console.error);
   };
 
+  const handleMonitor = (idx: number, monitor: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    rpc.call("project.setTrackInputMonitor", { trackIndex: idx, monitor: !monitor }).catch(console.error);
+  };
+
+  const handleColorChange = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = "#" + tracks[idx].color.toString(16).padStart(6, "0");
+    input.addEventListener("input", () => {
+      const hex = input.value.replace("#", "");
+      const color = parseInt(hex, 16);
+      rpc.call("project.setTrackColor", { trackIndex: idx, color });
+    });
+    input.click();
+  };
+
+  const handleHeightDrag = (idx: number, startY: number, startH: number) => {
+    const onMove = (me: MouseEvent) => {
+      const delta = me.clientY - startY;
+      const newH = Math.max(40, Math.min(200, startH + delta));
+      rpc.call("project.setTrackHeight", { trackIndex: idx, height: newH });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   function colorStr(c: number): string {
     return "#" + c.toString(16).padStart(6, "0");
   }
@@ -39,7 +71,12 @@ export default function TrackHeaders() {
       )}
       {tracks.map((track) => (
         <div key={track.index} className="th-row">
-          <div className="th-color" style={{ background: colorStr(track.color) }} />
+          <div
+            className="th-color"
+            style={{ background: colorStr(track.color), cursor: "pointer" }}
+            onClick={(e) => handleColorChange(track.index, e)}
+            title="Click to change track color"
+          />
           <div className="th-info">
             <div className="th-name">{track.name}</div>
             <div className="th-type">{track.type}</div>
@@ -67,16 +104,46 @@ export default function TrackHeaders() {
               >
                 R
               </button>
+              <button
+                className={`th-btn th-monitor${track.inputMonitor ? " active" : ""}`}
+                onClick={(e) => handleMonitor(track.index, track.inputMonitor, e)}
+                title="Input Monitor"
+              >
+                In
+              </button>
             </div>
           )}
           <div className="th-values">
             <span className="th-vol">V:{Math.round(track.volume * 100)}%</span>
             <span className="th-pan">{formatPan(track.pan)}</span>
+            <span
+              className="th-midi-ch"
+              title="MIDI Channel (click to edit)"
+              onClick={(e) => {
+                e.stopPropagation();
+                const ch = prompt("MIDI Channel (1-16):", String(track.midiChannel + 1));
+                if (ch) {
+                  const num = parseInt(ch, 10);
+                  if (num >= 1 && num <= 16) {
+                    rpc.call("project.setTrackMidiChannel", { trackIndex: track.index, channel: num - 1 });
+                  }
+                }
+              }}
+            >
+              Ch{track.midiChannel + 1}
+            </span>
           </div>
           <div className="th-meters">
             <MeterBar value={track.meterL} />
             <MeterBar value={track.meterR} />
           </div>
+          <div
+            className="th-resize-handle"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleHeightDrag(track.index, e.clientY, track.height);
+            }}
+          />
         </div>
       ))}
     </div>
