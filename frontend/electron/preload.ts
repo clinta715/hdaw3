@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("hdaw", {
     ipcRenderer.invoke("show-open-dialog", options),
   showSaveDialog: (options: Electron.SaveDialogOptions) =>
     ipcRenderer.invoke("show-save-dialog", options),
+  readDirectory: (dirPath: string) =>
+    ipcRenderer.invoke("fs-readdir", dirPath),
 });

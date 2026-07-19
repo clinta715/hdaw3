@@ -14,8 +14,10 @@ import FXChain from "./components/FXChain";
 import ModulationPanel from "./components/ModulationPanel";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
+import FileBrowser from "./components/FileBrowser";
 import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
+import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
 
 function App() {
@@ -25,6 +27,8 @@ function App() {
   const setActiveBottomTab = useUiStore((s) => s.setActiveBottomTab);
   const snapshot = useProjectStore((s) => s.snapshot);
   const prevTabRef = useRef(activeBottomTab);
+  const browserVisible = useBrowserStore((s) => s.visible);
+  const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
 
   // Auto-switch bottom tab when a single clip is selected
   useEffect(() => {
@@ -62,12 +66,30 @@ function App() {
     <div className="app-shell">
       <header className="transport-bar">
         <TransportBar />
+        <button
+          className="browser-toggle-btn"
+          onClick={toggleBrowser}
+          title="Toggle File Browser (Ctrl+B)"
+          style={{
+            background: browserVisible ? "#2a3a4a" : "none",
+            border: "1px solid #444",
+            color: browserVisible ? "#fff" : "#888",
+            padding: "4px 8px",
+            borderRadius: "3px",
+            cursor: "pointer",
+            fontSize: "12px",
+            marginLeft: "8px",
+          }}
+        >
+          📁
+        </button>
       </header>
       <aside className="track-headers">
         <TrackHeaders />
       </aside>
-      <main className="timeline">
+      <main className="timeline" style={{ display: "flex", flexDirection: "row" }}>
         <TimelineMinimal />
+        <FileBrowser />
       </main>
       {useUiStore((s) => s.selectedClipIds.size === 1) && (
         <div className="clip-editor-container">

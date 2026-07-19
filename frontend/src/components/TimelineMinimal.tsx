@@ -465,6 +465,46 @@ export default function TimelineMinimal() {
   // --- File drag-and-drop import ---
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+
+    // Check for internal file browser drag
+    const hdawData = e.dataTransfer.getData("application/hdaw-file");
+    if (hdawData) {
+      try {
+        const { path: filePath, name: fileName } = JSON.parse(hdawData);
+        const rect = e.currentTarget.getBoundingClientRect();
+        const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
+        const trackIdx = Math.floor(y / TRACK_HEIGHT);
+        const elScroll = tracksRef.current?.scrollLeft ?? 0;
+        const beatX = (e.clientX - rect.left + elScroll) / pps;
+        const { snapEnabled, snapDivision } = useUiStore.getState();
+        const startBeat = snapEnabled ? Math.round(beatX / snapDivision) * snapDivision : beatX;
+
+        const ext = "." + fileName.split(".").pop()?.toLowerCase();
+        const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
+        const midiExts = [".mid", ".midi"];
+
+        if (audioExts.includes(ext)) {
+          rpc.call("project.addAudioClip", {
+            trackIndex: Math.max(0, trackIdx),
+            start: Math.max(0, startBeat),
+            duration: 4,
+            sourceFile: filePath,
+            name: fileName,
+          }).catch(() => {});
+        } else if (midiExts.includes(ext)) {
+          rpc.call("project.addMidiClip", {
+            trackIndex: Math.max(0, trackIdx),
+            start: Math.max(0, startBeat),
+            duration: 4,
+            name: fileName,
+          }).catch(() => {});
+        }
+        useProjectStore.getState().syncSnapshot(rpc);
+      } catch {}
+      return;
+    }
+
+    // External file drop (from OS)
     const files = Array.from(e.dataTransfer.files);
     const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
     const tr = useTransportStore.getState().transport;
@@ -482,7 +522,7 @@ export default function TimelineMinimal() {
       }
     }
     useProjectStore.getState().syncSnapshot(rpc);
-  }, [rpc]);
+  }, [rpc, pps]);
 
   // --- Context menu handler ---
   const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {

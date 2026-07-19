@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcess, spawn } from "child_process";
 import * as path from "path";
 import * as net from "net";
+import * as fs from "fs";
 
 const DEFAULT_PORT = 8766;
 const MAX_CRASHES = 3;
@@ -137,6 +138,19 @@ function setupIpc() {
   ipcMain.handle("show-save-dialog", async (_event, options: Electron.SaveDialogOptions) => {
     if (!mainWindow) return { canceled: true, filePath: "" };
     return dialog.showSaveDialog(mainWindow, options);
+  });
+
+  ipcMain.handle("fs-readdir", async (_event, dirPath: string) => {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      return entries.map((e) => ({
+        name: e.name,
+        isDir: e.isDirectory(),
+        path: path.join(dirPath, e.name),
+      }));
+    } catch {
+      return [];
+    }
   });
 }
 

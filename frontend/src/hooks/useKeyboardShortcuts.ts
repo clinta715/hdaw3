@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { rpc } from "../rpc";
+import { useBrowserStore } from "../store/browserStore";
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -44,6 +45,12 @@ export function useKeyboardShortcuts() {
       if (ctrl && shift && e.key === "T") {
         e.preventDefault();
         rpc.call("project.addTrack");
+      }
+
+      // UI — Ctrl+B: toggle file browser
+      if (ctrl && e.key === "b") {
+        e.preventDefault();
+        useBrowserStore.getState().toggleVisible();
       }
     };
 
