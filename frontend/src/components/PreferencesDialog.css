@@ -1,0 +1,10 @@
+.preferences-dialog { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; width: 480px; max-height: 80vh; display: flex; flex-direction: column; }
+.pref-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.pref-header h2 { margin: 0; font-size: 16px; color: var(--text-primary); }
+.pref-close { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; }
+.pref-body { padding: 16px; overflow-y: auto; }
+.pref-section { margin-bottom: 20px; }
+.pref-section h3 { margin: 0 0 8px; font-size: 14px; color: var(--accent); }
+.pref-section label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.pref-section select { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text-primary); }
+.pref-note { font-size: 12px; color: var(--text-muted); }
