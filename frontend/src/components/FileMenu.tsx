@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
+import ImportDialog from "./ImportDialog";
+import ExportDialog from "./ExportDialog";
 import "./FileMenu.css";
 
 const checkUnsaved = () => {
@@ -13,6 +15,8 @@ const checkUnsaved = () => {
 export default function FileMenu() {
   const [open, setOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [importMode, setImportMode] = useState<"audio" | "midi" | null>(null);
+  const [showExport, setShowExport] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const recentRef = useRef<HTMLDivElement>(null);
 
@@ -87,31 +91,20 @@ export default function FileMenu() {
     useProjectStore.getState().addRecentProject(path);
   });
 
-  const handleImportAudio = () => doAction(async () => {
-    const path = prompt("Audio file path:");
-    if (!path) return;
-    const trackStr = prompt("Track index (0-based):", "0");
-    if (trackStr === null) return;
-    const trackIndex = parseInt(trackStr, 10);
-    if (isNaN(trackIndex)) return;
-    await rpc.call("project.addAudioClip", { trackIndex, sourceFile: path }).catch(() => {});
-  });
+  const handleImportAudio = () => {
+    setOpen(false);
+    setImportMode("audio");
+  };
 
-  const handleImportMidi = () => doAction(async () => {
-    const path = prompt("MIDI file path:");
-    if (!path) return;
-    const trackStr = prompt("Track index (0-based):", "0");
-    if (trackStr === null) return;
-    const trackIndex = parseInt(trackStr, 10);
-    if (isNaN(trackIndex)) return;
-    await rpc.call("project.addMidiClip", { trackIndex, sourceFile: path }).catch(() => {});
-  });
+  const handleImportMidi = () => {
+    setOpen(false);
+    setImportMode("midi");
+  };
 
-  const handleExportAudio = () => doAction(async () => {
-    const path = prompt("Export path:", "export.wav");
-    if (!path) return;
-    await rpc.call("export.audio", { outputPath: path }).catch(() => {});
-  });
+  const handleExportAudio = () => {
+    setOpen(false);
+    setShowExport(true);
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -191,6 +184,18 @@ export default function FileMenu() {
             <span className="fm-shortcut">Ctrl+E</span>
           </button>
         </div>
+      )}
+      {importMode && (
+        <ImportDialog
+          mode={importMode}
+          onClose={() => setImportMode(null)}
+          onImport={() => {
+            doAction(async () => {});
+          }}
+        />
+      )}
+      {showExport && (
+        <ExportDialog onClose={() => setShowExport(false)} />
       )}
     </div>
   );

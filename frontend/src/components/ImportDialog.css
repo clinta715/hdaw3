@@ -1,0 +1,124 @@
+.id-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.id-dialog {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  min-width: 380px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.id-title {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.id-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.id-input {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  outline: none;
+}
+
+.id-input:focus {
+  border-color: var(--accent-dim);
+}
+
+.id-browse {
+  height: 26px;
+  padding: 0 10px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.id-browse:hover {
+  background: var(--bg-panel);
+  border-color: var(--accent-dim);
+}
+
+.id-select {
+  flex: 1;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  outline: none;
+}
+
+.id-select:focus {
+  border-color: var(--accent-dim);
+}
+
+.id-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.id-btn {
+  height: 28px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.id-btn-cancel {
+  background: var(--bg-header);
+  color: var(--text-primary);
+}
+
+.id-btn-cancel:hover {
+  background: var(--bg-panel);
+}
+
+.id-btn-import {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  border-color: var(--accent-dim);
+}
+
+.id-btn-import:hover {
+  background: var(--accent-bright);
+  color: var(--bg-window);
+}
