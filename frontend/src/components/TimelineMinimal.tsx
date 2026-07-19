@@ -462,6 +462,28 @@ export default function TimelineMinimal() {
 
   const handleMouseLeave = useCallback(() => updateDrag(null), [updateDrag]);
 
+  // --- File drag-and-drop import ---
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
+    const tr = useTransportStore.getState().transport;
+    for (const file of files) {
+      const ext = "." + file.name.split(".").pop()?.toLowerCase();
+      if (audioExts.includes(ext)) {
+        const startBeat = tr.currentTimeSeconds * (tr.bpm / 60);
+        rpc.call("project.addAudioClip", {
+          trackIndex: 0,
+          start: startBeat,
+          duration: 4,
+          sourceFile: file.path,
+          name: file.name,
+        }).catch(() => {});
+      }
+    }
+    useProjectStore.getState().syncSnapshot(rpc);
+  }, [rpc]);
+
   // --- Context menu handler ---
   const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
     e.preventDefault();
@@ -612,6 +634,26 @@ export default function TimelineMinimal() {
       } else if (e.key === "Escape") {
         setContextMenu(null);
         setEmptyContextMenu(null);
+      } else if (e.key === "F" && e.shiftKey) {
+        const snap = useProjectStore.getState().snapshot;
+        const selIds = useUiStore.getState().selectedClipIds;
+        const selectedClips = snap?.clips.filter((c) => selIds.has(c.clipId));
+        if (selectedClips && selectedClips.length > 0) {
+          const minStart = Math.min(...selectedClips.map((c) => c.startBeat));
+          const maxEnd = Math.max(...selectedClips.map((c) => c.startBeat + c.durationBeats));
+          const range = maxEnd - minStart;
+          if (range > 0) {
+            const cw = tracksRef.current?.clientWidth ?? 800;
+            const newPps = (cw * 0.8) / range;
+            setPps(Math.max(MIN_PPS, Math.min(MAX_PPS, newPps)));
+            requestAnimationFrame(() => {
+              if (tracksRef.current) {
+                tracksRef.current.scrollLeft = minStart * pps - cw * 0.1;
+              }
+            });
+          }
+        }
+        e.preventDefault();
       } else if (e.key === " " && e.target === document.body) {
         e.preventDefault();
         if (isPlaying)
@@ -654,7 +696,7 @@ export default function TimelineMinimal() {
       </div>
 
       {/* Body */}
-      <div className="tl-body" onWheel={onWheel}>
+      <div className="tl-body" onWheel={onWheel} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         {/* Ruler */}
         <div className={`tl-ruler${isScrubbing ? " tl-ruler--scrubbing" : ""}`} ref={rulerRef} style={{ height: RULER_HEIGHT }} onMouseDown={handleRulerMouseDown} onContextMenu={(e) => {
           e.preventDefault();
