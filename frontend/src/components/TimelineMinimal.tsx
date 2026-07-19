@@ -79,7 +79,7 @@ export default function TimelineMinimal() {
   rubberBandRef.current = rubberBand;
 
   // --- Context menu ---
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clip: typeof clips[0] } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; clip?: typeof clips[0]; markerIndex?: number } | null>(null);
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number } | null>(null);
 
   useEffect(() => {
@@ -467,7 +467,13 @@ export default function TimelineMinimal() {
     e.preventDefault();
     e.stopPropagation();
     useUiStore.getState().selectClip(clip.clipId, clip.trackIndex);
-    setContextMenu({ x: e.clientX, y: e.clientY, clip });
+    setContextMenu({ x: e.clientX, y: e.clientY, type: "clip", clip });
+  }, []);
+
+  const handleMarkerContextMenu = useCallback((e: React.MouseEvent, markerIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, type: "marker", markerIndex });
   }, []);
 
   const handleDeleteClip = useCallback(() => {
@@ -693,6 +699,7 @@ export default function TimelineMinimal() {
                   const sec = m.time * 60 / transport.bpm;
                   rpc.call("transport.seekToSeconds", { seconds: sec }).catch(() => {});
                 }}
+                onContextMenu={(e) => handleMarkerContextMenu(e, m.index)}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   const newName = prompt("Marker name:", m.name);
@@ -835,67 +842,97 @@ export default function TimelineMinimal() {
           onClick={(e) => e.stopPropagation()}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button onClick={handleDeleteClip}>
-            Delete
-          </button>
-          <button onClick={handleDuplicateClip}>
-            Duplicate
-          </button>
-          <button onClick={handleSplitClip}>
-            Split
-          </button>
-          <button onClick={() => { useUiStore.getState().setClipboard([contextMenu.clip]); setContextMenu(null); }}>
-            Copy
-          </button>
-          <button onClick={() => {
-            useUiStore.getState().setClipboard([contextMenu.clip]);
-            setContextMenu(null);
-            rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
-              rpc.call("project.removeClip", { clipId: contextMenu.clip.clipId })
-            ).then(() => rpc.call("project.endTransaction")).then(() => {
-              useProjectStore.getState().syncDirtyFlag(rpc);
-              useProjectStore.getState().syncSnapshot(rpc);
-            }).catch(() => {});
-          }}>
-            Cut
-          </button>
-          <div className="ctx-separator" />
-          <button onClick={() => {
-            const clipId = [...selectedClipIds][0];
-            rpc.call("project.sliceClipAtPlayhead", { clipId });
-            setContextMenu(null);
-          }}>
-            Slice at Playhead
-          </button>
-          <button onClick={() => {
-            const clipId = [...selectedClipIds][0];
-            rpc.call("project.sliceClipAtTransients", { clipId });
-            setContextMenu(null);
-          }}>
-            Slice at Transients
-          </button>
-          <div className="ctx-separator" />
-          <button onClick={() => {
-            const clipId = [...selectedClipIds][0];
-            rpc.call("project.copyAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
-            setContextMenu(null);
-          }}>
-            Copy Region
-          </button>
-          <button onClick={() => {
-            const clipId = [...selectedClipIds][0];
-            rpc.call("project.cutAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
-            setContextMenu(null);
-          }}>
-            Cut Region
-          </button>
-          <button onClick={() => {
-            const clipId = [...selectedClipIds][0];
-            rpc.call("project.pasteAudioClipRegion", { clipId, pasteTime: transport.currentTimeSeconds });
-            setContextMenu(null);
-          }}>
-            Paste Region
-          </button>
+          {contextMenu.type === "clip" && contextMenu.clip && (
+            <>
+              <button onClick={handleDeleteClip}>
+                Delete
+              </button>
+              <button onClick={handleDuplicateClip}>
+                Duplicate
+              </button>
+              <button onClick={handleSplitClip}>
+                Split
+              </button>
+              <button onClick={() => { useUiStore.getState().setClipboard([contextMenu.clip!]); setContextMenu(null); }}>
+                Copy
+              </button>
+              <button onClick={() => {
+                useUiStore.getState().setClipboard([contextMenu.clip!]);
+                setContextMenu(null);
+                rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
+                  rpc.call("project.removeClip", { clipId: contextMenu.clip!.clipId })
+                ).then(() => rpc.call("project.endTransaction")).then(() => {
+                  useProjectStore.getState().syncDirtyFlag(rpc);
+                  useProjectStore.getState().syncSnapshot(rpc);
+                }).catch(() => {});
+              }}>
+                Cut
+              </button>
+              <div className="ctx-separator" />
+              <button onClick={() => {
+                const clipId = [...selectedClipIds][0];
+                rpc.call("project.sliceClipAtPlayhead", { clipId });
+                setContextMenu(null);
+              }}>
+                Slice at Playhead
+              </button>
+              <button onClick={() => {
+                const clipId = [...selectedClipIds][0];
+                rpc.call("project.sliceClipAtTransients", { clipId });
+                setContextMenu(null);
+              }}>
+                Slice at Transients
+              </button>
+              <div className="ctx-separator" />
+              <button onClick={() => {
+                const clipId = [...selectedClipIds][0];
+                rpc.call("project.copyAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
+                setContextMenu(null);
+              }}>
+                Copy Region
+              </button>
+              <button onClick={() => {
+                const clipId = [...selectedClipIds][0];
+                rpc.call("project.cutAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
+                setContextMenu(null);
+              }}>
+                Cut Region
+              </button>
+              <button onClick={() => {
+                const clipId = [...selectedClipIds][0];
+                rpc.call("project.pasteAudioClipRegion", { clipId, pasteTime: transport.currentTimeSeconds });
+                setContextMenu(null);
+              }}>
+                Paste Region
+              </button>
+            </>
+          )}
+          {contextMenu.type === "marker" && (
+            <>
+              <button onClick={() => {
+                const marker = markers.find(m => m.index === contextMenu.markerIndex);
+                const name = prompt("Marker name:", marker?.name ?? "");
+                if (name != null && contextMenu.markerIndex != null) {
+                  rpc.call("project.setMarkerName", { index: contextMenu.markerIndex, name }).then(() => {
+                    useMarkerStore.getState().syncMarkers(rpc);
+                  }).catch(() => {});
+                }
+                setContextMenu(null);
+              }}>
+                Rename Marker
+              </button>
+              <button className="ctx-danger" onClick={() => {
+                if (contextMenu.markerIndex != null) {
+                  rpc.call("project.removeMarker", { index: contextMenu.markerIndex }).then(() => {
+                    useMarkerStore.getState().syncMarkers(rpc);
+                  }).catch(() => {});
+                }
+                setContextMenu(null);
+              }}>
+                Delete Marker
+              </button>
+            </>
+          )}
         </div>
       )}
 

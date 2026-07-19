@@ -293,6 +293,9 @@
   margin: 4px 0;
 }
 
+.ctx-danger { color: var(--danger, #e53935); }
+.ctx-danger:hover { background: rgba(229, 57, 53, 0.15); }
+
 /* --- Rubber band selection --- */
 .tl-rubber-band {
   position: absolute;
