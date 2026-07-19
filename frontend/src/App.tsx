@@ -30,7 +30,7 @@ function App() {
       <main className="timeline">
         <TimelineMinimal />
       </main>
-      {useUiStore((s) => s.selectedClipId) != null && (
+      {useUiStore((s) => s.selectedClipIds.size === 1) && (
         <div className="clip-editor-container">
           <ClipEditor />
         </div>

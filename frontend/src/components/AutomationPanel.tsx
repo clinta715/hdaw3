@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function AutomationPanel({ rpc }: Props) {
-  const { selectedClipId, selectedTrackIndex } = useUiStore((s) => ({ selectedClipId: s.selectedClipId, selectedTrackIndex: s.selectedTrackIndex }));
+  const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const [automatableParams, setAutomatableParams] = useState<AutomatableParamSnapshot[]>([]);
   const { lanes, pointsByLane, activeTrackIndex, loading, fetchForTrack } = useAutomationStore();
 

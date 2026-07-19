@@ -311,23 +311,28 @@ export default function TimelineMinimal() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
 
-      const { selectedClipId } = useUiStore.getState();
+      const { selectedClipIds } = useUiStore.getState();
       const isPlaying = useTransportStore.getState().transport.isPlaying;
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedClipId != null) {
+        if (selectedClipIds.size > 0) {
           e.preventDefault();
           (async () => {
-            await rpc.call("project.removeClip", { clipId: selectedClipId }).catch(() => {});
+            for (const id of selectedClipIds) {
+              await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
+            }
+            useUiStore.getState().clearSelection();
             await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
-        if (selectedClipId != null) {
+        if (selectedClipIds.size > 0) {
           e.preventDefault();
           (async () => {
-            await rpc.call("project.duplicateClip", { clipId: selectedClipId }).catch(() => {});
+            for (const id of selectedClipIds) {
+              await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
+            }
             await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
           })();

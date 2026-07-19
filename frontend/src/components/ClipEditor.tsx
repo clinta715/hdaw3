@@ -5,7 +5,10 @@ import GainEnvelopeEditor from "./GainEnvelopeEditor";
 import "./ClipEditor.css";
 
 export default function ClipEditor() {
-  const clipId = useUiStore((s) => s.selectedClipId);
+  const clipId = useUiStore((s) => {
+    const ids = s.selectedClipIds;
+    return ids.size === 1 ? ids.values().next().value! : null;
+  });
   const snapshot = useProjectStore((s) => s.snapshot);
   const clip = clipId ? snapshot?.clips.find((c) => c.clipId === clipId) : null;
 
