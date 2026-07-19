@@ -859,6 +859,43 @@ export default function TimelineMinimal() {
           }}>
             Cut
           </button>
+          <div className="ctx-separator" />
+          <button onClick={() => {
+            const clipId = [...selectedClipIds][0];
+            rpc.call("project.sliceClipAtPlayhead", { clipId });
+            setContextMenu(null);
+          }}>
+            Slice at Playhead
+          </button>
+          <button onClick={() => {
+            const clipId = [...selectedClipIds][0];
+            rpc.call("project.sliceClipAtTransients", { clipId });
+            setContextMenu(null);
+          }}>
+            Slice at Transients
+          </button>
+          <div className="ctx-separator" />
+          <button onClick={() => {
+            const clipId = [...selectedClipIds][0];
+            rpc.call("project.copyAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
+            setContextMenu(null);
+          }}>
+            Copy Region
+          </button>
+          <button onClick={() => {
+            const clipId = [...selectedClipIds][0];
+            rpc.call("project.cutAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
+            setContextMenu(null);
+          }}>
+            Cut Region
+          </button>
+          <button onClick={() => {
+            const clipId = [...selectedClipIds][0];
+            rpc.call("project.pasteAudioClipRegion", { clipId, pasteTime: transport.currentTimeSeconds });
+            setContextMenu(null);
+          }}>
+            Paste Region
+          </button>
         </div>
       )}
 

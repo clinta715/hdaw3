@@ -287,6 +287,12 @@
   background: var(--accent-dim, rgba(255, 152, 0, 0.15));
 }
 
+.ctx-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
 /* --- Rubber band selection --- */
 .tl-rubber-band {
   position: absolute;
