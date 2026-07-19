@@ -106,3 +106,9 @@ export interface MetersPayload {
   master: MeterLevels;
   tracks: MeterLevels[];
 }
+
+export interface WaveformPeaks {
+  peaks: number[];  // interleaved min/max pairs
+  sampleRate: number;
+  numSamples: number;
+}

@@ -1,5 +1,6 @@
 import React from "react";
-import { ClipSnapshot } from "../rpc/types";
+import { ClipSnapshot, WaveformPeaks } from "../rpc/types";
+import { rpc } from "../rpc";
 
 interface Props {
   clip: ClipSnapshot;
@@ -7,9 +8,34 @@ interface Props {
   height: number;
 }
 
+const peaksCache = new Map<number, WaveformPeaks>();
+
 export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const dpr = window.devicePixelRatio || 1;
+  const [peaks, setPeaks] = React.useState<WaveformPeaks | null>(() => peaksCache.get(clip.clipId) ?? null);
+  const [fetched, setFetched] = React.useState(() => peaksCache.has(clip.clipId));
+
+  React.useEffect(() => {
+    if (peaksCache.has(clip.clipId)) {
+      setPeaks(peaksCache.get(clip.clipId)!);
+      setFetched(true);
+      return;
+    }
+    let cancelled = false;
+    rpc.call("read.getWaveformPeaks", { clipId: clip.clipId })
+      .then((result) => {
+        if (cancelled) return;
+        const data = result as WaveformPeaks;
+        peaksCache.set(clip.clipId, data);
+        setPeaks(data);
+        setFetched(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFetched(true);
+      });
+    return () => { cancelled = true; };
+  }, [clip.clipId]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -20,37 +46,69 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
-
-    const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, "rgba(200, 140, 60, 0.25)");
-    grad.addColorStop(0.5, "rgba(220, 160, 80, 0.50)");
-    grad.addColorStop(1, "rgba(200, 140, 60, 0.25)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
+    ctx.clearRect(0, 0, width, height);
 
     const mid = height / 2;
-    ctx.strokeStyle = "rgba(230, 180, 100, 0.70)";
-    ctx.lineWidth = 1.5;
-    const segments = Math.min(width, 120);
+    const grad = ctx.createLinearGradient(0, 0, 0, height);
+    grad.addColorStop(0, "rgba(200, 140, 60, 0.15)");
+    grad.addColorStop(0.5, "rgba(220, 160, 80, 0.35)");
+    grad.addColorStop(1, "rgba(200, 140, 60, 0.15)");
 
-    ctx.beginPath();
-    for (let i = 0; i < segments; i++) {
-      const x = (i / segments) * width;
-      const n = 0.5 + Math.sin(i * 0.3) * 0.25 + Math.sin(i * 0.7) * 0.15 + (Math.random() - 0.5) * 0.1;
-      const y = mid + (n - 0.5) * height * 0.65;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    }
-    ctx.stroke();
+    if (peaks && peaks.peaks.length >= 2) {
+      const pairs = peaks.peaks.length / 2;
+      const step = Math.max(1, Math.floor(pairs / width));
+      const drawn: { x: number; min: number; max: number }[] = [];
+      for (let i = 0; i < pairs; i += step) {
+        const idx = i * 2;
+        const min = peaks.peaks[idx];
+        const max = peaks.peaks[idx + 1];
+        drawn.push({ x: (i / pairs) * width, min, max });
+      }
+      if (drawn.length > 0 && drawn[drawn.length - 1].x < width - 1) {
+        const last = drawn[drawn.length - 1];
+        drawn.push({ x: width, min: last.min, max: last.max });
+      }
 
-    ctx.beginPath();
-    for (let i = 0; i < segments; i++) {
-      const x = (i / segments) * width;
-      const n = 0.5 + Math.sin(i * 0.3) * 0.25 + Math.sin(i * 0.7) * 0.15 + (Math.random() - 0.5) * 0.1;
-      const y = mid - (n - 0.5) * height * 0.65;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, mid);
+      for (const p of drawn) {
+        ctx.lineTo(p.x, mid - p.max * mid * 0.9);
+      }
+      for (let i = drawn.length - 1; i >= 0; i--) {
+        ctx.lineTo(drawn[i].x, mid - drawn[i].min * mid * 0.9);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(230, 180, 100, 0.70)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < drawn.length; i++) {
+        const p = drawn[i];
+        const y = mid - p.max * mid * 0.9;
+        i === 0 ? ctx.moveTo(p.x, y) : ctx.lineTo(p.x, y);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (let i = 0; i < drawn.length; i++) {
+        const p = drawn[i];
+        const y = mid - p.min * mid * 0.9;
+        i === 0 ? ctx.moveTo(p.x, y) : ctx.lineTo(p.x, y);
+      }
+      ctx.stroke();
+    } else {
+      // Fallback: subtle flat line when no peak data
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "rgba(230, 180, 100, 0.30)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, mid);
+      ctx.lineTo(width, mid);
+      ctx.stroke();
     }
-    ctx.stroke();
-  }, [clip, width, height, dpr]);
+  }, [clip, width, height, dpr, peaks]);
 
   return <canvas ref={canvasRef} style={{ width, height, display: "block" }} />;
 };
