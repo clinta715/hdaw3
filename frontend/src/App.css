@@ -22,6 +22,7 @@ html, body, #root { height: 100%; overflow: hidden; }
   grid-area: transport;
   background: var(--bg-header);
   border-bottom: 1px solid var(--border);
+  overflow: visible;
 }
 
 .track-headers {
