@@ -268,3 +268,18 @@
 .clip-context-menu button:hover {
   background: var(--accent-dim, rgba(255, 152, 0, 0.15));
 }
+
+/* --- Rubber band selection --- */
+.tl-rubber-band {
+  position: absolute;
+  border: 1px solid var(--accent, #d97706);
+  background: rgba(217, 119, 6, 0.15);
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* --- Selected clip --- */
+.tl-clip--selected {
+  outline: 2px solid var(--accent, #d97706);
+  outline-offset: -1px;
+}

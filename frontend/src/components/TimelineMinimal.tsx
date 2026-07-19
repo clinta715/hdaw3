@@ -36,6 +36,7 @@ export default function TimelineMinimal() {
 
   const snapshot = useProjectStore((s) => s.snapshot);
   const transport = useTransportStore((s) => s.transport);
+  const selectedClipIds = useUiStore((s) => s.selectedClipIds);
   const tracks = snapshot?.tracks ?? [];
   const clips = snapshot?.clips ?? [];
 
@@ -62,6 +63,11 @@ export default function TimelineMinimal() {
   const [loopDrag, setLoopDrag] = useState<"start" | "end" | null>(null);
   const [dragBeat, setDragBeat] = useState(0);
   const dragBeatRef = useRef(0);
+
+  // --- Rubber band state ---
+  const [rubberBand, setRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const rubberBandRef = useRef(rubberBand);
+  rubberBandRef.current = rubberBand;
 
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clip: typeof clips[0] } | null>(null);
@@ -198,12 +204,65 @@ export default function TimelineMinimal() {
     window.addEventListener("mouseup", onUp);
   }, [pps, transport.loopStart, transport.loopEnd, dragBeat]);
 
+  // --- Rubber band handler ---
+  const handleRubberBandStart = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest(".tl-clip")) return;
+    const el = tracksRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left + el.scrollLeft;
+    const y = e.clientY - rect.top + el.scrollTop;
+    setRubberBand({ x1: x, y1: y, x2: x, y2: y });
+
+    const onMove = (ev: globalThis.MouseEvent) => {
+      const r = el.getBoundingClientRect();
+      setRubberBand(prev => prev ? {
+        ...prev,
+        x2: ev.clientX - r.left + el.scrollLeft,
+        y2: ev.clientY - r.top + el.scrollTop,
+      } : null);
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      const rb = rubberBandRef.current;
+      if (rb) {
+        const minX = Math.min(rb.x1, rb.x2);
+        const maxX = Math.max(rb.x1, rb.x2);
+        const minY = Math.min(rb.y1, rb.y2);
+        const maxY = Math.max(rb.y1, rb.y2);
+        const selected = new Set<number>();
+        for (const clip of clips) {
+          const cx = clip.startBeat * pps;
+          const cy = clip.trackIndex * TRACK_HEIGHT;
+          const cw = clip.durationBeats * pps;
+          const ch = TRACK_HEIGHT;
+          if (cx + cw >= minX && cx <= maxX && cy + ch >= minY && cy <= maxY) {
+            selected.add(clip.clipId);
+          }
+        }
+        if (selected.size > 0) {
+          useUiStore.setState({ selectedClipIds: selected });
+        }
+      }
+      setRubberBand(null);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [clips, pps]);
+
   // --- Clip drag handlers (Phase 3) ---
+  const dragSelectedIdsRef = useRef<Set<number>>(new Set());
+
   const handleClipMouseDown = useCallback(
     (e: React.MouseEvent, clipId: number, trackIndex: number, startBeat: number) => {
       e.preventDefault();
       const el = e.currentTarget as HTMLElement;
       const r = el.getBoundingClientRect();
+      const selected = useUiStore.getState().selectedClipIds;
+      dragSelectedIdsRef.current = selected.has(clipId) ? new Set(selected) : new Set([clipId]);
       updateDrag({ clipId, startTrackIndex: trackIndex, startBeat, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top, mouseX: e.clientX, mouseY: e.clientY });
     },
     [updateDrag]
@@ -291,9 +350,20 @@ export default function TimelineMinimal() {
     const newStart = Math.max(0, (relX - d.offsetX) / pps);
     const newTrackIndex = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
     if (newTrackIndex !== d.startTrackIndex || Math.abs(newStart - d.startBeat) > 0.01) {
-      rpc.call("project.moveClip", { clipId: d.clipId, newTrackIndex, newStart }).catch(() => {});
+      const deltaStart = newStart - d.startBeat;
+      const deltaTrack = newTrackIndex - d.startTrackIndex;
+      const ids = dragSelectedIdsRef.current;
+      (async () => {
+        for (const id of ids) {
+          const clip = clips.find(c => c.clipId === id);
+          if (!clip) continue;
+          const clipNewStart = Math.max(0, clip.startBeat + deltaStart);
+          const clipNewTrack = Math.min(Math.max(0, clip.trackIndex + deltaTrack), tracks.length - 1);
+          await rpc.call("project.moveClip", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
+        }
+      })();
     }
-  }, [pps, tracks.length, updateDrag]);
+  }, [pps, tracks.length, clips, updateDrag]);
 
   const handleMouseLeave = useCallback(() => updateDrag(null), [updateDrag]);
 
@@ -426,7 +496,8 @@ export default function TimelineMinimal() {
           onMouseLeave={handleMouseLeave}
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
-            onClick={() => useUiStore.getState().selectClip(null, null)}>
+            onClick={() => useUiStore.getState().clearSelection()}
+            onMouseDown={handleRubberBandStart}>
             {tracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
               const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), tracks.length - 1);
@@ -439,14 +510,29 @@ export default function TimelineMinimal() {
                     {trackClips.map((clip) => {
                     const isDragging = dragState?.clipId === clip.clipId;
                     const isTrimming = trimState?.clipId === clip.clipId;
+                    const isSelected = selectedClipIds.has(clip.clipId);
                     const dispLeft = isTrimming ? trimState.currentStartBeat * pps : clip.startBeat * pps;
                     const dispWidth = isTrimming ? Math.max(4, trimState.currentDuration * pps) : Math.max(4, clip.durationBeats * pps);
                     return (
                       <div
                         key={clip.clipId}
-                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}`}
+                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}`}
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
-                        onClick={(e) => { e.stopPropagation(); useUiStore.getState().selectClip(clip.clipId, idx); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (e.ctrlKey || e.metaKey) {
+                            useUiStore.getState().toggleClipSelection(clip.clipId);
+                          } else if (e.shiftKey) {
+                            const anchor = useUiStore.getState().lastSelectedClipId;
+                            if (anchor != null) {
+                              useUiStore.getState().selectRange(anchor, clip.clipId, clips);
+                            } else {
+                              useUiStore.getState().selectClip(clip.clipId, idx);
+                            }
+                          } else {
+                            useUiStore.getState().selectClip(clip.clipId, idx);
+                          }
+                        }}
                         onContextMenu={(e) => handleContextMenu(e, clip)}
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
@@ -482,6 +568,19 @@ export default function TimelineMinimal() {
                 )}
                 <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{ghostClip.name ?? `Clip ${ghostClip.clipId}`}</span>
               </div>
+            )}
+
+            {/* Rubber band selection */}
+            {rubberBand && (
+              <div
+                className="tl-rubber-band"
+                style={{
+                  left: Math.min(rubberBand.x1, rubberBand.x2),
+                  top: Math.min(rubberBand.y1, rubberBand.y2),
+                  width: Math.abs(rubberBand.x2 - rubberBand.x1),
+                  height: Math.abs(rubberBand.y2 - rubberBand.y1),
+                }}
+              />
             )}
           </div>
         </div>
