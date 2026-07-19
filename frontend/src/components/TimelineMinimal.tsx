@@ -812,6 +812,11 @@ export default function TimelineMinimal() {
                             useUiStore.getState().selectClip(clip.clipId, idx);
                           }
                         }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          useUiStore.getState().selectClip(clip.clipId, idx);
+                          useUiStore.getState().setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
+                        }}
                         onContextMenu={(e) => handleContextMenu(e, clip)}
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >

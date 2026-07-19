@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useProjectStore } from "../store/projectStore";
+import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
 import NoteGrid from "./NoteGrid";
 import VelocityLane from "./VelocityLane";
@@ -9,7 +10,8 @@ import "./PianoRoll.css";
 export default function PianoRoll() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const notesByClip = useProjectStore((s) => s.notesByClip);
-  const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
+  const selectedClipIds = useUiStore((s) => s.selectedClipIds);
+  const [internalClipId, setInternalClipId] = useState<number | null>(null);
   const keysRef = useRef<HTMLDivElement>(null);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
@@ -30,9 +32,27 @@ export default function PianoRoll() {
   };
 
   const midiClips = snapshot?.clips.filter((c) => c.isMidi) ?? [];
+
+  // Prefer the timeline-selected MIDI clip; fall back to internal selection, then first clip
+  const timelineSelectedId = (() => {
+    if (selectedClipIds.size !== 1) return null;
+    const id = selectedClipIds.values().next().value!;
+    const clip = snapshot?.clips.find((c) => c.clipId === id);
+    return clip?.isMidi ? id : null;
+  })();
+
+  const selectedClipId = timelineSelectedId ?? internalClipId;
+
   const activeClip = selectedClipId != null
     ? midiClips.find((c) => c.clipId === selectedClipId)
     : midiClips[0];
+
+  // Auto-load notes when a new clip becomes active
+  useEffect(() => {
+    if (activeClip && !notesByClip.has(activeClip.clipId)) {
+      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+    }
+  }, [activeClip?.clipId, notesByClip]);
 
   const notes = activeClip ? notesByClip.get(activeClip.clipId) ?? [] : [];
   const gridWidth = useMemo(() => {
@@ -46,7 +66,7 @@ export default function PianoRoll() {
   }, [notes]);
 
   const loadNotes = (clipId: number) => {
-    setSelectedClipId(clipId);
+    setInternalClipId(clipId);
     if (!notesByClip.has(clipId)) {
       useProjectStore.getState().syncNotes(rpc, clipId);
     }

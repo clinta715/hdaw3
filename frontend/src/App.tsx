@@ -26,25 +26,25 @@ function App() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const prevTabRef = useRef(activeBottomTab);
 
-  // Auto-switch to "audio-editor" tab when a single audio clip is selected
+  // Auto-switch bottom tab when a single clip is selected
   useEffect(() => {
     if (selectedClipIds.size === 1) {
       const id = selectedClipIds.values().next().value;
       const clip = snapshot?.clips.find((c) => c.clipId === id);
-      if (clip && !clip.isMidi) {
+      if (clip) {
         prevTabRef.current = useUiStore.getState().activeBottomTab;
-        setActiveBottomTab("audio-editor");
+        setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
       }
     }
   }, [selectedClipIds, snapshot, setActiveBottomTab]);
 
-  // When selection clears and we're on the audio-editor tab, restore previous tab
+  // When selection clears and we're on a clip-specific tab, restore previous tab
   useEffect(() => {
-    if (activeBottomTab === "audio-editor" && selectedClipIds.size !== 1) {
-      const id = selectedClipIds.size === 1 ? selectedClipIds.values().next().value : null;
-      if (id == null) {
-        setActiveBottomTab(prevTabRef.current === "audio-editor" ? "mixer" : prevTabRef.current);
-      }
+    const isClipTab = activeBottomTab === "audio-editor" || activeBottomTab === "piano-roll";
+    if (isClipTab && selectedClipIds.size !== 1) {
+      const restored = prevTabRef.current === "audio-editor" || prevTabRef.current === "piano-roll"
+        ? "mixer" : prevTabRef.current;
+      setActiveBottomTab(restored);
     }
   }, [selectedClipIds, activeBottomTab, setActiveBottomTab]);
 
