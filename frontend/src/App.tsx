@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import "./App.css";
 import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
@@ -18,6 +19,7 @@ import { useProjectStore } from "./store/projectStore";
 import { rpc } from "./rpc";
 
 function App() {
+  useKeyboardShortcuts();
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
   const activeBottomTab = useUiStore((s) => s.activeBottomTab);
   const setActiveBottomTab = useUiStore((s) => s.setActiveBottomTab);
