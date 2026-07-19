@@ -354,6 +354,7 @@ export default function TimelineMinimal() {
       const deltaTrack = newTrackIndex - d.startTrackIndex;
       const ids = dragSelectedIdsRef.current;
       (async () => {
+        await rpc.call("project.beginTransaction", { name: "move clips" });
         for (const id of ids) {
           const clip = clips.find(c => c.clipId === id);
           if (!clip) continue;
@@ -361,6 +362,7 @@ export default function TimelineMinimal() {
           const clipNewTrack = Math.min(Math.max(0, clip.trackIndex + deltaTrack), tracks.length - 1);
           await rpc.call("project.moveClip", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
         }
+        await rpc.call("project.endTransaction");
       })();
     }
   }, [pps, tracks.length, clips, updateDrag]);
@@ -375,6 +377,39 @@ export default function TimelineMinimal() {
     setContextMenu({ x: e.clientX, y: e.clientY, clip });
   }, []);
 
+  const handleDeleteClip = useCallback(() => {
+    if (!contextMenu) return;
+    const c = contextMenu.clip;
+    setContextMenu(null);
+    (async () => {
+      await rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {});
+      await useProjectStore.getState().syncDirtyFlag(rpc);
+      await useProjectStore.getState().syncSnapshot(rpc);
+    })();
+  }, [contextMenu]);
+
+  const handleDuplicateClip = useCallback(() => {
+    if (!contextMenu) return;
+    const c = contextMenu.clip;
+    setContextMenu(null);
+    (async () => {
+      await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {});
+      await useProjectStore.getState().syncDirtyFlag(rpc);
+      await useProjectStore.getState().syncSnapshot(rpc);
+    })();
+  }, [contextMenu]);
+
+  const handleSplitClip = useCallback(() => {
+    if (!contextMenu) return;
+    const c = contextMenu.clip;
+    setContextMenu(null);
+    (async () => {
+      await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {});
+      await useProjectStore.getState().syncDirtyFlag(rpc);
+      await useProjectStore.getState().syncSnapshot(rpc);
+    })();
+  }, [contextMenu]);
+
   // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -388,9 +423,11 @@ export default function TimelineMinimal() {
         if (selectedClipIds.size > 0) {
           e.preventDefault();
           (async () => {
+            await rpc.call("project.beginTransaction", { name: "delete clips" });
             for (const id of selectedClipIds) {
               await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
             }
+            await rpc.call("project.endTransaction");
             useUiStore.getState().clearSelection();
             await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
@@ -400,9 +437,11 @@ export default function TimelineMinimal() {
         if (selectedClipIds.size > 0) {
           e.preventDefault();
           (async () => {
+            await rpc.call("project.beginTransaction", { name: "duplicate clips" });
             for (const id of selectedClipIds) {
               await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
             }
+            await rpc.call("project.endTransaction");
             await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
@@ -593,13 +632,13 @@ export default function TimelineMinimal() {
           onClick={(e) => e.stopPropagation()}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
+          <button onClick={handleDeleteClip}>
             Delete
           </button>
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
+          <button onClick={handleDuplicateClip}>
             Duplicate
           </button>
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
+          <button onClick={handleSplitClip}>
             Split
           </button>
         </div>
