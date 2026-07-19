@@ -59,18 +59,60 @@
   border-color: var(--danger);
 }
 
+.tb-bar-beat {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent-bright, #f59e0b);
+  min-width: 36px;
+  text-align: right;
+}
+
 .tb-time {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: 0.5px;
   min-width: 48px;
 }
 
+.tb-bpm-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.tb-bpm-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--accent-bright);
+  border-color: var(--accent-dim);
+}
+
 .tb-bpm {
   font-size: 12px;
   color: var(--text-secondary);
+  cursor: default;
+}
+
+.tb-bpm-input {
+  width: 52px;
+  height: 20px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  text-align: center;
+  outline: none;
 }
 
 .transport-snap {
