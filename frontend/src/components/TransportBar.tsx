@@ -5,6 +5,7 @@ import { useUiStore } from "../store/uiStore";
 import { useTransportExtrasStore } from "../store/transportExtrasStore";
 import { rpc } from "../rpc";
 import FileMenu from "./FileMenu";
+import PluginManagerDialog from "./PluginManagerDialog";
 import "./TransportBar.css";
 
 export default function TransportBar() {
@@ -18,6 +19,7 @@ export default function TransportBar() {
   const timeSignatureDen = useTransportExtrasStore((s) => s.timeSignatureDen);
   const setExtras = useTransportExtrasStore((s) => s.set);
   const [bpmInput, setBpmInput] = useState<string | null>(null);
+  const [showPluginManager, setShowPluginManager] = useState(false);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -198,7 +200,9 @@ export default function TransportBar() {
         >
           →|
         </button>
+        <button className="tb-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager">🎛️</button>
       </div>
+      {showPluginManager && <PluginManagerDialog onClose={() => setShowPluginManager(false)} />}
     </div>
   );
 }
