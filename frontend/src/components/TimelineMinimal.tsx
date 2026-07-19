@@ -20,6 +20,8 @@ interface DragState {
   offsetY: number;
   mouseX: number;
   mouseY: number;
+  isAltDuplicate?: boolean;
+  altDuplicated?: boolean;
 }
 
 interface TrimState {
@@ -71,9 +73,10 @@ export default function TimelineMinimal() {
 
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; clip: typeof clips[0] } | null>(null);
+  const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number } | null>(null);
 
   useEffect(() => {
-    const close = () => setContextMenu(null);
+    const close = () => { setContextMenu(null); setEmptyContextMenu(null); };
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
@@ -263,7 +266,7 @@ export default function TimelineMinimal() {
       const r = el.getBoundingClientRect();
       const selected = useUiStore.getState().selectedClipIds;
       dragSelectedIdsRef.current = selected.has(clipId) ? new Set(selected) : new Set([clipId]);
-      updateDrag({ clipId, startTrackIndex: trackIndex, startBeat, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top, mouseX: e.clientX, mouseY: e.clientY });
+      updateDrag({ clipId, startTrackIndex: trackIndex, startBeat, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top, mouseX: e.clientX, mouseY: e.clientY, isAltDuplicate: e.altKey ? true : undefined });
     },
     [updateDrag]
   );
@@ -335,6 +338,30 @@ export default function TimelineMinimal() {
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     const d = dragRef.current;
     if (!d) return;
+    if (d.isAltDuplicate && !d.altDuplicated) {
+      const { snapshot } = useProjectStore.getState();
+      if (!snapshot) return;
+      const ids = dragSelectedIdsRef.current;
+      const newIds = new Set<number>();
+      (async () => {
+        await rpc.call("project.beginTransaction", { name: "alt-duplicate clips" });
+        for (const id of ids) {
+          const r = await rpc.call("project.duplicateClip", { clipId: id }).catch(() => null);
+          if (r && typeof r === "object" && "clipId" in r) newIds.add((r as { clipId: number }).clipId);
+        }
+        await rpc.call("project.endTransaction");
+        if (newIds.size > 0) {
+          useUiStore.setState({ selectedClipIds: newIds });
+          dragSelectedIdsRef.current = newIds;
+          const first = [...newIds][0];
+          dragRef.current = { ...d, clipId: first, altDuplicated: true };
+          setDragState(dragRef.current);
+        }
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      })();
+      return;
+    }
     updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY });
   }, [updateDrag]);
 
@@ -446,6 +473,67 @@ export default function TimelineMinimal() {
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        if (selectedClipIds.size > 0) {
+          e.preventDefault();
+          const snap = useProjectStore.getState().snapshot;
+          if (snap) {
+            const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
+            useUiStore.getState().setClipboard(copied);
+          }
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "x") {
+        if (selectedClipIds.size > 0) {
+          e.preventDefault();
+          const snap = useProjectStore.getState().snapshot;
+          if (snap) {
+            const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
+            useUiStore.getState().setClipboard(copied);
+            (async () => {
+              await rpc.call("project.beginTransaction", { name: "cut clips" });
+              for (const id of selectedClipIds) {
+                await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
+              }
+              await rpc.call("project.endTransaction");
+              useUiStore.getState().clearSelection();
+              await useProjectStore.getState().syncDirtyFlag(rpc);
+              await useProjectStore.getState().syncSnapshot(rpc);
+            })();
+          }
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        const { clipClipboard } = useUiStore.getState();
+        if (clipClipboard.length > 0) {
+          e.preventDefault();
+          const t = useTransportStore.getState().transport;
+          const phBeats = t.currentTimeSeconds * (t.bpm / 60);
+          const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
+          (async () => {
+            await rpc.call("project.beginTransaction", { name: "paste clips" });
+            for (const clip of clipClipboard) {
+              const newStart = phBeats + (clip.startBeat - minStart);
+              if (clip.isMidi) {
+                await rpc.call("project.addMidiClip", {
+                  trackIndex: clip.trackIndex,
+                  start: newStart,
+                  duration: clip.durationBeats,
+                  name: clip.name,
+                }).catch(() => {});
+              } else {
+                await rpc.call("project.addAudioClip", {
+                  trackIndex: clip.trackIndex,
+                  start: newStart,
+                  duration: clip.durationBeats,
+                  sourceFile: clip.sourceFile,
+                  name: clip.name,
+                }).catch(() => {});
+              }
+            }
+            await rpc.call("project.endTransaction");
+            await useProjectStore.getState().syncDirtyFlag(rpc);
+            await useProjectStore.getState().syncSnapshot(rpc);
+          })();
+        }
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
         (async () => {
@@ -458,6 +546,7 @@ export default function TimelineMinimal() {
         })();
       } else if (e.key === "Escape") {
         setContextMenu(null);
+        setEmptyContextMenu(null);
       } else if (e.key === " " && e.target === document.body) {
         e.preventDefault();
         if (isPlaying)
@@ -536,7 +625,16 @@ export default function TimelineMinimal() {
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
             onClick={() => useUiStore.getState().clearSelection()}
-            onMouseDown={handleRubberBandStart}>
+            onMouseDown={handleRubberBandStart}
+            onContextMenu={(e) => {
+              if ((e.target as HTMLElement).closest(".tl-clip")) return;
+              e.preventDefault();
+              const el = tracksRef.current;
+              if (!el) return;
+              const rect = el.getBoundingClientRect();
+              const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
+              setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat });
+            }}>
             {tracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
               const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), tracks.length - 1);
@@ -640,6 +738,78 @@ export default function TimelineMinimal() {
           </button>
           <button onClick={handleSplitClip}>
             Split
+          </button>
+          <button onClick={() => { useUiStore.getState().setClipboard([contextMenu.clip]); setContextMenu(null); }}>
+            Copy
+          </button>
+          <button onClick={() => {
+            useUiStore.getState().setClipboard([contextMenu.clip]);
+            setContextMenu(null);
+            rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
+              rpc.call("project.removeClip", { clipId: contextMenu.clip.clipId })
+            ).then(() => rpc.call("project.endTransaction")).then(() => {
+              useProjectStore.getState().syncDirtyFlag(rpc);
+              useProjectStore.getState().syncSnapshot(rpc);
+            }).catch(() => {});
+          }}>
+            Cut
+          </button>
+        </div>
+      )}
+
+      {/* Empty-area context menu */}
+      {emptyContextMenu && (
+        <div className="clip-context-menu" style={{ left: emptyContextMenu.x, top: emptyContextMenu.y }}
+          onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => { rpc.call("project.addTrack").catch(() => {}); setEmptyContextMenu(null); }}>
+            Add Track
+          </button>
+          {useUiStore.getState().clipClipboard.length > 0 && (
+            <button onClick={() => {
+              setEmptyContextMenu(null);
+              const t = useTransportStore.getState().transport;
+              const phBeats = t.currentTimeSeconds * (t.bpm / 60);
+              const cb = useUiStore.getState().clipClipboard;
+              const minStart = Math.min(...cb.map(c => c.startBeat));
+              (async () => {
+                await rpc.call("project.beginTransaction", { name: "paste clips" });
+                for (const clip of cb) {
+                  const newStart = phBeats + (clip.startBeat - minStart);
+                  if (clip.isMidi) {
+                    await rpc.call("project.addMidiClip", {
+                      trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, name: clip.name,
+                    }).catch(() => {});
+                  } else {
+                    await rpc.call("project.addAudioClip", {
+                      trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, sourceFile: clip.sourceFile, name: clip.name,
+                    }).catch(() => {});
+                  }
+                }
+                await rpc.call("project.endTransaction");
+                await useProjectStore.getState().syncDirtyFlag(rpc);
+                await useProjectStore.getState().syncSnapshot(rpc);
+              })();
+            }}>
+              Paste
+            </button>
+          )}
+          <button onClick={() => {
+            const bpm = prompt("BPM:", "120");
+            if (bpm) rpc.call("project.setTempo", { bpm: parseFloat(bpm) || 120 }).catch(() => {});
+            setEmptyContextMenu(null);
+          }}>
+            Set Global BPM...
+          </button>
+          <button onClick={() => {
+            rpc.call("project.addMidiClip", {
+              trackIndex: 0,
+              start: emptyContextMenu.beat,
+              duration: 4,
+              name: "New MIDI Clip",
+            }).catch(() => {});
+            setEmptyContextMenu(null);
+          }}>
+            Add MIDI Clip
           </button>
         </div>
       )}
