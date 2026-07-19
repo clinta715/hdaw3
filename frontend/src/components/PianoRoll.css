@@ -52,6 +52,7 @@
   width: 52px;
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
+  overflow: hidden;
 }
 
 .pr-key {

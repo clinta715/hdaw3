@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { rpc } from "../rpc";
 import NoteGrid from "./NoteGrid";
@@ -8,6 +8,7 @@ export default function PianoRoll() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const notesByClip = useProjectStore((s) => s.notesByClip);
   const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
+  const keysRef = useRef<HTMLDivElement>(null);
 
   const midiClips = snapshot?.clips.filter((c) => c.isMidi) ?? [];
   const activeClip = selectedClipId != null
@@ -22,6 +23,12 @@ export default function PianoRoll() {
       useProjectStore.getState().syncNotes(rpc, clipId);
     }
   };
+
+  const handleGridScroll = useCallback((scrollTop: number) => {
+    if (keysRef.current) {
+      keysRef.current.scrollTop = scrollTop;
+    }
+  }, []);
 
   const keys = useMemo(() => {
     const k: { note: number; name: string; isBlack: boolean }[] = [];
@@ -48,7 +55,7 @@ export default function PianoRoll() {
         ))}
       </div>
       <div className="pr-editor">
-        <div className="pr-keys">
+        <div className="pr-keys" ref={keysRef}>
           {keys.map((k) => (
             <div
               key={k.note}
@@ -58,7 +65,7 @@ export default function PianoRoll() {
             </div>
           ))}
         </div>
-        <NoteGrid notes={notes} rpc={rpc} clipId={activeClip?.clipId ?? null} />
+        <NoteGrid notes={notes} rpc={rpc} clipId={activeClip?.clipId ?? null} onVerticalScroll={handleGridScroll} />
       </div>
     </div>
   );

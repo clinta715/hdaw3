@@ -1,6 +1,8 @@
 .note-grid {
-  flex: 1;
   position: relative;
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
   background:
     repeating-linear-gradient(
       0deg,
@@ -11,6 +13,10 @@
     );
   background-color: var(--bg-window);
   min-height: 128px;
+}
+
+.note-grid:focus {
+  outline: none;
 }
 
 .ng-empty {
@@ -36,4 +42,13 @@
   box-shadow: 0 0 4px var(--accent-bright);
   opacity: 0.9;
   cursor: grabbing;
+}
+
+.ng-note--selected {
+  border: 1px solid var(--accent-bright, #f59e0b) !important;
+  box-shadow: 0 0 4px var(--accent-dim);
+}
+
+.ng-creating-cursor {
+  cursor: crosshair;
 }
