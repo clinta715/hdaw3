@@ -13,6 +13,7 @@ export const useTransportExtrasStore = create<TransportExtras>((set) => ({
   metronomeEnabled: false,
   countInEnabled: false,
   followPlayhead: false,
+  // TODO: Sync time signature from backend when TransportSnapshot includes it
   timeSignatureNum: 4,
   timeSignatureDen: 4,
   set: (p) => set(p),

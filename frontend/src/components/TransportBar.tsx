@@ -11,7 +11,12 @@ export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
   const { snapEnabled, snapDivision, setSnapEnabled, setSnapDivision } = useUiStore();
   const isDirty = useProjectStore((s) => s.isDirty);
-  const extras = useTransportExtrasStore();
+  const metronomeEnabled = useTransportExtrasStore((s) => s.metronomeEnabled);
+  const countInEnabled = useTransportExtrasStore((s) => s.countInEnabled);
+  const followPlayhead = useTransportExtrasStore((s) => s.followPlayhead);
+  const timeSignatureNum = useTransportExtrasStore((s) => s.timeSignatureNum);
+  const timeSignatureDen = useTransportExtrasStore((s) => s.timeSignatureDen);
+  const setExtras = useTransportExtrasStore((s) => s.set);
   const [bpmInput, setBpmInput] = useState<string | null>(null);
 
   const cmd = (method: string) => () => {
@@ -80,8 +85,8 @@ export default function TransportBar() {
 
   const barBeat = (() => {
     const totalBeats = transport.currentTimeSeconds * (transport.bpm / 60);
-    const bar = Math.floor(totalBeats / 4) + 1;
-    const beat = Math.floor(totalBeats % 4) + 1;
+    const bar = Math.floor(totalBeats / timeSignatureNum) + 1;
+    const beat = Math.floor(totalBeats % timeSignatureNum) + 1;
     return `${bar}.${beat}`;
   })();
 
@@ -131,7 +136,7 @@ export default function TransportBar() {
           )}
         </span>
         <span className="tb-time-sig">
-          {extras.timeSignatureNum}/{extras.timeSignatureDen}
+          {timeSignatureNum}/{timeSignatureDen}
         </span>
       </div>
       <div className="transport-snap">
@@ -169,26 +174,26 @@ export default function TransportBar() {
           🔁
         </button>
         <button
-          className={`tb-btn ${extras.metronomeEnabled ? "active" : ""}`}
+          className={`tb-btn ${metronomeEnabled ? "active" : ""}`}
           onClick={() => {
-            const next = !extras.metronomeEnabled;
-            extras.set({ metronomeEnabled: next });
-            rpc.call("transport.setMetronomeEnabled", { enabled: next }).catch(() => {});
+            const next = !metronomeEnabled;
+            setExtras({ metronomeEnabled: next });
+            rpc.call("project.setMetronomeEnabled", { enabled: next }).catch(() => {});
           }}
           title="Metronome"
         >
           ♪
         </button>
         <button
-          className={`tb-btn ${extras.countInEnabled ? "active" : ""}`}
-          onClick={() => extras.set({ countInEnabled: !extras.countInEnabled })}
+          className={`tb-btn ${countInEnabled ? "active" : ""}`}
+          onClick={() => setExtras({ countInEnabled: !countInEnabled })}
           title="Count-in (1 bar)"
         >
           1Bar
         </button>
         <button
-          className={`tb-btn ${extras.followPlayhead ? "active" : ""}`}
-          onClick={() => extras.set({ followPlayhead: !extras.followPlayhead })}
+          className={`tb-btn ${followPlayhead ? "active" : ""}`}
+          onClick={() => setExtras({ followPlayhead: !followPlayhead })}
           title="Follow Playhead"
         >
           →|
