@@ -1,3 +1,4 @@
+import { useState } from "react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { injectTheme } from "./theme";
@@ -8,6 +9,7 @@ import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
 import { TransportSnapshot, MetersPayload } from "./rpc/types";
 import App from "./App";
+import StartupDialog from "./components/StartupDialog";
 
 injectTheme();
 
@@ -35,17 +37,24 @@ function setupSubscriptions() {
   }));
 }
 
+function Root() {
+  const [showStartup, setShowStartup] = useState(true);
+
+  return (
+    <React.StrictMode>
+      {showStartup && <StartupDialog onClose={() => setShowStartup(false)} />}
+      {!showStartup && <App />}
+    </React.StrictMode>
+  );
+}
+
 async function init() {
   await rpc.connect();
   setupSubscriptions();
 
   await useProjectStore.getState().syncSnapshot(rpc);
 
-  ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+  ReactDOM.createRoot(document.getElementById("root")!).render(<Root />);
 }
 
 init().catch(console.error);
