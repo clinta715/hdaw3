@@ -12,6 +12,7 @@ import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
 import ModulationPanel from "./components/ModulationPanel";
 import BottomTabs from "./components/BottomTabs";
+import StatusBar from "./components/StatusBar";
 import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
 import { rpc } from "./rpc";
@@ -79,6 +80,7 @@ function App() {
           onTabChange={setActiveBottomTab}
         />
       </footer>
+      <StatusBar />
     </div>
   );
 }

@@ -1,0 +1,8 @@
+.status-bar {
+  grid-area: status;
+  display: flex; align-items: center; gap: 16px;
+  padding: 2px 12px; background: var(--bg-panel);
+  border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted);
+}
+.sb-field { white-space: nowrap; }
+.sb-rec { color: #e53935; font-weight: 600; }

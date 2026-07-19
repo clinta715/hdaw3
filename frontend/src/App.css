@@ -4,12 +4,13 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .app-shell {
   display: grid;
-  grid-template-rows: 48px 1fr 200px;
+  grid-template-rows: 48px 1fr 200px 24px;
   grid-template-columns: 220px 1fr;
   grid-template-areas:
     "transport transport"
     "headers   timeline"
-    "bottom    bottom";
+    "bottom    bottom"
+    "status    status";
   height: 100%;
   background: var(--bg-window);
   color: var(--text-primary);
