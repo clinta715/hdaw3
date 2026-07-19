@@ -9,7 +9,7 @@ interface ExportDialogProps {
 export default function ExportDialog({ onClose }: ExportDialogProps) {
   const [outputPath, setOutputPath] = useState("export.wav");
   const [format, setFormat] = useState("wav");
-  const [bitDepth, setBitDepth] = useState("16");
+  const [bitDepth, setBitDepth] = useState(24);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("Ready");
   const [exporting, setExporting] = useState(false);
@@ -41,7 +41,7 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
       await rpc.call("export.audio", {
         outputPath: outputPath.trim(),
         format,
-        bitDepth: parseInt(bitDepth, 10),
+        bitDepth,
       });
       setProgress(100);
       setStatus("Complete!");
@@ -94,12 +94,12 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
           <select
             className="ed-select"
             value={bitDepth}
-            onChange={(e) => setBitDepth(e.target.value)}
+            onChange={(e) => setBitDepth(Number(e.target.value))}
             disabled={exporting}
           >
-            <option value="16">16-bit</option>
-            <option value="24">24-bit</option>
-            <option value="32">32-bit</option>
+            <option value={16}>16-bit</option>
+            <option value={24}>24-bit</option>
+            <option value={32}>32-bit float</option>
           </select>
         </div>
 
