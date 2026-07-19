@@ -86,6 +86,15 @@ export interface AutomationPointSnapshot {
   value: number;
 }
 
+export interface FxSlotSnapshot {
+  slotIndex: number;
+  fxType: string;
+  pluginId: string;
+  pluginName: string;
+  bypassed: boolean;
+  paramCount: number;
+}
+
 export interface AutomatableParamSnapshot {
   slotIndex: number;
   paramIndex: number;

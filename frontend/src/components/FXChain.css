@@ -1,0 +1,120 @@
+.fx-chain {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  height: 100%;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.fx-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.fx-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.fx-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.fx-add-btn {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.fx-add-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+}
+
+.fx-empty-slots {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 16px 0;
+  text-align: center;
+}
+
+.fx-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--bg-widget);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.fx-slot--bypassed {
+  opacity: 0.5;
+}
+
+.fx-slot-idx {
+  font-size: 9px;
+  color: var(--text-muted);
+  min-width: 16px;
+  text-align: right;
+}
+
+.fx-slot-type {
+  font-size: 9px;
+  color: var(--accent-dim);
+  min-width: 40px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.fx-slot-name {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.fx-btn {
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.fx-btn:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+}
+
+.fx-bypass.active {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.fx-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
