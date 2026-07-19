@@ -118,3 +118,17 @@
 .tb-snap-select:hover {
   border-color: var(--accent-dim);
 }
+
+.tb-dirty {
+  color: var(--accent-bright, #88aaff);
+  font-size: 10px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.tb-undo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+}

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useTransportStore } from "../store/transportStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
@@ -7,10 +8,32 @@ import "./TransportBar.css";
 export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
   const { snapEnabled, snapDivision, setSnapEnabled, setSnapDivision } = useUiStore();
+  const isDirty = useProjectStore((s) => s.isDirty);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
   };
+
+  const handleUndo = async () => {
+    await rpc.call("project.undo").catch(() => {});
+    await useProjectStore.getState().syncDirtyFlag(rpc);
+    await useProjectStore.getState().syncSnapshot(rpc);
+  };
+
+  const handleRedo = async () => {
+    await rpc.call("project.redo").catch(() => {});
+    await useProjectStore.getState().syncDirtyFlag(rpc);
+    await useProjectStore.getState().syncSnapshot(rpc);
+  };
+
+  useEffect(() => {
+    const check = () => {
+      useProjectStore.getState().syncDirtyFlag(rpc);
+    };
+    const interval = setInterval(check, 2000);
+    check();
+    return () => clearInterval(interval);
+  }, []);
 
   const fmtTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -39,7 +62,10 @@ export default function TransportBar() {
         <button className="tb-btn" onClick={cmd("transport.stop")} title="Stop">⏹</button>
       </div>
       <div className="transport-center">
-        <span className="tb-time">{fmtTime(transport.currentTimeSeconds)}</span>
+        <span className="tb-time">
+          {isDirty && <span className="tb-dirty" title="Project has unsaved changes">●</span>}
+          {fmtTime(transport.currentTimeSeconds)}
+        </span>
         <span className="tb-bpm">{transport.bpm.toFixed(1)} BPM</span>
       </div>
       <div className="transport-snap">
@@ -61,6 +87,10 @@ export default function TransportBar() {
         </select>
       </div>
       <div className="transport-right">
+        <div className="tb-undo">
+          <button className="tb-btn" onClick={handleUndo} title="Undo (Ctrl+Z)">↩</button>
+          <button className="tb-btn" onClick={handleRedo} title="Redo (Ctrl+Shift+Z)">↪</button>
+        </div>
         <button
           className={`tb-btn ${transport.isLooping ? "active" : ""}`}
           onClick={cmd("transport.toggleLoop")}

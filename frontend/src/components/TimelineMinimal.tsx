@@ -284,6 +284,7 @@ export default function TimelineMinimal() {
           e.preventDefault();
           (async () => {
             await rpc.call("project.removeClip", { clipId: selectedClipId }).catch(() => {});
+            await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
@@ -292,15 +293,20 @@ export default function TimelineMinimal() {
           e.preventDefault();
           (async () => {
             await rpc.call("project.duplicateClip", { clipId: selectedClipId }).catch(() => {});
+            await useProjectStore.getState().syncDirtyFlag(rpc);
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
-        if (e.shiftKey)
-          rpc.call("project.redo").catch(() => {});
-        else
-          rpc.call("project.undo").catch(() => {});
+        (async () => {
+          if (e.shiftKey)
+            await rpc.call("project.redo").catch(() => {});
+          else
+            await rpc.call("project.undo").catch(() => {});
+          await useProjectStore.getState().syncDirtyFlag(rpc);
+          await useProjectStore.getState().syncSnapshot(rpc);
+        })();
       } else if (e.key === "Escape") {
         setContextMenu(null);
       } else if (e.key === " " && e.target === document.body) {
@@ -448,13 +454,13 @@ export default function TimelineMinimal() {
           onClick={(e) => e.stopPropagation()}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
             Delete
           </button>
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
             Duplicate
           </button>
-          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {}).then(() => useProjectStore.getState().syncSnapshot(rpc)); }}>
+          <button onClick={() => { const c = contextMenu.clip; setContextMenu(null); (async () => { await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {}); await useProjectStore.getState().syncDirtyFlag(rpc); await useProjectStore.getState().syncSnapshot(rpc); })(); }}>
             Split
           </button>
         </div>
