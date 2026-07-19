@@ -319,12 +319,18 @@ export default function TimelineMinimal() {
                 await rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
                 await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
                 await rpc.call("project.endTransaction");
+                await useProjectStore.getState().syncDirtyFlag(rpc);
+                await useProjectStore.getState().syncSnapshot(rpc);
               } catch (e) { console.error("trim failed", e); }
             })();
           }
         } else {
           if (Math.abs(d.currentDuration - d.initialDuration) > 0.01) {
-            rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
+            (async () => {
+              await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
+              await useProjectStore.getState().syncDirtyFlag(rpc);
+              await useProjectStore.getState().syncSnapshot(rpc);
+            })();
           }
         }
       };
@@ -343,6 +349,9 @@ export default function TimelineMinimal() {
       if (!snapshot) return;
       const ids = dragSelectedIdsRef.current;
       const newIds = new Set<number>();
+      // Set synchronously BEFORE async to prevent race condition
+      dragRef.current = { ...d, altDuplicated: true };
+      setDragState(dragRef.current);
       (async () => {
         await rpc.call("project.beginTransaction", { name: "alt-duplicate clips" });
         for (const id of ids) {
@@ -390,6 +399,8 @@ export default function TimelineMinimal() {
           await rpc.call("project.moveClip", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
         }
         await rpc.call("project.endTransaction");
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
       })();
     }
   }, [pps, tracks.length, clips, updateDrag]);
@@ -436,6 +447,26 @@ export default function TimelineMinimal() {
       await useProjectStore.getState().syncSnapshot(rpc);
     })();
   }, [contextMenu]);
+
+  const pasteClipboard = useCallback(async () => {
+    const { clipClipboard } = useUiStore.getState();
+    if (clipClipboard.length === 0) return;
+    const transport = useTransportStore.getState().transport;
+    const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
+    const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
+    await rpc.call("project.beginTransaction", { name: "paste clips" });
+    for (const clip of clipClipboard) {
+      const newStart = playheadBeats + (clip.startBeat - minStart);
+      if (clip.isMidi) {
+        await rpc.call("project.addMidiClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, name: clip.name }).catch(() => {});
+      } else {
+        await rpc.call("project.addAudioClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, sourceFile: clip.sourceFile, name: clip.name }).catch(() => {});
+      }
+    }
+    await rpc.call("project.endTransaction");
+    await useProjectStore.getState().syncDirtyFlag(rpc);
+    await useProjectStore.getState().syncSnapshot(rpc);
+  }, [rpc]);
 
   // --- Keyboard shortcuts ---
   useEffect(() => {
@@ -505,34 +536,7 @@ export default function TimelineMinimal() {
         const { clipClipboard } = useUiStore.getState();
         if (clipClipboard.length > 0) {
           e.preventDefault();
-          const t = useTransportStore.getState().transport;
-          const phBeats = t.currentTimeSeconds * (t.bpm / 60);
-          const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
-          (async () => {
-            await rpc.call("project.beginTransaction", { name: "paste clips" });
-            for (const clip of clipClipboard) {
-              const newStart = phBeats + (clip.startBeat - minStart);
-              if (clip.isMidi) {
-                await rpc.call("project.addMidiClip", {
-                  trackIndex: clip.trackIndex,
-                  start: newStart,
-                  duration: clip.durationBeats,
-                  name: clip.name,
-                }).catch(() => {});
-              } else {
-                await rpc.call("project.addAudioClip", {
-                  trackIndex: clip.trackIndex,
-                  start: newStart,
-                  duration: clip.durationBeats,
-                  sourceFile: clip.sourceFile,
-                  name: clip.name,
-                }).catch(() => {});
-              }
-            }
-            await rpc.call("project.endTransaction");
-            await useProjectStore.getState().syncDirtyFlag(rpc);
-            await useProjectStore.getState().syncSnapshot(rpc);
-          })();
+          pasteClipboard();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
@@ -557,7 +561,7 @@ export default function TimelineMinimal() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [pasteClipboard]);
 
   // --- Ghost clip for drag ---
   let ghostStyle: React.CSSProperties | undefined;
@@ -767,28 +771,7 @@ export default function TimelineMinimal() {
           {useUiStore.getState().clipClipboard.length > 0 && (
             <button onClick={() => {
               setEmptyContextMenu(null);
-              const t = useTransportStore.getState().transport;
-              const phBeats = t.currentTimeSeconds * (t.bpm / 60);
-              const cb = useUiStore.getState().clipClipboard;
-              const minStart = Math.min(...cb.map(c => c.startBeat));
-              (async () => {
-                await rpc.call("project.beginTransaction", { name: "paste clips" });
-                for (const clip of cb) {
-                  const newStart = phBeats + (clip.startBeat - minStart);
-                  if (clip.isMidi) {
-                    await rpc.call("project.addMidiClip", {
-                      trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, name: clip.name,
-                    }).catch(() => {});
-                  } else {
-                    await rpc.call("project.addAudioClip", {
-                      trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, sourceFile: clip.sourceFile, name: clip.name,
-                    }).catch(() => {});
-                  }
-                }
-                await rpc.call("project.endTransaction");
-                await useProjectStore.getState().syncDirtyFlag(rpc);
-                await useProjectStore.getState().syncSnapshot(rpc);
-              })();
+              pasteClipboard();
             }}>
               Paste
             </button>
