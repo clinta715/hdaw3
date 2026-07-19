@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcess, spawn } from "child_process";
 import * as path from "path";
 import * as net from "net";
@@ -128,7 +128,20 @@ async function createWindow() {
   }
 }
 
+function setupIpc() {
+  ipcMain.handle("show-open-dialog", async (_event, options: Electron.OpenDialogOptions) => {
+    if (!mainWindow) return { canceled: true, filePaths: [] };
+    return dialog.showOpenDialog(mainWindow, options);
+  });
+
+  ipcMain.handle("show-save-dialog", async (_event, options: Electron.SaveDialogOptions) => {
+    if (!mainWindow) return { canceled: true, filePath: "" };
+    return dialog.showSaveDialog(mainWindow, options);
+  });
+}
+
 app.whenReady().then(async () => {
+  setupIpc();
   const port = getPort();
   childProcess = spawnEngine(port);
   try {

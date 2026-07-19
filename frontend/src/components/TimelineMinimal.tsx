@@ -476,7 +476,7 @@ export default function TimelineMinimal() {
           trackIndex: 0,
           start: startBeat,
           duration: 4,
-          sourceFile: file.path,
+          sourceFile: (file as any).path ?? file.name,
           name: file.name,
         }).catch(() => {});
       }
@@ -499,7 +499,7 @@ export default function TimelineMinimal() {
   }, []);
 
   const handleDeleteClip = useCallback(() => {
-    if (!contextMenu) return;
+    if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
     setContextMenu(null);
     (async () => {
@@ -510,7 +510,7 @@ export default function TimelineMinimal() {
   }, [contextMenu]);
 
   const handleDuplicateClip = useCallback(() => {
-    if (!contextMenu) return;
+    if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
     setContextMenu(null);
     (async () => {
@@ -521,7 +521,7 @@ export default function TimelineMinimal() {
   }, [contextMenu]);
 
   const handleSplitClip = useCallback(() => {
-    if (!contextMenu) return;
+    if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
     setContextMenu(null);
     (async () => {

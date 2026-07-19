@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { rpc } from "../rpc";
+import { useProjectStore } from "../store/projectStore";
 import "./StartupDialog.css";
 
 interface Props {
@@ -19,14 +20,29 @@ export default function StartupDialog({ onClose }: Props) {
     onClose();
   };
 
-  const handleOpen = async (path?: string) => {
-    if (!path) {
-      const result = prompt("Project file path:");
-      if (result) path = result;
-    }
-    if (path) {
-      await rpc.call("project.loadProject", { filePath: path });
-      onClose();
+  const handleOpen = async () => {
+    if (window.hdaw) {
+      const result = await window.hdaw.showOpenDialog({
+        title: "Open Project",
+        filters: [
+          { name: "HDAW Projects", extensions: ["hdaw"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+        properties: ["openFile"],
+      });
+      if (!result.canceled && result.filePaths.length > 0) {
+        const path = result.filePaths[0];
+        await rpc.call("project.loadProject", { filePath: path });
+        useProjectStore.getState().addRecentProject(path);
+        onClose();
+      }
+    } else {
+      // Fallback for browser dev mode
+      const path = prompt("Project file path:");
+      if (path) {
+        await rpc.call("project.loadProject", { filePath: path });
+        onClose();
+      }
     }
   };
 
@@ -42,7 +58,7 @@ export default function StartupDialog({ onClose }: Props) {
         <p className="startup-version">v0.9.1</p>
         <div className="startup-actions">
           <button className="startup-btn primary" onClick={handleNew}>New Project</button>
-          <button className="startup-btn" onClick={() => handleOpen()}>Open Project...</button>
+          <button className="startup-btn" onClick={handleOpen}>Open Project...</button>
         </div>
         {recentProjects.length > 0 && (
           <div className="startup-recent">

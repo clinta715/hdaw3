@@ -52,13 +52,34 @@ export default function FileMenu() {
     useProjectStore.getState().setFilePath(null);
   });
 
-  const handleOpen = () => doAction(async () => {
+  const handleOpen = async () => {
+    setOpen(false);
     if (!checkUnsaved()) return;
-    const path = prompt("Open project:", filePath ?? "project.hdaw");
-    if (!path) return;
-    await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
-    useProjectStore.getState().addRecentProject(path);
-  });
+    if (window.hdaw) {
+      const result = await window.hdaw.showOpenDialog({
+        title: "Open Project",
+        filters: [
+          { name: "HDAW Projects", extensions: ["hdaw"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+        properties: ["openFile"],
+      });
+      if (!result.canceled && result.filePaths.length > 0) {
+        const path = result.filePaths[0];
+        await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+        useProjectStore.getState().addRecentProject(path);
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      }
+    } else {
+      const path = prompt("Open project:", filePath ?? "project.hdaw");
+      if (!path) return;
+      await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+      useProjectStore.getState().addRecentProject(path);
+      await useProjectStore.getState().syncDirtyFlag(rpc);
+      await useProjectStore.getState().syncSnapshot(rpc);
+    }
+  };
 
   const handleOpenRecent = (path: string) => doAction(async () => {
     if (!checkUnsaved()) return;
@@ -72,24 +93,62 @@ export default function FileMenu() {
     setRecentOpen(false);
   };
 
-  const handleSave = () => doAction(async () => {
+  const handleSave = async () => {
+    setOpen(false);
     const fp = useProjectStore.getState().filePath;
     if (fp) {
       await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
     } else {
-      const path = prompt("Save path:", "project.hdaw");
+      if (window.hdaw) {
+        const result = await window.hdaw.showSaveDialog({
+          title: "Save Project",
+          defaultPath: "project.hdaw",
+          filters: [
+            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "All Files", extensions: ["*"] },
+          ],
+        });
+        if (!result.canceled && result.filePath) {
+          await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
+          useProjectStore.getState().addRecentProject(result.filePath);
+        }
+      } else {
+        const path = prompt("Save path:", "project.hdaw");
+        if (!path) return;
+        await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
+        useProjectStore.getState().addRecentProject(path);
+      }
+    }
+    await useProjectStore.getState().syncDirtyFlag(rpc);
+    await useProjectStore.getState().syncSnapshot(rpc);
+  };
+
+  const handleSaveAs = async () => {
+    setOpen(false);
+    if (window.hdaw) {
+      const result = await window.hdaw.showSaveDialog({
+        title: "Save Project As",
+        defaultPath: filePath ?? "project.hdaw",
+        filters: [
+          { name: "HDAW Projects", extensions: ["hdaw"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+      });
+      if (!result.canceled && result.filePath) {
+        await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
+        useProjectStore.getState().addRecentProject(result.filePath);
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      }
+    } else {
+      const path = prompt("Save as:", filePath ?? "project.hdaw");
       if (!path) return;
       await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
       useProjectStore.getState().addRecentProject(path);
+      await useProjectStore.getState().syncDirtyFlag(rpc);
+      await useProjectStore.getState().syncSnapshot(rpc);
     }
-  });
-
-  const handleSaveAs = () => doAction(async () => {
-    const path = prompt("Save as:", filePath ?? "project.hdaw");
-    if (!path) return;
-    await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
-    useProjectStore.getState().addRecentProject(path);
-  });
+  };
 
   const handleImportAudio = () => {
     setOpen(false);
