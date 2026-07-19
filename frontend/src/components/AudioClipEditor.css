@@ -1,0 +1,228 @@
+.audio-clip-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.ace-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ace-transport {
+  display: flex;
+  gap: 4px;
+}
+
+.ace-transport button {
+  width: 24px;
+  height: 24px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.ace-transport button:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.ace-clip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ace-track-name {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.ace-badge {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(200, 140, 60, 0.2);
+  color: var(--accent-bright, #e8a040);
+}
+
+.ace-spacer {
+  flex: 1;
+}
+
+.ace-close {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.ace-close:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
+}
+
+/* Waveform section */
+.ace-waveform {
+  flex: 1;
+  min-height: 60px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  background: var(--bg-window, #1a1a2e);
+  border-bottom: 1px solid var(--border);
+}
+
+.ace-waveform-inner {
+  position: relative;
+  height: 100%;
+}
+
+.ace-playhead-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 80, 80, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Controls section */
+.ace-controls {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.ace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ace-row label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 58px;
+}
+
+.ace-row input[type="range"] {
+  flex: 1;
+  min-width: 80px;
+  height: 16px;
+}
+
+.ace-row input[type="number"],
+.ace-row input[type="text"] {
+  width: 64px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.ace-row select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.ace-row input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.ace-val {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 44px;
+  text-align: right;
+}
+
+.ace-section {
+  display: flex;
+  gap: 24px;
+}
+
+.ace-section-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ace-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.ace-btn {
+  padding: 3px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ace-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.ace-btn--accent {
+  background: rgba(200, 140, 60, 0.15);
+  border-color: rgba(200, 140, 60, 0.3);
+  color: var(--accent-bright, #e8a040);
+}
+
+.ace-btn--accent:hover {
+  background: rgba(200, 140, 60, 0.25);
+}
+
+.ace-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+}
