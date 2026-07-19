@@ -14,6 +14,7 @@ interface Props {
   onHorizontalScroll?: (scrollLeft: number) => void;
   selectedNoteIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
+  chordShape?: number[];
 }
 
 interface NoteDragState {
@@ -57,6 +58,7 @@ export default function NoteGrid({
   onHorizontalScroll,
   selectedNoteIds: externalSelectedIds,
   onSelectionChange,
+  chordShape,
 }: Props) {
   const [dragState, setDragState] = useState<NoteDragState | null>(null);
   const dragRef = useRef<NoteDragState | null>(null);
@@ -183,11 +185,22 @@ export default function NoteGrid({
     const startBeat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
     try {
       await rpc.call("project.addNote", { clipId, pitch, startBeat, duration: 0.25, velocity: 100 });
+      if (chordShape && chordShape.length > 0) {
+        for (const interval of chordShape.slice(1)) {
+          await rpc.call("project.addNote", {
+            clipId,
+            pitch: pitch + interval,
+            startBeat,
+            duration: 0.25,
+            velocity: 100,
+          });
+        }
+      }
       useProjectStore.getState().syncNotes(rpc, clipId);
     } catch (err) {
       console.warn("note creation failed", err);
     }
-  }, [rpc, clipId]);
+  }, [rpc, clipId, chordShape]);
 
   const deleteSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;

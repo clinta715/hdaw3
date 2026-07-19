@@ -14,6 +14,20 @@ export default function PianoRoll() {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
   const [ccController, setCcController] = useState(1);
+  const [chordEnabled, setChordEnabled] = useState(false);
+  const [chordType, setChordType] = useState("major");
+
+  const CHORD_SHAPES: Record<string, number[]> = {
+    major: [0, 4, 7],
+    minor: [0, 3, 7],
+    diminished: [0, 3, 6],
+    augmented: [0, 4, 8],
+    maj7: [0, 4, 7, 11],
+    min7: [0, 3, 7, 10],
+    dom7: [0, 4, 7, 10],
+    sus2: [0, 2, 7],
+    sus4: [0, 5, 7],
+  };
 
   const midiClips = snapshot?.clips.filter((c) => c.isMidi) ?? [];
   const activeClip = selectedClipId != null
@@ -81,6 +95,22 @@ export default function PianoRoll() {
             {c.name ?? `Clip ${c.clipId}`}
           </button>
         ))}
+        <span className="pr-toolbar-sep" />
+        <label className="pr-chord-toggle">
+          <input
+            type="checkbox"
+            checked={chordEnabled}
+            onChange={(e) => setChordEnabled(e.target.checked)}
+          />
+          Chord
+        </label>
+        {chordEnabled && (
+          <select value={chordType} onChange={(e) => setChordType(e.target.value)}>
+            {Object.keys(CHORD_SHAPES).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="pr-editor">
         <div className="pr-keys" ref={keysRef}>
@@ -102,6 +132,7 @@ export default function PianoRoll() {
             onHorizontalScroll={setGridScrollLeft}
             selectedNoteIds={selectedNoteIds}
             onSelectionChange={setSelectedNoteIds}
+            chordShape={chordEnabled ? CHORD_SHAPES[chordType] : undefined}
           />
           <VelocityLane
             notes={notes}
