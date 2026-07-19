@@ -1,0 +1,38 @@
+.velocity-lane {
+  height: 40px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.velocity-lane__content {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+}
+
+.velocity-bar {
+  position: absolute;
+  background: var(--accent);
+  border-radius: 1px 1px 0 0;
+  cursor: ns-resize;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+}
+
+.velocity-bar:hover {
+  opacity: 1;
+}
+
+.velocity-bar--selected {
+  background: var(--accent-bright, #f59e0b);
+  opacity: 1;
+}
+
+.velocity-bar--dragging {
+  opacity: 1;
+  box-shadow: 0 0 4px var(--accent-bright);
+}

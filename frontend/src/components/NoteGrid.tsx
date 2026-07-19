@@ -11,6 +11,9 @@ interface Props {
   rpc: RpcClient;
   clipId: number | null;
   onVerticalScroll?: (scrollTop: number) => void;
+  onHorizontalScroll?: (scrollLeft: number) => void;
+  selectedNoteIds?: Set<number>;
+  onSelectionChange?: (ids: Set<number>) => void;
 }
 
 interface NoteDragState {
@@ -30,6 +33,12 @@ interface NoteResizeState {
   currentDuration: number;
 }
 
+interface ContextMenuState {
+  x: number;
+  y: number;
+  noteId: number | null;
+}
+
 const KEY_HEIGHT = 8;
 const PIXELS_PER_BEAT = 80;
 const TOTAL_KEY_AREA = 128 * KEY_HEIGHT;
@@ -38,18 +47,46 @@ function clamp(val: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, val));
 }
 
-export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props) {
+let noteClipboard: NoteSnapshot[] = [];
+
+export default function NoteGrid({
+  notes,
+  rpc,
+  clipId,
+  onVerticalScroll,
+  onHorizontalScroll,
+  selectedNoteIds: externalSelectedIds,
+  onSelectionChange,
+}: Props) {
   const [dragState, setDragState] = useState<NoteDragState | null>(null);
   const dragRef = useRef<NoteDragState | null>(null);
   dragRef.current = dragState;
 
-  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<number>>(new Set());
+  const selectedNoteIds = externalSelectedIds ?? internalSelectedIds;
+  const setSelectedNoteIds = useCallback(
+    (ids: Set<number> | ((prev: Set<number>) => Set<number>)) => {
+      const next = typeof ids === "function" ? ids(selectedNoteIds) : ids;
+      if (onSelectionChange) onSelectionChange(next);
+      else setInternalSelectedIds(next);
+    },
+    [onSelectionChange, selectedNoteIds]
+  );
 
   const [resizeState, setResizeState] = useState<NoteResizeState | null>(null);
   const resizeRef = useRef<NoteResizeState | null>(null);
   resizeRef.current = resizeState;
 
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
   const gridRef = useRef<HTMLDivElement>(null);
+  const lastClickedNoteRef = useRef<number | null>(null);
+
+  const noteMap = useMemo(() => {
+    const m = new Map<number, NoteSnapshot>();
+    for (const n of notes) m.set(n.noteId, n);
+    return m;
+  }, [notes]);
 
   const rects = useMemo(() => {
     if (!notes.length) return [];
@@ -58,7 +95,6 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
       const end = n.startBeat + n.durationBeats;
       if (end > maxEnd) maxEnd = end;
     }
-    const gridW = Math.max(maxEnd * PIXELS_PER_BEAT, 400);
 
     return notes.map((n) => {
       let x: number, y: number;
@@ -153,31 +189,208 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
     }
   }, [rpc, clipId]);
 
-  const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
-    if (selectedNoteId == null || clipId == null) return;
-    if (e.key === "Delete" || e.key === "Backspace") {
-      e.preventDefault();
+  const deleteSelected = useCallback(async () => {
+    if (clipId == null || selectedNoteIds.size === 0) return;
+    try {
+      for (const noteId of selectedNoteIds) {
+        await rpc.call("project.removeNote", { noteId });
+      }
+      setSelectedNoteIds(new Set());
+      useProjectStore.getState().syncNotes(rpc, clipId);
+    } catch (err) {
+      console.warn("note deletion failed", err);
+    }
+  }, [selectedNoteIds, rpc, clipId, setSelectedNoteIds]);
+
+  const transposeSelected = useCallback(
+    async (semitones: number) => {
+      if (clipId == null || selectedNoteIds.size === 0) return;
       try {
-        await rpc.call("project.removeNote", { noteId: selectedNoteId });
-        setSelectedNoteId(null);
+        for (const noteId of selectedNoteIds) {
+          const note = noteMap.get(noteId);
+          if (!note) continue;
+          const newPitch = clamp(note.pitch + semitones, 0, 127);
+          await rpc.call("project.setNotePitch", { noteId, pitch: newPitch });
+        }
         useProjectStore.getState().syncNotes(rpc, clipId);
       } catch (err) {
-        console.warn("note deletion failed", err);
+        console.warn("transpose failed", err);
       }
-    }
-  }, [selectedNoteId, rpc, clipId]);
+    },
+    [selectedNoteIds, rpc, clipId, noteMap]
+  );
 
-  const handleGridClick = useCallback((e: React.MouseEvent) => {
-    if (!(e.target as HTMLElement).closest(".ng-note")) {
-      setSelectedNoteId(null);
+  const quantizeSelected = useCallback(async () => {
+    if (clipId == null || selectedNoteIds.size === 0) return;
+    const { snapEnabled, snapDivision } = useUiStore.getState();
+    if (!snapEnabled) return;
+    try {
+      for (const noteId of selectedNoteIds) {
+        const note = noteMap.get(noteId);
+        if (!note) continue;
+        const snapped = snapToGrid(note.startBeat, snapDivision);
+        await rpc.call("project.setNoteStart", { noteId, startBeat: snapped });
+      }
+      useProjectStore.getState().syncNotes(rpc, clipId);
+    } catch (err) {
+      console.warn("quantize failed", err);
     }
-  }, []);
+  }, [selectedNoteIds, rpc, clipId, noteMap]);
+
+  const humanizeSelected = useCallback(async () => {
+    if (clipId == null || selectedNoteIds.size === 0) return;
+    try {
+      for (const noteId of selectedNoteIds) {
+        const note = noteMap.get(noteId);
+        if (!note) continue;
+        const beatOffset = (Math.random() - 0.5) * 0.06;
+        const velOffset = Math.round((Math.random() - 0.5) * 10);
+        const newStart = Math.max(0, note.startBeat + beatOffset);
+        const newVel = clamp(note.velocity + velOffset, 1, 127);
+        await rpc.call("project.setNoteStart", { noteId, startBeat: newStart });
+        await rpc.call("project.setNoteVelocity", { noteId, velocity: newVel });
+      }
+      useProjectStore.getState().syncNotes(rpc, clipId);
+    } catch (err) {
+      console.warn("humanize failed", err);
+    }
+  }, [selectedNoteIds, rpc, clipId, noteMap]);
+
+  const copySelected = useCallback(() => {
+    if (selectedNoteIds.size === 0) return;
+    noteClipboard = notes.filter((n) => selectedNoteIds.has(n.noteId)).map((n) => ({ ...n }));
+  }, [selectedNoteIds, notes]);
+
+  const cutSelected = useCallback(async () => {
+    copySelected();
+    await deleteSelected();
+  }, [copySelected, deleteSelected]);
+
+  const pasteAtScroll = useCallback(async () => {
+    if (clipId == null || noteClipboard.length === 0) return;
+    const gridEl = gridRef.current;
+    const scrollBeat = gridEl ? gridEl.scrollLeft / PIXELS_PER_BEAT : 0;
+    const minBeat = Math.min(...noteClipboard.map((n) => n.startBeat));
+    try {
+      for (const n of noteClipboard) {
+        const startBeat = n.startBeat - minBeat + scrollBeat;
+        await rpc.call("project.addNote", {
+          clipId,
+          pitch: n.pitch,
+          startBeat,
+          duration: n.durationBeats,
+          velocity: n.velocity,
+        });
+      }
+      useProjectStore.getState().syncNotes(rpc, clipId);
+    } catch (err) {
+      console.warn("paste failed", err);
+    }
+  }, [rpc, clipId]);
+
+  const selectAll = useCallback(() => {
+    setSelectedNoteIds(new Set(notes.map((n) => n.noteId)));
+  }, [notes, setSelectedNoteIds]);
+
+  const handleKeyDown = useCallback(
+    async (e: React.KeyboardEvent) => {
+      if (clipId == null) return;
+      setContextMenu(null);
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        await deleteSelected();
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        await transposeSelected(e.ctrlKey ? 12 : 1);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        await transposeSelected(e.ctrlKey ? -12 : -1);
+        return;
+      }
+      if (e.key === "q" || e.key === "Q") {
+        e.preventDefault();
+        await quantizeSelected();
+        return;
+      }
+      if (e.key === "h" || e.key === "H") {
+        e.preventDefault();
+        await humanizeSelected();
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "c") {
+          e.preventDefault();
+          copySelected();
+          return;
+        }
+        if (e.key === "x") {
+          e.preventDefault();
+          await cutSelected();
+          return;
+        }
+        if (e.key === "v") {
+          e.preventDefault();
+          await pasteAtScroll();
+          return;
+        }
+        if (e.key === "a") {
+          e.preventDefault();
+          selectAll();
+          return;
+        }
+      }
+    },
+    [clipId, deleteSelected, transposeSelected, quantizeSelected, humanizeSelected, copySelected, cutSelected, pasteAtScroll, selectAll]
+  );
+
+  const handleGridClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".ng-note")) {
+        setSelectedNoteIds(new Set());
+        lastClickedNoteRef.current = null;
+      }
+      setContextMenu(null);
+    },
+    [setSelectedNoteIds]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const noteEl = (e.target as HTMLElement).closest(".ng-note");
+      const noteId = noteEl ? Number(noteEl.getAttribute("data-note-id")) : null;
+      if (noteId != null && !selectedNoteIds.has(noteId)) {
+        setSelectedNoteIds(new Set([noteId]));
+      }
+      setContextMenu({ x: e.clientX, y: e.clientY, noteId });
+    },
+    [selectedNoteIds, setSelectedNoteIds]
+  );
 
   const handleScroll = useCallback(() => {
-    if (onVerticalScroll && gridRef.current) {
-      onVerticalScroll(gridRef.current.scrollTop);
+    if (gridRef.current) {
+      if (onVerticalScroll) onVerticalScroll(gridRef.current.scrollTop);
+      if (onHorizontalScroll) onHorizontalScroll(gridRef.current.scrollLeft);
     }
-  }, [onVerticalScroll]);
+  }, [onVerticalScroll, onHorizontalScroll]);
+
+  const contextActions = useMemo(() => {
+    if (!contextMenu) return [];
+    return [
+      { label: "Quantize", shortcut: "Q", action: quantizeSelected },
+      { label: "Humanize", shortcut: "H", action: humanizeSelected },
+      { label: "Transpose Up +1", shortcut: "↑", action: () => transposeSelected(1) },
+      { label: "Transpose Down -1", shortcut: "↓", action: () => transposeSelected(-1) },
+      { label: "Transpose Up Octave", shortcut: "Ctrl+↑", action: () => transposeSelected(12) },
+      { label: "Transpose Down Octave", shortcut: "Ctrl+↓", action: () => transposeSelected(-12) },
+      { label: "Delete Selected", shortcut: "Del", action: deleteSelected },
+    ];
+  }, [contextMenu, quantizeSelected, humanizeSelected, transposeSelected, deleteSelected]);
 
   return (
     <div
@@ -188,6 +401,7 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
       onMouseLeave={cancelAll}
       onDoubleClick={handleDoubleClick}
       onClick={handleGridClick}
+      onContextMenu={handleContextMenu}
       onScroll={handleScroll}
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -199,11 +413,12 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
       {rects.map((r) => {
         const isDragging = dragState?.noteId === r.noteId;
         const isResizing = resizeState?.noteId === r.noteId;
-        const isSelected = selectedNoteId === r.noteId;
-        const note = notes.find((n) => n.noteId === r.noteId);
+        const isSelected = selectedNoteIds.has(r.noteId);
+        const note = noteMap.get(r.noteId);
         return (
           <div
             key={r.noteId}
+            data-note-id={r.noteId}
             className={`ng-note${isDragging ? " ng-note--dragging" : ""}${isSelected ? " ng-note--selected" : ""}${isResizing ? " ng-note--resizing" : ""}`}
             style={{
               left: r.x,
@@ -218,7 +433,38 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
               e.preventDefault();
               e.stopPropagation();
 
-              setSelectedNoteId(note.noteId);
+              if (e.ctrlKey || e.metaKey) {
+                setSelectedNoteIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(note.noteId)) next.delete(note.noteId);
+                  else next.add(note.noteId);
+                  return next;
+                });
+                lastClickedNoteRef.current = note.noteId;
+                return;
+              }
+
+              if (e.shiftKey && lastClickedNoteRef.current != null) {
+                const lastNote = noteMap.get(lastClickedNoteRef.current);
+                if (lastNote && lastNote.pitch === note.pitch) {
+                  const minBeat = Math.min(lastNote.startBeat, note.startBeat);
+                  const maxBeat = Math.max(lastNote.startBeat, note.startBeat);
+                  const rangeIds = new Set(selectedNoteIds);
+                  for (const n of notes) {
+                    if (n.pitch === note.pitch && n.startBeat >= minBeat && n.startBeat <= maxBeat) {
+                      rangeIds.add(n.noteId);
+                    }
+                  }
+                  setSelectedNoteIds(rangeIds);
+                  lastClickedNoteRef.current = note.noteId;
+                  return;
+                }
+              }
+
+              if (!selectedNoteIds.has(note.noteId)) {
+                setSelectedNoteIds(new Set([note.noteId]));
+              }
+              lastClickedNoteRef.current = note.noteId;
 
               const noteRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               const localX = e.clientX - noteRect.left;
@@ -244,6 +490,28 @@ export default function NoteGrid({ notes, rpc, clipId, onVerticalScroll }: Props
           />
         );
       })}
+
+      {contextMenu && (
+        <div
+          className="ng-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextActions.map((a) => (
+            <button
+              key={a.label}
+              className="ng-context-item"
+              onClick={() => {
+                setContextMenu(null);
+                a.action();
+              }}
+            >
+              <span>{a.label}</span>
+              <span className="ng-context-shortcut">{a.shortcut}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

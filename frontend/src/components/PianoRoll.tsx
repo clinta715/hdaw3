@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { rpc } from "../rpc";
 import NoteGrid from "./NoteGrid";
+import VelocityLane from "./VelocityLane";
 import "./PianoRoll.css";
 
 export default function PianoRoll() {
@@ -9,6 +10,8 @@ export default function PianoRoll() {
   const notesByClip = useProjectStore((s) => s.notesByClip);
   const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
   const keysRef = useRef<HTMLDivElement>(null);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
+  const [gridScrollLeft, setGridScrollLeft] = useState(0);
 
   const midiClips = snapshot?.clips.filter((c) => c.isMidi) ?? [];
   const activeClip = selectedClipId != null
@@ -29,6 +32,20 @@ export default function PianoRoll() {
       keysRef.current.scrollTop = scrollTop;
     }
   }, []);
+
+  const handleVelocityChange = useCallback(
+    async (noteId: number, velocity: number) => {
+      try {
+        await rpc.call("project.setNoteVelocity", { noteId, velocity });
+        if (activeClip) {
+          useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+        }
+      } catch (err) {
+        console.warn("velocity change failed", err);
+      }
+    },
+    [activeClip]
+  );
 
   const keys = useMemo(() => {
     const k: { note: number; name: string; isBlack: boolean }[] = [];
@@ -65,7 +82,25 @@ export default function PianoRoll() {
             </div>
           ))}
         </div>
-        <NoteGrid notes={notes} rpc={rpc} clipId={activeClip?.clipId ?? null} onVerticalScroll={handleGridScroll} />
+        <div className="pr-grid-area">
+          <NoteGrid
+            notes={notes}
+            rpc={rpc}
+            clipId={activeClip?.clipId ?? null}
+            onVerticalScroll={handleGridScroll}
+            onHorizontalScroll={setGridScrollLeft}
+            selectedNoteIds={selectedNoteIds}
+            onSelectionChange={setSelectedNoteIds}
+          />
+          <VelocityLane
+            notes={notes}
+            selectedNoteIds={selectedNoteIds}
+            rpc={rpc}
+            onVelocityChange={handleVelocityChange}
+            scrollLeft={gridScrollLeft}
+            onScrollChange={setGridScrollLeft}
+          />
+        </div>
       </div>
     </div>
   );

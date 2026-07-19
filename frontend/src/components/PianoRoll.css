@@ -42,7 +42,15 @@
 .pr-editor {
   display: flex;
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+}
+
+.pr-grid-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .pr-keys {
