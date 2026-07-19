@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useTransportStore } from "../store/transportStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
+import { useTransportExtrasStore } from "../store/transportExtrasStore";
 import { rpc } from "../rpc";
 import FileMenu from "./FileMenu";
 import "./TransportBar.css";
@@ -10,6 +11,7 @@ export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
   const { snapEnabled, snapDivision, setSnapEnabled, setSnapDivision } = useUiStore();
   const isDirty = useProjectStore((s) => s.isDirty);
+  const extras = useTransportExtrasStore();
   const [bpmInput, setBpmInput] = useState<string | null>(null);
 
   const cmd = (method: string) => () => {
@@ -128,6 +130,9 @@ export default function TransportBar() {
             `${transport.bpm.toFixed(1)} BPM`
           )}
         </span>
+        <span className="tb-time-sig">
+          {extras.timeSignatureNum}/{extras.timeSignatureDen}
+        </span>
       </div>
       <div className="transport-snap">
         <button
@@ -162,6 +167,31 @@ export default function TransportBar() {
           title="Toggle Loop"
         >
           🔁
+        </button>
+        <button
+          className={`tb-btn ${extras.metronomeEnabled ? "active" : ""}`}
+          onClick={() => {
+            const next = !extras.metronomeEnabled;
+            extras.set({ metronomeEnabled: next });
+            rpc.call("transport.setMetronomeEnabled", { enabled: next }).catch(() => {});
+          }}
+          title="Metronome"
+        >
+          ♪
+        </button>
+        <button
+          className={`tb-btn ${extras.countInEnabled ? "active" : ""}`}
+          onClick={() => extras.set({ countInEnabled: !extras.countInEnabled })}
+          title="Count-in (1 bar)"
+        >
+          1Bar
+        </button>
+        <button
+          className={`tb-btn ${extras.followPlayhead ? "active" : ""}`}
+          onClick={() => extras.set({ followPlayhead: !extras.followPlayhead })}
+          title="Follow Playhead"
+        >
+          →|
         </button>
       </div>
     </div>
