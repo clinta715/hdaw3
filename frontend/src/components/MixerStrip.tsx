@@ -1,4 +1,5 @@
 import { TrackSnapshot, MeterLevels } from "../rpc/types";
+import { rpc } from "../rpc";
 import "./MixerStrip.css";
 
 interface Props {
@@ -20,13 +21,57 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
       </div>
       <div className="ms-name">{track.name}</div>
       <div className="ms-controls">
-        <div className="ms-volume">
-          {(track.volume * 100).toFixed(0)}%
-        </div>
-        <div className="ms-pan">
-          {track.pan === 0 ? "C" : track.pan < 0 ? `L${Math.abs(Math.round(track.pan * 100))}` : `R${Math.round(track.pan * 100)}`}
-        </div>
+        <input
+          type="range"
+          className="ms-fader"
+          min={0}
+          max={1}
+          step={0.01}
+          value={track.volume}
+          onChange={(e) => {
+            rpc.call("project.setTrackVolume", { trackIndex: track.index, volume: parseFloat(e.target.value) }).catch(console.error);
+          }}
+        />
+        <input
+          type="range"
+          className="ms-pan-fader"
+          min={-1}
+          max={1}
+          step={0.01}
+          value={track.pan}
+          onChange={(e) => {
+            rpc.call("project.setTrackPan", { trackIndex: track.index, pan: parseFloat(e.target.value) }).catch(console.error);
+          }}
+        />
       </div>
+      {!isMaster && (
+        <div className="ms-buttons">
+          <button
+            className={`ms-btn${track.muted ? " active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              rpc.call("project.setTrackMuted", { trackIndex: track.index, muted: !track.muted }).catch(console.error);
+            }}
+            title="Mute"
+          >M</button>
+          <button
+            className={`ms-btn${track.soloed ? " active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              rpc.call("project.setTrackSoloed", { trackIndex: track.index, soloed: !track.soloed }).catch(console.error);
+            }}
+            title="Solo"
+          >S</button>
+          <button
+            className={`ms-btn${track.armed ? " active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              rpc.call("project.setTrackArmed", { trackIndex: track.index, armed: !track.armed }).catch(console.error);
+            }}
+            title="Arm"
+          >R</button>
+        </div>
+      )}
     </div>
   );
 }

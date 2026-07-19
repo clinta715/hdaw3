@@ -72,3 +72,54 @@
 .ms-volume, .ms-pan {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
 }
+
+.ms-buttons {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.ms-btn {
+  width: 20px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.ms-btn:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+}
+
+.ms-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+.ms-fader {
+  writing-mode: vertical-lr;
+  direction: reverse;
+  width: 20px;
+  height: 60px;
+  margin: 2px auto;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+.ms-pan-fader {
+  width: 40px;
+  height: 14px;
+  accent-color: var(--accent);
+  margin: 0 auto;
+}
