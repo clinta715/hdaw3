@@ -3,6 +3,7 @@ import { useTransportStore } from "../store/transportStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useTransportExtrasStore } from "../store/transportExtrasStore";
+import { useBrowserStore } from "../store/browserStore";
 import { rpc } from "../rpc";
 import FileMenu from "./FileMenu";
 import PluginManagerDialog from "./PluginManagerDialog";
@@ -22,6 +23,8 @@ export default function TransportBar() {
   const [bpmInput, setBpmInput] = useState<string | null>(null);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const browserVisible = useBrowserStore((s) => s.visible);
+  const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -204,6 +207,13 @@ export default function TransportBar() {
         </button>
         <button className="tb-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager">🎛️</button>
         <button className="tb-btn" onClick={() => setShowPrefs(true)} title="Preferences">⚙</button>
+        <button
+          className={`tb-btn ${browserVisible ? "active" : ""}`}
+          onClick={toggleBrowser}
+          title="Toggle File Browser (Ctrl+B)"
+        >
+          📁
+        </button>
       </div>
       {showPluginManager && <PluginManagerDialog onClose={() => setShowPluginManager(false)} />}
       {showPrefs && <PreferencesDialog onClose={() => setShowPrefs(false)} />}
