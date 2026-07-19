@@ -3,50 +3,193 @@ import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
 import "./FileMenu.css";
 
+const checkUnsaved = () => {
+  if (useProjectStore.getState().isDirty) {
+    return confirm("Project has unsaved changes. Continue?");
+  }
+  return true;
+};
+
 export default function FileMenu() {
   const [open, setOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const recentRef = useRef<HTMLDivElement>(null);
+
+  const filePath = useProjectStore((s) => s.filePath);
+  const recentProjects = useProjectStore((s) => s.recentProjects);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setRecentOpen(false);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (!open) setRecentOpen(false);
+  }, [open]);
+
   const doAction = async (fn: () => Promise<void>) => {
     setOpen(false);
+    setRecentOpen(false);
     await fn();
     await useProjectStore.getState().syncDirtyFlag(rpc);
     await useProjectStore.getState().syncSnapshot(rpc);
   };
 
   const handleNew = () => doAction(async () => {
-    if (!confirm("Create new project? Unsaved changes will be lost.")) return;
+    if (!checkUnsaved()) return;
     await rpc.call("project.newProject").catch(() => {});
+    useProjectStore.getState().setFilePath(null);
   });
+
+  const handleOpen = () => doAction(async () => {
+    if (!checkUnsaved()) return;
+    const path = prompt("Open project:", filePath ?? "project.hdaw");
+    if (!path) return;
+    await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+    useProjectStore.getState().addRecentProject(path);
+  });
+
+  const handleOpenRecent = (path: string) => doAction(async () => {
+    if (!checkUnsaved()) return;
+    await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+    useProjectStore.getState().addRecentProject(path);
+  });
+
+  const handleClearRecent = () => {
+    localStorage.removeItem("hdaw_recent_projects");
+    useProjectStore.getState().loadRecentProjects();
+    setRecentOpen(false);
+  };
 
   const handleSave = () => doAction(async () => {
-    const filePath = prompt("Save path:", "project.hdaw");
-    if (!filePath) return;
-    await rpc.call("project.saveProject", { filePath }).catch(() => {});
+    const fp = useProjectStore.getState().filePath;
+    if (fp) {
+      await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
+    } else {
+      const path = prompt("Save path:", "project.hdaw");
+      if (!path) return;
+      await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
+      useProjectStore.getState().addRecentProject(path);
+    }
   });
 
-  const handleLoad = () => doAction(async () => {
-    const filePath = prompt("Load path:", "project.hdaw");
-    if (!filePath) return;
-    await rpc.call("project.loadProject", { filePath }).catch(() => {});
+  const handleSaveAs = () => doAction(async () => {
+    const path = prompt("Save as:", filePath ?? "project.hdaw");
+    if (!path) return;
+    await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
+    useProjectStore.getState().addRecentProject(path);
   });
+
+  const handleImportAudio = () => doAction(async () => {
+    const path = prompt("Audio file path:");
+    if (!path) return;
+    const trackStr = prompt("Track index (0-based):", "0");
+    if (trackStr === null) return;
+    const trackIndex = parseInt(trackStr, 10);
+    if (isNaN(trackIndex)) return;
+    await rpc.call("project.addAudioClip", { trackIndex, sourceFile: path }).catch(() => {});
+  });
+
+  const handleImportMidi = () => doAction(async () => {
+    const path = prompt("MIDI file path:");
+    if (!path) return;
+    const trackStr = prompt("Track index (0-based):", "0");
+    if (trackStr === null) return;
+    const trackIndex = parseInt(trackStr, 10);
+    if (isNaN(trackIndex)) return;
+    await rpc.call("project.addMidiClip", { trackIndex, sourceFile: path }).catch(() => {});
+  });
+
+  const handleExportAudio = () => doAction(async () => {
+    const path = prompt("Export path:", "export.wav");
+    if (!path) return;
+    await rpc.call("export.audio", { outputPath: path }).catch(() => {});
+  });
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === "n") { e.preventDefault(); handleNew(); }
+      else if (ctrl && e.key === "o" && !e.shiftKey) { e.preventDefault(); handleOpen(); }
+      else if (ctrl && e.key === "s" && !e.shiftKey) { e.preventDefault(); handleSave(); }
+      else if (ctrl && e.shiftKey && e.key === "S") { e.preventDefault(); handleSaveAs(); }
+      else if (ctrl && e.shiftKey && e.key === "I") { e.preventDefault(); handleImportAudio(); }
+      else if (ctrl && e.shiftKey && e.key === "M") { e.preventDefault(); handleImportMidi(); }
+      else if (ctrl && e.key === "e") { e.preventDefault(); handleExportAudio(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [filePath]);
 
   return (
     <div className="file-menu" ref={ref}>
       <button className="fm-trigger" onClick={() => setOpen(!open)}>File</button>
       {open && (
         <div className="fm-dropdown">
-          <button onClick={handleNew}>New Project</button>
-          <button onClick={handleSave}>Save</button>
-          <button onClick={handleLoad}>Load</button>
+          <button onClick={handleNew}>
+            <span>New Project</span>
+            <span className="fm-shortcut">Ctrl+N</span>
+          </button>
+          <button onClick={handleOpen}>
+            <span>Open...</span>
+            <span className="fm-shortcut">Ctrl+O</span>
+          </button>
+          <div
+            className="fm-submenu-item"
+            ref={recentRef}
+            onMouseEnter={() => setRecentOpen(true)}
+            onMouseLeave={() => setRecentOpen(false)}
+          >
+            <button>
+              <span>Open Recent</span>
+              <span className="fm-arrow">&#9654;</span>
+            </button>
+            {recentOpen && (
+              <div className="fm-submenu">
+                {recentProjects.length === 0 && (
+                  <button className="fm-disabled" disabled>No recent projects</button>
+                )}
+                {recentProjects.map((p) => (
+                  <button key={p} onClick={() => handleOpenRecent(p)} title={p}>
+                    {p.split(/[/\\]/).pop() ?? p}
+                  </button>
+                ))}
+                {recentProjects.length > 0 && (
+                  <button className="fm-clear" onClick={handleClearRecent}>Clear Recent</button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="fm-separator" />
+          <button onClick={handleSave}>
+            <span>Save</span>
+            <span className="fm-shortcut">Ctrl+S</span>
+          </button>
+          <button onClick={handleSaveAs}>
+            <span>Save As...</span>
+            <span className="fm-shortcut">Ctrl+Shift+S</span>
+          </button>
+          <div className="fm-separator" />
+          <button onClick={handleImportAudio}>
+            <span>Import Audio...</span>
+            <span className="fm-shortcut">Ctrl+Shift+I</span>
+          </button>
+          <button onClick={handleImportMidi}>
+            <span>Import MIDI...</span>
+            <span className="fm-shortcut">Ctrl+Shift+M</span>
+          </button>
+          <button onClick={handleExportAudio}>
+            <span>Export Audio...</span>
+            <span className="fm-shortcut">Ctrl+E</span>
+          </button>
         </div>
       )}
     </div>
