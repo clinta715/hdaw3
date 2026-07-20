@@ -502,43 +502,19 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
-            auto& um = m.getUndoManager();
             auto tl = m.getTrackListTree();
             int id = a.value("trackId").toInt();
             if (id < 0 || id >= tl.getNumChildren())
                 return McpToolResult::text("track not found", true);
-            auto source = tl.getChild(id);
-            auto copy = source.createCopy();
-
-            // Append " copy" to name (skip if already ends with " copy")
-            auto name = copy.getProperty(IDs::name).toString();
-            if (!name.endsWith(" copy"))
-                copy.setProperty(IDs::name, name + " copy", &um);
-
-            // Re-assign clip IDs to avoid collisions with the source
-            auto clipList = copy.getChildWithName(IDs::CLIP_LIST);
-            for (int c = 0; c < clipList.getNumChildren(); ++c)
-            {
-                auto clip = clipList.getChild(c);
-                clip.setProperty(IDs::clipID, m.allocateClipID(), nullptr);
-
-                // Re-assign note IDs inside MIDI clips
-                auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
-                for (int n = 0; n < noteList.getNumChildren(); ++n)
-                {
-                    auto note = noteList.getChild(n);
-                    note.setProperty(IDs::noteID, m.allocateNoteID(), nullptr);
-                }
-            }
-
-            int newIdx = tl.getNumChildren();
-            tl.addChild(copy, newIdx, &um);
-
+            int newIdx = e->getProjectCommands().duplicateTrack(id);
+            if (newIdx < 0)
+                return McpToolResult::text("duplicate failed", true);
             // Wire routing so subsequent FX/clip operations work
             bool routingOk = false;
             if (auto* rm = e->getMainProcessor()->getRoutingManager())
             {
-                rm->addTrack(newIdx, copy);
+                auto newTrack = tl.getChild(newIdx);
+                rm->addTrack(newIdx, newTrack);
                 routingOk = rm->getTrackNode(newIdx) != nullptr;
             }
             return McpToolResult::text(
