@@ -8,6 +8,7 @@
 #include <QSpinBox>
 #include <QLabel>
 #include <QSettings>
+#include "../common/SettingsKeys.h"
 
 class AudioEngine;
 

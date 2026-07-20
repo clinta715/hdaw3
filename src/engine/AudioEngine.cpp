@@ -1,5 +1,7 @@
 #include "AudioEngine.h"
 #include <juce_events/juce_events.h>
+#include <QSettings>
+#include "../common/SettingsKeys.h"
 
 namespace {
 // Resolve the track index owning a MODULATION or MODULATION_LIST subtree.
@@ -100,17 +102,51 @@ void AudioEngine::initialize()
     // Initialize plugin manager — load cache (scan happens asynchronously after UI starts)
     pluginManager.loadCache();
 
-    // Initialize default audio device (2 in, 2 out)
+    // Initialize default audio device (2 in, 2 out) as fallback
     auto error = deviceManager.initialiseWithDefaultDevices(2, 2);
-    
     if (error.isNotEmpty())
-    {
         juce::Logger::writeToLog("AudioEngine::initialize Error: " + error);
+
+    // Restore saved audio device preferences if available
+    {
+        QSettings s;
+        QString savedDriver = s.value(SettingsKeys::kKeyAudioDriver).toString();
+        QString savedOutput = s.value(SettingsKeys::kKeyAudioOutputDevice).toString();
+        QString savedInput  = s.value(SettingsKeys::kKeyAudioInputDevice).toString();
+        int savedRate       = s.value(SettingsKeys::kKeyAudioSampleRate, 0).toInt();
+        int savedBuffer     = s.value(SettingsKeys::kKeyAudioBufferSize, 0).toInt();
+
+        if (!savedDriver.isEmpty() || !savedOutput.isEmpty())
+        {
+            juce::AudioDeviceManager::AudioDeviceSetup setup;
+            setup = deviceManager.getAudioDeviceSetup();
+
+            if (!savedDriver.isEmpty())
+                deviceManager.setCurrentAudioDeviceType(
+                    juce::String(savedDriver.toUtf8().constData()), true);
+
+            if (!savedOutput.isEmpty())
+                setup.outputDeviceName = juce::String(savedOutput.toUtf8().constData());
+            if (!savedInput.isEmpty())
+                setup.inputDeviceName = juce::String(savedInput.toUtf8().constData());
+            if (savedRate > 0)
+                setup.sampleRate = savedRate;
+            if (savedBuffer > 0)
+                setup.bufferSize = savedBuffer;
+
+            auto err = deviceManager.setAudioDeviceSetup(setup, true);
+            if (err.isNotEmpty())
+            {
+                juce::Logger::writeToLog("AudioEngine: saved device restore failed: " + err
+                    + " — using defaults");
+                deviceManager.initialiseWithDefaultDevices(2, 2);
+            }
+        }
     }
 
     // Connect processor to player (triggers prepareToPlay → RoutingManager rebuild)
     processorPlayer.setProcessor(mainProcessor.get());
-    
+
     // Add player as audio callback
     deviceManager.addAudioCallback(&processorPlayer);
 

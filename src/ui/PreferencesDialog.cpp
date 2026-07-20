@@ -381,6 +381,19 @@ void PreferencesDialog::onApply()
     settings.setValue(kKeyDefaultProjectDir, defaultProjectDirEdit->text());
     settings.setValue(kKeyDefaultAudioDir, defaultAudioDirEdit->text());
     settings.setValue(kKeyDefaultMidiDir, defaultMidiDirEdit->text());
+
+    // Persist audio device settings
+    if (audioEngine != nullptr)
+    {
+        auto& dm = audioEngine->getDeviceManager();
+        auto setup = dm.getAudioDeviceSetup();
+        settings.setValue(SettingsKeys::kKeyAudioDriver, deviceTypeCombo->currentText());
+        settings.setValue(SettingsKeys::kKeyAudioOutputDevice, setup.outputDeviceName);
+        settings.setValue(SettingsKeys::kKeyAudioInputDevice, setup.inputDeviceName);
+        settings.setValue(SettingsKeys::kKeyAudioSampleRate, static_cast<qint64>(setup.sampleRate));
+        settings.setValue(SettingsKeys::kKeyAudioBufferSize, setup.bufferSize);
+    }
+
     emit preferencesApplied();
 }
 
