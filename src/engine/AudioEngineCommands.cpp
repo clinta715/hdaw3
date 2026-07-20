@@ -238,11 +238,34 @@ void AudioEngineCommands::setTrackMidiChannel(int trackIndex, int channel)
 
 int AudioEngineCommands::duplicateTrack(int trackIndex)
 {
-    auto& um = engine_.getProjectModel().getUndoManager();
-    auto trackList = engine_.getProjectModel().getTrackListTree();
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto trackList = model.getTrackListTree();
     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
     auto source = trackList.getChild(trackIndex);
     auto copy = source.createCopy();
+
+    // Append " copy" to the track name (guard against "copy copy" chains)
+    auto origName = copy.getProperty(IDs::name).toString();
+    if (!origName.endsWith(" copy"))
+        copy.setProperty(IDs::name, origName + " copy", &um);
+
+    // Re-assign clip IDs to avoid collisions with the source
+    auto clipList = copy.getChildWithName(IDs::CLIP_LIST);
+    for (int c = 0; c < clipList.getNumChildren(); ++c)
+    {
+        auto clip = clipList.getChild(c);
+        clip.setProperty(IDs::clipID, model.allocateClipID(), nullptr);
+
+        // Re-assign note IDs inside MIDI clips
+        auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+        for (int n = 0; n < noteList.getNumChildren(); ++n)
+        {
+            auto note = noteList.getChild(n);
+            note.setProperty(IDs::noteID, model.allocateNoteID(), nullptr);
+        }
+    }
+
     int newIdx = trackList.getNumChildren();
     trackList.addChild(copy, newIdx, &um);
     return newIdx;
