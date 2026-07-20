@@ -496,6 +496,103 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             tl.addChild(t, ni, &um);
             return McpToolResult::text("ok");
         }});
+
+    s.registerTool({"duplicate_track",
+        "Duplicate a track (deep copy with new clip/note IDs). Returns the new track index.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel();
+            auto& um = m.getUndoManager();
+            auto tl = m.getTrackListTree();
+            int id = a.value("trackId").toInt();
+            if (id < 0 || id >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
+            auto source = tl.getChild(id);
+            auto copy = source.createCopy();
+
+            // Append " copy" to name (skip if already ends with " copy")
+            auto name = copy.getProperty(IDs::name).toString();
+            if (!name.endsWith(" copy"))
+                copy.setProperty(IDs::name, name + " copy", &um);
+
+            // Re-assign clip IDs to avoid collisions with the source
+            auto clipList = copy.getChildWithName(IDs::CLIP_LIST);
+            for (int c = 0; c < clipList.getNumChildren(); ++c)
+            {
+                auto clip = clipList.getChild(c);
+                clip.setProperty(IDs::clipID, m.allocateClipID(), nullptr);
+
+                // Re-assign note IDs inside MIDI clips
+                auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+                for (int n = 0; n < noteList.getNumChildren(); ++n)
+                {
+                    auto note = noteList.getChild(n);
+                    note.setProperty(IDs::noteID, m.allocateNoteID(), nullptr);
+                }
+            }
+
+            int newIdx = tl.getNumChildren();
+            tl.addChild(copy, newIdx, &um);
+
+            // Wire routing so subsequent FX/clip operations work
+            bool routingOk = false;
+            if (auto* rm = e->getMainProcessor()->getRoutingManager())
+            {
+                rm->addTrack(newIdx, copy);
+                routingOk = rm->getTrackNode(newIdx) != nullptr;
+            }
+            return McpToolResult::text(
+                QString("trackId=%1 routed=%2").arg(newIdx).arg(routingOk ? "1" : "0"));
+        }});
+
+    s.registerTool({"add_track_with_fx",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay}, or provide pluginId for a VST3/CLAP plugin.",
+        objSchema({{"name",     QJsonObject{{"type","string"}}},
+                   {"fxType",   QJsonObject{{"type","string"},
+                       {"enum", QJsonArray{"eq","compressor","reverb","delay"}}}},
+                   {"pluginId", QJsonObject{{"type","string"}}},
+                   {"color",    QJsonObject{{"type","integer"}}},
+                   {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto& m = e->getProjectModel();
+            auto& um = m.getUndoManager();
+            int idx = m.getTrackListTree().getNumChildren();
+
+            // Create the track
+            juce::ValueTree t(IDs::TRACK);
+            t.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
+            t.setProperty(IDs::volume, 0.85, &um);
+            t.setProperty(IDs::pan, 0.0, &um);
+            t.setProperty(IDs::isMuted, false, &um);
+            t.setProperty(IDs::isSoloed, false, &um);
+            t.setProperty(IDs::parentBus, a.value("parentBus").toInt(0), &um);
+            int color = a.contains("color") ? a.value("color").toInt()
+                                             : static_cast<int>(ProjectModel::trackColorForIndex(idx));
+            t.setProperty(IDs::color, color, &um);
+            t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, &um);
+            t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
+            t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
+            m.getTrackListTree().addChild(t, -1, &um);
+
+            // Add the FX slot
+            std::string fxType = a.value("fxType").toString().toStdString();
+            std::string pluginId = a.value("pluginId").toString().toStdString();
+            if (fxType.empty() && !pluginId.empty()) fxType = "plugin";
+            if (!fxType.empty())
+                m.addFxSlot(idx, fxType, -1, pluginId);
+
+            // Wire routing
+            bool routingOk = false;
+            if (auto* rm = e->getMainProcessor()->getRoutingManager())
+            {
+                rm->addTrack(idx, t);
+                routingOk = rm->getTrackNode(idx) != nullptr;
+            }
+            return McpToolResult::text(
+                QString("trackId=%1 routed=%2 fxType=%3").arg(idx)
+                    .arg(routingOk ? "1" : "0")
+                    .arg(QString::fromStdString(fxType)));
+        }});
 }
 
 // --- Clips ---
