@@ -52,3 +52,11 @@ export function injectTheme() {
     root.style.setProperty(cssName, value);
   }
 }
+
+// Format a packed 0xRRGGBB integer (as carried by TrackSnapshot.color) as a
+// CSS hex color string. Inline style assignments like
+// `style={{ background: track.color }}` pass the raw integer through, which
+// browsers parse as an invalid color (silent no-op). Always format first.
+export function colorStr(c: number): string {
+  return "#" + (c & 0xffffff).toString(16).padStart(6, "0");
+}

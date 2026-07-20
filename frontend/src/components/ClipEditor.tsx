@@ -25,7 +25,7 @@ export default function ClipEditor() {
   const setStretchRatio = (v: number) => rpc.call("project.setClipStretchRatio", { clipId, ratio: v }).catch(() => {});
 
   return (
-    <div className="clip-editor">
+    <div className="clip-editor" key={clip.clipId}>
       <div className="ce-header">
         {clip.name ?? `Clip ${clip.clipId}`}
         {track ? <span className="ce-track"> — Track {track.name}</span> : null}
@@ -36,19 +36,19 @@ export default function ClipEditor() {
         <div className="ce-left">
           <div className="ce-row">
             <label>Gain</label>
-            <input type="range" min={0} max={2} step={0.01} defaultValue={clip.gain}
+            <input type="range" min={0} max={2} step={0.01} value={clip.gain}
               onChange={(e) => setGain(parseFloat(e.target.value))} />
             <span className="ce-val">{clip.gain.toFixed(2)}x</span>
           </div>
           <div className="ce-row">
             <label>Fade In</label>
-            <input type="range" min={0} max={dur / 2} step={0.1} defaultValue={clip.fadeIn}
+            <input type="range" min={0} max={dur / 2} step={0.1} value={clip.fadeIn}
               onChange={(e) => setFadeIn(parseFloat(e.target.value))} />
             <span className="ce-val">{clip.fadeIn.toFixed(1)}b</span>
           </div>
           <div className="ce-row">
             <label>Fade Out</label>
-            <input type="range" min={0} max={dur / 2} step={0.1} defaultValue={clip.fadeOut}
+            <input type="range" min={0} max={dur / 2} step={0.1} value={clip.fadeOut}
               onChange={(e) => setFadeOut(parseFloat(e.target.value))} />
             <span className="ce-val">{clip.fadeOut.toFixed(1)}b</span>
           </div>
@@ -67,7 +67,7 @@ export default function ClipEditor() {
           </div>
           <div className="ce-row">
             <label>Mode</label>
-            <select defaultValue={clip.stretchMode} onChange={(e) => setStretchMode(parseInt(e.target.value))}>
+            <select value={clip.stretchMode} onChange={(e) => setStretchMode(parseInt(e.target.value))}>
               <option value={0}>Off</option>
               <option value={1}>Tempo Match</option>
               <option value={2}>Manual Ratio</option>
@@ -75,7 +75,7 @@ export default function ClipEditor() {
           </div>
           <div className="ce-row">
             <label>Ratio</label>
-            <input type="range" min={0.25} max={4} step={0.01} defaultValue={clip.stretchRatio}
+            <input type="range" min={0.25} max={4} step={0.01} value={clip.stretchRatio}
               disabled={clip.stretchMode !== 2}
               onChange={(e) => setStretchRatio(parseFloat(e.target.value))} />
             <span className="ce-val">{clip.stretchRatio.toFixed(2)}x</span>

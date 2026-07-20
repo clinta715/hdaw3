@@ -12,6 +12,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
+#include <cmath>
 
 namespace frontend {
 
@@ -129,7 +130,7 @@ void FrontendServer::handleOneMessage(QWebSocket* socket, const QByteArray& byte
     // Notifications (no id) execute side effects but get no response.
     const bool isNotification = req.isNotification();
 
-    auto result = frontend::dispatch(engine_, req.method, req.params);
+    auto result = frontend::dispatch(engine_, req.method, req.params, this);
 
     if (isNotification)
         return;  // fire-and-forget; no id to echo back
@@ -153,6 +154,16 @@ void FrontendServer::broadcastNotification(const QString& method, const QJsonVal
         c->sendTextMessage(QString::fromUtf8(bytes));
 }
 
+void FrontendServer::broadcastNotificationFromAnyThread(const QString& method, const QJsonValue& params) {
+    // Marshal to the main thread before touching clients_. This is the
+    // documented entry point for non-main-thread callers (e.g. export
+    // worker progress callbacks); broadcastNotification above stays
+    // main-thread-only so the hot 30 Hz timer paths stay lock-free.
+    QMetaObject::invokeMethod(this, [this, method, params]() {
+        broadcastNotification(method, params);
+    }, Qt::QueuedConnection);
+}
+
 void FrontendServer::onMeterTimer() {
     if (clients_.isEmpty()) return;
     // Read-only snapshot of meter levels. The reads hit std::atomic<float>
@@ -171,7 +182,28 @@ void FrontendServer::onMeterTimer() {
 
 void FrontendServer::onTransportTimer() {
     if (clients_.isEmpty()) return;
-    broadcastNotification(notify::Transport, toJson(engine_.getReadModel().getTransport()));
+    QJsonObject payload = toJson(engine_.getReadModel().getTransport());
+    // Skip the broadcast if nothing meaningful has changed since the last
+    // push. The 30 Hz timer keeps firing in the idle case (paused, not
+    // recording, no loop toggle); without this guard every connected client
+    // receives ~30 identical TransportSnapshots per second forever.
+    //
+    // currentTimeSeconds is the only field that advances during playback;
+    // quantize it to the centisecond so sub-frame jitter doesn't defeat
+    // the comparison. The other fields are booleans/doubles that only
+    // change on explicit user/engine actions.
+    auto quantized = [](const QJsonObject& o) -> QJsonObject {
+        QJsonObject q = o;
+        if (q.contains("currentTimeSeconds")) {
+            double t = q.value("currentTimeSeconds").toDouble();
+            q["currentTimeSeconds"] = std::round(t * 100.0) / 100.0;
+        }
+        return q;
+    };
+    if (quantized(payload) == quantized(lastTransportPayload_))
+        return;
+    lastTransportPayload_ = payload;
+    broadcastNotification(notify::Transport, payload);
 }
 
 } // namespace frontend

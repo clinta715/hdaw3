@@ -270,6 +270,28 @@ set_target_properties(HDAW PROPERTIES
 
 hdaw_deploy_qt(HDAW)
 
+# --- HDAW_headless: engine-only executable, no Qt Widgets / GUI ---
+# Headless engine for running as a background service or with the
+# HTML/Electron frontend. Links only Qt Core/Network/HttpServer/WebSockets
+# and JUCE — no Qt6::Widgets, no QApplication, no windowing system.
+# Usage:
+#   HDAW_headless.exe --mcp-stdio         (MCP over stdin/stdout)
+#   HDAW_headless.exe --headless          (WebSocket server, default)
+#   HDAW_headless.exe --port=9000         (custom WebSocket port)
+add_executable(HDAW_headless
+    src/main_headless.cpp
+)
+target_link_libraries(HDAW_headless
+    PRIVATE
+    HDAW_lib
+)
+set_target_properties(HDAW_headless PROPERTIES
+    OUTPUT_NAME "HDAW_headless"
+)
+if(MSVC)
+    target_compile_options(HDAW_headless PRIVATE /MP)
+endif()
+
 # --- hdaw_plugin_host: child process for isolated plugin hosting ---
 if(HDAW_PLUGIN_ISOLATION)
     add_executable(hdaw_plugin_host

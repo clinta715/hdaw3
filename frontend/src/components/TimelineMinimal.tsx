@@ -5,6 +5,7 @@ import { useMarkerStore } from "../store/markerStore";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
+import { snapToGrid } from "./snapUtils";
 import "./TimelineMinimal.css";
 
 const DEFAULT_PPS = 40;
@@ -83,9 +84,18 @@ export default function TimelineMinimal() {
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number } | null>(null);
 
   useEffect(() => {
-    const close = () => { setContextMenu(null); setEmptyContextMenu(null); };
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    const close = (e: MouseEvent) => {
+      // Don't close if clicking inside context menu
+      const target = e.target as HTMLElement;
+      if (target.closest('.clip-context-menu')) {
+        return;
+      }
+      setContextMenu(null);
+      setEmptyContextMenu(null);
+    };
+    // Use mousedown instead of click to avoid conflicts with button onClick
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
   }, []);
 
   // --- Group clips by track ---
@@ -298,7 +308,9 @@ export default function TimelineMinimal() {
         if (!el) return;
         const rect = el.getBoundingClientRect();
         const scroll = el.scrollLeft;
-        const mouseBeat = (ev.clientX - rect.left + scroll) / pps;
+        const rawMouseBeat = (ev.clientX - rect.left + scroll) / pps;
+        const { snapEnabled, snapDivision } = useUiStore.getState();
+        const mouseBeat = snapEnabled ? snapToGrid(rawMouseBeat, snapDivision) : rawMouseBeat;
 
         if (d.side === "left") {
           const maxStart = d.initialStartBeat + d.initialDuration - 0.5;
@@ -438,7 +450,9 @@ export default function TimelineMinimal() {
     const cr = el.getBoundingClientRect();
     const relX = d.mouseX - cr.left;
     const relY = d.mouseY - cr.top;
-    const newStart = Math.max(0, (relX - d.offsetX) / pps);
+    const rawStart = Math.max(0, (relX - d.offsetX) / pps);
+    const { snapEnabled, snapDivision } = useUiStore.getState();
+    const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
     const newTrackIndex = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
     if (newTrackIndex !== d.startTrackIndex || Math.abs(newStart - d.startBeat) > 0.01) {
       const deltaStart = newStart - d.startBeat;
@@ -451,7 +465,7 @@ export default function TimelineMinimal() {
           if (!clip) continue;
           const clipNewStart = Math.max(0, clip.startBeat + deltaStart);
           const clipNewTrack = Math.min(Math.max(0, clip.trackIndex + deltaTrack), tracks.length - 1);
-          await rpc.call("project.moveClip", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
+          await rpc.call("project.moveClipWithOverlap", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
         }
         await rpc.call("project.endTransaction");
         await useProjectStore.getState().syncDirtyFlag(rpc);
@@ -543,9 +557,13 @@ export default function TimelineMinimal() {
     const c = contextMenu.clip;
     setContextMenu(null);
     (async () => {
-      await rpc.call("project.removeClip", { clipId: c.clipId }).catch(() => {});
-      await useProjectStore.getState().syncDirtyFlag(rpc);
-      await useProjectStore.getState().syncSnapshot(rpc);
+      try {
+        await rpc.call("project.removeClip", { clipId: c.clipId });
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      } catch (e) {
+        console.error("Failed to delete clip:", e);
+      }
     })();
   }, [contextMenu]);
 
@@ -604,14 +622,18 @@ export default function TimelineMinimal() {
         if (selectedClipIds.size > 0) {
           e.preventDefault();
           (async () => {
-            await rpc.call("project.beginTransaction", { name: "delete clips" });
-            for (const id of selectedClipIds) {
-              await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
+            try {
+              await rpc.call("project.beginTransaction", { name: "delete clips" });
+              for (const id of selectedClipIds) {
+                await rpc.call("project.removeClip", { clipId: id });
+              }
+              await rpc.call("project.endTransaction");
+              useUiStore.getState().clearSelection();
+              await useProjectStore.getState().syncDirtyFlag(rpc);
+              await useProjectStore.getState().syncSnapshot(rpc);
+            } catch (e) {
+              console.error("Failed to delete clips:", e);
             }
-            await rpc.call("project.endTransaction");
-            useUiStore.getState().clearSelection();
-            await useProjectStore.getState().syncDirtyFlag(rpc);
-            await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
@@ -715,7 +737,9 @@ export default function TimelineMinimal() {
       const cr = el.getBoundingClientRect();
       const relX = dragState.mouseX - cr.left;
       const relY = dragState.mouseY - cr.top;
-      const gs = Math.max(0, (relX - dragState.offsetX) / pps);
+      const rawStart = Math.max(0, (relX - dragState.offsetX) / pps);
+      const { snapEnabled, snapDivision } = useUiStore.getState();
+      const gs = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
       const gi = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
       const orig = clips.find((c) => c.clipId === dragState.clipId);
       if (orig) {
@@ -827,7 +851,7 @@ export default function TimelineMinimal() {
                   style={{ top: idx * TRACK_HEIGHT, height: TRACK_HEIGHT }}
                 >
                     {trackClips.map((clip) => {
-                    const isDragging = dragState?.clipId === clip.clipId;
+                    const isDragging = dragState != null && dragSelectedIdsRef.current.has(clip.clipId);
                     const isTrimming = trimState?.clipId === clip.clipId;
                     const isSelected = selectedClipIds.has(clip.clipId);
                     const dispLeft = isTrimming ? trimState.currentStartBeat * pps : clip.startBeat * pps;
@@ -931,19 +955,23 @@ export default function TimelineMinimal() {
         >
           {contextMenu.type === "clip" && contextMenu.clip && (
             <>
-              <button onClick={handleDeleteClip}>
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
+                handleDeleteClip();
+              }}>
                 Delete
               </button>
-              <button onClick={handleDuplicateClip}>
+              <button onMouseDown={(e) => { e.stopPropagation(); handleDuplicateClip(); }}>
                 Duplicate
               </button>
-              <button onClick={handleSplitClip}>
+              <button onMouseDown={(e) => { e.stopPropagation(); handleSplitClip(); }}>
                 Split
               </button>
-              <button onClick={() => { useUiStore.getState().setClipboard([contextMenu.clip!]); setContextMenu(null); }}>
+              <button onMouseDown={(e) => { e.stopPropagation(); useUiStore.getState().setClipboard([contextMenu.clip!]); setContextMenu(null); }}>
                 Copy
               </button>
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 useUiStore.getState().setClipboard([contextMenu.clip!]);
                 setContextMenu(null);
                 rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
@@ -956,14 +984,16 @@ export default function TimelineMinimal() {
                 Cut
               </button>
               <div className="ctx-separator" />
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
                 rpc.call("project.sliceClipAtPlayhead", { clipId });
                 setContextMenu(null);
               }}>
                 Slice at Playhead
               </button>
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
                 rpc.call("project.sliceClipAtTransients", { clipId });
                 setContextMenu(null);
@@ -971,21 +1001,24 @@ export default function TimelineMinimal() {
                 Slice at Transients
               </button>
               <div className="ctx-separator" />
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
                 rpc.call("project.copyAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
                 setContextMenu(null);
               }}>
                 Copy Region
               </button>
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
                 rpc.call("project.cutAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
                 setContextMenu(null);
               }}>
                 Cut Region
               </button>
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
                 rpc.call("project.pasteAudioClipRegion", { clipId, pasteTime: transport.currentTimeSeconds });
                 setContextMenu(null);
@@ -996,7 +1029,8 @@ export default function TimelineMinimal() {
           )}
           {contextMenu.type === "marker" && (
             <>
-              <button onClick={() => {
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
                 const marker = markers.find(m => m.index === contextMenu.markerIndex);
                 const name = prompt("Marker name:", marker?.name ?? "");
                 if (name != null && contextMenu.markerIndex != null) {
@@ -1008,7 +1042,8 @@ export default function TimelineMinimal() {
               }}>
                 Rename Marker
               </button>
-              <button className="ctx-danger" onClick={() => {
+              <button className="ctx-danger" onMouseDown={(e) => {
+                e.stopPropagation();
                 if (contextMenu.markerIndex != null) {
                   rpc.call("project.removeMarker", { index: contextMenu.markerIndex }).then(() => {
                     useMarkerStore.getState().syncMarkers(rpc);
@@ -1026,26 +1061,29 @@ export default function TimelineMinimal() {
       {/* Empty-area context menu */}
       {emptyContextMenu && (
         <div className="clip-context-menu" style={{ left: emptyContextMenu.x, top: emptyContextMenu.y }}
-          onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => { rpc.call("project.addTrack").catch(() => {}); setEmptyContextMenu(null); }}>
+          onMouseDown={(e) => e.stopPropagation()}>
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack").catch(() => {}); setEmptyContextMenu(null); }}>
             Add Track
           </button>
           {useUiStore.getState().clipClipboard.length > 0 && (
-            <button onClick={() => {
+            <button onMouseDown={(e) => {
+              e.stopPropagation();
               setEmptyContextMenu(null);
               pasteClipboard();
             }}>
               Paste
             </button>
           )}
-          <button onClick={() => {
+          <button onMouseDown={(e) => {
+            e.stopPropagation();
             const bpm = prompt("BPM:", "120");
             if (bpm) rpc.call("project.setTempo", { bpm: parseFloat(bpm) || 120 }).catch(() => {});
             setEmptyContextMenu(null);
           }}>
             Set Global BPM...
           </button>
-          <button onClick={() => {
+          <button onMouseDown={(e) => {
+            e.stopPropagation();
             rpc.call("project.addMidiClip", {
               trackIndex: 0,
               start: emptyContextMenu.beat,

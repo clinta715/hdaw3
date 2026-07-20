@@ -121,9 +121,19 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  // Intercept close to check for unsaved changes
+  mainWindow.on("close", (e) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // Ask the renderer if it's dirty — it will handle the dialog itself
+      // and call request-close when ready. Block the close for now.
+      e.preventDefault();
+      mainWindow.webContents.send("app-close-requested");
+    }
+  });
+
   if (process.env.NODE_ENV === "development" || !app.isPackaged) {
     await mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools();
   } else {
     await mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
@@ -150,6 +160,25 @@ function setupIpc() {
       }));
     } catch {
       return [];
+    }
+  });
+
+  // Renderer reports its dirty state when asked
+  ipcMain.handle("is-dirty", async () => {
+    return false; // actual value comes from renderer via request-close flow
+  });
+
+  // Renderer handles save via its own RPC
+  ipcMain.handle("save-project", async () => {
+    if (mainWindow) {
+      mainWindow.webContents.send("do-save");
+    }
+  });
+
+  // Renderer requests to close — used after it handles the dirty check itself
+  ipcMain.handle("request-close", async () => {
+    if (mainWindow) {
+      mainWindow.destroy();
     }
   });
 }

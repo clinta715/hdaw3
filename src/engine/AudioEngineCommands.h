@@ -37,6 +37,7 @@ public:
                     const std::string& name) override;
     void removeClip(int clipId) override;
     void moveClip(int clipId, int newTrackIndex, double newStart) override;
+    void moveClipWithOverlap(int clipId, int newTrackIndex, double newStart) override;
     void setClipStart(int clipId, double start) override;
     void setClipDuration(int clipId, double duration) override;
     void setClipGain(int clipId, float gain) override;
@@ -68,6 +69,8 @@ public:
     void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) override;
     void removeGainEnvelopePoint(int clipId, int pointIndex) override;
     void clearGainEnvelope(int clipId) override;
+    void setClipGainEnvelope(int clipId,
+                             const std::vector<std::pair<double, double>>& points) override;
     void notifyClipGainEnvelopeChanged(int clipId) override;
 
     // ProjectCommands — Modulation (LFO)

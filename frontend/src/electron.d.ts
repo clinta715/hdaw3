@@ -12,6 +12,10 @@ declare global {
       showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths: string[] }>;
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath: string }>;
       readDirectory: (dirPath: string) => Promise<DirEntry[]>;
+      isDirty: () => Promise<boolean>;
+      saveProject: () => Promise<void>;
+      requestClose: () => Promise<void>;
+      on: (channel: string, callback: (...args: unknown[]) => void) => void;
     };
   }
 }

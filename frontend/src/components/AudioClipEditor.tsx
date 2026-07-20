@@ -115,7 +115,7 @@ export default function AudioClipEditor() {
   const gainDb = gainToDb(clip.gain);
 
   return (
-    <div className="audio-clip-editor">
+    <div className="audio-clip-editor" key={clip.clipId}>
       {/* Header bar */}
       <div className="ace-header">
         <div className="ace-transport">

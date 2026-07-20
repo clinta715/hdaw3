@@ -98,8 +98,18 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   },
 
   removePoints: async (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => {
+    if (times.length === 0) return;
+    // Wrap the loop in a transaction so the whole batch is one undo step.
+    // Without this, each removeAutomationPoint call opens its own transaction
+    // and the user has to press Ctrl+Z once per deleted point.
+    if (times.length > 1) {
+      await rpc.call("project.beginTransaction", { name: "remove automation points" });
+    }
     for (const t of times) {
       await rpc.call("project.removeAutomationPoint", { trackIndex, lane: laneName, time: t });
+    }
+    if (times.length > 1) {
+      await rpc.call("project.endTransaction");
     }
     await get().fetchForTrack(trackIndex, rpc);
   },

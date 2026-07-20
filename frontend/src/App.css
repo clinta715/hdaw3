@@ -5,12 +5,12 @@ html, body, #root { height: 100%; overflow: hidden; }
 .app-shell {
   display: grid;
   grid-template-rows: 48px 1fr 200px 24px;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px 1fr auto;
   grid-template-areas:
-    "transport transport"
-    "headers   timeline"
-    "bottom    bottom"
-    "status    status";
+    "transport transport transport"
+    "headers   timeline  browser"
+    "bottom    bottom    bottom"
+    "status    status    status";
   height: 100%;
   background: var(--bg-window);
   color: var(--text-primary);
@@ -55,6 +55,38 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .mixer { height: 100%; overflow-x: auto; }
 .piano-roll { height: 100%; overflow: auto; }
+
+/* Floating file-browser toggle button. The previous inline-style version
+   hardcoded hex values; this class lets the button participate in the
+   theme system and keeps App.tsx free of style objects. */
+.browser-toggle-btn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.browser-toggle-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.browser-toggle-btn--active {
+  /* Tinted with the info accent so the user can tell at a glance that the
+     browser is open. */
+  background: color-mix(in srgb, var(--info) 22%, var(--bg-panel));
+  color: var(--text-primary);
+  border-color: var(--info);
+}
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-bg); }

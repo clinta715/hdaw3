@@ -4,6 +4,7 @@
   height: 80px;
   border-bottom: 1px solid var(--border, #333);
   user-select: none;
+  position: relative;
 }
 
 .alc-header {
@@ -33,4 +34,31 @@
 
 .alc-canvas.alc-hover-point {
   cursor: grab;
+}
+
+.alc-context-menu {
+  position: fixed;
+  background: var(--bg-elevated, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  z-index: 1000;
+  min-width: 120px;
+}
+
+.alc-context-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.alc-context-menu button:hover {
+  background: var(--accent-dim, rgba(255, 152, 0, 0.15));
 }

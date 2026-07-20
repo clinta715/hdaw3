@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
+import { useTransportStore } from "../store/transportStore";
 import "./ImportDialog.css";
 
 interface ImportDialogProps {
@@ -26,14 +27,28 @@ export default function ImportDialog({ mode, onClose, onImport }: ImportDialogPr
   const handleImport = async () => {
     if (!filePath.trim()) return;
 
-    const method = mode === "audio" ? "project.addAudioClip" : "project.addMidiClip";
-    const params: Record<string, unknown> = { sourceFile: filePath.trim() };
+    const tr = useTransportStore.getState().transport;
+    const startBeat = tr.currentTimeSeconds * (tr.bpm / 60);
+    const fileName = filePath.trim().split(/[/\\]/).pop() ?? filePath.trim();
 
-    if (trackChoice !== "new") {
-      params.trackIndex = parseInt(trackChoice, 10);
+    if (mode === "audio") {
+      const params: Record<string, unknown> = {
+        trackIndex: trackChoice === "new" ? 0 : parseInt(trackChoice, 10),
+        start: startBeat,
+        duration: 4,
+        sourceFile: filePath.trim(),
+        name: fileName,
+      };
+      await rpc.call("project.addAudioClip", params).catch(() => {});
+    } else {
+      const params: Record<string, unknown> = {
+        trackIndex: trackChoice === "new" ? 0 : parseInt(trackChoice, 10),
+        start: startBeat,
+        duration: 4,
+        name: fileName,
+      };
+      await rpc.call("project.addMidiClip", params).catch(() => {});
     }
-
-    await rpc.call(method, params).catch(() => {});
     onImport();
     onClose();
   };

@@ -2,6 +2,17 @@ import { useEffect } from "react";
 import { rpc } from "../rpc";
 import { useBrowserStore } from "../store/browserStore";
 
+// Global keyboard shortcuts. Scope rules:
+//   - We ignore keys while the user is typing in an INPUT/TEXTAREA/SELECT so
+//     that, e.g. typing "R" into the BPM field doesn't trigger record.
+//   - FILE-RELATED SHORTCUTS (Ctrl+N/O/S/Shift+S/Shift+I/Shift+M/Ctrl+E)
+//     live in FileMenu.tsx, NOT here. They need access to the unsaved-changes
+//     confirm flow and the import/export dialogs, both of which are owned by
+//     FileMenu. Defining them here would double-fire Ctrl+N (this hook and
+//     FileMenu both register a window keydown listener) and bypass the
+//     unsaved-changes prompt.
+//   - This hook owns only transport and UI-shell shortcuts that don't need
+//     FileMenu state.
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -14,37 +25,31 @@ export function useKeyboardShortcuts() {
       // Transport — Shift+Space: stop
       if (e.code === "Space" && shift) {
         e.preventDefault();
-        rpc.call("transport.stop");
+        rpc.call("transport.stop").catch(console.error);
       }
 
-      // Transport — R: record
+      // Transport — R: record (toggle via transport.record alias)
       if (e.code === "KeyR" && !ctrl && !shift) {
         e.preventDefault();
-        rpc.call("transport.record");
+        rpc.call("transport.record").catch(console.error);
       }
 
       // Transport — Home: rewind
       if (e.code === "Home" && !ctrl) {
         e.preventDefault();
-        rpc.call("transport.rewind");
-      }
-
-      // Project — Ctrl+N: new project
-      if (ctrl && e.key === "n") {
-        e.preventDefault();
-        rpc.call("project.newProject");
+        rpc.call("transport.rewind").catch(console.error);
       }
 
       // Transport — Ctrl+L: toggle loop
       if (ctrl && e.key === "l") {
         e.preventDefault();
-        rpc.call("transport.toggleLoop");
+        rpc.call("transport.toggleLoop").catch(console.error);
       }
 
       // Track — Ctrl+Shift+T: add track
       if (ctrl && shift && e.key === "T") {
         e.preventDefault();
-        rpc.call("project.addTrack");
+        rpc.call("project.addTrack").catch(console.error);
       }
 
       // UI — Ctrl+B: toggle file browser

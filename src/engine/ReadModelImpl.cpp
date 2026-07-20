@@ -4,6 +4,8 @@
 #include "Track.h"
 #include "../model/ProjectModel.h"
 
+#include <algorithm>
+
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
 
@@ -165,6 +167,42 @@ std::vector<NoteSnapshot> ReadModelImpl::getNotes(int clipId) const
                 notes.push_back(ns);
             }
             return notes;
+        }
+    }
+    return {};
+}
+
+std::vector<CcPointSnapshot> ReadModelImpl::getCcPoints(int clipId, int controllerNumber) const
+{
+    auto trackList = model_.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t) {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid())
+            continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c) {
+            auto clipTree = clipList.getChild(c);
+            if (static_cast<int>(clipTree.getProperty(IDs::clipID, 0)) != clipId)
+                continue;
+
+            std::vector<CcPointSnapshot> points;
+            auto ccList = clipTree.getChildWithName(IDs::CC_LIST);
+            if (!ccList.isValid())
+                return points;
+
+            for (int i = 0; i < ccList.getNumChildren(); ++i) {
+                auto pt = ccList.getChild(i);
+                if (static_cast<int>(pt.getProperty(IDs::controllerNumber, -1)) != controllerNumber)
+                    continue;
+                CcPointSnapshot s;
+                s.controllerNumber = controllerNumber;
+                s.beat = pt.getProperty(IDs::beat, 0.0);
+                s.value = static_cast<int>(pt.getProperty(IDs::value, 0));
+                points.push_back(s);
+            }
+            // Sort by beat for display.
+            std::sort(points.begin(), points.end(),
+                      [](const CcPointSnapshot& a, const CcPointSnapshot& b) { return a.beat < b.beat; });
+            return points;
         }
     }
     return {};

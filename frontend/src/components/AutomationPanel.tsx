@@ -39,7 +39,7 @@ export default function AutomationPanel({ rpc }: Props) {
     try {
       await rpc.call("project.addAutomationLane", {
         trackIndex: activeTrackIndex,
-        paramID: next.paramIndex,
+        laneName: next.name,
       });
       await fetchForTrack(activeTrackIndex, rpc);
     } catch (err) {

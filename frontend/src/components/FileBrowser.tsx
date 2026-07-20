@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useBrowserStore } from "../store/browserStore";
 import { useUiStore } from "../store/uiStore";
 import { useProjectStore } from "../store/projectStore";
@@ -32,12 +32,12 @@ function isSupported(name: string) {
 }
 
 function FileIcon({ name }: { name: string }) {
-  if (isMidi(name)) return <span className="fb-icon fb-icon--midi">♫</span>;
-  if (isAudio(name)) return <span className="fb-icon fb-icon--audio">♪</span>;
-  return <span className="fb-icon">📄</span>;
+  if (isMidi(name)) return <span className="fb-icon fb-icon--midi">&#9835;</span>;
+  if (isAudio(name)) return <span className="fb-icon fb-icon--audio">&#9834;</span>;
+  return <span className="fb-icon">&#128196;</span>;
 }
 
-function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
+function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: number; onPreviewFile: (path: string, name: string) => void }) {
   const expandedPaths = useBrowserStore((s) => s.expandedPaths);
   const toggleExpanded = useBrowserStore((s) => s.toggleExpanded);
   const searchQuery = useBrowserStore((s) => s.searchQuery);
@@ -52,18 +52,22 @@ function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
   const isRoot = depth === 0;
   const query = searchQuery.toLowerCase();
 
+  const loadChildren = useCallback(async () => {
+    if (!window.hdaw) return;
+    const entries = await window.hdaw.readDirectory(entry.path);
+    const sorted = entries.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    setChildren(sorted);
+    setLoaded(true);
+  }, [entry.path]);
+
   useEffect(() => {
-    if (isExpanded && !loaded && window.hdaw) {
-      window.hdaw.readDirectory(entry.path).then((entries) => {
-        const sorted = entries.sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-        setChildren(sorted);
-        setLoaded(true);
-      });
+    if (isExpanded && !loaded) {
+      loadChildren().catch(console.error);
     }
-  }, [isExpanded, loaded, entry.path]);
+  }, [isExpanded, loaded, loadChildren]);
 
   const filteredChildren = useMemo(() => {
     if (!query) return children.filter((c) => c.isDir || isSupported(c.name));
@@ -76,22 +80,10 @@ function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
 
   const handleToggle = useCallback(() => {
     toggleExpanded(entry.path);
-    if (!loaded && !isExpanded && window.hdaw) {
-      window.hdaw.readDirectory(entry.path).then((entries) => {
-        const sorted = entries.sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-        setChildren(sorted);
-        setLoaded(true);
-      });
+    if (!loaded && !isExpanded) {
+      loadChildren().catch(console.error);
     }
-  }, [entry.path, loaded, isExpanded, toggleExpanded]);
-
-  const handleDoubleClick = useCallback(async () => {
-    if (!isRoot) return;
-    // Root folders don't double-click to import
-  }, [isRoot]);
+  }, [entry.path, loaded, isExpanded, toggleExpanded, loadChildren]);
 
   const handleFileDoubleClick = useCallback(async (filePath: string, fileName: string) => {
     const tr = useTransportStore.getState().transport;
@@ -137,8 +129,8 @@ function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
           }
         }}
       >
-        <span className={`fb-arrow ${isExpanded ? "fb-arrow--expanded" : ""}`}>▶</span>
-        <span className="fb-folder-icon">📁</span>
+        <span className={`fb-arrow ${isExpanded ? "fb-arrow--expanded" : ""}`}>&#9654;</span>
+        <span className="fb-folder-icon">&#128193;</span>
         <span className="fb-tree-name">{isRoot ? entry.name : entry.name}</span>
       </div>
       {contextMenu && isRoot && (
@@ -151,7 +143,7 @@ function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
       )}
       {isExpanded && filteredChildren.map((child) => (
         child.isDir ? (
-          <FolderNode key={child.path} entry={child} depth={depth + 1} />
+          <FolderNode key={child.path} entry={child} depth={depth + 1} onPreviewFile={onPreviewFile} />
         ) : (
           <div
             key={child.path}
@@ -164,6 +156,18 @@ function FolderNode({ entry, depth }: { entry: DirEntry; depth: number }) {
           >
             <FileIcon name={child.name} />
             <span className="fb-tree-name">{child.name}</span>
+            {isAudio(child.name) && (
+              <button
+                className="fb-preview-btn"
+                title="Preview at project tempo"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPreviewFile(child.path, child.name);
+                }}
+              >
+                &#9654;
+              </button>
+            )}
           </div>
         )
       ))}
@@ -177,6 +181,15 @@ export default function FileBrowser() {
   const setSearchQuery = useBrowserStore((s) => s.setSearchQuery);
   const addFolder = useBrowserStore((s) => s.addFolder);
   const visible = useBrowserStore((s) => s.visible);
+  const selectedFile = useBrowserStore((s) => s.selectedFile);
+  const bpm = useTransportStore((s) => s.transport.bpm);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [tempoMatch, setTempoMatch] = useState(true);
+  const [sourceBpm, setSourceBpm] = useState(120);
+  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleAddFolder = useCallback(async () => {
     if (window.hdaw) {
@@ -189,6 +202,71 @@ export default function FileBrowser() {
       }
     }
   }, [addFolder]);
+
+  const stopPreview = useCallback(async () => {
+    await rpc.call("preview.stop").catch(() => {});
+    setIsPlaying(false);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  const playPreview = useCallback(async (filePath: string, fileName: string) => {
+    await rpc.call("preview.load", { filePath });
+    await rpc.call("preview.setVolume", { volume });
+    if (tempoMatch) {
+      await rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm });
+      await rpc.call("preview.setProjectBpm", { bpm });
+    } else {
+      await rpc.call("preview.setTempoMatch", { enabled: false });
+    }
+    await rpc.call("preview.play");
+    setIsPlaying(true);
+    setPreviewFile({ path: filePath, name: fileName });
+
+    // Poll for playback state to auto-stop
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      const playing = await rpc.call("preview.isPlaying") as boolean;
+      if (!playing) {
+        setIsPlaying(false);
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      }
+    }, 500);
+  }, [volume, tempoMatch, sourceBpm, bpm]);
+
+  const handlePreviewFile = useCallback(async (filePath: string, fileName: string) => {
+    if (isPlaying && previewFile?.path === filePath) {
+      await stopPreview();
+    } else {
+      await playPreview(filePath, fileName);
+    }
+  }, [isPlaying, previewFile, playPreview, stopPreview]);
+
+  // Sync tempo match settings when they change
+  useEffect(() => {
+    if (isPlaying) {
+      rpc.call("preview.setVolume", { volume }).catch(() => {});
+      if (tempoMatch) {
+        rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm }).catch(() => {});
+        rpc.call("preview.setProjectBpm", { bpm }).catch(() => {});
+      } else {
+        rpc.call("preview.setTempoMatch", { enabled: false }).catch(() => {});
+      }
+    }
+  }, [volume, tempoMatch, sourceBpm, bpm, isPlaying]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      rpc.call("preview.stop").catch(() => {});
+    };
+  }, []);
 
   if (!visible) return null;
 
@@ -221,8 +299,64 @@ export default function FileBrowser() {
           </div>
         )}
         {rootEntries.map((entry) => (
-          <FolderNode key={entry.path} entry={entry} depth={0} />
+          <FolderNode key={entry.path} entry={entry} depth={0} onPreviewFile={handlePreviewFile} />
         ))}
+      </div>
+      <div className="fb-preview-bar">
+        <div className="fb-preview-controls">
+          <button
+            className={`fb-preview-play${isPlaying ? " fb-preview-play--active" : ""}`}
+            onClick={() => {
+              if (isPlaying) {
+                stopPreview();
+              } else if (previewFile) {
+                playPreview(previewFile.path, previewFile.name);
+              }
+            }}
+            disabled={!previewFile && !isPlaying}
+            title={isPlaying ? "Stop" : "Play"}
+          >
+            {isPlaying ? "&#9632;" : "&#9654;"}
+          </button>
+          <input
+            type="range"
+            className="fb-volume-slider"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            title={`Volume: ${Math.round(volume * 100)}%`}
+          />
+        </div>
+        <div className="fb-preview-options">
+          <label className="fb-tempo-match-label">
+            <input
+              type="checkbox"
+              checked={tempoMatch}
+              onChange={(e) => setTempoMatch(e.target.checked)}
+            />
+            <span>Tempo Match</span>
+          </label>
+          {tempoMatch && (
+            <div className="fb-source-bpm">
+              <label>Src BPM:</label>
+              <input
+                type="number"
+                className="fb-bpm-input"
+                min="20"
+                max="300"
+                value={sourceBpm}
+                onChange={(e) => setSourceBpm(parseFloat(e.target.value) || 120)}
+              />
+            </div>
+          )}
+        </div>
+        {previewFile && (
+          <div className="fb-preview-info" title={previewFile.path}>
+            {previewFile.name}
+          </div>
+        )}
       </div>
     </div>
   );

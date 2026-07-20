@@ -15,6 +15,7 @@ import ModulationPanel from "./components/ModulationPanel";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
+import Toaster from "./components/Toaster";
 import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useBrowserStore } from "./store/browserStore";
@@ -26,9 +27,55 @@ function App() {
   const activeBottomTab = useUiStore((s) => s.activeBottomTab);
   const setActiveBottomTab = useUiStore((s) => s.setActiveBottomTab);
   const snapshot = useProjectStore((s) => s.snapshot);
+  const isDirty = useProjectStore((s) => s.isDirty);
   const prevTabRef = useRef(activeBottomTab);
   const browserVisible = useBrowserStore((s) => s.visible);
   const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
+
+  // Warn before closing if there are unsaved changes
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useProjectStore.getState().isDirty) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+
+    // Electron: listen for close request from main process
+    const hdaw = (window as any).hdaw;
+    if (hdaw?.on) {
+      hdaw.on("app-close-requested", async () => {
+        const dirty = useProjectStore.getState().isDirty;
+        if (dirty) {
+          const result = confirm("Project has unsaved changes. Save before closing?");
+          if (result) {
+            const fp = useProjectStore.getState().filePath;
+            if (fp) {
+              await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
+            } else {
+              // No existing file — show save dialog
+              if (hdaw.showSaveDialog) {
+                const saveResult = await hdaw.showSaveDialog({
+                  title: "Save Project",
+                  defaultPath: "project.hdaw",
+                  filters: [
+                    { name: "HDAW Projects", extensions: ["hdaw"] },
+                    { name: "All Files", extensions: ["*"] },
+                  ],
+                });
+                if (!saveResult.canceled && saveResult.filePath) {
+                  await rpc.call("project.saveProject", { filePath: saveResult.filePath }).catch(() => {});
+                }
+              }
+            }
+          }
+        }
+        hdaw.requestClose();
+      });
+    }
+
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   // Auto-switch bottom tab when a single clip is selected
   useEffect(() => {
@@ -68,32 +115,23 @@ function App() {
         <TransportBar />
       </header>
       <button
-        className="browser-toggle-btn"
+        className={`browser-toggle-btn${browserVisible ? " browser-toggle-btn--active" : ""}`}
         onClick={toggleBrowser}
         title="Toggle File Browser (Ctrl+B)"
-        style={{
-          position: "fixed",
-          top: 10,
-          right: 10,
-          zIndex: 100,
-          background: browserVisible ? "#2a3a4a" : "#222",
-          border: "1px solid #555",
-          color: browserVisible ? "#fff" : "#aaa",
-          padding: "5px 10px",
-          borderRadius: "4px",
-          cursor: "pointer",
-          fontSize: "14px",
-        }}
       >
         📁
       </button>
       <aside className="track-headers">
         <TrackHeaders />
       </aside>
-      <main className="timeline" style={{ display: "flex", flexDirection: "row" }}>
+      <main className="timeline">
         <TimelineMinimal />
-        <FileBrowser />
       </main>
+      {browserVisible && (
+        <aside className="file-browser">
+          <FileBrowser />
+        </aside>
+      )}
       {useUiStore((s) => s.selectedClipIds.size === 1) && (
         <div className="clip-editor-container">
           <ClipEditor />
@@ -108,6 +146,7 @@ function App() {
         />
       </footer>
       <StatusBar />
+      <Toaster />
     </div>
   );
 }

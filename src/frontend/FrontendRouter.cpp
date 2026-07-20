@@ -1,6 +1,11 @@
 #include "FrontendRouter.h"
+#include "FrontendServer.h"
 
 #include "../engine/AudioEngine.h"
+#include "../engine/ExportManager.h"
+#include "../engine/ProjectPool.h"
+#include "../engine/MainAudioProcessor.h"
+#include "../engine/PluginManager.h"
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -10,9 +15,17 @@
 #include "../common/MidiService.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <algorithm>
+#include <atomic>
+#include <future>
+#include <memory>
+#include <thread>
 
 namespace frontend {
 
@@ -168,6 +181,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     }
     if (m == "removeClip")      { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.removeClip(i); return { false, QJsonValue::Null }; }
     if (m == "moveClip")        { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClip(i, t, s); return { false, QJsonValue::Null }; }
+    if (m == "moveClipWithOverlap") { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClipWithOverlap(i, t, s); return { false, QJsonValue::Null }; }
     if (m == "duplicateClip")   { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); return { false, c.duplicateClip(i) }; }
     if (m == "setClipStart")    { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "start", v, nullptr)) return makeError(-32602, "clipId and start required"); c.setClipStart(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipDuration") { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "duration", v, nullptr)) return makeError(-32602, "clipId and duration required"); c.setClipDuration(i, v); return { false, QJsonValue::Null }; }
@@ -202,9 +216,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     // --- FX ---
     if (m == "addFxSlot") {
         int i; std::string type; int pos; std::string pluginId;
-        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "type", type, nullptr))
-            return makeError(-32602, "trackIndex and type required");
-        pos = optInt(o, "position", -1, nullptr);
+        if (!requireInt(o, "trackIndex", i, nullptr))
+            return makeError(-32602, "trackIndex required");
+        // Accept either `type` (canonical) or `fxType` (frontend spelling) for
+        // the FX-type string. Accept either `position` (canonical) or
+        // `slotIndex` (frontend spelling) for the insertion index; default
+        // -1 = append. Both spellings are tolerated silently.
+        if (o.contains("type") && o.value("type").isString())
+            type = o.value("type").toString().toStdString();
+        else if (o.contains("fxType") && o.value("fxType").isString())
+            type = o.value("fxType").toString().toStdString();
+        else
+            return makeError(-32602, "type (or fxType) required");
+        if (o.contains("position") && o.value("position").isDouble())
+            pos = static_cast<int>(o.value("position").toDouble());
+        else if (o.contains("slotIndex") && o.value("slotIndex").isDouble())
+            pos = static_cast<int>(o.value("slotIndex").toDouble());
+        else
+            pos = -1;
         pluginId = optString(o, "pluginId", "");
         c.addFxSlot(i, type, pos, pluginId);  // string overload
         return { false, QJsonValue::Null };
@@ -247,6 +276,28 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "moveGainEnvelopePoint")   { int i, idx; double t, g; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "pointIndex", idx, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireDouble(o, "gain", g, nullptr)) return makeError(-32602, "clipId, pointIndex, time, gain required"); c.moveGainEnvelopePoint(i, idx, t, g); return { false, QJsonValue::Null }; }
     if (m == "removeGainEnvelopePoint") { int i, idx; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "pointIndex", idx, nullptr)) return makeError(-32602, "clipId and pointIndex required"); c.removeGainEnvelopePoint(i, idx); return { false, QJsonValue::Null }; }
     if (m == "clearGainEnvelope")       { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.clearGainEnvelope(i); return { false, QJsonValue::Null }; }
+    if (m == "setClipGainEnvelope") {
+        int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required");
+        DispatchResult e;
+        auto pointPairs = [](const QJsonValue& v, DispatchResult* err) -> std::vector<std::pair<double, double>> {
+            std::vector<std::pair<double, double>> out;
+            if (!v.isArray()) { if (err) *err = makeError(-32602, "points must be an array"); return out; }
+            for (const auto& el : v.toArray()) {
+                if (!el.isObject()) { if (err) *err = makeError(-32602, "each point must be an object {time, gain}"); return {}; }
+                auto obj = el.toObject();
+                if (!obj.contains("time") || !obj.value("time").isDouble() ||
+                    !obj.contains("gain") || !obj.value("gain").isDouble()) {
+                    if (err) *err = makeError(-32602, "each point must have numeric time and gain");
+                    return {};
+                }
+                out.emplace_back(obj.value("time").toDouble(), obj.value("gain").toDouble());
+            }
+            return out;
+        }(o.value("points"), &e);
+        if (e.isError) return e;
+        c.setClipGainEnvelope(i, pointPairs);
+        return { false, QJsonValue::Null };
+    }
     if (m == "notifyClipGainEnvelopeChanged") { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.notifyClipGainEnvelopeChanged(i); return { false, QJsonValue::Null }; }
 
     // --- Modulation (LFO) ---
@@ -303,6 +354,10 @@ DispatchResult dispatchTransport(TransportCommands& c, const QString& m, const Q
     if (m == "seekToSeconds") { double s; if (!requireDouble(o, "seconds", s, nullptr)) return makeError(-32602, "seconds required"); c.seekToSeconds(s); return { false, QJsonValue::Null }; }
     if (m == "startRecording") { c.startRecording(); return { false, QJsonValue::Null }; }
     if (m == "stopRecording")  { c.stopRecording();  return { false, QJsonValue::Null }; }
+    // transport.record: alias matching the UI semantics (TransportBar's ●
+    // button toggles; "R" shortcut triggers). Toggles start/stop based on
+    // current state.
+    if (m == "record") { if (c.isRecording()) c.stopRecording(); else c.startRecording(); return { false, QJsonValue::Null }; }
     if (m == "isRecording")    { return { false, c.isRecording() }; }
     return makeError(-32601, "unknown transport method: " + m);
 }
@@ -327,6 +382,11 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
     if (m == "getNotes") {
         int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required");
         QJsonArray arr; for (const auto& n : r.getNotes(i)) arr.append(toJson(n));
+        return { false, arr };
+    }
+    if (m == "getCcPoints") {
+        int i, cc; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "controllerNumber", cc, nullptr)) return makeError(-32602, "clipId and controllerNumber required");
+        QJsonArray arr; for (const auto& p : r.getCcPoints(i, cc)) arr.append(toJson(p));
         return { false, arr };
     }
     if (m == "getClipGainEnvelope") {
@@ -415,7 +475,11 @@ DispatchResult dispatchPluginParam(PluginParamService& s, const QString& m, cons
         QJsonArray arr;
         for (const auto& p : s.getParams(i, id)) {
             arr.append(QJsonObject{
-                { "index",       p.index },
+                // Field name is `paramIndex` (not `index`) for consistency
+                // with the write side (pluginParam.setParam's paramIndex),
+                // the AutomatableParamSnapshot shape, and the frontend's
+                // ParamInfo/TS interface.
+                { "paramIndex",  p.index },
                 { "name",        QString::fromStdString(p.name) },
                 { "value",       static_cast<double>(p.value) },
                 { "text",        QString::fromStdString(p.text) },
@@ -455,11 +519,174 @@ DispatchResult dispatchMidi(MidiService& s, const QString& m, const QJsonValue& 
     return makeError(-32601, "unknown midi method: " + m);
 }
 
+// Render the project to an audio file. The ExportManager runs the render on
+// its own worker thread; this handler blocks on a future until onComplete
+// fires, broadcasting notify.exportProgress along the way. Mirrors the MCP
+// export_audio tool (src/mcp/McpExportTool.cpp) but uses the frontend's own
+// notify.exportProgress channel (not notifications/progress).
+DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
+                              const QJsonValue& params, FrontendServer* server) {
+    const auto o = paramsObject(params);
+
+    if (m == "audio") {
+        std::string pathStr;
+        if (!requireString(o, "outputPath", pathStr, nullptr))
+            return makeError(-32602, "outputPath required");
+        QString path = QString::fromStdString(pathStr);
+        if (path.isEmpty())
+            return makeError(-32602, "outputPath required");
+
+        QString formatStr = optString(o, "format", "wav").c_str();
+        formatStr = formatStr.toLower();
+        HDAW::ExportManager::Format fmt = HDAW::ExportManager::WAV;
+        if      (formatStr == "aiff") fmt = HDAW::ExportManager::AIFF;
+        else if (formatStr == "flac") fmt = HDAW::ExportManager::FLAC;
+
+        double sampleRate = optDouble(o, "sampleRate", 48000.0, nullptr);
+        int    bitDepth   = optInt(o, "bitDepth", 24, nullptr);
+        double startTime  = optDouble(o, "start", 0.0, nullptr);
+        double endTime    = optDouble(o, "end", -1.0, nullptr);
+        if (endTime <= 0.0)
+            endTime = HDAW::ExportManager::calculateProjectDuration(engine.getProjectModel());
+        double duration = std::max(0.001, endTime - startTime);
+
+        auto* mainProc = engine.getMainProcessor();
+        if (mainProc == nullptr)
+            return makeError(-32603, "audio engine not initialized");
+        auto& em = mainProc->getExportManager();
+        if (em.isExporting())
+            return makeError(-32603, "export already in progress");
+
+        juce::File outFile(juce::String(path.toUtf8().constData()));
+        if (outFile.existsAsFile()) outFile.deleteFile();
+
+        juce::ValueTree projectCopy = engine.getProjectModel().getTree().createCopy();
+        auto& formatManager = engine.getProjectPool().getFormatManager();
+        auto* pluginManager = &engine.getPluginManager();
+
+        // Progress callback runs on the export worker thread; hop to the main
+        // thread before broadcasting so we never touch clients_ off-thread.
+        if (server != nullptr) {
+            FrontendServer* serverPtr = server;
+            em.onProgress = [serverPtr, &em](float prog) {
+                QJsonObject payload{
+                    { "progress", static_cast<double>(prog) },
+                    { "message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0)) },
+                };
+                serverPtr->broadcastNotificationFromAnyThread(notify::ExportProgress, payload);
+            };
+        }
+
+        auto donePromise = std::make_shared<std::promise<std::pair<bool, QString>>>();
+        auto doneFuture = donePromise->get_future();
+        em.onComplete = [donePromise](bool success, const juce::String& message) {
+            donePromise->set_value({ success, QString::fromUtf8(message.toRawUTF8()) });
+        };
+
+        if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
+                            sampleRate, startTime, duration, fmt, bitDepth)) {
+            em.onProgress = nullptr;
+            em.onComplete = nullptr;
+            return makeError(-32603, "failed to start export");
+        }
+
+        if (server != nullptr) {
+            server->broadcastNotificationFromAnyThread(notify::ExportProgress,
+                QJsonObject{ { "progress", 0.0 }, { "message", "starting render" } });
+        }
+
+        // Block until the worker reports completion. The 30 Hz transport
+        // timer and meter timer continue to fire on the main thread because
+        // they are driven by Qt event loops in their own QObject slots, but
+        // this dispatch call is the only one in flight — every other WebSocket
+        // request is queued behind it. Acceptable for an interactive export.
+        auto [success, message] = doneFuture.get();
+
+        if (server != nullptr) {
+            server->broadcastNotificationFromAnyThread(notify::ExportProgress,
+                QJsonObject{ { "progress", success ? 1.0 : 0.0 }, { "message", message } });
+        }
+
+        em.onProgress = nullptr;
+        em.onComplete = nullptr;
+
+        if (!success)
+            return makeError(-32603, QString("export failed: %1").arg(message));
+
+        return { false, QJsonObject{
+            { "outputPath", path },
+            { "message", message },
+        } };
+    }
+
+    if (m == "isExporting") {
+        auto* mainProc = engine.getMainProcessor();
+        bool exporting = (mainProc != nullptr) && mainProc->getExportManager().isExporting();
+        return { false, exporting };
+    }
+    if (m == "cancel") {
+        auto* mainProc = engine.getMainProcessor();
+        if (mainProc != nullptr && mainProc->getExportManager().isExporting())
+            mainProc->getExportManager().cancel();
+        return { false, QJsonValue::Null };
+    }
+
+    return makeError(-32601, "unknown export method: " + m);
+}
+
+DispatchResult dispatchPreview(AudioEngine& engine, const QString& m, const QJsonValue& params) {
+    const auto o = paramsObject(params);
+    auto& preview = engine.getPreviewPlayer();
+
+    if (m == "load") {
+        std::string path;
+        if (!requireString(o, "filePath", path, nullptr))
+            return makeError(-32602, "filePath required");
+        preview.loadFile(juce::File(juce::String(path)));
+        return { false, QJsonValue::Null };
+    }
+    if (m == "play") {
+        preview.play();
+        return { false, QJsonValue::Null };
+    }
+    if (m == "stop") {
+        preview.stop();
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setVolume") {
+        float vol;
+        if (!requireFloat(o, "volume", vol, nullptr))
+            return makeError(-32602, "volume required");
+        preview.setVolume(vol);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setTempoMatch") {
+        bool enabled;
+        double fileBpm = optDouble(o, "fileBpm", 0.0, nullptr);
+        if (!requireBool(o, "enabled", enabled, nullptr))
+            return makeError(-32602, "enabled required");
+        preview.setTempoMatch(enabled, fileBpm);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setProjectBpm") {
+        double bpm;
+        if (!requireDouble(o, "bpm", bpm, nullptr))
+            return makeError(-32602, "bpm required");
+        preview.setProjectBpm(bpm);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "isPlaying") {
+        return { false, preview.isPlaying() };
+    }
+    return makeError(-32601, "unknown preview method: " + m);
+}
+
 } // namespace (anonymous)
 
 // ---- Public entry point ----------------------------------------------------
 
-DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonValue& params) {
+DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonValue& params,
+                        FrontendServer* server) {
     const int dot = method.indexOf('.');
     if (dot < 0) return makeError(-32601, "method must be 'namespace.method': " + method);
     const QString ns = method.left(dot);
@@ -468,10 +695,97 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     if      (ns == method::Project)     return dispatchProject(engine.getProjectCommands(), m, params);
     else if (ns == method::Transport)   return dispatchTransport(engine.getTransportCommands(), m, params);
     else if (ns == method::AudioGraph)  return dispatchAudioGraph(engine.getAudioGraphCommands(), m, params);
-    else if (ns == method::Read)        return dispatchRead(engine.getReadModel(), m, params);
+    else if (ns == method::Read) {
+        // getWaveformPeaks needs AudioEngine (for ProjectPool), not just ReadModel
+        if (m == "getWaveformPeaks") {
+            const auto o = paramsObject(params);
+            int clipId = 0;
+            if (!requireInt(o, "clipId", clipId, nullptr))
+                return makeError(-32602, "clipId required");
+
+            // Find the clip in the project model
+            auto& pm = engine.getProjectModel();
+            auto tl = pm.getTrackListTree();
+            juce::ValueTree clip;
+            for (int i = 0; i < tl.getNumChildren(); ++i) {
+                auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+                for (int j = 0; j < cl.getNumChildren(); ++j) {
+                    if (static_cast<int>(cl.getChild(j).getProperty(IDs::clipID)) == clipId) {
+                        clip = cl.getChild(j);
+                        break;
+                    }
+                }
+                if (clip.isValid()) break;
+            }
+            if (!clip.isValid())
+                return makeError(-32602, "clip not found");
+
+            if (clip.getProperty(IDs::clipType).toString() != juce::String("audio"))
+                return makeError(-32602, "not an audio clip");
+
+            auto sourceFile = clip.getProperty(IDs::sourceFile).toString();
+            if (sourceFile.isEmpty())
+                return makeError(-32602, "no source file");
+
+            auto file = juce::File(sourceFile);
+            if (!file.existsAsFile())
+                return makeError(-32602, "source file missing");
+
+            auto& fmtMgr = engine.getProjectPool().getFormatManager();
+            std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
+            if (!reader)
+                return makeError(-32602, "cannot open audio file");
+
+            auto totalSamples = reader->lengthInSamples;
+            if (totalSamples <= 0)
+                return makeError(-32602, "empty audio");
+
+            int numChannels = static_cast<int>(reader->numChannels);
+            double sampleRate = reader->sampleRate;
+            int numBins = optInt(o, "numBins", 1000, nullptr);
+            numBins = std::clamp(numBins, 100, 10000);
+            int64_t samplesPerBin = totalSamples / static_cast<int64_t>(numBins);
+            if (samplesPerBin < 1) samplesPerBin = 1;
+
+            juce::AudioBuffer<float> buffer(numChannels, static_cast<int>(samplesPerBin));
+            QJsonArray peaks;
+
+            for (int i = 0; i < numBins; ++i) {
+                int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
+                int numToRead = static_cast<int>(
+                    (std::min)(samplesPerBin, totalSamples - startSample));
+                if (numToRead <= 0) {
+                    peaks.append(0.0);
+                    peaks.append(0.0);
+                    continue;
+                }
+                buffer.clear();
+                reader->read(&buffer, 0, numToRead, startSample, true, true);
+
+                float minVal = 0.0f, maxVal = 0.0f;
+                for (int ch = 0; ch < numChannels; ++ch) {
+                    auto* data = buffer.getReadPointer(ch);
+                    for (int s = 0; s < numToRead; ++s) {
+                        if (data[s] < minVal) minVal = data[s];
+                        if (data[s] > maxVal) maxVal = data[s];
+                    }
+                }
+                peaks.append(static_cast<double>(minVal));
+                peaks.append(static_cast<double>(maxVal));
+            }
+
+            QJsonObject result{{"peaks", peaks},
+                               {"sampleRate", sampleRate},
+                               {"numSamples", static_cast<qint64>(totalSamples)}};
+            return { false, result };
+        }
+        return dispatchRead(engine.getReadModel(), m, params);
+    }
     else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), m, params);
     else if (ns == method::PluginParam) return dispatchPluginParam(engine.getPluginParamService(), m, params);
     else if (ns == method::Midi)        return dispatchMidi(engine.getMidiService(), m, params);
+    else if (ns == method::Export)      return dispatchExport(engine, m, params, server);
+    else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

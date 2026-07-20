@@ -32,6 +32,8 @@ namespace method {
     inline constexpr const char* Plugin     = "plugin";
     inline constexpr const char* PluginParam = "pluginParam";
     inline constexpr const char* Midi       = "midi";
+    inline constexpr const char* Export     = "export";
+    inline constexpr const char* Preview    = "preview";
 } // namespace method
 
 // Server-initiated push notifications (no client id, no response expected).
@@ -111,6 +113,14 @@ inline QJsonObject toJson(const NoteSnapshot& n) {
         { "velocity",      n.velocity },
         { "startBeat",     n.startBeat },
         { "durationBeats", n.durationBeats },
+    };
+}
+
+inline QJsonObject toJson(const CcPointSnapshot& c) {
+    return QJsonObject{
+        { "controllerNumber", c.controllerNumber },
+        { "beat",             c.beat },
+        { "value",            c.value },
     };
 }
 

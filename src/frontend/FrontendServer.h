@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QHash>
+#include <QJsonObject>
 #include <QSet>
 #include <QJsonValue>
 #include <memory>
@@ -39,9 +40,16 @@ public:
     quint16 port() const;
 
     // Broadcast a server-initiated JSON-RPC notification to all connected
-    // clients. Safe to call from any thread (the tree watcher calls this
-    // directly because it also lives on the main thread).
+    // clients. Main-thread-only: iterates clients_ without a lock, which is
+    // safe because every main-thread caller is serialized by Qt's event
+    // loop. Non-main-thread callers must use broadcastNotificationFromAnyThread
+    // instead.
     void broadcastNotification(const QString& method, const QJsonValue& params);
+
+    // Thread-safe variant: hops to the main thread via a QueuedConnection
+    // before calling broadcastNotification. Use this from worker threads
+    // (e.g. export progress callbacks).
+    void broadcastNotificationFromAnyThread(const QString& method, const QJsonValue& params);
 
 private slots:
     void onNewConnection();
@@ -64,6 +72,11 @@ private:
 
     // Server-side push: any ValueTree change re-broadcasts notify.treeChanged.
     std::unique_ptr<FrontendTreeWatcher> treeWatcher_;
+
+    // Last-sent transport payload. The transport timer fires at 30 Hz even
+    // when the project is idle; comparing the new snapshot against this and
+    // skipping identical broadcasts saves WebSocket writes when paused.
+    QJsonObject lastTransportPayload_;
 };
 
 } // namespace frontend

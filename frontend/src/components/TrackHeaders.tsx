@@ -1,10 +1,13 @@
 import { useProjectStore } from "../store/projectStore";
+import { useMeterStore } from "../store/meterStore";
 import { rpc } from "../rpc";
+import { colorStr } from "../theme";
 import "./TrackHeaders.css";
 
 export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const tracks = snapshot?.tracks ?? [];
+  const trackMeters = useMeterStore((s) => s.tracks);
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -30,7 +33,7 @@ export default function TrackHeaders() {
     e.stopPropagation();
     const input = document.createElement("input");
     input.type = "color";
-    input.value = "#" + tracks[idx].color.toString(16).padStart(6, "0");
+    input.value = colorStr(tracks[idx].color);
     input.addEventListener("input", () => {
       const hex = input.value.replace("#", "");
       const color = parseInt(hex, 16);
@@ -53,10 +56,6 @@ export default function TrackHeaders() {
     window.addEventListener("mouseup", onUp);
   };
 
-  function colorStr(c: number): string {
-    return "#" + c.toString(16).padStart(6, "0");
-  }
-
   const formatPan = (pan: number): string => {
     if (pan === 0) return "C";
     const pct = Math.round(Math.abs(pan) * 100);
@@ -69,7 +68,9 @@ export default function TrackHeaders() {
       {tracks.length === 0 && (
         <div className="th-empty">No tracks loaded</div>
       )}
-      {tracks.map((track) => (
+      {tracks.map((track, i) => {
+        const meter = trackMeters[i] ?? { l: 0, r: 0 };
+        return (
         <div key={track.index} className="th-row">
           <div
             className="th-color"
@@ -79,40 +80,37 @@ export default function TrackHeaders() {
           />
           <div className="th-info">
             <div className="th-name">{track.name}</div>
-            <div className="th-type">{track.type}</div>
           </div>
-          {track.type !== "master" && (
-            <div className="th-controls">
-              <button
-                className={`th-btn th-mute${track.muted ? " active" : ""}`}
-                onClick={(e) => handleMute(track.index, track.muted, e)}
-                title="Mute"
-              >
-                M
-              </button>
-              <button
-                className={`th-btn th-solo${track.soloed ? " active" : ""}`}
-                onClick={(e) => handleSolo(track.index, track.soloed, e)}
-                title="Solo"
-              >
-                S
-              </button>
-              <button
-                className={`th-btn th-arm${track.armed ? " active" : ""}`}
-                onClick={(e) => handleArm(track.index, track.armed, e)}
-                title="Arm"
-              >
-                R
-              </button>
-              <button
-                className={`th-btn th-monitor${track.inputMonitor ? " active" : ""}`}
-                onClick={(e) => handleMonitor(track.index, track.inputMonitor, e)}
-                title="Input Monitor"
-              >
-                In
-              </button>
-            </div>
-          )}
+          <div className="th-controls">
+            <button
+              className={`th-btn th-mute${track.muted ? " active" : ""}`}
+              onClick={(e) => handleMute(track.index, track.muted, e)}
+              title="Mute"
+            >
+              M
+            </button>
+            <button
+              className={`th-btn th-solo${track.soloed ? " active" : ""}`}
+              onClick={(e) => handleSolo(track.index, track.soloed, e)}
+              title="Solo"
+            >
+              S
+            </button>
+            <button
+              className={`th-btn th-arm${track.armed ? " active" : ""}`}
+              onClick={(e) => handleArm(track.index, track.armed, e)}
+              title="Arm"
+            >
+              R
+            </button>
+            <button
+              className={`th-btn th-monitor${track.inputMonitor ? " active" : ""}`}
+              onClick={(e) => handleMonitor(track.index, track.inputMonitor, e)}
+              title="Input Monitor"
+            >
+              In
+            </button>
+          </div>
           <div className="th-values">
             <span className="th-vol">V:{Math.round(track.volume * 100)}%</span>
             <span className="th-pan">{formatPan(track.pan)}</span>
@@ -134,8 +132,8 @@ export default function TrackHeaders() {
             </span>
           </div>
           <div className="th-meters">
-            <MeterBar value={track.meterL} />
-            <MeterBar value={track.meterR} />
+            <MeterBar value={meter.l} />
+            <MeterBar value={meter.r} />
           </div>
           <div
             className="th-resize-handle"
@@ -145,7 +143,8 @@ export default function TrackHeaders() {
             }}
           />
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

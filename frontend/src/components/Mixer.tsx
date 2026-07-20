@@ -26,9 +26,12 @@ export default function Mixer() {
       <div className="mixer-master">
         <MixerStrip
           track={{
-            index: -1, name: "Master", color: 0x787880, type: "master",
+            // Master strip is fabricated client-side. The packed-int color
+            // is formatted to a proper CSS hex string by MixerStrip (which
+            // calls colorStr()); raw integers are invalid as CSS colors.
+            index: -1, name: "Master", color: 0x787880,
             volume: 1, pan: 0, muted: false, soloed: false,
-            meterL: 0, meterR: 0, armed: false, inputMonitor: false,
+            armed: false, inputMonitor: false,
             height: 80, midiChannel: 0, clipCount: 0,
           }}
           meter={masterMeter}

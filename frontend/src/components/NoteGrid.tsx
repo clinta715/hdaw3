@@ -122,10 +122,13 @@ export default function NoteGrid({
   }, [notes, dragState, resizeState]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    const { snapEnabled, snapDivision } = useUiStore.getState();
+
     setResizeState((prev) => {
       if (!prev) return null;
       const deltaX = e.clientX - prev.startX;
-      const newDuration = Math.max(0.03125, prev.initialDuration + deltaX / PIXELS_PER_BEAT);
+      const rawDuration = Math.max(0.03125, prev.initialDuration + deltaX / PIXELS_PER_BEAT);
+      const newDuration = snapEnabled ? Math.max(0.03125, snapToGrid(rawDuration, snapDivision)) : rawDuration;
       return { ...prev, currentDuration: newDuration };
     });
 
@@ -135,9 +138,10 @@ export default function NoteGrid({
         prev.startPitch - Math.round((e.clientY - prev.offsetY) / KEY_HEIGHT),
         0, 127
       );
-      const newStart = Math.max(0,
+      const rawStart = Math.max(0,
         prev.startBeat + (e.clientX - prev.offsetX) / PIXELS_PER_BEAT
       );
+      const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
       return { ...prev, currentPitch: newPitch, currentStart: newStart };
     });
   }, []);
@@ -153,7 +157,9 @@ export default function NoteGrid({
         await rpc.call("project.setNoteStart", { noteId: drag.noteId, startBeat: snappedStart });
       }
       if (resize && clipId != null) {
-        await rpc.call("project.setNoteDuration", { noteId: resize.noteId, durationBeats: resize.currentDuration });
+        const { snapEnabled, snapDivision } = useUiStore.getState();
+        const snappedDuration = snapEnabled ? Math.max(0.03125, snapToGrid(resize.currentDuration, snapDivision)) : resize.currentDuration;
+        await rpc.call("project.setNoteDuration", { noteId: resize.noteId, durationBeats: snappedDuration });
       }
       if ((drag || resize) && clipId != null) {
         useProjectStore.getState().syncNotes(rpc, clipId);
@@ -184,14 +190,14 @@ export default function NoteGrid({
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const startBeat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
     try {
-      await rpc.call("project.addNote", { clipId, pitch, startBeat, duration: 0.25, velocity: 100 });
+      await rpc.call("project.addNote", { clipId, pitch, startBeat, durationBeats: 0.25, velocity: 100 });
       if (chordShape && chordShape.length > 0) {
         for (const interval of chordShape.slice(1)) {
           await rpc.call("project.addNote", {
             clipId,
             pitch: pitch + interval,
             startBeat,
-            duration: 0.25,
+            durationBeats: 0.25,
             velocity: 100,
           });
         }
@@ -205,8 +211,16 @@ export default function NoteGrid({
   const deleteSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;
     try {
+      // Wrap the per-note delete loop in a transaction so a multi-note
+      // selection deletes as one undo step.
+      if (selectedNoteIds.size > 1) {
+        await rpc.call("project.beginTransaction", { name: "delete notes" });
+      }
       for (const noteId of selectedNoteIds) {
         await rpc.call("project.removeNote", { noteId });
+      }
+      if (selectedNoteIds.size > 1) {
+        await rpc.call("project.endTransaction");
       }
       setSelectedNoteIds(new Set());
       useProjectStore.getState().syncNotes(rpc, clipId);
@@ -291,7 +305,7 @@ export default function NoteGrid({
           clipId,
           pitch: n.pitch,
           startBeat,
-          duration: n.durationBeats,
+          durationBeats: n.durationBeats,
           velocity: n.velocity,
         });
       }
@@ -508,13 +522,14 @@ export default function NoteGrid({
         <div
           className="ng-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {contextActions.map((a) => (
             <button
               key={a.label}
               className="ng-context-item"
-              onClick={() => {
+              onMouseDown={(e) => {
+                e.stopPropagation();
                 setContextMenu(null);
                 a.action();
               }}

@@ -8,17 +8,27 @@ interface Props {
   height: number;
 }
 
-const peaksCache = new Map<number, WaveformPeaks>();
+// Cache key: clipId alone is too coarse. The peak data depends on the
+// underlying source file AND any active timestretch (which changes audible
+// duration vs. source duration). Including sourceFile + stretchRatio in the
+// key means a re-render after timestretch or a file relink correctly
+// re-fetches instead of returning the stale cached waveform.
+function cacheKey(clip: ClipSnapshot): string {
+  return `${clip.clipId}|${clip.sourceFile}|${clip.stretchMode}:${clip.stretchRatio.toFixed(4)}`;
+}
+
+const peaksCache = new Map<string, WaveformPeaks>();
 
 export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const dpr = window.devicePixelRatio || 1;
-  const [peaks, setPeaks] = React.useState<WaveformPeaks | null>(() => peaksCache.get(clip.clipId) ?? null);
-  const [fetched, setFetched] = React.useState(() => peaksCache.has(clip.clipId));
+  const key = cacheKey(clip);
+  const [peaks, setPeaks] = React.useState<WaveformPeaks | null>(() => peaksCache.get(key) ?? null);
+  const [fetched, setFetched] = React.useState(() => peaksCache.has(key));
 
   React.useEffect(() => {
-    if (peaksCache.has(clip.clipId)) {
-      setPeaks(peaksCache.get(clip.clipId)!);
+    if (peaksCache.has(key)) {
+      setPeaks(peaksCache.get(key)!);
       setFetched(true);
       return;
     }
@@ -27,7 +37,7 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
       .then((result) => {
         if (cancelled) return;
         const data = result as WaveformPeaks;
-        peaksCache.set(clip.clipId, data);
+        peaksCache.set(key, data);
         setPeaks(data);
         setFetched(true);
       })
@@ -35,7 +45,21 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
         if (!cancelled) setFetched(true);
       });
     return () => { cancelled = true; };
-  }, [clip.clipId]);
+  }, [key, clip.clipId]);
+
+  // Opportunistic GC: drop cache entries we haven't seen in a while. The Map
+  // would otherwise grow forever in a long session as the user loads many
+  // clips. Cap at 256 entries; on overflow, drop the oldest. (JS Map keeps
+  // insertion order, so the first iterator value is the oldest.)
+  React.useEffect(() => {
+    if (peaksCache.size > 256) {
+      const firstKey = peaksCache.keys().next().value;
+      if (firstKey) peaksCache.delete(firstKey);
+    }
+  }, [key]);
+  // fetched is consulted via state to allow a future "loading…" placeholder;
+  // the canvas falls through to the flat-line fallback while null.
+  void fetched;
 
   React.useEffect(() => {
     const canvas = canvasRef.current;

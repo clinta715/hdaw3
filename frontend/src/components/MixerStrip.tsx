@@ -1,5 +1,6 @@
 import { TrackSnapshot, MeterLevels } from "../rpc/types";
 import { rpc } from "../rpc";
+import { colorStr } from "../theme";
 import "./MixerStrip.css";
 
 interface Props {
@@ -14,7 +15,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
 
   return (
     <div className={`mixer-strip ${isMaster ? "mixer-strip--master" : ""}`}>
-      <div className="ms-color" style={{ background: track.color }} />
+      <div className="ms-color" style={{ background: colorStr(track.color) }} />
       <div className="ms-vu">
         <MeterBar value={pctL} />
         <MeterBar value={pctR} />

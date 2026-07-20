@@ -67,17 +67,16 @@ export default function TransportBar() {
     }
   }, []);
 
-  // Poll transport + dirty flag on interval
+  // Poll the dirty flag on an interval. Snapshot updates arrive via the
+  // notify.treeChanged push (debounced to ~16 ms in FrontendTreeWatcher), so
+  // we don't poll the snapshot here anymore — that was redundant load on
+  // the engine and produced ~4 snapshot re-fetches per second on top of the
+  // push-driven ones. The dirty flag is not pushed, so it still needs polling.
   useEffect(() => {
     const tick = () => {
-      const state = useTransportStore.getState();
-      const pstore = useProjectStore.getState();
-      if (state.transport.isPlaying || state.transport.isRecording) {
-        pstore.syncSnapshot(rpc);
-      }
-      pstore.syncDirtyFlag(rpc);
+      useProjectStore.getState().syncDirtyFlag(rpc);
     };
-    const interval = setInterval(tick, 250);
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, []);
 

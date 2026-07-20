@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 import { GainEnvelopePoint } from "../rpc/types";
 import { rpc } from "../rpc";
+import { useUiStore } from "../store/uiStore";
+import { snapToGrid } from "./snapUtils";
+import { theme } from "../theme";
 import "./GainEnvelopeEditor.css";
 
 interface Props {
@@ -11,6 +14,79 @@ interface Props {
 
 const CANVAS_H = 80;
 const PAD = 8;
+
+// Shared draw routine used by both the live drag preview and the data-driven
+// repaint. NOTE: Canvas 2D contexts do NOT resolve CSS custom properties —
+// `ctx.fillStyle = "var(--accent)"` silently no-ops and leaves the prior
+// fillStyle in place. Always pass resolved hex strings (here from `theme`).
+function drawEnvelope(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  pts: GainEnvelopePoint[],
+  durationBeats: number,
+) {
+  ctx.clearRect(0, 0, w, h);
+
+  const plotW = w - PAD * 2;
+  const plotH = h - PAD * 2;
+
+  // Background
+  ctx.fillStyle = theme.bgWidget;
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid lines (horizontal at gain=0, 0.5, 1.0, 1.5, 2.0)
+  for (let g = 0; g <= 2; g += 0.5) {
+    const y = h - PAD - (g / 2) * plotH;
+    ctx.strokeStyle = g === 1 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)";
+    ctx.lineWidth = g === 1 ? 1 : 0.5;
+    ctx.beginPath();
+    ctx.moveTo(PAD, y);
+    ctx.lineTo(w - PAD, y);
+    ctx.stroke();
+  }
+
+  // Grid lines (vertical per beat)
+  for (let b = 0; b <= Math.ceil(durationBeats); b++) {
+    const x = PAD + (b / durationBeats) * plotW;
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, PAD);
+    ctx.lineTo(x, h - PAD);
+    ctx.stroke();
+  }
+
+  // Points — must have at least the implicit start/end points
+  const drawPts = pts.length > 0 ? pts : [{ time: 0, gain: 1 }, { time: durationBeats, gain: 1 }];
+
+  // Curve
+  if (drawPts.length >= 2) {
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < drawPts.length; i++) {
+      const x = PAD + (drawPts[i].time / durationBeats) * plotW;
+      const y = h - PAD - (drawPts[i].gain / 2) * plotH;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Points
+  for (const p of drawPts) {
+    const x = PAD + (p.time / durationBeats) * plotW;
+    const y = h - PAD - (p.gain / 2) * plotH;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = theme.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
 
 export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -29,7 +105,9 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
       const plotH = h - PAD * 2;
       const x = clientX - rect.left;
       const y = clientY - rect.top;
-      const time = Math.max(0, Math.min(durationBeats, ((x - PAD) / plotW) * durationBeats));
+      const rawTime = Math.max(0, Math.min(durationBeats, ((x - PAD) / plotW) * durationBeats));
+      const { snapEnabled, snapDivision } = useUiStore.getState();
+      const time = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
       const gain = Math.max(0, Math.min(2, ((h - PAD - y) / plotH) * 2));
       return { time, gain };
     },
@@ -67,7 +145,7 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
       } else {
         const { time, gain } = toCanvas(e.clientX, e.clientY);
         const newPts = [...ptsRef.current, { time, gain }].sort((a, b) => a.time - b.time);
-        rpc.call("project.setClipGainEnvelope", { clipId, points: newPts }).catch(() => {});
+        rpc.call("project.setClipGainEnvelope", { clipId, points: newPts }).catch(console.error);
       }
     },
     [clipId, findNearest, toCanvas]
@@ -81,62 +159,24 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const { time, gain } = toCanvas(e.clientX, e.clientY);
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      const plotW = w - PAD * 2;
+      const plotH = h - PAD * 2;
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const rawTime = Math.max(0, Math.min(durationBeats, ((x - PAD) / plotW) * durationBeats));
+      const { snapEnabled, snapDivision } = useUiStore.getState();
+      const time = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
+      const gain = Math.max(0, Math.min(2, ((h - PAD - y) / plotH) * 2));
       const newPts = ptsRef.current.map((p, i) => (i === drag.idx ? { time, gain } : p));
+      ptsRef.current = newPts;
       const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.scale(dpr, dpr);
-      ctx.clearRect(0, 0, w, h);
-      // quick redraw
-      const plotW = w - PAD * 2;
-      const plotH = h - PAD * 2;
-      ctx.fillStyle = "var(--bg-widget)";
-      ctx.fillRect(0, 0, w, h);
-      for (let g = 0; g <= 2; g += 0.5) {
-        const y = h - PAD - (g / 2) * plotH;
-        ctx.strokeStyle = g === 1 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)";
-        ctx.lineWidth = g === 1 ? 1 : 0.5;
-        ctx.beginPath();
-        ctx.moveTo(PAD, y);
-        ctx.lineTo(w - PAD, y);
-        ctx.stroke();
-      }
-      for (let b = 0; b <= Math.ceil(durationBeats); b++) {
-        const x = PAD + (b / durationBeats) * plotW;
-        ctx.strokeStyle = "rgba(255,255,255,0.04)";
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(x, PAD);
-        ctx.lineTo(x, h - PAD);
-        ctx.stroke();
-      }
-      const pts = newPts.length > 0 ? newPts : [{ time: 0, gain: 1 }, { time: durationBeats, gain: 1 }];
-      if (pts.length >= 2) {
-        ctx.strokeStyle = "var(--accent)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i < pts.length; i++) {
-          const x = PAD + (pts[i].time / durationBeats) * plotW;
-          const y = h - PAD - (pts[i].gain / 2) * plotH;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-      }
-      for (const p of pts) {
-        const x = PAD + (p.time / durationBeats) * plotW;
-        const y = h - PAD - (p.gain / 2) * plotH;
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "var(--accent)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+      drawEnvelope(ctx, w, h, newPts, durationBeats);
     },
     [durationBeats]
   );
@@ -145,7 +185,8 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
     const drag = dragRef.current;
     if (!drag) return;
     dragRef.current = null;
-    rpc.call("project.setClipGainEnvelope", { clipId, points: ptsRef.current }).catch(() => {});
+    // Points are already snapped in the preview via toCanvas, so ptsRef.current has snapped values
+    rpc.call("project.setClipGainEnvelope", { clipId, points: ptsRef.current }).catch(console.error);
   }, [clipId]);
 
   useEffect(() => {
@@ -171,66 +212,7 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
     canvas.height = h * dpr;
     ctx.scale(dpr, dpr);
 
-    ctx.clearRect(0, 0, w, h);
-
-    const plotW = w - PAD * 2;
-    const plotH = h - PAD * 2;
-
-    // Background
-    ctx.fillStyle = "var(--bg-widget)";
-    ctx.fillRect(0, 0, w, h);
-
-    // Grid lines (horizontal at gain=0, 0.5, 1.0, 1.5, 2.0)
-    for (let g = 0; g <= 2; g += 0.5) {
-      const y = h - PAD - (g / 2) * plotH;
-      ctx.strokeStyle = g === 1 ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)";
-      ctx.lineWidth = g === 1 ? 1 : 0.5;
-      ctx.beginPath();
-      ctx.moveTo(PAD, y);
-      ctx.lineTo(w - PAD, y);
-      ctx.stroke();
-    }
-
-    // Grid lines (vertical per beat)
-    for (let b = 0; b <= Math.ceil(durationBeats); b++) {
-      const x = PAD + (b / durationBeats) * plotW;
-      ctx.strokeStyle = "rgba(255,255,255,0.04)";
-      ctx.lineWidth = 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, PAD);
-      ctx.lineTo(x, h - PAD);
-      ctx.stroke();
-    }
-
-    // Points — must have at least the implicit start/end points
-    const pts = points.length > 0 ? points : [{ time: 0, gain: 1 }, { time: durationBeats, gain: 1 }];
-
-    // Curve
-    if (pts.length >= 2) {
-      ctx.strokeStyle = "var(--accent)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let i = 0; i < pts.length; i++) {
-        const x = PAD + (pts[i].time / durationBeats) * plotW;
-        const y = h - PAD - (pts[i].gain / 2) * plotH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    }
-
-    // Points
-    for (const p of pts) {
-      const x = PAD + (p.time / durationBeats) * plotW;
-      const y = h - PAD - (p.gain / 2) * plotH;
-      ctx.fillStyle = "#fff";
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "var(--accent)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    drawEnvelope(ctx, w, h, points, durationBeats);
   }, [points, durationBeats]);
 
   return (

@@ -49,6 +49,12 @@ struct NoteSnapshot {
     double durationBeats = 0.0;
 };
 
+struct CcPointSnapshot {
+    int controllerNumber = 0;
+    double beat = 0.0;
+    int value = 0;
+};
+
 struct TransportSnapshot {
     double bpm = 120.0;
     bool isPlaying = false;
@@ -136,6 +142,7 @@ public:
     virtual TrackSnapshot getTrack(int index) const = 0;
     virtual ClipSnapshot getClip(int clipId) const = 0;
     virtual std::vector<NoteSnapshot> getNotes(int clipId) const = 0;
+    virtual std::vector<CcPointSnapshot> getCcPoints(int clipId, int controllerNumber) const = 0;
     virtual std::vector<ClipSnapshot::GainEnvelopePoint> getClipGainEnvelope(int clipId) const = 0;
     virtual TransportSnapshot getTransport() const = 0;
     virtual int getScaleRoot() const = 0;

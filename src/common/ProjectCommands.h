@@ -30,6 +30,7 @@ public:
                             const std::string& name) = 0;
     virtual void removeClip(int clipId) = 0;
     virtual void moveClip(int clipId, int newTrackIndex, double newStart) = 0;
+    virtual void moveClipWithOverlap(int clipId, int newTrackIndex, double newStart) = 0;
     virtual void setClipStart(int clipId, double start) = 0;
     virtual void setClipDuration(int clipId, double duration) = 0;
     virtual void setClipGain(int clipId, float gain) = 0;
@@ -120,6 +121,11 @@ public:
     virtual void moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain) = 0;
     virtual void removeGainEnvelopePoint(int clipId, int pointIndex) = 0;
     virtual void clearGainEnvelope(int clipId) = 0;
+    // setClipGainEnvelope replaces the entire envelope with the given points.
+    // Each pair is (time, gain). Implemented as clear + add-each inside a
+    // single transaction so the whole replacement is one undo step.
+    virtual void setClipGainEnvelope(int clipId,
+                                     const std::vector<std::pair<double, double>>& points) = 0;
     virtual void notifyClipGainEnvelopeChanged(int clipId) = 0;
 
     // Modulation (LFO)

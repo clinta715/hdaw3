@@ -12,10 +12,10 @@ export interface TransportSnapshot {
 export interface TrackSnapshot {
   index: number;
   name: string;
-  type: string;
   color: number;
-  meterL: number;
-  meterR: number;
+  // Note: meter levels are NOT on the snapshot. The backend's
+  // toJson(TrackSnapshot) emits only the fields below; per-track meter
+  // data arrives via the separate `notify.meters` push (see meterStore).
   volume: number;
   pan: number;
   muted: boolean;

@@ -114,6 +114,10 @@ void AudioEngine::initialize()
     // Add player as audio callback
     deviceManager.addAudioCallback(&processorPlayer);
 
+    // Initialize preview player for file browser audio preview
+    previewPlayer = std::make_unique<HDAW::AudioPreviewPlayer>(
+        deviceManager, projectPool.getFormatManager());
+
     // Wire MIDI input to processor
     midiInputManager.setNoteCallback([this](const juce::MidiMessage& msg) {
         // If CC recording is armed and the transport is playing, capture

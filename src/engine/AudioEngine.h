@@ -8,6 +8,7 @@
 #include "PluginManager.h"
 #include "MidiInputManager.h"
 #include "StretchCache.h"
+#include "AudioPreviewPlayer.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
 #include "PluginServiceImpl.h"
@@ -35,6 +36,7 @@ public:
     HDAW::MidiInputManager& getMidiInputManager() { return midiInputManager; }
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
     HDAW::StretchCache& getStretchCache() { return stretchCache; }
+    HDAW::AudioPreviewPlayer& getPreviewPlayer() { return *previewPlayer; }
 
     // Command interfaces (returning references for polymorphic use)
     ProjectCommands& getProjectCommands();
@@ -87,6 +89,7 @@ private:
     HDAW::PluginManager pluginManager;
     HDAW::MidiInputManager midiInputManager;
     HDAW::StretchCache stretchCache;
+    std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;

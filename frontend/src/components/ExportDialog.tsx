@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { rpc } from "../rpc";
+import { reportRpcError } from "../store/notifyStore";
 import "./ExportDialog.css";
 
 interface ExportDialogProps {
@@ -45,8 +46,9 @@ export default function ExportDialog({ onClose }: ExportDialogProps) {
       });
       setProgress(100);
       setStatus("Complete!");
-    } catch {
+    } catch (err) {
       setStatus("Export failed");
+      reportRpcError("export.audio", err);
     } finally {
       unsubRef.current?.();
       unsubRef.current = null;

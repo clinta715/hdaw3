@@ -37,7 +37,7 @@ full list of working features and the priority-ordered roadmap, see
 ## Build
 
 - Configuration: `cmake --build build --config Debug`
-- Outputs: `build/Debug/HDAW.exe` (GUI + stdio MCP), `build/Debug/hdaw_tests.exe` (gtest)
+- Outputs: `build/Debug/HDAW.exe` (GUI + stdio MCP), `build/Debug/HDAW_headless.exe` (engine-only, no Qt Widgets), `build/Debug/hdaw_tests.exe` (gtest)
 - Do NOT run `build/Release/HDAW.exe` — it is a stale binary from before
   the bug-fix series began and contains none of the fixes.
 - On Windows, the `HDAW_lib` static library, `HDAW` exe, and `hdaw_tests`
@@ -57,6 +57,11 @@ full list of working features and the priority-ordered roadmap, see
   the HTTP server's bind port for this launch. Without any flag the
   GUI starts; if `stdin`/`stdout` are not TTYs the stdio MCP server
   starts automatically and the GUI is skipped.
+- CLI flags (headless engine): `HDAW_headless.exe` runs the engine
+  without Qt Widgets. Default mode is WebSocket server for the
+  HTML/Electron frontend (`--headless`, port 8766). Use `--mcp-stdio`
+  for MCP over stdin/stdout. Use `--port=N` to override the WebSocket
+  port.
 
 ## Code Style
 
@@ -223,6 +228,7 @@ contracts that future contributors should know about.
 | Level metering | `src/engine/LevelMeter.h` | `LevelMeter` |
 | File save/load | `src/engine/ProjectSerializer.h` | `ProjectSerializer` |
 | Waveform thumbnails | `src/engine/ProjectPool.h` | `ProjectPool` |
+| Audio preview player | `src/engine/AudioPreviewPlayer.h` | `HDAW::AudioPreviewPlayer` |
 | Audio import | `src/engine/AudioImport.h` | `HDAW::importAudioFile()` |
 | MIDI import | `src/engine/MidiImport.h` | `HDAW::importMidiFile()` |
 | Timeline composite | `src/ui/TimelineView.h` | `TimelineView` |
@@ -338,6 +344,33 @@ composition (`PhraseGenerator`), FX, automation, undo, and audio export.
   audio-thread notifications, as documented in the next section.
 - **Spec / plan** documents: `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
   and `docs/superpowers/plans/2026-06-29-hdaw-mcp-server-phase{1,2}.md`.
+
+## File Browser Audio Preview (v0.9.2)
+
+The file browser (`frontend/src/components/FileBrowser.tsx`) supports
+audio preview at project tempo. The preview uses the engine's
+`AudioPreviewPlayer` via the `preview.*` RPC namespace.
+
+**RPC methods** (defined in `src/frontend/FrontendRouter.cpp`):
+- `preview.load` — load an audio file for preview
+- `preview.play` / `preview.stop` — playback control
+- `preview.setVolume` — volume (0–1)
+- `preview.setTempoMatch` — enable/disable with source BPM
+- `preview.setProjectBpm` — set the target project tempo
+- `preview.isPlaying` — poll playback state
+
+**UI**: Each audio file row shows a ▶ button on hover. Clicking it
+loads and plays the file. The preview bar at the bottom of the browser
+has play/stop, volume slider, "Tempo Match" checkbox (enabled by
+default), and a source BPM input. The file plays at the project tempo
+when tempo match is on.
+
+**Architecture**: `AudioEngine` owns an `AudioPreviewPlayer` instance
+(lazy-initialized in `initialize()`). The player uses the same
+`AudioDeviceManager` as the main engine but routes through its own
+`AudioSourcePlayer` to avoid interfering with the main audio graph.
+The player does not apply time-stretching — tempo matching adjusts
+playback rate (pitch changes with speed).
 
 ## Common Practices
 

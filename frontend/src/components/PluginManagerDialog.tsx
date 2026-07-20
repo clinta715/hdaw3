@@ -24,11 +24,24 @@ export default function PluginManagerDialog({ onClose }: Props) {
     try {
       const result = await rpc.call("plugin.getPlugins") as PluginInfo[];
       setPlugins(result);
-      const bl = new Set<string>();
-      for (const p of result) {
-        const isBl = await rpc.call("plugin.isBlacklisted", { pluginID: p.fileOrIdentifier }) as boolean;
-        if (isBl) bl.add(p.fileOrIdentifier);
+      if (result.length === 0) {
+        setBlacklisted(new Set());
+        return;
       }
+      // Fan out the per-plugin isBlacklisted calls in parallel rather than
+      // awaiting them sequentially. With N plugins this turns N sequential
+      // round-trips into one round-trip's worth of latency (subject to the
+      // engine's main-thread serialization, but at least the WebSocket
+      // pipeline is full).
+      const flags = await Promise.all(
+        result.map((p) =>
+          rpc.call("plugin.isBlacklisted", { pluginID: p.fileOrIdentifier })
+            .then((v) => [p.fileOrIdentifier, !!v] as const)
+            .catch(() => [p.fileOrIdentifier, false] as const)
+        )
+      );
+      const bl = new Set<string>();
+      for (const [id, isBl] of flags) if (isBl) bl.add(id);
       setBlacklisted(bl);
     } catch (e) { console.error(e); }
   }, []);

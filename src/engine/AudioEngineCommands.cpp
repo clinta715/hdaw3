@@ -329,6 +329,120 @@ void AudioEngineCommands::moveClip(int clipId, int newTrackIndex, double newStar
     }
 }
 
+void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, double newStart)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int oldTrackIdx = -1;
+    auto clip = findClipById(clipId, oldTrackIdx);
+    if (!clip.isValid()) return;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
+
+    double clipDur = clip.getProperty(IDs::duration);
+    double newEnd = newStart + clipDur;
+
+    // Move to target track first if needed
+    if (newTrackIndex != oldTrackIdx)
+    {
+        auto oldParent = clip.getParent();
+        auto newTrack = trackList.getChild(newTrackIndex);
+        auto newClipList = newTrack.getChildWithName(IDs::CLIP_LIST);
+        if (!newClipList.isValid())
+        {
+            newClipList = juce::ValueTree(IDs::CLIP_LIST);
+            newTrack.addChild(newClipList, -1, &um);
+        }
+        oldParent.removeChild(clip, &um);
+        newClipList.addChild(clip, -1, &um);
+    }
+
+    // Get the clip list on the target track
+    auto targetTrack = trackList.getChild(newTrackIndex);
+    auto clipList = targetTrack.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clip.setProperty(IDs::startTime, newStart, &um);
+        return;
+    }
+
+    // Find all clips that overlap with the new position (excluding self)
+    // Collect them first to avoid modifying the list while iterating
+    struct OverlapInfo {
+        juce::ValueTree clip;
+        double start;
+        double end;
+    };
+    std::vector<OverlapInfo> overlapping;
+
+    for (int i = 0; i < clipList.getNumChildren(); ++i)
+    {
+        auto other = clipList.getChild(i);
+        int otherId = static_cast<int>(other.getProperty(IDs::clipID, 0));
+        if (otherId == clipId) continue;
+
+        double otherStart = other.getProperty(IDs::startTime);
+        double otherDur = other.getProperty(IDs::duration);
+        double otherEnd = otherStart + otherDur;
+
+        // Check if there's an overlap
+        if (newStart < otherEnd && newEnd > otherStart)
+        {
+            overlapping.push_back({ other, otherStart, otherEnd });
+        }
+    }
+
+    // Process each overlapping clip
+    for (auto& info : overlapping)
+    {
+        double otherStart = info.start;
+        double otherEnd = info.end;
+        double otherDur = otherEnd - otherStart;
+
+        if (newStart <= otherStart && newEnd >= otherEnd)
+        {
+            // Case 1: Incoming clip fully covers the existing clip → remove it
+            clipList.removeChild(info.clip, &um);
+        }
+        else if (newStart <= otherStart && newEnd > otherStart && newEnd < otherEnd)
+        {
+            // Case 2: Incoming clip overlaps the left portion → trim existing to the right
+            double newOtherStart = newEnd;
+            double newOtherDur = otherEnd - newOtherStart;
+            double newOtherOffset = static_cast<double>(info.clip.getProperty(IDs::offset)) + (newOtherStart - otherStart);
+            info.clip.setProperty(IDs::startTime, newOtherStart, &um);
+            info.clip.setProperty(IDs::duration, newOtherDur, &um);
+            info.clip.setProperty(IDs::offset, newOtherOffset, &um);
+        }
+        else if (newStart > otherStart && newEnd >= otherEnd)
+        {
+            // Case 3: Incoming clip overlaps the right portion → trim existing to the left
+            double newOtherDur = newStart - otherStart;
+            info.clip.setProperty(IDs::duration, newOtherDur, &um);
+        }
+        else if (newStart > otherStart && newEnd < otherEnd)
+        {
+            // Case 4: Incoming clip is in the middle → split existing into two
+            // First, create the right portion
+            auto rightClip = info.clip.createCopy();
+            double rightStart = newEnd;
+            double rightDur = otherEnd - newEnd;
+            double rightOffset = static_cast<double>(info.clip.getProperty(IDs::offset)) + (newStart - otherStart) + clipDur;
+            rightClip.setProperty(IDs::startTime, rightStart, &um);
+            rightClip.setProperty(IDs::duration, rightDur, &um);
+            rightClip.setProperty(IDs::offset, rightOffset, &um);
+            rightClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+            clipList.addChild(rightClip, -1, &um);
+
+            // Trim the left portion
+            double leftDur = newStart - otherStart;
+            info.clip.setProperty(IDs::duration, leftDur, &um);
+        }
+    }
+
+    // Finally, set the incoming clip's new start position
+    clip.setProperty(IDs::startTime, newStart, &um);
+}
+
 void AudioEngineCommands::setClipStart(int clipId, double start)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
@@ -1284,6 +1398,29 @@ void AudioEngineCommands::clearGainEnvelope(int clipId)
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     if (envelope.isValid())
         clip.removeChild(envelope, &um);
+    notifyClipGainEnvelopeChanged(clipId);
+}
+
+void AudioEngineCommands::setClipGainEnvelope(int clipId,
+                                              const std::vector<std::pair<double, double>>& points)
+{
+    // Replace the whole envelope in one undo step. JUCE's UndoManager treats
+    // everything between two beginNewTransaction calls as one step, so we
+    // start one here and the next edit anywhere else will close it. Note:
+    // ProjectModel::addGainEnvelopePoint inserts in time order, so the input
+    // vector doesn't have to be pre-sorted.
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid()) return;
+
+    um.beginNewTransaction("setClipGainEnvelope");
+    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (envelope.isValid())
+        clip.removeChild(envelope, &um);
+    envelope = ProjectModel::ensureGainEnvelope(clip, &um);
+    for (const auto& [time, gain] : points)
+        ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
     notifyClipGainEnvelopeChanged(clipId);
 }
 

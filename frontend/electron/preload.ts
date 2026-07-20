@@ -9,4 +9,13 @@ contextBridge.exposeInMainWorld("hdaw", {
     ipcRenderer.invoke("show-save-dialog", options),
   readDirectory: (dirPath: string) =>
     ipcRenderer.invoke("fs-readdir", dirPath),
+  isDirty: () =>
+    ipcRenderer.invoke("is-dirty"),
+  saveProject: () =>
+    ipcRenderer.invoke("save-project"),
+  requestClose: () =>
+    ipcRenderer.invoke("request-close"),
+  on: (channel: string, callback: (...args: unknown[]) => void) => {
+    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+  },
 });
