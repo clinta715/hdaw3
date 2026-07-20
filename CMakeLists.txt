@@ -88,6 +88,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/FrontendRouter.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
+    src/frontend/UiHttpServer.cpp
 )
 
 if(HDAW_PLUGIN_ISOLATION)
@@ -126,118 +127,107 @@ target_compile_definitions(HDAW_lib PUBLIC
     JUCE_STRICT_REFCOUNTEDPOINTER=1
 )
 
+# --- HDAW: main executable ---
+# Default build (HDAW_GUI=OFF): engine + browser, no Qt Widgets dependency.
+# With -DHDAW_GUI=ON: adds Qt desktop GUI mode (--gui flag).
+option(HDAW_GUI "Build with Qt desktop GUI support (default: browser-only)" OFF)
+
 add_executable(HDAW
     src/main.cpp
-    src/ui/MainWindow.h
-    src/ui/MainWindow.cpp
-    src/ui/VUMeter.h
-    src/ui/VUMeter.cpp
-    src/ui/TimelineView.h
-    src/ui/TimelineView.cpp
-    src/ui/TimelineScene.h
-    src/ui/TimelineScene.cpp
-    src/ui/TimelineToolbar.h
-    src/ui/TimelineToolbar.cpp
-    src/ui/TimelineInteraction.h
-    src/ui/TimelineInteraction.cpp
-    src/ui/TrackHeaderWidget.h
-    src/ui/TrackHeaderWidget.cpp
-    src/ui/ClipItem.h
-    src/ui/ClipItem.cpp
-    src/ui/AudioClipItem.h
-    src/ui/AudioClipItem.cpp
-    src/ui/MidiClipItem.h
-    src/ui/MidiClipItem.cpp
-    src/ui/TimeRuler.h
-    src/ui/TimeRuler.cpp
-    src/ui/PlayheadCursor.h
-    src/ui/PlayheadCursor.cpp
-    src/ui/LoopMarker.h
-    src/ui/LoopMarker.cpp
-    src/ui/MarkerItem.h
-    src/ui/MarkerItem.cpp
-    src/ui/MixerWidget.h
-    src/ui/MixerWidget.cpp
-    src/ui/MixerStripWidget.h
-    src/ui/MixerStripWidget.cpp
-    src/ui/PianoRollModel.h
-    src/ui/PianoRollWidget.h
-    src/ui/PianoRollWidget.cpp
-    src/ui/PianoKeysWidget.h
-    src/ui/PianoKeysWidget.cpp
-    src/ui/NoteGridWidget.h
-    src/ui/NoteGridWidget.cpp
-    src/ui/VelocityLaneWidget.h
-    src/ui/VelocityLaneWidget.cpp
-    src/ui/CCLaneWidget.h
-    src/ui/CCLaneWidget.cpp
-    src/ui/PianoRollRuler.h
-    src/ui/PianoRollRuler.cpp
-    src/ui/StepEditorWidget.h
-    src/ui/StepEditorWidget.cpp
-    src/ui/StatusBar.h
-    src/ui/StatusBar.cpp
-    src/ui/StartupDialog.h
-    src/ui/StartupDialog.cpp
-    src/ui/AboutDialog.h
-    src/ui/AboutDialog.cpp
-    src/ui/PhraseGeneratorDialog.h
-    src/ui/PhraseGeneratorDialog.cpp
-    src/ui/FXChainWidget.h
-    src/ui/FXChainWidget.cpp
-    src/ui/FXSlotRow.h
-    src/ui/FXSlotRow.cpp
-    src/engine/AutomationManager.h
-    src/ui/AutomationLaneWidget.h
-    src/ui/AutomationLaneWidget.cpp
-    src/ui/ModulationWidget.h
-    src/ui/ModulationWidget.cpp
-    src/ui/AudioClipEditorWidget.h
-    src/ui/AudioClipEditorWidget.cpp
-    src/ui/GainEnvelopeEditor.h
-    src/ui/GainEnvelopeEditor.cpp
-    src/ui/AudioWaveformWidget.h
-    src/ui/AudioWaveformWidget.cpp
-    src/ui/Theme.h
-    src/ui/ProjectPoolBrowser.h
-    src/ui/ProjectPoolBrowser.cpp
-    src/ui/ExportDialog.h
-    src/ui/ExportDialog.cpp
-    src/ui/PluginScannerDialog.h
-    src/ui/PluginScannerDialog.cpp
-    src/ui/ScanProgressDialog.h
-    src/ui/ScanProgressDialog.cpp
-    src/ui/PreferencesDialog.h
-    src/ui/PreferencesDialog.cpp
     src/resources/resources.rc
     src/resources/resources.qrc
-    src/engine/CLAPPluginEditor.h
-    src/engine/CLAPPluginEditor.cpp
-    src/engine/BusProcessorBase.h
-    src/engine/MasterBusProcessor.h
-    src/engine/GroupBusProcessor.h
-    src/engine/FxBusProcessor.h
-    src/engine/ProjectPool.h
-    src/engine/SendProcessor.h
-    src/engine/ClipSourceProcessor.h
-    src/engine/MidiClipProcessor.h
-    src/engine/TrackFXSlot.h
-    src/engine/TrackFXSlot.cpp
-    src/engine/TransportManager.h
-    src/engine/AudioImport.h
-    src/engine/AudioImport.cpp
-    src/engine/MidiImport.h
-    src/engine/MidiImport.cpp
-    src/engine/MidiInputManager.h
-    src/engine/MidiInputManager.cpp
-    src/engine/ClipClipboard.h
-    src/engine/ClipClipboard.cpp
-    src/engine/RegionClipboard.h
+    src/resources/frontend.qrc
 )
+
+if(HDAW_GUI)
+    target_sources(HDAW PRIVATE
+        src/ui/MainWindow.h
+        src/ui/MainWindow.cpp
+        src/ui/VUMeter.h
+        src/ui/VUMeter.cpp
+        src/ui/TimelineView.h
+        src/ui/TimelineView.cpp
+        src/ui/TimelineScene.h
+        src/ui/TimelineScene.cpp
+        src/ui/TimelineToolbar.h
+        src/ui/TimelineToolbar.cpp
+        src/ui/TimelineInteraction.h
+        src/ui/TimelineInteraction.cpp
+        src/ui/TrackHeaderWidget.h
+        src/ui/TrackHeaderWidget.cpp
+        src/ui/ClipItem.h
+        src/ui/ClipItem.cpp
+        src/ui/AudioClipItem.h
+        src/ui/AudioClipItem.cpp
+        src/ui/MidiClipItem.h
+        src/ui/MidiClipItem.cpp
+        src/ui/TimeRuler.h
+        src/ui/TimeRuler.cpp
+        src/ui/PlayheadCursor.h
+        src/ui/PlayheadCursor.cpp
+        src/ui/LoopMarker.h
+        src/ui/LoopMarker.cpp
+        src/ui/MarkerItem.h
+        src/ui/MarkerItem.cpp
+        src/ui/MixerWidget.h
+        src/ui/MixerWidget.cpp
+        src/ui/MixerStripWidget.h
+        src/ui/MixerStripWidget.cpp
+        src/ui/PianoRollModel.h
+        src/ui/PianoRollWidget.h
+        src/ui/PianoRollWidget.cpp
+        src/ui/PianoKeysWidget.h
+        src/ui/PianoKeysWidget.cpp
+        src/ui/NoteGridWidget.h
+        src/ui/NoteGridWidget.cpp
+        src/ui/VelocityLaneWidget.h
+        src/ui/VelocityLaneWidget.cpp
+        src/ui/CCLaneWidget.h
+        src/ui/CCLaneWidget.cpp
+        src/ui/PianoRollRuler.h
+        src/ui/PianoRollRuler.cpp
+        src/ui/StepEditorWidget.h
+        src/ui/StepEditorWidget.cpp
+        src/ui/StatusBar.h
+        src/ui/StatusBar.cpp
+        src/ui/StartupDialog.h
+        src/ui/StartupDialog.cpp
+        src/ui/AboutDialog.h
+        src/ui/AboutDialog.cpp
+        src/ui/PhraseGeneratorDialog.h
+        src/ui/PhraseGeneratorDialog.cpp
+        src/ui/FXChainWidget.h
+        src/ui/FXChainWidget.cpp
+        src/ui/FXSlotRow.h
+        src/ui/FXSlotRow.cpp
+        src/ui/AutomationLaneWidget.h
+        src/ui/AutomationLaneWidget.cpp
+        src/ui/ModulationWidget.h
+        src/ui/ModulationWidget.cpp
+        src/ui/AudioClipEditorWidget.h
+        src/ui/AudioClipEditorWidget.cpp
+        src/ui/GainEnvelopeEditor.h
+        src/ui/GainEnvelopeEditor.cpp
+        src/ui/AudioWaveformWidget.h
+        src/ui/AudioWaveformWidget.cpp
+        src/ui/Theme.h
+        src/ui/ProjectPoolBrowser.h
+        src/ui/ProjectPoolBrowser.cpp
+        src/ui/ExportDialog.h
+        src/ui/ExportDialog.cpp
+        src/ui/PluginScannerDialog.h
+        src/ui/PluginScannerDialog.cpp
+        src/ui/ScanProgressDialog.h
+        src/ui/ScanProgressDialog.cpp
+        src/ui/PreferencesDialog.h
+        src/ui/PreferencesDialog.cpp
+    )
+    target_compile_definitions(HDAW PRIVATE HDAW_GUI=1)
+endif()
 
 target_link_libraries(HDAW
     PRIVATE
-    Qt6::Widgets
+    Qt6::Gui
     Qt6::Network
     Qt6::HttpServer
     juce::juce_audio_utils
@@ -246,6 +236,11 @@ target_link_libraries(HDAW
     clap_juce_extensions
     HDAW_lib
 )
+
+# Qt6::Widgets only needed for the GUI mode.
+if(HDAW_GUI)
+    target_link_libraries(HDAW PRIVATE Qt6::Widgets)
+endif()
 
 # Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime speedup)
 include(CheckIPOSupported)
@@ -270,6 +265,16 @@ set_target_properties(HDAW PROPERTIES
 
 hdaw_deploy_qt(HDAW)
 
+# Verify the frontend dist exists when building with UI support.
+# If missing, the .qrc will fail to compile — this gives a clearer message.
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/frontend/dist/index.html")
+    message(WARNING
+        "frontend/dist/index.html not found. "
+        "Run 'cd frontend && npm run build' before building HDAW with --ui support. "
+        "The HDAW target will fail to link without the frontend resources."
+    )
+endif()
+
 # --- HDAW_headless: engine-only executable, no Qt Widgets / GUI ---
 # Headless engine for running as a background service or with the
 # HTML/Electron frontend. Links only Qt Core/Network/HttpServer/WebSockets
@@ -288,6 +293,12 @@ target_link_libraries(HDAW_headless
 set_target_properties(HDAW_headless PROPERTIES
     OUTPUT_NAME "HDAW_headless"
 )
+# Deploy Qt DLLs next to the headless binary, same as the other Qt-linked
+# exes (HDAW, hdaw_plugin_scanner, hdaw_tests). HDAW_lib pulls in
+# Qt6::Core/Network/HttpServer/WebSockets, so without this a clean
+# `cmake --build build --target HDAW_headless` produces a binary that fails
+# to start with STATUS_DLL_NOT_FOUND. See AGENTS.md "Build" section.
+hdaw_deploy_qt(HDAW_headless)
 if(MSVC)
     target_compile_options(HDAW_headless PRIVATE /MP)
 endif()

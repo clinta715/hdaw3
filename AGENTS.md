@@ -37,7 +37,7 @@ full list of working features and the priority-ordered roadmap, see
 ## Build
 
 - Configuration: `cmake --build build --config Debug`
-- Outputs: `build/Debug/HDAW.exe` (GUI + stdio MCP), `build/Debug/HDAW_headless.exe` (engine-only, no Qt Widgets), `build/Debug/hdaw_tests.exe` (gtest)
+- Outputs: `build/Debug/HDAW.exe` (engine + browser UI, default build), `build/Debug/HDAW_headless.exe` (engine-only, no Qt Widgets), `build/Debug/hdaw_tests.exe` (gtest)
 - Do NOT run `build/Release/HDAW.exe` — it is a stale binary from before
   the bug-fix series began and contains none of the fixes.
 - On Windows, the `HDAW_lib` static library, `HDAW` exe, and `hdaw_tests`
@@ -51,12 +51,15 @@ full list of working features and the priority-ordered roadmap, see
 - Logging: `HDAW_LOG` (or the older `DBG` macro is **not** available —
   JUCE defines its own `DBG` and shadows it). All paths to `HDAW_LOG`
   must `#include "DebugLog.h"`. Output is appended to `%TEMP%/hdaw_debug.log`.
-- CLI flags (MCP headless mode): `--mcp-stdio` forces headless stdio
-  MCP server (run when launched as a subprocess by an MCP client),
-  `--no-mcp` disables MCP entirely, `--mcp-http-port=<N>` overrides
-  the HTTP server's bind port for this launch. Without any flag the
-  GUI starts; if `stdin`/`stdout` are not TTYs the stdio MCP server
-  starts automatically and the GUI is skipped.
+- CLI flags: `--mcp-stdio` forces headless stdio MCP server (run when
+  launched as a subprocess by an MCP client), `--no-mcp` disables MCP
+  entirely, `--mcp-http-port=<N>` overrides the HTTP server's bind
+  port for this launch. `--port=N` overrides the WebSocket port
+  (default 8766). `--http-port=N` overrides the HTTP serving port
+  (default 8765). Without any flag the engine starts and the HTML
+  frontend opens in the system browser (one executable, no Electron
+  needed). With `-DHDAW_GUI=ON` (optional, not in default package),
+  `--gui` starts the Qt desktop GUI instead.
 - CLI flags (headless engine): `HDAW_headless.exe` runs the engine
   without Qt Widgets. Default mode is WebSocket server for the
   HTML/Electron frontend (`--headless`, port 8766). Use `--mcp-stdio`
