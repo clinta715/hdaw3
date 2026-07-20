@@ -867,6 +867,12 @@ void TrackHeaderWidget::buildTrackMenu(int trackIdx, const QPoint& globalPos)
         }
     });
 
+    auto* dupAction = menu.addAction("Duplicate Track");
+    connect(dupAction, &QAction::triggered, this, [this, trackIdx]() {
+        projectCmds->duplicateTrack(trackIdx);
+        rebuild();
+    });
+
     menu.addSeparator();
 
     // Add FX Slot submenu

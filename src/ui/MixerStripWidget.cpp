@@ -378,6 +378,13 @@ void MixerStripWidget::contextMenuEvent(QContextMenuEvent* event)
         emit fxButtonClicked(trackIndex);
     });
 
+    auto* dupAction = menu.addAction("Duplicate Track");
+    connect(dupAction, &QAction::triggered, this, [this]() {
+        projectCmds->duplicateTrack(trackIndex);
+        engine.getMainProcessor()->rebuildRoutingGraph();
+        emit trackDeleted();
+    });
+
     menu.addSeparator();
 
     auto* deleteAction = menu.addAction("Delete Track");
