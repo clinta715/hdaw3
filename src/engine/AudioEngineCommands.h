@@ -112,6 +112,10 @@ public:
 
     // ProjectCommands — Transport properties
     void setTempo(double bpm) override;
+    int addTempoPoint(double timeSeconds, double bpm) override;
+    void removeTempoPoint(int index) override;
+    void setTempoPointBpm(int index, double bpm) override;
+    void setTempoPointTime(int index, double timeSeconds) override;
     void setLoopStart(double beat) override;
     void setLoopEnd(double beat) override;
     void setLooping(bool looping) override;

@@ -61,9 +61,11 @@ private:
     double loopStart = 0.0;
     double loopEnd = 8.0;
 
-    enum DragMode { None, Seek, DragLoopStart, DragLoopEnd, DragLoopRegion };
+    enum DragMode { None, Seek, DragLoopStart, DragLoopEnd, DragLoopRegion, DragTempoPoint };
     DragMode dragMode = None;
     double dragStartLoopStart = 0.0;
     double dragStartLoopEnd = 0.0;
     double dragStartX = 0.0;
+    int draggingTempoIndex = -1;
+    int tempoPointIndexAtX(double x) const;
 };

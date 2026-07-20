@@ -972,6 +972,54 @@ void AudioEngineCommands::setTempo(double bpm)
     engine_.getProjectModel().getTree().setProperty(IDs::tempo, bpm, &um);
 }
 
+int AudioEngineCommands::addTempoPoint(double timeSeconds, double bpm)
+{
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto tempoList = model.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid())
+    {
+        tempoList = juce::ValueTree(IDs::TEMPO_POINT_LIST);
+        model.getTree().addChild(tempoList, -1, &um);
+    }
+    juce::ValueTree pt(IDs::TEMPO_POINT);
+    pt.setProperty(IDs::startTime, timeSeconds, &um);
+    pt.setProperty(IDs::tempo, bpm, &um);
+    int idx = tempoList.getNumChildren();
+    tempoList.addChild(pt, -1, &um);
+    return idx;
+}
+
+void AudioEngineCommands::removeTempoPoint(int index)
+{
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto tempoList = model.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid()) return;
+    if (index < 0 || index >= tempoList.getNumChildren()) return;
+    tempoList.removeChild(index, &um);
+}
+
+void AudioEngineCommands::setTempoPointBpm(int index, double bpm)
+{
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto tempoList = model.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid()) return;
+    if (index < 0 || index >= tempoList.getNumChildren()) return;
+    tempoList.getChild(index).setProperty(IDs::tempo, bpm, &um);
+}
+
+void AudioEngineCommands::setTempoPointTime(int index, double timeSeconds)
+{
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+    auto tempoList = model.getTree().getChildWithName(IDs::TEMPO_POINT_LIST);
+    if (!tempoList.isValid()) return;
+    if (index < 0 || index >= tempoList.getNumChildren()) return;
+    tempoList.getChild(index).setProperty(IDs::startTime, timeSeconds, &um);
+}
+
 void AudioEngineCommands::setLoopStart(double beat)
 {
     auto& um = engine_.getProjectModel().getUndoManager();

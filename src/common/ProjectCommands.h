@@ -90,6 +90,13 @@ public:
 
     // Transport properties
     virtual void setTempo(double bpm) = 0;
+
+    // Tempo point operations (tempo map)
+    virtual int addTempoPoint(double timeSeconds, double bpm) = 0;
+    virtual void removeTempoPoint(int index) = 0;
+    virtual void setTempoPointBpm(int index, double bpm) = 0;
+    virtual void setTempoPointTime(int index, double timeSeconds) = 0;
+
     virtual void setLoopStart(double beat) = 0;
     virtual void setLoopEnd(double beat) = 0;
     virtual void setLooping(bool looping) = 0;

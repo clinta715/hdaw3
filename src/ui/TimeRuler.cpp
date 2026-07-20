@@ -226,6 +226,11 @@ void TimeRuler::mousePressEvent(QGraphicsSceneMouseEvent* event)
         dragStartLoopEnd = loopEnd;
         dragStartX = x;
     }
+    else if (int tpIdx = tempoPointIndexAtX(x); tpIdx >= 0)
+    {
+        dragMode = DragTempoPoint;
+        draggingTempoIndex = tpIdx;
+    }
     else
     {
         dragMode = Seek;
@@ -267,13 +272,20 @@ void TimeRuler::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
         update();
         emit loopBoundsChanged(loopStart, loopEnd);
     }
+    else if (dragMode == DragTempoPoint && draggingTempoIndex >= 0)
+    {
+        double newTime = (std::max)(0.0, t);
+        projectCmds->setTempoPointTime(draggingTempoIndex, newTime);
+        update();
+    }
 }
 
 void TimeRuler::mouseReleaseEvent(QGraphicsSceneMouseEvent*)
 {
-    if (dragMode != Seek && dragMode != None)
+    if (dragMode == DragLoopStart || dragMode == DragLoopEnd || dragMode == DragLoopRegion)
         commitLoopBounds();
     dragMode = None;
+    draggingTempoIndex = -1;
 }
 
 void TimeRuler::commitLoopBounds()
@@ -325,6 +337,55 @@ void TimeRuler::contextMenuEvent(QGraphicsSceneContextMenuEvent* event)
         projectCmds->addMarker(name.toStdString(), t);
     });
 
+    menu.addSeparator();
+
+    int tempoIdx = tempoPointIndexAtX(event->pos().x());
+    if (tempoIdx >= 0)
+    {
+        auto points = readModel->getTempoPoints();
+        double currentBpm = points[tempoIdx].bpm;
+
+        auto* editBpm = menu.addAction("Edit BPM...");
+        connect(editBpm, &QAction::triggered, this, [this, tempoIdx, currentBpm]() {
+            bool ok = false;
+            double newBpm = QInputDialog::getDouble(
+                QApplication::activeWindow(), "Edit Tempo",
+                "BPM:", currentBpm, 20.0, 999.0, 1, &ok);
+            if (!ok) return;
+            projectCmds->setTempoPointBpm(tempoIdx, newBpm);
+        });
+
+        auto* removeTempo = menu.addAction("Remove Tempo Point");
+        connect(removeTempo, &QAction::triggered, this, [this, tempoIdx]() {
+            projectCmds->removeTempoPoint(tempoIdx);
+        });
+
+        menu.addSeparator();
+    }
+
+    auto* addTempo = menu.addAction("Add Tempo Change Here...");
+    connect(addTempo, &QAction::triggered, this, [this, t]() {
+        bool ok = false;
+        double newBpm = QInputDialog::getDouble(
+            QApplication::activeWindow(), "Tempo Change",
+            QString("BPM at %1s:").arg(t, 0, 'f', 2),
+            readModel->getTransport().bpm, 20.0, 999.0, 1, &ok);
+        if (!ok) return;
+        projectCmds->addTempoPoint(t, newBpm);
+    });
+
     menu.exec(event->screenPos());
     event->accept();
+}
+
+int TimeRuler::tempoPointIndexAtX(double x) const
+{
+    auto points = readModel->getTempoPoints();
+    for (int i = 0; i < static_cast<int>(points.size()); ++i)
+    {
+        double ptX = xFromTime(points[i].timeSeconds);
+        if (std::abs(x - ptX) <= 6.0)
+            return i;
+    }
+    return -1;
 }
