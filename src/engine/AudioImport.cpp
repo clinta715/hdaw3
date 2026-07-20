@@ -77,9 +77,21 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
         startTime = (std::max)(startTime, end);
     }
 
+    double clipOffset = 0.0;
+    double clipDuration = duration;
+    if (reader != nullptr)
+    {
+        auto bounds = detectSilenceBounds(*reader);
+        clipOffset = bounds.leadingSeconds;
+        clipDuration = duration - bounds.leadingSeconds - bounds.trailingSeconds;
+        if (clipDuration < 0.01) { clipOffset = 0.0; clipDuration = duration; }
+    }
+
     auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
-                                              startTime, duration,
+                                              startTime, clipDuration,
                                               path.toUtf8().constData());
+    if (clipOffset > 0.0)
+        clip.setProperty(IDs::offset, clipOffset, &model.getUndoManager());
     clipList.addChild(clip, -1, &model.getUndoManager());
 
     if (reader != nullptr)
@@ -219,4 +231,87 @@ bool HDAW::reverseAudioFile(AudioEngine& engine, const QString& sourcePath, QStr
     outPath = newPath;
     HDAW_LOG("AudioImport", "reversed audio: " + newPath);
     return true;
+}
+
+HDAW::SilenceBounds HDAW::detectSilenceBounds(juce::AudioFormatReader& reader, float threshold)
+{
+    SilenceBounds result;
+    const int64_t totalSamples = static_cast<int64_t>(reader.lengthInSamples);
+    if (totalSamples <= 0) return result;
+
+    const double sr = reader.sampleRate;
+    const int numChannels = static_cast<int>(reader.numChannels);
+    constexpr int blockSize = 4096;
+
+    juce::AudioBuffer<float> tempBuffer(numChannels, blockSize);
+
+    int64_t firstNonSilent = totalSamples;
+    for (int64_t pos = 0; pos < totalSamples; pos += blockSize)
+    {
+        int toRead = static_cast<int>(std::min(static_cast<int64_t>(blockSize), totalSamples - pos));
+        for (int ch = 0; ch < numChannels; ++ch)
+            reader.read(&tempBuffer, ch, 1, pos, toRead, true);
+
+        for (int i = 0; i < toRead; ++i)
+        {
+            bool above = false;
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                if (std::abs(tempBuffer.getSample(ch, i)) >= threshold)
+                {
+                    above = true;
+                    break;
+                }
+            }
+            if (above)
+            {
+                firstNonSilent = pos + i;
+                break;
+            }
+        }
+        if (firstNonSilent < totalSamples) break;
+    }
+
+    if (firstNonSilent >= totalSamples)
+        return result;
+
+    int64_t lastNonSilent = 0;
+    for (int64_t pos = totalSamples - blockSize; pos >= 0; pos -= blockSize)
+    {
+        int64_t readStart = (std::max)(static_cast<int64_t>(0), pos);
+        int toRead = static_cast<int>(std::min(static_cast<int64_t>(blockSize), totalSamples - readStart));
+        for (int ch = 0; ch < numChannels; ++ch)
+            reader.read(&tempBuffer, ch, 1, readStart, toRead, true);
+
+        for (int i = toRead - 1; i >= 0; --i)
+        {
+            bool above = false;
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                if (std::abs(tempBuffer.getSample(ch, i)) >= threshold)
+                {
+                    above = true;
+                    break;
+                }
+            }
+            if (above)
+            {
+                lastNonSilent = readStart + i;
+                break;
+            }
+        }
+        if (lastNonSilent > 0) break;
+    }
+
+    result.leadingSeconds = static_cast<double>(firstNonSilent) / sr;
+    result.trailingSeconds = static_cast<double>(totalSamples - 1 - lastNonSilent) / sr;
+
+    double audible = static_cast<double>(totalSamples) / sr - result.leadingSeconds - result.trailingSeconds;
+    if (audible < 0.01)
+    {
+        result.leadingSeconds = 0.0;
+        result.trailingSeconds = 0.0;
+    }
+
+    return result;
 }

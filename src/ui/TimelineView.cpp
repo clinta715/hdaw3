@@ -925,12 +925,25 @@ void TimelineView::handleFileDrop(const QString& filePath, QPointF scenePos)
         duration = reader->lengthInSamples / reader->sampleRate;
     }
 
+    double clipOffset = 0.0;
+    double clipDuration = duration;
+    if (reader != nullptr)
+    {
+        auto bounds = HDAW::detectSilenceBounds(*reader);
+        clipOffset = bounds.leadingSeconds;
+        clipDuration = duration - bounds.leadingSeconds - bounds.trailingSeconds;
+        if (clipDuration < 0.01) { clipOffset = 0.0; clipDuration = duration; }
+    }
+
     int newClipId = projectCmds->addAudioClip(
         trackIndex,
         (std::max)(0.0, timeSeconds),
-        duration,
+        clipDuration,
         filePath.toUtf8().constData(),
         fi.baseName().toUtf8().constData());
+
+    if (newClipId >= 0 && clipOffset > 0.0)
+        projectCmds->setClipOffset(newClipId, clipOffset);
 
     audioGraphCmds->rebuildRoutingGraph();
 
