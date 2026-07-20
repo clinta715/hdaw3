@@ -153,6 +153,7 @@ void AudioEngine::initialize()
     // Initialize preview player for file browser audio preview
     previewPlayer = std::make_unique<HDAW::AudioPreviewPlayer>(
         deviceManager, projectPool.getFormatManager());
+    previewPlayer->setTransportManager(&transportManager);
 
     // Wire MIDI input to processor
     midiInputManager.setNoteCallback([this](const juce::MidiMessage& msg) {

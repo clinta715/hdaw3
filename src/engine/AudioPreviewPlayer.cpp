@@ -6,6 +6,7 @@ AudioPreviewPlayer::AudioPreviewPlayer(juce::AudioDeviceManager& dm,
                                        juce::AudioFormatManager& fm)
     : deviceManager(dm), formatManager(fm)
 {
+    sourcePlayer.setSource(&syncSource);
 }
 
 AudioPreviewPlayer::~AudioPreviewPlayer()
@@ -16,62 +17,56 @@ AudioPreviewPlayer::~AudioPreviewPlayer()
 void AudioPreviewPlayer::loadFile(const juce::File& file)
 {
     stop();
-
     if (!file.existsAsFile()) return;
     currentFile = file;
-
-    auto* reader = formatManager.createReaderFor(file);
-    if (!reader) return;
-
-    double sampleRate = reader->sampleRate;
-    readerSource = std::make_unique<juce::AudioFormatReaderSource>(reader, true);
-    transport.setSource(readerSource.get(), 0, nullptr, sampleRate);
-    transport.setGain(volume);
+    syncSource.loadFile(file, formatManager);
+    syncSource.setGain(volume);
+    applyPlaybackRate();
 }
 
 void AudioPreviewPlayer::play()
 {
-    if (!readerSource) return;
-
-    // AudioSourcePlayer bridges AudioSource → AudioIODeviceCallback
-    sourcePlayer.setSource(&transport);
+    if (syncSource.getLengthInSeconds() <= 0.0) return;
     deviceManager.addAudioCallback(&sourcePlayer);
-    transport.start();
-    playing = true;
+    syncSource.play();
 }
 
 void AudioPreviewPlayer::stop()
 {
-    if (playing)
+    if (syncSource.isPlaying())
     {
-        transport.stop();
+        syncSource.stop();
         deviceManager.removeAudioCallback(&sourcePlayer);
-        sourcePlayer.setSource(nullptr);
-        transport.setPosition(0);
     }
-    playing = false;
 }
 
 void AudioPreviewPlayer::setVolume(float vol)
 {
     volume = juce::jlimit(0.0f, 1.0f, vol);
-    transport.setGain(volume);
+    syncSource.setGain(volume);
 }
 
 void AudioPreviewPlayer::setTempoMatch(bool enabled, double newFileBpm)
 {
     tempoMatch = enabled;
-    fileBpm = newFileBpm;
+    if (newFileBpm > 0.0)
+        fileBpm = newFileBpm;
+    applyPlaybackRate();
 }
 
 void AudioPreviewPlayer::setProjectBpm(double bpm)
 {
-    projectBpm = bpm;
+    if (bpm > 0.0)
+        projectBpm = bpm;
+    applyPlaybackRate();
 }
 
-double AudioPreviewPlayer::getPlaybackLength() const
+void AudioPreviewPlayer::applyPlaybackRate()
 {
-    return transport.getLengthInSeconds();
+    double ratio = 1.0;
+    if (tempoMatch && fileBpm > 0.0 && projectBpm > 0.0)
+        ratio = fileBpm / projectBpm;
+    syncSource.setResamplingRatio(ratio);
 }
 
 } // namespace HDAW
