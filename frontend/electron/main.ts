@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, Menu, dialog, ipcMain } from "electron";
 import { ChildProcess, spawn } from "child_process";
 import * as path from "path";
 import * as net from "net";
@@ -46,14 +46,14 @@ function waitForPort(port: number, timeoutMs = 8000): Promise<void> {
 
 function enginePath(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, "engine", "HDAW.exe");
+    return path.join(process.resourcesPath, "engine", "HDAW_headless.exe");
   }
-  return path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW.exe");
+  return path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW_headless.exe");
 }
 
 function spawnEngine(port: number): ChildProcess {
   const ep = enginePath();
-  const proc = spawn(ep, ["--headless", `--port=${port}`], {
+  const proc = spawn(ep, [`--port=${port}`], {
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -115,6 +115,10 @@ async function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: "#141416",
+    autoHideMenuBar: true,
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, "..", "build-resources", "icon.ico")
+      : path.resolve(__dirname, "..", "build-resources", "icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -173,6 +177,22 @@ function setupIpc() {
     if (mainWindow) {
       mainWindow.webContents.send("do-save");
     }
+  });
+
+  // 3-button confirm dialog: returns "save", "dont-save", or "cancel"
+  ipcMain.handle("show-close-confirm", async () => {
+    if (!mainWindow) return "cancel";
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "question",
+      title: "Unsaved Changes",
+      message: "Do you want to save changes before closing?",
+      buttons: ["Save", "Don't Save", "Cancel"],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (response === 0) return "save";
+    if (response === 1) return "dont-save";
+    return "cancel";
   });
 
   // Renderer requests to close — used after it handles the dirty check itself
