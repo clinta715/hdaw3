@@ -5,7 +5,7 @@ the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
 **Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.9.1**. The core engine (project model, transport, routing,
+**0.10.0**. The core engine (project model, transport, routing,
 JUCE plugin hosting, internal FX) and the UI shell (track headers,
 timeline, mixer, piano roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
@@ -30,7 +30,12 @@ control points, audio clip slicing (at playhead, at transients, at
 region boundaries), and the region clipboard (drag-select to copy/cut
 audio regions and paste at the playhead). **v0.9.1** fixes the clip
 drag Y-tracking — clips now follow the mouse smoothly across tracks
-instead of snapping at track boundaries with a discrete jump. For the
+instead of snapping at track boundaries with a discrete jump.
+**v0.10.0** adds tempo point interactions on the ruler (add/edit/
+remove/drag), duplicate track with ID-safe deep copy, audio device
+preference persistence, transport-synced loop preview, auto-trim
+silence on import (-60 dB), missing-file error indicators, and two
+new MCP tools (`duplicate_track`, `add_track_with_fx`). For the
 full list of working features and the priority-ordered roadmap, see
 `README.md`.
 

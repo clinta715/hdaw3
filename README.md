@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
 audio engine. Versioned as a single self-contained application —
 clone, configure, build, run.
 
-**Current version**: 0.9.1
+**Current version**: 0.10.0
 
 ## Quick start
 
@@ -24,7 +24,7 @@ binary from an earlier point in the project's history and is
 intentionally not maintained. See `AGENTS.md` for the full build
 pipeline and the rationale.
 
-## What works today (v0.9.1)
+## What works today (v0.10.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -57,6 +57,10 @@ pipeline and the rationale.
   (Ctrl+C/X/V/D). Paste offsets clips relative to the playhead.
 - Named markers on the time ruler (right-click ruler → Add Marker).
   Click to seek, drag to move, double-click to rename.
+- **Tempo changes on the ruler**: right-click to add/edit/remove tempo
+  points; drag tempo markers to reposition. All mutations undoable.
+- **Duplicate Track** via context menu (track header + mixer strip)
+  and MCP tool. Deep copy with ID-safe clip/note reassignment.
 - Zoom-to-fit: press F to fit all clips, Shift+F to fit selection.
 
 ### Clip interaction
@@ -111,7 +115,14 @@ pipeline and the rationale.
 - Audio file import (WAV, AIFF, MP3, FLAC, OGG) into a project
   pool with thumbnail caching. BPM metadata extracted on import;
   optional auto tempo-match places imported clips at the project
-  tempo.
+  tempo. **Leading/trailing silence auto-trimmed** at -60 dB on
+  import (both menu and drag-drop paths).
+- **Transport-synced loop preview**: file browser audio preview
+  follows the project transport and loop region when playing.
+  Switches to free playback when transport is stopped.
+- **Missing source file indicator**: clips with missing .wav files
+  show a red "FILE MISSING" label in the timeline and a clear error
+  message in the audio editor.
 - MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
 - Audio export to WAV (Export dialog).
 - Pitch-preserving audio clip timestretch via SoundTouch (Manual
@@ -126,14 +137,16 @@ pipeline and the rationale.
   playback.
 - Preferences dialog with Audio Settings (driver, output/input
   device, sample rate, buffer size, latency display), MIDI device
-  persistence, count-in bars configuration.
+  persistence, count-in bars configuration. **Audio device settings
+  persist across launches** (driver, device, sample rate, buffer size
+  restored on startup with fallback to defaults).
 - MCP HTTP server host is configurable in Preferences (defaults to
   `127.0.0.1`). `--no-mcp` CLI flag fully implemented.
 
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 36 tools cover project inspection, transport,
+can drive the DAW. 38 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator), FX,
 automation, undo, and audio export.
 
