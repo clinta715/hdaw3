@@ -874,6 +874,7 @@ export default function TimelineMinimal() {
                             }
                           } else {
                             useUiStore.getState().selectClip(clip.clipId, idx);
+                            useUiStore.getState().setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
                           }
                         }}
                         onDoubleClick={(e) => {
