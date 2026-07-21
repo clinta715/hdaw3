@@ -12,8 +12,11 @@ files:
   - package.json
 
 extraResources:
-  - from: ../build/Release/HDAW.exe
-    to: engine/HDAW.exe
+  - from: ../build/Debug/
+    to: engine/
+    filter:
+      - "HDAW_headless.exe"
+      - "*.dll"
 
 win:
   target:
