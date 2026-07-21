@@ -82,8 +82,11 @@ int main(int argc, char *argv[])
         mcp::McpServer server;
         server.setEngine(&engine);
         mcp::registerAllTools(server);
-        auto* transport = new mcp::TransportStdio();
-        server.setTransport(transport);
+        // McpServer holds a non-owning pointer to the transport, so we keep
+        // ownership in a unique_ptr and stop+delete it on quit (mirroring the
+        // aboutToQuit hook). Using bare `new` here leaks the transport.
+        auto transport = std::make_unique<mcp::TransportStdio>();
+        server.setTransport(transport.get());
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
             server.stop();
         });
@@ -100,15 +103,18 @@ int main(int argc, char *argv[])
     }
 
     AudioEngine engine;
-    engine.initialize();
-    engine.getPluginManager().loadCache();
 
+    // Bind the WebSocket port BEFORE engine.initialize() so the Electron
+    // waitForPort() succeeds immediately. Audio device init can take 10+ seconds.
     frontend::FrontendServer server(engine);
     if (!server.start(port)) {
         HDAW_LOG("main_headless", QString("FrontendServer failed to bind port %1").arg(port));
         return 1;
     }
     HDAW_LOG("main_headless", QString("FrontendServer listening on ws://127.0.0.1:%1").arg(server.port()));
+
+    engine.initialize();
+    engine.getPluginManager().loadCache();
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
         server.stop();
