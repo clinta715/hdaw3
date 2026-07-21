@@ -134,15 +134,21 @@ int main(int argc, char *argv[])
         }
 
         AudioEngine engine;
-        engine.initialize();
-        engine.getPluginManager().loadCache();
 
+        // Bind the WebSocket port BEFORE engine.initialize() so the Electron
+        // waitForPort() succeeds immediately. The engine init (audio device
+        // enumeration, plugin cache) can take 10+ seconds on some machines.
+        // RPC calls only arrive after the frontend window loads, which happens
+        // after waitForPort resolves — so the engine is ready by then.
         frontend::FrontendServer server(engine);
         if (!server.start(port)) {
             HDAW_LOG("main", QString("FrontendServer failed to bind port %1").arg(port));
             return 1;
         }
         HDAW_LOG("main", QString("FrontendServer listening on ws://127.0.0.1:%1").arg(server.port()));
+
+        engine.initialize();
+        engine.getPluginManager().loadCache();
 
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
             server.stop();
