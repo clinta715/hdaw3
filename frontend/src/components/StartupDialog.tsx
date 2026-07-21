@@ -41,6 +41,7 @@ export default function StartupDialog({ onClose }: Props) {
       const path = prompt("Project file path:");
       if (path) {
         await rpc.call("project.loadProject", { filePath: path });
+        useProjectStore.getState().addRecentProject(path);
         onClose();
       }
     }
@@ -48,6 +49,7 @@ export default function StartupDialog({ onClose }: Props) {
 
   const handleOpenRecent = async (path: string) => {
     await rpc.call("project.loadProject", { filePath: path });
+    useProjectStore.getState().addRecentProject(path);
     onClose();
   };
 
@@ -55,7 +57,7 @@ export default function StartupDialog({ onClose }: Props) {
     <div className="modal-overlay">
       <div className="startup-dialog">
         <h1>HDAW</h1>
-        <p className="startup-version">v0.9.1</p>
+        <p className="startup-version">v0.10.0</p>
         <div className="startup-actions">
           <button className="startup-btn primary" onClick={handleNew}>New Project</button>
           <button className="startup-btn" onClick={handleOpen}>Open Project...</button>
