@@ -19,6 +19,7 @@ extraResources:
       - "*.dll"
 
 win:
+  icon: build-resources/icon.png
   target:
     - target: nsis
       arch: [x64]
