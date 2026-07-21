@@ -1139,6 +1139,8 @@ void AudioEngineCommands::endTransaction()
 void AudioEngineCommands::newProject()
 {
     HDAW::ProjectSerializer::createNew(engine_.getProjectModel());
+    auto* proc = engine_.getMainProcessor();
+    if (proc) proc->rebuildRoutingGraph();
 }
 
 bool AudioEngineCommands::saveProject(const std::string& filePath)
@@ -1148,7 +1150,18 @@ bool AudioEngineCommands::saveProject(const std::string& filePath)
 
 bool AudioEngineCommands::loadProject(const std::string& filePath)
 {
-    return HDAW::ProjectSerializer::load(engine_.getProjectModel(), juce::File(filePath));
+    bool ok = HDAW::ProjectSerializer::load(engine_.getProjectModel(), juce::File(filePath));
+    if (ok)
+    {
+        auto* proc = engine_.getMainProcessor();
+        HDAW_LOG("DIAG", "loadProject: calling rebuildRoutingGraph after load, trackCount=" + std::to_string(engine_.getProjectModel().getTrackListTree().getNumChildren()));
+        if (proc) proc->rebuildRoutingGraph();
+    }
+    else
+    {
+        HDAW_LOG("DIAG", "loadProject: load FAILED");
+    }
+    return ok;
 }
 
 // ─── ProjectCommands — Scale ──────────────────────────────────────

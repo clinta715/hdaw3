@@ -19,6 +19,9 @@ public:
     virtual void scanAll() = 0;
     virtual bool isLoading() const = 0;
 
+    using ScanProgressCallback = std::function<void(const std::string& fileName, int completed, int total)>;
+    virtual void scanAll(ScanProgressCallback progressCb) { scanAll(); }
+
     // Plugin inventory
     virtual std::vector<PluginInfo> getPlugins() const = 0;
     virtual std::vector<PluginInfo> getInstrumentPlugins() const = 0;

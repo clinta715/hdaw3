@@ -97,10 +97,13 @@ MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
             break; // keep default project
         }
     }
+
+    engine.setMainWindow(this);
 }
 
 MainWindow::~MainWindow()
 {
+    engine.setMainWindow(nullptr);
     statusBarWidget = nullptr;
 
     // Stop timers that fire JUCE message dispatch and UI updates.
@@ -1044,6 +1047,21 @@ void MainWindow::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTre
     }
 }
 
+void MainWindow::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int)
+{
+    juce::ignoreUnused(parentTree);
+    if (childWhichHasBeenRemoved.hasType(IDs::TRANSPORT))
+    {
+        timelineView->getToolbar()->setLoopEnabled(false);
+        if (loopAction)
+        {
+            loopAction->blockSignals(true);
+            loopAction->setChecked(false);
+            loopAction->blockSignals(false);
+        }
+    }
+}
+
 void MainWindow::onExport()
 {
     ExportDialog dialog(engine, this);
@@ -1075,6 +1093,7 @@ void MainWindow::onAddTrackWithFX(const juce::String& fxType)
     int last = readModel->getTrackCount() - 1;
     if (last < 0) return;
 
+    selectedTrack = last;
     engine.getProjectModel().addFxSlot(last, fxType.toStdString());
 
     audioGraphCmds->rebuildTrackFX(last);
@@ -1088,6 +1107,7 @@ void MainWindow::onAddTrackWithPlugin(const juce::String& pluginID, const juce::
     int last = readModel->getTrackCount() - 1;
     if (last < 0) return;
 
+    selectedTrack = last;
     engine.getProjectModel().addFxSlot(last, "plugin", -1, pluginID.toStdString());
 
     audioGraphCmds->rebuildTrackFX(last);

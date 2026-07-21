@@ -15,7 +15,7 @@ declare global {
       isDirty: () => Promise<boolean>;
       saveProject: () => Promise<void>;
       requestClose: () => Promise<void>;
-      on: (channel: string, callback: (...args: unknown[]) => void) => void;
+      on: (channel: string, callback: (...args: unknown[]) => void) => (() => void);
     };
   }
 }

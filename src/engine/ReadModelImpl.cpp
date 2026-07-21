@@ -249,7 +249,13 @@ TransportSnapshot ReadModelImpl::getTransport() const
         ts.isLooping = transport.getProperty(IDs::isLooping, false);
         ts.loopStart = transport.getProperty(IDs::loopStart, 0.0);
         ts.loopEnd = transport.getProperty(IDs::loopEnd, 8.0);
-        ts.currentTimeSeconds = transport.getProperty(IDs::position, 0.0);
+        // Use the live TransportManager position (audio-thread atomic advanced
+        // each processBlock) instead of the ValueTree position property, which
+        // is only written on seek/stop and never updated during playback.
+        if (engine_ != nullptr)
+            ts.currentTimeSeconds = engine_->getTransportManager().getCurrentPositionSeconds();
+        else
+            ts.currentTimeSeconds = transport.getProperty(IDs::position, 0.0);
     }
     return ts;
 }

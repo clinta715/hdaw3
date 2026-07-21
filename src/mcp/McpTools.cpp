@@ -1,5 +1,6 @@
 #include "McpTools.h"
 #include "McpExportTool.h"
+#include "McpGuiInspectTools.h"
 #include "McpServer.h"
 #include "McpJsonRpc.h"
 #include "McpToolDef.h"
@@ -118,9 +119,9 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
         QJsonObject{{"type","object"}},
         [e](const QJsonObject&) {
             auto& m = e->getProjectModel();
-            return McpToolResult::text(QString("root=%1 mode=%2")
-                .arg(m.getScaleRoot())
-                .arg(m.getScaleMode()));
+            QJsonObject o{{"root", m.getScaleRoot()}, {"mode", m.getScaleMode()}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(o).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"get_transport",
@@ -128,13 +129,15 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
         QJsonObject{{"type","object"}},
         [e](const QJsonObject&) {
             auto tp = e->getProjectModel().getTransportTree();
-            return McpToolResult::text(QString(
-                "position=%1\nisPlaying=%2\nisLooping=%3\nloopStart=%4\nloopEnd=%5")
-                .arg(static_cast<double>(tp.getProperty(IDs::position)))
-                .arg(jstr(tp.getProperty(IDs::isPlaying).toString()))
-                .arg(jstr(tp.getProperty(IDs::isLooping).toString()))
-                .arg(static_cast<double>(tp.getProperty(IDs::loopStart)))
-                .arg(static_cast<double>(tp.getProperty(IDs::loopEnd))));
+            QJsonObject o{
+                {"position", static_cast<double>(tp.getProperty(IDs::position))},
+                {"isPlaying", static_cast<bool>(tp.getProperty(IDs::isPlaying))},
+                {"isLooping", static_cast<bool>(tp.getProperty(IDs::isLooping))},
+                {"loopStart", static_cast<double>(tp.getProperty(IDs::loopStart))},
+                {"loopEnd", static_cast<double>(tp.getProperty(IDs::loopEnd))}
+            };
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(o).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"list_tracks",
@@ -156,9 +159,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                     {"clipCount", t.getChildWithName(IDs::CLIP_LIST).getNumChildren()}
                 });
             }
-            return McpToolResult::text(QString("tracks=%1\n%2")
-                .arg(arr.size())
-                .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"list_clips", "List clips (optionally on a single trackId).",
@@ -179,13 +181,15 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                         {"start", static_cast<double>(c.getProperty(IDs::startTime))},
                         {"duration", static_cast<double>(c.getProperty(IDs::duration))},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
-                        {"gain", static_cast<double>(c.getProperty(IDs::gain))}
+                        {"gain", static_cast<double>(c.getProperty(IDs::gain))},
+                        {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
+                        {"fadeOut", static_cast<double>(c.getProperty(IDs::fadeOut))},
+                        {"looping", static_cast<bool>(c.getProperty(IDs::looping))}
                     });
                 }
             }
-            return McpToolResult::text(QString("clips=%1\n%2")
-                .arg(arr.size())
-                .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"get_clip",
@@ -252,9 +256,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                 o["bypassed"] = s2->isBypassed();
                 arr.append(o);
             }
-            return McpToolResult::text(QString("slots=%1\n%2")
-                .arg(arr.size())
-                .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"list_automation_lanes", "List automation lanes on a track.",
@@ -275,9 +278,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                     {"pointCount", lane.getChildWithName(IDs::POINT_LIST).getNumChildren()}
                 });
             }
-            return McpToolResult::text(QString("lanes=%1\n%2")
-                .arg(arr.size())
-                .arg(QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented))));
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"get_waveform_peaks",
@@ -1228,6 +1230,10 @@ static void registerProjectTools(McpServer& s, AudioEngine* e)
             auto path = a.value("filePath").toString();
             juce::File f(juce::String(path.toUtf8().constData()));
             bool ok = HDAW::ProjectSerializer::load(e->getProjectModel(), f);
+            if (ok) {
+                auto* proc = e->getMainProcessor();
+                if (proc) proc->rebuildRoutingGraph();
+            }
             return McpToolResult::text(ok ? "loaded" : "load failed", !ok);
         }});
 
@@ -1276,6 +1282,7 @@ void registerAllTools(McpServer& s) {
     registerFxTools(s, e);
     registerExportTool(s);
     registerProjectTools(s, e);
+    registerGuiInspectTools(s, e);
 }
 
 } // namespace mcp

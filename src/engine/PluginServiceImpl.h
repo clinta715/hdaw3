@@ -10,6 +10,7 @@ public:
     ~PluginServiceImpl() override;
 
     void scanAll() override;
+    void scanAll(ScanProgressCallback progressCb) override;
     bool isLoading() const override;
 
     std::vector<PluginInfo> getPlugins() const override;

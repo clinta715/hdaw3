@@ -244,6 +244,8 @@ void TimelineScene::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Val
     juce::ignoreUnused(parentTree);
     if (childWhichHasBeenRemoved.hasType(IDs::CLIP))
         removeClipItem(childWhichHasBeenRemoved);
+    if (childWhichHasBeenRemoved.hasType(IDs::TRACK))
+        rebuildFromValueTree();
 }
 
 void TimelineScene::valueTreeChildOrderChanged(juce::ValueTree&, int, int)

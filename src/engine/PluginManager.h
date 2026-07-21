@@ -25,6 +25,10 @@ public:
 
     const std::vector<juce::PluginDescription>& getPlugins() const { return knownPlugins; }
 
+    // Returns the default VST3/CLAP directories for the current platform.
+    static juce::StringArray getVst3Dirs();
+    static juce::StringArray getClapDirs();
+
     std::vector<juce::PluginDescription> getInstrumentPlugins() const;
     std::vector<juce::PluginDescription> getEffectPlugins() const;
 
@@ -50,6 +54,11 @@ public:
     void setScanCompleteCallback(ScanCallback cb) { scanCallback = cb; }
     ScanCallback getScanCompleteCallback() const { return scanCallback; }
 
+    // Enumerate all .vst3/.clap files under the given directories. Public so
+    // the frontend server can count plugin files for its directory-watcher
+    // change detection (see FrontendServer::onPluginDirDebounceExpired).
+    juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
+
 private:
     void onScanFinished();
 
@@ -67,9 +76,8 @@ private:
 
     // Isolated scanning
     juce::File scannerExePath;
-    struct ScanResult { bool ok; int uid = 0; juce::String name, manufacturer, category, format, file, id, error; };
+    struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; juce::String name, manufacturer, category, format, file, id, error; };
     ScanResult scanPluginIsolated(const juce::String& pluginPath);
-    juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
     int lastScanCrashCount = 0;
 };
 

@@ -8,6 +8,28 @@ import { WaveformCanvas } from "./WaveformCanvas";
 import { snapToGrid } from "./snapUtils";
 import "./TimelineMinimal.css";
 
+function computeRubberBandSelection(
+  rb: { x1: number; y1: number; x2: number; y2: number },
+  clips: ReadonlyArray<{ clipId: number; startBeat: number; durationBeats: number; trackIndex: number }>,
+  pps: number
+): Set<number> {
+  const minX = Math.min(rb.x1, rb.x2);
+  const maxX = Math.max(rb.x1, rb.x2);
+  const minY = Math.min(rb.y1, rb.y2);
+  const maxY = Math.max(rb.y1, rb.y2);
+  const selected = new Set<number>();
+  for (const clip of clips) {
+    const cx = clip.startBeat * pps;
+    const cy = clip.trackIndex * TRACK_HEIGHT;
+    const cw = clip.durationBeats * pps;
+    const ch = TRACK_HEIGHT;
+    if (cx + cw >= minX && cx <= maxX && cy + ch >= minY && cy <= maxY) {
+      selected.add(clip.clipId);
+    }
+  }
+  return selected;
+}
+
 const DEFAULT_PPS = 40;
 const MIN_PPS = 10;
 const MAX_PPS = 200;
@@ -78,6 +100,7 @@ export default function TimelineMinimal() {
   const [rubberBand, setRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const rubberBandRef = useRef(rubberBand);
   rubberBandRef.current = rubberBand;
+  const rubberBandJustCompleted = useRef(false);
 
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; clip?: typeof clips[0]; markerIndex?: number } | null>(null);
@@ -227,6 +250,7 @@ export default function TimelineMinimal() {
   // --- Rubber band handler ---
   const handleRubberBandStart = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest(".tl-clip")) return;
+    rubberBandJustCompleted.current = false;
     const el = tracksRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -236,11 +260,18 @@ export default function TimelineMinimal() {
 
     const onMove = (ev: globalThis.MouseEvent) => {
       const r = el.getBoundingClientRect();
+      const newX2 = ev.clientX - r.left + el.scrollLeft;
+      const newY2 = ev.clientY - r.top + el.scrollTop;
       setRubberBand(prev => prev ? {
         ...prev,
-        x2: ev.clientX - r.left + el.scrollLeft,
-        y2: ev.clientY - r.top + el.scrollTop,
+        x2: newX2,
+        y2: newY2,
       } : null);
+      const rb = rubberBandRef.current;
+      if (rb) {
+        useUiStore.setState({ selectedClipIds: computeRubberBandSelection(
+          { x1: rb.x1, y1: rb.y1, x2: newX2, y2: newY2 }, clips, pps) });
+      }
     };
 
     const onUp = () => {
@@ -248,22 +279,10 @@ export default function TimelineMinimal() {
       window.removeEventListener("mouseup", onUp);
       const rb = rubberBandRef.current;
       if (rb) {
-        const minX = Math.min(rb.x1, rb.x2);
-        const maxX = Math.max(rb.x1, rb.x2);
-        const minY = Math.min(rb.y1, rb.y2);
-        const maxY = Math.max(rb.y1, rb.y2);
-        const selected = new Set<number>();
-        for (const clip of clips) {
-          const cx = clip.startBeat * pps;
-          const cy = clip.trackIndex * TRACK_HEIGHT;
-          const cw = clip.durationBeats * pps;
-          const ch = TRACK_HEIGHT;
-          if (cx + cw >= minX && cx <= maxX && cy + ch >= minY && cy <= maxY) {
-            selected.add(clip.clipId);
-          }
-        }
+        const selected = computeRubberBandSelection(rb, clips, pps);
         if (selected.size > 0) {
           useUiStore.setState({ selectedClipIds: selected });
+          rubberBandJustCompleted.current = true;
         }
       }
       setRubberBand(null);
@@ -830,7 +849,13 @@ export default function TimelineMinimal() {
           onMouseLeave={handleMouseLeave}
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
-            onClick={() => useUiStore.getState().clearSelection()}
+            onClick={() => {
+              if (rubberBandJustCompleted.current) {
+                rubberBandJustCompleted.current = false;
+                return;
+              }
+              useUiStore.getState().clearSelection();
+            }}
             onMouseDown={handleRubberBandStart}
             onContextMenu={(e) => {
               if ((e.target as HTMLElement).closest(".tl-clip")) return;
@@ -899,10 +924,10 @@ export default function TimelineMinimal() {
                           </svg>
                         )}
                         <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{clip.name ?? `Clip ${clip.clipId}`}</span>
-                        <div className="fade-handle fade-handle-in" onMouseDown={(e) => handleFadeStart(e, clip, "in")} />
-                        <div className="fade-handle fade-handle-out" onMouseDown={(e) => handleFadeStart(e, clip, "out")} />
-                        <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} />
-                        <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} />
+                        <div className="fade-handle fade-handle-in" onMouseDown={(e) => handleFadeStart(e, clip, "in")} onClick={(e) => e.stopPropagation()} />
+                        <div className="fade-handle fade-handle-out" onMouseDown={(e) => handleFadeStart(e, clip, "out")} onClick={(e) => e.stopPropagation()} />
+                        <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} onClick={(e) => e.stopPropagation()} />
+                        <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} onClick={(e) => e.stopPropagation()} />
                       </div>
                     );
                   })}

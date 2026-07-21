@@ -1,5 +1,6 @@
 import { useProjectStore } from "../store/projectStore";
 import { useMeterStore } from "../store/meterStore";
+import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
 import { colorStr } from "../theme";
 import "./TrackHeaders.css";
@@ -8,6 +9,7 @@ export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const tracks = snapshot?.tracks ?? [];
   const trackMeters = useMeterStore((s) => s.tracks);
+  const selectClip = useUiStore((s) => s.selectClip);
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,7 +73,7 @@ export default function TrackHeaders() {
       {tracks.map((track, i) => {
         const meter = trackMeters[i] ?? { l: 0, r: 0 };
         return (
-        <div key={track.index} className="th-row">
+        <div key={track.index} className="th-row" onClick={() => selectClip(null, track.index)}>
           <div
             className="th-color"
             style={{ background: colorStr(track.color), cursor: "pointer" }}
@@ -139,6 +141,7 @@ export default function TrackHeaders() {
             className="th-resize-handle"
             onMouseDown={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               handleHeightDrag(track.index, e.clientY, track.height);
             }}
           />

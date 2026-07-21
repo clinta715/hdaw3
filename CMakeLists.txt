@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.10.0 LANGUAGES CXX)
+project(HDAW VERSION 0.12.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,6 +78,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpServer.cpp
     src/mcp/McpExportTool.cpp
     src/mcp/McpTools.cpp
+    src/mcp/McpGuiInspectTools.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
@@ -134,6 +135,7 @@ option(HDAW_GUI "Build with Qt desktop GUI support (default: browser-only)" OFF)
 
 add_executable(HDAW
     src/main.cpp
+    src/ui/GuiInspector.cpp
     src/resources/resources.rc
     src/resources/resources.qrc
     src/resources/frontend.qrc
@@ -285,6 +287,7 @@ endif()
 #   HDAW_headless.exe --port=9000         (custom WebSocket port)
 add_executable(HDAW_headless
     src/main_headless.cpp
+    src/ui/GuiInspector.cpp
 )
 target_link_libraries(HDAW_headless
     PRIVATE

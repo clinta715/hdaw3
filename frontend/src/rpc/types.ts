@@ -112,3 +112,31 @@ export interface WaveformPeaks {
   sampleRate: number;
   numSamples: number;
 }
+
+export interface ScaleModeInfo {
+  index: number;
+  name: string;
+  intervals: number[];
+}
+
+export interface ChordTypeInfo {
+  index: number;
+  name: string;
+  intervals: number[];
+}
+
+export interface ProgressionPatternInfo {
+  index: number;
+  name: string;
+  chords: { degree: number; chordType: number }[];
+}
+
+export interface StyleInfo {
+  index: number;
+  name: string;
+}
+
+export interface GenerateResult {
+  clipId: number;
+  noteCount: number;
+}

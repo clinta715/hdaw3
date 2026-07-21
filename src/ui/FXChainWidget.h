@@ -8,6 +8,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <juce_core/juce_core.h>
+#include <juce_data_structures/juce_data_structures.h>
 #include "../common/ProjectCommands.h"
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
@@ -18,7 +19,7 @@
 class AudioEngine;
 #include "FXSlotRow.h"
 
-class FXChainWidget : public QWidget
+class FXChainWidget : public QWidget, private juce::ValueTree::Listener
 {
     Q_OBJECT
 public:
@@ -37,7 +38,14 @@ protected:
 private:
     void rebuildUI();
     void addFXSlot(const juce::String& type = "eq");
+    void addPluginSlot(const QString& pluginID);
     int indexAtDropY(int y) const;
+
+    void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
+    void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int index) override;
+    void valueTreeChildOrderChanged(juce::ValueTree& parentTree, int oldIndex, int newIndex) override;
+    bool isCurrentTrackFxChain(const juce::ValueTree& tree) const;
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;

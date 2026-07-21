@@ -41,40 +41,62 @@ function App() {
     };
     window.addEventListener("beforeunload", handler);
 
-    // Electron: listen for close request from main process
+    // Electron: the main process intercepts window close and sends
+    // "app-close-requested" instead. We handle the dirty check + save dialog
+    // here, then call requestClose() to actually close. If the user cancels,
+    // we do NOT call requestClose() — the main process already preventDefault'd
+    // the close, so the window stays open.
     const hdaw = (window as any).hdaw;
+    let unsub: (() => void) | undefined;
     if (hdaw?.on) {
-      hdaw.on("app-close-requested", async () => {
+      const onCloseRequested = async () => {
         const dirty = useProjectStore.getState().isDirty;
         if (dirty) {
-          const result = confirm("Project has unsaved changes. Save before closing?");
-          if (result) {
+          const result = await hdaw.showCloseConfirm();
+          if (result === "cancel") return;
+          if (result === "save") {
             const fp = useProjectStore.getState().filePath;
             if (fp) {
+              // Existing project — save directly to original file
               await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
             } else {
-              // No existing file — show save dialog
+              // New project — prompt for save location
               if (hdaw.showSaveDialog) {
+                const lastDir = localStorage.getItem("hdaw_last_save_dir") || "";
+                const defaultPath = lastDir
+                  ? lastDir + "/project.hdaw"
+                  : "project.hdaw";
                 const saveResult = await hdaw.showSaveDialog({
                   title: "Save Project",
-                  defaultPath: "project.hdaw",
+                  defaultPath,
                   filters: [
                     { name: "HDAW Projects", extensions: ["hdaw"] },
                     { name: "All Files", extensions: ["*"] },
                   ],
                 });
-                if (!saveResult.canceled && saveResult.filePath) {
-                  await rpc.call("project.saveProject", { filePath: saveResult.filePath }).catch(() => {});
+                if (saveResult.canceled || !saveResult.filePath) {
+                  // User cancelled the save dialog — keep the window open.
+                  return;
                 }
+                await rpc.call("project.saveProject", { filePath: saveResult.filePath }).catch(() => {});
+                useProjectStore.getState().setFilePath(saveResult.filePath);
+                // Remember the directory for next time
+                const dir = saveResult.filePath.replace(/[\\/][^\\/]*$/, "");
+                localStorage.setItem("hdaw_last_save_dir", dir);
               }
             }
           }
+          // "dont-save" falls through to close
         }
         hdaw.requestClose();
-      });
+      };
+      unsub = hdaw.on("app-close-requested", onCloseRequested);
     }
 
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+      if (unsub) unsub();
+    };
   }, []);
 
   // Auto-switch bottom tab when a single clip is selected

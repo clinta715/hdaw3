@@ -13,7 +13,9 @@
 #include "../common/PluginService.h"
 #include "../common/PluginParamService.h"
 #include "../common/MidiService.h"
+#include "../engine/PhraseGenerator.h"
 
+#include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -23,7 +25,6 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <atomic>
-#include <future>
 #include <memory>
 #include <thread>
 
@@ -436,7 +437,8 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
     return makeError(-32601, "unknown read method: " + m);
 }
 
-DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonValue& params) {
+DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonValue& params,
+                              FrontendServer* server) {
     const auto o = paramsObject(params);
     auto pluginInfoToJson = [](const PluginInfo& p) {
         return QJsonObject{
@@ -447,7 +449,42 @@ DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonVal
             { "isInstrument",    p.isInstrument },
         };
     };
-    if (m == "scanAll")  { s.scanAll(); return { false, QJsonValue::Null }; }
+    if (m == "scanAll") {
+        if (s.isLoading())
+            return makeError(-32603, "scan already in progress");
+
+        // Run the scan on a background thread so the RPC doesn't block the
+        // engine main thread. Broadcast notify.scanProgress for each plugin
+        // file, then broadcast a completion notification when done.
+        // Spin a local QEventLoop so queued cross-thread invocations
+        // (the broadcastNotificationFromAnyThread hops) are processed.
+        QEventLoop loop;
+        bool scanDone = false;
+        std::thread scanThread([&]() {
+            s.scanAll([&](const std::string& fileName, int completed, int total) {
+                if (server == nullptr) return;
+                QJsonObject payload{
+                    { "fileName", QString::fromStdString(fileName) },
+                    { "completed", completed },
+                    { "total", total },
+                };
+                server->broadcastNotificationFromAnyThread(notify::ScanProgress, payload);
+            });
+            scanDone = true;
+            QMetaObject::invokeMethod(&loop, &QEventLoop::quit, Qt::QueuedConnection);
+        });
+        scanThread.detach();
+
+        loop.exec();
+
+        // Broadcast completion
+        if (server != nullptr) {
+            server->broadcastNotificationFromAnyThread(notify::ScanProgress,
+                QJsonObject{ { "fileName", "" }, { "completed", -1 }, { "total", -1 },
+                             { "done", true } });
+        }
+        return { false, QJsonValue::Null };
+    }
     if (m == "isLoading") { return { false, s.isLoading() }; }
     if (m == "getPlugins") {
         QJsonArray arr; for (const auto& p : s.getPlugins()) arr.append(pluginInfoToJson(p));
@@ -520,9 +557,10 @@ DispatchResult dispatchMidi(MidiService& s, const QString& m, const QJsonValue& 
 }
 
 // Render the project to an audio file. The ExportManager runs the render on
-// its own worker thread; this handler blocks on a future until onComplete
-// fires, broadcasting notify.exportProgress along the way. Mirrors the MCP
-// export_audio tool (src/mcp/McpExportTool.cpp) but uses the frontend's own
+// its own worker thread; this handler spins a local QEventLoop (processing
+// queued cross-thread invocations) until onComplete fires, broadcasting
+// notify.exportProgress along the way. Mirrors the MCP export_audio tool
+// (src/mcp/McpExportTool.cpp) but uses the frontend's own
 // notify.exportProgress channel (not notifications/progress).
 DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
                               const QJsonValue& params, FrontendServer* server) {
@@ -577,10 +615,21 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
             };
         }
 
-        auto donePromise = std::make_shared<std::promise<std::pair<bool, QString>>>();
-        auto doneFuture = donePromise->get_future();
-        em.onComplete = [donePromise](bool success, const juce::String& message) {
-            donePromise->set_value({ success, QString::fromUtf8(message.toRawUTF8()) });
+        // The export worker runs on its own thread and hops back here via
+        // QMetaObject::invokeMethod(..., QueuedConnection) for progress and
+        // completion. Blocking on doneFuture.get() would stall the Qt event
+        // loop, which (a) prevents the progress hops from firing until after
+        // the export finishes, defeating the live progress notifications,
+        // and (b) prevents aboutToQuit from firing, so a Ctrl-C during export
+        // hangs the process. Spin a local event loop instead so queued
+        // invocations are processed; quit when onComplete fires.
+        QEventLoop loop;
+        bool success = false;
+        QString message;
+        em.onComplete = [&](bool ok, const juce::String& msg) {
+            success = ok;
+            message = QString::fromUtf8(msg.toRawUTF8());
+            QMetaObject::invokeMethod(&loop, &QEventLoop::quit, Qt::QueuedConnection);
         };
 
         if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
@@ -595,12 +644,13 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
                 QJsonObject{ { "progress", 0.0 }, { "message", "starting render" } });
         }
 
-        // Block until the worker reports completion. The 30 Hz transport
-        // timer and meter timer continue to fire on the main thread because
-        // they are driven by Qt event loops in their own QObject slots, but
-        // this dispatch call is the only one in flight — every other WebSocket
-        // request is queued behind it. Acceptable for an interactive export.
-        auto [success, message] = doneFuture.get();
+        // Process events until the worker's onComplete hops back here and
+        // quits the loop. This keeps progress notifications streaming live
+        // and lets aboutToQuit fire if the app is asked to exit mid-export.
+        // This dispatch call is still the only one in flight — every other
+        // WebSocket request is queued behind it — but the event loop now
+        // turns over, so the UI and other Qt timers keep working.
+        loop.exec();
 
         if (server != nullptr) {
             server->broadcastNotificationFromAnyThread(notify::ExportProgress,
@@ -679,6 +729,171 @@ DispatchResult dispatchPreview(AudioEngine& engine, const QString& m, const QJso
         return { false, preview.isPlaying() };
     }
     return makeError(-32601, "unknown preview method: " + m);
+}
+
+DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const QJsonValue& params) {
+    const auto o = paramsObject(params);
+    auto& c = engine.getProjectCommands();
+    auto& ag = engine.getAudioGraphCommands();
+
+    // --- Read-only queries (PhraseGenerator is a static utility) ---
+
+    if (m == "getScaleModes") {
+        QJsonArray arr;
+        for (const auto& sm : PhraseGenerator::getScaleModes()) {
+            QJsonArray intervals;
+            for (int iv : sm.intervals) intervals.append(iv);
+            arr.append(QJsonObject{ { "index", sm.index }, { "name", sm.name }, { "intervals", intervals } });
+        }
+        return { false, arr };
+    }
+    if (m == "getChordTypes") {
+        QJsonArray arr;
+        for (const auto& ct : PhraseGenerator::getChordTypes()) {
+            QJsonArray intervals;
+            for (int iv : ct.intervals) intervals.append(iv);
+            arr.append(QJsonObject{ { "index", ct.index }, { "name", ct.name }, { "intervals", intervals } });
+        }
+        return { false, arr };
+    }
+    if (m == "getProgressionPatterns") {
+        QJsonArray arr;
+        for (const auto& pp : PhraseGenerator::getProgressionPatterns()) {
+            QJsonArray chords;
+            for (const auto& [degree, chordType] : pp.chords) {
+                chords.append(QJsonObject{ { "degree", degree }, { "chordType", chordType } });
+            }
+            arr.append(QJsonObject{ { "index", pp.index }, { "name", pp.name }, { "chords", chords } });
+        }
+        return { false, arr };
+    }
+    if (m == "getStyleNames") {
+        QJsonArray arr;
+        for (int i = 0; i <= static_cast<int>(PhraseGenerator::Buildup); ++i) {
+            arr.append(QJsonObject{ { "index", i }, { "name", PhraseGenerator::styleName(static_cast<PhraseGenerator::Style>(i)) } });
+        }
+        return { false, arr };
+    }
+    if (m == "getNoteName") {
+        int pitch;
+        if (!requireInt(o, "pitch", pitch, nullptr))
+            return makeError(-32602, "pitch required");
+        return { false, QString::fromUtf8(PhraseGenerator::noteName(pitch)) };
+    }
+
+    // --- Mutations: generate + insert MIDI clip ---
+
+    // Shared lambda: generate notes, create clip, add notes, return { clipId, noteCount }
+    auto generateIntoClip = [&](int trackIndex, double startBeat, double clipDuration,
+                                const std::string& clipName,
+                                const std::vector<PhraseGenerator::GeneratedNote>& notes) -> DispatchResult {
+        int clipId = c.addMidiClip(trackIndex, startBeat, clipDuration, clipName);
+        for (const auto& n : notes) {
+            c.addNote(clipId, n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
+        }
+        ag.rebuildRoutingGraph();
+        QJsonObject result{ { "clipId", clipId }, { "noteCount", static_cast<int>(notes.size()) } };
+        return { false, result };
+    };
+
+    if (m == "generatePhrase") {
+        int trackIndex;
+        std::string styleStr;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (!requireString(o, "style", styleStr, nullptr))
+            return makeError(-32602, "style required");
+
+        PhraseGenerator::Style style = PhraseGenerator::Standard;
+        if      (styleStr == "Arpeggio")   style = PhraseGenerator::Arpeggio;
+        else if (styleStr == "BassLine")   style = PhraseGenerator::BassLine;
+        else if (styleStr == "ChordStab")  style = PhraseGenerator::ChordStab;
+        else if (styleStr == "Pad")        style = PhraseGenerator::Pad;
+        else if (styleStr == "Lead")       style = PhraseGenerator::Lead;
+        else if (styleStr == "RandomWalk") style = PhraseGenerator::RandomWalk;
+        else if (styleStr == "Buildup")    style = PhraseGenerator::Buildup;
+
+        PhraseGenerator::PhraseParams pp;
+        pp.style = style;
+        pp.lengthBeats = optDouble(o, "lengthBeats", 4.0, nullptr);
+        pp.density = optInt(o, "density", 8, nullptr);
+        pp.noteDuration = optDouble(o, "noteDuration", 0.5, nullptr);
+        pp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
+        pp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
+        pp.lowNote = optInt(o, "lowNote", 48, nullptr);
+        pp.highNote = optInt(o, "highNote", 84, nullptr);
+        pp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
+        pp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+
+        double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
+        auto notes = PhraseGenerator::generatePhrase(pp);
+        std::string name = std::string("Phrase: ") + styleStr;
+        return generateIntoClip(trackIndex, startBeat, pp.lengthBeats, name, notes);
+    }
+
+    if (m == "generateChord") {
+        int trackIndex, rootPitch, chordType;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (!requireInt(o, "rootPitch", rootPitch, nullptr))
+            return makeError(-32602, "rootPitch required");
+        if (!requireInt(o, "chordType", chordType, nullptr))
+            return makeError(-32602, "chordType required");
+
+        PhraseGenerator::ChordParams cp;
+        cp.chordType = chordType;
+        cp.voicing = optInt(o, "voicing", 0, nullptr);
+        cp.inversion = optInt(o, "inversion", 0, nullptr);
+        cp.arpeggiate = optBool(o, "arpeggiate", false, nullptr);
+        cp.arpeggioRate = optDouble(o, "arpeggioRate", 0.125, nullptr);
+        cp.durationBeats = optDouble(o, "durationBeats", 2.0, nullptr);
+        cp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
+        cp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
+        cp.lowNote = optInt(o, "lowNote", 48, nullptr);
+        cp.highNote = optInt(o, "highNote", 84, nullptr);
+        cp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
+        cp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+
+        double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
+        auto notes = PhraseGenerator::generateChord(rootPitch, cp);
+        const char* ctName = PhraseGenerator::chordTypeName(chordType);
+        std::string name = std::string("Chord: ") + ctName;
+        return generateIntoClip(trackIndex, startBeat, cp.durationBeats, name, notes);
+    }
+
+    if (m == "generateProgression") {
+        int trackIndex, patternIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (!requireInt(o, "patternIndex", patternIndex, nullptr))
+            return makeError(-32602, "patternIndex required");
+
+        PhraseGenerator::ProgressionParams prp;
+        prp.patternIndex = patternIndex;
+        prp.chordTypeOverride = optInt(o, "chordTypeOverride", -1, nullptr);
+        prp.arpeggiate = optBool(o, "arpeggiate", false, nullptr);
+        prp.arpeggioRate = optDouble(o, "arpeggioRate", 0.125, nullptr);
+        prp.durationBeats = optDouble(o, "durationBeats", 2.0, nullptr);
+        prp.beatsPerChord = optDouble(o, "beatsPerChord", 4.0, nullptr);
+        prp.scaleRoot = optInt(o, "scaleRoot", 0, nullptr);
+        prp.scaleMode = optInt(o, "scaleMode", 0, nullptr);
+        prp.lowNote = optInt(o, "lowNote", 48, nullptr);
+        prp.highNote = optInt(o, "highNote", 84, nullptr);
+        prp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
+        prp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+
+        const auto& patterns = PhraseGenerator::getProgressionPatterns();
+        if (patternIndex < 0 || patternIndex >= static_cast<int>(patterns.size()))
+            return makeError(-32602, "patternIndex out of range");
+
+        double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
+        auto notes = PhraseGenerator::generateProgression(prp);
+        double clipDuration = prp.beatsPerChord * static_cast<double>(patterns[patternIndex].chords.size());
+        std::string name = std::string("Progression: ") + patterns[patternIndex].name;
+        return generateIntoClip(trackIndex, startBeat, clipDuration, name, notes);
+    }
+
+    return makeError(-32601, "unknown composition method: " + m);
 }
 
 } // namespace (anonymous)
@@ -781,11 +996,12 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         }
         return dispatchRead(engine.getReadModel(), m, params);
     }
-    else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), m, params);
+    else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), m, params, server);
     else if (ns == method::PluginParam) return dispatchPluginParam(engine.getPluginParamService(), m, params);
     else if (ns == method::Midi)        return dispatchMidi(engine.getMidiService(), m, params);
     else if (ns == method::Export)      return dispatchExport(engine, m, params, server);
     else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
+    else if (ns == method::Composition) return dispatchComposition(engine, m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

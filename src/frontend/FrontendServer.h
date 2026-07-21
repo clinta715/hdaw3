@@ -10,6 +10,7 @@
 class QWebSocketServer;
 class QWebSocket;
 class QTimer;
+class QFileSystemWatcher;
 class AudioEngine;
 
 namespace frontend {
@@ -57,6 +58,8 @@ private slots:
     void onBinaryMessageReceived(const QByteArray& data);
     void onMeterTimer();
     void onTransportTimer();
+    void onPluginDirChanged();
+    void onPluginDirDebounceExpired();
 
 private:
     void handleOneMessage(QWebSocket* socket, const QByteArray& bytes);
@@ -72,6 +75,18 @@ private:
 
     // Server-side push: any ValueTree change re-broadcasts notify.treeChanged.
     std::unique_ptr<FrontendTreeWatcher> treeWatcher_;
+
+    // Plugin directory watcher — auto-rescan when VST3/CLAP dirs change.
+    // The watcher fires on ANY touch to the directory (Defender scans, OS
+    // indexing, plugin host file locks), so onPluginDirDebounceExpired()
+    // compares the current plugin-file count against this snapshot before
+    // triggering a rescan. Only an actual add/remove of a .vst3/.clap file
+    // causes work. In-place updates won't change the count — users should
+    // hit "Rescan" in the Plugin Manager for that case.
+    QFileSystemWatcher* pluginDirWatcher_ = nullptr;
+    QTimer* pluginDirDebounceTimer_ = nullptr;
+    bool pluginScanInProgress_ = false;
+    int lastPluginFileCount_ = -1;
 
     // Last-sent transport payload. The transport timer fires at 30 Hz even
     // when the project is idle; comparing the new snapshot against this and

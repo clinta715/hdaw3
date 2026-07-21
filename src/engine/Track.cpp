@@ -340,11 +340,17 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
 void Track::toggleFXEditor(int slotIndex)
 {
     if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size()))
+    {
+        HDAW_LOG("FXEditor", (juce::String("toggleFXEditor: slotIndex=") + juce::String(slotIndex) + " out of range (chain size=" + juce::String((int)fxChain.size()) + ")").toStdString().c_str());
         return;
+    }
 
     auto& slot = fxChain[slotIndex];
     if (!slot || !slot->isPlugin())
+    {
+        HDAW_LOG("FXEditor", (juce::String("toggleFXEditor: slot ") + juce::String(slotIndex) + " is not a plugin (slot=" + (slot ? "exists" : "null") + " isPlugin=" + (slot && slot->isPlugin() ? "true" : "false") + " type=" + (slot ? slot->getType().toStdString() : "n/a") + ")").toStdString().c_str());
         return;
+    }
 
     if (slot->isEditorOpen())
         slot->closeEditor();

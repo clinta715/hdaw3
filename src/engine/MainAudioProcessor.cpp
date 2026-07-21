@@ -85,6 +85,14 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 {
     juce::ScopedNoDenormals noDenormals;
 
+    // NOTE: this is the audio thread. Per AGENTS.md "Realtime / Audio-Thread
+    // Safety", do NOT add HDAW_LOG, juce::String/QString construction, locks,
+    // disk I/O, or buffer.getMagnitude() scans here — a previous diagnostic
+    // pass added all of the above and caused input lag + dropouts. The
+    // silent-output bug that instrumentation was tracking is fixed by the
+    // bus-layout propagation in prepareToPlay(); see AGENTS.md
+    // "AudioProcessorGraph bus layout must be propagated".
+
     setPlayHead(internalPlayHead.get());
 
     if (countInActive.load() && transportManager)

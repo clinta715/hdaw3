@@ -1,6 +1,8 @@
 #include "FXChainWidget.h"
 #include "../engine/AudioEngine.h"
+#include "../model/ProjectModel.h"
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
@@ -56,13 +58,71 @@ FXChainWidget::FXChainWidget(AudioEngine& ae, QWidget* parent)
     // Add FX button
     auto* addBtn = new QPushButton("+ Add FX", this);
     addBtn->setFixedHeight(28);
-    connect(addBtn, &QPushButton::clicked, this, [this]() { addFXSlot(); });
+    connect(addBtn, &QPushButton::clicked, this, [this, addBtn]() {
+        if (currentTrack < 0) return;
+
+        QMenu menu;
+        menu.addAction("EQ", this, [this]() { addFXSlot("eq"); });
+        menu.addAction("Compressor", this, [this]() { addFXSlot("compressor"); });
+        menu.addAction("Reverb", this, [this]() { addFXSlot("reverb"); });
+        menu.addAction("Delay", this, [this]() { addFXSlot("delay"); });
+
+        auto plugInfos = pluginService->getPlugins();
+        if (!plugInfos.empty())
+        {
+            std::vector<const PluginInfo*> instruments, effects;
+            for (const auto& info : plugInfos)
+            {
+                if (pluginService->isBlacklisted(info.fileOrIdentifier))
+                    continue;
+                if (info.isInstrument)
+                    instruments.push_back(&info);
+                else
+                    effects.push_back(&info);
+            }
+
+            if (!instruments.empty())
+            {
+                menu.addSeparator();
+                menu.addSection("Instruments");
+                for (const auto* info : instruments)
+                {
+                    QString label = QString("[%1] %2")
+                        .arg(QString::fromStdString(info->format))
+                        .arg(QString::fromStdString(info->name));
+                    QString pid = QString::fromStdString(info->fileOrIdentifier);
+                    menu.addAction(label, this, [this, pid]() { addPluginSlot(pid); });
+                }
+            }
+
+            if (!effects.empty())
+            {
+                menu.addSeparator();
+                menu.addSection("Effects");
+                for (const auto* info : effects)
+                {
+                    QString label = QString("[%1] %2")
+                        .arg(QString::fromStdString(info->format))
+                        .arg(QString::fromStdString(info->name));
+                    QString pid = QString::fromStdString(info->fileOrIdentifier);
+                    menu.addAction(label, this, [this, pid]() { addPluginSlot(pid); });
+                }
+            }
+        }
+
+        menu.exec(addBtn->mapToGlobal(QPoint(0, addBtn->height())));
+    });
     mainLayout->addWidget(addBtn);
+
+    engine.getProjectModel().getTree().addListener(this);
 
     clear();
 }
 
-FXChainWidget::~FXChainWidget() = default;
+FXChainWidget::~FXChainWidget()
+{
+    engine.getProjectModel().getTree().removeListener(this);
+}
 
 void FXChainWidget::loadTrack(int trackIndex)
 {
@@ -188,6 +248,16 @@ void FXChainWidget::addFXSlot(const juce::String& type)
     emit chainChanged();
 }
 
+void FXChainWidget::addPluginSlot(const QString& pluginID)
+{
+    if (currentTrack < 0) return;
+
+    projectCmds->addFxSlot(currentTrack, "plugin", -1, pluginID.toStdString());
+
+    rebuildUI();
+    emit chainChanged();
+}
+
 int FXChainWidget::indexAtDropY(int y) const
 {
     // Walk the layout's child widgets in order, accumulating heights.
@@ -254,4 +324,64 @@ bool FXChainWidget::eventFilter(QObject* obj, QEvent* event)
         }
     }
     return QWidget::eventFilter(obj, event);
+}
+
+bool FXChainWidget::isCurrentTrackFxChain(const juce::ValueTree& tree) const
+{
+    if (currentTrack < 0)
+        return false;
+
+    if (tree.hasType(IDs::FX_CHAIN))
+    {
+        auto trackTree = tree.getParent();
+        if (!trackTree.isValid() || !trackTree.hasType(IDs::TRACK))
+            return false;
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        return trackList.indexOf(trackTree) == currentTrack;
+    }
+
+    if (tree.hasType(IDs::FX_SLOT))
+    {
+        auto fxChain = tree.getParent();
+        if (!fxChain.isValid() || !fxChain.hasType(IDs::FX_CHAIN))
+            return false;
+        auto trackTree = fxChain.getParent();
+        if (!trackTree.isValid() || !trackTree.hasType(IDs::TRACK))
+            return false;
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        return trackList.indexOf(trackTree) == currentTrack;
+    }
+
+    return false;
+}
+
+void FXChainWidget::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property)
+{
+    if (property == IDs::pluginState)
+        return;
+
+    if (isCurrentTrackFxChain(tree))
+        rebuildUI();
+}
+
+void FXChainWidget::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)
+{
+    if (childWhichHasBeenAdded.hasType(IDs::FX_SLOT) && isCurrentTrackFxChain(parentTree))
+        rebuildUI();
+    else if (childWhichHasBeenAdded.hasType(IDs::FX_CHAIN) && isCurrentTrackFxChain(childWhichHasBeenAdded))
+        rebuildUI();
+}
+
+void FXChainWidget::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int)
+{
+    if (childWhichHasBeenRemoved.hasType(IDs::FX_SLOT) && isCurrentTrackFxChain(parentTree))
+        rebuildUI();
+    else if (childWhichHasBeenRemoved.hasType(IDs::FX_CHAIN) && isCurrentTrackFxChain(childWhichHasBeenRemoved))
+        rebuildUI();
+}
+
+void FXChainWidget::valueTreeChildOrderChanged(juce::ValueTree& parentTree, int, int)
+{
+    if (parentTree.hasType(IDs::FX_CHAIN) && isCurrentTrackFxChain(parentTree))
+        rebuildUI();
 }

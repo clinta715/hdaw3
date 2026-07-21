@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld("hdaw", {
     ipcRenderer.invoke("show-open-dialog", options),
   showSaveDialog: (options: Electron.SaveDialogOptions) =>
     ipcRenderer.invoke("show-save-dialog", options),
+  showCloseConfirm: () =>
+    ipcRenderer.invoke("show-close-confirm"),
   readDirectory: (dirPath: string) =>
     ipcRenderer.invoke("fs-readdir", dirPath),
   isDirty: () =>
@@ -16,6 +18,14 @@ contextBridge.exposeInMainWorld("hdaw", {
   requestClose: () =>
     ipcRenderer.invoke("request-close"),
   on: (channel: string, callback: (...args: unknown[]) => void) => {
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    const wrapped = (_event: unknown, ...args: unknown[]) => callback(...args);
+    ipcRenderer.on(channel, wrapped);
+    // Return an unsubscribe function so callers (e.g. React useEffect) can
+    // clean up. Without this, every remount in React StrictMode registers a
+    // fresh listener and they accumulate — close would fire N confirm()
+    // dialogs and N requestClose() calls.
+    return () => {
+      ipcRenderer.removeListener(channel, wrapped);
+    };
   },
 });

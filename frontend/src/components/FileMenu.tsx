@@ -100,9 +100,11 @@ export default function FileMenu() {
       await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
     } else {
       if (window.hdaw) {
+        const lastDir = localStorage.getItem("hdaw_last_save_dir") || "";
+        const defaultPath = lastDir ? lastDir + "/project.hdaw" : "project.hdaw";
         const result = await window.hdaw.showSaveDialog({
           title: "Save Project",
-          defaultPath: "project.hdaw",
+          defaultPath,
           filters: [
             { name: "HDAW Projects", extensions: ["hdaw"] },
             { name: "All Files", extensions: ["*"] },
@@ -111,6 +113,8 @@ export default function FileMenu() {
         if (!result.canceled && result.filePath) {
           await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
           useProjectStore.getState().addRecentProject(result.filePath);
+          const dir = result.filePath.replace(/[\\/][^\\/]*$/, "");
+          localStorage.setItem("hdaw_last_save_dir", dir);
         }
       } else {
         const path = prompt("Save path:", "project.hdaw");
@@ -137,6 +141,8 @@ export default function FileMenu() {
       if (!result.canceled && result.filePath) {
         await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
         useProjectStore.getState().addRecentProject(result.filePath);
+        const dir = result.filePath.replace(/[\\/][^\\/]*$/, "");
+        localStorage.setItem("hdaw_last_save_dir", dir);
         await useProjectStore.getState().syncDirtyFlag(rpc);
         await useProjectStore.getState().syncSnapshot(rpc);
       }

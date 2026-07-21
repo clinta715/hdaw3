@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include "TransportManager.h"
+#include "../common/DebugLog.h"
 
 namespace HDAW {
 
@@ -127,9 +128,11 @@ public:
 
         if (sourceFile.isNotEmpty())
         {
+            juce::File f(sourceFile);
+            bool fileExists = f.existsAsFile();
             std::unique_ptr<juce::AudioFormatReader> r(
-                formatManager.createReaderFor(juce::File(sourceFile)));
-            if (r != nullptr)
+                formatManager.createReaderFor(f));
+            if (r != nullptr && fileExists)
             {
                 preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
                 const int total = static_cast<int>(r->lengthInSamples);
@@ -141,6 +144,13 @@ public:
                     r->read(ptrs, preloadedChannels, 0, total);
                     preloadedLength = static_cast<int64_t>(total);
                 }
+            }
+            else
+            {
+                // Missing/unreadable source — surface once per clip so users
+                // notice (the clip will render silent). The OK path is silent
+                // to avoid one log line per clip per routing rebuild.
+                HDAW_LOG("DIAG", "ClipSourceProc prepareToPlay FAIL file=" + sourceFile.toStdString() + " exists=" + (fileExists ? "yes" : "no") + " reader=" + (r ? "ok" : "null"));
             }
         }
 

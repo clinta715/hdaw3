@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { rpc } from "../rpc";
 import { useBrowserStore } from "../store/browserStore";
+import { useUiStore } from "../store/uiStore";
 
 // Global keyboard shortcuts. Scope rules:
 //   - We ignore keys while the user is typing in an INPUT/TEXTAREA/SELECT so
@@ -56,6 +57,12 @@ export function useKeyboardShortcuts() {
       if (ctrl && e.key === "b") {
         e.preventDefault();
         useBrowserStore.getState().toggleVisible();
+      }
+
+      // UI — Ctrl+Shift+G: phrase generator
+      if (ctrl && shift && e.key === "G") {
+        e.preventDefault();
+        useUiStore.getState().setShowPhraseGenerator(true);
       }
     };
 

@@ -218,6 +218,14 @@ export default function AutomationLaneCanvas({
     store.clearSelection(laneName);
   }, [dragOrigTime, dragOrigValue, dragCurrentTime, dragCurrentValue, trackIndex, laneName, rpc, store]);
 
+  // Keep the latest commitMove in a ref so the window-level mouseup listener
+  // (registered once when the drag starts) can call the current version
+  // without re-subscribing on every render. Without this, releasing the mouse
+  // *outside* the canvas left the window handler with a stale/empty closure
+  // and the drag move was never committed to the engine.
+  const commitMoveRef = useRef(commitMove);
+  commitMoveRef.current = commitMove;
+
   const addPointAt = useCallback(async (mx: number, my: number) => {
     const rawTime = beatFromX(mx, size.w, viewStartBeat, viewEndBeat);
     const { snapEnabled, snapDivision } = useUiStore.getState();
@@ -294,18 +302,18 @@ export default function AutomationLaneCanvas({
     }
   }, [isDragging, getPointAt, size, viewStartBeat, viewEndBeat]);
 
-  const handleMouseUp = useCallback(async (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Commit is handled by the single window-level mouseup listener (see the
+    // isDragging effect below), which fires for releases inside AND outside
+    // the canvas. This in-canvas handler just refreshes hover state.
     if (isDragging) {
-      await commitMove();
-      isDraggingRef.current = false;
-      setIsDragging(false);
       const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const hitTime = getPointAt(mx, my);
       setHoveredTime(hitTime);
     }
-  }, [isDragging, commitMove, getPointAt]);
+  }, [isDragging, getPointAt]);
 
   // Window-level mouse handlers for drag-outside-canvas support
   useEffect(() => {
@@ -327,13 +335,15 @@ export default function AutomationLaneCanvas({
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
       setIsDragging(false);
-      // Commit using current drag state via refs
-      const { snapEnabled, snapDivision } = useUiStore.getState();
-      // We need to read the latest drag values - use the state setters' latest values
-      // by committing through a timeout to let React flush
-      setTimeout(async () => {
-        // Access the store directly for the commit
-      }, 0);
+      // Commit the drag move via the ref so we always call the latest
+      // commitMove (which closes over the freshest dragOrig*/dragCurrent*
+      // state). Previously this body was empty, so releasing outside the
+      // canvas dropped the move entirely and points snapped back.
+      try {
+        await commitMoveRef.current();
+      } catch (err) {
+        console.error("automation drag commit failed:", err);
+      }
     };
 
     window.addEventListener("mousemove", handleWindowMouseMove);

@@ -9,6 +9,7 @@ interface UiState {
   activeBottomTab: string;
   snapEnabled: boolean;
   snapDivision: number;
+  showPhraseGenerator: boolean;
 
   selectClip: (id: number | null, trackIndex?: number | null) => void;
   toggleClipSelection: (id: number) => void;
@@ -19,6 +20,7 @@ interface UiState {
   setActiveBottomTab: (tab: string) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSnapDivision: (division: number) => void;
+  setShowPhraseGenerator: (show: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -29,6 +31,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   activeBottomTab: "mixer",
   snapEnabled: true,
   snapDivision: 1,
+  showPhraseGenerator: false,
 
   selectClip: (id, trackIndex) => set({
     selectedClipIds: id != null ? new Set([id]) : new Set<number>(),
@@ -71,4 +74,5 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSnapDivision: (division) => set({ snapDivision: division }),
+  setShowPhraseGenerator: (show) => set({ showPhraseGenerator: show }),
 }));

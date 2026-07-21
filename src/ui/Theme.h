@@ -130,6 +130,13 @@ inline QString getGlobalStyleSheet()
             selection-color: white;
             outline: none;
         }
+        QAbstractItemView {
+            background-color: #323236;
+            color: #e8e8ec;
+            selection-background-color: #d97706;
+            selection-color: white;
+            outline: none;
+        }
 
         QLineEdit {
             background-color: #2a2a2e;
@@ -230,6 +237,7 @@ inline QString getGlobalStyleSheet()
         QMenu::item {
             padding: 5px 24px 5px 12px;
             font-size: 9pt;
+            color: #e8e8ec;
         }
         QMenu::item:selected {
             background-color: #d97706;

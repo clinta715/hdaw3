@@ -17,10 +17,12 @@
 #include "mcp/McpTransport.h"
 #include "mcp/McpTransportStdio.h"
 #include "frontend/FrontendServer.h"
+#include "frontend/FrontendRpc.h"
 #include "ui/DebugLog.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>
+#include <thread>
 
 class HDAW_JuceLogger : public juce::Logger
 {
@@ -115,6 +117,41 @@ int main(int argc, char *argv[])
 
     engine.initialize();
     engine.getPluginManager().loadCache();
+
+    // First-launch discovery: if the cache is empty, scan the default VST3/CLAP
+    // directories on a background thread. We can't block here (the engine main
+    // thread must service RPCs), and we want the Plugin Manager dialog (if the
+    // user opens it during the scan) to see live progress, so we route the
+    // scan's progress callback through the FrontendServer's cross-thread
+    // broadcast. The scan short-circuits already-known and blacklisted files,
+    // so on a second launch with a populated cache this whole block is skipped
+    // (loadCache above filled the list). The thread is detached; it only
+    // touches the PluginManager (which outlives app.exec) and the server (same).
+    if (engine.getPluginManager().getPlugins().empty())
+    {
+        HDAW_LOG("main_headless", "Plugin cache empty; scanning on background thread...");
+        std::thread startupScan([&engine, &server]() {
+            engine.getPluginService().scanAll(
+                [&server](const std::string& fileName, int completed, int total) {
+                    QJsonObject payload{
+                        { "fileName", QString::fromStdString(fileName) },
+                        { "completed", completed },
+                        { "total", total },
+                    };
+                    server.broadcastNotificationFromAnyThread(
+                        frontend::notify::ScanProgress, payload);
+                });
+            // Broadcast completion so any open Plugin Manager dialog
+            // re-fetches the (now populated) plugin list.
+            server.broadcastNotificationFromAnyThread(
+                frontend::notify::ScanProgress,
+                QJsonObject{ { "fileName", "" }, { "completed", -1 },
+                             { "total", -1 }, { "done", true } });
+            HDAW_LOG("main_headless", QString("Startup scan complete: %1 plugins")
+                .arg(static_cast<int>(engine.getPluginManager().getPlugins().size())));
+        });
+        startupScan.detach();
+    }
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
         server.stop();

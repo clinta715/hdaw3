@@ -1138,7 +1138,13 @@ void TimelineView::valueTreeChildRemoved(juce::ValueTree& parentTree,
 {
     juce::ignoreUnused(indexFromWhichItWasRemoved);
     // See valueTreeChildAdded for why we filter by type here.
-    if (parentTree.hasType(IDs::MARKER_LIST) && childWhichHasBeenRemoved.hasType(IDs::MARKER))
+    if (parentTree.hasType(IDs::PROJECT) && childWhichHasBeenRemoved.hasType(IDs::MARKER_LIST))
+    {
+        for (auto* m : markerItems) delete m;
+        markerItems.clear();
+        markerListTree = juce::ValueTree();
+    }
+    else if (parentTree.hasType(IDs::MARKER_LIST) && childWhichHasBeenRemoved.hasType(IDs::MARKER))
     {
         onMarkerRemoved(childWhichHasBeenRemoved);
     }

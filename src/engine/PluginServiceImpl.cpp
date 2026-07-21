@@ -20,6 +20,14 @@ void PluginServiceImpl::scanAll()
     mgr_.scanAll();
 }
 
+void PluginServiceImpl::scanAll(ScanProgressCallback progressCb)
+{
+    mgr_.scanAll([progressCb](const juce::String& fileName, int completed, int total) {
+        if (progressCb)
+            progressCb(fileName.toStdString(), completed, total);
+    });
+}
+
 bool PluginServiceImpl::isLoading() const
 {
     return mgr_.isLoading();

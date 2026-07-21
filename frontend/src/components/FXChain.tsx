@@ -53,7 +53,7 @@ export default function FXChain() {
       .catch(() => setSlots([]));
   }, [selectedTrackIndex, refreshKey]);
 
-  useEffect(() => {
+  const fetchPluginLists = useCallback(() => {
     rpc.call("plugin.getInstrumentPlugins", {})
       .then((data) => { if (Array.isArray(data)) setInstruments(data as PluginInfo[]); })
       .catch(() => {});
@@ -61,6 +61,21 @@ export default function FXChain() {
       .then((data) => { if (Array.isArray(data)) setEffects(data as PluginInfo[]); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    fetchPluginLists();
+    // Re-fetch when a plugin scan completes. The startup scan (empty cache)
+    // and any manual/directory-watcher-triggered rescans broadcast
+    // notify.scanProgress with done=true at completion. Without this, the
+    // FX dropdown's Instruments/Effects sections would stay empty if the
+    // FX panel was mounted before the scan finished — even though the
+    // Plugin Manager (which does subscribe) would show the plugins fine.
+    const unsub = rpc.onNotification("notify.scanProgress", (_method, params) => {
+      const p = params as Record<string, unknown>;
+      if (p.done === true) fetchPluginLists();
+    });
+    return unsub;
+  }, [fetchPluginLists]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -289,7 +304,15 @@ export default function FXChain() {
                       setSlotParams(prev => {
                         const next = new Map(prev);
                         const arr = [...(next.get(slot.slotIndex) || [])];
-                        arr[param.paramIndex] = { ...arr[param.paramIndex], value: v };
+                        // Find by paramIndex, not by array position: VST3 plugins
+                        // commonly report non-contiguous or non-zero-based
+                        // paramIndex values (hidden params, bypass slots, etc.),
+                        // so arr[param.paramIndex] would write to the wrong row
+                        // or create sparse holes.
+                        const idx = arr.findIndex((p) => p.paramIndex === param.paramIndex);
+                        if (idx >= 0) {
+                          arr[idx] = { ...arr[idx], value: v };
+                        }
                         next.set(slot.slotIndex, arr);
                         return next;
                       });

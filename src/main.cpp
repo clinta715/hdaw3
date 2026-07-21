@@ -31,11 +31,13 @@
 #include "mcp/McpTransport.h"
 #include "mcp/McpTransportStdio.h"
 #include "frontend/FrontendServer.h"
+#include "frontend/FrontendRpc.h"
 #include "frontend/UiHttpServer.h"
 #include <QDesktopServices>
 #include <QUrl>
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
+#include <thread>
 
 #ifdef _WIN32
 #include <io.h>
@@ -150,6 +152,34 @@ int main(int argc, char *argv[])
         engine.initialize();
         engine.getPluginManager().loadCache();
 
+        // First-launch discovery: if the cache is empty, scan the default
+        // VST3/CLAP directories on a background thread. See main_headless.cpp
+        // for the full rationale. Routes progress through the FrontendServer
+        // so an open Plugin Manager dialog sees live updates.
+        if (engine.getPluginManager().getPlugins().empty())
+        {
+            HDAW_LOG("main", "Plugin cache empty; scanning on background thread...");
+            std::thread startupScan([&engine, &server]() {
+                engine.getPluginService().scanAll(
+                    [&server](const std::string& fileName, int completed, int total) {
+                        QJsonObject payload{
+                            { "fileName", QString::fromStdString(fileName) },
+                            { "completed", completed },
+                            { "total", total },
+                        };
+                        server.broadcastNotificationFromAnyThread(
+                            frontend::notify::ScanProgress, payload);
+                    });
+                server.broadcastNotificationFromAnyThread(
+                    frontend::notify::ScanProgress,
+                    QJsonObject{ { "fileName", "" }, { "completed", -1 },
+                                 { "total", -1 }, { "done", true } });
+                HDAW_LOG("main", QString("Startup scan complete: %1 plugins")
+                    .arg(static_cast<int>(engine.getPluginManager().getPlugins().size())));
+            });
+            startupScan.detach();
+        }
+
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
             server.stop();
         });
@@ -165,6 +195,7 @@ int main(int argc, char *argv[])
         }
 
         QApplication app(argc, argv);
+        app.setStyle("Fusion");
         app.setWindowIcon(QIcon(":/app.ico"));
 
         if (noMcp) {

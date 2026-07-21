@@ -7,6 +7,7 @@ import { rpc } from "../rpc";
 import FileMenu from "./FileMenu";
 import PluginManagerDialog from "./PluginManagerDialog";
 import PreferencesDialog from "./PreferencesDialog";
+import PhraseGeneratorDialog from "./PhraseGeneratorDialog";
 import "./TransportBar.css";
 
 export default function TransportBar() {
@@ -22,6 +23,8 @@ export default function TransportBar() {
   const [bpmInput, setBpmInput] = useState<string | null>(null);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const showPhraseGenerator = useUiStore((s) => s.showPhraseGenerator);
+  const setShowPhraseGenerator = useUiStore((s) => s.setShowPhraseGenerator);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -202,10 +205,12 @@ export default function TransportBar() {
           →|
         </button>
         <button className="tb-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager">🎛️</button>
+        <button className="tb-btn" onClick={() => setShowPhraseGenerator(true)} title="Phrase Generator (Ctrl+Shift+G)">🎵</button>
         <button className="tb-btn" onClick={() => setShowPrefs(true)} title="Preferences">⚙</button>
       </div>
       {showPluginManager && <PluginManagerDialog onClose={() => setShowPluginManager(false)} />}
       {showPrefs && <PreferencesDialog onClose={() => setShowPrefs(false)} />}
+      {showPhraseGenerator && <PhraseGeneratorDialog onClose={() => setShowPhraseGenerator(false)} />}
     </div>
   );
 }

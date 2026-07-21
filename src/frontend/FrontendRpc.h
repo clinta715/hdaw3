@@ -34,6 +34,7 @@ namespace method {
     inline constexpr const char* Midi       = "midi";
     inline constexpr const char* Export     = "export";
     inline constexpr const char* Preview    = "preview";
+    inline constexpr const char* Composition = "composition";
 } // namespace method
 
 // Server-initiated push notifications (no client id, no response expected).

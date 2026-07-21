@@ -548,6 +548,21 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
         if (int tIdx = modulationTrackIndexOf(parentTree); tIdx >= 0)
             mainProcessor->rebuildModulation(tIdx);
     }
+
+    // Rebuild the routing graph when a new clip or track is added at runtime,
+    // so clips/tracks created by the frontend are connected to the audio graph.
+    // Without this, the ValueTree has the new clip/track (visible in the
+    // arrange window) but the AudioProcessorGraph never processes it (silent).
+    if (childWhichHasBeenAdded.hasType(IDs::CLIP) && mainProcessor != nullptr)
+    {
+        HDAW_LOG("DIAG", "valueTreeChildAdded: new CLIP, rebuilding routing graph");
+        mainProcessor->rebuildRoutingGraph();
+    }
+    if (childWhichHasBeenAdded.hasType(IDs::TRACK) && mainProcessor != nullptr)
+    {
+        HDAW_LOG("DIAG", "valueTreeChildAdded: new TRACK, rebuilding routing graph");
+        mainProcessor->rebuildRoutingGraph();
+    }
 }
 
 void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
@@ -555,6 +570,13 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     juce::ignoreUnused(indexFromWhichItWasRemoved);
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
+
+    if (childWhichHasBeenRemoved.hasType(IDs::TRANSPORT))
+    {
+        transportManager.setPlaying(false);
+        transportManager.setLooping(false);
+        transportManager.setCurrentSample(0);
+    }
 
     if (childWhichHasBeenRemoved.hasType(IDs::MIDI_NOTE) && mainProcessor != nullptr)
     {
@@ -573,6 +595,17 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     {
         if (int tIdx = modulationTrackIndexOf(parentTree); tIdx >= 0)
             mainProcessor->rebuildModulation(tIdx);
+    }
+
+    if (childWhichHasBeenRemoved.hasType(IDs::CLIP) && mainProcessor != nullptr)
+    {
+        HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, rebuilding routing graph");
+        mainProcessor->rebuildRoutingGraph();
+    }
+    if (childWhichHasBeenRemoved.hasType(IDs::TRACK) && mainProcessor != nullptr)
+    {
+        HDAW_LOG("DIAG", "valueTreeChildRemoved: TRACK removed, rebuilding routing graph");
+        mainProcessor->rebuildRoutingGraph();
     }
 }
 

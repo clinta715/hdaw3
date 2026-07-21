@@ -26,6 +26,10 @@ interface NotifyState {
 }
 
 let nextId = 1;
+// Track pending auto-dismiss timers so dismiss/clear can cancel them.
+// Without this, a flurry of toasts (e.g. RPC errors) leaves an unbounded
+// number of armed setTimeouts whose harmless filter callbacks still run later.
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 export const useNotifyStore = create<NotifyState>((set) => ({
   toasts: [],
@@ -35,13 +39,26 @@ export const useNotifyStore = create<NotifyState>((set) => ({
     const toast: Toast = { id, level: t.level, message: t.message, method: t.method, ttl };
     set((s) => ({ toasts: [...s.toasts, toast] }));
     if (ttl > 0) {
-      setTimeout(() => {
+      const handle = setTimeout(() => {
+        timers.delete(id);
         set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
       }, ttl);
+      timers.set(id, handle);
     }
   },
-  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })),
-  clear: () => set({ toasts: [] }),
+  dismiss: (id) => {
+    const handle = timers.get(id);
+    if (handle) {
+      clearTimeout(handle);
+      timers.delete(id);
+    }
+    set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
+  },
+  clear: () => {
+    for (const handle of timers.values()) clearTimeout(handle);
+    timers.clear();
+    set({ toasts: [] });
+  },
 }));
 
 // Convenience helpers. `reportRpcError` is what most catch handlers should

@@ -3,6 +3,7 @@ import { useBrowserStore } from "../store/browserStore";
 import { useUiStore } from "../store/uiStore";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
+import { reportRpcError } from "../store/notifyStore";
 import { rpc } from "../rpc";
 import "./FileBrowser.css";
 
@@ -213,31 +214,55 @@ export default function FileBrowser() {
   }, []);
 
   const playPreview = useCallback(async (filePath: string, fileName: string) => {
-    await rpc.call("preview.load", { filePath });
-    await rpc.call("preview.setVolume", { volume });
-    if (tempoMatch) {
-      await rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm });
-      await rpc.call("preview.setProjectBpm", { bpm });
-    } else {
-      await rpc.call("preview.setTempoMatch", { enabled: false });
+    // Stop any in-flight preview first. Without this, clicking a second
+    // file's ▶ while the first load is still resolving interleaves two
+    // load/play sequences on the engine, leaving isPlaying/previewFile and
+    // the engine's player in an inconsistent state. (stopPreview is safe
+    // to call even if nothing is loaded — preview.stop is best-effort.)
+    await stopPreview();
+    try {
+      await rpc.call("preview.load", { filePath });
+      await rpc.call("preview.setVolume", { volume });
+      if (tempoMatch) {
+        await rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm });
+        await rpc.call("preview.setProjectBpm", { bpm });
+      } else {
+        await rpc.call("preview.setTempoMatch", { enabled: false });
+      }
+      await rpc.call("preview.play");
+    } catch (err) {
+      // A rejected preview.load (e.g. unsupported format) used to throw an
+      // unhandled rejection and leave the engine in an unknown state with
+      // no user-visible signal. Surface it as a toast instead.
+      reportRpcError("preview.load", err);
+      setIsPlaying(false);
+      return;
     }
-    await rpc.call("preview.play");
     setIsPlaying(true);
     setPreviewFile({ path: filePath, name: fileName });
 
     // Poll for playback state to auto-stop
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
-      const playing = await rpc.call("preview.isPlaying") as boolean;
-      if (!playing) {
-        setIsPlaying(false);
+      try {
+        const playing = await rpc.call("preview.isPlaying") as boolean;
+        if (!playing) {
+          setIsPlaying(false);
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch {
+        // Engine gone away or call failed — stop polling to avoid a tight error loop.
         if (pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
         }
+        setIsPlaying(false);
       }
     }, 500);
-  }, [volume, tempoMatch, sourceBpm, bpm]);
+  }, [volume, tempoMatch, sourceBpm, bpm, stopPreview]);
 
   const handlePreviewFile = useCallback(async (filePath: string, fileName: string) => {
     if (isPlaying && previewFile?.path === filePath) {
@@ -247,18 +272,27 @@ export default function FileBrowser() {
     }
   }, [isPlaying, previewFile, playPreview, stopPreview]);
 
-  // Sync tempo match settings when they change
+  // Sync volume while dragging — debounce so a continuous slider drag doesn't
+  // fire dozens of preview.setVolume RPCs per second into the engine.
   useEffect(() => {
-    if (isPlaying) {
+    if (!isPlaying) return;
+    const handle = setTimeout(() => {
       rpc.call("preview.setVolume", { volume }).catch(() => {});
-      if (tempoMatch) {
-        rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm }).catch(() => {});
-        rpc.call("preview.setProjectBpm", { bpm }).catch(() => {});
-      } else {
-        rpc.call("preview.setTempoMatch", { enabled: false }).catch(() => {});
-      }
+    }, 60);
+    return () => clearTimeout(handle);
+  }, [volume, isPlaying]);
+
+  // Sync tempo-match settings. These change discretely (checkbox/spin), so no
+  // debounce needed.
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (tempoMatch) {
+      rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm }).catch(() => {});
+      rpc.call("preview.setProjectBpm", { bpm }).catch(() => {});
+    } else {
+      rpc.call("preview.setTempoMatch", { enabled: false }).catch(() => {});
     }
-  }, [volume, tempoMatch, sourceBpm, bpm, isPlaying]);
+  }, [tempoMatch, sourceBpm, bpm, isPlaying]);
 
   // Cleanup on unmount
   useEffect(() => {

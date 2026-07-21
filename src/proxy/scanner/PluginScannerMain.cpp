@@ -64,6 +64,12 @@ int main(int argc, char* argv[])
             obj->setProperty("file", pluginDesc.fileOrIdentifier);
             obj->setProperty("uid", static_cast<juce::int64>(pluginDesc.uniqueId));
             obj->setProperty("id", pluginDesc.createIdentifierString());
+            // Forward isInstrument so PluginManager can categorize the plugin
+            // as a synth (instrument) vs. effect. Without this, every plugin
+            // scanned via the isolated scanner reports isInstrument=false and
+            // ends up in the "Effects" section only — synths like Vital,
+            // Dexed, Odin2 would never appear under "Instruments".
+            obj->setProperty("isInstrument", pluginDesc.isInstrument);
             std::cout << juce::JSON::toString(juce::var(obj)) << std::endl;
 
             // Clear pedal on success

@@ -4,10 +4,16 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a Qt 6 + JUCE 8 desktop DAW at version
-**0.10.0**. The core engine (project model, transport, routing,
-JUCE plugin hosting, internal FX) and the UI shell (track headers,
-timeline, mixer, piano roll, FX chain, automation) work end-to-end.
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.0**
+with a **React 19 + TypeScript frontend** (Zustand state management,
+Vite build) as the primary GUI. The frontend runs in three contexts:
+system browser (default), Electron shell, or dev server. The C++ engine
+exposes its state via JSON-RPC 2.0 over WebSocket (port 8766) and serves
+the bundled React SPA via HTTP (port 8765). The Qt 6 desktop GUI is
+**deprecated** (optional, requires `-DHDAW_GUI=ON`, `--gui` flag). The
+core engine (project model, transport, routing, JUCE plugin hosting,
+internal FX) and the frontend (track headers, timeline, mixer, piano
+roll, FX chain, automation) work end-to-end.
 v0.3.x added the MCP server and a gtest test suite. v0.4.x added
 multi-clip selection, clipboard, markers, MIDI CC recording, MIDI
 channel routing, FX drag-reorder, status bar, zoom-to-fit, expanded
@@ -35,14 +41,26 @@ instead of snapping at track boundaries with a discrete jump.
 remove/drag), duplicate track with ID-safe deep copy, audio device
 preference persistence, transport-synced loop preview, auto-trim
 silence on import (-60 dB), missing-file error indicators, and two
-new MCP tools (`duplicate_track`, `add_track_with_fx`). For the
+new MCP tools (`duplicate_track`, `add_track_with_fx`). **v0.12.0**
+adds the GUI inspection MCP tool suite (`inspect_*` tools for
+traversing the full QWidget/QGraphicsView scene graph, verifying
+widget visibility, geometry, paint, and layout state), 49 new
+gtest GUI functionality tests, the Plugin Manager dialog, file
+browser audio preview, collapsible right panel, and bugfixes for
+clip rubber-band selection (live highlighting, stale-click guard),
+trim/fade handle click propagation, track header resize handle
+click propagation, audio clip deletion not stopping playback
+(missing `valueTreeChildRemoved` → `rebuildRoutingGraph()`), and
+three additional asymmetric ValueTree listener fixes (TRANSPORT
+teardown in AudioEngine, TRACK teardown in TimelineScene, TRANSPORT
+UI teardown in MainWindow, MARKER_LIST teardown in TimelineView). For the
 full list of working features and the priority-ordered roadmap, see
 `README.md`.
 
 ## Build
 
 - Configuration: `cmake --build build --config Debug`
-- Outputs: `build/Debug/HDAW.exe` (engine + browser UI, default build), `build/Debug/HDAW_headless.exe` (engine-only, no Qt Widgets), `build/Debug/hdaw_tests.exe` (gtest)
+- Outputs: `build/Debug/HDAW.exe` (engine + React frontend, default build), `build/Debug/HDAW_headless.exe` (engine-only for Electron), `build/Debug/hdaw_tests.exe` (gtest)
 - Do NOT run `build/Release/HDAW.exe` — it is a stale binary from before
   the bug-fix series began and contains none of the fixes.
 - On Windows, the `HDAW_lib` static library, `HDAW` exe, and `hdaw_tests`
@@ -56,20 +74,15 @@ full list of working features and the priority-ordered roadmap, see
 - Logging: `HDAW_LOG` (or the older `DBG` macro is **not** available —
   JUCE defines its own `DBG` and shadows it). All paths to `HDAW_LOG`
   must `#include "DebugLog.h"`. Output is appended to `%TEMP%/hdaw_debug.log`.
+- **Three launch modes** (all in one `HDAW.exe`):
+  - **Default (browser mode):** `HDAW.exe` — starts engine + WebSocket server (port 8766) + HTTP server (port 8765), opens system browser to `http://127.0.0.1:8765`. The React SPA is bundled in Qt resources and served by the C++ HTTP server.
+  - **Headless (Electron mode):** `HDAW_headless.exe --headless` — starts engine + WebSocket server only. Electron spawns this as a child process and connects via WebSocket.
+  - **Qt GUI (deprecated):** `HDAW.exe --gui` — requires `-DHDAW_GUI=ON` at build time. Uses the legacy Qt Widgets UI. **Not the primary GUI.**
 - CLI flags: `--mcp-stdio` forces headless stdio MCP server (run when
   launched as a subprocess by an MCP client), `--no-mcp` disables MCP
-  entirely, `--mcp-http-port=<N>` overrides the HTTP server's bind
-  port for this launch. `--port=N` overrides the WebSocket port
-  (default 8766). `--http-port=N` overrides the HTTP serving port
-  (default 8765). Without any flag the engine starts and the HTML
-  frontend opens in the system browser (one executable, no Electron
-  needed). With `-DHDAW_GUI=ON` (optional, not in default package),
-  `--gui` starts the Qt desktop GUI instead.
-- CLI flags (headless engine): `HDAW_headless.exe` runs the engine
-  without Qt Widgets. Default mode is WebSocket server for the
-  HTML/Electron frontend (`--headless`, port 8766). Use `--mcp-stdio`
-  for MCP over stdin/stdout. Use `--port=N` to override the WebSocket
-  port.
+  entirely, `--mcp-http-port=<N>` overrides the MCP HTTP server's bind
+  port. `--port=N` overrides the WebSocket port (default 8766). `--http-port=N` overrides the HTTP serving port (default 8765).
+- **Frontend build:** The React frontend is built separately with `cd frontend && npm run build`. The output (`dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`) is compiled into `HDAW.exe` via Qt resources (`src/resources/frontend.qrc`). Changes to the frontend require rebuilding the frontend, then rebuilding the C++ project.
 
 ## Code Style
 
@@ -187,7 +200,10 @@ contracts that future contributors should know about.
   from the audible read (e.g. always advance `numSamples` even
   when reading fewer).
 
-## Qt Signal/Slot Best Practices
+## Qt Signal/Slot Best Practices (Qt GUI only — deprecated)
+
+> **Note:** The Qt 6 desktop GUI is deprecated. These practices apply only
+> when building with `-DHDAW_GUI=ON`. The primary frontend is React/Electron.
 
 - **Always use the 4-argument `connect` form** when connecting to
   a lambda: `connect(sender, &Sender::signal, receiver, [receiver]() { ... })`.
@@ -212,7 +228,6 @@ contracts that future contributors should know about.
 
 | Role | File | Class |
 |------|------|-------|
-| Main window | `src/ui/MainWindow.h` | `MainWindow` |
 | Data model | `src/model/ProjectModel.h` | `ProjectModel` |
 | Audio engine facade | `src/engine/AudioEngine.h` | `AudioEngine` |
 | Root audio processor | `src/engine/MainAudioProcessor.h` | `MainAudioProcessor` |
@@ -239,25 +254,30 @@ contracts that future contributors should know about.
 | Audio preview player | `src/engine/AudioPreviewPlayer.h` | `HDAW::AudioPreviewPlayer` |
 | Audio import | `src/engine/AudioImport.h` | `HDAW::importAudioFile()` |
 | MIDI import | `src/engine/MidiImport.h` | `HDAW::importMidiFile()` |
-| Timeline composite | `src/ui/TimelineView.h` | `TimelineView` |
-| Timeline scene | `src/ui/TimelineScene.h` | `TimelineScene` |
-| Timeline interaction | `src/ui/TimelineInteraction.h` | `TimelineInteraction` |
-| Clip graphics base | `src/ui/ClipItem.h` | `ClipItem` |
-| Audio waveform clip | `src/ui/AudioClipItem.h` | `AudioClipItem` |
-| MIDI mini-preview | `src/ui/MidiClipItem.h` | `MidiClipItem` |
-| Track headers | `src/ui/TrackHeaderWidget.h` | `TrackHeaderWidget` |
-| Time ruler | `src/ui/TimeRuler.h` | `TimeRuler` |
-| Playhead | `src/ui/PlayheadCursor.h` | `PlayheadCursor` |
-| Loop markers | `src/ui/LoopMarker.h` | `LoopMarker` |
-| Mixer | `src/ui/MixerWidget.h` | `MixerWidget` |
-| Mixer strip | `src/ui/MixerStripWidget.h` | `MixerStripWidget` |
-| VU meter | `src/ui/VUMeter.h` | `VUMeter` |
-| Piano roll | `src/ui/PianoRollWidget.h` | `PianoRollWidget` |
-| Piano roll model | `src/ui/PianoRollModel.h` | `PianoRollModel` |
-| Note grid | `src/ui/NoteGridWidget.h` | `NoteGridWidget` |
-| FX chain UI | `src/ui/FXChainWidget.h` | `FXChainWidget` |
-| Automation UI | `src/ui/AutomationLaneWidget.h` | `AutomationLaneWidget` |
-| Audio clip editor | `src/ui/AudioClipEditorWidget.h` | `AudioClipEditorWidget` |
+| Frontend WebSocket server | `src/frontend/FrontendServer.h` | `frontend::FrontendServer` |
+| Frontend RPC router | `src/frontend/FrontendRouter.h` | `frontend::dispatch()` |
+| Frontend RPC constants | `src/frontend/FrontendRpc.h` | `frontend::method::*`, `frontend::notify::*` |
+| Frontend tree watcher (ValueTree→WebSocket push) | `src/frontend/FrontendTreeWatcher.h` | `frontend::FrontendTreeWatcher` |
+| Frontend HTTP server (serves React SPA) | `src/frontend/UiHttpServer.h` | `frontend::UiHttpServer` |
+| MCP server core (tool registry, dispatch, lifecycle) | `src/mcp/McpServer.h` | `mcp::McpServer` |
+| MCP JSON-RPC 2.0 framing (requests/responses/notifications) | `src/mcp/McpJsonRpc.h` | `mcp` namespace (`McpRequest`/`McpResponse`/`McpNotification`, `err::`, `parseLine`, `validateRequest`) |
+| MCP JSON-Schema subset validator (type/required/properties/items/enum/min/max) | `src/mcp/McpSchema.h` | `mcp::validateSchema` |
+| MCP transport interface (4 virtuals: `start`/`stop`/`send`/`notify`) | `src/mcp/McpTransport.h` | `mcp::Transport` |
+| MCP stdio transport (newline-delimited JSON, reader thread) | `src/mcp/McpTransportStdio.h` | `mcp::TransportStdio` |
+| MCP Streamable HTTP transport (loopback only, real round-trip) | `src/mcp/McpTransportHttp.h` | `mcp::TransportHttp` |
+| MCP loopback test transport (in-memory `QByteArray` queues) | `src/mcp/McpTransportLoopback.h` | `mcp::TransportLoopback` |
+| MCP tool record (name, description, inputSchema, handler) | `src/mcp/McpToolDef.h` | `mcp::McpToolDef` / `mcp::McpToolResult` / `mcp::McpHandler` |
+| MCP tool registrations (per-domain: read/transport/track/clip/note/composition/automation/fx) | `src/mcp/McpTools.{h,cpp}` | `mcp::registerAllTools(McpServer&)` |
+| MCP export tool (extracted from McpTools) | `src/mcp/McpExportTool.{h,cpp}` | `mcp::registerExportTool(McpServer&)` |
+| Plugin isolation: shared types | `src/proxy/ProxyCommon.h` | `proxy::MessageType`, `ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent` |
+| Plugin isolation: SPSC ring buffer | `src/proxy/ProxyRingBuffer.h` | `proxy::RingBuffer<T>` |
+| Plugin isolation: named pipe | `src/proxy/ProxyPipe.h` | `proxy::PipeServer`, `proxy::PipeClient` |
+| Plugin isolation: shared memory | `src/proxy/ProxySharedMemory.h` | `proxy::ShmRegion` |
+| Plugin isolation: process manager | `src/proxy/ProxyProcessManager.h` | `proxy::ProxyProcessManager` |
+| Plugin isolation: proxy slot | `src/proxy/PluginProxySlot.h` | `proxy::PluginProxySlot` |
+| Plugin isolation: proxy editor | `src/proxy/ProxyEditor.h` | `proxy::ProxyEditor` |
+| Plugin isolation: crash dialog | `src/proxy/CrashDialog.h` | `proxy::CrashDialog` |
+| Plugin isolation: child process | `src/proxy/host/PluginHost.h` | `PluginHost` |
 | Theme colors | `src/ui/Theme.h` | `ThemeColors` |
 | Debug logging | `src/ui/DebugLog.h` | `HDAW_LOG` macro |
 | MCP server core (tool registry, dispatch, lifecycle) | `src/mcp/McpServer.h` | `mcp::McpServer` |
@@ -1245,10 +1265,18 @@ live in the "Hardening lessons learned" section above.
   `TrackHeaderWidget` and `MixerStripWidget` are now
   `juce::ValueTree::Listener`s (attached to the project root tree,
   filtering by `IDs::TRACK` identity — see the "GUI-Engine
-  Decoupling" section below). The remaining gap is `FXChainWidget`,
+  Decoupling" section below). ~~The remaining gap is `FXChainWidget`,
   which still relies on the `rebuildAllUI()` calls in `MainWindow`
   for FX-slot add/remove/bypass. Closing the `FXChainWidget` gap is
-  the last v0.4 follow-up here.
+  the last v0.4 follow-up here.~~ **Resolved (v0.10.0+):**
+  `FXChainWidget` is now a `juce::ValueTree::Listener` on the project
+  root tree. It filters for `FX_SLOT`/`FX_CHAIN` child additions,
+  removals, reorders, and property changes on the current track
+  (ignoring `pluginState` writes from the audio thread). Any external
+  mutation (MCP, undo/redo, "Add Track with Plugin") now triggers
+  `rebuildUI()` automatically. The "+ Add FX" button also shows a
+  popup menu listing scanned plugins (grouped by Instruments/Effects)
+  so users can add plugins directly without changing a combo box.
 
 - **`TimelineScene::valueTreeChildRemoved` ignores
   `IDs::TRACK`** (`src/ui/TimelineScene.cpp:236-241`). It only
@@ -1324,6 +1352,12 @@ take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
 - `docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md`
 
 ## GUI-Engine Decoupling (v0.7.0)
+
+> **Note:** This section describes the Qt widget decoupling architecture.
+> The Qt GUI is deprecated. The primary frontend is React/Electron (see
+> "React/Electron Frontend Architecture" below). The abstract command
+> interfaces (`ProjectCommands`, `TransportCommands`, etc.) are still used
+> by the frontend RPC router (`src/frontend/FrontendRouter.cpp`).
 
 The GUI layer (`src/ui/`) is decoupled from the audio engine layer
 (`src/engine/`) via four abstract command interfaces and a ReadModel.
@@ -1452,6 +1486,82 @@ ignored during playback until a UI interaction forces a rebuild.
 `ProjectSerializer::load()` explicitly clears `isPlaying=false` and
 `position=0.0` on the transport tree after loading, preventing a
 project saved while playing from auto-starting on the next load.
+
+## React/Electron Frontend Architecture (v0.10.0+)
+
+The primary GUI is a **React 19 + TypeScript** SPA using **Zustand 5** for
+state management and **Vite 6** for builds. It runs in three contexts:
+system browser (default), Electron shell, or Vite dev server.
+
+### Communication: JSON-RPC 2.0 over WebSocket
+
+The frontend communicates with the C++ engine via a single WebSocket
+connection carrying JSON-RPC 2.0 messages. The protocol is identical to
+the MCP protocol — same request/response/notification framing.
+
+**Client** (`frontend/src/rpc/client.ts`):
+- `RpcClient` wraps a `WebSocket`, auto-reconnects with exponential backoff
+- `call(method, params)` returns a Promise resolved by the matching response
+- `onNotification(method, handler)` subscribes to server-pushed notifications
+
+**Server** (`src/frontend/FrontendServer.h`):
+- `QWebSocketServer` on loopback, port 8766
+- Routes via `frontend::dispatch()` in `FrontendRouter.cpp`
+- Pushes notifications: `notify.meters` (30 Hz), `notify.transport` (30 Hz,
+  deduplicated), `notify.treeChanged` (16ms debounce on ValueTree mutations),
+  `notify.scanProgress`, `notify.exportProgress`
+
+### Frontend State: Zustand Stores
+
+| Store | Key State | Source |
+|-------|-----------|--------|
+| `projectStore` | `snapshot` (full project), `notesByClip`, `isDirty`, `filePath` | `read.snapshot` RPC |
+| `transportStore` | `transport` (bpm, isPlaying, loopStart/End, currentTime) | `notify.transport` push |
+| `meterStore` | `master`, `tracks` (VU levels left/right) | `notify.meters` push |
+| `uiStore` | `selectedClipIds`, `selectedTrackIndex`, `activeBottomTab`, `snapEnabled` | Local UI state |
+| `automationStore` | `lanes`, `pointsByLane`, `selectedPointTimes` | `read.getAutomationLanes` |
+| `markerStore` | `markers` | `read.getMarkers` |
+| `browserStore` | `folders`, `expandedPaths`, `selectedFile`, `visible` | Local + localStorage |
+| `notifyStore` | `toasts` | Local |
+| `transportExtrasStore` | `metronomeEnabled`, `countInEnabled`, `followPlayhead` | Local |
+
+### Frontend File Structure
+
+```
+frontend/
+  src/
+    App.tsx              # Root component
+    main.tsx             # Entry point
+    rpc.ts               # RPC client singleton
+    rpc/
+      client.ts          # RpcClient class (WebSocket + JSON-RPC)
+      types.ts           # TypeScript types matching C++ snapshot structs
+    store/               # Zustand stores (see table above)
+    components/          # React components (Timeline, Mixer, PianoRoll, etc.)
+    hooks/               # Custom React hooks
+  electron/
+    main.ts              # Electron main process (spawns HDAW_headless.exe)
+    preload.ts           # Context bridge for native dialogs
+```
+
+### Build Pipeline
+
+1. `cd frontend && npm run build` → Vite produces `dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`
+2. `cmake --build build --config Debug` → C++ compiles `frontend.qrc` (Qt resource bundle) containing the dist files
+3. `HDAW.exe` serves the bundled SPA via `UiHttpServer` on port 8765
+
+Changes to the frontend require rebuilding both the frontend and the C++ project.
+
+### Electron Packaging
+
+`electron-builder.yml` packages:
+- The Vite-built React SPA (`dist/`)
+- The compiled Electron main/preload (`dist-electron/`)
+- The C++ engine binaries (`HDAW_headless.exe`, `hdaw_plugin_scanner.exe`, DLLs) as `extraResources`
+
+Electron's `main.ts` spawns `HDAW_headless.exe --port=8766` as a child process,
+polls until the WebSocket port is ready, then creates a `BrowserWindow` that
+loads the React SPA.
 
 ## Audio Clip Timestretch (v0.8.0)
 

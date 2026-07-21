@@ -3,13 +3,36 @@
   flex: 1;
   overflow: auto;
   min-width: 0;
-  background:
+  /* Layered grid (top-to-bottom):
+     1. Horizontal key-row stripes (8px pitch).
+     2. Horizontal black-key shading (every other 8px row → band C#/D#/F#/G#/A#).
+     3. Vertical beat lines (80px = 1 beat at PIXELS_PER_BEAT=80).
+     4. Vertical bar lines (320px = 1 bar = 4 beats, 4/4).
+     The bar layer is drawn last (on top) so bars stand out. All sizes
+     are kept in sync with the constants in NoteGrid.tsx (KEY_HEIGHT=8,
+     PIXELS_PER_BEAT=80) — see the comment block at the bottom of this
+     file if you change those. */
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 79px,
+      var(--grid-line-beat) 79px,
+      var(--grid-line-beat) 80px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 319px,
+      var(--grid-line-bar) 319px,
+      var(--grid-line-bar) 320px
+    ),
     repeating-linear-gradient(
       0deg,
-      transparent,
+      transparent 0,
       transparent 7px,
-      rgba(255,255,255,0.02) 7px,
-      rgba(255,255,255,0.02) 8px
+      rgba(255, 255, 255, 0.02) 7px,
+      rgba(255, 255, 255, 0.02) 8px
     );
   background-color: var(--bg-window);
   min-height: 128px;
@@ -91,3 +114,14 @@
   font-size: 10px;
   margin-left: 16px;
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Coupling note: the vertical-line sizes in .note-grid above are
+ * hand-tuned to the rendering constants in NoteGrid.tsx:
+ *   - PIXELS_PER_BEAT = 80  → beat line every 80px
+ *   - 1 bar = 4 beats (4/4) → bar line every 320px
+ * If you change PIXELS_PER_BEAT or add configurable time signatures,
+ * replace the static background-image with a CSS var (e.g.
+ * `--ng-px-per-beat`) set from the TSX, or render the grid lines as
+ * explicit DOM/canvas elements sized from the same constants.
+ * ────────────────────────────────────────────────────────────────── */

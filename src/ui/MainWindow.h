@@ -54,6 +54,8 @@ public:
         Count = 7
     };
 
+    AudioEngine& getEngine() { return engine; }
+
 protected:
     void closeEvent(QCloseEvent* event) override;
 
@@ -110,6 +112,7 @@ private:
 
     void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) override;
     void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
+    void valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved) override;
 
     AudioEngine& engine;
     ProjectCommands* projectCmds = nullptr;

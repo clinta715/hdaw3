@@ -18,6 +18,8 @@
 #include <functional>
 #include <memory>
 
+class MainWindow;
+
 class AudioEngine : private juce::ValueTree::Listener
 {
 public:
@@ -50,6 +52,9 @@ public:
 
     // Read-only model snapshot
     ReadModel& getReadModel();
+
+    void setMainWindow(MainWindow* mw) { mainWindow_ = mw; }
+    MainWindow* getMainWindow() const { return mainWindow_; }
 
     // Facade methods
     int getTrackCount() const { return mainProcessor ? mainProcessor->getNumTracks() : 0; }
@@ -98,4 +103,5 @@ private:
     std::unique_ptr<PluginService> pluginService;
     std::unique_ptr<PluginParamService> paramService;
     std::unique_ptr<MidiService> midiService;
+    MainWindow* mainWindow_ = nullptr;
 };

@@ -16,6 +16,7 @@ extraResources:
     to: engine/
     filter:
       - "HDAW_headless.exe"
+      - "hdaw_plugin_scanner.exe"
       - "*.dll"
 
 win:

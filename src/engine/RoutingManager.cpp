@@ -347,7 +347,8 @@ void RoutingManager::removeSend(int trackIndex, int sendIndex)
 void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree)
 {
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-    if (!clipList.isValid()) return;
+    if (!clipList.isValid())
+        return;
 
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt == trackNodes.end()) return;

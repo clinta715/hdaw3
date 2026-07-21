@@ -56,6 +56,40 @@ void PluginManager::loadCache()
     }
 }
 
+juce::StringArray PluginManager::getVst3Dirs()
+{
+    juce::StringArray dirs;
+#if JUCE_WINDOWS
+    auto programsDir = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
+    dirs.add(programsDir.getChildFile("Common Files\\VST3").getFullPathName());
+#elif JUCE_MAC
+    dirs.add("/Library/Audio/Plug-Ins/VST3");
+    dirs.add("~/Library/Audio/Plug-Ins/VST3");
+#elif JUCE_LINUX
+    dirs.add("/usr/lib/vst3");
+    dirs.add("/usr/local/lib/vst3");
+    dirs.add("~/.vst3");
+#endif
+    return dirs;
+}
+
+juce::StringArray PluginManager::getClapDirs()
+{
+    juce::StringArray dirs;
+#if JUCE_WINDOWS
+    auto programsDir = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
+    dirs.add(programsDir.getChildFile("Common Files\\CLAP").getFullPathName());
+#elif JUCE_MAC
+    dirs.add("/Library/Audio/Plug-Ins/CLAP");
+    dirs.add("~/Library/Audio/Plug-Ins/CLAP");
+#elif JUCE_LINUX
+    dirs.add("/usr/lib/clap");
+    dirs.add("/usr/local/lib/clap");
+    dirs.add("~/.clap");
+#endif
+    return dirs;
+}
+
 void PluginManager::saveCache()
 {
     cacheFile.getParentDirectory().createDirectory();
@@ -151,6 +185,7 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                 desc.pluginFormatName = scanResult.format;
                 desc.fileOrIdentifier = scanResult.file.isNotEmpty() ? scanResult.file : path;
                 desc.uniqueId = scanResult.uid;
+                desc.isInstrument = scanResult.isInstrument;
                 knownPluginList.addType(desc);
 
                 juce::Logger::writeToLog("PluginManager: found (isolated) - "
@@ -193,7 +228,21 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
         }
         else
         {
-            // Fallback: in-process scanning with SEH (existing code)
+            // Fallback: in-process scanning. Used when the isolated scanner
+            // exe is unavailable (e.g. missing from a packaged install).
+            //
+            // NOTE: the previous implementation tried createPluginInstance()
+            // first with a probeDesc that had only fileOrIdentifier set — no
+            // pluginFormatName, no uid — so JUCE silently returned nullptr
+            // for every plugin and the scan produced zero results. The
+            // correct API for "scan a file and discover what it contains"
+            // is AudioPluginFormat::findAllTypesForFile(), which populates
+            // a OwnedArray<PluginDescription> with full metadata (name,
+            // manufacturer, format, uid). We call that directly and only
+            // instantiate if we need to (we don't — the descriptions are
+            // already complete). This path is wrapped in SEH on Windows
+            // so a misbehaving plugin's access violation doesn't take down
+            // the host.
 #if JUCE_WINDOWS
             auto oldTranslator = _set_se_translator(sehPluginCrashTranslator);
             bool crashed = false;
@@ -204,26 +253,18 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                     if (!fmt->fileMightContainThisPluginType(path))
                         continue;
 
-                    juce::String error;
-                    juce::PluginDescription probeDesc;
-                    probeDesc.fileOrIdentifier = path;
-                    auto instance = formatManager.createPluginInstance(
-                        probeDesc, 44100.0, 512, error);
-                    if (instance)
-                    {
-                        juce::PluginDescription desc;
-                        desc.fileOrIdentifier = path;
-                        desc.pluginFormatName = fmt->getName();
-                        // findAllTypesForFile to get full metadata
-                        juce::OwnedArray<juce::PluginDescription> types;
-                        fmt->findAllTypesForFile(types, path);
-                        if (!types.isEmpty())
-                            knownPluginList.addType(*types[0]);
-                        else
-                            knownPluginList.addType(desc);
+                    juce::OwnedArray<juce::PluginDescription> types;
+                    fmt->findAllTypesForFile(types, path);
+                    if (types.isEmpty())
+                        continue;
 
-                        juce::Logger::writeToLog("PluginManager: found (in-process) - " + path);
-                    }
+                    for (auto* t : types)
+                        knownPluginList.addType(*t);
+
+                    juce::Logger::writeToLog("PluginManager: found (in-process) - "
+                                             + (types.getFirst()->name.isNotEmpty()
+                                                ? types.getFirst()->name
+                                                : path));
                 }
             }
             catch (const std::runtime_error&)
@@ -242,24 +283,24 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                     progressCb("CRASHED: " + file.getFileName(), ++completed, 0);
             }
 #else
-            // Non-Windows: no SEH, just try loading
+            // Non-Windows: no SEH, just probe.
             for (auto* fmt : formatManager.getFormats())
             {
                 if (!fmt->fileMightContainThisPluginType(path))
                     continue;
-                juce::String error;
-                juce::PluginDescription probeDesc;
-                probeDesc.fileOrIdentifier = path;
-                auto instance = formatManager.createPluginInstance(
-                    probeDesc, 44100.0, 512, error);
-                if (instance)
-                {
-                    juce::OwnedArray<juce::PluginDescription> types;
-                    fmt->findAllTypesForFile(types, path);
-                    if (!types.isEmpty())
-                        knownPluginList.addType(*types[0]);
-                    juce::Logger::writeToLog("PluginManager: found (in-process) - " + path);
-                }
+
+                juce::OwnedArray<juce::PluginDescription> types;
+                fmt->findAllTypesForFile(types, path);
+                if (types.isEmpty())
+                    continue;
+
+                for (auto* t : types)
+                    knownPluginList.addType(*t);
+
+                juce::Logger::writeToLog("PluginManager: found (in-process) - "
+                                         + (types.getFirst()->name.isNotEmpty()
+                                            ? types.getFirst()->name
+                                            : path));
             }
 #endif
         }
@@ -399,6 +440,7 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
             result.file = obj->getProperty("file").toString();
             result.id = obj->getProperty("id").toString();
             result.uid = obj->hasProperty("uid") ? static_cast<int>(obj->getProperty("uid")) : 0;
+            result.isInstrument = obj->hasProperty("isInstrument") && static_cast<bool>(obj->getProperty("isInstrument"));
             result.error = obj->getProperty("error").toString();
         }
     }
