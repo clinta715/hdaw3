@@ -29,6 +29,9 @@ export default function AudioClipEditor() {
 
   const waveformRef = useRef<HTMLDivElement>(null);
   const [waveformWidth, setWaveformWidth] = useState(400);
+  const [fileMissing, setFileMissing] = useState(false);
+
+  useEffect(() => { setFileMissing(false); }, [clipId]);
 
   useEffect(() => {
     const el = waveformRef.current;
@@ -131,15 +134,22 @@ export default function AudioClipEditor() {
 
       {/* Waveform display */}
       <div className="ace-waveform" ref={waveformRef}>
-        <div className="ace-waveform-inner" style={{ width: waveformWidth }}>
-          <WaveformCanvas clip={clip} width={waveformWidth} height={80} />
-          {clipRelBeats >= 0 && clipRelBeats <= dur && (
-            <div
-              className="ace-playhead-overlay"
-              style={{ left: (clipRelBeats / dur) * waveformWidth }}
-            />
-          )}
-        </div>
+        {fileMissing ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 80, gap: 4 }}>
+            <span style={{ fontSize: 13, color: "#e05555", fontWeight: 600 }}>Source file not found</span>
+            <span style={{ fontSize: 11, color: "#999" }}>{clip.sourceFile || "unknown path"}</span>
+          </div>
+        ) : (
+          <div className="ace-waveform-inner" style={{ width: waveformWidth }}>
+            <WaveformCanvas clip={clip} width={waveformWidth} height={80} onError={setFileMissing} />
+            {clipRelBeats >= 0 && clipRelBeats <= dur && (
+              <div
+                className="ace-playhead-overlay"
+                style={{ left: (clipRelBeats / dur) * waveformWidth }}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Controls */}

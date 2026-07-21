@@ -6,6 +6,7 @@ interface Props {
   clip: ClipSnapshot;
   width: number;
   height: number;
+  onError?: (failed: boolean) => void;
 }
 
 // Cache key: clipId alone is too coarse. The peak data depends on the
@@ -19,17 +20,19 @@ function cacheKey(clip: ClipSnapshot): string {
 
 const peaksCache = new Map<string, WaveformPeaks>();
 
-export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
+export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const dpr = window.devicePixelRatio || 1;
   const key = cacheKey(clip);
   const [peaks, setPeaks] = React.useState<WaveformPeaks | null>(() => peaksCache.get(key) ?? null);
   const [fetched, setFetched] = React.useState(() => peaksCache.has(key));
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     if (peaksCache.has(key)) {
       setPeaks(peaksCache.get(key)!);
       setFetched(true);
+      setError(false);
       return;
     }
     let cancelled = false;
@@ -40,9 +43,14 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
         peaksCache.set(key, data);
         setPeaks(data);
         setFetched(true);
+        setError(false);
       })
       .catch(() => {
-        if (!cancelled) setFetched(true);
+        if (!cancelled) {
+          setFetched(true);
+          setError(true);
+          onError?.(true);
+        }
       });
     return () => { cancelled = true; };
   }, [key, clip.clipId]);
@@ -133,6 +141,14 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height }) => {
       ctx.stroke();
     }
   }, [clip, width, height, dpr, peaks]);
+
+  if (error) {
+    return (
+      <div style={{ width, height, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(180, 40, 40, 0.15)", border: "1px solid rgba(220, 60, 60, 0.5)", borderRadius: 2 }}>
+        <span style={{ fontSize: 9, color: "#e05555", fontWeight: 600, letterSpacing: 0.5 }}>FILE MISSING</span>
+      </div>
+    );
+  }
 
   return <canvas ref={canvasRef} style={{ width, height, display: "block" }} />;
 };
