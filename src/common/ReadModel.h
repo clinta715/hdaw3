@@ -35,6 +35,8 @@ struct ClipSnapshot {
     int stretchMode = 0;         // 0=Off, 1=TempoMatch, 2=ManualRatio
     double stretchRatio = 1.0;   // time ratio vs original source
     double sourceDuration = 0.0; // original source length in seconds
+    bool isGhost = false;
+    int ghostSourceId = -1;
 
     // Gain envelope
     struct GainEnvelopePoint { double time; double gain; };

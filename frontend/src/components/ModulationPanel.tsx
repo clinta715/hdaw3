@@ -29,7 +29,7 @@ export default function ModulationPanel() {
     try {
       const result = await rpc.call("read.getModulationLfos", { trackIndex: selectedTrackIndex }) as any[];
       setLfos(result);
-    } catch { setLfos([]); }
+    } catch { /* keep current state on transient errors */ }
   }, [selectedTrackIndex]);
 
   useEffect(() => { fetchLfos(); }, [fetchLfos]);
@@ -46,12 +46,16 @@ export default function ModulationPanel() {
 
   const handleSetParam = (lfoIndex: number, paramName: string, value: number | boolean) => {
     if (selectedTrackIndex == null) return;
+    // Optimistic update — no server round-trip, slider follows cursor immediately
+    setLfos((prev) => prev.map((lfo) =>
+      lfo.index === lfoIndex ? { ...lfo, [paramName]: value } as Lfo : lfo
+    ));
     rpc.call("project.setLfoParam", {
       trackIndex: selectedTrackIndex,
       lfoIndex,
       paramName,
       value: typeof value === "boolean" ? (value ? 1 : 0) : value,
-    }).then(fetchLfos);
+    }).catch(() => {});
   };
 
   const trackName = snapshot?.tracks[selectedTrackIndex ?? -1]?.name ?? "No track selected";

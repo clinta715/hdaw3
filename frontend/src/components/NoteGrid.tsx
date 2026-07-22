@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { NoteSnapshot } from "../rpc/types";
 import { RpcClient } from "../rpc/client";
 import { useProjectStore } from "../store/projectStore";
@@ -121,7 +121,7 @@ export default function NoteGrid({
     });
   }, [notes, dragState, resizeState]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
     const { snapEnabled, snapDivision } = useUiStore.getState();
 
     setResizeState((prev) => {
@@ -149,6 +149,32 @@ export default function NoteGrid({
   const handleMouseUp = useCallback(async () => {
     const drag = dragRef.current;
     const resize = resizeRef.current;
+
+    // Optimistic local update: write the committed pitch/start/duration into
+    // the notesByClip store BEFORE clearing the drag/resize preview, so the
+    // note doesn't snap back to its pre-gesture position for the round-trip
+    // until syncNotes returns.
+    if ((drag || resize) && clipId != null) {
+      useProjectStore.setState((s) => {
+        const arr = s.notesByClip.get(clipId);
+        if (!arr) return {};
+        return {
+          notesByClip: new Map(s.notesByClip).set(
+            clipId,
+            arr.map((n) => {
+              if (drag && n.noteId === drag.noteId) {
+                return { ...n, pitch: drag.currentPitch, startBeat: drag.currentStart };
+              }
+              if (resize && n.noteId === resize.noteId) {
+                return { ...n, durationBeats: resize.currentDuration };
+              }
+              return n;
+            })
+          ),
+        };
+      });
+    }
+
     try {
       if (drag && clipId != null) {
         const { snapEnabled, snapDivision } = useUiStore.getState();
@@ -171,10 +197,27 @@ export default function NoteGrid({
     setResizeState(null);
   }, [rpc, clipId]);
 
-  const cancelAll = useCallback(() => {
-    setDragState(null);
-    setResizeState(null);
-  }, []);
+  // Window-level drag listeners installed at note mousedown and removed on
+  // release. Element-level handlers (onMouseMove/Up/Leave on .note-grid) miss
+  // events once the cursor leaves the grid — the old onMouseLeave={cancelAll}
+  // silently abandoned an in-flight drag without committing it.
+  useEffect(() => {
+    const move = (e: globalThis.MouseEvent) => handleMouseMove(e);
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      handleMouseUp();
+    };
+    // Only active while a drag/resize is in progress.
+    if (dragState || resizeState) {
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      return () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+    }
+  }, [dragState, resizeState, handleMouseMove, handleMouseUp]);
 
   const handleDoubleClick = useCallback(async (e: React.MouseEvent) => {
     if (clipId == null) return;
@@ -339,33 +382,33 @@ export default function NoteGrid({
         await transposeSelected(e.ctrlKey ? -12 : -1);
         return;
       }
-      if (e.key === "q" || e.key === "Q") {
+      if (e.code === "KeyQ") {
         e.preventDefault();
         await quantizeSelected();
         return;
       }
-      if (e.key === "h" || e.key === "H") {
+      if (e.code === "KeyH") {
         e.preventDefault();
         await humanizeSelected();
         return;
       }
       if (e.ctrlKey || e.metaKey) {
-        if (e.key === "c") {
+        if (e.code === "KeyC") {
           e.preventDefault();
           copySelected();
           return;
         }
-        if (e.key === "x") {
+        if (e.code === "KeyX") {
           e.preventDefault();
           await cutSelected();
           return;
         }
-        if (e.key === "v") {
+        if (e.code === "KeyV") {
           e.preventDefault();
           await pasteAtScroll();
           return;
         }
-        if (e.key === "a") {
+        if (e.code === "KeyA") {
           e.preventDefault();
           selectAll();
           return;
@@ -423,9 +466,6 @@ export default function NoteGrid({
     <div
       className="note-grid"
       ref={gridRef}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={cancelAll}
       onDoubleClick={handleDoubleClick}
       onClick={handleGridClick}
       onContextMenu={handleContextMenu}

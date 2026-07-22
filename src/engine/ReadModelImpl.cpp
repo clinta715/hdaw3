@@ -62,6 +62,8 @@ ProjectSnapshot ReadModelImpl::snapshot() const
             cs.stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
             cs.stretchRatio = clipTree.getProperty(IDs::stretchRatio, 1.0);
             cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
+            cs.isGhost = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
+            cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
             snap.clips.push_back(cs);
         }
     }
@@ -130,6 +132,8 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 cs.stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
                 cs.stretchRatio = clipTree.getProperty(IDs::stretchRatio, 1.0);
                 cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
+                cs.isGhost = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
+                cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
                 return cs;
             }
         }

@@ -100,6 +100,8 @@ inline QJsonObject toJson(const ClipSnapshot& c) {
         { "stretchMode",    c.stretchMode },
         { "stretchRatio",   c.stretchRatio },
         { "sourceDuration", c.sourceDuration },
+        { "isGhost",       c.isGhost },
+        { "ghostSourceId", c.ghostSourceId },
     };
     QJsonArray env;
     for (const auto& p : c.gainEnvelope) env.append(toJson(p));

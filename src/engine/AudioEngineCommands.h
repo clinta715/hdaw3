@@ -46,6 +46,8 @@ public:
     void setClipOffset(int clipId, double offset) override;
     void setClipLooping(int clipId, bool looping) override;
     int duplicateClip(int clipId) override;
+    int createGhostClip(int sourceClipId, double newStart, int newTrackIndex) override;
+    std::vector<int> paintClips(const std::vector<int>& sourceClipIds, double originBeat, double spacing, int targetTrackIndex, int count) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;
@@ -206,6 +208,9 @@ private:
 
     // Find the FX_SLOT child at slotIndex in a track's FX_CHAIN.
     juce::ValueTree findFxSlot(int trackIndex, int slotIndex) const;
+
+    // Look up a plugin's display name from the plugin service by fileOrIdentifier.
+    std::string resolvePluginName(const std::string& pluginId) const;
 
     // Find the AUTOMATION child by lane name in a track.
     juce::ValueTree findAutomationLane(int trackIndex, const std::string& lane) const;

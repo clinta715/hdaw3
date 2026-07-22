@@ -34,11 +34,13 @@ add_executable(hdaw_tests
     unit/engine/clip_source_processor_test.cpp
     unit/engine/transient_detector_test.cpp
     unit/engine/region_clipboard_test.cpp
+    unit/engine/ghost_clips_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp
     unit/model/clip_slicing_test.cpp
     unit/frontend/frontend_server_test.cpp
+    unit/frontend/ghost_clips_rpc_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

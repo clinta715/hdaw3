@@ -10,7 +10,7 @@ ProxyEditor::ProxyEditor(PluginProxySlot& s)
 
     addAndMakeVisible(nameLabel);
     nameLabel.setText(slot.getName(), juce::dontSendNotification);
-    nameLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    nameLabel.setFont(juce::Font(juce::FontOptions(16.0f).withBold()));
     nameLabel.setJustificationType(juce::Justification::centred);
 
     addAndMakeVisible(openEditorButton);

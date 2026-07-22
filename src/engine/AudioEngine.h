@@ -98,6 +98,8 @@ private:
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;
+    bool isPropagating_ = false;
+    bool removingGhosts_ = false;
     std::unique_ptr<AudioEngineCommands> commands;
     std::unique_ptr<ReadModelImpl> readModel;
     std::unique_ptr<PluginService> pluginService;

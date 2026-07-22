@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
+import { reportRpcError } from "../store/notifyStore";
 import ImportDialog from "./ImportDialog";
 import ExportDialog from "./ExportDialog";
 import "./FileMenu.css";
@@ -48,7 +49,7 @@ export default function FileMenu() {
 
   const handleNew = () => doAction(async () => {
     if (!checkUnsaved()) return;
-    await rpc.call("project.newProject").catch(() => {});
+    await rpc.call("project.newProject").catch((err) => reportRpcError("project.newProject", err));
     useProjectStore.getState().setFilePath(null);
   });
 
@@ -66,7 +67,7 @@ export default function FileMenu() {
       });
       if (!result.canceled && result.filePaths.length > 0) {
         const path = result.filePaths[0];
-        await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+        await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
         useProjectStore.getState().addRecentProject(path);
         await useProjectStore.getState().syncDirtyFlag(rpc);
         await useProjectStore.getState().syncSnapshot(rpc);
@@ -74,7 +75,7 @@ export default function FileMenu() {
     } else {
       const path = prompt("Open project:", filePath ?? "project.hdaw");
       if (!path) return;
-      await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+      await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
       useProjectStore.getState().addRecentProject(path);
       await useProjectStore.getState().syncDirtyFlag(rpc);
       await useProjectStore.getState().syncSnapshot(rpc);
@@ -83,7 +84,7 @@ export default function FileMenu() {
 
   const handleOpenRecent = (path: string) => doAction(async () => {
     if (!checkUnsaved()) return;
-    await rpc.call("project.loadProject", { filePath: path }).catch(() => {});
+    await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
     useProjectStore.getState().addRecentProject(path);
   });
 
@@ -97,7 +98,7 @@ export default function FileMenu() {
     setOpen(false);
     const fp = useProjectStore.getState().filePath;
     if (fp) {
-      await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
+      await rpc.call("project.saveProject", { filePath: fp }).catch((err) => reportRpcError("project.saveProject", err));
     } else {
       if (window.hdaw) {
         const lastDir = localStorage.getItem("hdaw_last_save_dir") || "";
@@ -111,7 +112,7 @@ export default function FileMenu() {
           ],
         });
         if (!result.canceled && result.filePath) {
-          await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
+          await rpc.call("project.saveProject", { filePath: result.filePath }).catch((err) => reportRpcError("project.saveProject", err));
           useProjectStore.getState().addRecentProject(result.filePath);
           const dir = result.filePath.replace(/[\\/][^\\/]*$/, "");
           localStorage.setItem("hdaw_last_save_dir", dir);
@@ -119,7 +120,7 @@ export default function FileMenu() {
       } else {
         const path = prompt("Save path:", "project.hdaw");
         if (!path) return;
-        await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
+        await rpc.call("project.saveProject", { filePath: path }).catch((err) => reportRpcError("project.saveProject", err));
         useProjectStore.getState().addRecentProject(path);
       }
     }
@@ -139,7 +140,7 @@ export default function FileMenu() {
         ],
       });
       if (!result.canceled && result.filePath) {
-        await rpc.call("project.saveProject", { filePath: result.filePath }).catch(() => {});
+        await rpc.call("project.saveProject", { filePath: result.filePath }).catch((err) => reportRpcError("project.saveProject", err));
         useProjectStore.getState().addRecentProject(result.filePath);
         const dir = result.filePath.replace(/[\\/][^\\/]*$/, "");
         localStorage.setItem("hdaw_last_save_dir", dir);
@@ -149,7 +150,7 @@ export default function FileMenu() {
     } else {
       const path = prompt("Save as:", filePath ?? "project.hdaw");
       if (!path) return;
-      await rpc.call("project.saveProject", { filePath: path }).catch(() => {});
+      await rpc.call("project.saveProject", { filePath: path }).catch((err) => reportRpcError("project.saveProject", err));
       useProjectStore.getState().addRecentProject(path);
       await useProjectStore.getState().syncDirtyFlag(rpc);
       await useProjectStore.getState().syncSnapshot(rpc);
@@ -175,13 +176,13 @@ export default function FileMenu() {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key === "n") { e.preventDefault(); handleNew(); }
-      else if (ctrl && e.key === "o" && !e.shiftKey) { e.preventDefault(); handleOpen(); }
-      else if (ctrl && e.key === "s" && !e.shiftKey) { e.preventDefault(); handleSave(); }
-      else if (ctrl && e.shiftKey && e.key === "S") { e.preventDefault(); handleSaveAs(); }
-      else if (ctrl && e.shiftKey && e.key === "I") { e.preventDefault(); handleImportAudio(); }
-      else if (ctrl && e.shiftKey && e.key === "M") { e.preventDefault(); handleImportMidi(); }
-      else if (ctrl && e.key === "e") { e.preventDefault(); handleExportAudio(); }
+      if (ctrl && e.code === "KeyN" && !e.shiftKey) { e.preventDefault(); handleNew(); }
+      else if (ctrl && e.code === "KeyO" && !e.shiftKey) { e.preventDefault(); handleOpen(); }
+      else if (ctrl && e.code === "KeyS" && !e.shiftKey) { e.preventDefault(); handleSave(); }
+      else if (ctrl && e.shiftKey && e.code === "KeyS") { e.preventDefault(); handleSaveAs(); }
+      else if (ctrl && e.shiftKey && e.code === "KeyI") { e.preventDefault(); handleImportAudio(); }
+      else if (ctrl && e.shiftKey && e.code === "KeyM") { e.preventDefault(); handleImportMidi(); }
+      else if (ctrl && e.code === "KeyE" && !e.shiftKey) { e.preventDefault(); handleExportAudio(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

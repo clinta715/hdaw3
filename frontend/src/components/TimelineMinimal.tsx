@@ -44,8 +44,14 @@ interface DragState {
   offsetY: number;
   mouseX: number;
   mouseY: number;
-  isAltDuplicate?: boolean;
-  altDuplicated?: boolean;
+  isDuplicate?: boolean;
+  duplicated?: boolean;
+  isGhostClone?: boolean;
+  ghostDuplicated?: boolean;
+  paintRepeat?: boolean;
+  paintOriginBeat: number;
+  paintSpacing: number;
+  paintedClipIds: number[];
 }
 
 interface TrimState {
@@ -237,8 +243,17 @@ export default function TimelineMinimal() {
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setLoopDrag(null);
       const finalBeat = dragBeatRef.current;
+      // Optimistic local update: patch the transport store's loop bound before
+      // clearing the drag preview, so the loop band doesn't snap back to its
+      // old position for the round-trip until the backend push arrives.
+      const t = useTransportStore.getState().transport;
+      useTransportStore.getState().update({
+        ...t,
+        loopStart: which === "start" ? finalBeat : t.loopStart,
+        loopEnd: which === "end" ? finalBeat : t.loopEnd,
+      });
+      setLoopDrag(null);
       const method = which === "start" ? "project.setLoopStart" : "project.setLoopEnd";
       rpc.call(method, which === "start" ? { beat: finalBeat } : { beat: finalBeat }).catch(() => {});
     };
@@ -295,6 +310,11 @@ export default function TimelineMinimal() {
   // --- Clip drag handlers (Phase 3) ---
   const dragSelectedIdsRef = useRef<Set<number>>(new Set());
 
+  // handleMouseMove / handleMouseUp are declared below this block; refs let
+  // handleClipMouseDown reference them without a declaration-order dependency.
+  const handleMouseMoveRef = useRef<(e: globalThis.MouseEvent) => void>(() => {});
+  const handleMouseUpRef = useRef<() => void>(() => {});
+
   const handleClipMouseDown = useCallback(
     (e: React.MouseEvent, clipId: number, trackIndex: number, startBeat: number) => {
       e.preventDefault();
@@ -302,9 +322,40 @@ export default function TimelineMinimal() {
       const r = el.getBoundingClientRect();
       const selected = useUiStore.getState().selectedClipIds;
       dragSelectedIdsRef.current = selected.has(clipId) ? new Set(selected) : new Set([clipId]);
-      updateDrag({ clipId, startTrackIndex: trackIndex, startBeat, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top, mouseX: e.clientX, mouseY: e.clientY, isAltDuplicate: e.altKey ? true : undefined });
+      const paintRepeat = e.altKey ? true : undefined;
+      // Calculate paint spacing from the dragged clip's duration
+      let paintSpacing = 0;
+      if (paintRepeat) {
+        const clip = clips.find(c => c.clipId === clipId);
+        if (clip) paintSpacing = clip.durationBeats;
+      }
+      updateDrag({
+        clipId, startTrackIndex: trackIndex, startBeat,
+        offsetX: e.clientX - r.left, offsetY: e.clientY - r.top,
+        mouseX: e.clientX, mouseY: e.clientY,
+        isDuplicate: e.ctrlKey || e.metaKey ? true : undefined,
+        isGhostClone: (e.ctrlKey || e.metaKey) && e.shiftKey ? true : undefined,
+        paintRepeat,
+        paintOriginBeat: startBeat,
+        paintSpacing,
+        paintedClipIds: [],
+      });
+
+      // Install window-level move/up listeners, matching the trim/fade/loop
+      // drag pattern. Element-level handlers (onMouseMove/Up/Leave on .tl-tracks)
+      // miss events once the cursor leaves the tracks div — causing drags to be
+      // cancelled on leave or to leak state on release-outside. Window listeners
+      // stay active until mouseup regardless of where the cursor travels.
+      const onMove = (ev: globalThis.MouseEvent) => handleMouseMoveRef.current(ev);
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        handleMouseUpRef.current();
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
     },
-    [updateDrag]
+    [updateDrag, clips]
   );
 
   const handleTrimStart = useCallback(
@@ -347,10 +398,34 @@ export default function TimelineMinimal() {
         window.removeEventListener("mouseup", onUp);
         const d = trimRef.current;
         if (!d) return;
+
+        const changed = d.side === "left"
+          ? Math.abs(d.currentStartBeat - d.initialStartBeat) > 0.01
+          : Math.abs(d.currentDuration - d.initialDuration) > 0.01;
+
+        // Optimistic local update: apply the committed trim to the snapshot
+        // BEFORE clearing the preview state, so the clip doesn't snap back to
+        // its pre-trim bounds for the 50-150ms until syncSnapshot returns.
+        if (changed) {
+          useProjectStore.setState((s) => {
+            if (!s.snapshot) return {};
+            return {
+              snapshot: {
+                ...s.snapshot,
+                clips: s.snapshot.clips.map((c) =>
+                  c.clipId === d.clipId
+                    ? { ...c, startBeat: d.currentStartBeat, durationBeats: d.currentDuration }
+                    : c
+                ),
+              },
+            };
+          });
+        }
+
         updateTrim(null);
 
-        if (d.side === "left") {
-          if (Math.abs(d.currentStartBeat - d.initialStartBeat) > 0.01) {
+        if (changed) {
+          if (d.side === "left") {
             (async () => {
               try {
                 await rpc.call("project.beginTransaction", { name: "trim clip" });
@@ -361,9 +436,7 @@ export default function TimelineMinimal() {
                 await useProjectStore.getState().syncSnapshot(rpc);
               } catch (e) { console.error("trim failed", e); }
             })();
-          }
-        } else {
-          if (Math.abs(d.currentDuration - d.initialDuration) > 0.01) {
+          } else {
             (async () => {
               await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
               await useProjectStore.getState().syncDirtyFlag(rpc);
@@ -414,6 +487,29 @@ export default function TimelineMinimal() {
       window.removeEventListener("mouseup", onUp);
       const d = fadeDragRef.current;
       if (d) {
+        // Optimistic local update: write the committed fade to the snapshot
+        // BEFORE clearing the preview, so the fade triangle doesn't snap back
+        // to its old shape for the round-trip until syncSnapshot returns.
+        const fadedClip = d.side === "in" ? d.initialValue : undefined;
+        const fadedOut = d.side === "out" ? d.initialValue : undefined;
+        useProjectStore.setState((s) => {
+          if (!s.snapshot) return {};
+          return {
+            snapshot: {
+              ...s.snapshot,
+              clips: s.snapshot.clips.map((c) =>
+                c.clipId === d.clipId
+                  ? {
+                      ...c,
+                      fadeIn: fadedClip !== undefined ? fadedClip : c.fadeIn,
+                      fadeOut: fadedOut !== undefined ? fadedOut : c.fadeOut,
+                    }
+                  : c
+              ),
+            },
+          };
+        });
+
         const method = d.side === "in" ? "project.setClipFadeIn" : "project.setClipFadeOut";
         rpc.call(method, { clipId: d.clipId, [d.side === "in" ? "fadeIn" : "fadeOut"]: d.initialValue }).then(() => {
           useProjectStore.getState().syncDirtyFlag(rpc);
@@ -427,19 +523,107 @@ export default function TimelineMinimal() {
     window.addEventListener("mouseup", onUp);
   }, [pps]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    if (d.isAltDuplicate && !d.altDuplicated) {
+
+    // Paint/Repeat (Alt+drag)
+    if (d.paintRepeat && d.paintSpacing > 0) {
+      const el = tracksRef.current;
+      if (!el) { updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY }); return; }
+      const rect = el.getBoundingClientRect();
+      const scroll = el.scrollLeft;
+      const mouseBeat = Math.max(0, (e.clientX - rect.left + scroll) / pps);
+      const desiredCount = Math.max(0, Math.floor((mouseBeat - d.paintOriginBeat) / d.paintSpacing));
+      const currentCount = d.paintedClipIds.length;
+
+      if (desiredCount > currentCount) {
+        const ids = dragSelectedIdsRef.current;
+        (async () => {
+          for (let i = currentCount; i < desiredCount; i++) {
+            const newStart = d.paintOriginBeat + (i + 1) * d.paintSpacing;
+            for (const id of ids) {
+              const clip = clips.find(c => c.clipId === id);
+              if (!clip) continue;
+              const r = await rpc.call("project.duplicateClip", { clipId: id }).catch(() => null);
+              if (r && typeof r === "object" && "clipId" in r) {
+                const newId = (r as { clipId: number }).clipId;
+                const offset = clip.startBeat - d.paintOriginBeat;
+                await rpc.call("project.moveClipWithOverlap", {
+                  clipId: newId, newTrackIndex: d.startTrackIndex, newStart: newStart + offset
+                }).catch(() => {});
+                d.paintedClipIds.push(newId);
+              }
+            }
+          }
+          await useProjectStore.getState().syncDirtyFlag(rpc);
+          await useProjectStore.getState().syncSnapshot(rpc);
+        })();
+      } else if (desiredCount < currentCount) {
+        const toRemove = d.paintedClipIds.splice(desiredCount);
+        (async () => {
+          for (const id of toRemove) {
+            await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
+          }
+          await useProjectStore.getState().syncDirtyFlag(rpc);
+          await useProjectStore.getState().syncSnapshot(rpc);
+        })();
+      }
+
+      updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY });
+      return;
+    }
+
+    // Ghost clone (Ctrl+Shift+drag)
+    if (d.isGhostClone && !d.ghostDuplicated) {
       const { snapshot } = useProjectStore.getState();
       if (!snapshot) return;
       const ids = dragSelectedIdsRef.current;
       const newIds = new Set<number>();
-      // Set synchronously BEFORE async to prevent race condition
-      dragRef.current = { ...d, altDuplicated: true };
+      dragRef.current = { ...d, ghostDuplicated: true };
       setDragState(dragRef.current);
       (async () => {
-        await rpc.call("project.beginTransaction", { name: "alt-duplicate clips" });
+        await rpc.call("project.beginTransaction", { name: "ghost-clone clips" });
+        const el = tracksRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const relY = e.clientY - rect.top;
+        const newTrackIdx = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
+        const relX = e.clientX - rect.left + el.scrollLeft;
+        const rawStart = Math.max(0, (relX - d.offsetX) / pps);
+        for (const id of ids) {
+          const clip = clips.find(c => c.clipId === id);
+          if (!clip) continue;
+          const offset = clip.startBeat - d.startBeat;
+          const r = await rpc.call("project.createGhostClip", {
+            sourceClipId: id, newStart: Math.max(0, rawStart + offset), newTrackIndex: newTrackIdx
+          }).catch(() => null);
+          if (r && typeof r === "object" && "clipId" in r) newIds.add((r as { clipId: number }).clipId);
+        }
+        await rpc.call("project.endTransaction");
+        if (newIds.size > 0) {
+          useUiStore.setState({ selectedClipIds: newIds });
+          dragSelectedIdsRef.current = newIds;
+          const first = [...newIds][0];
+          dragRef.current = { ...d, clipId: first, ghostDuplicated: true };
+          setDragState(dragRef.current);
+        }
+        await useProjectStore.getState().syncDirtyFlag(rpc);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      })();
+      return;
+    }
+
+    // Duplicate (Ctrl+drag) — existing clone-then-drag behavior
+    if (d.isDuplicate && !d.duplicated) {
+      const { snapshot } = useProjectStore.getState();
+      if (!snapshot) return;
+      const ids = dragSelectedIdsRef.current;
+      const newIds = new Set<number>();
+      dragRef.current = { ...d, duplicated: true };
+      setDragState(dragRef.current);
+      (async () => {
+        await rpc.call("project.beginTransaction", { name: "duplicate clips" });
         for (const id of ids) {
           const r = await rpc.call("project.duplicateClip", { clipId: id }).catch(() => null);
           if (r && typeof r === "object" && "clipId" in r) newIds.add((r as { clipId: number }).clipId);
@@ -449,7 +633,7 @@ export default function TimelineMinimal() {
           useUiStore.setState({ selectedClipIds: newIds });
           dragSelectedIdsRef.current = newIds;
           const first = [...newIds][0];
-          dragRef.current = { ...d, clipId: first, altDuplicated: true };
+          dragRef.current = { ...d, clipId: first, duplicated: true };
           setDragState(dragRef.current);
         }
         await useProjectStore.getState().syncDirtyFlag(rpc);
@@ -458,13 +642,19 @@ export default function TimelineMinimal() {
       return;
     }
     updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY });
-  }, [updateDrag]);
+  }, [updateDrag, pps, tracks.length, clips]);
 
   const handleMouseUp = useCallback(() => {
     const d = dragRef.current;
     if (!d) return;
-    updateDrag(null);
+    // For paint/repeat, just clear paint state — tiles are already committed
+    if (d.paintRepeat) {
+      d.paintedClipIds = [];
+      updateDrag(null);
+      return;
+    }
     const el = tracksRef.current;
+    updateDrag(null);
     if (!el) return;
     const cr = el.getBoundingClientRect();
     const relX = d.mouseX - cr.left;
@@ -477,6 +667,36 @@ export default function TimelineMinimal() {
       const deltaStart = newStart - d.startBeat;
       const deltaTrack = newTrackIndex - d.startTrackIndex;
       const ids = dragSelectedIdsRef.current;
+
+      // Optimistic local update: move the dragged clips to their destination in
+      // the snapshot *before* the RPC round-trip. Without this, clearing drag
+      // state reverts the clip to its origin (preview gone, snapshot still stale)
+      // for the 50-150ms until syncSnapshot returns — the user sees a snap-back
+      // followed by a delayed reappearance at the destination. The dragged
+      // clip's own start/track always land at the requested values
+      // (moveClipWithOverlap never alters the incoming clip's position), so this
+      // patch is exact for the moved clips; any overlap trims/splits on OTHER
+      // clips are reconciled by syncSnapshot below.
+      const maxTrack = tracks.length - 1;
+      useProjectStore.setState((s) => {
+        if (!s.snapshot) return {};
+        const movedSet = ids;
+        return {
+          snapshot: {
+            ...s.snapshot,
+            clips: s.snapshot.clips.map((c) =>
+              movedSet.has(c.clipId)
+                ? {
+                    ...c,
+                    startBeat: Math.max(0, c.startBeat + deltaStart),
+                    trackIndex: Math.min(Math.max(0, c.trackIndex + deltaTrack), maxTrack),
+                  }
+                : c
+            ),
+          },
+        };
+      });
+
       (async () => {
         await rpc.call("project.beginTransaction", { name: "move clips" });
         for (const id of ids) {
@@ -493,7 +713,10 @@ export default function TimelineMinimal() {
     }
   }, [pps, tracks.length, clips, updateDrag]);
 
-  const handleMouseLeave = useCallback(() => updateDrag(null), [updateDrag]);
+  // Keep the ref indirection used by handleClipMouseDown current. The handlers
+  // are recreated when their deps change; the ref always points at the latest.
+  handleMouseMoveRef.current = handleMouseMove;
+  handleMouseUpRef.current = handleMouseUp;
 
   // --- File drag-and-drop import ---
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -631,15 +854,20 @@ export default function TimelineMinimal() {
   // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
+      const target = e.target as HTMLElement;
+      const tag = target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      // Skip when focus is inside a focusable custom widget (NoteGrid,
+      // AutomationPanel) that handles its own key events. Prevents double-fire
+      // (e.g. Delete deleting both notes and timeline clips).
+      if (target !== document.body && target?.closest?.("[tabindex]")) return;
 
       const { selectedClipIds } = useUiStore.getState();
       const isPlaying = useTransportStore.getState().transport.isPlaying;
 
       if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
         if (selectedClipIds.size > 0) {
-          e.preventDefault();
           (async () => {
             try {
               await rpc.call("project.beginTransaction", { name: "delete clips" });
@@ -655,9 +883,9 @@ export default function TimelineMinimal() {
             }
           })();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyD") {
+        e.preventDefault();
         if (selectedClipIds.size > 0) {
-          e.preventDefault();
           (async () => {
             await rpc.call("project.beginTransaction", { name: "duplicate clips" });
             for (const id of selectedClipIds) {
@@ -668,18 +896,18 @@ export default function TimelineMinimal() {
             await useProjectStore.getState().syncSnapshot(rpc);
           })();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
+        e.preventDefault();
         if (selectedClipIds.size > 0) {
-          e.preventDefault();
           const snap = useProjectStore.getState().snapshot;
           if (snap) {
             const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
             useUiStore.getState().setClipboard(copied);
           }
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "x") {
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyX") {
+        e.preventDefault();
         if (selectedClipIds.size > 0) {
-          e.preventDefault();
           const snap = useProjectStore.getState().snapshot;
           if (snap) {
             const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
@@ -696,26 +924,16 @@ export default function TimelineMinimal() {
             })();
           }
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
+        e.preventDefault();
         const { clipClipboard } = useUiStore.getState();
         if (clipClipboard.length > 0) {
-          e.preventDefault();
           pasteClipboard();
         }
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        (async () => {
-          if (e.shiftKey)
-            await rpc.call("project.redo").catch(() => {});
-          else
-            await rpc.call("project.undo").catch(() => {});
-          await useProjectStore.getState().syncDirtyFlag(rpc);
-          await useProjectStore.getState().syncSnapshot(rpc);
-        })();
       } else if (e.key === "Escape") {
         setContextMenu(null);
         setEmptyContextMenu(null);
-      } else if (e.key === "F" && e.shiftKey) {
+      } else if (e.code === "KeyF" && e.shiftKey) {
         const snap = useProjectStore.getState().snapshot;
         const selIds = useUiStore.getState().selectedClipIds;
         const selectedClips = snap?.clips.filter((c) => selIds.has(c.clipId));
@@ -735,7 +953,7 @@ export default function TimelineMinimal() {
           }
         }
         e.preventDefault();
-      } else if (e.key === " " && e.target === document.body) {
+      } else if (e.key === " ") {
         e.preventDefault();
         if (isPlaying)
           rpc.call("transport.stop").catch(() => {});
@@ -747,10 +965,23 @@ export default function TimelineMinimal() {
     return () => window.removeEventListener("keydown", handler);
   }, [pasteClipboard]);
 
-  // --- Ghost clip for drag ---
-  let ghostStyle: React.CSSProperties | undefined;
-  let ghostClip: (typeof clips)[0] | undefined;
-  if (dragState) {
+  // --- Drag cursor (spec §5.3) ---
+  // Reflect the active modifier drag so the user gets immediate feedback that
+  // the modifier was recognized before any tile/clone is committed.
+  const dragCursor = dragState
+    ? dragState.paintRepeat
+      ? "crosshair"
+      : dragState.isGhostClone
+        ? "alias"
+        : dragState.isDuplicate
+          ? "copy"
+          : "grabbing"
+    : undefined;
+
+  // --- Drag preview ---
+  let dragPreviewStyle: React.CSSProperties | undefined;
+  let dragPreviewClip: (typeof clips)[0] | undefined;
+  if (dragState && !dragState.paintRepeat) {
     const el = tracksRef.current;
     if (el) {
       const cr = el.getBoundingClientRect();
@@ -762,8 +993,35 @@ export default function TimelineMinimal() {
       const gi = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
       const orig = clips.find((c) => c.clipId === dragState.clipId);
       if (orig) {
-        ghostClip = orig;
-        ghostStyle = { left: gs * pps, width: Math.max(4, orig.durationBeats * pps), height: TRACK_HEIGHT - 8, top: gi * TRACK_HEIGHT + 4 };
+        dragPreviewClip = orig;
+        dragPreviewStyle = { left: gs * pps, width: Math.max(4, orig.durationBeats * pps), height: TRACK_HEIGHT - 8, top: gi * TRACK_HEIGHT + 4 };
+      }
+    }
+  }
+
+  // --- Paint tile previews ---
+  const paintTiles: { left: number; width: number; top: number }[] = [];
+  if (dragState?.paintRepeat && dragState.paintSpacing > 0) {
+    const el = tracksRef.current;
+    if (el) {
+      const cr = el.getBoundingClientRect();
+      const mouseBeat = Math.max(0, (dragState.mouseX - cr.left + el.scrollLeft) / pps);
+      const desiredCount = Math.max(0, Math.floor((mouseBeat - dragState.paintOriginBeat) / dragState.paintSpacing));
+      const orig = clips.find((c) => c.clipId === dragState.clipId);
+      const trackTop = dragState.startTrackIndex * TRACK_HEIGHT;
+      if (orig) {
+        const tileW = Math.max(4, orig.durationBeats * pps);
+        for (let i = 0; i <= desiredCount; i++) {
+          const tileBeat = dragState.paintOriginBeat + i * dragState.paintSpacing;
+          const isCommitted = i < dragState.paintedClipIds.length;
+          if (!isCommitted) {
+            paintTiles.push({
+              left: tileBeat * pps,
+              width: tileW,
+              top: trackTop + 4,
+            });
+          }
+        }
       }
     }
   }
@@ -844,9 +1102,7 @@ export default function TimelineMinimal() {
           className="tl-tracks"
           ref={tracksRef}
           onScroll={onTracksScroll}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
+          style={dragCursor ? { cursor: dragCursor } : undefined}
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
             onClick={() => {
@@ -884,7 +1140,7 @@ export default function TimelineMinimal() {
                     return (
                       <div
                         key={clip.clipId}
-                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}`}
+                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}`}
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -904,6 +1160,13 @@ export default function TimelineMinimal() {
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
+                          if (clip.isGhost && clip.ghostSourceId >= 0) {
+                            const sourceClip = clips.find(c => c.clipId === clip.ghostSourceId);
+                            if (sourceClip) {
+                              useUiStore.getState().selectClip(sourceClip.clipId, sourceClip.trackIndex);
+                              return;
+                            }
+                          }
                           useUiStore.getState().selectClip(clip.clipId, idx);
                           useUiStore.getState().setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
                         }}
@@ -943,16 +1206,24 @@ export default function TimelineMinimal() {
             {/* Playhead */}
             <div className="tl-playhead" style={{ left: playheadX }} />
 
-            {/* Ghost clip */}
-            {ghostStyle && ghostClip && (
+            {/* Paint tile previews */}
+            {paintTiles.map((tile, i) => (
+              <div key={`paint-${i}`} className="tl-paint-tile tl-paint-tile--pending" style={{ left: tile.left, width: tile.width, top: tile.top, height: TRACK_HEIGHT - 8 }} />
+            ))}
+            {dragState?.paintRepeat && dragState.paintedClipIds.length > 0 && (
+              <span className="tl-paint-badge" style={{ left: dragState.paintOriginBeat * pps + dragState.paintSpacing * dragState.paintedClipIds.length * pps }}>+{dragState.paintedClipIds.length}</span>
+            )}
+
+            {/* Drag preview */}
+            {dragPreviewStyle && dragPreviewClip && (
               <div
-                className={`tl-clip tl-ghost ${ghostClip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}`}
-                style={{ ...ghostStyle, ...(ghostClip.isMidi ? {} : { background: "transparent" }) }}
+                className={`tl-clip tl-ghost ${dragPreviewClip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}`}
+                style={{ ...dragPreviewStyle, ...(dragPreviewClip.isMidi ? {} : { background: "transparent" }) }}
               >
-                {!ghostClip.isMidi && (
-                  <WaveformCanvas clip={ghostClip} width={Math.max(4, ghostClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
+                {!dragPreviewClip.isMidi && (
+                  <WaveformCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
                 )}
-                <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{ghostClip.name ?? `Clip ${ghostClip.clipId}`}</span>
+                <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{dragPreviewClip.name ?? `Clip ${dragPreviewClip.clipId}`}</span>
               </div>
             )}
 
@@ -990,6 +1261,18 @@ export default function TimelineMinimal() {
               <button onMouseDown={(e) => { e.stopPropagation(); handleDuplicateClip(); }}>
                 Duplicate
               </button>
+              {contextMenu.clip.isGhost && contextMenu.clip.ghostSourceId >= 0 && (
+                <button onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setContextMenu(null);
+                  const sourceClip = clips.find(c => c.clipId === contextMenu.clip!.ghostSourceId);
+                  if (sourceClip) {
+                    useUiStore.getState().selectClip(sourceClip.clipId, sourceClip.trackIndex);
+                  }
+                }}>
+                  Select Original
+                </button>
+              )}
               <button onMouseDown={(e) => { e.stopPropagation(); handleSplitClip(); }}>
                 Split
               </button>

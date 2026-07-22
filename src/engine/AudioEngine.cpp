@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 #include <juce_events/juce_events.h>
 #include <QSettings>
+#include <cmath>
 #include "../common/SettingsKeys.h"
 
 namespace {
@@ -483,6 +484,54 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             if (mainProcessor != nullptr)
                 mainProcessor->rebuildRoutingGraph();
         }
+
+        // Ghost propagation: when a source clip's content property changes,
+        // propagate to all ghosts. Guard against re-entrant writes from the
+        // propagation itself.
+        if (!isPropagating_ && mainProcessor != nullptr)
+        {
+            int clipIsGhost = static_cast<int>(treeWhosePropertyHasChanged.getProperty(IDs::isGhost, 0));
+            if (clipIsGhost == 0)
+            {
+                int srcClipID = static_cast<int>(treeWhosePropertyHasChanged.getProperty(IDs::clipID, -1));
+                if (srcClipID >= 0)
+                {
+                    // Propagated properties
+                    static const std::vector<juce::Identifier> propagatedProps = {
+                        IDs::gain, IDs::fadeIn, IDs::fadeOut, IDs::looping,
+                        IDs::offset, IDs::sourceFile, IDs::sourceBpm,
+                        IDs::stretchMode, IDs::stretchRatio, IDs::sourceDuration
+                    };
+                    bool isPropagated = false;
+                    for (const auto& p : propagatedProps)
+                    {
+                        if (property == p) { isPropagated = true; break; }
+                    }
+
+                    if (isPropagated)
+                    {
+                        auto newValue = treeWhosePropertyHasChanged.getProperty(property);
+                        auto trackList = projectModel.getTrackListTree();
+                        for (int t = 0; t < trackList.getNumChildren(); ++t)
+                        {
+                            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                            if (!clipList.isValid()) continue;
+                            for (int c = 0; c < clipList.getNumChildren(); ++c)
+                            {
+                                auto ghostClip = clipList.getChild(c);
+                                int ghostSrc = static_cast<int>(ghostClip.getProperty(IDs::ghostSourceId, -1));
+                                if (ghostSrc == srcClipID)
+                                {
+                                    isPropagating_ = true;
+                                    ghostClip.setProperty(property, newValue, nullptr);
+                                    isPropagating_ = false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::MIDI_NOTE))
     {
@@ -539,6 +588,38 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
             {
                 if (auto* rm = mainProcessor->getRoutingManager())
                     rm->rebuildMidiClipCache(clipTree);
+
+                // Propagate the new note to all ghosts of the source clip
+                int srcIsGhost = static_cast<int>(clipTree.getProperty(IDs::isGhost, 0));
+                if (srcIsGhost == 0)
+                {
+                    int srcClipID = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+                    if (srcClipID >= 0)
+                    {
+                        auto trackList = projectModel.getTrackListTree();
+                        for (int t = 0; t < trackList.getNumChildren(); ++t)
+                        {
+                            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                            if (!clipList.isValid()) continue;
+                            for (int c = 0; c < clipList.getNumChildren(); ++c)
+                            {
+                                auto ghostClip = clipList.getChild(c);
+                                int ghostSrc = static_cast<int>(ghostClip.getProperty(IDs::ghostSourceId, -1));
+                                if (ghostSrc == srcClipID)
+                                {
+                                    auto ghostNoteList = ghostClip.getChildWithName(IDs::MIDI_NOTE_LIST);
+                                    if (!ghostNoteList.isValid())
+                                    {
+                                        ghostNoteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+                                        ghostClip.addChild(ghostNoteList, -1, nullptr);
+                                    }
+                                    auto noteCopy = childWhichHasBeenAdded.createCopy();
+                                    ghostNoteList.addChild(noteCopy, -1, nullptr);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -587,6 +668,51 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
             {
                 if (auto* rm = mainProcessor->getRoutingManager())
                     rm->rebuildMidiClipCache(clipTree);
+
+                // Remove matching note from all ghosts of the source clip.
+                // Ghosts get fresh noteIDs at creation time, so we match by
+                // content (noteNumber, startBeat) per the ghost-copy spec §2.4.
+                int srcIsGhost = static_cast<int>(clipTree.getProperty(IDs::isGhost, 0));
+                if (srcIsGhost == 0)
+                {
+                    int srcClipID = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+                    if (srcClipID >= 0)
+                    {
+                        int noteNumber = static_cast<int>(childWhichHasBeenRemoved.getProperty(IDs::noteNumber, -1));
+                        double startBeat = childWhichHasBeenRemoved.getProperty(IDs::startBeat, -1e18);
+                        if (noteNumber >= 0)
+                        {
+                            auto trackList = projectModel.getTrackListTree();
+                            for (int t = 0; t < trackList.getNumChildren(); ++t)
+                            {
+                                auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                                if (!clipList.isValid()) continue;
+                                for (int c = 0; c < clipList.getNumChildren(); ++c)
+                                {
+                                    auto ghostClip = clipList.getChild(c);
+                                    int ghostSrc = static_cast<int>(ghostClip.getProperty(IDs::ghostSourceId, -1));
+                                    if (ghostSrc == srcClipID)
+                                    {
+                                        auto ghostNoteList = ghostClip.getChildWithName(IDs::MIDI_NOTE_LIST);
+                                        if (ghostNoteList.isValid())
+                                        {
+                                            for (int n = ghostNoteList.getNumChildren() - 1; n >= 0; --n)
+                                            {
+                                                auto gn = ghostNoteList.getChild(n);
+                                                if (static_cast<int>(gn.getProperty(IDs::noteNumber, -1)) == noteNumber
+                                                    && std::abs(static_cast<double>(gn.getProperty(IDs::startBeat, 1e18)) - startBeat) < 1e-9)
+                                                {
+                                                    ghostNoteList.removeChild(gn, nullptr);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -597,10 +723,43 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
             mainProcessor->rebuildModulation(tIdx);
     }
 
-    if (childWhichHasBeenRemoved.hasType(IDs::CLIP) && mainProcessor != nullptr)
+    if (childWhichHasBeenRemoved.hasType(IDs::CLIP))
     {
-        HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, rebuilding routing graph");
-        mainProcessor->rebuildRoutingGraph();
+        // Before rebuilding, if the removed clip is a source (not a ghost),
+        // remove all ghosts that reference it. Use a re-entrancy guard to
+        // prevent infinite recursion when ghost removals trigger this handler.
+        if (!removingGhosts_)
+        {
+            int clipIsGhost = static_cast<int>(childWhichHasBeenRemoved.getProperty(IDs::isGhost, 0));
+            if (clipIsGhost == 0)
+            {
+                int srcID = static_cast<int>(childWhichHasBeenRemoved.getProperty(IDs::clipID, -1));
+                if (srcID >= 0)
+                {
+                    removingGhosts_ = true;
+                    auto trackList = projectModel.getTrackListTree();
+                    for (int t = 0; t < trackList.getNumChildren(); ++t)
+                    {
+                        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                        if (!clipList.isValid()) continue;
+                        for (int c = clipList.getNumChildren() - 1; c >= 0; --c)
+                        {
+                            auto ghostClip = clipList.getChild(c);
+                            int ghostSrc = static_cast<int>(ghostClip.getProperty(IDs::ghostSourceId, -1));
+                            if (ghostSrc == srcID)
+                                clipList.removeChild(ghostClip, nullptr);
+                        }
+                    }
+                    removingGhosts_ = false;
+                }
+            }
+        }
+
+        if (mainProcessor != nullptr)
+        {
+            HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, rebuilding routing graph");
+            mainProcessor->rebuildRoutingGraph();
+        }
     }
     if (childWhichHasBeenRemoved.hasType(IDs::TRACK) && mainProcessor != nullptr)
     {

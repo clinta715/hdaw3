@@ -4,6 +4,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useTransportExtrasStore } from "../store/transportExtrasStore";
 import { rpc } from "../rpc";
+import { reportRpcError } from "../store/notifyStore";
 import FileMenu from "./FileMenu";
 import PluginManagerDialog from "./PluginManagerDialog";
 import PreferencesDialog from "./PreferencesDialog";
@@ -31,24 +32,24 @@ export default function TransportBar() {
   };
 
   const handleUndo = async () => {
-    await rpc.call("project.undo").catch(() => {});
+    await rpc.call("project.undo").catch((err) => reportRpcError("project.undo", err));
     await useProjectStore.getState().syncDirtyFlag(rpc);
     await useProjectStore.getState().syncSnapshot(rpc);
   };
 
   const handleRedo = async () => {
-    await rpc.call("project.redo").catch(() => {});
+    await rpc.call("project.redo").catch((err) => reportRpcError("project.redo", err));
     await useProjectStore.getState().syncDirtyFlag(rpc);
     await useProjectStore.getState().syncSnapshot(rpc);
   };
 
   const handleAddTrack = () => {
-    rpc.call("project.addTrack").catch(() => {});
+    rpc.call("project.addTrack").catch((err) => reportRpcError("project.addTrack", err));
   };
   const handleRemoveTrack = () => {
     const idx = useUiStore.getState().selectedTrackIndex;
     if (idx != null) {
-      rpc.call("project.removeTrack", { trackIndex: idx }).catch(() => {});
+      rpc.call("project.removeTrack", { trackIndex: idx }).catch((err) => reportRpcError("project.removeTrack", err));
     }
   };
 
@@ -65,7 +66,7 @@ export default function TransportBar() {
       const avgMs = intervals.reduce((a, b) => a + b, 0) / intervals.length;
       const bpm = Math.round(60000 / avgMs);
       if (bpm >= 20 && bpm <= 999) {
-        rpc.call("project.setTempo", { bpm }).catch(() => {});
+        rpc.call("project.setTempo", { bpm }).catch((err) => reportRpcError("project.setTempo", err));
       }
     }
   }, []);
@@ -134,7 +135,7 @@ export default function TransportBar() {
               autoFocus
               value={bpmInput}
               onChange={(e) => setBpmInput(e.target.value)}
-              onBlur={() => { rpc.call("project.setTempo", { bpm: parseFloat(bpmInput) || 120 }).catch(() => {}); setBpmInput(null); }}
+              onBlur={() => { rpc.call("project.setTempo", { bpm: parseFloat(bpmInput) || 120 }).catch((err) => reportRpcError("project.setTempo", err)); setBpmInput(null); }}
               onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLElement).blur(); } if (e.key === "Escape") setBpmInput(null); }}
             />
           ) : (
@@ -184,7 +185,7 @@ export default function TransportBar() {
           onClick={() => {
             const next = !metronomeEnabled;
             setExtras({ metronomeEnabled: next });
-            rpc.call("project.setMetronomeEnabled", { enabled: next }).catch(() => {});
+            rpc.call("project.setMetronomeEnabled", { enabled: next }).catch((err) => reportRpcError("project.setMetronomeEnabled", err));
           }}
           title="Metronome"
         >

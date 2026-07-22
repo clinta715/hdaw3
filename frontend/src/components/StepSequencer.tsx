@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
+import { reportRpcError } from "../store/notifyStore";
 import { rpc } from "../rpc";
 import { NoteSnapshot } from "../rpc/types";
 import "./StepSequencer.css";
@@ -61,7 +62,7 @@ export default function StepSequencer() {
         }
         setSteps(next);
       })
-      .catch(() => {});
+      .catch((err) => reportRpcError("read.getNotes", err));
   }, [midiClip?.clipId]);
 
   const toggleStep = useCallback((row: number, col: number) => {
@@ -78,19 +79,29 @@ export default function StepSequencer() {
       return next;
     });
 
+    // Rollback the optimistic flip on RPC failure
+    const rollback = () => {
+      setSteps((prev) => {
+        const next = prev.map((r) => [...r]);
+        next[row][col] = wasOn;
+        return next;
+      });
+    };
+
     if (wasOn) {
       // Turn off: find the note at this pitch+beat and remove it.
       rpc.call("read.getNotes", { clipId })
         .then((data) => {
-          if (!Array.isArray(data)) return;
+          if (!Array.isArray(data)) { rollback(); return; }
           const match = (data as NoteSnapshot[]).find(
             (n) => n.pitch === pitch && Math.abs(n.startBeat - startBeat) < STEP_BEATS / 4
           );
           if (match != null) {
-            rpc.call("project.removeNote", { noteId: match.noteId }).catch(console.error);
+            rpc.call("project.removeNote", { noteId: match.noteId })
+              .catch((err) => { reportRpcError("project.removeNote", err); rollback(); });
           }
         })
-        .catch(console.error);
+        .catch((err) => { reportRpcError("read.getNotes", err); rollback(); });
     } else {
       // Turn on: add a 1/16-length note.
       rpc.call("project.addNote", {
@@ -99,7 +110,7 @@ export default function StepSequencer() {
         velocity: DEFAULT_VELOCITY,
         startBeat,
         durationBeats: STEP_BEATS,
-      }).catch(console.error);
+      }).catch((err) => { reportRpcError("project.addNote", err); rollback(); });
     }
   }, [midiClip?.clipId, steps]);
 

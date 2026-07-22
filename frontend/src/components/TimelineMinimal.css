@@ -305,6 +305,42 @@
   z-index: 100;
 }
 
+/* --- Ghost clip --- */
+.tl-clip--ghost {
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  opacity: 0.85;
+}
+
+.tl-clip--ghost .tl-clip-name::after {
+  content: " (ghost)";
+  opacity: 0.5;
+  font-size: 0.8em;
+}
+
+/* --- Paint tile preview --- */
+.tl-paint-tile {
+  position: absolute;
+  border: 1px dashed var(--accent, #d97706);
+  background: rgba(217, 119, 6, 0.15);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 90;
+}
+
+.tl-paint-tile--pending {
+  opacity: 0.4;
+}
+
+.tl-paint-badge {
+  position: absolute;
+  top: -14px;
+  right: 0;
+  font-size: 10px;
+  color: var(--accent, #d97706);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 /* --- Selected clip --- */
 .tl-clip--selected {
   outline: 2px solid var(--accent, #d97706);

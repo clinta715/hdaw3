@@ -184,6 +184,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "moveClip")        { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClip(i, t, s); return { false, QJsonValue::Null }; }
     if (m == "moveClipWithOverlap") { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClipWithOverlap(i, t, s); return { false, QJsonValue::Null }; }
     if (m == "duplicateClip")   { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); return { false, c.duplicateClip(i) }; }
+    if (m == "createGhostClip") { int i, t; double s; if (!requireInt(o, "sourceClipId", i, nullptr) || !requireDouble(o, "newStart", s, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr)) return makeError(-32602, "sourceClipId, newStart, newTrackIndex required"); return { false, c.createGhostClip(i, s, t) }; }
+    if (m == "paintClips") {
+        auto srcArr = o.value("sourceClipIds");
+        if (!srcArr.isArray()) return makeError(-32602, "sourceClipIds array required");
+        std::vector<int> srcIds;
+        for (const auto& e : srcArr.toArray()) {
+            if (!e.isDouble()) return makeError(-32602, "sourceClipIds element is not a number");
+            srcIds.push_back(static_cast<int>(e.toDouble()));
+        }
+        double origin; int target, count;
+        double spacing;
+        if (!requireDouble(o, "originBeat", origin, nullptr) || !requireDouble(o, "spacing", spacing, nullptr) || !requireInt(o, "targetTrackIndex", target, nullptr) || !requireInt(o, "count", count, nullptr))
+            return makeError(-32602, "originBeat, spacing, targetTrackIndex, count required");
+        auto ids = c.paintClips(srcIds, origin, spacing, target, count);
+        QJsonArray arr;
+        for (int id : ids) arr.append(id);
+        return { false, arr };
+    }
     if (m == "setClipStart")    { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "start", v, nullptr)) return makeError(-32602, "clipId and start required"); c.setClipStart(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipDuration") { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "duration", v, nullptr)) return makeError(-32602, "clipId and duration required"); c.setClipDuration(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipGain")     { int i; float v;  if (!requireInt(o, "clipId", i, nullptr) || !requireFloat(o, "gain", v, nullptr)) return makeError(-32602, "clipId and gain required"); c.setClipGain(i, v); return { false, QJsonValue::Null }; }

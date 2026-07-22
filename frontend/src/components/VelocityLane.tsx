@@ -47,7 +47,7 @@ export default function VelocityLane({
   );
 
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+    (e: globalThis.MouseEvent) => {
       if (!dragging) return;
       const deltaY = dragging.startY - e.clientY;
       const deltaVel = Math.round((deltaY / (LANE_HEIGHT - 4)) * 127);
@@ -61,13 +61,20 @@ export default function VelocityLane({
     setDragging(null);
   }, []);
 
+  // Window-level move/up listeners active while dragging. Both must be window
+  // level — element-level mousemove freezes the velocity drag when the cursor
+  // exits the lane bounds mid-gesture, and element-level mouseup misses a
+  // release outside the lane.
   useEffect(() => {
     if (dragging) {
-      const handleGlobalMouseUp = () => setDragging(null);
-      window.addEventListener("mouseup", handleGlobalMouseUp);
-      return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
     }
-  }, [dragging]);
+  }, [dragging, handleMouseMove, handleMouseUp]);
 
   const handleScroll = useCallback(() => {
     if (laneRef.current && onScrollChange) {
@@ -85,8 +92,6 @@ export default function VelocityLane({
     <div
       className="velocity-lane"
       ref={laneRef}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
       onScroll={handleScroll}
     >
       <div className="velocity-lane__content">

@@ -1728,3 +1728,47 @@ without revisiting the LGPL obligation.
   props on load).
 - Per-clip "preview original vs stretched" A/B UI.
 - MCP tools (`set_clip_stretch`, `fit_clip_to_loop`).
+
+## JUCE 9 Migration Preparation
+
+JUCE 9.0 (released July 21, 2026) focuses on SVG/variable fonts, macOS
+CoreAudio aggregates, and software renderer performance. The big-ticket
+item — **AudioProcessor v2** (sample-accurate automation, CLAP-specific
+features, MIDI UMP) — is still WIP and will land in follow-up releases.
+Do not upgrade until APv2 ships; there are no killer features in 9.0
+that justify the migration risk.
+
+### Already applied: `Font` deprecated constructor
+
+JUCE 8.0.0 deprecated all `Font` constructors except
+`Font(FontOptions)`. JUCE 9 will remove them. The one HDAW call site
+was at `src/proxy/ProxyEditor.cpp:13`:
+
+```cpp
+// BAD — deprecated in JUCE 8, removed in JUCE 9:
+nameLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+
+// GOOD:
+nameLabel.setFont(juce::Font(juce::FontOptions(16.0f).withBold()));
+```
+
+### Not affected (verified against JUCE 8.0.0 source)
+
+- **`AudioProcessorGraph::Node::nodeID`** — `nodeID` is a plain `const
+  NodeID` struct member. Direct access (`node->nodeID`) is the correct
+  API. No `.get()` accessor exists; the audit-agent report that it was
+  deprecated was incorrect.
+- **`AudioFormatReader::read(AudioBuffer<float>*, int, int, int64,
+  bool, bool)`** — The 6-arg `read` overload is the modern JUCE 8 form
+  and exists in 8.0.0. JUCE 9 is not expected to change it.
+
+### High-risk area for when APv2 ships
+
+The 8 `AudioProcessor` subclasses (`MainAudioProcessor`, `Track`,
+`ClipSourceProcessor`, `MidiClipProcessor`, `BusProcessorBase`,
+`SendProcessor`, `PluginProxySlot`, `CLAPPluginInstance`) override
+`processBlock`, `prepareToPlay`, `isBusesLayoutSupported`, and
+parameter management. APv2 changes how parameters are owned (by value
+on the derived type instead of on `AudioProcessor`). A compatibility
+layer is planned, but expect porting work in these files. Pin
+`GIT_TAG 8.0.0` in `cmake/JUCEHelper.cmake` until APv2 stabilizes.

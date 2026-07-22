@@ -151,6 +151,10 @@ namespace IDs {
     DECLARE_ID(stretchMode)    // 0=Off, 1=TempoMatch, 2=ManualRatio
     DECLARE_ID(stretchRatio)   // time ratio vs original source (targetDuration/sourceDuration)
     DECLARE_ID(sourceDuration) // original source length in seconds (cached at import)
+
+    // Ghost clips
+    DECLARE_ID(ghostSourceId) // clipID of the source clip; -1 = not a ghost
+    DECLARE_ID(isGhost)       // 0/1 bool: is this a ghost copy?
     #undef DECLARE_ID
 }
 

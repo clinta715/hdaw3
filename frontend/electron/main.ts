@@ -205,6 +205,21 @@ function setupIpc() {
 
 app.whenReady().then(async () => {
   setupIpc();
+
+  // Remove the default application menu entirely. On Windows/Linux the menu
+  // bar's accelerator keys steal modifier presses that the timeline uses for
+  // clip interactions — most notably Alt (paint/repeat), which activates the
+  // menu bar and disrupts the in-flight drag. HDAW defines its own keyboard
+  // shortcuts in the renderer, so the menu provides no value here.
+  Menu.setApplicationMenu(null);
+  // Keep a convenient way to open DevTools now that the default menu is gone.
+  const { globalShortcut } = await import("electron");
+  if (!app.isPackaged) {
+    globalShortcut.register("CommandOrControl+Shift+I", () => {
+      mainWindow?.webContents.toggleDevTools();
+    });
+  }
+
   const port = getPort();
   childProcess = spawnEngine(port);
   try {
@@ -231,4 +246,10 @@ app.on("before-quit", () => {
     childProcess.kill();
     childProcess = null;
   }
+});
+
+// Release the DevTools shortcut registered in whenReady().
+app.on("will-quit", async () => {
+  const { globalShortcut } = await import("electron");
+  globalShortcut.unregisterAll();
 });

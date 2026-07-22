@@ -39,6 +39,8 @@ public:
     virtual void setClipOffset(int clipId, double offset) = 0;
     virtual void setClipLooping(int clipId, bool looping) = 0;
     virtual int duplicateClip(int clipId) = 0;
+    virtual int createGhostClip(int sourceClipId, double newStart, int newTrackIndex) = 0;
+    virtual std::vector<int> paintClips(const std::vector<int>& sourceClipIds, double originBeat, double spacing, int targetTrackIndex, int count) = 0;
 
     // Audio clip timestretch. Stretch is resolved at graph-build time and
     // rendered off-thread via StretchCache; it is NOT RT-parametric (no

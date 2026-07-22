@@ -49,6 +49,8 @@ export interface ClipSnapshot {
   stretchMode: number;
   stretchRatio: number;
   sourceDuration: number;
+  isGhost: boolean;
+  ghostSourceId: number;
   gainEnvelope: GainEnvelopePoint[];
 }
 

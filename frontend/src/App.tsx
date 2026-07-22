@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { reportRpcError } from "./store/notifyStore";
 import "./App.css";
 import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
@@ -56,12 +57,11 @@ function App() {
           if (result === "cancel") return;
           if (result === "save") {
             const fp = useProjectStore.getState().filePath;
-            if (fp) {
-              // Existing project — save directly to original file
-              await rpc.call("project.saveProject", { filePath: fp }).catch(() => {});
-            } else {
-              // New project — prompt for save location
-              if (hdaw.showSaveDialog) {
+            try {
+              if (fp) {
+                await rpc.call("project.saveProject", { filePath: fp });
+              } else {
+                if (!hdaw.showSaveDialog) return;
                 const lastDir = localStorage.getItem("hdaw_last_save_dir") || "";
                 const defaultPath = lastDir
                   ? lastDir + "/project.hdaw"
@@ -74,16 +74,16 @@ function App() {
                     { name: "All Files", extensions: ["*"] },
                   ],
                 });
-                if (saveResult.canceled || !saveResult.filePath) {
-                  // User cancelled the save dialog — keep the window open.
+                if (saveResult.canceled || !saveResult.filePath)
                   return;
-                }
-                await rpc.call("project.saveProject", { filePath: saveResult.filePath }).catch(() => {});
+                await rpc.call("project.saveProject", { filePath: saveResult.filePath });
                 useProjectStore.getState().setFilePath(saveResult.filePath);
-                // Remember the directory for next time
                 const dir = saveResult.filePath.replace(/[\\/][^\\/]*$/, "");
                 localStorage.setItem("hdaw_last_save_dir", dir);
               }
+            } catch (err) {
+              reportRpcError("project.saveProject", err);
+              return;
             }
           }
           // "dont-save" falls through to close

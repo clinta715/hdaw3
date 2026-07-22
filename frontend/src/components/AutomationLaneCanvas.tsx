@@ -203,6 +203,26 @@ export default function AutomationLaneCanvas({
     if (Math.abs(snappedDeltaTime) < 0.001 && Math.abs(deltaValue) < 0.001) return;
 
     const origins = dragOriginsRef.current;
+
+    // Optimistic local update: apply the new positions to pointsByLane BEFORE
+    // the RPC round-trip so points don't snap back to their origin for the
+    // duration of commitMove's awaits + fetchForTrack. The isDragging preview
+    // overlay is already cleared by the caller (handleWindowMouseUp); without
+    // this patch the canvas would re-render from the stale points prop.
+    useAutomationStore.setState((s) => {
+      const arr = s.pointsByLane.get(laneName);
+      if (!arr) return {};
+      const next = arr.map((p) => {
+        const orig = origins.get(p.time);
+        if (!orig) return p;
+        return {
+          time: Math.max(0, orig.time + snappedDeltaTime),
+          value: Math.max(0, Math.min(1, orig.value + deltaValue)),
+        };
+      });
+      return { pointsByLane: new Map(s.pointsByLane).set(laneName, next) };
+    });
+
     for (const [, orig] of origins) {
       const newTime = Math.max(0, orig.time + snappedDeltaTime);
       const newValue = Math.max(0, Math.min(1, orig.value + deltaValue));

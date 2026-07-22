@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { TrackSnapshot, MeterLevels } from "../rpc/types";
 import { rpc } from "../rpc";
 import { colorStr } from "../theme";
@@ -10,8 +11,20 @@ interface Props {
 }
 
 export default function MixerStrip({ track, meter, isMaster }: Props) {
+  const [volume, setVolume] = useState(track.volume);
+  const [pan, setPan] = useState(track.pan);
+
   const pctL = Math.min(100, Math.max(0, meter.l * 100));
   const pctR = Math.min(100, Math.max(0, meter.r * 100));
+
+  const commitVolume = () => {
+    if (volume !== track.volume)
+      rpc.call("project.setTrackVolume", { trackIndex: track.index, volume }).catch(console.error);
+  };
+  const commitPan = () => {
+    if (pan !== track.pan)
+      rpc.call("project.setTrackPan", { trackIndex: track.index, pan }).catch(console.error);
+  };
 
   return (
     <div className={`mixer-strip ${isMaster ? "mixer-strip--master" : ""}`}>
@@ -28,10 +41,10 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
           min={0}
           max={1}
           step={0.01}
-          value={track.volume}
-          onChange={(e) => {
-            rpc.call("project.setTrackVolume", { trackIndex: track.index, volume: parseFloat(e.target.value) }).catch(console.error);
-          }}
+          value={volume}
+          onChange={(e) => setVolume(parseFloat(e.target.value))}
+          onMouseUp={commitVolume}
+          onBlur={commitVolume}
         />
         <input
           type="range"
@@ -39,10 +52,10 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
           min={-1}
           max={1}
           step={0.01}
-          value={track.pan}
-          onChange={(e) => {
-            rpc.call("project.setTrackPan", { trackIndex: track.index, pan: parseFloat(e.target.value) }).catch(console.error);
-          }}
+          value={pan}
+          onChange={(e) => setPan(parseFloat(e.target.value))}
+          onMouseUp={commitPan}
+          onBlur={commitPan}
         />
       </div>
       {!isMaster && (

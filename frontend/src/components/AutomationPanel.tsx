@@ -51,14 +51,23 @@ export default function AutomationPanel({ rpc }: Props) {
     const { lanes, selectedPointTimes, activeTrackIndex, removePoints, selectAll, clearSelection } = useAutomationStore.getState();
     if (activeTrackIndex === null) return;
 
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      for (const lane of lanes) {
+        const sel = selectedPointTimes.get(lane.name);
+        if (sel && sel.size > 0) {
+          removePoints(activeTrackIndex, lane.name, [...sel], rpc);
+          clearSelection(lane.name);
+          break;
+        }
+      }
+      return;
+    }
+
     for (const lane of lanes) {
       const sel = selectedPointTimes.get(lane.name);
       if (sel && sel.size > 0) {
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          removePoints(activeTrackIndex, lane.name, [...sel], rpc);
-          clearSelection(lane.name);
-        } else if (e.key === "a" && (e.ctrlKey || e.metaKey)) {
+        if (e.code === "KeyA" && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           selectAll(lane.name);
         } else if (e.key === "Escape") {

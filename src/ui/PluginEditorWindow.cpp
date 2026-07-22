@@ -35,6 +35,14 @@ PluginEditorWindow::PluginEditorWindow(juce::AudioProcessorEditor* editor,
 
     setVisible(true);
     toFront(true);
+
+    // JUCE's toFront() uses SWP_NOACTIVATE internally, so on Windows
+    // the window often stays behind the active foreground window.
+    // Flash via WS_EX_TOPMOST to force it above everything, then
+    // immediately release so the window doesn't stay pinned.
+    setAlwaysOnTop(true);
+    setAlwaysOnTop(false);
+
     juce::Logger::writeToLog("HDAW: PluginEditorWindow ctor: setVisible(true) called, isVisible=" +
         juce::String(isVisible() ? "true" : "false"));
 }

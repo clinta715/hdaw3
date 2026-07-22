@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { useUiStore } from "../store/uiStore";
+import { reportRpcError } from "../store/notifyStore";
 import { WaveformCanvas } from "./WaveformCanvas";
 import { rpc } from "../rpc";
 import "./AudioClipEditor.css";
@@ -31,7 +32,17 @@ export default function AudioClipEditor() {
   const [waveformWidth, setWaveformWidth] = useState(400);
   const [fileMissing, setFileMissing] = useState(false);
 
-  useEffect(() => { setFileMissing(false); }, [clipId]);
+  const lastClipRef = useRef(clipId);
+  useEffect(() => {
+    setFileMissing(false);
+    if (clip && clipId !== lastClipRef.current) {
+      lastClipRef.current = clipId;
+      setGainVal(clip.gain);
+      setFadeInVal(clip.fadeIn);
+      setFadeOutVal(clip.fadeOut);
+      setStretchRatioVal(clip.stretchRatio);
+    }
+  }, [clipId, clip]);
 
   useEffect(() => {
     const el = waveformRef.current;
@@ -46,8 +57,22 @@ export default function AudioClipEditor() {
   }, []);
 
   const call = useCallback((method: string, params: Record<string, unknown>) => {
-    rpc.call(method, params).catch(() => {});
+    rpc.call(method, params).catch((err) => reportRpcError(method, err));
   }, []);
+
+  // Local state for range inputs — optimistic update + commit on drag end
+  const [gain, setGainVal] = useState(clip?.gain ?? 1);
+  const gainRef = useRef(gain);
+  gainRef.current = gain;
+  const [fadeIn, setFadeInVal] = useState(clip?.fadeIn ?? 0);
+  const fadeInRef = useRef(fadeIn);
+  fadeInRef.current = fadeIn;
+  const [fadeOut, setFadeOutVal] = useState(clip?.fadeOut ?? 0);
+  const fadeOutRef = useRef(fadeOut);
+  fadeOutRef.current = fadeOut;
+  const [stretchRatio, setStretchRatioVal] = useState(clip?.stretchRatio ?? 1);
+  const stretchRatioRef = useRef(stretchRatio);
+  stretchRatioRef.current = stretchRatio;
 
   if (!isAudio || !clip) {
     return (
@@ -71,18 +96,21 @@ export default function AudioClipEditor() {
 
   const setGain = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
-    if (!isNaN(v)) call("project.setClipGain", { clipId, gain: v });
+    if (!isNaN(v)) setGainVal(v);
   };
+  const commitGain = () => call("project.setClipGain", { clipId, gain: gainRef.current });
 
   const setFadeIn = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
-    if (!isNaN(v)) call("project.setClipFadeIn", { clipId, fadeIn: v });
+    if (!isNaN(v)) setFadeInVal(v);
   };
+  const commitFadeIn = () => call("project.setClipFadeIn", { clipId, fadeIn: fadeInRef.current });
 
   const setFadeOut = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
-    if (!isNaN(v)) call("project.setClipFadeOut", { clipId, fadeOut: v });
+    if (!isNaN(v)) setFadeOutVal(v);
   };
+  const commitFadeOut = () => call("project.setClipFadeOut", { clipId, fadeOut: fadeOutRef.current });
 
   const toggleLoop = () => call("project.setClipLooping", { clipId, looping: !clip.looping });
 
@@ -97,8 +125,9 @@ export default function AudioClipEditor() {
 
   const setStretchRatio = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
-    if (!isNaN(v)) call("project.setClipStretchRatio", { clipId, ratio: v });
+    if (!isNaN(v)) setStretchRatioVal(v);
   };
+  const commitStretchRatio = () => call("project.setClipStretchRatio", { clipId, ratio: stretchRatioRef.current });
 
   const fitToLoop = () => call("project.fitClipToLoop", { clipId });
 
@@ -115,7 +144,7 @@ export default function AudioClipEditor() {
   const sliceAtPlayhead = () => call("project.sliceClipAtPlayhead", { clipId });
   const sliceAtTransients = () => call("project.sliceClipAtTransients", { clipId });
 
-  const gainDb = gainToDb(clip.gain);
+  const gainDb = gainToDb(gain);
 
   return (
     <div className="audio-clip-editor" key={clip.clipId}>
@@ -184,11 +213,13 @@ export default function AudioClipEditor() {
                 min={0.25}
                 max={4}
                 step={0.01}
-                defaultValue={clip.stretchRatio}
+                value={stretchRatio}
                 disabled={clip.stretchMode !== 2}
                 onChange={setStretchRatio}
+                onMouseUp={commitStretchRatio}
+                onBlur={commitStretchRatio}
               />
-              <span className="ace-val">{clip.stretchRatio.toFixed(2)}x</span>
+              <span className="ace-val">{stretchRatio.toFixed(2)}x</span>
             </div>
             <div className="ace-row">
               <button className="ace-btn ace-btn--accent" onClick={fitToLoop}>
@@ -207,8 +238,10 @@ export default function AudioClipEditor() {
                 min={0}
                 max={2}
                 step={0.01}
-                defaultValue={clip.gain}
+                value={gain}
                 onChange={setGain}
+                onMouseUp={commitGain}
+                onBlur={commitGain}
               />
               <span className="ace-val">{gainDb} dB</span>
             </div>
@@ -219,10 +252,12 @@ export default function AudioClipEditor() {
                 min={0}
                 max={maxFade}
                 step={0.1}
-                defaultValue={clip.fadeIn}
+                value={fadeIn}
                 onChange={setFadeIn}
+                onMouseUp={commitFadeIn}
+                onBlur={commitFadeIn}
               />
-              <span className="ace-val">{clip.fadeIn.toFixed(1)}b</span>
+              <span className="ace-val">{fadeIn.toFixed(1)}b</span>
             </div>
             <div className="ace-row">
               <label>Fade Out</label>
@@ -231,10 +266,12 @@ export default function AudioClipEditor() {
                 min={0}
                 max={maxFade}
                 step={0.1}
-                defaultValue={clip.fadeOut}
+                value={fadeOut}
                 onChange={setFadeOut}
+                onMouseUp={commitFadeOut}
+                onBlur={commitFadeOut}
               />
-              <span className="ace-val">{clip.fadeOut.toFixed(1)}b</span>
+              <span className="ace-val">{fadeOut.toFixed(1)}b</span>
             </div>
           </div>
 

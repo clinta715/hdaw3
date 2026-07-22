@@ -54,12 +54,25 @@ export default function FXChain() {
   }, [selectedTrackIndex, refreshKey]);
 
   const fetchPluginLists = useCallback(() => {
+    console.log("[FXChain] fetchPluginLists called");
     rpc.call("plugin.getInstrumentPlugins", {})
-      .then((data) => { if (Array.isArray(data)) setInstruments(data as PluginInfo[]); })
-      .catch(() => {});
+      .then((data) => {
+        console.log("[FXChain] getInstrumentPlugins returned", data, "isArray=", Array.isArray(data));
+        if (Array.isArray(data)) {
+          console.log("[FXChain] setting", data.length, "instruments");
+          setInstruments(data as PluginInfo[]);
+        }
+      })
+      .catch((err) => { console.error("[FXChain] getInstrumentPlugins failed:", err); });
     rpc.call("plugin.getEffectPlugins", {})
-      .then((data) => { if (Array.isArray(data)) setEffects(data as PluginInfo[]); })
-      .catch(() => {});
+      .then((data) => {
+        console.log("[FXChain] getEffectPlugins returned", data, "isArray=", Array.isArray(data));
+        if (Array.isArray(data)) {
+          console.log("[FXChain] setting", data.length, "effects");
+          setEffects(data as PluginInfo[]);
+        }
+      })
+      .catch((err) => { console.error("[FXChain] getEffectPlugins failed:", err); });
   }, []);
 
   useEffect(() => {
