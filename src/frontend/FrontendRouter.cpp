@@ -13,12 +13,14 @@
 #include "../common/PluginService.h"
 #include "../common/PluginParamService.h"
 #include "../common/MidiService.h"
+#include "../common/SettingsKeys.h"
 #include "../engine/PhraseGenerator.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
 #include <QString>
 #include <QStringList>
 
@@ -574,6 +576,135 @@ DispatchResult dispatchMidi(MidiService& s, const QString& m, const QJsonValue& 
     return makeError(-32601, "unknown midi method: " + m);
 }
 
+DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonValue& params) {
+    auto& dm = engine.getDeviceManager();
+    const auto o = paramsObject(params);
+
+    if (m == "getDeviceTypes") {
+        QJsonArray arr;
+        for (auto* type : dm.getAvailableDeviceTypes())
+            arr.append(QString::fromUtf8(type->getTypeName().toRawUTF8()));
+        return { false, arr };
+    }
+
+    if (m == "getOutputDevices") {
+        QJsonArray arr;
+        auto* devType = dm.getCurrentDeviceTypeObject();
+        if (devType != nullptr)
+            for (const auto& name : devType->getDeviceNames(false))
+                arr.append(QString::fromUtf8(name.toRawUTF8()));
+        return { false, arr };
+    }
+
+    if (m == "getInputDevices") {
+        QJsonArray arr;
+        auto* devType = dm.getCurrentDeviceTypeObject();
+        if (devType != nullptr)
+            for (const auto& name : devType->getDeviceNames(true))
+                arr.append(QString::fromUtf8(name.toRawUTF8()));
+        return { false, arr };
+    }
+
+    if (m == "getCurrentSetup") {
+        auto setup = dm.getAudioDeviceSetup();
+        auto* dev = dm.getCurrentAudioDevice();
+        double sr = setup.sampleRate;
+        int bs = setup.bufferSize;
+        double latencyMs = 0.0;
+        if (dev != nullptr) {
+            sr = dev->getCurrentSampleRate();
+            bs = dev->getCurrentBufferSizeSamples();
+            if (sr > 0.0) latencyMs = static_cast<double>(bs) / sr * 1000.0;
+        }
+        return { false, QJsonObject{
+            { "driver",      QString::fromUtf8(dm.getCurrentAudioDeviceType().toRawUTF8()) },
+            { "output",      QString::fromUtf8(setup.outputDeviceName.toRawUTF8()) },
+            { "input",       QString::fromUtf8(setup.inputDeviceName.toRawUTF8()) },
+            { "sampleRate",  sr },
+            { "bufferSize",  bs },
+            { "latencyMs",   latencyMs },
+        }};
+    }
+
+    if (m == "getSampleRates") {
+        QJsonArray arr;
+        auto* dev = dm.getCurrentAudioDevice();
+        if (dev != nullptr)
+            for (double rate : dev->getAvailableSampleRates())
+                arr.append(rate);
+        return { false, arr };
+    }
+
+    if (m == "getBufferSizes") {
+        QJsonArray arr;
+        auto* dev = dm.getCurrentAudioDevice();
+        if (dev != nullptr)
+            for (int buf : dev->getAvailableBufferSizes())
+                arr.append(buf);
+        return { false, arr };
+    }
+
+    if (m == "setDeviceType") {
+        std::string type;
+        if (!requireString(o, "type", type, nullptr))
+            return makeError(-32602, "type required");
+        dm.setCurrentAudioDeviceType(juce::String(type), true);
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyAudioDriver, QString::fromStdString(type));
+        return { false, QJsonValue::Null };
+    }
+
+    if (m == "setOutputDevice") {
+        std::string name;
+        if (!requireString(o, "name", name, nullptr))
+            return makeError(-32602, "name required");
+        auto setup = dm.getAudioDeviceSetup();
+        setup.outputDeviceName = juce::String(name);
+        dm.setAudioDeviceSetup(setup, true);
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyAudioOutputDevice, QString::fromStdString(name));
+        return { false, QJsonValue::Null };
+    }
+
+    if (m == "setInputDevice") {
+        std::string name;
+        if (!requireString(o, "name", name, nullptr))
+            return makeError(-32602, "name required");
+        auto setup = dm.getAudioDeviceSetup();
+        setup.inputDeviceName = juce::String(name);
+        dm.setAudioDeviceSetup(setup, true);
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyAudioInputDevice, QString::fromStdString(name));
+        return { false, QJsonValue::Null };
+    }
+
+    if (m == "setSampleRate") {
+        double rate;
+        if (!requireDouble(o, "rate", rate, nullptr))
+            return makeError(-32602, "rate required");
+        auto setup = dm.getAudioDeviceSetup();
+        setup.sampleRate = rate;
+        dm.setAudioDeviceSetup(setup, true);
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyAudioSampleRate, static_cast<qint64>(rate));
+        return { false, QJsonValue::Null };
+    }
+
+    if (m == "setBufferSize") {
+        int size;
+        if (!requireInt(o, "size", size, nullptr))
+            return makeError(-32602, "size required");
+        auto setup = dm.getAudioDeviceSetup();
+        setup.bufferSize = size;
+        dm.setAudioDeviceSetup(setup, true);
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyAudioBufferSize, size);
+        return { false, QJsonValue::Null };
+    }
+
+    return makeError(-32601, "unknown audio method: " + m);
+}
+
 // Render the project to an audio file. The ExportManager runs the render on
 // its own worker thread; this handler spins a local QEventLoop (processing
 // queued cross-thread invocations) until onComplete fires, broadcasting
@@ -1016,6 +1147,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     }
     else if (ns == method::Plugin)      return dispatchPlugin(engine.getPluginService(), m, params, server);
     else if (ns == method::PluginParam) return dispatchPluginParam(engine.getPluginParamService(), m, params);
+    else if (ns == method::Audio)       return dispatchAudio(engine, m, params);
     else if (ns == method::Midi)        return dispatchMidi(engine.getMidiService(), m, params);
     else if (ns == method::Export)      return dispatchExport(engine, m, params, server);
     else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
