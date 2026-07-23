@@ -12,6 +12,7 @@ import { useTimelineFade } from "../hooks/useTimelineFade";
 import { useTimelineLoopDrag } from "../hooks/useTimelineLoopDrag";
 import { useTimelineRubberBand } from "../hooks/useTimelineRubberBand";
 import { useTimelineZoom, MIN_PPS, MAX_PPS } from "../hooks/useTimelineZoom";
+import { TimelineContextMenu } from "./TimelineContextMenu";
 import "./TimelineMinimal.css";
 
 const TRACK_HEIGHT = 56;
@@ -273,10 +274,14 @@ export default function TimelineMinimal() {
     setContextMenu({ x: e.clientX, y: e.clientY, type: "marker", markerIndex });
   }, []);
 
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setEmptyContextMenu(null);
+  }, []);
+
   const handleDeleteClip = useCallback(() => {
     if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
-    setContextMenu(null);
     (async () => {
       try {
         await rpc.call("project.removeClip", { clipId: c.clipId });
@@ -291,7 +296,6 @@ export default function TimelineMinimal() {
   const handleDuplicateClip = useCallback(() => {
     if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
-    setContextMenu(null);
     (async () => {
       await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {});
       await useProjectStore.getState().syncDirtyFlag(rpc);
@@ -302,7 +306,6 @@ export default function TimelineMinimal() {
   const handleSplitClip = useCallback(() => {
     if (!contextMenu?.clip) return;
     const c = contextMenu.clip;
-    setContextMenu(null);
     (async () => {
       await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {});
       await useProjectStore.getState().syncDirtyFlag(rpc);
@@ -313,8 +316,8 @@ export default function TimelineMinimal() {
   const pasteClipboard = useCallback(async () => {
     const { clipClipboard } = useUiStore.getState();
     if (clipClipboard.length === 0) return;
-    const transport = useTransportStore.getState().transport;
-    const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
+    const tr = useTransportStore.getState().transport;
+    const playheadBeats = tr.currentTimeSeconds * (tr.bpm / 60);
     const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
     await rpc.call("project.beginTransaction", { name: "paste clips" });
     for (const clip of clipClipboard) {
@@ -328,7 +331,7 @@ export default function TimelineMinimal() {
     await rpc.call("project.endTransaction");
     await useProjectStore.getState().syncDirtyFlag(rpc);
     await useProjectStore.getState().syncSnapshot(rpc);
-  }, [rpc]);
+  }, []);
 
   // --- Keyboard shortcuts ---
   useEffect(() => {
@@ -673,198 +676,18 @@ export default function TimelineMinimal() {
         </div>
       </div>
 
-      {/* Context menu */}
-      {contextMenu && (
-        <div
-          className="clip-context-menu"
-          onClick={(e) => e.stopPropagation()}
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          {contextMenu.type === "clip" && contextMenu.clip && (
-            <>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                handleDeleteClip();
-              }}>
-                Delete
-              </button>
-              <button onMouseDown={(e) => { e.stopPropagation(); handleDuplicateClip(); }}>
-                Duplicate
-              </button>
-              <div className="ctx-separator" />
-              <button
-                className={contextMenu.clip.looping ? "ctx-checked" : ""}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  const clipId = contextMenu.clip!.clipId;
-                  const newLooping = !contextMenu.clip!.looping;
-                  rpc.call("project.setClipLooping", { clipId, looping: newLooping }).then(() => {
-                    useProjectStore.getState().syncSnapshot(rpc);
-                  });
-                  setContextMenu(null);
-                }}
-              >
-                {contextMenu.clip.looping ? "✓ " : ""}Looped
-              </button>
-              <button
-                className={contextMenu.clip.muted ? "ctx-checked" : ""}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  const clipId = contextMenu.clip!.clipId;
-                  const newMuted = !contextMenu.clip!.muted;
-                  rpc.call("project.setClipMuted", { clipId, muted: newMuted }).then(() => {
-                    useProjectStore.getState().syncSnapshot(rpc);
-                  });
-                  setContextMenu(null);
-                }}
-              >
-                {contextMenu.clip.muted ? "✓ " : ""}Muted
-              </button>
-              <div className="ctx-separator" />
-              {contextMenu.clip.isGhost && contextMenu.clip.ghostSourceId >= 0 && (
-                <button onMouseDown={(e) => {
-                  e.stopPropagation();
-                  setContextMenu(null);
-                  const sourceClip = clips.find(c => c.clipId === contextMenu.clip!.ghostSourceId);
-                  if (sourceClip) {
-                    useUiStore.getState().selectClip(sourceClip.clipId, sourceClip.trackIndex);
-                  }
-                }}>
-                  Select Original
-                </button>
-              )}
-              <button onMouseDown={(e) => { e.stopPropagation(); handleSplitClip(); }}>
-                Split
-              </button>
-              <button onMouseDown={(e) => { e.stopPropagation(); useUiStore.getState().setClipboard([contextMenu.clip!]); setContextMenu(null); }}>
-                Copy
-              </button>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                useUiStore.getState().setClipboard([contextMenu.clip!]);
-                setContextMenu(null);
-                rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
-                  rpc.call("project.removeClip", { clipId: contextMenu.clip!.clipId })
-                ).then(() => rpc.call("project.endTransaction")).then(() => {
-                  useProjectStore.getState().syncDirtyFlag(rpc);
-                  useProjectStore.getState().syncSnapshot(rpc);
-                }).catch(() => {});
-              }}>
-                Cut
-              </button>
-              <div className="ctx-separator" />
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.sliceClipAtPlayhead", { clipId });
-                setContextMenu(null);
-              }}>
-                Slice at Playhead
-              </button>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.sliceClipAtTransients", { clipId });
-                setContextMenu(null);
-              }}>
-                Slice at Transients
-              </button>
-              <div className="ctx-separator" />
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.copyAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
-                setContextMenu(null);
-              }}>
-                Copy Region
-              </button>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.cutAudioClipRegion", { clipId, regionStart: 0, regionEnd: 9999 });
-                setContextMenu(null);
-              }}>
-                Cut Region
-              </button>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.pasteAudioClipRegion", { clipId, pasteTime: transport.currentTimeSeconds });
-                setContextMenu(null);
-              }}>
-                Paste Region
-              </button>
-            </>
-          )}
-          {contextMenu.type === "marker" && (
-            <>
-              <button onMouseDown={(e) => {
-                e.stopPropagation();
-                const marker = markers.find(m => m.index === contextMenu.markerIndex);
-                const name = prompt("Marker name:", marker?.name ?? "");
-                if (name != null && contextMenu.markerIndex != null) {
-                  rpc.call("project.setMarkerName", { index: contextMenu.markerIndex, name }).then(() => {
-                    useMarkerStore.getState().syncMarkers(rpc);
-                  }).catch(() => {});
-                }
-                setContextMenu(null);
-              }}>
-                Rename Marker
-              </button>
-              <button className="ctx-danger" onMouseDown={(e) => {
-                e.stopPropagation();
-                if (contextMenu.markerIndex != null) {
-                  rpc.call("project.removeMarker", { index: contextMenu.markerIndex }).then(() => {
-                    useMarkerStore.getState().syncMarkers(rpc);
-                  }).catch(() => {});
-                }
-                setContextMenu(null);
-              }}>
-                Delete Marker
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Empty-area context menu */}
-      {emptyContextMenu && (
-        <div className="clip-context-menu" style={{ left: emptyContextMenu.x, top: emptyContextMenu.y }}
-          onMouseDown={(e) => e.stopPropagation()}>
-          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack").catch(() => {}); setEmptyContextMenu(null); }}>
-            Add Track
-          </button>
-          {useUiStore.getState().clipClipboard.length > 0 && (
-            <button onMouseDown={(e) => {
-              e.stopPropagation();
-              setEmptyContextMenu(null);
-              pasteClipboard();
-            }}>
-              Paste
-            </button>
-          )}
-          <button onMouseDown={(e) => {
-            e.stopPropagation();
-            const bpm = prompt("BPM:", "120");
-            if (bpm) rpc.call("project.setTempo", { bpm: parseFloat(bpm) || 120 }).catch(() => {});
-            setEmptyContextMenu(null);
-          }}>
-            Set Global BPM...
-          </button>
-          <button onMouseDown={(e) => {
-            e.stopPropagation();
-            rpc.call("project.addMidiClip", {
-              trackIndex: 0,
-              start: emptyContextMenu.beat,
-              duration: 4,
-              name: "New MIDI Clip",
-            }).catch(() => {});
-            setEmptyContextMenu(null);
-          }}>
-            Add MIDI Clip
-          </button>
-        </div>
-      )}
+      <TimelineContextMenu
+        contextMenu={contextMenu}
+        emptyContextMenu={emptyContextMenu}
+        clips={clips}
+        markers={markers}
+        selectedClipIds={selectedClipIds}
+        transport={transport}
+        onClose={handleCloseContextMenu}
+        onDeleteClip={handleDeleteClip}
+        onDuplicateClip={handleDuplicateClip}
+        onSplitClip={handleSplitClip}
+      />
     </div>
   );
 }
