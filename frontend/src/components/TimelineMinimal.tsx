@@ -9,6 +9,7 @@ import { snapToGrid } from "./snapUtils";
 import { useTimelineDrag } from "../hooks/useTimelineDrag";
 import { useTimelineTrim } from "../hooks/useTimelineTrim";
 import { useTimelineFade } from "../hooks/useTimelineFade";
+import { useTimelineLoopDrag } from "../hooks/useTimelineLoopDrag";
 import "./TimelineMinimal.css";
 
 function computeRubberBandSelection(
@@ -86,10 +87,13 @@ export default function TimelineMinimal() {
     tracksRef,
   });
 
-  // --- Loop drag state ---
-  const [loopDrag, setLoopDrag] = useState<"start" | "end" | null>(null);
-  const [dragBeat, setDragBeat] = useState(0);
-  const dragBeatRef = useRef(0);
+  // --- Loop drag (extracted hook) ---
+  const { startLoopDrag, dispLoopStart, dispLoopEnd } = useTimelineLoopDrag({
+    pps,
+    transport,
+    rpc,
+    tracksRef,
+  });
 
   // --- Rubber band state ---
   const [rubberBand, setRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -148,8 +152,6 @@ export default function TimelineMinimal() {
 
   // --- Loop positions ---
   const showLoop = transport.isLooping;
-  const dispLoopStart = loopDrag === "start" ? dragBeat : transport.loopStart;
-  const dispLoopEnd = loopDrag === "end" ? dragBeat : transport.loopEnd;
   const loopLX = Math.max(0, dispLoopStart) * pps;
   const loopRX = Math.max(loopLX / pps + 0.25, dispLoopEnd) * pps;
 
@@ -230,44 +232,6 @@ export default function TimelineMinimal() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [pps, transport.bpm, beatToSec]);
-
-  // --- Loop drag handlers ---
-  const startLoopDrag = useCallback((which: "start" | "end") => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setLoopDrag(which);
-    setDragBeat(which === "start" ? transport.loopStart : transport.loopEnd);
-
-    const onMove = (ev: globalThis.MouseEvent) => {
-      const rect = tracksRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const scroll = tracksRef.current?.scrollLeft ?? 0;
-      const beat = Math.max(0, (ev.clientX - rect.left + scroll) / pps);
-      dragBeatRef.current = beat;
-      setDragBeat(beat);
-    };
-
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      const finalBeat = dragBeatRef.current;
-      // Optimistic local update: patch the transport store's loop bound before
-      // clearing the drag preview, so the loop band doesn't snap back to its
-      // old position for the round-trip until the backend push arrives.
-      const t = useTransportStore.getState().transport;
-      useTransportStore.getState().update({
-        ...t,
-        loopStart: which === "start" ? finalBeat : t.loopStart,
-        loopEnd: which === "end" ? finalBeat : t.loopEnd,
-      });
-      setLoopDrag(null);
-      const method = which === "start" ? "project.setLoopStart" : "project.setLoopEnd";
-      rpc.call(method, which === "start" ? { beat: finalBeat } : { beat: finalBeat }).catch(() => {});
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [pps, transport.loopStart, transport.loopEnd, dragBeat]);
 
   // --- Rubber band handler ---
   const handleRubberBandStart = useCallback((e: React.MouseEvent) => {
