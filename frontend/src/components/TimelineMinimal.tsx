@@ -7,6 +7,7 @@ import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
 import { snapToGrid } from "./snapUtils";
 import { useTimelineDrag } from "../hooks/useTimelineDrag";
+import { useTimelineTrim } from "../hooks/useTimelineTrim";
 import "./TimelineMinimal.css";
 
 function computeRubberBandSelection(
@@ -36,15 +37,6 @@ const MIN_PPS = 10;
 const MAX_PPS = 200;
 const TRACK_HEIGHT = 56;
 const RULER_HEIGHT = 24;
-
-interface TrimState {
-  clipId: number;
-  side: "left" | "right";
-  initialStartBeat: number;
-  initialDuration: number;
-  currentStartBeat: number;
-  currentDuration: number;
-}
 
 export default function TimelineMinimal() {
   const [pps, setPps] = useState(DEFAULT_PPS);
@@ -77,13 +69,13 @@ export default function TimelineMinimal() {
     rpc,
   });
 
-  // --- Trim state ---
-  const [trimState, setTrimState] = useState<TrimState | null>(null);
-  const trimRef = useRef<TrimState | null>(null);
-  const updateTrim = useCallback((next: TrimState | null) => {
-    trimRef.current = next;
-    setTrimState(next);
-  }, []);
+  // --- Trim (extracted hook) ---
+  const { handleTrimStart, trimState } = useTimelineTrim({
+    clips,
+    pps,
+    rpc,
+    tracksRef,
+  });
 
   // --- Fade drag state ---
   const [fadeDrag, setFadeDrag] = useState<{ clipId: number; side: "in" | "out"; initialValue: number; startBeat: number; durationBeats: number } | null>(null);
@@ -317,100 +309,6 @@ export default function TimelineMinimal() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [clips, pps]);
-
-  const handleTrimStart = useCallback(
-    (e: React.MouseEvent, clip: typeof clips[0], side: "left" | "right") => {
-      e.stopPropagation();
-      e.preventDefault();
-      updateTrim({
-        clipId: clip.clipId,
-        side,
-        initialStartBeat: clip.startBeat,
-        initialDuration: clip.durationBeats,
-        currentStartBeat: clip.startBeat,
-        currentDuration: clip.durationBeats,
-      });
-
-      const onMove = (ev: globalThis.MouseEvent) => {
-        const d = trimRef.current;
-        if (!d) return;
-        const el = tracksRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const scroll = el.scrollLeft;
-        const rawMouseBeat = (ev.clientX - rect.left + scroll) / pps;
-        const { snapEnabled, snapDivision } = useUiStore.getState();
-        const mouseBeat = snapEnabled ? snapToGrid(rawMouseBeat, snapDivision) : rawMouseBeat;
-
-        if (d.side === "left") {
-          const maxStart = d.initialStartBeat + d.initialDuration - 0.5;
-          const newStart = Math.max(0, Math.min(mouseBeat, maxStart));
-          const newDuration = d.initialDuration + (d.initialStartBeat - newStart);
-          updateTrim({ ...d, currentStartBeat: newStart, currentDuration: newDuration });
-        } else {
-          const newDuration = Math.max(0.5, mouseBeat - d.initialStartBeat);
-          updateTrim({ ...d, currentDuration: newDuration });
-        }
-      };
-
-      const onUp = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        const d = trimRef.current;
-        if (!d) return;
-
-        const changed = d.side === "left"
-          ? Math.abs(d.currentStartBeat - d.initialStartBeat) > 0.01
-          : Math.abs(d.currentDuration - d.initialDuration) > 0.01;
-
-        // Optimistic local update: apply the committed trim to the snapshot
-        // BEFORE clearing the preview state, so the clip doesn't snap back to
-        // its pre-trim bounds for the 50-150ms until syncSnapshot returns.
-        if (changed) {
-          useProjectStore.setState((s) => {
-            if (!s.snapshot) return {};
-            return {
-              snapshot: {
-                ...s.snapshot,
-                clips: s.snapshot.clips.map((c) =>
-                  c.clipId === d.clipId
-                    ? { ...c, startBeat: d.currentStartBeat, durationBeats: d.currentDuration }
-                    : c
-                ),
-              },
-            };
-          });
-        }
-
-        updateTrim(null);
-
-        if (changed) {
-          if (d.side === "left") {
-            (async () => {
-              try {
-                await rpc.call("project.beginTransaction", { name: "trim clip" });
-                await rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
-                await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
-                await rpc.call("project.endTransaction");
-                await useProjectStore.getState().syncDirtyFlag(rpc);
-                await useProjectStore.getState().syncSnapshot(rpc);
-              } catch (e) { console.error("trim failed", e); }
-            })();
-          } else {
-            (async () => {
-              await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
-              await useProjectStore.getState().syncDirtyFlag(rpc);
-              await useProjectStore.getState().syncSnapshot(rpc);
-            })();
-          }
-        }
-      };
-
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [pps, updateTrim]
-  );
 
   const handleFadeStart = useCallback((e: React.MouseEvent, clip: typeof clips[0], side: "in" | "out") => {
     e.stopPropagation();
