@@ -62,6 +62,7 @@ option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" OFF)
 add_library(HDAW_lib STATIC
     src/engine/AudioEngine.cpp
     src/engine/AudioEngineCommands.cpp
+    src/engine/AudioEngineCommands_Clips.cpp
     src/engine/AudioRecorder.cpp
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp
@@ -81,6 +82,8 @@ add_library(HDAW_lib STATIC
     src/engine/PluginParamServiceImpl.cpp
     src/engine/MidiServiceImpl.cpp
     src/engine/AutomationClipboard.cpp
+    src/engine/BpmDetector.cpp
+    src/engine/BarSnap.cpp
     src/engine/AudioPreviewPlayer.cpp
 src/engine/StretchRenderer.cpp
     src/engine/StretchCache.cpp
@@ -235,6 +238,8 @@ if(HDAW_GUI)
         src/ui/PluginScannerDialog.cpp
         src/ui/ScanProgressDialog.h
         src/ui/ScanProgressDialog.cpp
+        src/ui/BpmInputDialog.h
+        src/ui/BpmInputDialog.cpp
         src/ui/PreferencesDialog.h
         src/ui/PreferencesDialog.cpp
     )
