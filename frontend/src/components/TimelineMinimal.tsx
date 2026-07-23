@@ -6,6 +6,7 @@ import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
 import { snapToGrid } from "./snapUtils";
+import { useTimelineDrag } from "../hooks/useTimelineDrag";
 import "./TimelineMinimal.css";
 
 function computeRubberBandSelection(
@@ -36,24 +37,6 @@ const MAX_PPS = 200;
 const TRACK_HEIGHT = 56;
 const RULER_HEIGHT = 24;
 
-interface DragState {
-  clipId: number;
-  startTrackIndex: number;
-  startBeat: number;
-  offsetX: number;
-  offsetY: number;
-  mouseX: number;
-  mouseY: number;
-  isDuplicate?: boolean;
-  duplicated?: boolean;
-  isGhostClone?: boolean;
-  ghostDuplicated?: boolean;
-  paintRepeat?: boolean;
-  paintOriginBeat: number;
-  paintSpacing: number;
-  paintedClipIds: number[];
-}
-
 interface TrimState {
   clipId: number;
   side: "left" | "right";
@@ -76,13 +59,23 @@ export default function TimelineMinimal() {
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
 
-  // --- Clip drag state ---
-  const [dragState, setDragState] = useState<DragState | null>(null);
-  const dragRef = useRef<DragState | null>(null);
-  const updateDrag = useCallback((next: DragState | null) => {
-    dragRef.current = next;
-    setDragState(next);
-  }, []);
+  // --- Clip drag (extracted hook) ---
+  const {
+    dragState,
+    handleClipMouseDown,
+    dragSelectedIdsRef,
+    dragCursor,
+    dragPreviewStyle,
+    dragPreviewClip,
+    paintTiles,
+  } = useTimelineDrag({
+    clips,
+    pps,
+    TRACK_HEIGHT,
+    tracksRef,
+    trackCount: tracks.length,
+    rpc,
+  });
 
   // --- Trim state ---
   const [trimState, setTrimState] = useState<TrimState | null>(null);
@@ -200,6 +193,24 @@ export default function TimelineMinimal() {
     if (!rect) return;
     const scroll = tracksRef.current?.scrollLeft ?? 0;
     const beat = Math.max(0, (e.clientX - rect.left + scroll) / pps);
+
+    // Ctrl+click = set loop start, Alt+click = set loop end
+    if (e.ctrlKey || e.metaKey) {
+      rpc.call("project.setLoopStart", { beat }).catch(() => {});
+      const t = useTransportStore.getState().transport;
+      useTransportStore.getState().update({ ...t, loopStart: beat });
+      // Auto-enable looping if not already on
+      if (!t.isLooping) rpc.call("transport.toggleLoop").catch(() => {});
+      return;
+    }
+    if (e.altKey) {
+      rpc.call("project.setLoopEnd", { beat }).catch(() => {});
+      const t = useTransportStore.getState().transport;
+      useTransportStore.getState().update({ ...t, loopEnd: beat });
+      if (!t.isLooping) rpc.call("transport.toggleLoop").catch(() => {});
+      return;
+    }
+
     rpc.call("transport.seekToSeconds", { seconds: beatToSec(beat) }).catch(() => {});
     scrubRef.current = true;
     setIsScrubbing(true);
@@ -306,57 +317,6 @@ export default function TimelineMinimal() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [clips, pps]);
-
-  // --- Clip drag handlers (Phase 3) ---
-  const dragSelectedIdsRef = useRef<Set<number>>(new Set());
-
-  // handleMouseMove / handleMouseUp are declared below this block; refs let
-  // handleClipMouseDown reference them without a declaration-order dependency.
-  const handleMouseMoveRef = useRef<(e: globalThis.MouseEvent) => void>(() => {});
-  const handleMouseUpRef = useRef<() => void>(() => {});
-
-  const handleClipMouseDown = useCallback(
-    (e: React.MouseEvent, clipId: number, trackIndex: number, startBeat: number) => {
-      e.preventDefault();
-      const el = e.currentTarget as HTMLElement;
-      const r = el.getBoundingClientRect();
-      const selected = useUiStore.getState().selectedClipIds;
-      dragSelectedIdsRef.current = selected.has(clipId) ? new Set(selected) : new Set([clipId]);
-      const paintRepeat = e.altKey ? true : undefined;
-      // Calculate paint spacing from the dragged clip's duration
-      let paintSpacing = 0;
-      if (paintRepeat) {
-        const clip = clips.find(c => c.clipId === clipId);
-        if (clip) paintSpacing = clip.durationBeats;
-      }
-      updateDrag({
-        clipId, startTrackIndex: trackIndex, startBeat,
-        offsetX: e.clientX - r.left, offsetY: e.clientY - r.top,
-        mouseX: e.clientX, mouseY: e.clientY,
-        isDuplicate: e.ctrlKey || e.metaKey ? true : undefined,
-        isGhostClone: (e.ctrlKey || e.metaKey) && e.shiftKey ? true : undefined,
-        paintRepeat,
-        paintOriginBeat: startBeat,
-        paintSpacing,
-        paintedClipIds: [],
-      });
-
-      // Install window-level move/up listeners, matching the trim/fade/loop
-      // drag pattern. Element-level handlers (onMouseMove/Up/Leave on .tl-tracks)
-      // miss events once the cursor leaves the tracks div — causing drags to be
-      // cancelled on leave or to leak state on release-outside. Window listeners
-      // stay active until mouseup regardless of where the cursor travels.
-      const onMove = (ev: globalThis.MouseEvent) => handleMouseMoveRef.current(ev);
-      const onUp = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        handleMouseUpRef.current();
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [updateDrag, clips]
-  );
 
   const handleTrimStart = useCallback(
     (e: React.MouseEvent, clip: typeof clips[0], side: "left" | "right") => {
@@ -522,201 +482,6 @@ export default function TimelineMinimal() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [pps]);
-
-  const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
-    const d = dragRef.current;
-    if (!d) return;
-
-    // Paint/Repeat (Alt+drag)
-    if (d.paintRepeat && d.paintSpacing > 0) {
-      const el = tracksRef.current;
-      if (!el) { updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY }); return; }
-      const rect = el.getBoundingClientRect();
-      const scroll = el.scrollLeft;
-      const mouseBeat = Math.max(0, (e.clientX - rect.left + scroll) / pps);
-      const desiredCount = Math.max(0, Math.floor((mouseBeat - d.paintOriginBeat) / d.paintSpacing));
-      const currentCount = d.paintedClipIds.length;
-
-      if (desiredCount > currentCount) {
-        const ids = dragSelectedIdsRef.current;
-        (async () => {
-          for (let i = currentCount; i < desiredCount; i++) {
-            const newStart = d.paintOriginBeat + (i + 1) * d.paintSpacing;
-            for (const id of ids) {
-              const clip = clips.find(c => c.clipId === id);
-              if (!clip) continue;
-              const r = await rpc.call("project.duplicateClip", { clipId: id }).catch(() => null);
-              if (r && typeof r === "object" && "clipId" in r) {
-                const newId = (r as { clipId: number }).clipId;
-                const offset = clip.startBeat - d.paintOriginBeat;
-                await rpc.call("project.moveClipWithOverlap", {
-                  clipId: newId, newTrackIndex: d.startTrackIndex, newStart: newStart + offset
-                }).catch(() => {});
-                d.paintedClipIds.push(newId);
-              }
-            }
-          }
-          await useProjectStore.getState().syncDirtyFlag(rpc);
-          await useProjectStore.getState().syncSnapshot(rpc);
-        })();
-      } else if (desiredCount < currentCount) {
-        const toRemove = d.paintedClipIds.splice(desiredCount);
-        (async () => {
-          for (const id of toRemove) {
-            await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
-          }
-          await useProjectStore.getState().syncDirtyFlag(rpc);
-          await useProjectStore.getState().syncSnapshot(rpc);
-        })();
-      }
-
-      updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY });
-      return;
-    }
-
-    // Ghost clone (Ctrl+Shift+drag)
-    if (d.isGhostClone && !d.ghostDuplicated) {
-      const { snapshot } = useProjectStore.getState();
-      if (!snapshot) return;
-      const ids = dragSelectedIdsRef.current;
-      const newIds = new Set<number>();
-      dragRef.current = { ...d, ghostDuplicated: true };
-      setDragState(dragRef.current);
-      (async () => {
-        await rpc.call("project.beginTransaction", { name: "ghost-clone clips" });
-        const el = tracksRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const relY = e.clientY - rect.top;
-        const newTrackIdx = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
-        const relX = e.clientX - rect.left + el.scrollLeft;
-        const rawStart = Math.max(0, (relX - d.offsetX) / pps);
-        for (const id of ids) {
-          const clip = clips.find(c => c.clipId === id);
-          if (!clip) continue;
-          const offset = clip.startBeat - d.startBeat;
-          const r = await rpc.call("project.createGhostClip", {
-            sourceClipId: id, newStart: Math.max(0, rawStart + offset), newTrackIndex: newTrackIdx
-          }).catch(() => null);
-          if (r && typeof r === "object" && "clipId" in r) newIds.add((r as { clipId: number }).clipId);
-        }
-        await rpc.call("project.endTransaction");
-        if (newIds.size > 0) {
-          useUiStore.setState({ selectedClipIds: newIds });
-          dragSelectedIdsRef.current = newIds;
-          const first = [...newIds][0];
-          dragRef.current = { ...d, clipId: first, ghostDuplicated: true };
-          setDragState(dragRef.current);
-        }
-        await useProjectStore.getState().syncDirtyFlag(rpc);
-        await useProjectStore.getState().syncSnapshot(rpc);
-      })();
-      return;
-    }
-
-    // Duplicate (Ctrl+drag) — existing clone-then-drag behavior
-    if (d.isDuplicate && !d.duplicated) {
-      const { snapshot } = useProjectStore.getState();
-      if (!snapshot) return;
-      const ids = dragSelectedIdsRef.current;
-      const newIds = new Set<number>();
-      dragRef.current = { ...d, duplicated: true };
-      setDragState(dragRef.current);
-      (async () => {
-        await rpc.call("project.beginTransaction", { name: "duplicate clips" });
-        for (const id of ids) {
-          const r = await rpc.call("project.duplicateClip", { clipId: id }).catch(() => null);
-          if (r && typeof r === "object" && "clipId" in r) newIds.add((r as { clipId: number }).clipId);
-        }
-        await rpc.call("project.endTransaction");
-        if (newIds.size > 0) {
-          useUiStore.setState({ selectedClipIds: newIds });
-          dragSelectedIdsRef.current = newIds;
-          const first = [...newIds][0];
-          dragRef.current = { ...d, clipId: first, duplicated: true };
-          setDragState(dragRef.current);
-        }
-        await useProjectStore.getState().syncDirtyFlag(rpc);
-        await useProjectStore.getState().syncSnapshot(rpc);
-      })();
-      return;
-    }
-    updateDrag({ ...d, mouseX: e.clientX, mouseY: e.clientY });
-  }, [updateDrag, pps, tracks.length, clips]);
-
-  const handleMouseUp = useCallback(() => {
-    const d = dragRef.current;
-    if (!d) return;
-    // For paint/repeat, just clear paint state — tiles are already committed
-    if (d.paintRepeat) {
-      d.paintedClipIds = [];
-      updateDrag(null);
-      return;
-    }
-    const el = tracksRef.current;
-    updateDrag(null);
-    if (!el) return;
-    const cr = el.getBoundingClientRect();
-    const relX = d.mouseX - cr.left;
-    const relY = d.mouseY - cr.top;
-    const rawStart = Math.max(0, (relX - d.offsetX) / pps);
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
-    const newTrackIndex = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
-    if (newTrackIndex !== d.startTrackIndex || Math.abs(newStart - d.startBeat) > 0.01) {
-      const deltaStart = newStart - d.startBeat;
-      const deltaTrack = newTrackIndex - d.startTrackIndex;
-      const ids = dragSelectedIdsRef.current;
-
-      // Optimistic local update: move the dragged clips to their destination in
-      // the snapshot *before* the RPC round-trip. Without this, clearing drag
-      // state reverts the clip to its origin (preview gone, snapshot still stale)
-      // for the 50-150ms until syncSnapshot returns — the user sees a snap-back
-      // followed by a delayed reappearance at the destination. The dragged
-      // clip's own start/track always land at the requested values
-      // (moveClipWithOverlap never alters the incoming clip's position), so this
-      // patch is exact for the moved clips; any overlap trims/splits on OTHER
-      // clips are reconciled by syncSnapshot below.
-      const maxTrack = tracks.length - 1;
-      useProjectStore.setState((s) => {
-        if (!s.snapshot) return {};
-        const movedSet = ids;
-        return {
-          snapshot: {
-            ...s.snapshot,
-            clips: s.snapshot.clips.map((c) =>
-              movedSet.has(c.clipId)
-                ? {
-                    ...c,
-                    startBeat: Math.max(0, c.startBeat + deltaStart),
-                    trackIndex: Math.min(Math.max(0, c.trackIndex + deltaTrack), maxTrack),
-                  }
-                : c
-            ),
-          },
-        };
-      });
-
-      (async () => {
-        await rpc.call("project.beginTransaction", { name: "move clips" });
-        for (const id of ids) {
-          const clip = clips.find(c => c.clipId === id);
-          if (!clip) continue;
-          const clipNewStart = Math.max(0, clip.startBeat + deltaStart);
-          const clipNewTrack = Math.min(Math.max(0, clip.trackIndex + deltaTrack), tracks.length - 1);
-          await rpc.call("project.moveClipWithOverlap", { clipId: id, newTrackIndex: clipNewTrack, newStart: clipNewStart }).catch(() => {});
-        }
-        await rpc.call("project.endTransaction");
-        await useProjectStore.getState().syncDirtyFlag(rpc);
-        await useProjectStore.getState().syncSnapshot(rpc);
-      })();
-    }
-  }, [pps, tracks.length, clips, updateDrag]);
-
-  // Keep the ref indirection used by handleClipMouseDown current. The handlers
-  // are recreated when their deps change; the ref always points at the latest.
-  handleMouseMoveRef.current = handleMouseMove;
-  handleMouseUpRef.current = handleMouseUp;
 
   // --- File drag-and-drop import ---
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -965,67 +730,6 @@ export default function TimelineMinimal() {
     return () => window.removeEventListener("keydown", handler);
   }, [pasteClipboard]);
 
-  // --- Drag cursor (spec §5.3) ---
-  // Reflect the active modifier drag so the user gets immediate feedback that
-  // the modifier was recognized before any tile/clone is committed.
-  const dragCursor = dragState
-    ? dragState.paintRepeat
-      ? "crosshair"
-      : dragState.isGhostClone
-        ? "alias"
-        : dragState.isDuplicate
-          ? "copy"
-          : "grabbing"
-    : undefined;
-
-  // --- Drag preview ---
-  let dragPreviewStyle: React.CSSProperties | undefined;
-  let dragPreviewClip: (typeof clips)[0] | undefined;
-  if (dragState && !dragState.paintRepeat) {
-    const el = tracksRef.current;
-    if (el) {
-      const cr = el.getBoundingClientRect();
-      const relX = dragState.mouseX - cr.left;
-      const relY = dragState.mouseY - cr.top;
-      const rawStart = Math.max(0, (relX - dragState.offsetX) / pps);
-      const { snapEnabled, snapDivision } = useUiStore.getState();
-      const gs = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
-      const gi = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), tracks.length - 1);
-      const orig = clips.find((c) => c.clipId === dragState.clipId);
-      if (orig) {
-        dragPreviewClip = orig;
-        dragPreviewStyle = { left: gs * pps, width: Math.max(4, orig.durationBeats * pps), height: TRACK_HEIGHT - 8, top: gi * TRACK_HEIGHT + 4 };
-      }
-    }
-  }
-
-  // --- Paint tile previews ---
-  const paintTiles: { left: number; width: number; top: number }[] = [];
-  if (dragState?.paintRepeat && dragState.paintSpacing > 0) {
-    const el = tracksRef.current;
-    if (el) {
-      const cr = el.getBoundingClientRect();
-      const mouseBeat = Math.max(0, (dragState.mouseX - cr.left + el.scrollLeft) / pps);
-      const desiredCount = Math.max(0, Math.floor((mouseBeat - dragState.paintOriginBeat) / dragState.paintSpacing));
-      const orig = clips.find((c) => c.clipId === dragState.clipId);
-      const trackTop = dragState.startTrackIndex * TRACK_HEIGHT;
-      if (orig) {
-        const tileW = Math.max(4, orig.durationBeats * pps);
-        for (let i = 0; i <= desiredCount; i++) {
-          const tileBeat = dragState.paintOriginBeat + i * dragState.paintSpacing;
-          const isCommitted = i < dragState.paintedClipIds.length;
-          if (!isCommitted) {
-            paintTiles.push({
-              left: tileBeat * pps,
-              width: tileW,
-              top: trackTop + 4,
-            });
-          }
-        }
-      }
-    }
-  }
-
   return (
     <div className="timeline-minimal">
       {/* Toolbar */}
@@ -1191,6 +895,18 @@ export default function TimelineMinimal() {
                         <div className="fade-handle fade-handle-out" onMouseDown={(e) => handleFadeStart(e, clip, "out")} onClick={(e) => e.stopPropagation()} />
                         <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} onClick={(e) => e.stopPropagation()} />
                         <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} onClick={(e) => e.stopPropagation()} />
+                        {clip.looping && (
+                          <div
+                            className="tl-loop-paint-handle"
+                            title="Drag to paint repetitions"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              handleClipMouseDown(e, clip.clipId, idx, clip.startBeat, true);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -1261,6 +977,36 @@ export default function TimelineMinimal() {
               <button onMouseDown={(e) => { e.stopPropagation(); handleDuplicateClip(); }}>
                 Duplicate
               </button>
+              <div className="ctx-separator" />
+              <button
+                className={contextMenu.clip.looping ? "ctx-checked" : ""}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  const clipId = contextMenu.clip!.clipId;
+                  const newLooping = !contextMenu.clip!.looping;
+                  rpc.call("project.setClipLooping", { clipId, looping: newLooping }).then(() => {
+                    useProjectStore.getState().syncSnapshot(rpc);
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                {contextMenu.clip.looping ? "✓ " : ""}Looped
+              </button>
+              <button
+                className={contextMenu.clip.muted ? "ctx-checked" : ""}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  const clipId = contextMenu.clip!.clipId;
+                  const newMuted = !contextMenu.clip!.muted;
+                  rpc.call("project.setClipMuted", { clipId, muted: newMuted }).then(() => {
+                    useProjectStore.getState().syncSnapshot(rpc);
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                {contextMenu.clip.muted ? "✓ " : ""}Muted
+              </button>
+              <div className="ctx-separator" />
               {contextMenu.clip.isGhost && contextMenu.clip.ghostSourceId >= 0 && (
                 <button onMouseDown={(e) => {
                   e.stopPropagation();

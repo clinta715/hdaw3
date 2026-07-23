@@ -15,7 +15,9 @@ export interface DragState {
   mouseX: number;
   mouseY: number;
   isDuplicate?: boolean;
+  duplicated?: boolean;
   isGhostClone?: boolean;
+  ghostDuplicated?: boolean;
   paintRepeat?: boolean;
   paintOriginBeat: number;
   paintSpacing: number;
