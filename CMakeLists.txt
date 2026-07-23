@@ -177,6 +177,7 @@ if(HDAW_GUI)
     target_sources(HDAW PRIVATE
         src/ui/MainWindow.h
         src/ui/MainWindow.cpp
+        src/ui/MainWindowMenus.cpp
         src/ui/VUMeter.h
         src/ui/VUMeter.cpp
         src/ui/TimelineView.h
