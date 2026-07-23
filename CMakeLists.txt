@@ -178,6 +178,7 @@ if(HDAW_GUI)
         src/ui/MainWindow.h
         src/ui/MainWindow.cpp
         src/ui/MainWindowMenus.cpp
+        src/ui/MainWindowConnections.cpp
         src/ui/VUMeter.h
         src/ui/VUMeter.cpp
         src/ui/TimelineView.h
