@@ -135,6 +135,15 @@ struct LfoSnapshot {
     bool enabled = true;
 };
 
+struct InternalFxParamSnapshot {
+    int paramIndex = 0;
+    std::string name;
+    float value = 0.0f;
+    float minValue = 0.0f;
+    float maxValue = 0.0f;
+    float defaultValue = 0.0f;
+};
+
 class ReadModel {
 public:
     virtual ~ReadModel() = default;
@@ -151,6 +160,8 @@ public:
     virtual int getScaleMode() const = 0;
 
     virtual std::vector<FxSlotSnapshot> getFxSlots(int trackIndex) const = 0;
+    virtual std::vector<InternalFxParamSnapshot> getInternalFxParams(int trackIndex,
+        int slotIndex) const = 0;
     virtual std::vector<AutomationLaneSnapshot> getAutomationLanes(int trackIndex) const = 0;
     virtual std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
         const std::string& laneName) const = 0;

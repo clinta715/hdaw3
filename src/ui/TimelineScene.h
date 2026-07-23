@@ -37,6 +37,8 @@ public:
 
     void setInteraction(TimelineInteraction* i) { interaction = i; }
 
+    ClipItem* findClipById(int clipId) const;
+
 signals:
     void trackCountChanged(int count);
     void clipSelected(juce::ValueTree clipTree);
@@ -58,6 +60,7 @@ private:
 
     ClipItem* createClipItem(juce::ValueTree clipTree);
     void removeClipItem(juce::ValueTree clipTree);
+    void removeTrackRow(juce::ValueTree removedTrack, int removedIndex);
     void updateClipItem(juce::ValueTree clipTree);
     void ensureViewportFocus();
 

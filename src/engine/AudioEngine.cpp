@@ -559,6 +559,65 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                 mainProcessor->rebuildModulation(tIdx);
         }
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::FX_SLOT))
+    {
+        if (!mainProcessor) return;
+        // Forward param_N property changes to the live TrackFXSlot for
+        // internal (non-plugin) FX. Plugin param changes go through the
+        // SPSC bridge — they are not handled here.
+        juce::String propStr = property.toString();
+        if (!propStr.startsWith("param_"))
+            return;
+
+        // Extract param index from "param_N"
+        int paramIndex = propStr.substring(6).getIntValue();
+        float value = static_cast<float>(treeWhosePropertyHasChanged.getProperty(property));
+
+        // Find track index and slot index by walking the tree
+        auto fxChain = treeWhosePropertyHasChanged.getParent();
+        if (!fxChain.isValid() || !fxChain.hasType(IDs::FX_CHAIN))
+            return;
+        auto trackTree = fxChain.getParent();
+        if (!trackTree.isValid() || !trackTree.hasType(IDs::TRACK))
+            return;
+
+        auto trackList = projectModel.getTrackListTree();
+        int trackIdx = -1;
+        int slotIdx = -1;
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+        {
+            if (trackList.getChild(t) == trackTree)
+            {
+                trackIdx = t;
+                break;
+            }
+        }
+        if (trackIdx < 0) return;
+
+        // Find slot index
+        for (int s = 0; s < fxChain.getNumChildren(); ++s)
+        {
+            if (fxChain.getChild(s) == treeWhosePropertyHasChanged)
+            {
+                slotIdx = s;
+                break;
+            }
+        }
+        if (slotIdx < 0) return;
+
+        // Only forward to internal (non-plugin) slots
+        juce::String fxType = treeWhosePropertyHasChanged.getProperty(IDs::fxType).toString();
+        if (fxType == "plugin" || fxType.isEmpty())
+            return;
+
+        auto* track = mainProcessor->getTrack(trackIdx);
+        if (track == nullptr) return;
+        auto& chain = track->getFXChain();
+        if (slotIdx >= static_cast<int>(chain.size()) || chain[slotIdx] == nullptr)
+            return;
+
+        chain[slotIdx]->setInternalParam(paramIndex, value);
+    }
 }
 
 void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded)

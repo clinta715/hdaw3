@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && tsc -p tsconfig.node.json && electron .\"",
+    "prebuild": "node -e \"const fs=require('fs');const p=require('./package.json');fs.writeFileSync('src/version.ts','export const VERSION = \\\"'+p.version+'\\\";\\n')\"",
     "build": "tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "package": "electron-builder --win --x64",

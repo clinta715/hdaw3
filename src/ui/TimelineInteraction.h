@@ -82,6 +82,7 @@ private:
 
     // Duplicate-drag state
     QList<ClipItem*> duplicateItems;
+    QList<int> duplicateGhostIds;
     bool duplicatesCreated = false;
 
     // Cross-track drag state

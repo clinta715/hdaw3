@@ -31,6 +31,12 @@ double TimelineScene::getTrackHeight(int trackIndex) const
     return defaultTrackHeight;
 }
 
+ClipItem* TimelineScene::findClipById(int clipId) const
+{
+    auto it = clipItemMap.find(clipId);
+    return (it != clipItemMap.end()) ? it->second : nullptr;
+}
+
 void TimelineScene::rebuildFromValueTree()
 {
     HDAW_LOG("TSRebuild", QString("START - tracks=%1").arg(engine.getProjectModel().getTrackListTree().getNumChildren()));
@@ -171,6 +177,45 @@ void TimelineScene::removeClipItem(juce::ValueTree clipTree)
     }
 }
 
+void TimelineScene::removeTrackRow(juce::ValueTree removedTrack, int removedIndex)
+{
+    double removedY = rulerHeight;
+    for (int i = 0; i < removedIndex; ++i)
+        removedY += getTrackHeight(i);
+    double removedH = removedTrack.getProperty(IDs::trackHeight, defaultTrackHeight);
+
+    auto clipList = removedTrack.getChildWithName(IDs::CLIP_LIST);
+    if (clipList.isValid())
+    {
+        for (int i = 0; i < clipList.getNumChildren(); ++i)
+        {
+            int clipID = clipList.getChild(i).getProperty(IDs::clipID);
+            auto it = clipItemMap.find(clipID);
+            if (it != clipItemMap.end())
+            {
+                removeItem(it->second);
+                delete it->second;
+                clipItemMap.erase(it);
+            }
+        }
+    }
+
+    for (auto& [id, item] : clipItemMap)
+    {
+        double cy = item->pos().y();
+        if (cy >= removedY + removedH)
+            item->setPos(item->pos().x(), cy - removedH);
+    }
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    trackCount = trackList.getNumChildren();
+    double totalH = rulerHeight;
+    for (int i = 0; i < trackCount; ++i)
+        totalH += getTrackHeight(i);
+    setSceneRect(0, 0, 4000, totalH + 20);
+    emit trackCountChanged(trackCount);
+}
+
 void TimelineScene::updateClipItem(juce::ValueTree clipTree)
 {
     int clipID = clipTree.getProperty(IDs::clipID);
@@ -239,13 +284,13 @@ void TimelineScene::valueTreeChildAdded(juce::ValueTree& parentTree, juce::Value
     }
 }
 
-void TimelineScene::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int)
+void TimelineScene::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int index)
 {
     juce::ignoreUnused(parentTree);
     if (childWhichHasBeenRemoved.hasType(IDs::CLIP))
         removeClipItem(childWhichHasBeenRemoved);
-    if (childWhichHasBeenRemoved.hasType(IDs::TRACK))
-        rebuildFromValueTree();
+    else if (childWhichHasBeenRemoved.hasType(IDs::TRACK))
+        removeTrackRow(childWhichHasBeenRemoved, index);
 }
 
 void TimelineScene::valueTreeChildOrderChanged(juce::ValueTree&, int, int)

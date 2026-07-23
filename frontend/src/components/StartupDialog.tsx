@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
+import { VERSION } from "../version";
 import "./StartupDialog.css";
 
 interface Props {
@@ -57,7 +58,7 @@ export default function StartupDialog({ onClose }: Props) {
     <div className="modal-overlay">
       <div className="startup-dialog">
         <h1>HDAW</h1>
-        <p className="startup-version">v0.12.0</p>
+        <p className="startup-version">v{VERSION}</p>
         <div className="startup-actions">
           <button className="startup-btn primary" onClick={handleNew}>New Project</button>
           <button className="startup-btn" onClick={handleOpen}>Open Project...</button>

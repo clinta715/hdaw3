@@ -441,6 +441,11 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
         QJsonArray arr; for (const auto& t : r.getTempoPoints()) arr.append(toJson(t));
         return { false, arr };
     }
+    if (m == "getInternalFxParams") {
+        int ti, si; if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)) return makeError(-32602, "trackIndex and slotIndex required");
+        QJsonArray arr; for (const auto& p : r.getInternalFxParams(ti, si)) arr.append(toJson(p));
+        return { false, arr };
+    }
     if (m == "getAutomatableParams") {
         int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
         QJsonArray arr; for (const auto& a : r.getAutomatableParams(i)) arr.append(toJson(a));

@@ -182,7 +182,10 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
         slot->setBypassed(slotTree.getProperty(IDs::bypassed));
 
         if (fxSpec.sampleRate > 0)
+        {
             slot->prepare(fxSpec);
+            slot->loadParamsFromTree(slotTree);
+        }
 
         fxChain.push_back(std::move(slot));
     }

@@ -194,6 +194,17 @@ inline QJsonObject toJson(const MeterSnapshot& m, const char* leftKey = "l", con
     };
 }
 
+inline QJsonObject toJson(const InternalFxParamSnapshot& p) {
+    return QJsonObject{
+        { "paramIndex",    p.paramIndex },
+        { "name",          QString::fromStdString(p.name) },
+        { "value",         static_cast<double>(p.value) },
+        { "minValue",      static_cast<double>(p.minValue) },
+        { "maxValue",      static_cast<double>(p.maxValue) },
+        { "defaultValue",  static_cast<double>(p.defaultValue) },
+    };
+}
+
 inline QJsonObject toJson(const LfoSnapshot& l) {
     return QJsonObject{
         { "index",        l.index },

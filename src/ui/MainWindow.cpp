@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "common/Version.h"
 #include "TimelineView.h"
 #include "MixerWidget.h"
 #include "PianoRollWidget.h"
@@ -39,13 +40,12 @@
 #include <QShortcut>
 #include <QInputDialog>
 
-// Keep this in sync with VERSION in CMakeLists.txt.
-static constexpr const char* APP_VERSION = "0.12.0";
+// Version is now defined via common/Version.h (generated from CMake project version).
 
 MainWindow::MainWindow(AudioEngine& ae, QWidget* parent)
     : QMainWindow(parent), engine(ae)
 {
-    setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
+    setWindowTitle(QString("HDAW %1 - Untitled").arg(HDAW_VERSION));
     resize(1200, 800);
 
     mcpServer_ = new mcp::McpServer(this);
@@ -786,7 +786,7 @@ void MainWindow::onNew()
     currentFile = {};
     audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
-    setWindowTitle(QString("HDAW %1 - Untitled").arg(APP_VERSION));
+    setWindowTitle(QString("HDAW %1 - Untitled").arg(HDAW_VERSION));
 }
 
 void MainWindow::onOpen()
@@ -835,7 +835,7 @@ void MainWindow::openProjectFile(const QString& path)
     currentFile = file;
     audioGraphCmds->rebuildRoutingGraph();
     rebuildAllUI();
-    setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
+    setWindowTitle(QString("HDAW %1 - %2").arg(HDAW_VERSION)
         .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
 
     addToRecentProjects(path);
@@ -915,7 +915,7 @@ void MainWindow::onSaveAs()
     settings.setValue(PreferencesDialog::kKeyLastProjectDir,
         QFileInfo(path).absolutePath());
     currentFile = file;
-    setWindowTitle(QString("HDAW %1 - %2").arg(APP_VERSION)
+    setWindowTitle(QString("HDAW %1 - %2").arg(HDAW_VERSION)
         .arg(QString::fromUtf8(file.getFileName().toRawUTF8())));
     statusBar()->showMessage("Project saved", 3000);
 }

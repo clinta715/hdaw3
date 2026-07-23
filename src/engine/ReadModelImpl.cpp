@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "Track.h"
+#include "TrackFXSlot.h"
 #include "../model/ProjectModel.h"
 
 #include <algorithm>
@@ -296,6 +297,43 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
         s.bypassed = slot.getProperty(IDs::bypassed, false);
         s.paramCount = slot.getNumChildren();
         result.push_back(s);
+    }
+    return result;
+}
+
+std::vector<InternalFxParamSnapshot> ReadModelImpl::getInternalFxParams(int trackIndex,
+    int slotIndex) const
+{
+    std::vector<InternalFxParamSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid() || slotIndex < 0 || slotIndex >= fxChain.getNumChildren())
+        return result;
+
+    auto slotTree = fxChain.getChild(slotIndex);
+    juce::String fxType = slotTree.getProperty(IDs::fxType).toString();
+    if (fxType == "plugin" || fxType.isEmpty())
+        return result;
+
+    auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxType.toStdString());
+    for (const auto& def : defs)
+    {
+        InternalFxParamSnapshot snap;
+        snap.paramIndex = def.index;
+        snap.name = def.name.toStdString();
+        snap.defaultValue = def.defaultValue;
+        snap.minValue = def.minValue;
+        snap.maxValue = def.maxValue;
+
+        juce::String propName = "param_" + juce::String(def.index);
+        if (slotTree.hasProperty(juce::Identifier(propName)))
+            snap.value = static_cast<float>(slotTree.getProperty(juce::Identifier(propName)));
+        else
+            snap.value = def.defaultValue;
+
+        result.push_back(snap);
     }
     return result;
 }

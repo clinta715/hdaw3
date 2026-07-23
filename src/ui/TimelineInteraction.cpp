@@ -289,53 +289,48 @@ bool TimelineInteraction::handleMouseMove(QGraphicsSceneMouseEvent* e)
 
         if (!duplicatesCreated)
         {
-            // First move: create duplicates in the ValueTree
-            auto* um = undoManager;
+            // First move: create ghost copies via the engine command.
+            duplicateGhostIds.clear();
             for (auto* clip : duplicateItems)
             {
                 if (!clip) continue;
 
-                juce::ValueTree originalTree = clip->getClipTree();
-                juce::ValueTree duplicateTree = originalTree.createCopy();
-
-                double originalStart = originalTree.getProperty(IDs::startTime);
+                int srcId = clip->getClipId();
+                double originalStart = clip->getClipTree().getProperty(IDs::startTime);
                 double newStart = originalStart + timeDelta;
                 newStart = (std::max)(0.0, newStart);
 
-                duplicateTree.setProperty(IDs::startTime, newStart, um);
+                // Determine target track — same track as the source for now.
+                int targetTrack = scene->trackIndexAtY(e->scenePos().y());
+                if (targetTrack < 0)
+                    targetTrack = scene->trackIndexAtY(clip->pos().y());
 
-                auto trackTree = ProjectModel::getTrackOfClip(originalTree);
-                int trackIndex = -1;
-                if (trackTree.isValid())
-                {
-                    auto trackList = engine.getProjectModel().getTrackListTree();
-                    for (int i = 0; i < trackList.getNumChildren(); ++i)
-                        if (trackList.getChild(i) == trackTree)
-                            trackIndex = i;
-                }
-
-                if (trackIndex >= 0)
-                {
-                    auto track = engine.getProjectModel().getTrackListTree().getChild(trackIndex);
-                    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
-                    if (!clipList.isValid())
-                    {
-                        clipList = juce::ValueTree(IDs::CLIP_LIST);
-                        track.addChild(clipList, -1, um);
-                    }
-                    clipList.addChild(duplicateTree, -1, um);
-                }
+                int ghostId = projectCmds->createGhostClip(srcId, newStart, targetTrack);
+                if (ghostId > 0)
+                    duplicateGhostIds.append(ghostId);
             }
             duplicatesCreated = true;
         }
 
-        // Update positions of the duplicates visually
-        for (auto* clip : duplicateItems)
+        // Update positions of the ghost clips visually.
+        // Find the ClipItem for each ghost on the scene and reposition it.
+        for (int ghostId : duplicateGhostIds)
         {
-            if (!clip) continue;
-            double originalStart = clip->getClipTree().getProperty(IDs::startTime);
-            double newStart = originalStart + timeDelta;
-            clip->setPos(newStart * pps, clip->pos().y());
+            auto* ghostClip = scene->findClipById(ghostId);
+            if (!ghostClip) continue;
+
+            // The ghost's source original start — read from the ghost's own tree.
+            double originalStart = ghostClip->getClipTree().getProperty(IDs::startTime);
+            // During drag we reposition relative to where the ghost was placed.
+            // Use the original source clip's start + timeDelta as the target.
+            auto* srcItem = duplicateItems.isEmpty() ? nullptr : duplicateItems.first();
+            if (srcItem)
+            {
+                double srcStart = srcItem->getClipTree().getProperty(IDs::startTime);
+                double newStart = srcStart + timeDelta;
+                newStart = (std::max)(0.0, newStart);
+                ghostClip->setPos(newStart * pps, ghostClip->pos().y());
+            }
         }
 
         e->accept();
@@ -453,7 +448,10 @@ bool TimelineInteraction::handleMouseRelease(QGraphicsSceneMouseEvent* e)
     if (dragMode != None)
     {
         if (dragMode == Duplicate)
+        {
             duplicateItems.clear();
+            duplicateGhostIds.clear();
+        }
         dragMode = None;
         dragItem = nullptr;
         dragStartTrackIndex = -1;

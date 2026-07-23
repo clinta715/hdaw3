@@ -21,6 +21,26 @@ interface ParamInfo {
   automatable: boolean;
 }
 
+interface InternalParamInfo {
+  paramIndex: number;
+  name: string;
+  value: number;
+  minValue: number;
+  maxValue: number;
+  defaultValue: number;
+}
+
+// Map value from real range to 0-1000 for slider, or just show as percentage
+function formatParamValue(value: number, min: number, max: number): string {
+  // For 0-1 range params, show as percentage
+  if (min === 0 && max === 1) return `${Math.round(value * 100)}%`;
+  // For dB params, show with 1 decimal
+  if (max <= 0 || min < 0) return `${value.toFixed(1)} dB`;
+  // Frequency or ratio — show as-is
+  if (value >= 10) return `${Math.round(value)}`;
+  return `${value.toFixed(2)}`;
+}
+
 const INTERNAL_FX = [
   { label: "EQ", fxType: "eq" },
   { label: "Compressor", fxType: "compressor" },
@@ -37,6 +57,7 @@ export default function FXChain() {
   const [effects, setEffects] = useState<PluginInfo[]>([]);
   const [expandedParams, setExpandedParams] = useState<Set<number>>(new Set());
   const [slotParams, setSlotParams] = useState<Map<number, ParamInfo[]>>(new Map());
+  const [internalSlotParams, setInternalSlotParams] = useState<Map<number, InternalParamInfo[]>>(new Map());
   const [dragSlot, setDragSlot] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -150,13 +171,24 @@ export default function FXChain() {
   }, [selectedTrackIndex, slots.length, refresh]);
 
   const fetchParams = useCallback(async (slot: FxSlotSnapshot) => {
-    if (selectedTrackIndex == null || !slot.pluginId) return;
-    try {
-      const data = await rpc.call("pluginParam.getParams", { trackIndex: selectedTrackIndex, pluginID: slot.pluginId });
-      if (Array.isArray(data)) {
-        setSlotParams(prev => new Map(prev).set(slot.slotIndex, data as ParamInfo[]));
-      }
-    } catch (e) { console.error("getParams failed", e); }
+    if (selectedTrackIndex == null) return;
+    if (slot.pluginId) {
+      // VST3/CLAP plugin params
+      try {
+        const data = await rpc.call("pluginParam.getParams", { trackIndex: selectedTrackIndex, pluginID: slot.pluginId });
+        if (Array.isArray(data)) {
+          setSlotParams(prev => new Map(prev).set(slot.slotIndex, data as ParamInfo[]));
+        }
+      } catch (e) { console.error("getParams failed", e); }
+    } else {
+      // Internal FX params
+      try {
+        const data = await rpc.call("read.getInternalFxParams", { trackIndex: selectedTrackIndex, slotIndex: slot.slotIndex });
+        if (Array.isArray(data)) {
+          setInternalSlotParams(prev => new Map(prev).set(slot.slotIndex, data as InternalParamInfo[]));
+        }
+      } catch (e) { console.error("getInternalFxParams failed", e); }
+    }
   }, [selectedTrackIndex]);
 
   const toggleParams = useCallback((slot: FxSlotSnapshot) => {
@@ -172,11 +204,17 @@ export default function FXChain() {
     });
   }, [slotParams, fetchParams]);
 
-  const setParam = useCallback(async (pluginID: string, paramIndex: number, value: number) => {
+  const setParam = useCallback(async (slot: FxSlotSnapshot, paramIndex: number, value: number) => {
     if (selectedTrackIndex == null) return;
-    try {
-      await rpc.call("pluginParam.setParam", { trackIndex: selectedTrackIndex, pluginID, paramIndex, normalizedValue: value });
-    } catch (e) { console.error("setParam failed", e); }
+    if (slot.pluginId) {
+      try {
+        await rpc.call("pluginParam.setParam", { trackIndex: selectedTrackIndex, pluginID: slot.pluginId, paramIndex, normalizedValue: value });
+      } catch (e) { console.error("setParam failed", e); }
+    } else {
+      try {
+        await rpc.call("project.setFxSlotParam", { trackIndex: selectedTrackIndex, slotIndex: slot.slotIndex, paramIndex, value });
+      } catch (e) { console.error("setFxSlotParam failed", e); }
+    }
   }, [selectedTrackIndex]);
 
   const handleDragStart = useCallback((e: React.DragEvent, slotIndex: number) => {
@@ -295,46 +333,74 @@ export default function FXChain() {
             >B</button>
             <button className="fx-btn fx-remove" onClick={() => removeSlot(slot.slotIndex)} title="Remove">✕</button>
           </div>
-          {slot.paramCount > 0 && (
+          {(slot.pluginId ? slot.paramCount > 0 : true) && (
             <div className="fx-params-toggle" onClick={() => toggleParams(slot)}>
-              {expandedParams.has(slot.slotIndex) ? "▼" : "▶"} Parameters ({slot.paramCount})
+              {expandedParams.has(slot.slotIndex) ? "▼" : "▶"} Parameters
             </div>
           )}
-          {expandedParams.has(slot.slotIndex) && slotParams.has(slot.slotIndex) && (
-            <div className="fx-params-list">
-              {(slotParams.get(slot.slotIndex) || []).map((param) => (
-                <div key={param.paramIndex} className="fx-param-row">
-                  <span className="fx-param-name" title={param.name}>{param.name}</span>
-                  <input
-                    type="range"
-                    className="fx-param-slider"
-                    min={0}
-                    max={1000}
-                    value={Math.round(param.value * 1000)}
-                    onChange={(e) => {
-                      const v = Number(e.target.value) / 1000;
-                      setParam(slot.pluginId, param.paramIndex, v);
-                      setSlotParams(prev => {
-                        const next = new Map(prev);
-                        const arr = [...(next.get(slot.slotIndex) || [])];
-                        // Find by paramIndex, not by array position: VST3 plugins
-                        // commonly report non-contiguous or non-zero-based
-                        // paramIndex values (hidden params, bypass slots, etc.),
-                        // so arr[param.paramIndex] would write to the wrong row
-                        // or create sparse holes.
-                        const idx = arr.findIndex((p) => p.paramIndex === param.paramIndex);
-                        if (idx >= 0) {
-                          arr[idx] = { ...arr[idx], value: v };
-                        }
-                        next.set(slot.slotIndex, arr);
-                        return next;
-                      });
-                    }}
-                  />
-                  <span className="fx-param-value">{param.text || `${(param.value * 100).toFixed(0)}%`}</span>
-                </div>
-              ))}
-            </div>
+          {expandedParams.has(slot.slotIndex) && (
+            slot.pluginId ? (slotParams.has(slot.slotIndex) && (
+              <div className="fx-params-list">
+                {(slotParams.get(slot.slotIndex) || []).map((param) => (
+                  <div key={param.paramIndex} className="fx-param-row">
+                    <span className="fx-param-name" title={param.name}>{param.name}</span>
+                    <input
+                      type="range"
+                      className="fx-param-slider"
+                      min={0}
+                      max={1000}
+                      value={Math.round(param.value * 1000)}
+                      onChange={(e) => {
+                        const v = Number(e.target.value) / 1000;
+                        setParam(slot, param.paramIndex, v);
+                        setSlotParams(prev => {
+                          const next = new Map(prev);
+                          const arr = [...(next.get(slot.slotIndex) || [])];
+                          const idx = arr.findIndex((p) => p.paramIndex === param.paramIndex);
+                          if (idx >= 0) {
+                            arr[idx] = { ...arr[idx], value: v };
+                          }
+                          next.set(slot.slotIndex, arr);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="fx-param-value">{param.text || `${(param.value * 100).toFixed(0)}%`}</span>
+                  </div>
+                ))}
+              </div>
+            )) : internalSlotParams.has(slot.slotIndex) && (
+              <div className="fx-params-list">
+                {(internalSlotParams.get(slot.slotIndex) || []).map((param) => (
+                  <div key={param.paramIndex} className="fx-param-row">
+                    <span className="fx-param-name" title={param.name}>{param.name}</span>
+                    <input
+                      type="range"
+                      className="fx-param-slider"
+                      min={0}
+                      max={1000}
+                      value={((param.value - param.minValue) / (param.maxValue - param.minValue)) * 1000}
+                      onChange={(e) => {
+                        const norm = Number(e.target.value) / 1000;
+                        const realVal = param.minValue + norm * (param.maxValue - param.minValue);
+                        setParam(slot, param.paramIndex, realVal);
+                        setInternalSlotParams(prev => {
+                          const next = new Map(prev);
+                          const arr = [...(next.get(slot.slotIndex) || [])];
+                          const idx = arr.findIndex((p) => p.paramIndex === param.paramIndex);
+                          if (idx >= 0) {
+                            arr[idx] = { ...arr[idx], value: realVal };
+                          }
+                          next.set(slot.slotIndex, arr);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="fx-param-value">{formatParamValue(param.value, param.minValue, param.maxValue)}</span>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       ))}

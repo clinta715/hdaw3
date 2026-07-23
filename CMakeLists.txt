@@ -4,6 +4,16 @@ project(HDAW VERSION 0.12.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Generate common/Version.h with the project version so C++ code can
+# #include "common/Version.h" and use the HDAW_VERSION macro.
+# CMake's project(HDAW VERSION ...) is the single source of truth.
+configure_file(
+    src/common/Version.h.in
+    ${CMAKE_BINARY_DIR}/generated/common/Version.h
+    @ONLY
+)
+include_directories(${CMAKE_BINARY_DIR}/generated)
+
 # Qt 6 Configuration
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer WebSockets Test)
@@ -15,6 +25,9 @@ include(cmake/JUCEHelper.cmake)
 # SoundTouch (LGPL-2.1) for pitch-preserving audio timestretch.
 # Isolated behind HDAW's StretchRenderer interface (see AGENTS.md).
 include(cmake/SoundTouchHelper.cmake)
+
+# aubio (GPL-2.1) for BPM detection on audio import.
+include(cmake/AubioHelper.cmake)
 
 # Deploy Qt DLLs alongside an executable on Windows via windeployqt.
 # Skipped silently on non-Windows or when windeployqt isn't found.
@@ -115,6 +128,7 @@ target_link_libraries(HDAW_lib PUBLIC
     Qt6::WebSockets
     clap_juce_extensions
     HDAW::SoundTouch
+    HDAW::aubio
 )
 
 # Enable VST3 plugin hosting (needed by PluginManager.cpp -> juce::VST3PluginFormat)
@@ -338,3 +352,16 @@ if(HDAW_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# --- Version sync check ---
+# Verify that CMakeLists.txt project version matches frontend/package.json.
+# Run with: cmake --build build --target check_version
+add_custom_target(check_version ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "--- Version Sync Check ---"
+    COMMAND ${CMAKE_COMMAND} -E echo "CMakeLists.txt version: ${PROJECT_VERSION}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Checking frontend/package.json..."
+    COMMAND ${CMAKE_COMMAND} -P
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckVersionSync.cmake"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Verifying version numbers are in sync across all build systems"
+)

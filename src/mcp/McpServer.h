@@ -6,6 +6,7 @@
 #include <QString>
 #include <atomic>
 #include "McpToolDef.h"
+#include "common/Version.h"
 
 class AudioEngine;
 
@@ -45,7 +46,7 @@ public:
     void resetCancelFlag() { cancelFlag_.store(false, std::memory_order_relaxed); }
 
     QString serverName()    const { return "hdaw"; }
-    QString serverVersion() const { return "0.12.0"; }
+    QString serverVersion() const { return HDAW_VERSION; }
     QString protocolVersion() const { return "2024-11-05"; }
 
     // Pure dispatch: routes (id, method, params) to the right handler and
