@@ -878,89 +878,6 @@ void AudioEngineCommands::switchClipTake(int clipId)
     }
 }
 
-// ─── ProjectCommands — Gain Envelope ────────────────────────────────
-
-void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double gain)
-{
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    auto envelope = ProjectModel::ensureGainEnvelope(clip, &um);
-    ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
-    notifyClipGainEnvelopeChanged(clipId);
-}
-
-void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, double time, double gain)
-{
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
-    if (!envelope.isValid() || pointIndex < 0 || pointIndex >= envelope.getNumChildren()) return;
-
-    // Re-insert via the sorted inserter rather than mutating the point in
-    // place. addGainEnvelopePoint inserts at the time-correct position, so a
-    // drag that crosses a neighbour reorders the children correctly; an
-    // in-place setProperty leaves the ValueTree out of order, and
-    // ClipSourceProcessor::getGainAtTime (binary search) then misses the
-    // bracket and returns wrong gains.
-    ProjectModel::removeGainEnvelopePoint(envelope, pointIndex, &um);
-    ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
-    notifyClipGainEnvelopeChanged(clipId);
-}
-
-void AudioEngineCommands::removeGainEnvelopePoint(int clipId, int pointIndex)
-{
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
-    ProjectModel::removeGainEnvelopePoint(envelope, pointIndex, &um);
-    notifyClipGainEnvelopeChanged(clipId);
-}
-
-void AudioEngineCommands::clearGainEnvelope(int clipId)
-{
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
-    if (envelope.isValid())
-        clip.removeChild(envelope, &um);
-    notifyClipGainEnvelopeChanged(clipId);
-}
-
-void AudioEngineCommands::setClipGainEnvelope(int clipId,
-                                              const std::vector<std::pair<double, double>>& points)
-{
-    // Replace the whole envelope in one undo step. JUCE's UndoManager treats
-    // everything between two beginNewTransaction calls as one step, so we
-    // start one here and the next edit anywhere else will close it. Note:
-    // ProjectModel::addGainEnvelopePoint inserts in time order, so the input
-    // vector doesn't have to be pre-sorted.
-    auto& um = engine_.getProjectModel().getUndoManager();
-    int trackIdx = -1;
-    auto clip = findClipById(clipId, trackIdx);
-    if (!clip.isValid()) return;
-
-    um.beginNewTransaction("setClipGainEnvelope");
-    auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
-    if (envelope.isValid())
-        clip.removeChild(envelope, &um);
-    envelope = ProjectModel::ensureGainEnvelope(clip, &um);
-    for (const auto& [time, gain] : points)
-        ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
-    notifyClipGainEnvelopeChanged(clipId);
-}
-
 std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelopePoints(int clipId)
 {
     int trackIdx = -1;
@@ -969,20 +886,6 @@ std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelop
 
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     return ProjectModel::getGainEnvelopePoints(envelope);
-}
-
-void AudioEngineCommands::notifyClipGainEnvelopeChanged(int clipId)
-{
-    auto* proc = engine_.getMainProcessor();
-    if (proc)
-    {
-        auto points = getGainEnvelopePoints(clipId);
-        std::vector<HDAW::ClipSourceProcessor::GainPoint> pointsToSend;
-        pointsToSend.reserve(points.size());
-        for (const auto& p : points)
-            pointsToSend.push_back({p.time, p.gain});
-        proc->updateClipGainEnvelope(clipId, pointsToSend);
-    }
 }
 
 // ─── ProjectCommands — Modulation (LFO) ──────────────────────────

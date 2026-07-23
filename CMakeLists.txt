@@ -67,6 +67,7 @@ add_library(HDAW_lib STATIC
     src/engine/AudioEngineCommands_Fx.cpp
     src/engine/AudioEngineCommands_Timestretch.cpp
     src/engine/AudioEngineCommands_Slicing.cpp
+    src/engine/AudioEngineCommands_GainEnvelope.cpp
     src/engine/AudioRecorder.cpp
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp
