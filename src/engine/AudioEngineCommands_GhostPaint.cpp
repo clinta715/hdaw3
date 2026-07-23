@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 
 // ─── ProjectCommands — Ghost clips ──────────────────────────────
