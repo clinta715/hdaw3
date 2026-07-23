@@ -11,17 +11,13 @@ import { useTimelineTrim } from "../hooks/useTimelineTrim";
 import { useTimelineFade } from "../hooks/useTimelineFade";
 import { useTimelineLoopDrag } from "../hooks/useTimelineLoopDrag";
 import { useTimelineRubberBand } from "../hooks/useTimelineRubberBand";
+import { useTimelineZoom, MIN_PPS, MAX_PPS } from "../hooks/useTimelineZoom";
 import "./TimelineMinimal.css";
 
-const DEFAULT_PPS = 40;
-const MIN_PPS = 10;
-const MAX_PPS = 200;
 const TRACK_HEIGHT = 56;
 const RULER_HEIGHT = 24;
 
 export default function TimelineMinimal() {
-  const [pps, setPps] = useState(DEFAULT_PPS);
-
   const snapshot = useProjectStore((s) => s.snapshot);
   const transport = useTransportStore((s) => s.transport);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
@@ -31,6 +27,11 @@ export default function TimelineMinimal() {
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
+
+  const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
+
+  // --- Zoom (extracted hook) ---
+  const { pps, setPps, zoomIn, zoomOut, zoomFit, onWheel } = useTimelineZoom({ maxEnd, tracksRef });
 
   // --- Clip drag (extracted hook) ---
   const {
@@ -114,7 +115,6 @@ export default function TimelineMinimal() {
   }, [clips]);
 
   // --- Dimensions ---
-  const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
   const totalW = Math.max(maxEnd * pps, 800);
   const totalH = tracks.length * TRACK_HEIGHT;
 
@@ -142,24 +142,6 @@ export default function TimelineMinimal() {
     if (rulerRef.current && tracksRef.current) {
       rulerRef.current.scrollLeft = tracksRef.current.scrollLeft;
     }
-  }, []);
-
-  // --- Zoom ---
-  const zoomIn = useCallback(() => setPps((p) => Math.min(MAX_PPS, p * 1.25)), []);
-  const zoomOut = useCallback(() => setPps((p) => Math.max(MIN_PPS, p / 1.25)), []);
-  const zoomFit = useCallback(() => {
-    if (maxEnd <= 0) { setPps(DEFAULT_PPS); return; }
-    const cw = tracksRef.current?.clientWidth ?? 800;
-    setPps(Math.round(Math.min(MAX_PPS, Math.max(MIN_PPS, cw / maxEnd))));
-  }, [maxEnd]);
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    setPps((p) => {
-      const factor = e.deltaY < 0 ? 1.25 : 0.8;
-      return Math.min(MAX_PPS, Math.max(MIN_PPS, p * factor));
-    });
   }, []);
 
   // --- Ruler click-to-seek / drag-scrub ---
