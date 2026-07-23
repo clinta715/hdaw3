@@ -37,6 +37,8 @@ export interface FadeDrag {
   clipId: number;
   side: "in" | "out";
   initialValue: number;
+  startBeat: number;
+  durationBeats: number;
 }
 
 export function computeRubberBandSelection(

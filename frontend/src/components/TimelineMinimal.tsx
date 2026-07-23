@@ -8,6 +8,7 @@ import { WaveformCanvas } from "./WaveformCanvas";
 import { snapToGrid } from "./snapUtils";
 import { useTimelineDrag } from "../hooks/useTimelineDrag";
 import { useTimelineTrim } from "../hooks/useTimelineTrim";
+import { useTimelineFade } from "../hooks/useTimelineFade";
 import "./TimelineMinimal.css";
 
 function computeRubberBandSelection(
@@ -77,10 +78,13 @@ export default function TimelineMinimal() {
     tracksRef,
   });
 
-  // --- Fade drag state ---
-  const [fadeDrag, setFadeDrag] = useState<{ clipId: number; side: "in" | "out"; initialValue: number; startBeat: number; durationBeats: number } | null>(null);
-  const fadeDragRef = useRef(fadeDrag);
-  fadeDragRef.current = fadeDrag;
+  // --- Fade (extracted hook) ---
+  const { handleFadeStart, fadeDrag } = useTimelineFade({
+    clips,
+    pps,
+    rpc,
+    tracksRef,
+  });
 
   // --- Loop drag state ---
   const [loopDrag, setLoopDrag] = useState<"start" | "end" | null>(null);
@@ -309,77 +313,6 @@ export default function TimelineMinimal() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [clips, pps]);
-
-  const handleFadeStart = useCallback((e: React.MouseEvent, clip: typeof clips[0], side: "in" | "out") => {
-    e.stopPropagation();
-    e.preventDefault();
-    setFadeDrag({
-      clipId: clip.clipId,
-      side,
-      initialValue: side === "in" ? clip.fadeIn : clip.fadeOut,
-      startBeat: clip.startBeat,
-      durationBeats: clip.durationBeats,
-    });
-
-    const onMove = (ev: globalThis.MouseEvent) => {
-      const el = tracksRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const scroll = el.scrollLeft;
-      const d = fadeDragRef.current;
-      if (!d) return;
-      const clipStartPx = d.startBeat * pps;
-      const clipEndPx = (d.startBeat + d.durationBeats) * pps;
-      const mousePx = ev.clientX - rect.left + scroll;
-      if (d.side === "in") {
-        const newFade = Math.max(0, Math.min(d.durationBeats / 2, (mousePx - clipStartPx) / pps));
-        setFadeDrag(prev => prev ? { ...prev, initialValue: newFade } : null);
-      } else {
-        const newFade = Math.max(0, Math.min(d.durationBeats / 2, (clipEndPx - mousePx) / pps));
-        setFadeDrag(prev => prev ? { ...prev, initialValue: newFade } : null);
-      }
-    };
-
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      const d = fadeDragRef.current;
-      if (d) {
-        // Optimistic local update: write the committed fade to the snapshot
-        // BEFORE clearing the preview, so the fade triangle doesn't snap back
-        // to its old shape for the round-trip until syncSnapshot returns.
-        const fadedClip = d.side === "in" ? d.initialValue : undefined;
-        const fadedOut = d.side === "out" ? d.initialValue : undefined;
-        useProjectStore.setState((s) => {
-          if (!s.snapshot) return {};
-          return {
-            snapshot: {
-              ...s.snapshot,
-              clips: s.snapshot.clips.map((c) =>
-                c.clipId === d.clipId
-                  ? {
-                      ...c,
-                      fadeIn: fadedClip !== undefined ? fadedClip : c.fadeIn,
-                      fadeOut: fadedOut !== undefined ? fadedOut : c.fadeOut,
-                    }
-                  : c
-              ),
-            },
-          };
-        });
-
-        const method = d.side === "in" ? "project.setClipFadeIn" : "project.setClipFadeOut";
-        rpc.call(method, { clipId: d.clipId, [d.side === "in" ? "fadeIn" : "fadeOut"]: d.initialValue }).then(() => {
-          useProjectStore.getState().syncDirtyFlag(rpc);
-          useProjectStore.getState().syncSnapshot(rpc);
-        }).catch(() => {});
-      }
-      setFadeDrag(null);
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [pps]);
 
   // --- File drag-and-drop import ---
   const handleDrop = useCallback((e: React.DragEvent) => {
