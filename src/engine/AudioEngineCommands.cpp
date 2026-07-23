@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "TransientDetector.h"
@@ -537,6 +538,15 @@ void AudioEngineCommands::setClipLooping(int clipId, bool looping)
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
         clip.setProperty(IDs::looping, looping, &um);
+}
+
+void AudioEngineCommands::setClipMuted(int clipId, bool muted)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::muted, muted, &um);
 }
 
 int AudioEngineCommands::duplicateClip(int clipId)
