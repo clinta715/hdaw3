@@ -106,6 +106,9 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpServer.cpp
     src/mcp/McpExportTool.cpp
     src/mcp/McpTools.cpp
+    src/mcp/McpTools_Project.cpp
+    src/mcp/McpTools_Transport.cpp
+    src/mcp/McpTools_Audio.cpp
     src/mcp/McpGuiInspectTools.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
