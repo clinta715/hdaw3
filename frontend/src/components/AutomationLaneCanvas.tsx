@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { RpcClient } from "../rpc/client";
 import { AutomationPointSnapshot } from "../rpc/types";
 import { useAutomationStore } from "../store/automationStore";
+import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { snapToGrid } from "./snapUtils";
 import { theme } from "../theme";
@@ -104,6 +105,61 @@ export default function AutomationLaneCanvas({
     const sorted = [...points].filter(p => p.time >= viewStartBeat && p.time <= viewEndBeat).sort((a, b) => a.time - b.time);
     const range = viewEndBeat - viewStartBeat;
     if (range <= 0) return;
+
+    // --- Background: beat grid + clip rectangles ---
+    const snapshot = useProjectStore.getState().snapshot;
+    if (snapshot) {
+      // Beat grid lines (thin vertical lines at each beat)
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.lineWidth = 1;
+      const firstBeat = Math.ceil(viewStartBeat);
+      const lastBeat = Math.floor(viewEndBeat);
+      for (let beat = firstBeat; beat <= lastBeat; beat++) {
+        const x = ((beat - viewStartBeat) / range) * size.w;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size.h);
+        ctx.stroke();
+      }
+
+      // Bar lines (thicker, every 4 beats)
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1;
+      const firstBar = Math.ceil(viewStartBeat / 4) * 4;
+      const lastBar = Math.floor(viewEndBeat / 4) * 4;
+      for (let bar = firstBar; bar <= lastBar; bar += 4) {
+        const x = ((bar - viewStartBeat) / range) * size.w;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size.h);
+        ctx.stroke();
+      }
+
+      // Clip rectangles for this track
+      const trackClips = snapshot.clips.filter(c => c.trackIndex === trackIndex);
+      for (const clip of trackClips) {
+        const clipStart = clip.startBeat;
+        const clipEnd = clip.startBeat + clip.durationBeats;
+        if (clipEnd < viewStartBeat || clipStart > viewEndBeat) continue;
+
+        const x1 = Math.max(0, ((clipStart - viewStartBeat) / range) * size.w);
+        const x2 = Math.min(size.w, ((clipEnd - viewStartBeat) / range) * size.w);
+        const w = x2 - x1;
+
+        ctx.fillStyle = clip.isMidi ? "rgba(100, 180, 255, 0.08)" : "rgba(255, 180, 100, 0.08)";
+        ctx.fillRect(x1, 0, w, size.h);
+        ctx.strokeStyle = clip.isMidi ? "rgba(100, 180, 255, 0.25)" : "rgba(255, 180, 100, 0.25)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x1, 0, w, size.h);
+
+        // Clip name
+        if (w > 40) {
+          ctx.fillStyle = "rgba(255,255,255,0.25)";
+          ctx.font = "9px system-ui";
+          ctx.fillText(clip.name || `Clip ${clip.clipId}`, x1 + 3, 10);
+        }
+      }
+    }
 
     // Fill under curve
     if (sorted.length >= 2) {

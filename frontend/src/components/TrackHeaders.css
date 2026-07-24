@@ -1,5 +1,7 @@
 .track-headers {
   padding: 4px 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .th-title {
