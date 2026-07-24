@@ -7,7 +7,7 @@ import { useProjectStore } from "./store/projectStore";
 import { useAutomationStore } from "./store/automationStore";
 import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
-import { TransportSnapshot, MetersPayload } from "./rpc/types";
+import { TransportSnapshot, MetersPayload, TreeDelta } from "./rpc/types";
 import App from "./App";
 import StartupDialog from "./components/StartupDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
@@ -38,12 +38,16 @@ function setupSubscriptions() {
     }
   }));
 
-  cleanups.push(rpc.onNotification("notify.treeChanged", () => {
-    useProjectStore.getState().syncSnapshot(rpc).catch(() => {});
-    // Refresh automation lanes when the project tree changes
-    const activeTrack = useAutomationStore.getState().activeTrackIndex;
-    if (activeTrack !== null) {
-      useAutomationStore.getState().fetchForTrack(activeTrack, rpc);
+  cleanups.push(rpc.onNotification("notify.treeChanged", (_, params) => {
+    const d = params as TreeDelta | undefined;
+    if (d && !d.fullSync && (d.clipsUpserted || d.clipsRemoved || d.tracksUpserted)) {
+      useProjectStore.getState().applyDelta(d);
+    } else {
+      useProjectStore.getState().syncSnapshot(rpc).catch(() => {});
+      const activeTrack = useAutomationStore.getState().activeTrackIndex;
+      if (activeTrack !== null) {
+        useAutomationStore.getState().fetchForTrack(activeTrack, rpc);
+      }
     }
   }));
 }
