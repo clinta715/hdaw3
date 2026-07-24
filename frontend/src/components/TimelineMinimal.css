@@ -329,6 +329,11 @@
   font-size: 0.8em;
 }
 
+.tl-clip--pending {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 /* --- Paint tile preview --- */
 .tl-paint-tile {
   position: absolute;

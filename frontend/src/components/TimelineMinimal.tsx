@@ -22,6 +22,7 @@ export default function TimelineMinimal() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const transport = useTransportStore((s) => s.transport);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
+  const pendingTempIds = useProjectStore((s) => s.pendingTempIds);
   const markers = useMarkerStore((s) => s.markers);
   const tracks = snapshot?.tracks ?? [];
   const clips = snapshot?.clips ?? [];
@@ -587,7 +588,7 @@ export default function TimelineMinimal() {
                     return (
                       <div
                         key={clip.clipId}
-                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}`}
+                        className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}${pendingTempIds.has(clip.clipId) ? " tl-clip--pending" : ""}`}
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
                         onClick={(e) => {
                           e.stopPropagation();

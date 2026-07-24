@@ -16,6 +16,11 @@ interface ProjectState {
   syncDirtyFlag: (rpc: RpcClient) => Promise<void>;
   syncNotes: (rpc: RpcClient, clipId: number) => Promise<void>;
   applyDelta: (delta: TreeDelta) => void;
+  pendingTempIds: Set<number>;
+  pendingResolution: Map<number, number>;
+  addPendingClip: (placeholder: ClipSnapshot) => void;
+  resolvePending: (tempId: number, realId: number) => void;
+  removePending: (tempId: number) => void;
   getTrack: (index: number) => TrackSnapshot | undefined;
   getClip: (clipId: number) => ClipSnapshot | undefined;
   setFilePath: (path: string | null) => void;
@@ -34,6 +39,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   recentProjects: JSON.parse(localStorage.getItem("hdaw_recent_projects") || "[]"),
   loadingProject: false,
   loadProgress: null,
+  pendingTempIds: new Set(),
+  pendingResolution: new Map(),
 
   syncSnapshot: async (rpc: RpcClient) => {
     const result = await rpc.call("read.snapshot") as ProjectSnapshot;
@@ -77,8 +84,56 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       tracks = [...byIdx.values()].sort((a, b) => a.index - b.index);
     }
 
-    set({ snapshot: { ...snap, clips, tracks }, lastSync: Date.now() });
+    // Swap resolved placeholders out for the real clips that just arrived.
+    let pendingTempIds = get().pendingTempIds;
+    let pendingResolution = get().pendingResolution;
+    if (pendingResolution.size > 0 && delta.clipsUpserted) {
+      const arrivedReal = new Set(delta.clipsUpserted.map((c) => c.clipId));
+      const resolvedTemps: number[] = [];
+      for (const [tempId, realId] of pendingResolution) {
+        if (arrivedReal.has(realId)) resolvedTemps.push(tempId);
+      }
+      if (resolvedTemps.length > 0) {
+        const resolvedSet = new Set(resolvedTemps);
+        clips = clips.filter((c) => !resolvedSet.has(c.clipId));
+        pendingTempIds = new Set([...pendingTempIds].filter((id) => !resolvedSet.has(id)));
+        pendingResolution = new Map([...pendingResolution].filter(([t]) => !resolvedSet.has(t)));
+      }
+    }
+
+    set({ snapshot: { ...snap, clips, tracks }, lastSync: Date.now(), pendingTempIds, pendingResolution });
   },
+
+  addPendingClip: (placeholder: ClipSnapshot) => set((state) => {
+    const snap = state.snapshot;
+    if (!snap) return {};
+    const pendingTempIds = new Set(state.pendingTempIds);
+    pendingTempIds.add(placeholder.clipId);
+    return {
+      snapshot: { ...snap, clips: [...snap.clips, placeholder] },
+      pendingTempIds,
+    };
+  }),
+
+  resolvePending: (tempId: number, realId: number) => set((state) => {
+    const pendingResolution = new Map(state.pendingResolution);
+    pendingResolution.set(tempId, realId);
+    return { pendingResolution };
+  }),
+
+  removePending: (tempId: number) => set((state) => {
+    const snap = state.snapshot;
+    const pendingTempIds = new Set(state.pendingTempIds);
+    pendingTempIds.delete(tempId);
+    const pendingResolution = new Map(state.pendingResolution);
+    pendingResolution.delete(tempId);
+    if (!snap) return { pendingTempIds, pendingResolution };
+    return {
+      snapshot: { ...snap, clips: snap.clips.filter((c) => c.clipId !== tempId) },
+      pendingTempIds,
+      pendingResolution,
+    };
+  }),
 
   getTrack: (index: number) => {
     return get().snapshot?.tracks.find((t) => t.index === index);
