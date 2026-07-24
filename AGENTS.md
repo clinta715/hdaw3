@@ -186,6 +186,40 @@ Full details in [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md).
    this: `duplicateClipTo`, `duplicateClips`, `addClips`. Always
    call `moveClipWithOverlap(newId, trackIndex, start)` after adding.
 
+## Frontend ↔ engine state synchronization
+
+The timeline reads a `ProjectSnapshot` (tracks + clips) from the engine. Edits
+propagate via **incremental deltas**, not whole-snapshot re-fetches:
+
+- `FrontendTreeWatcher` (root `ValueTree` listener) feeds every JUCE change into
+  a `TreeDeltaAccumulator` (`src/frontend/TreeDeltaAccumulator.{h,cpp}`), which
+  coalesces a burst (16 ms debounce) into a minimal delta and broadcasts it on
+  `notify.treeChanged` as
+  `{ fullSync: false, clipsUpserted: [...], clipsRemoved: [...], tracksUpserted: [...] }`.
+- The frontend `applyDelta` (`frontend/src/store/projectStore.ts`) patches the
+  existing snapshot in place (upsert/remove clips by id, upsert tracks by index),
+  keeping object references stable for unchanged entities.
+- **Fallback:** any change that can't be expressed as a clip/track delta — track
+  add/remove, markers, tempo, FX, automation, sub-clip detail (notes/CC/gain-env/
+  automation points), reorder, project load, undo/redo — sets `fullSync: true`,
+  and the frontend falls back to the full `read.snapshot` re-fetch. Automation
+  lane refresh lives on this full-sync branch, so recording still updates.
+- **Key invariant (tested in `frontend_server_test.cpp`):** a clip add/remove
+  reaches the root listener as an incremental delta, *not* a fullSync. This relies
+  on JUCE propagating `valueTreeChildAdded/Removed/PropertyChanged` up to the root
+  listener while `valueTreeParentChanged` only propagates down — so descendant clip
+  reparents stay incremental.
+- **Pending placeholders:** Duplicate / Add-Clip (which mint ids on the backend)
+  show a translucent placeholder (`addPendingClip`, negative temp id from
+  `nextTempId()`) for instant feedback, then reconcile when the RPC returns the
+  real id (`resolvePending`) and the delta delivers the real clip (`applyDelta`
+  swaps the placeholder out). A 1500 ms sweep removes unresolved placeholders.
+
+When adding a new edit operation: if it only changes clip/track properties or
+adds/removes clips, it deltas automatically. If it restructures the tree or
+touches other entity types, it fullSyncs (correct, just slower) — no extra wiring
+needed.
+
 ## Further Reading
 
 All detailed documentation lives in the domain-specific files above. This file
