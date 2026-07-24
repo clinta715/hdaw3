@@ -9,6 +9,8 @@ interface ProjectState {
   isDirty: boolean;
   filePath: string | null;
   recentProjects: string[];
+  loadingProject: boolean;
+  loadProgress: { message: string; percent: number } | null;
 
   syncSnapshot: (rpc: RpcClient) => Promise<void>;
   syncDirtyFlag: (rpc: RpcClient) => Promise<void>;
@@ -18,6 +20,8 @@ interface ProjectState {
   setFilePath: (path: string | null) => void;
   loadRecentProjects: () => void;
   addRecentProject: (path: string) => void;
+  setLoadingProject: (loading: boolean) => void;
+  updateLoadProgress: (message: string, percent: number) => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -27,6 +31,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDirty: false,
   filePath: null,
   recentProjects: JSON.parse(localStorage.getItem("hdaw_recent_projects") || "[]"),
+  loadingProject: false,
+  loadProgress: null,
 
   syncSnapshot: async (rpc: RpcClient) => {
     const result = await rpc.call("read.snapshot") as ProjectSnapshot;
@@ -65,4 +71,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     localStorage.setItem("hdaw_recent_projects", JSON.stringify(list));
     return { recentProjects: list, filePath: path };
   }),
+
+  setLoadingProject: (loading: boolean) => set({ loadingProject: loading, loadProgress: loading ? { message: "Loading...", percent: 0 } : null }),
+
+  updateLoadProgress: (message: string, percent: number) => set({ loadProgress: { message, percent } }),
 }));
