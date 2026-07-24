@@ -110,6 +110,22 @@ public:
         return false;
     }
 
+    // Wait for a specific notification method and return its `params` payload,
+    // or a null QJsonValue on timeout. Like waitForNotification but captures the
+    // payload so callers can assert on the delta contents.
+    QJsonValue waitForNotificationParams(const QString& method, int timeoutMs = 3000) {
+        auto deadline = QDateTime::currentMSecsSinceEpoch() + timeoutMs;
+        while (QDateTime::currentMSecsSinceEpoch() < deadline) {
+            auto msgs = drainMessages();
+            for (const auto& m : msgs) {
+                auto obj = QJsonDocument::fromJson(m.toUtf8()).object();
+                if (obj.value("method").toString() == method)
+                    return obj.value("params");
+            }
+        }
+        return QJsonValue();
+    }
+
 private:
     QWebSocket socket_;
     QStringList messages_;
@@ -292,6 +308,69 @@ TEST(FrontendServer, MutationBroadcastsTreeChanged) {
     // never arrives.
     EXPECT_TRUE(client.waitForNotification("notify.treeChanged"))
         << "did not receive notify.treeChanged after mutation";
+
+    client.close();
+    s.tearDown();
+}
+
+// Linchpin of incremental tree sync: a real clip add/remove must propagate to
+// the root watcher and broadcast as an incremental delta (not a fullSync).
+TEST(FrontendServer, ClipAddRemoveBroadcastsIncrementalDelta) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    // Drain any push notifications queued during connection setup so the first
+    // treeChanged we capture is provably from our mutation. (The server sends
+    // nothing on connect, but meter/transport broadcasts may already be queued.)
+    client.drainMessages();
+
+    // --- Add a MIDI clip -> expect a delta with clipsUpserted ---
+    // Track 0 in the default project already has an (empty) CLIP_LIST, so this
+    // is a pure CLIP child-add -> upsertClip -> incremental delta (no fullSync).
+    QJsonObject addParams;
+    addParams.insert("trackIndex", 0);
+    addParams.insert("start", 0.0);
+    addParams.insert("duration", 4.0);
+    addParams.insert("name", "DeltaTestClip");
+    auto addResp = client.call(1, "project.addMidiClip", addParams);
+    ASSERT_FALSE(addResp.isEmpty());
+    ASSERT_FALSE(addResp.contains("error"))
+        << addResp.value("error").toObject().value("message").toString().toStdString();
+    const int newClipId = addResp.value("result").toInt(-1);
+    ASSERT_GT(newClipId, 0) << "addMidiClip should return the new clip id";
+
+    QJsonValue addNotify = client.waitForNotificationParams("notify.treeChanged");
+    ASSERT_TRUE(addNotify.isObject()) << "no notify.treeChanged after addMidiClip";
+    QJsonObject addDelta = addNotify.toObject();
+    EXPECT_FALSE(addDelta.value("fullSync").toBool(false))
+        << "clip add should be an incremental delta, got: "
+        << QString::fromUtf8(QJsonDocument(addDelta).toJson(QJsonDocument::Compact)).toStdString();
+    bool foundUpserted = false;
+    for (const auto& c : addDelta.value("clipsUpserted").toArray())
+        if (c.toObject().value("clipId").toInt(-1) == newClipId) foundUpserted = true;
+    EXPECT_TRUE(foundUpserted) << "clipsUpserted should contain the new clip id";
+
+    // --- Remove that clip -> expect a delta with clipsRemoved ---
+    QJsonObject rmParams;
+    rmParams.insert("clipId", newClipId);
+    auto rmResp = client.call(2, "project.removeClip", rmParams);
+    ASSERT_FALSE(rmResp.isEmpty());
+    ASSERT_FALSE(rmResp.contains("error"))
+        << rmResp.value("error").toObject().value("message").toString().toStdString();
+
+    QJsonValue rmNotify = client.waitForNotificationParams("notify.treeChanged");
+    ASSERT_TRUE(rmNotify.isObject()) << "no notify.treeChanged after removeClip";
+    QJsonObject rmDelta = rmNotify.toObject();
+    EXPECT_FALSE(rmDelta.value("fullSync").toBool(false))
+        << "clip remove should be an incremental delta, got: "
+        << QString::fromUtf8(QJsonDocument(rmDelta).toJson(QJsonDocument::Compact)).toStdString();
+    bool foundRemoved = false;
+    for (const auto& id : rmDelta.value("clipsRemoved").toArray())
+        if (id.toInt(-1) == newClipId) foundRemoved = true;
+    EXPECT_TRUE(foundRemoved) << "clipsRemoved should contain the removed clip id";
 
     client.close();
     s.tearDown();
