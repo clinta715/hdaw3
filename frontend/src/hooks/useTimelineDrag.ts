@@ -13,6 +13,7 @@ interface UseTimelineDragParams {
   tracksRef: React.RefObject<HTMLDivElement | null>;
   trackCount: number;
   rpc: RpcClient;
+  engagementRef: React.MutableRefObject<"none" | "clip" | "rubber">;
 }
 
 // The C++ backend (FrontendRouter.cpp) returns BARE integers for
@@ -55,6 +56,7 @@ export function useTimelineDrag({
   tracksRef,
   trackCount,
   rpc,
+  engagementRef,
 }: UseTimelineDragParams): UseTimelineDragReturn {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -82,7 +84,10 @@ export function useTimelineDrag({
         const clip = clips.find(c => c.clipId === clipId);
         if (clip) paintSpacing = clip.durationBeats;
       }
-      updateDrag({
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+      let engaged = false;
+      const pendingDrag: DragState = {
         clipId, startTrackIndex: trackIndex, startBeat,
         offsetX: e.clientX - r.left, offsetY: e.clientY - r.top,
         mouseX: e.clientX, mouseY: e.clientY,
@@ -92,18 +97,36 @@ export function useTimelineDrag({
         paintOriginBeat: startBeat,
         paintSpacing,
         paintedClipIds: [],
-      });
+      };
 
-      const onMove = (ev: globalThis.MouseEvent) => handleMouseMoveRef.current(ev);
+      const onMove = (ev: globalThis.MouseEvent) => {
+        if (!engaged) {
+          if (engagementRef.current === "rubber") {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+            return;
+          }
+          const dx = ev.clientX - startClientX;
+          const dy = ev.clientY - startClientY;
+          if (dx * dx + dy * dy < 16) return;
+          engaged = true;
+          engagementRef.current = "clip";
+          updateDrag(pendingDrag);
+        }
+        handleMouseMoveRef.current(ev);
+      };
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
-        handleMouseUpRef.current();
+        engagementRef.current = "none";
+        if (engaged) {
+          handleMouseUpRef.current();
+        }
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [updateDrag, clips]
+    [updateDrag, clips, engagementRef]
   );
 
   // During the drag we only track the mouse; all copy/paint/ghost work is

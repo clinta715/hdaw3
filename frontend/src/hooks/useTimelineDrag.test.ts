@@ -9,6 +9,8 @@ const mockRpc = {
   call: vi.fn(),
 };
 
+const makeEngagementRef = () => ({ current: "none" as "none" | "clip" | "rubber" });
+
 const makeClip = (clipId: number, trackIndex: number, startBeat: number): ClipSnapshot => ({
   clipId,
   trackIndex,
@@ -92,7 +94,7 @@ describe("useTimelineDrag", () => {
       mockRpc.call.mockResolvedValue(null);
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -102,10 +104,10 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 200, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 200, clientY: 28 }));
       });
       act(() => {
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       // Optimistic update happens synchronously.
@@ -130,7 +132,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : null));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -140,13 +142,13 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 200, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 200, clientY: 28 }));
       });
 
       expect(mockRpc.call).not.toHaveBeenCalledWith("project.duplicateClips", expect.anything());
 
       act(() => {
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -160,7 +162,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -170,10 +172,10 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 200, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 200, clientY: 28 }));
       });
       act(() => {
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -188,7 +190,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -198,10 +200,10 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 250, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250, clientY: 28 }));
       });
       act(() => {
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -225,7 +227,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -233,8 +235,8 @@ describe("useTimelineDrag", () => {
           { preventDefault: () => {}, currentTarget: document.createElement("div"), clientX: 50, clientY: 28, ctrlKey: true } as any,
           1, 0, 0
         );
-        result.current.handleMouseMove({ clientX: 200, clientY: 28 } as any);
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 200, clientY: 28 }));
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -252,7 +254,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.paintClips" ? [2, 3] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -262,13 +264,13 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 500, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 500, clientY: 28 }));
       });
 
       expect(mockRpc.call).not.toHaveBeenCalledWith("project.paintClips", expect.anything());
 
       act(() => {
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -285,7 +287,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.paintClips" ? [2, 3] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -293,8 +295,8 @@ describe("useTimelineDrag", () => {
           { preventDefault: () => {}, currentTarget: document.createElement("div"), clientX: 50, clientY: 28, altKey: true } as any,
           1, 0, 0
         );
-        result.current.handleMouseMove({ clientX: 500, clientY: 28 } as any);
-        result.current.handleMouseUp();
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 500, clientY: 28 }));
+        window.dispatchEvent(new MouseEvent("mouseup"));
       });
 
       await vi.waitFor(() => {
@@ -309,7 +311,7 @@ describe("useTimelineDrag", () => {
       withRpc(() => ({}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any })
+        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -319,7 +321,7 @@ describe("useTimelineDrag", () => {
         );
       });
       act(() => {
-        result.current.handleMouseMove({ clientX: 500, clientY: 28 } as any);
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 500, clientY: 28 }));
       });
 
       // paintCount should be > 0 before commit.
