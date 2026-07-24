@@ -240,6 +240,51 @@ TEST(Commands, DuplicateClip)
     EXPECT_EQ(count, 2);
 }
 
+// duplicateClipTo combines duplicate + position into one call so the frontend
+// can place a ctrl-drag copy in a single round trip. Verifies direct placement
+// at the requested position/track (no follow-up moveClipWithOverlap needed).
+TEST(Commands, DuplicateClipToPlacesAtTarget)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    // Two tracks so cross-track placement is exercised.
+    cmds.addTrack("T2");
+    const double srcStart = 0.0;
+    const double duration = 4.0;
+    int clipId = cmds.addMidiClip(0, srcStart, duration, "Orig");
+    EXPECT_GT(clipId, 0);
+
+    const double targetStart = 8.5;
+    const int targetTrack = 1;
+    int newId = cmds.duplicateClipTo(clipId, targetStart, targetTrack);
+    EXPECT_GT(newId, 0);
+    EXPECT_NE(newId, clipId);
+
+    auto dup = engine.getReadModel().getClip(newId);
+    EXPECT_EQ(dup.clipId, newId);
+    EXPECT_EQ(dup.trackIndex, targetTrack);
+    EXPECT_DOUBLE_EQ(dup.startBeat, targetStart);
+    EXPECT_DOUBLE_EQ(dup.durationBeats, duration);
+    EXPECT_EQ(dup.name, "Orig copy");
+    // The source clip must be untouched.
+    auto orig = engine.getReadModel().getClip(clipId);
+    EXPECT_EQ(orig.trackIndex, 0);
+    EXPECT_DOUBLE_EQ(orig.startBeat, srcStart);
+}
+
+// duplicateClipTo on an invalid clip id / track returns -1 (no throw).
+TEST(Commands, DuplicateClipToInvalidReturnsNegative)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    EXPECT_LT(cmds.duplicateClipTo(999999, 0.0, 0), 0);
+    int clipId = cmds.addMidiClip(0, 0.0, 4.0, "X");
+    EXPECT_GT(clipId, 0);
+    EXPECT_LT(cmds.duplicateClipTo(clipId, 0.0, 999), 0);
+}
+
 TEST(Commands, ReorderFxSlots)
 {
     AudioEngine engine;

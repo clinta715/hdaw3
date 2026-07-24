@@ -232,6 +232,33 @@ export default function NoteGrid({
     const rawBeat = x / PIXELS_PER_BEAT;
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const startBeat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
+    
+    // Optimistic: add note(s) to local store immediately
+    const newNotes: NoteSnapshot[] = [{
+      noteId: Date.now(),
+      pitch,
+      velocity: 100,
+      startBeat,
+      durationBeats: 0.25,
+    }];
+    if (chordShape && chordShape.length > 0) {
+      for (const interval of chordShape.slice(1)) {
+        newNotes.push({
+          noteId: Date.now() + interval,
+          pitch: pitch + interval,
+          velocity: 100,
+          startBeat,
+          durationBeats: 0.25,
+        });
+      }
+    }
+    useProjectStore.setState((s) => {
+      const arr = s.notesByClip.get(clipId) ?? [];
+      return {
+        notesByClip: new Map(s.notesByClip).set(clipId, [...arr, ...newNotes]),
+      };
+    });
+    
     try {
       await rpc.call("project.addNote", { clipId, pitch, startBeat, durationBeats: 0.25, velocity: 100 });
       if (chordShape && chordShape.length > 0) {
@@ -253,9 +280,21 @@ export default function NoteGrid({
 
   const deleteSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;
+    
+    // Optimistic: remove notes from local store immediately
+    useProjectStore.setState((s) => {
+      const arr = s.notesByClip.get(clipId);
+      if (!arr) return {};
+      return {
+        notesByClip: new Map(s.notesByClip).set(
+          clipId,
+          arr.filter((n) => !selectedNoteIds.has(n.noteId))
+        ),
+      };
+    });
+    setSelectedNoteIds(new Set());
+    
     try {
-      // Wrap the per-note delete loop in a transaction so a multi-note
-      // selection deletes as one undo step.
       if (selectedNoteIds.size > 1) {
         await rpc.call("project.beginTransaction", { name: "delete notes" });
       }
@@ -265,7 +304,6 @@ export default function NoteGrid({
       if (selectedNoteIds.size > 1) {
         await rpc.call("project.endTransaction");
       }
-      setSelectedNoteIds(new Set());
       useProjectStore.getState().syncNotes(rpc, clipId);
     } catch (err) {
       console.warn("note deletion failed", err);
@@ -275,6 +313,23 @@ export default function NoteGrid({
   const transposeSelected = useCallback(
     async (semitones: number) => {
       if (clipId == null || selectedNoteIds.size === 0) return;
+      
+      // Optimistic: update pitches in local store immediately
+      useProjectStore.setState((s) => {
+        const arr = s.notesByClip.get(clipId);
+        if (!arr) return {};
+        return {
+          notesByClip: new Map(s.notesByClip).set(
+            clipId,
+            arr.map((n) =>
+              selectedNoteIds.has(n.noteId)
+                ? { ...n, pitch: clamp(n.pitch + semitones, 0, 127) }
+                : n
+            )
+          ),
+        };
+      });
+      
       try {
         for (const noteId of selectedNoteIds) {
           const note = noteMap.get(noteId);
@@ -294,6 +349,23 @@ export default function NoteGrid({
     if (clipId == null || selectedNoteIds.size === 0) return;
     const { snapEnabled, snapDivision } = useUiStore.getState();
     if (!snapEnabled) return;
+    
+    // Optimistic: update start times in local store immediately
+    useProjectStore.setState((s) => {
+      const arr = s.notesByClip.get(clipId);
+      if (!arr) return {};
+      return {
+        notesByClip: new Map(s.notesByClip).set(
+          clipId,
+          arr.map((n) =>
+            selectedNoteIds.has(n.noteId)
+              ? { ...n, startBeat: snapToGrid(n.startBeat, snapDivision) }
+              : n
+          )
+        ),
+      };
+    });
+    
     try {
       for (const noteId of selectedNoteIds) {
         const note = noteMap.get(noteId);
@@ -309,14 +381,42 @@ export default function NoteGrid({
 
   const humanizeSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;
+    
+    // Optimistic: update start times and velocities in local store immediately
+    const offsets = new Map<number, { beatOffset: number; velOffset: number }>();
+    for (const noteId of selectedNoteIds) {
+      offsets.set(noteId, {
+        beatOffset: (Math.random() - 0.5) * 0.06,
+        velOffset: Math.round((Math.random() - 0.5) * 10),
+      });
+    }
+    
+    useProjectStore.setState((s) => {
+      const arr = s.notesByClip.get(clipId);
+      if (!arr) return {};
+      return {
+        notesByClip: new Map(s.notesByClip).set(
+          clipId,
+          arr.map((n) => {
+            const offset = offsets.get(n.noteId);
+            if (!offset) return n;
+            return {
+              ...n,
+              startBeat: Math.max(0, n.startBeat + offset.beatOffset),
+              velocity: clamp(n.velocity + offset.velOffset, 1, 127),
+            };
+          })
+        ),
+      };
+    });
+    
     try {
       for (const noteId of selectedNoteIds) {
         const note = noteMap.get(noteId);
         if (!note) continue;
-        const beatOffset = (Math.random() - 0.5) * 0.06;
-        const velOffset = Math.round((Math.random() - 0.5) * 10);
-        const newStart = Math.max(0, note.startBeat + beatOffset);
-        const newVel = clamp(note.velocity + velOffset, 1, 127);
+        const offset = offsets.get(noteId)!;
+        const newStart = Math.max(0, note.startBeat + offset.beatOffset);
+        const newVel = clamp(note.velocity + offset.velOffset, 1, 127);
         await rpc.call("project.setNoteStart", { noteId, startBeat: newStart });
         await rpc.call("project.setNoteVelocity", { noteId, velocity: newVel });
       }
@@ -341,6 +441,20 @@ export default function NoteGrid({
     const gridEl = gridRef.current;
     const scrollBeat = gridEl ? gridEl.scrollLeft / PIXELS_PER_BEAT : 0;
     const minBeat = Math.min(...noteClipboard.map((n) => n.startBeat));
+    
+    // Optimistic: add pasted notes to local store immediately
+    const pastedNotes: NoteSnapshot[] = noteClipboard.map((n, i) => ({
+      ...n,
+      noteId: Date.now() + i,
+      startBeat: n.startBeat - minBeat + scrollBeat,
+    }));
+    useProjectStore.setState((s) => {
+      const arr = s.notesByClip.get(clipId) ?? [];
+      return {
+        notesByClip: new Map(s.notesByClip).set(clipId, [...arr, ...pastedNotes]),
+      };
+    });
+    
     try {
       for (const n of noteClipboard) {
         const startBeat = n.startBeat - minBeat + scrollBeat;

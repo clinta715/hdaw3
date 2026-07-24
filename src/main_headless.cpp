@@ -18,7 +18,7 @@
 #include "mcp/McpTransportStdio.h"
 #include "frontend/FrontendServer.h"
 #include "frontend/FrontendRpc.h"
-#include "ui/DebugLog.h"
+#include "common/DebugLog.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>

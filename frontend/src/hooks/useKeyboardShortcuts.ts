@@ -75,8 +75,10 @@ export function useKeyboardShortcuts() {
         e.preventDefault();
         try {
           await rpc.call(isRedo ? "project.redo" : "project.undo");
-          await useProjectStore.getState().syncDirtyFlag(rpc);
-          await useProjectStore.getState().syncSnapshot(rpc);
+          // Undo/redo replays an inverse mutation on the ValueTree, which the
+          // debounced notify.treeChanged push reconciles — no explicit fetch
+          // needed. Mark dirty optimistically (poller will correct it).
+          useProjectStore.setState({ isDirty: true });
         } catch (err) {
           console.error("undo/redo failed:", err);
         }

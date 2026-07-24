@@ -43,6 +43,7 @@ export default function TimelineMinimal() {
     dragPreviewStyle,
     dragPreviewClip,
     paintTiles,
+    paintCount,
   } = useTimelineDrag({
     clips,
     pps,
@@ -235,7 +236,7 @@ export default function TimelineMinimal() {
             name: fileName,
           }).catch(() => {});
         }
-        useProjectStore.getState().syncSnapshot(rpc);
+        // Reconciled by the debounced notify.treeChanged push.
       } catch {}
       return;
     }
@@ -257,7 +258,7 @@ export default function TimelineMinimal() {
         }).catch(() => {});
       }
     }
-    useProjectStore.getState().syncSnapshot(rpc);
+    // Reconciled by the debounced notify.treeChanged push.
   }, [rpc, pps]);
 
   // --- Context menu handler ---
@@ -285,8 +286,8 @@ export default function TimelineMinimal() {
     (async () => {
       try {
         await rpc.call("project.removeClip", { clipId: c.clipId });
-        await useProjectStore.getState().syncDirtyFlag(rpc);
-        await useProjectStore.getState().syncSnapshot(rpc);
+        // Reconciled by the debounced notify.treeChanged push.
+        useProjectStore.setState({ isDirty: true });
       } catch (e) {
         console.error("Failed to delete clip:", e);
       }
@@ -298,8 +299,8 @@ export default function TimelineMinimal() {
     const c = contextMenu.clip;
     (async () => {
       await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {});
-      await useProjectStore.getState().syncDirtyFlag(rpc);
-      await useProjectStore.getState().syncSnapshot(rpc);
+      // Reconciled by the debounced notify.treeChanged push.
+      useProjectStore.setState({ isDirty: true });
     })();
   }, [contextMenu]);
 
@@ -308,8 +309,8 @@ export default function TimelineMinimal() {
     const c = contextMenu.clip;
     (async () => {
       await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {});
-      await useProjectStore.getState().syncDirtyFlag(rpc);
-      await useProjectStore.getState().syncSnapshot(rpc);
+      // Reconciled by the debounced notify.treeChanged push.
+      useProjectStore.setState({ isDirty: true });
     })();
   }, [contextMenu]);
 
@@ -329,8 +330,8 @@ export default function TimelineMinimal() {
       }
     }
     await rpc.call("project.endTransaction");
-    await useProjectStore.getState().syncDirtyFlag(rpc);
-    await useProjectStore.getState().syncSnapshot(rpc);
+    // Reconciled by the debounced notify.treeChanged push.
+    useProjectStore.setState({ isDirty: true });
   }, []);
 
   // --- Keyboard shortcuts ---
@@ -358,8 +359,8 @@ export default function TimelineMinimal() {
               }
               await rpc.call("project.endTransaction");
               useUiStore.getState().clearSelection();
-              await useProjectStore.getState().syncDirtyFlag(rpc);
-              await useProjectStore.getState().syncSnapshot(rpc);
+              // Reconciled by the debounced notify.treeChanged push.
+              useProjectStore.setState({ isDirty: true });
             } catch (e) {
               console.error("Failed to delete clips:", e);
             }
@@ -374,8 +375,8 @@ export default function TimelineMinimal() {
               await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
             }
             await rpc.call("project.endTransaction");
-            await useProjectStore.getState().syncDirtyFlag(rpc);
-            await useProjectStore.getState().syncSnapshot(rpc);
+            // Reconciled by the debounced notify.treeChanged push.
+            useProjectStore.setState({ isDirty: true });
           })();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
@@ -401,8 +402,8 @@ export default function TimelineMinimal() {
               }
               await rpc.call("project.endTransaction");
               useUiStore.getState().clearSelection();
-              await useProjectStore.getState().syncDirtyFlag(rpc);
-              await useProjectStore.getState().syncSnapshot(rpc);
+              // Reconciled by the debounced notify.treeChanged push.
+              useProjectStore.setState({ isDirty: true });
             })();
           }
         }
@@ -565,6 +566,9 @@ export default function TimelineMinimal() {
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Ensure focus is on the timeline (not a bottom-panel
+                          // [tabindex] container) so the keyboard delete handler fires.
+                          document.body.focus();
                           if (e.ctrlKey || e.metaKey) {
                             useUiStore.getState().toggleClipSelection(clip.clipId);
                           } else if (e.shiftKey) {
@@ -643,8 +647,8 @@ export default function TimelineMinimal() {
             {paintTiles.map((tile, i) => (
               <div key={`paint-${i}`} className="tl-paint-tile tl-paint-tile--pending" style={{ left: tile.left, width: tile.width, top: tile.top, height: TRACK_HEIGHT - 8 }} />
             ))}
-            {dragState?.paintRepeat && dragState.paintedClipIds.length > 0 && (
-              <span className="tl-paint-badge" style={{ left: dragState.paintOriginBeat * pps + dragState.paintSpacing * dragState.paintedClipIds.length * pps }}>+{dragState.paintedClipIds.length}</span>
+            {dragState?.paintRepeat && paintCount > 0 && (
+              <span className="tl-paint-badge" style={{ left: dragState.paintOriginBeat * pps + dragState.paintSpacing * paintCount * pps }}>+{paintCount}</span>
             )}
 
             {/* Drag preview */}

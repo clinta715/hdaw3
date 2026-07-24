@@ -9,8 +9,6 @@
 
 namespace HDAW {
 
-class PluginEditorWindow;
-
 class TrackFXSlot
 {
 public:

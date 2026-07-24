@@ -1,10 +1,10 @@
 # HDAW — Holofonic Digital Audio Workstation
 
-A desktop DAW built in C++20 with Qt 6 for the UI and JUCE 8 for the
-audio engine. Versioned as a single self-contained application —
-clone, configure, build, run.
+A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
+JUCE 8 for the audio engine. Versioned as a single self-contained
+application — clone, configure, build, run.
 
-**Current version**: 0.10.0
+**Current version**: 0.12.0
 
 ## Quick start
 

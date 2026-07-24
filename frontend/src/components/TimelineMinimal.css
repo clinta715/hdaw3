@@ -296,6 +296,11 @@
 .ctx-danger { color: var(--danger, #e53935); }
 .ctx-danger:hover { background: rgba(229, 57, 53, 0.15); }
 
+.ctx-checked {
+  color: var(--accent-bright, #f59e0b);
+  font-weight: 600;
+}
+
 /* --- Rubber band selection --- */
 .tl-rubber-band {
   position: absolute;
@@ -345,6 +350,40 @@
 .tl-clip--selected {
   outline: 2px solid var(--accent, #d97706);
   outline-offset: -1px;
+}
+
+/* --- Loop paint handle --- */
+.tl-loop-paint-handle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10;
+}
+
+.tl-loop-paint-handle::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 16px;
+  background: var(--accent, #d97706);
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tl-clip:hover .tl-loop-paint-handle::after {
+  opacity: 0.7;
+}
+
+.tl-loop-paint-handle:hover::after {
+  opacity: 1;
+  background: var(--accent-bright, #f59e0b);
 }
 
 /* --- Marker pins --- */

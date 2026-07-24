@@ -1,0 +1,282 @@
+{
+  "communities": {
+    "0": [
+      "agents",
+      "components_gainenvelopeeditor_gainenvelopeeditor",
+      "components_toaster_toaster",
+      "concept_audio_timestretch",
+      "concept_build_pipeline_moc",
+      "concept_clip_gain_envelope_slicing",
+      "concept_diagnostic_pattern",
+      "concept_gtest_suite",
+      "concept_mcp_inspection_tools",
+      "concept_mcp_server",
+      "concept_mcp_tool_safety",
+      "concept_stretch_renderer_cache",
+      "concept_testing_transport_loopback",
+      "concept_version_management",
+      "docs_architecture",
+      "docs_testing_mcp",
+      "readme",
+      "store_notifystore_toast",
+      "store_notifystore_toastlevel"
+    ],
+    "1": [
+      "concept_automation_cache_rebuild",
+      "concept_automation_clipboard",
+      "concept_clip_selected_track_sync",
+      "concept_default_project_no_audio",
+      "concept_lint_sweep_cow_detach",
+      "concept_lint_sweep_min_max",
+      "concept_loopmarker_drag_commit",
+      "concept_project_load_no_autoplay",
+      "concept_valuetree_data_model",
+      "concept_valuetree_piano_roll_midi_note_list",
+      "docs_phase5_lint",
+      "rpc_types_automationlanesnapshot",
+      "rpc_types_automationpointsnapshot",
+      "rpc_types_clipsnapshot",
+      "rpc_types_notesnapshot",
+      "rpc_types_projectsnapshot",
+      "rpc_types_tracksnapshot",
+      "rpc_types_transportsnapshot",
+      "store_markerstore_markersnapshot"
+    ],
+    "2": [
+      "concept_audioprocessorgraph_bus_layout",
+      "concept_clip_drag_y_tracking",
+      "concept_clipitem_no_item_is_selectable",
+      "concept_dbg_macro_collision",
+      "concept_forward_declare_circular",
+      "concept_install_event_filter_trap",
+      "concept_juce8_engine",
+      "concept_juce9_migration_prep",
+      "concept_loop_sync_init",
+      "concept_null_collaborator_fallback",
+      "concept_plugin_editor_document_window",
+      "concept_qgraphicsview_scroll_pitfall",
+      "concept_qstackedwidget_tab_sync",
+      "concept_qt_signal_slot_best_practices",
+      "concept_track_header_sizehint",
+      "concept_vst3_blacklist_scan_failure",
+      "docs_pitfalls_juce"
+    ],
+    "3": [
+      "concept_audio_preload",
+      "concept_codebase_hardening",
+      "concept_plugin_ipc_protocol",
+      "concept_plugin_isolation",
+      "concept_plugin_param_automation",
+      "concept_realtime_audio_thread_safety",
+      "concept_spsc_bridge",
+      "concept_spsc_paramid_scheme",
+      "concept_undo_coalescing",
+      "docs_realtime_safety",
+      "rpc_types_automatableparamsnapshot",
+      "rpc_types_meterlevels",
+      "rpc_types_meterspayload",
+      "rpc_types_waveformpeaks"
+    ],
+    "4": [
+      "concept_audio_graph_commands",
+      "concept_gui_engine_decoupling",
+      "concept_plugin_param_service",
+      "concept_project_commands",
+      "concept_read_model",
+      "concept_service_interfaces",
+      "concept_setupui_connect_signals_ordering",
+      "concept_transport_commands",
+      "concept_valuetree_listener_orphans",
+      "docs_pitfalls_qt",
+      "docs_valuetree_listener_contract",
+      "hooks_usekeyboardshortcuts_usekeyboardshortcuts",
+      "rpc_types_fxslotsnapshot"
+    ],
+    "5": [
+      "components_exportdialog_exportdialog",
+      "components_importdialog_importdialog",
+      "components_preferencesdialog_preferencesdialog",
+      "components_snaputils_snaptogrid",
+      "components_statusbar_statusbar",
+      "concept_hudaw_architecture",
+      "concept_snap_persistence",
+      "rpc_types_chordtypeinfo",
+      "rpc_types_generateresult",
+      "rpc_types_progressionpatterninfo",
+      "rpc_types_scalemodeinfo",
+      "rpc_types_styleinfo"
+    ],
+    "6": [
+      "concept_electron_packaging",
+      "concept_file_browser_audio_preview",
+      "concept_jsonrpc_websocket",
+      "concept_react_frontend",
+      "concept_three_launch_modes",
+      "concept_zustand_stores",
+      "frontend_package_json",
+      "rpc_client_rpcclient",
+      "src_theme_colorstr",
+      "src_theme_injecttheme",
+      "store_notifystore_reportrpcerror"
+    ],
+    "7": [
+      "rpc_types_gainenvelopepoint"
+    ]
+  },
+  "cohesion": {
+    "0": 0.16374269005847952,
+    "1": 0.10526315789473684,
+    "2": 0.1323529411764706,
+    "3": 0.2087912087912088,
+    "4": 0.24358974358974358,
+    "5": 0.16666666666666666,
+    "6": 0.18181818181818182,
+    "7": 1.0
+  },
+  "gods": [
+    {
+      "id": "concept_juce8_engine",
+      "label": "JUCE 8 Audio Engine",
+      "degree": 23
+    },
+    {
+      "id": "agents",
+      "label": "AGENTS.md — Project Conventions and Pitfalls",
+      "degree": 22
+    },
+    {
+      "id": "concept_valuetree_data_model",
+      "label": "ValueTree-Based Data Model",
+      "degree": 21
+    },
+    {
+      "id": "concept_hudaw_architecture",
+      "label": "HDAW Architecture Overview",
+      "degree": 18
+    },
+    {
+      "id": "concept_gui_engine_decoupling",
+      "label": "GUI-Engine Decoupling via Abstract Command Interfaces",
+      "degree": 12
+    },
+    {
+      "id": "concept_mcp_server",
+      "label": "MCP Server (Model Context Protocol)",
+      "degree": 10
+    },
+    {
+      "id": "concept_react_frontend",
+      "label": "React 19 + TypeScript Frontend",
+      "degree": 9
+    },
+    {
+      "id": "docs_valuetree_listener_contract",
+      "label": "ValueTree Listener Contract",
+      "degree": 9
+    },
+    {
+      "id": "concept_realtime_audio_thread_safety",
+      "label": "Realtime Audio-Thread Safety Rules",
+      "degree": 8
+    },
+    {
+      "id": "concept_audio_timestretch",
+      "label": "Audio Clip Timestretch via SoundTouch",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "ExportDialog",
+      "target": "HDAW Architecture Overview",
+      "source_files": [
+        "frontend/src/components/ExportDialog.tsx",
+        "AGENTS.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `ExportDialog` unexpectedly reaches hub `HDAW Architecture Overview`"
+    },
+    {
+      "source": "ImportDialog",
+      "target": "HDAW Architecture Overview",
+      "source_files": [
+        "frontend/src/components/ImportDialog.tsx",
+        "AGENTS.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `ImportDialog` unexpectedly reaches hub `HDAW Architecture Overview`"
+    },
+    {
+      "source": "PreferencesDialog",
+      "target": "HDAW Architecture Overview",
+      "source_files": [
+        "frontend/src/components/PreferencesDialog.tsx",
+        "AGENTS.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `PreferencesDialog` unexpectedly reaches hub `HDAW Architecture Overview`"
+    },
+    {
+      "source": "StatusBar",
+      "target": "HDAW Architecture Overview",
+      "source_files": [
+        "frontend/src/components/StatusBar.tsx",
+        "AGENTS.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `StatusBar` unexpectedly reaches hub `HDAW Architecture Overview`"
+    },
+    {
+      "source": "MeterLevels",
+      "target": "Realtime Audio-Thread Safety Rules",
+      "source_files": [
+        "frontend/src/rpc/types.ts",
+        "AGENTS.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "shares_data_with",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `MeterLevels` unexpectedly reaches hub `Realtime Audio-Thread Safety Rules`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `AGENTS.md — Project Conventions and Pitfalls` connect `Qt/JUCE Pitfalls & Patterns` to `Architecture & Frontend`, `Data Model & State`, `Build, Test & Engine`, `GUI-Engine Decoupling`, `Realtime Audio Safety`, `MCP & Transport`?",
+      "why": "High betweenness centrality (0.442) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `ValueTree-Based Data Model` connect `Architecture & Frontend` to `Qt/JUCE Pitfalls & Patterns`, `Build, Test & Engine`, `GUI-Engine Decoupling`?",
+      "why": "High betweenness centrality (0.310) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `JUCE 8 Audio Engine` connect `Data Model & State` to `Qt/JUCE Pitfalls & Patterns`, `Build, Test & Engine`, `GUI-Engine Decoupling`, `Realtime Audio Safety`, `MCP & Transport`?",
+      "why": "High betweenness centrality (0.271) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 3 inferred relationships involving `ValueTree-Based Data Model` (e.g. with `Clip Gain Envelope and Audio Slicing` and `L-2: Non-const auto& in Range-For COW Detach Risk`) actually correct?",
+      "why": "`ValueTree-Based Data Model` has 3 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 9 inferred relationships involving `HDAW Architecture Overview` (e.g. with `ScaleModeInfo` and `ChordTypeInfo`) actually correct?",
+      "why": "`HDAW Architecture Overview` has 9 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `ExportDialog`, `GainEnvelopeEditor`, `ImportDialog` to the rest of the system?",
+      "why": "57 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Architecture & Frontend` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10526315789473684 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

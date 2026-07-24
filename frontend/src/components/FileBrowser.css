@@ -395,3 +395,100 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Favorites section */
+.fb-favorites {
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.fb-favorites-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 4px;
+}
+
+.fb-favorites-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fb-favorites-list {
+  padding: 0 4px 4px;
+}
+
+.fb-favorite-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fb-favorite-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  padding: 3px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: 3px;
+  text-align: left;
+  overflow: hidden;
+  transition: background 0.1s;
+}
+
+.fb-favorite-btn:hover {
+  background: var(--bg-widget);
+}
+
+.fb-favorite-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.fb-favorite-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-favorite-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.fb-favorite-item:hover .fb-favorite-actions {
+  opacity: 1;
+}
+
+.fb-favorite-move,
+.fb-favorite-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 8px;
+  padding: 2px 3px;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+
+.fb-favorite-move:hover,
+.fb-favorite-remove:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.fb-favorite-remove:hover {
+  color: var(--error);
+}

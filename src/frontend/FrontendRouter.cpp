@@ -186,6 +186,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "moveClip")        { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClip(i, t, s); return { false, QJsonValue::Null }; }
     if (m == "moveClipWithOverlap") { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr) || !requireDouble(o, "newStart", s, nullptr)) return makeError(-32602, "clipId, newTrackIndex, newStart required"); c.moveClipWithOverlap(i, t, s); return { false, QJsonValue::Null }; }
     if (m == "duplicateClip")   { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); return { false, c.duplicateClip(i) }; }
+    if (m == "duplicateClipTo") { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "newStart", s, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr)) return makeError(-32602, "clipId, newStart, newTrackIndex required"); return { false, c.duplicateClipTo(i, s, t) }; }
     if (m == "createGhostClip") { int i, t; double s; if (!requireInt(o, "sourceClipId", i, nullptr) || !requireDouble(o, "newStart", s, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr)) return makeError(-32602, "sourceClipId, newStart, newTrackIndex required"); return { false, c.createGhostClip(i, s, t) }; }
     if (m == "paintClips") {
         auto srcArr = o.value("sourceClipIds");
@@ -204,6 +205,72 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         for (int id : ids) arr.append(id);
         return { false, arr };
     }
+    if (m == "duplicateClips") {
+        auto idsArr = o.value("clipIds");
+        auto startsArr = o.value("newStarts");
+        auto tracksArr = o.value("newTrackIndices");
+        if (!idsArr.isArray() || !startsArr.isArray() || !tracksArr.isArray())
+            return makeError(-32602, "clipIds, newStarts, newTrackIndices arrays required");
+        std::vector<int> ids;
+        std::vector<double> starts;
+        std::vector<int> tracks;
+        for (const auto& e : idsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "clipIds element not a number"); ids.push_back(static_cast<int>(e.toDouble())); }
+        for (const auto& e : startsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "newStarts element not a number"); starts.push_back(e.toDouble()); }
+        for (const auto& e : tracksArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "newTrackIndices element not a number"); tracks.push_back(static_cast<int>(e.toDouble())); }
+        if (ids.size() != starts.size() || ids.size() != tracks.size())
+            return makeError(-32602, "array lengths must match");
+        auto newIds = c.duplicateClips(ids, starts, tracks);
+        QJsonArray arr;
+        for (int id : newIds) arr.append(id);
+        return { false, arr };
+    }
+    if (m == "moveClips") {
+        auto idsArr = o.value("clipIds");
+        auto startsArr = o.value("newStarts");
+        auto tracksArr = o.value("newTrackIndices");
+        if (!idsArr.isArray() || !startsArr.isArray() || !tracksArr.isArray())
+            return makeError(-32602, "clipIds, newStarts, newTrackIndices arrays required");
+        std::vector<int> ids;
+        std::vector<double> starts;
+        std::vector<int> tracks;
+        for (const auto& e : idsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "clipIds element not a number"); ids.push_back(static_cast<int>(e.toDouble())); }
+        for (const auto& e : startsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "newStarts element not a number"); starts.push_back(e.toDouble()); }
+        for (const auto& e : tracksArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "newTrackIndices element not a number"); tracks.push_back(static_cast<int>(e.toDouble())); }
+        if (ids.size() != starts.size() || ids.size() != tracks.size())
+            return makeError(-32602, "array lengths must match");
+        c.moveClips(ids, starts, tracks);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "removeClips") {
+        auto idsArr = o.value("clipIds");
+        if (!idsArr.isArray()) return makeError(-32602, "clipIds array required");
+        std::vector<int> ids;
+        for (const auto& e : idsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "clipIds element not a number"); ids.push_back(static_cast<int>(e.toDouble())); }
+        c.removeClips(ids);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "addClips") {
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        auto startsArr = o.value("starts");
+        auto durationsArr = o.value("durations");
+        auto namesArr = o.value("names");
+        if (!startsArr.isArray() || !durationsArr.isArray() || !namesArr.isArray())
+            return makeError(-32602, "starts, durations, names arrays required");
+        std::vector<double> starts;
+        std::vector<double> durations;
+        std::vector<std::string> names;
+        for (const auto& e : startsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "starts element not a number"); starts.push_back(e.toDouble()); }
+        for (const auto& e : durationsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "durations element not a number"); durations.push_back(e.toDouble()); }
+        for (const auto& e : namesArr.toArray()) { if (!e.isString()) return makeError(-32602, "names element not a string"); names.push_back(e.toString().toStdString()); }
+        if (starts.size() != durations.size() || starts.size() != names.size())
+            return makeError(-32602, "array lengths must match");
+        auto newIds = c.addClips(trackIndex, starts, durations, names);
+        QJsonArray arr;
+        for (int id : newIds) arr.append(id);
+        return { false, arr };
+    }
     if (m == "setClipStart")    { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "start", v, nullptr)) return makeError(-32602, "clipId and start required"); c.setClipStart(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipDuration") { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "duration", v, nullptr)) return makeError(-32602, "clipId and duration required"); c.setClipDuration(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipGain")     { int i; float v;  if (!requireInt(o, "clipId", i, nullptr) || !requireFloat(o, "gain", v, nullptr)) return makeError(-32602, "clipId and gain required"); c.setClipGain(i, v); return { false, QJsonValue::Null }; }
@@ -211,6 +278,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setClipFadeOut")  { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "fadeOut", v, nullptr)) return makeError(-32602, "clipId and fadeOut required"); c.setClipFadeOut(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipOffset")   { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "offset", v, nullptr)) return makeError(-32602, "clipId and offset required"); c.setClipOffset(i, v); return { false, QJsonValue::Null }; }
     if (m == "setClipLooping")  { int i; bool b;   if (!requireInt(o, "clipId", i, nullptr) || !requireBool(o, "looping", b, nullptr)) return makeError(-32602, "clipId and looping required"); c.setClipLooping(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setClipMuted")    { int i; bool b;   if (!requireInt(o, "clipId", i, nullptr) || !requireBool(o, "muted", b, nullptr)) return makeError(-32602, "clipId and muted required"); c.setClipMuted(i, b); return { false, QJsonValue::Null }; }
 
     // --- Timestretch ---
     if (m == "setClipSourceBpm")    { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "bpm", v, nullptr)) return makeError(-32602, "clipId and bpm required"); c.setClipSourceBpm(i, v); return { false, QJsonValue::Null }; }

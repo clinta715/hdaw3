@@ -49,8 +49,8 @@ export function TimelineContextMenu({
       }
     }
     await rpc.call("project.endTransaction");
-    await useProjectStore.getState().syncDirtyFlag(rpc);
-    await useProjectStore.getState().syncSnapshot(rpc);
+    // Reconciled by the debounced notify.treeChanged push.
+    useProjectStore.setState({ isDirty: true });
   }, []);
 
   if (!contextMenu && !emptyContextMenu) return null;
@@ -83,7 +83,8 @@ export function TimelineContextMenu({
                   const clipId = contextMenu.clip!.clipId;
                   const newLooping = !contextMenu.clip!.looping;
                   rpc.call("project.setClipLooping", { clipId, looping: newLooping }).then(() => {
-                    useProjectStore.getState().syncSnapshot(rpc);
+                    // Reconciled by the notify.treeChanged push.
+                    useProjectStore.setState({ isDirty: true });
                   });
                   onClose();
                 }}
@@ -97,7 +98,8 @@ export function TimelineContextMenu({
                   const clipId = contextMenu.clip!.clipId;
                   const newMuted = !contextMenu.clip!.muted;
                   rpc.call("project.setClipMuted", { clipId, muted: newMuted }).then(() => {
-                    useProjectStore.getState().syncSnapshot(rpc);
+                    // Reconciled by the notify.treeChanged push.
+                    useProjectStore.setState({ isDirty: true });
                   });
                   onClose();
                 }}
@@ -130,8 +132,8 @@ export function TimelineContextMenu({
                 rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
                   rpc.call("project.removeClip", { clipId: contextMenu.clip!.clipId })
                 ).then(() => rpc.call("project.endTransaction")).then(() => {
-                  useProjectStore.getState().syncDirtyFlag(rpc);
-                  useProjectStore.getState().syncSnapshot(rpc);
+                  // Reconciled by the notify.treeChanged push.
+                  useProjectStore.setState({ isDirty: true });
                 }).catch(() => {});
               }}>
                 Cut

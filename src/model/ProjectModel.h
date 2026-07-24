@@ -42,6 +42,7 @@ namespace IDs {
     DECLARE_ID(fadeIn)
     DECLARE_ID(fadeOut)
     DECLARE_ID(looping)
+    DECLARE_ID(muted)
 
     // MIDI note properties
     DECLARE_ID(noteNumber)

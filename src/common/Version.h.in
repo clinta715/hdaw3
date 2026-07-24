@@ -1,0 +1,2 @@
+#pragma once
+#define HDAW_VERSION "@HDAW_VERSION@"

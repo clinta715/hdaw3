@@ -1,11 +1,13 @@
 #include "AudioImport.h"
 #include "AudioEngine.h"
+#include "BpmDetector.h"
+#include "BarSnap.h"
 #include "../model/ProjectModel.h"
 #include "../engine/ProjectPool.h"
 #include "../common/DebugLog.h"
-#include "../ui/PreferencesDialog.h"
 #include <QFileInfo>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <vector>
 
 double HDAW::readBpmFromMetadata(juce::AudioFormatReader* reader)
 {
@@ -97,19 +99,22 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
     if (reader != nullptr)
     {
         double bpm = readBpmFromMetadata(reader.get());
+
+        // Fallback: aubio onset detection if no metadata BPM
+        if (bpm <= 0.0 && reader->numChannels > 0)
+        {
+            const int maxSamples = static_cast<int>(30.0 * reader->sampleRate);
+            const int totalSamples = static_cast<int>(reader->lengthInSamples);
+            const int n = (std::min)(totalSamples, maxSamples);
+            std::vector<float> buf(n);
+            reader->read(&buf, 0, n, 0, true, false);
+            auto det = BpmDetector::detect(buf.data(), n, reader->sampleRate);
+            bpm = det.bpm;
+        }
+
         if (bpm > 0.0)
         {
             clip.setProperty(IDs::sourceBpm, bpm, &model.getUndoManager());
-            if (PreferencesDialog::getAutoTempoMatch())
-            {
-                double projectBpm = model.getTree().getProperty(IDs::tempo, 120.0);
-                double ratio = bpm / projectBpm;
-                double sourceDur = clip.getProperty(IDs::sourceDuration, 0.0);
-                clip.setProperty(IDs::stretchMode, 1, &model.getUndoManager());
-                clip.setProperty(IDs::stretchRatio, ratio, &model.getUndoManager());
-                if (sourceDur > 0.0)
-                    clip.setProperty(IDs::duration, sourceDur * ratio, &model.getUndoManager());
-            }
         }
     }
 

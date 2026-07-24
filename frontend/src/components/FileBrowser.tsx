@@ -45,6 +45,8 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
   const selectedFile = useBrowserStore((s) => s.selectedFile);
   const setSelectedFile = useBrowserStore((s) => s.setSelectedFile);
   const removeFolder = useBrowserStore((s) => s.removeFolder);
+  const addFavorite = useBrowserStore((s) => s.addFavorite);
+  const favorites = useBrowserStore((s) => s.favorites);
   const [children, setChildren] = useState<DirEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -107,7 +109,8 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
         name: fileName,
       }).catch(() => {});
     }
-    await useProjectStore.getState().syncSnapshot(rpc);
+    // The new clip is reconciled by the debounced notify.treeChanged push.
+    useProjectStore.setState({ isDirty: true });
   }, []);
 
   const handleDragStart = useCallback((e: React.DragEvent, filePath: string, fileName: string) => {
@@ -138,6 +141,9 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
         <>
           <div className="fb-context-overlay" onClick={handleContextMenuClose} onContextMenu={handleContextMenuClose} />
           <div className="fb-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
+            {!favorites.some((f) => f.path === entry.path) && (
+              <button onClick={() => { addFavorite(entry.path); setContextMenu(null); }}>&#9733; Add to Favorites</button>
+            )}
             <button onClick={() => { removeFolder(entry.path); setContextMenu(null); }}>Remove Folder</button>
           </div>
         </>
@@ -178,9 +184,12 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
 
 export default function FileBrowser() {
   const folders = useBrowserStore((s) => s.folders);
+  const favorites = useBrowserStore((s) => s.favorites);
   const searchQuery = useBrowserStore((s) => s.searchQuery);
   const setSearchQuery = useBrowserStore((s) => s.setSearchQuery);
   const addFolder = useBrowserStore((s) => s.addFolder);
+  const removeFavorite = useBrowserStore((s) => s.removeFavorite);
+  const moveFavorite = useBrowserStore((s) => s.moveFavorite);
   const visible = useBrowserStore((s) => s.visible);
   const selectedFile = useBrowserStore((s) => s.selectedFile);
   const bpm = useTransportStore((s) => s.transport.bpm);
@@ -325,6 +334,57 @@ export default function FileBrowser() {
           className="fb-search-input"
         />
       </div>
+      {favorites.length > 0 && (
+        <div className="fb-favorites">
+          <div className="fb-favorites-header">
+            <span className="fb-favorites-title">&#9733; Favorites</span>
+          </div>
+          <div className="fb-favorites-list">
+            {favorites.map((fav, idx) => (
+              <div key={fav.path} className="fb-favorite-item">
+                <button
+                  className="fb-favorite-btn"
+                  title={fav.path}
+                  onClick={() => {
+                    // Expand the folder in the tree
+                    useBrowserStore.getState().toggleExpanded(fav.path);
+                  }}
+                >
+                  <span className="fb-favorite-icon">&#128193;</span>
+                  <span className="fb-favorite-label">{fav.label}</span>
+                </button>
+                <div className="fb-favorite-actions">
+                  {idx > 0 && (
+                    <button
+                      className="fb-favorite-move"
+                      title="Move up"
+                      onClick={() => moveFavorite(idx, idx - 1)}
+                    >
+                      &#9650;
+                    </button>
+                  )}
+                  {idx < favorites.length - 1 && (
+                    <button
+                      className="fb-favorite-move"
+                      title="Move down"
+                      onClick={() => moveFavorite(idx, idx + 1)}
+                    >
+                      &#9660;
+                    </button>
+                  )}
+                  <button
+                    className="fb-favorite-remove"
+                    title="Remove from favorites"
+                    onClick={() => removeFavorite(fav.path)}
+                  >
+                    &#10005;
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="fb-tree">
         {rootEntries.length === 0 && (
           <div className="fb-empty">

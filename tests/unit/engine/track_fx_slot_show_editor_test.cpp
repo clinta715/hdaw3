@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/TrackFXSlot.h"
-#include "ui/DebugLog.h"
+#include "common/DebugLog.h"
 #include <memory>
 #include <vector>
 

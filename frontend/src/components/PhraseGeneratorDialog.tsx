@@ -146,7 +146,8 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
 
       if (result) {
         setPreview(`Generated ${result.noteCount} notes`);
-        await useProjectStore.getState().syncSnapshot(rpc);
+        // New clip is reconciled by the debounced notify.treeChanged push.
+        useProjectStore.setState({ isDirty: true });
         setTimeout(() => onClose(), 400);
       }
     } catch (err) {

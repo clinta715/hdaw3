@@ -45,9 +45,15 @@ public:
     void setClipFadeOut(int clipId, double fadeOut) override;
     void setClipOffset(int clipId, double offset) override;
     void setClipLooping(int clipId, bool looping) override;
+    void setClipMuted(int clipId, bool muted) override;
     int duplicateClip(int clipId) override;
+    int duplicateClipTo(int clipId, double newStart, int newTrackIndex) override;
     int createGhostClip(int sourceClipId, double newStart, int newTrackIndex) override;
     std::vector<int> paintClips(const std::vector<int>& sourceClipIds, double originBeat, double spacing, int targetTrackIndex, int count) override;
+    std::vector<int> duplicateClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) override;
+    void moveClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) override;
+    void removeClips(const std::vector<int>& clipIds) override;
+    std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;

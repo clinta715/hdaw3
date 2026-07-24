@@ -293,3 +293,136 @@ int AudioEngineCommands::duplicateClip(int clipId)
     clipList.addChild(newClip, -1, &um);
     return static_cast<int>(newClip.getProperty(IDs::clipID, 0));
 }
+
+int AudioEngineCommands::duplicateClipTo(int clipId, double newStart, int newTrackIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return -1;
+
+    // Deep-copy the clip and reassign its identity (mirrors duplicateClip).
+    auto newClip = clip.createCopy();
+    newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    juce::String origName = newClip.getProperty(IDs::name).toString();
+    if (!origName.endsWith(" copy"))
+        newClip.setProperty(IDs::name, origName + " copy", nullptr);
+
+    // Place it at the requested position on the target track (mirrors the
+    // positioning + target-track logic of createGhostClip, without the ghost
+    // re-parenting). Unlike duplicateClip this is a direct placement, so the
+    // frontend doesn't need a follow-up moveClipWithOverlap round trip.
+    newClip.setProperty(IDs::startTime, newStart, nullptr);
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren())
+        return -1;
+    auto clipList = trackList.getChild(newTrackIndex).getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid()) return -1;
+    clipList.addChild(newClip, -1, &um);
+
+    // Handle overlaps — same as moveClipWithOverlap.
+    int newId = static_cast<int>(newClip.getProperty(IDs::clipID, 0));
+    moveClipWithOverlap(newId, newTrackIndex, newStart);
+    return newId;
+}
+
+std::vector<int> AudioEngineCommands::duplicateClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices)
+{
+    std::vector<int> result;
+    if (clipIds.size() != newStarts.size() || clipIds.size() != newTrackIndices.size())
+        return result;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Duplicate clips");
+    for (size_t i = 0; i < clipIds.size(); ++i)
+    {
+        int trackIdx = -1;
+        auto clip = findClipById(clipIds[i], trackIdx);
+        if (!clip.isValid() || trackIdx < 0) { result.push_back(-1); continue; }
+
+        int targetTrack = newTrackIndices[i];
+        if (targetTrack < 0 || targetTrack >= trackList.getNumChildren()) { result.push_back(-1); continue; }
+
+        auto newClip = clip.createCopy();
+        int newId = ProjectModel::allocateClipID();
+        newClip.setProperty(IDs::clipID, newId, nullptr);
+        juce::String origName = newClip.getProperty(IDs::name).toString();
+        if (!origName.endsWith(" copy"))
+            newClip.setProperty(IDs::name, origName + " copy", nullptr);
+        newClip.setProperty(IDs::startTime, newStarts[i], nullptr);
+
+        auto clipList = trackList.getChild(targetTrack).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) { result.push_back(-1); continue; }
+        clipList.addChild(newClip, -1, &um);
+
+        // Handle overlaps — same as moveClipWithOverlap.
+        // findClipById will now find the newly added clip.
+        moveClipWithOverlap(newId, targetTrack, newStarts[i]);
+
+        result.push_back(newId);
+    }
+    endTransaction();
+    return result;
+}
+
+void AudioEngineCommands::moveClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices)
+{
+    if (clipIds.size() != newStarts.size() || clipIds.size() != newTrackIndices.size())
+        return;
+
+    beginTransaction("Move clips");
+    for (size_t i = 0; i < clipIds.size(); ++i)
+    {
+        moveClipWithOverlap(clipIds[i], newTrackIndices[i], newStarts[i]);
+    }
+    endTransaction();
+}
+
+void AudioEngineCommands::removeClips(const std::vector<int>& clipIds)
+{
+    beginTransaction("Remove clips");
+    for (int id : clipIds)
+    {
+        removeClip(id);
+    }
+    endTransaction();
+}
+
+std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names)
+{
+    std::vector<int> result;
+    if (starts.size() != durations.size() || starts.size() != names.size())
+        return result;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+
+    auto track = trackList.getChild(trackIndex);
+    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        track.addChild(clipList, -1, &um);
+    }
+
+    beginTransaction("Add clips");
+    for (size_t i = 0; i < starts.size(); ++i)
+    {
+        auto clip = ProjectModel::createMidiClipEmpty(
+            juce::String(names[i]), starts[i], durations[i]);
+        int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+        clipList.addChild(clip, -1, &um);
+
+        // Handle overlaps — same as moveClipWithOverlap.
+        moveClipWithOverlap(clipId, trackIndex, starts[i]);
+
+        result.push_back(clipId);
+    }
+    endTransaction();
+    return result;
+}

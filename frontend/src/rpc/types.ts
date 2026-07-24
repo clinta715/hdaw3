@@ -44,6 +44,7 @@ export interface ClipSnapshot {
   fadeIn: number;
   fadeOut: number;
   looping: boolean;
+  muted: boolean;
   isMidi: boolean;
   sourceBpm: number;
   stretchMode: number;

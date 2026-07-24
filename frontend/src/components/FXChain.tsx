@@ -126,6 +126,18 @@ export default function FXChain() {
 
   const addSlot = useCallback(async (fxType: string, pluginId: string = "") => {
     if (selectedTrackIndex == null) return;
+    
+    // Optimistic: add slot to local state immediately
+    const newSlot: FxSlotSnapshot = {
+      slotIndex: slots.length,
+      fxType,
+      pluginId: pluginId || "",
+      pluginName: pluginId ? pluginId.split('/').pop() || pluginId : fxType,
+      bypassed: false,
+      paramCount: 0,
+    };
+    setSlots(prev => [...prev, newSlot]);
+    
     try {
       await rpc.call("project.addFxSlot", {
         trackIndex: selectedTrackIndex,
@@ -134,23 +146,54 @@ export default function FXChain() {
         pluginId,
       });
       refresh();
-    } catch (e) { console.error("addFxSlot failed", e); }
-  }, [selectedTrackIndex, refresh]);
+    } catch (e) {
+      console.error("addFxSlot failed", e);
+      // Rollback on error
+      setSlots(prev => prev.filter(s => s.slotIndex !== newSlot.slotIndex));
+    }
+  }, [selectedTrackIndex, slots.length, refresh]);
 
   const removeSlot = useCallback(async (slotIndex: number) => {
     if (selectedTrackIndex == null) return;
+    
+    // Optimistic: remove slot from local state immediately
+    const removedSlot = slots.find(s => s.slotIndex === slotIndex);
+    setSlots(prev => prev.filter(s => s.slotIndex !== slotIndex).map((s, i) => ({ ...s, slotIndex: i })));
+    
     try {
       await rpc.call("project.removeFxSlot", { trackIndex: selectedTrackIndex, slotIndex });
       refresh();
-    } catch (e) { console.error("removeFxSlot failed", e); }
-  }, [selectedTrackIndex, refresh]);
+    } catch (e) {
+      console.error("removeFxSlot failed", e);
+      // Rollback on error
+      if (removedSlot) {
+        setSlots(prev => {
+          const next = [...prev];
+          next.splice(slotIndex, 0, removedSlot);
+          return next.map((s, i) => ({ ...s, slotIndex: i }));
+        });
+      }
+    }
+  }, [selectedTrackIndex, slots, refresh]);
 
   const toggleBypass = useCallback(async (slotIndex: number, currentlyBypassed: boolean) => {
     if (selectedTrackIndex == null) return;
+    
+    // Optimistic: update bypass state immediately
+    setSlots(prev => prev.map(s => 
+      s.slotIndex === slotIndex ? { ...s, bypassed: !currentlyBypassed } : s
+    ));
+    
     try {
       await rpc.call("project.setFxSlotBypassed", { trackIndex: selectedTrackIndex, slotIndex, bypassed: !currentlyBypassed });
       refresh();
-    } catch (e) { console.error("setFxSlotBypassed failed", e); }
+    } catch (e) {
+      console.error("setFxSlotBypassed failed", e);
+      // Rollback on error
+      setSlots(prev => prev.map(s => 
+        s.slotIndex === slotIndex ? { ...s, bypassed: currentlyBypassed } : s
+      ));
+    }
   }, [selectedTrackIndex, refresh]);
 
   const toggleEditor = useCallback(async (slotIndex: number) => {
@@ -164,10 +207,28 @@ export default function FXChain() {
     if (selectedTrackIndex == null) return;
     const toSlot = slotIndex + direction;
     if (toSlot < 0 || toSlot >= slots.length) return;
+    
+    // Optimistic: reorder slots immediately
+    setSlots(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(slotIndex, 1);
+      next.splice(toSlot, 0, moved);
+      return next.map((s, i) => ({ ...s, slotIndex: i }));
+    });
+    
     try {
       await rpc.call("project.reorderFxSlots", { trackIndex: selectedTrackIndex, fromSlot: slotIndex, toSlot });
       refresh();
-    } catch (e) { console.error("reorderFxSlots failed", e); }
+    } catch (e) {
+      console.error("reorderFxSlots failed", e);
+      // Rollback on error
+      setSlots(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(toSlot, 1);
+        next.splice(slotIndex, 0, moved);
+        return next.map((s, i) => ({ ...s, slotIndex: i }));
+      });
+    }
   }, [selectedTrackIndex, slots.length, refresh]);
 
   const fetchParams = useCallback(async (slot: FxSlotSnapshot) => {
@@ -314,30 +375,48 @@ export default function FXChain() {
               onClick={() => moveSlot(slot.slotIndex, -1)}
               disabled={slot.slotIndex === 0}
               title="Move up"
-            >&#9650;</button>
+            >
+              <span className="fx-btn-icon">&#9650;</span>
+              <span className="fx-btn-label">Up</span>
+            </button>
             <button
               className="fx-btn fx-reorder"
               onClick={() => moveSlot(slot.slotIndex, 1)}
               disabled={slot.slotIndex === slots.length - 1}
               title="Move down"
-            >&#9660;</button>
+            >
+              <span className="fx-btn-icon">&#9660;</span>
+              <span className="fx-btn-label">Dn</span>
+            </button>
             <button
               className="fx-btn fx-edit"
               onClick={() => toggleEditor(slot.slotIndex)}
               title="Edit plugin"
-            >&#9998;</button>
+            >
+              <span className="fx-btn-icon">&#9998;</span>
+              <span className="fx-btn-label">Edit</span>
+            </button>
             <button
               className={`fx-btn fx-bypass${slot.bypassed ? " active" : ""}`}
               onClick={() => toggleBypass(slot.slotIndex, slot.bypassed)}
               title="Bypass"
-            >B</button>
-            <button className="fx-btn fx-remove" onClick={() => removeSlot(slot.slotIndex)} title="Remove">✕</button>
+            >
+              <span className="fx-btn-icon">B</span>
+              <span className="fx-btn-label">Byp</span>
+            </button>
+            <button className="fx-btn fx-remove" onClick={() => removeSlot(slot.slotIndex)} title="Remove">
+              <span className="fx-btn-icon">✕</span>
+              <span className="fx-btn-label">Del</span>
+            </button>
+            <button
+              className={`fx-btn fx-params-btn${expandedParams.has(slot.slotIndex) ? " active" : ""}`}
+              onClick={() => toggleParams(slot)}
+              title="Toggle parameter list"
+            >
+              <span className="fx-params-icon">&#9881;</span>
+              <span className="fx-params-label">Params</span>
+            </button>
           </div>
-          {(slot.pluginId ? slot.paramCount > 0 : true) && (
-            <div className="fx-params-toggle" onClick={() => toggleParams(slot)}>
-              {expandedParams.has(slot.slotIndex) ? "▼" : "▶"} Parameters
-            </div>
-          )}
           {expandedParams.has(slot.slotIndex) && (
             slot.pluginId ? (slotParams.has(slot.slotIndex) && (
               <div className="fx-params-list">

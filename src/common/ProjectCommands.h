@@ -38,9 +38,28 @@ public:
     virtual void setClipFadeOut(int clipId, double fadeOut) = 0;
     virtual void setClipOffset(int clipId, double offset) = 0;
     virtual void setClipLooping(int clipId, bool looping) = 0;
+    virtual void setClipMuted(int clipId, bool muted) = 0;
     virtual int duplicateClip(int clipId) = 0;
+    // Duplicate a clip directly to a target position + track. Combines
+    // duplicateClip + moveClipWithOverlap into one call so the frontend can
+    // place a ctrl-drag copy in a single round trip instead of two. Returns
+    // the new clip id, or -1 on failure (invalid source/track).
+    virtual int duplicateClipTo(int clipId, double newStart, int newTrackIndex) = 0;
     virtual int createGhostClip(int sourceClipId, double newStart, int newTrackIndex) = 0;
     virtual std::vector<int> paintClips(const std::vector<int>& sourceClipIds, double originBeat, double spacing, int targetTrackIndex, int count) = 0;
+    // Batch duplicate: duplicate multiple clips to specified positions in one transaction.
+    // Each clipId[i] is duplicated to newStarts[i] on newTrackIndices[i].
+    // Returns the new clip IDs (same order as input), or empty on error.
+    virtual std::vector<int> duplicateClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) = 0;
+    // Batch move: move multiple clips to new positions in one transaction.
+    // Each clipId[i] is moved to newStarts[i] on newTrackIndices[i].
+    // Uses moveClipWithOverlap semantics (trims/splits overlapping clips).
+    virtual void moveClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) = 0;
+    // Batch remove: remove multiple clips in one transaction.
+    virtual void removeClips(const std::vector<int>& clipIds) = 0;
+    // Batch add: add multiple MIDI clips in one transaction (for clipboard paste).
+    // Returns the new clip IDs.
+    virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) = 0;
 
     // Audio clip timestretch. Stretch is resolved at graph-build time and
     // rendered off-thread via StretchCache; it is NOT RT-parametric (no

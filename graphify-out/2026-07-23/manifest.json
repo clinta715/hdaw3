@@ -1,0 +1,2027 @@
+{
+  "frontend/electron/main.ts": {
+    "mtime": 1784728501.259321,
+    "ast_hash": "6095dff5915e0191d763591a29c4968a",
+    "semantic_hash": ""
+  },
+  "frontend/electron/preload.ts": {
+    "mtime": 1784559243.4434226,
+    "ast_hash": "b7d01bf6d39c244ce7f57e1669c8a919",
+    "semantic_hash": ""
+  },
+  "frontend/package.json": {
+    "mtime": 1784744700.1642523,
+    "ast_hash": "b374bd17ba8ad0b71e79c4e61aa9e18c",
+    "semantic_hash": ""
+  },
+  "frontend/src/App.tsx": {
+    "mtime": 1784734581.9700072,
+    "ast_hash": "b2b47e96490c064dba1f8f4497183faa",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/AudioClipEditor.tsx": {
+    "mtime": 1784735265.7928023,
+    "ast_hash": "98ef1f5eaf1456f15c414429cbd6739e",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/AutomationLaneCanvas.tsx": {
+    "mtime": 1784729941.2955637,
+    "ast_hash": "e62bf1d3d1b690399d97b7d8528a21f4",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/AutomationPanel.tsx": {
+    "mtime": 1784735502.4593775,
+    "ast_hash": "1e2fe9d55e6ef815f6d7c53e1ce2d5f6",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/BottomTabs.tsx": {
+    "mtime": 1784431258.4802706,
+    "ast_hash": "85c8e5129e9ae0b62332a3b29541d9e8",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/CCLane.tsx": {
+    "mtime": 1784487436.1689086,
+    "ast_hash": "bfab12ba944f2c24428f39cba7326bd0",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ClipEditor.tsx": {
+    "mtime": 1784487465.6961608,
+    "ast_hash": "e28eb7c2641b37f99d619f9ca00b2367",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ExportDialog.tsx": {
+    "mtime": 1784485358.2087996,
+    "ast_hash": "af686a4d69d28213c3554d99ce61339e",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/FXChain.tsx": {
+    "mtime": 1784743724.0439765,
+    "ast_hash": "4a2c36d6b7dafb15aab977dfec1a6175",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/FileBrowser.tsx": {
+    "mtime": 1784554994.5946093,
+    "ast_hash": "246aa6cb090a376519e2243df6ccf4ec",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/FileMenu.tsx": {
+    "mtime": 1784735476.16383,
+    "ast_hash": "f0152e0ddbac1af14aca26035f0190b4",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/GainEnvelopeEditor.tsx": {
+    "mtime": 1784487416.3992212,
+    "ast_hash": "faaa3d359c56811c97772d395c1f1b1e",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ImportDialog.tsx": {
+    "mtime": 1784488301.2902842,
+    "ast_hash": "1a963447e8f1e358c8575e0b931fbe2f",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/Mixer.tsx": {
+    "mtime": 1784485303.6920578,
+    "ast_hash": "99ac117076749e1755550fdeeb07742a",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/MixerStrip.tsx": {
+    "mtime": 1784735089.3214118,
+    "ast_hash": "0e9db1db345cc1ea0a7e4cc2ce55ce15",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ModulationPanel.tsx": {
+    "mtime": 1784735003.5974736,
+    "ast_hash": "eb307b0c81d1a719c13477468041e8ff",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/NoteGrid.tsx": {
+    "mtime": 1784735498.8031092,
+    "ast_hash": "e61297a0f56c0e1bc0d74f24b6aaf9b5",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/PhraseGeneratorDialog.tsx": {
+    "mtime": 1784569682.1133285,
+    "ast_hash": "d64df5b7acee4f4360788a0816baafc6",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/PianoRoll.tsx": {
+    "mtime": 1784475018.8366437,
+    "ast_hash": "2bf42e48a654f7965fa7d51f483b8d19",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/PluginManagerDialog.tsx": {
+    "mtime": 1784572773.5137875,
+    "ast_hash": "deba20d31b70e17decc505429c542b54",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/PreferencesDialog.tsx": {
+    "mtime": 1784742865.670411,
+    "ast_hash": "24eca0fc5dd249870394fa1ca739d30e",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/StartupDialog.tsx": {
+    "mtime": 1784744715.648504,
+    "ast_hash": "cdc76c444986701c588c61c2028aaafc",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/StatusBar.tsx": {
+    "mtime": 1784473202.8477688,
+    "ast_hash": "60c492540530232b4a18234213a9ebc6",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/StepSequencer.tsx": {
+    "mtime": 1784735379.1073742,
+    "ast_hash": "c0b8932ad544d456eef5237c1aa4e073",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/TimelineMinimal.tsx": {
+    "mtime": 1784735494.0510013,
+    "ast_hash": "8eb8ae44e4fdd117767cb6fc48bce52b",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/Toaster.tsx": {
+    "mtime": 1784485322.4826694,
+    "ast_hash": "74208b848ea670b1357fac16da54b50e",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/TrackHeaders.tsx": {
+    "mtime": 1784663586.9297285,
+    "ast_hash": "c86f7555f71c7687ec38d4f084e5a3b7",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/TransportBar.tsx": {
+    "mtime": 1784735322.385854,
+    "ast_hash": "44655821340ff71afb8e7de04b1d9ac0",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/VelocityLane.tsx": {
+    "mtime": 1784729912.1177971,
+    "ast_hash": "5cf3842eff33d94094adc7b2dd4773ab",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/WaveformCanvas.tsx": {
+    "mtime": 1784593404.0158772,
+    "ast_hash": "5622b696c4cda69c1eb62270a4ac96ca",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/snapUtils.ts": {
+    "mtime": 1784641804.7453654,
+    "ast_hash": "35d126c5b6b0c221772046fd006ccc3d",
+    "semantic_hash": ""
+  },
+  "frontend/src/electron.d.ts": {
+    "mtime": 1784555030.0588546,
+    "ast_hash": "bf14148c430fef4b0497d19c42b59059",
+    "semantic_hash": ""
+  },
+  "frontend/src/hooks/useKeyboardShortcuts.ts": {
+    "mtime": 1784735482.5913208,
+    "ast_hash": "805c61fbbebe2f7905430067358f17cf",
+    "semantic_hash": ""
+  },
+  "frontend/src/main.tsx": {
+    "mtime": 1784473048.1288018,
+    "ast_hash": "5e98068984654a1b5f317de78c88a9bf",
+    "semantic_hash": ""
+  },
+  "frontend/src/rpc.ts": {
+    "mtime": 1784563173.8470414,
+    "ast_hash": "dfc21863f908de0bfc61534563ab9515",
+    "semantic_hash": ""
+  },
+  "frontend/src/rpc/client.ts": {
+    "mtime": 1784313389.5306885,
+    "ast_hash": "7d9f0509adc2b200b675291f0788a132",
+    "semantic_hash": ""
+  },
+  "frontend/src/rpc/types.ts": {
+    "mtime": 1784666051.8526309,
+    "ast_hash": "732d7dc62c6506647cfba72d7562908a",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/automationStore.ts": {
+    "mtime": 1784485197.088321,
+    "ast_hash": "8eb6435d967e9607fbf56a006f22c1fa",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/browserStore.ts": {
+    "mtime": 1784475296.6310778,
+    "ast_hash": "08c8084700d36243faa5c88f3b61abb1",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/markerStore.ts": {
+    "mtime": 1784430352.031775,
+    "ast_hash": "7b2142dd2e843e6d6a3d32a4eac8aef4",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/meterStore.ts": {
+    "mtime": 1784313444.4552627,
+    "ast_hash": "e718e6f5cd9e904da1e79290187005da",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/notifyStore.ts": {
+    "mtime": 1784555082.6917782,
+    "ast_hash": "44f70fd4a4a23aef60ced7b962befdcd",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/projectStore.ts": {
+    "mtime": 1784430555.637262,
+    "ast_hash": "6d92f6d890c57e3ca7da26c31b2818e5",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/transportExtrasStore.ts": {
+    "mtime": 1784471142.8140857,
+    "ast_hash": "f3f5576b317d368d8701d3a0242cc845",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/transportStore.ts": {
+    "mtime": 1784313443.6147077,
+    "ast_hash": "e10b0c274529e66c745f8ea407c60fca",
+    "semantic_hash": ""
+  },
+  "frontend/src/store/uiStore.ts": {
+    "mtime": 1784569300.3588161,
+    "ast_hash": "2c5dac915e5b3e5b2ad03a72d4573291",
+    "semantic_hash": ""
+  },
+  "frontend/src/theme.ts": {
+    "mtime": 1784484633.8142552,
+    "ast_hash": "b570d2c7a0aeafe07282409c779494a7",
+    "semantic_hash": ""
+  },
+  "frontend/src/version.ts": {
+    "mtime": 1784748698.4284887,
+    "ast_hash": "bf71dd89e33881919a4822342d6a14e7",
+    "semantic_hash": ""
+  },
+  "frontend/tsconfig.json": {
+    "mtime": 1784312810.3731353,
+    "ast_hash": "732488cde43735251a21492b137131c7",
+    "semantic_hash": ""
+  },
+  "frontend/tsconfig.node.json": {
+    "mtime": 1784312961.2871602,
+    "ast_hash": "d147aabc66d7a8d5e0d03fe274ab0be1",
+    "semantic_hash": ""
+  },
+  "frontend/vite.config.ts": {
+    "mtime": 1784562921.8644743,
+    "ast_hash": "f63027bc4ab52732147fa7619ae03b04",
+    "semantic_hash": ""
+  },
+  "package.json": {
+    "mtime": 1784740002.8564923,
+    "ast_hash": "5f23db6e6a4111cfb21f3fcfa0aa4bb8",
+    "semantic_hash": ""
+  },
+  "src/common/AudioGraphCommands.h": {
+    "mtime": 1783788004.0218563,
+    "ast_hash": "eb53cc8c6ab6a14938749bd3af9288c5",
+    "semantic_hash": ""
+  },
+  "src/common/DebugLog.h": {
+    "mtime": 1783780513.290982,
+    "ast_hash": "8e56cc2693788826f1a2a658d3fce9a4",
+    "semantic_hash": ""
+  },
+  "src/common/MidiService.h": {
+    "mtime": 1783790588.1162572,
+    "ast_hash": "df76a1fbe4099d2a44ce461bb2693d00",
+    "semantic_hash": ""
+  },
+  "src/common/PluginParamService.h": {
+    "mtime": 1783864594.8664577,
+    "ast_hash": "907a471f4d058a49f011e9eef83b617c",
+    "semantic_hash": ""
+  },
+  "src/common/PluginService.h": {
+    "mtime": 1784572427.03546,
+    "ast_hash": "843a4299901e1038275defb40221ac88",
+    "semantic_hash": ""
+  },
+  "src/common/ProjectCommands.h": {
+    "mtime": 1784665683.7457826,
+    "ast_hash": "765a55098205010015f6081aee077189",
+    "semantic_hash": ""
+  },
+  "src/common/ReadModel.h": {
+    "mtime": 1784743652.6388977,
+    "ast_hash": "ecd3bf5105d6eed825d33fcb05919efa",
+    "semantic_hash": ""
+  },
+  "src/common/SettingsKeys.h": {
+    "mtime": 1784577272.6975667,
+    "ast_hash": "93a6ac763d732711acacb2681960703e",
+    "semantic_hash": ""
+  },
+  "src/common/TransportCommands.h": {
+    "mtime": 1783780934.9691117,
+    "ast_hash": "a60e8d99c3a7014937eaba85de88ad3a",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioEngine.cpp": {
+    "mtime": 1784743641.364519,
+    "ast_hash": "01f58df3885e618e51924fe33e772363",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioEngine.h": {
+    "mtime": 1784665706.2920775,
+    "ast_hash": "a5220f8667a227946e1385fd255ec9f3",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioEngineCommands.cpp": {
+    "mtime": 1784740395.3877485,
+    "ast_hash": "42b88b7bfe1ec599750570f5cb6cbdcd",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioEngineCommands.h": {
+    "mtime": 1784740384.0984054,
+    "ast_hash": "390900b01bf4ac91fcfc22367636aa93",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioImport.cpp": {
+    "mtime": 1784812046.0463428,
+    "ast_hash": "136ae01f5b3d535e62ffbce0bc06685f",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioImport.h": {
+    "mtime": 1784582257.5999703,
+    "ast_hash": "b86bbe80cd6d16f0c244ed53d28d1333",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioPreviewPlayer.cpp": {
+    "mtime": 1784581108.9270215,
+    "ast_hash": "3da1a965f3415666062429267e6ab04e",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioPreviewPlayer.h": {
+    "mtime": 1784581103.7236173,
+    "ast_hash": "ac33ef17ae495b195a5c189fa078db1f",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioRecorder.cpp": {
+    "mtime": 1782833083.1830764,
+    "ast_hash": "1aa3b1e31163175f5cecf289265f9a35",
+    "semantic_hash": ""
+  },
+  "src/engine/AudioRecorder.h": {
+    "mtime": 1781125146.9649537,
+    "ast_hash": "0861deb6aadd9cbef9b9b083ba4cc2d0",
+    "semantic_hash": ""
+  },
+  "src/engine/AutomationClipboard.cpp": {
+    "mtime": 1783810997.9789839,
+    "ast_hash": "1407bb116cdbb79593172c169fdf555d",
+    "semantic_hash": ""
+  },
+  "src/engine/AutomationClipboard.h": {
+    "mtime": 1783810990.5008051,
+    "ast_hash": "c30f2e5075de7a5f3a85c8792359876a",
+    "semantic_hash": ""
+  },
+  "src/engine/AutomationManager.h": {
+    "mtime": 1782833083.1840746,
+    "ast_hash": "5d672daf9d8f5e288d885135f583dfe1",
+    "semantic_hash": ""
+  },
+  "src/engine/BarSnap.cpp": {
+    "mtime": 1784811643.5556054,
+    "ast_hash": "2507d522625d875d79b36eebf297e486",
+    "semantic_hash": ""
+  },
+  "src/engine/BarSnap.h": {
+    "mtime": 1784811640.881163,
+    "ast_hash": "f9c16d507732279ec33dc7c672283dbd",
+    "semantic_hash": ""
+  },
+  "src/engine/BpmDetector.cpp": {
+    "mtime": 1784811004.993789,
+    "ast_hash": "47f17d9ac823e1b01472b68672dafb4a",
+    "semantic_hash": ""
+  },
+  "src/engine/BpmDetector.h": {
+    "mtime": 1784777268.0850713,
+    "ast_hash": "0a58df8c873d68ca040dfdf028d63abf",
+    "semantic_hash": ""
+  },
+  "src/engine/BusProcessorBase.h": {
+    "mtime": 1780971494.233182,
+    "ast_hash": "55fcb826204ea8d522db3c4643ee7f65",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginEditor.cpp": {
+    "mtime": 1781275339.531429,
+    "ast_hash": "11398413dd165d8299149a243b7f1308",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginEditor.h": {
+    "mtime": 1781209681.8976722,
+    "ast_hash": "6baff57eadb5f489091da71014303b47",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginFormat.cpp": {
+    "mtime": 1784035807.467594,
+    "ast_hash": "65607c55a0ca9e4902cb9944ee97d4c7",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginFormat.h": {
+    "mtime": 1784035706.6006775,
+    "ast_hash": "d493da82e1f285705b7b940c215a77f0",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginInstance.cpp": {
+    "mtime": 1784035760.1106453,
+    "ast_hash": "ece76421165d06f883aee6f426ca7474",
+    "semantic_hash": ""
+  },
+  "src/engine/CLAPPluginInstance.h": {
+    "mtime": 1784035759.981362,
+    "ast_hash": "6fb7f21343697ccffe3e038ad617f537",
+    "semantic_hash": ""
+  },
+  "src/engine/ClipClipboard.cpp": {
+    "mtime": 1783004132.0997717,
+    "ast_hash": "59e456740db2396942d63777d51ac9a7",
+    "semantic_hash": ""
+  },
+  "src/engine/ClipClipboard.h": {
+    "mtime": 1783004118.2125974,
+    "ast_hash": "066da5a916b6814344a54c1845353cc0",
+    "semantic_hash": ""
+  },
+  "src/engine/ClipSourceProcessor.h": {
+    "mtime": 1784643313.118353,
+    "ast_hash": "989268bd9017c3ac42913cb0120b4db5",
+    "semantic_hash": ""
+  },
+  "src/engine/ExportManager.cpp": {
+    "mtime": 1784554749.052393,
+    "ast_hash": "9bd909a047ef77b747d920e3cc4a9d34",
+    "semantic_hash": ""
+  },
+  "src/engine/ExportManager.h": {
+    "mtime": 1781034428.501069,
+    "ast_hash": "0d7f9aad3763dd9113c5579045068c53",
+    "semantic_hash": ""
+  },
+  "src/engine/FxBusProcessor.h": {
+    "mtime": 1782833083.1850765,
+    "ast_hash": "7ea09a8397dbe1cdf22b36f305ab4304",
+    "semantic_hash": ""
+  },
+  "src/engine/GroupBusProcessor.h": {
+    "mtime": 1780971749.8813772,
+    "ast_hash": "78a916b23eb64544a984c4cc93d6cf50",
+    "semantic_hash": ""
+  },
+  "src/engine/LevelMeter.h": {
+    "mtime": 1780969637.8341455,
+    "ast_hash": "6aae6977f43f982fbd697da34b4d5505",
+    "semantic_hash": ""
+  },
+  "src/engine/MainAudioProcessor.cpp": {
+    "mtime": 1784643313.117759,
+    "ast_hash": "543ba23da7d732cbc385191f9fccb6a5",
+    "semantic_hash": ""
+  },
+  "src/engine/MainAudioProcessor.h": {
+    "mtime": 1784145451.4909012,
+    "ast_hash": "232f982a1b93f9fa9077199887758736",
+    "semantic_hash": ""
+  },
+  "src/engine/MasterBusProcessor.h": {
+    "mtime": 1782833083.1850765,
+    "ast_hash": "fcc0058cf18a1ec460e70748237f287d",
+    "semantic_hash": ""
+  },
+  "src/engine/Metronome.h": {
+    "mtime": 1782924704.958676,
+    "ast_hash": "cdf390b240528ca2887535f94a1615e8",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiClipProcessor.h": {
+    "mtime": 1783784485.5039628,
+    "ast_hash": "cff2ee8418803bde6c79b44e9d2cb1a0",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiImport.cpp": {
+    "mtime": 1783780050.0453284,
+    "ast_hash": "44560b5c615766126ae54423afa2fe63",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiImport.h": {
+    "mtime": 1782844460.3247979,
+    "ast_hash": "2432135f8a1f59d6ec782c6ad66c2b93",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiInputManager.cpp": {
+    "mtime": 1782925764.5857594,
+    "ast_hash": "7237cf9dedfe541fb75310bf0cda3d8f",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiInputManager.h": {
+    "mtime": 1782925758.2593687,
+    "ast_hash": "5031d512e09a9f01e20a964375d33633",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiServiceImpl.cpp": {
+    "mtime": 1783790604.722779,
+    "ast_hash": "68cf5af99081b15da7253e89fcc1ee7d",
+    "semantic_hash": ""
+  },
+  "src/engine/MidiServiceImpl.h": {
+    "mtime": 1783790598.4060054,
+    "ast_hash": "4f1ec98586bd3a5c6bfe7481248f0c12",
+    "semantic_hash": ""
+  },
+  "src/engine/ModulationManager.h": {
+    "mtime": 1783134626.5254095,
+    "ast_hash": "abe1dd3553066a0d8188897eea636455",
+    "semantic_hash": ""
+  },
+  "src/engine/ModulationSource.h": {
+    "mtime": 1784301255.2142417,
+    "ast_hash": "7eb9a1805aca227ced508b0521bb5939",
+    "semantic_hash": ""
+  },
+  "src/engine/PhraseGenerator.cpp": {
+    "mtime": 1781284797.1893032,
+    "ast_hash": "f8b95cb5c05e988d7a280a811a92bb2f",
+    "semantic_hash": ""
+  },
+  "src/engine/PhraseGenerator.h": {
+    "mtime": 1781284646.7830691,
+    "ast_hash": "cd1bebdadefca957d50ac2e312cb9657",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginManager.cpp": {
+    "mtime": 1784646112.9387507,
+    "ast_hash": "4aa45bb1a762736f7874d7ab6ffa33f3",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginManager.h": {
+    "mtime": 1784646095.375561,
+    "ast_hash": "fef4a8da083341353cae68b57a388847",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginParamServiceImpl.cpp": {
+    "mtime": 1783864760.8951416,
+    "ast_hash": "0fe36c77468389877ba70f31630b0aa8",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginParamServiceImpl.h": {
+    "mtime": 1783864606.0192294,
+    "ast_hash": "99c5374ba8ca4d7a88fb39719e1b3baf",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginServiceImpl.cpp": {
+    "mtime": 1784572509.789783,
+    "ast_hash": "5bd0b0fe3fa3d88ab187aaa3bb46b965",
+    "semantic_hash": ""
+  },
+  "src/engine/PluginServiceImpl.h": {
+    "mtime": 1784572489.918438,
+    "ast_hash": "b699f2f24c5e85053380fcfb0e80d291",
+    "semantic_hash": ""
+  },
+  "src/engine/ProjectPool.h": {
+    "mtime": 1780969873.2123394,
+    "ast_hash": "9957c759208e1e7ca0e3ca2271973cab",
+    "semantic_hash": ""
+  },
+  "src/engine/ProjectSerializer.cpp": {
+    "mtime": 1783812290.8316078,
+    "ast_hash": "7c0951c4946fef504e80eb1c18bb0374",
+    "semantic_hash": ""
+  },
+  "src/engine/ProjectSerializer.h": {
+    "mtime": 1781020152.9437087,
+    "ast_hash": "03f02c55a13b220ff6ccf3bfbb5b93d8",
+    "semantic_hash": ""
+  },
+  "src/engine/ReadModelImpl.cpp": {
+    "mtime": 1784743674.3738198,
+    "ast_hash": "78558aa1d66fba78ba134a823c8c5e93",
+    "semantic_hash": ""
+  },
+  "src/engine/ReadModelImpl.h": {
+    "mtime": 1784743659.151341,
+    "ast_hash": "441a87b6131f4e19efedad1f65c41c08",
+    "semantic_hash": ""
+  },
+  "src/engine/RegionClipboard.cpp": {
+    "mtime": 1784167060.4923253,
+    "ast_hash": "e03346ed4c2462f6ae4f02150aa23dd6",
+    "semantic_hash": ""
+  },
+  "src/engine/RegionClipboard.h": {
+    "mtime": 1784167059.794648,
+    "ast_hash": "1cf86016c2b5ce501db2fde5c7f57049",
+    "semantic_hash": ""
+  },
+  "src/engine/RoutingManager.cpp": {
+    "mtime": 1784643313.1179807,
+    "ast_hash": "c51175a5559fe9a71d0d7ad97fa9f9d0",
+    "semantic_hash": ""
+  },
+  "src/engine/RoutingManager.h": {
+    "mtime": 1784165509.0017166,
+    "ast_hash": "a25d3502b25870fdf61eb9df1296d4de",
+    "semantic_hash": ""
+  },
+  "src/engine/SPSCBridge.h": {
+    "mtime": 1781036947.4743085,
+    "ast_hash": "0c4c5c9b987fdd102971040ee40a9775",
+    "semantic_hash": ""
+  },
+  "src/engine/SendProcessor.h": {
+    "mtime": 1781114003.930019,
+    "ast_hash": "8b3da57ab5964e463ad5f416876e2220",
+    "semantic_hash": ""
+  },
+  "src/engine/StretchCache.cpp": {
+    "mtime": 1783951829.0978034,
+    "ast_hash": "480daca58794d8ddadae69fc85aaf0c9",
+    "semantic_hash": ""
+  },
+  "src/engine/StretchCache.h": {
+    "mtime": 1783951773.1833217,
+    "ast_hash": "67d1b6bf1d08566c48b46728eac2a571",
+    "semantic_hash": ""
+  },
+  "src/engine/StretchRenderer.cpp": {
+    "mtime": 1783952825.0726159,
+    "ast_hash": "a2eca8d10e0566805b8c3ea086a05899",
+    "semantic_hash": ""
+  },
+  "src/engine/StretchRenderer.h": {
+    "mtime": 1783951587.5173624,
+    "ast_hash": "4cf3eee8cfcb4bd02cefbe5f1f196a3b",
+    "semantic_hash": ""
+  },
+  "src/engine/SyncableAudioSource.h": {
+    "mtime": 1784581235.99648,
+    "ast_hash": "71da37429ba772be5042d85b17ff129f",
+    "semantic_hash": ""
+  },
+  "src/engine/Track.cpp": {
+    "mtime": 1784743623.9936075,
+    "ast_hash": "74bb778c1aa837515f4712af127a2404",
+    "semantic_hash": ""
+  },
+  "src/engine/Track.h": {
+    "mtime": 1783134743.7796292,
+    "ast_hash": "150f1f94a7f56e9a475578f3edf1e7f9",
+    "semantic_hash": ""
+  },
+  "src/engine/TrackFXSlot.cpp": {
+    "mtime": 1783781865.7830138,
+    "ast_hash": "269e1faf624bfddd4a23d30d05ea46d1",
+    "semantic_hash": ""
+  },
+  "src/engine/TrackFXSlot.h": {
+    "mtime": 1784743734.1591642,
+    "ast_hash": "25444272298d451465177133163dd8d8",
+    "semantic_hash": ""
+  },
+  "src/engine/TransientDetector.cpp": {
+    "mtime": 1784301255.2164562,
+    "ast_hash": "253f60e4a92e7a6f3938741388f3eae8",
+    "semantic_hash": ""
+  },
+  "src/engine/TransientDetector.h": {
+    "mtime": 1784301255.2164562,
+    "ast_hash": "4655916affbb691cb892287c9a5b22c4",
+    "semantic_hash": ""
+  },
+  "src/engine/TransportManager.h": {
+    "mtime": 1784139752.783634,
+    "ast_hash": "442c0ca2d2461b0389fd66e85913e454",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendRouter.cpp": {
+    "mtime": 1784743682.2492313,
+    "ast_hash": "7f8777153f98fb92869d08b34b91cd6e",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendRouter.h": {
+    "mtime": 1784482975.6770203,
+    "ast_hash": "1f75637320389adae5a3c19aa3e6bdd2",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendRpc.h": {
+    "mtime": 1784743678.3317876,
+    "ast_hash": "2e764c0b6bfc59f37a206c572b51eccb",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendServer.cpp": {
+    "mtime": 1784644202.4677596,
+    "ast_hash": "e6b0e955322e986630270c703a73d190",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendServer.h": {
+    "mtime": 1784644149.487272,
+    "ast_hash": "d77a0f540a694ccd4505aa65519547a3",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendTreeWatcher.cpp": {
+    "mtime": 1784309683.2097592,
+    "ast_hash": "feb76d65ea9c5667603d9356f9f45375",
+    "semantic_hash": ""
+  },
+  "src/frontend/FrontendTreeWatcher.h": {
+    "mtime": 1784309665.4250667,
+    "ast_hash": "1e59226493e2bc0cd5a748bab508724e",
+    "semantic_hash": ""
+  },
+  "src/frontend/UiHttpServer.cpp": {
+    "mtime": 1784563607.0856063,
+    "ast_hash": "a4386e661e1741d081f332b938fb70ed",
+    "semantic_hash": ""
+  },
+  "src/frontend/UiHttpServer.h": {
+    "mtime": 1784562677.6497333,
+    "ast_hash": "7a1043b9ffae7ea8ece9224e9a05075c",
+    "semantic_hash": ""
+  },
+  "src/main.cpp": {
+    "mtime": 1784649944.70836,
+    "ast_hash": "125e066b4cf684b207d1a095c3182880",
+    "semantic_hash": ""
+  },
+  "src/main_headless.cpp": {
+    "mtime": 1784644069.4661386,
+    "ast_hash": "d337674d1aef336a386960a413cf40b3",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpExportTool.cpp": {
+    "mtime": 1784035868.4793258,
+    "ast_hash": "2e732e9f0b13ddd8123a0cdaa63a6f77",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpExportTool.h": {
+    "mtime": 1782837089.3505275,
+    "ast_hash": "773c694e3439e37cce46b58a70e7ed2c",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpGuiInspectTools.cpp": {
+    "mtime": 1784651528.8952367,
+    "ast_hash": "c89906d335c44f692ec04c209dc7b5fa",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpGuiInspectTools.h": {
+    "mtime": 1784651237.4932551,
+    "ast_hash": "243e08e8ef8a9386646e36b3ec4b7942",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpJsonRpc.cpp": {
+    "mtime": 1782778789.6769078,
+    "ast_hash": "11e27cf493fcd69b96ba586de648d0d8",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpJsonRpc.h": {
+    "mtime": 1782778789.6769078,
+    "ast_hash": "6138e00d23ca098fc93dbd19c73eba5d",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpSchema.cpp": {
+    "mtime": 1782778789.6769078,
+    "ast_hash": "2caa43caffda5cb07525099dbe0eacee",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpSchema.h": {
+    "mtime": 1782778789.6779099,
+    "ast_hash": "23067caccb7c2f0db810df4d27b2ddaa",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpServer.cpp": {
+    "mtime": 1782782701.597059,
+    "ast_hash": "d1c43d300d2a42a9e81b13ed8e4278a7",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpServer.h": {
+    "mtime": 1784744666.4806118,
+    "ast_hash": "5f818cbf2d77e9f827915d23454bbf31",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpToolDef.h": {
+    "mtime": 1782778789.679911,
+    "ast_hash": "7386a67e4ed85138ac842f8e9dc1a958",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTools.cpp": {
+    "mtime": 1784659898.3271754,
+    "ast_hash": "40bc6befe464104e771e44917c643176",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTools.h": {
+    "mtime": 1782778789.6809077,
+    "ast_hash": "32515d0d20c905d56d751af3ecf7870e",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransport.h": {
+    "mtime": 1782782711.7787495,
+    "ast_hash": "b250fc20b1b7a51258ab79b3acb928b1",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportHttp.cpp": {
+    "mtime": 1783013239.4073954,
+    "ast_hash": "0bc085c736fd69e064667382f337c0bd",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportHttp.h": {
+    "mtime": 1783013227.2285178,
+    "ast_hash": "5680dfc043e4126f021f1d208117a6b6",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportLoopback.cpp": {
+    "mtime": 1782782722.53917,
+    "ast_hash": "483cc77988895674a2deb5b75b614865",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportLoopback.h": {
+    "mtime": 1782782715.102774,
+    "ast_hash": "2dca3b0c6faa87fc81cfc98e86f92986",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportStdio.cpp": {
+    "mtime": 1782782736.0871937,
+    "ast_hash": "9fbd2aca91e660e2ce33a231e9ffa7f4",
+    "semantic_hash": ""
+  },
+  "src/mcp/McpTransportStdio.h": {
+    "mtime": 1782782726.1342008,
+    "ast_hash": "c38fede71d59fbbb9a45f8e2ff042cec",
+    "semantic_hash": ""
+  },
+  "src/model/ProjectModel.cpp": {
+    "mtime": 1784301255.2184608,
+    "ast_hash": "9cfb3f61d56d1acf63e2fe400976e1f8",
+    "semantic_hash": ""
+  },
+  "src/model/ProjectModel.h": {
+    "mtime": 1784665674.4136562,
+    "ast_hash": "a36cbaa7810a2743ec258d811e99f72d",
+    "semantic_hash": ""
+  },
+  "src/proxy/CrashDialog.h": {
+    "mtime": 1782840579.5134406,
+    "ast_hash": "4a2cc0504a39e2507dd3465316b075ed",
+    "semantic_hash": ""
+  },
+  "src/proxy/PluginProxySlot.cpp": {
+    "mtime": 1782840579.5144396,
+    "ast_hash": "f0c7ae99853b31016e21a85b0693c19e",
+    "semantic_hash": ""
+  },
+  "src/proxy/PluginProxySlot.h": {
+    "mtime": 1782840579.5144396,
+    "ast_hash": "6cc5ec2cd3d970ad795eea2244e1b310",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyCommon.h": {
+    "mtime": 1782840579.5144396,
+    "ast_hash": "7cdf81f11fa8c025b9fc2a289f6b3a82",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyEditor.cpp": {
+    "mtime": 1784741762.8021033,
+    "ast_hash": "bbea0a56e9d3c879054b1d452abbedd6",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyEditor.h": {
+    "mtime": 1782840579.5164397,
+    "ast_hash": "cc07e4c304fe6ea3cc813ddb9c25ce91",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyPipe.cpp": {
+    "mtime": 1782840579.5164397,
+    "ast_hash": "06c23b1ba60c577e355ede4189528e3b",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyPipe.h": {
+    "mtime": 1782840579.5164397,
+    "ast_hash": "3de444c31a25686ce6f408da4661870f",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyProcessManager.cpp": {
+    "mtime": 1782840579.5174403,
+    "ast_hash": "4b4ab253b23b2087c9b96153bd4fba83",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyProcessManager.h": {
+    "mtime": 1782840579.5174403,
+    "ast_hash": "a3f8d0feb2723a527f67ffa716b7634c",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxyRingBuffer.h": {
+    "mtime": 1782840579.51844,
+    "ast_hash": "86f491315e43b4ac382dbe29458553b9",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxySharedMemory.cpp": {
+    "mtime": 1782840579.51844,
+    "ast_hash": "ac047fb077ddeb01526c6fb68412a5df",
+    "semantic_hash": ""
+  },
+  "src/proxy/ProxySharedMemory.h": {
+    "mtime": 1782840579.51844,
+    "ast_hash": "1fb2aa94ce3cbcb165eef8dcf068a97f",
+    "semantic_hash": ""
+  },
+  "src/proxy/host/PluginHost.cpp": {
+    "mtime": 1782840579.5194395,
+    "ast_hash": "a8a3978b319dd49931a50ea22c15ec8b",
+    "semantic_hash": ""
+  },
+  "src/proxy/host/PluginHost.h": {
+    "mtime": 1782840579.5194395,
+    "ast_hash": "a7e5f411a776479adc28ebcd6adc7900",
+    "semantic_hash": ""
+  },
+  "src/proxy/host/main.cpp": {
+    "mtime": 1782840579.5204396,
+    "ast_hash": "b43e45fbe9a5e0108c29f6ba1db5d220",
+    "semantic_hash": ""
+  },
+  "src/proxy/scanner/PluginScannerMain.cpp": {
+    "mtime": 1784646087.658864,
+    "ast_hash": "78f3eedb8971388c8a436f183854b49a",
+    "semantic_hash": ""
+  },
+  "src/ui/AboutDialog.cpp": {
+    "mtime": 1782873124.4531193,
+    "ast_hash": "d88dd87c9b613d2f2f70cd2df6d4e59e",
+    "semantic_hash": ""
+  },
+  "src/ui/AboutDialog.h": {
+    "mtime": 1781281891.6200287,
+    "ast_hash": "8f241c60ea633280fa9c62816c2307fa",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioClipEditorWidget.cpp": {
+    "mtime": 1784301255.2184608,
+    "ast_hash": "17b4902b789eacafa2d824b69397b72a",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioClipEditorWidget.h": {
+    "mtime": 1784301255.2184608,
+    "ast_hash": "ea055b0bd546d1566710764a7f735709",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioClipItem.cpp": {
+    "mtime": 1784301255.2204652,
+    "ast_hash": "f464d2f12e9d0a271cae3d866fb94420",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioClipItem.h": {
+    "mtime": 1784301255.2204652,
+    "ast_hash": "75d593ae7007e884d9261ca171dd0afd",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioWaveformWidget.cpp": {
+    "mtime": 1784301255.2214696,
+    "ast_hash": "481c7707fe6831b605302c6800141d16",
+    "semantic_hash": ""
+  },
+  "src/ui/AudioWaveformWidget.h": {
+    "mtime": 1784301255.2214696,
+    "ast_hash": "a8ce7dd2cdcb675a0c8e5ba0a51d9a5d",
+    "semantic_hash": ""
+  },
+  "src/ui/AutomationLaneWidget.cpp": {
+    "mtime": 1784139752.7856338,
+    "ast_hash": "00c7e6fcea6416b6904729a8e411a121",
+    "semantic_hash": ""
+  },
+  "src/ui/AutomationLaneWidget.h": {
+    "mtime": 1783811224.6215909,
+    "ast_hash": "f25deff4cd1a94293e3fcde098ac753a",
+    "semantic_hash": ""
+  },
+  "src/ui/BpmInputDialog.cpp": {
+    "mtime": 1784811648.4180603,
+    "ast_hash": "92f9efa820239b56e442926b06e76f79",
+    "semantic_hash": ""
+  },
+  "src/ui/BpmInputDialog.h": {
+    "mtime": 1784811644.950875,
+    "ast_hash": "a67645b26715056fdd93c00b218dad96",
+    "semantic_hash": ""
+  },
+  "src/ui/CCLaneWidget.cpp": {
+    "mtime": 1784139752.7866337,
+    "ast_hash": "619d87becf5bd50edfc1871f105cda2d",
+    "semantic_hash": ""
+  },
+  "src/ui/CCLaneWidget.h": {
+    "mtime": 1784139752.7866337,
+    "ast_hash": "346bbc999fadeb0145502963019ec6f0",
+    "semantic_hash": ""
+  },
+  "src/ui/ClipItem.cpp": {
+    "mtime": 1784301255.2214696,
+    "ast_hash": "cdd5241823ffdf10487d955f18d1c9eb",
+    "semantic_hash": ""
+  },
+  "src/ui/ClipItem.h": {
+    "mtime": 1783992734.247649,
+    "ast_hash": "2c7f0421b36d01e88fd1f334fa01e380",
+    "semantic_hash": ""
+  },
+  "src/ui/DebugLog.h": {
+    "mtime": 1783780046.9172852,
+    "ast_hash": "625ae05ce52e7245fbfbfe0ab8a96465",
+    "semantic_hash": ""
+  },
+  "src/ui/ExportDialog.cpp": {
+    "mtime": 1783785494.9877355,
+    "ast_hash": "ac0faef377a96f6a318451c9510d01b1",
+    "semantic_hash": ""
+  },
+  "src/ui/ExportDialog.h": {
+    "mtime": 1783785494.9890132,
+    "ast_hash": "7ec7ed33764f1409be1e2e47f3e71753",
+    "semantic_hash": ""
+  },
+  "src/ui/FXChainWidget.cpp": {
+    "mtime": 1784647765.9610555,
+    "ast_hash": "7b292e49b7c887351087094deea78dee",
+    "semantic_hash": ""
+  },
+  "src/ui/FXChainWidget.h": {
+    "mtime": 1784647757.122411,
+    "ast_hash": "149fb7620742450c269ceb67922f284a",
+    "semantic_hash": ""
+  },
+  "src/ui/FXSlotRow.cpp": {
+    "mtime": 1783864899.7463477,
+    "ast_hash": "088a35d54ab210928273e4826095cdff",
+    "semantic_hash": ""
+  },
+  "src/ui/FXSlotRow.h": {
+    "mtime": 1783864888.241237,
+    "ast_hash": "10d894e8a71febb1ab8567c174ca3e7f",
+    "semantic_hash": ""
+  },
+  "src/ui/GainEnvelopeEditor.cpp": {
+    "mtime": 1784301255.2214696,
+    "ast_hash": "a055659f2fa326eb0d36a5854588e42d",
+    "semantic_hash": ""
+  },
+  "src/ui/GainEnvelopeEditor.h": {
+    "mtime": 1784301255.2214696,
+    "ast_hash": "9f59a148008a8637c1fbcfdc7aa12c28",
+    "semantic_hash": ""
+  },
+  "src/ui/GuiInspector.cpp": {
+    "mtime": 1784652674.4458816,
+    "ast_hash": "824a595316fdc747d687eab3ab9c6389",
+    "semantic_hash": ""
+  },
+  "src/ui/GuiInspector.h": {
+    "mtime": 1784651171.7060802,
+    "ast_hash": "2a9fca99176881dc3a898b9494200b90",
+    "semantic_hash": ""
+  },
+  "src/ui/LoopMarker.cpp": {
+    "mtime": 1783960638.3679216,
+    "ast_hash": "c44d89637bce51900be32659a3915fcb",
+    "semantic_hash": ""
+  },
+  "src/ui/LoopMarker.h": {
+    "mtime": 1783960603.9792345,
+    "ast_hash": "e27b6aaa7b553eba7a16bef9fa88561b",
+    "semantic_hash": ""
+  },
+  "src/ui/MainWindow.cpp": {
+    "mtime": 1784744652.776422,
+    "ast_hash": "5048a2b32f5e60d0afe37b22185c9e07",
+    "semantic_hash": ""
+  },
+  "src/ui/MainWindow.h": {
+    "mtime": 1784664138.4359517,
+    "ast_hash": "f5f375642dd227d91b8ee714b3e7748d",
+    "semantic_hash": ""
+  },
+  "src/ui/MarkerItem.cpp": {
+    "mtime": 1783863532.7902162,
+    "ast_hash": "cc2a0c110bb683424c207c809803fd00",
+    "semantic_hash": ""
+  },
+  "src/ui/MarkerItem.h": {
+    "mtime": 1783863516.364441,
+    "ast_hash": "6265309a6cc30fe4ab8732b038dbb41a",
+    "semantic_hash": ""
+  },
+  "src/ui/MidiClipItem.cpp": {
+    "mtime": 1781126061.6781538,
+    "ast_hash": "443051301827194f40068ab087a9433a",
+    "semantic_hash": ""
+  },
+  "src/ui/MidiClipItem.h": {
+    "mtime": 1781037006.6771834,
+    "ast_hash": "f99345e0b81e94fc780842460650d378",
+    "semantic_hash": ""
+  },
+  "src/ui/MixerStripWidget.cpp": {
+    "mtime": 1784574533.5820825,
+    "ast_hash": "aa4f0719ada032bd2eba84eb55dcc3a9",
+    "semantic_hash": ""
+  },
+  "src/ui/MixerStripWidget.h": {
+    "mtime": 1784139752.789634,
+    "ast_hash": "b41734eeae5545b647786abc5d4fc527",
+    "semantic_hash": ""
+  },
+  "src/ui/MixerWidget.cpp": {
+    "mtime": 1783787941.8248,
+    "ast_hash": "0f974b8d975acd917e03c3cad819b1f6",
+    "semantic_hash": ""
+  },
+  "src/ui/MixerWidget.h": {
+    "mtime": 1783785494.9920146,
+    "ast_hash": "b3f12d38ea726d0dce3834282da8087f",
+    "semantic_hash": ""
+  },
+  "src/ui/ModulationWidget.cpp": {
+    "mtime": 1784301255.2248795,
+    "ast_hash": "358f9017863d8bbf3c6bbddffd92e465",
+    "semantic_hash": ""
+  },
+  "src/ui/ModulationWidget.h": {
+    "mtime": 1784301255.2253916,
+    "ast_hash": "de9c261c7e9b561fe00eadc2f97fbed3",
+    "semantic_hash": ""
+  },
+  "src/ui/NoteGridWidget.cpp": {
+    "mtime": 1784301255.2253916,
+    "ast_hash": "8670d17c25789bc267f29711546f029f",
+    "semantic_hash": ""
+  },
+  "src/ui/NoteGridWidget.h": {
+    "mtime": 1783787735.949625,
+    "ast_hash": "31d9aab2e5019a04ec5451e5df359185",
+    "semantic_hash": ""
+  },
+  "src/ui/PhraseGeneratorDialog.cpp": {
+    "mtime": 1784139752.7926342,
+    "ast_hash": "0b1d581b1e80a94172498707f8b838d7",
+    "semantic_hash": ""
+  },
+  "src/ui/PhraseGeneratorDialog.h": {
+    "mtime": 1784035843.2237403,
+    "ast_hash": "d571a81868af34b67f5a9fcd29a0132a",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoKeysWidget.cpp": {
+    "mtime": 1782873106.3049152,
+    "ast_hash": "026c70f2f96ed06410b7e51fe816d149",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoKeysWidget.h": {
+    "mtime": 1781113428.6863158,
+    "ast_hash": "dfabfe43b782854656f3e788ffe906d5",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoRollModel.h": {
+    "mtime": 1783863654.5279737,
+    "ast_hash": "b8c0811a1c46035791f1895ef359baa5",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoRollRuler.cpp": {
+    "mtime": 1782873241.5536234,
+    "ast_hash": "ce5dbe006f832969f322664efa702f90",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoRollRuler.h": {
+    "mtime": 1780972229.509747,
+    "ast_hash": "359b1bffbee3f46ada6ed0b6ffe99dae",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoRollWidget.cpp": {
+    "mtime": 1784139752.7926342,
+    "ast_hash": "461d5baa42a2d726f525d189068ede0d",
+    "semantic_hash": ""
+  },
+  "src/ui/PianoRollWidget.h": {
+    "mtime": 1784035843.0963893,
+    "ast_hash": "ac1602a7dba188510d2385feeafad020",
+    "semantic_hash": ""
+  },
+  "src/ui/PlayheadCursor.cpp": {
+    "mtime": 1781057529.8861558,
+    "ast_hash": "84c4a314f87ec4b26469b6fdb3a9d506",
+    "semantic_hash": ""
+  },
+  "src/ui/PlayheadCursor.h": {
+    "mtime": 1780970893.7225559,
+    "ast_hash": "ec804674137407b5ac4c3e18ea1df81d",
+    "semantic_hash": ""
+  },
+  "src/ui/PluginEditorWindow.cpp": {
+    "mtime": 1784741351.1338813,
+    "ast_hash": "6c3ad57ba28d41299d43d4fc0d30454a",
+    "semantic_hash": ""
+  },
+  "src/ui/PluginEditorWindow.h": {
+    "mtime": 1783782185.7430365,
+    "ast_hash": "2d3e664c61af2c7dea7c5506ced57361",
+    "semantic_hash": ""
+  },
+  "src/ui/PluginScannerDialog.cpp": {
+    "mtime": 1783790935.202773,
+    "ast_hash": "616fb39bfa0a218cfc43e6bb12ddd104",
+    "semantic_hash": ""
+  },
+  "src/ui/PluginScannerDialog.h": {
+    "mtime": 1783790828.7482443,
+    "ast_hash": "14f0d82f4f00f5eb3d178606bf2a3ee0",
+    "semantic_hash": ""
+  },
+  "src/ui/PreferencesDialog.cpp": {
+    "mtime": 1784811976.1345894,
+    "ast_hash": "796d74a9478acf9bd510873f22df0551",
+    "semantic_hash": ""
+  },
+  "src/ui/PreferencesDialog.h": {
+    "mtime": 1784811819.878665,
+    "ast_hash": "d29e0c6a231e7cae11de66ee41455487",
+    "semantic_hash": ""
+  },
+  "src/ui/ProjectPoolBrowser.cpp": {
+    "mtime": 1784301255.2253916,
+    "ast_hash": "d255ff95e4da10eaa329657f3e1ae7b5",
+    "semantic_hash": ""
+  },
+  "src/ui/ProjectPoolBrowser.h": {
+    "mtime": 1784301255.2253916,
+    "ast_hash": "068e4db334ed98fd1799a24198a3a77b",
+    "semantic_hash": ""
+  },
+  "src/ui/ScanProgressDialog.cpp": {
+    "mtime": 1782866592.0276692,
+    "ast_hash": "b3d0f32a2d717986464b2c1cd8aca1a7",
+    "semantic_hash": ""
+  },
+  "src/ui/ScanProgressDialog.h": {
+    "mtime": 1781140025.4250557,
+    "ast_hash": "40d21005d04f50f995b171af929eea91",
+    "semantic_hash": ""
+  },
+  "src/ui/StartupDialog.cpp": {
+    "mtime": 1782873138.7716522,
+    "ast_hash": "70f75290396297ff5672c11fa49204fc",
+    "semantic_hash": ""
+  },
+  "src/ui/StartupDialog.h": {
+    "mtime": 1781281665.6788435,
+    "ast_hash": "06fa22f4f4414978ce4621c7100a21da",
+    "semantic_hash": ""
+  },
+  "src/ui/StatusBar.cpp": {
+    "mtime": 1783785495.0024383,
+    "ast_hash": "5a79f7deed79f1bf99532f85ce10f56e",
+    "semantic_hash": ""
+  },
+  "src/ui/StatusBar.h": {
+    "mtime": 1783785495.0024383,
+    "ast_hash": "f6b19d04a01abe871bd8f0de598eed26",
+    "semantic_hash": ""
+  },
+  "src/ui/StepEditorWidget.cpp": {
+    "mtime": 1784139752.7941382,
+    "ast_hash": "d2b40c87984222519a1472b33a53861c",
+    "semantic_hash": ""
+  },
+  "src/ui/StepEditorWidget.h": {
+    "mtime": 1783785495.003942,
+    "ast_hash": "40c1db490cff7c96190814fd08889b63",
+    "semantic_hash": ""
+  },
+  "src/ui/Theme.h": {
+    "mtime": 1784648761.2031255,
+    "ast_hash": "ec270fb1b07db34383d5348e58cacb59",
+    "semantic_hash": ""
+  },
+  "src/ui/TimeRuler.cpp": {
+    "mtime": 1784579884.2838693,
+    "ast_hash": "12e5916af7bdc34d8c5896828577669a",
+    "semantic_hash": ""
+  },
+  "src/ui/TimeRuler.h": {
+    "mtime": 1784579866.1504433,
+    "ast_hash": "0bec18e0e3624034f24e3477b154ebce",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineInteraction.cpp": {
+    "mtime": 1784749279.9573722,
+    "ast_hash": "909d753dc6bd563c133eed7c3305bd1e",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineInteraction.h": {
+    "mtime": 1784748985.369195,
+    "ast_hash": "ea597d8c113cdcce7dd9151126403a61",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineScene.cpp": {
+    "mtime": 1784772696.287899,
+    "ast_hash": "2805d54bce31a2e41431d7bc625a94ec",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineScene.h": {
+    "mtime": 1784772665.39797,
+    "ast_hash": "73aad0b036eee761cdc92c13ef591df8",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineToolbar.cpp": {
+    "mtime": 1783791168.1856272,
+    "ast_hash": "0f5e40d1efdd6a9439d137e1e9c7f922",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineToolbar.h": {
+    "mtime": 1783812241.467705,
+    "ast_hash": "5fd0b7e5443f25a6f8949a7cbfa67f42",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineView.cpp": {
+    "mtime": 1784664148.746484,
+    "ast_hash": "4629be7cae18285077cc04a19c4ded9a",
+    "semantic_hash": ""
+  },
+  "src/ui/TimelineView.h": {
+    "mtime": 1784139752.811113,
+    "ast_hash": "ba6cfa9173852e0bbbc929ecbe4652b0",
+    "semantic_hash": ""
+  },
+  "src/ui/TrackHeaderWidget.cpp": {
+    "mtime": 1784575361.197255,
+    "ast_hash": "eb56d29d7dfece6748044ee1fe2c0445",
+    "semantic_hash": ""
+  },
+  "src/ui/TrackHeaderWidget.h": {
+    "mtime": 1784139752.8166885,
+    "ast_hash": "6afa64de85976f75680648903744a17d",
+    "semantic_hash": ""
+  },
+  "src/ui/VUMeter.cpp": {
+    "mtime": 1784139752.8176844,
+    "ast_hash": "31754230d43883003fa5d6546b2663df",
+    "semantic_hash": ""
+  },
+  "src/ui/VUMeter.h": {
+    "mtime": 1783261614.246971,
+    "ast_hash": "eadea85a9bd96217cbc9f6e657b0757a",
+    "semantic_hash": ""
+  },
+  "src/ui/VelocityLaneWidget.cpp": {
+    "mtime": 1784139752.818686,
+    "ast_hash": "10c7be97c56278a8ce516f13b98d2f54",
+    "semantic_hash": ""
+  },
+  "src/ui/VelocityLaneWidget.h": {
+    "mtime": 1784139752.818686,
+    "ast_hash": "ad0366b1810f52b70d4e9fcc52bdd44b",
+    "semantic_hash": ""
+  },
+  "tests/integration/mcp/gui_functionality_test.cpp": {
+    "mtime": 1784660098.361472,
+    "ast_hash": "0f43f0057b0ca5afb03be2d61f663815",
+    "semantic_hash": ""
+  },
+  "tests/integration/mcp/gui_inspect_test.cpp": {
+    "mtime": 1784651390.5502703,
+    "ast_hash": "c1f1f6be4a33f8ece2349ad85f7bc28e",
+    "semantic_hash": ""
+  },
+  "tests/integration/mcp/mcp_server_test.cpp": {
+    "mtime": 1782785505.505382,
+    "ast_hash": "ab1d0e29084325ad580653ffb39cb25e",
+    "semantic_hash": ""
+  },
+  "tests/test_main.cpp": {
+    "mtime": 1782778789.690488,
+    "ast_hash": "cd46e2900713ab9d62a8a99c9406c124",
+    "semantic_hash": ""
+  },
+  "tests/unit/common/commands_test.cpp": {
+    "mtime": 1784139752.8206892,
+    "ast_hash": "3195c7a199c0d1a86027ea78ef2131d7",
+    "semantic_hash": ""
+  },
+  "tests/unit/common/read_model_test.cpp": {
+    "mtime": 1783861739.7579973,
+    "ast_hash": "bc7f613671b15364f5ff4c1bbbf48b1c",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/bar_snap_test.cpp": {
+    "mtime": 1784812952.8658922,
+    "ast_hash": "c80bde4de456ea73740bfe2f90703102",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/bpm_detector_test.cpp": {
+    "mtime": 1784811613.6359918,
+    "ast_hash": "29d102bea7c6345ac277aee8166c5a15",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/clip_source_processor_test.cpp": {
+    "mtime": 1784126879.448324,
+    "ast_hash": "c4e2a0b82425e2c1b412defb436da09d",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/ghost_clips_test.cpp": {
+    "mtime": 1784727079.1960273,
+    "ast_hash": "f289884faab56cfe80d8d34ba9ad9d01",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/isolated_scanner_test.cpp": {
+    "mtime": 1782866790.417881,
+    "ast_hash": "171742fbe4d1f101ef6582f24b760621",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/markers_test.cpp": {
+    "mtime": 1783000745.3853824,
+    "ast_hash": "83dea5803f92ebba4b1e6b321ebd7a82",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/modulation_test.cpp": {
+    "mtime": 1784301255.2299829,
+    "ast_hash": "9b47291ddbf22944b268cc3f43baf7f5",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/plugin_state_save_load_test.cpp": {
+    "mtime": 1782997457.36445,
+    "ast_hash": "f10f669857f06edd924c330b8d8d6793",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/region_clipboard_test.cpp": {
+    "mtime": 1784166800.451841,
+    "ast_hash": "78fa782e79e0d9062e13638256b9e557",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/stretch_test.cpp": {
+    "mtime": 1783954019.0233092,
+    "ast_hash": "c647cae3622f6492436a3a728f55f9f1",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/track_fx_slot_debug_test.cpp": {
+    "mtime": 1783780397.7695975,
+    "ast_hash": "9ece5adedaffe2fa9349634182afd78c",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/track_fx_slot_show_editor_test.cpp": {
+    "mtime": 1783780434.2751286,
+    "ast_hash": "c89cb66c2bfa596a8f212e76f7306f2d",
+    "semantic_hash": ""
+  },
+  "tests/unit/engine/transient_detector_test.cpp": {
+    "mtime": 1784135388.368951,
+    "ast_hash": "f9f9c0db883ace34310c85b113781e6e",
+    "semantic_hash": ""
+  },
+  "tests/unit/frontend/frontend_server_test.cpp": {
+    "mtime": 1784312343.6712892,
+    "ast_hash": "7c254630cf0d11452e78707a2960272d",
+    "semantic_hash": ""
+  },
+  "tests/unit/frontend/ghost_clips_rpc_test.cpp": {
+    "mtime": 1784726634.161526,
+    "ast_hash": "71eae23a48f47304b43d6120d5e76e81",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/dry_run_test.cpp": {
+    "mtime": 1782778789.690488,
+    "ast_hash": "e9816055468b5595b1baf298ad17f97d",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/json_rpc_test.cpp": {
+    "mtime": 1782778789.6914904,
+    "ast_hash": "a227eaa1a279f49f261ab3605eefd792",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/note_id_test.cpp": {
+    "mtime": 1782778789.6919951,
+    "ast_hash": "3f1b5475ea027cff51c546cb6df1c2ff",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/schema_test.cpp": {
+    "mtime": 1782778789.6919951,
+    "ast_hash": "94417104bb444d4cfb17a6601c761fec",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/tool_registry_test.cpp": {
+    "mtime": 1782778789.6919951,
+    "ast_hash": "e457cea653c56b5c690efa1a3c150e2e",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/transport_http_test.cpp": {
+    "mtime": 1782782755.6804245,
+    "ast_hash": "eb2896e415e71a26bf8952bb6f4a93b3",
+    "semantic_hash": ""
+  },
+  "tests/unit/mcp/transport_stdio_test.cpp": {
+    "mtime": 1782782870.724612,
+    "ast_hash": "76cf014adf5a96c15e57032f1f6dc28c",
+    "semantic_hash": ""
+  },
+  "tests/unit/model/clip_slicing_test.cpp": {
+    "mtime": 1784301255.2299829,
+    "ast_hash": "9819af0f708dc6b30f46566f7fa09b50",
+    "semantic_hash": ""
+  },
+  "tests/unit/model/project_model_test.cpp": {
+    "mtime": 1784126509.1045105,
+    "ast_hash": "ac5e5fbf1ec8c1f8fce800fafe4aac3a",
+    "semantic_hash": ""
+  },
+  "tests/unit/proxy/common_test.cpp": {
+    "mtime": 1782840579.5204396,
+    "ast_hash": "3626e8c566df191f06148003e35030b7",
+    "semantic_hash": ""
+  },
+  "tests/unit/proxy/pipe_test.cpp": {
+    "mtime": 1782840579.5214398,
+    "ast_hash": "e52118ea5a051ba695eb840e0c2817a0",
+    "semantic_hash": ""
+  },
+  "tests/unit/proxy/ring_buffer_test.cpp": {
+    "mtime": 1782840579.5214398,
+    "ast_hash": "2155feac73d7a53abd0176aa92b6120a",
+    "semantic_hash": ""
+  },
+  "tests/unit/proxy/shm_test.cpp": {
+    "mtime": 1782840579.5224397,
+    "ast_hash": "c39f9d1fe0bd5da9b08bb5ad2fa4ec2f",
+    "semantic_hash": ""
+  },
+  ".opencode/plans/2026-06-10-clap-host-format.md": {
+    "mtime": 1781119195.1468773,
+    "ast_hash": "3dd780d0952755a7c70af1b5267d694a",
+    "semantic_hash": ""
+  },
+  ".opencode/plans/2026-06-10-clap-support.md": {
+    "mtime": 1781118796.1481316,
+    "ast_hash": "d9df9cef2df5d321c25345fbe7db974d",
+    "semantic_hash": ""
+  },
+  ".zcode/plans/plan-sess_0a377757-5127-49e9-bca4-a08abe37d930.md": {
+    "mtime": 1783861515.036641,
+    "ast_hash": "5f514feaa794fce076dee1f03e2acf45",
+    "semantic_hash": ""
+  },
+  ".zcode/plans/plan-sess_568153bd-a062-484e-b6f7-1fe411456cdf.md": {
+    "mtime": 1784309273.8116584,
+    "ast_hash": "62d51672d76ba5241383df9610ec5898",
+    "semantic_hash": ""
+  },
+  ".zcode/plans/plan-sess_68028480-d79d-44c4-bb95-d5f3e1c91fc7.md": {
+    "mtime": 1783950997.1465044,
+    "ast_hash": "34fc0412f722b7cfa9f3881cdb714c50",
+    "semantic_hash": ""
+  },
+  ".zcode/plans/plan-sess_e54c1908-6bfe-4917-ab57-0a74f548a61e.md": {
+    "mtime": 1784482781.8255212,
+    "ast_hash": "241cacba87f080c2326ac17badbadbb7",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1784772965.2646337,
+    "ast_hash": "bc2f18e1f7b45f6c5b27c77759adfd30",
+    "semantic_hash": ""
+  },
+  "CMakeLists.txt": {
+    "mtime": 1784811732.504136,
+    "ast_hash": "cb4189991893975c29921e4e8eb82824",
+    "semantic_hash": ""
+  },
+  "DEV_PLAN_CPP.md": {
+    "mtime": 1780969996.3218381,
+    "ast_hash": "fa428e15d056081aabb83395ef25326d",
+    "semantic_hash": ""
+  },
+  "FEATURES.md": {
+    "mtime": 1783015785.5230083,
+    "ast_hash": "af1c9b7817942d813197fa4f7d6f6b93",
+    "semantic_hash": ""
+  },
+  "GEMINI.md": {
+    "mtime": 1780966598.8543675,
+    "ast_hash": "93f64a217ed9c8b3adc005f4d8930da3",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1784593658.514878,
+    "ast_hash": "78b0bbca4b8fa7c47c057782c6b4d310",
+    "semantic_hash": ""
+  },
+  "cmake/aubio-wrapper/CMakeLists.txt": {
+    "mtime": 1784775005.379478,
+    "ast_hash": "98e1f7f612b7277da08392bcf3d13f79",
+    "semantic_hash": ""
+  },
+  "docs/architecture.md": {
+    "mtime": 1784753655.3155954,
+    "ast_hash": "0761e2791446a796e46c1c4306e7ef25",
+    "semantic_hash": ""
+  },
+  "docs/phase5.md": {
+    "mtime": 1781126634.8405747,
+    "ast_hash": "6c7c655702c875ff2a5d94f4af8fbc26",
+    "semantic_hash": ""
+  },
+  "docs/pitfalls-juce.md": {
+    "mtime": 1784754240.2492607,
+    "ast_hash": "e847868e2aeb0adcdffdbf7c2d080f69",
+    "semantic_hash": ""
+  },
+  "docs/pitfalls-qt.md": {
+    "mtime": 1784754026.4355671,
+    "ast_hash": "378c146a631c4cb7329a0ac81a51c81a",
+    "semantic_hash": ""
+  },
+  "docs/realtime-safety.md": {
+    "mtime": 1784772940.616815,
+    "ast_hash": "505e3b2cca08593da2bc512a60a2dbf1",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-29-hdaw-mcp-server-phase1.md": {
+    "mtime": 1782750478.1981382,
+    "ast_hash": "58d47144c1b32aa60be96996737aa326",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-29-hdaw-mcp-server-phase2.md": {
+    "mtime": 1782750592.0749636,
+    "ast_hash": "a900f16ce97a3dcb655e32e7bc204ec8",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-30-codebase-hardening-and-cleanup.md": {
+    "mtime": 1782844460.3228009,
+    "ast_hash": "3cb4f32258acd3e2331ca8619ddab48d",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-30-isolated-plugin-scanner.md": {
+    "mtime": 1782854318.2274253,
+    "ast_hash": "2b43364f8137b200df7e188a642f3377",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md": {
+    "mtime": 1782838777.1721926,
+    "ast_hash": "d8adb19f3304eb83344e44821b2060b8",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-06-30-warm-dark-visual-style.md": {
+    "mtime": 1782872675.3340566,
+    "ast_hash": "171b13e797cf0f1c0c7a16684df274c3",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-03-modulation-system-implementation.md": {
+    "mtime": 1783133287.705781,
+    "ast_hash": "fc90422d5eee8df21b8c3cadfd348e97",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-04-visual-style-refresh-plan.md": {
+    "mtime": 1783277211.7877748,
+    "ast_hash": "3873607590216133377644782b8b4707",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-09-full-automation-parameters-plan.md": {
+    "mtime": 1783612068.833627,
+    "ast_hash": "f392082467f0640779e11b164803b2df",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-11-decouple-gui-from-engine.md": {
+    "mtime": 1783779847.4278939,
+    "ast_hash": "7137f615fab479b2ef08b3ceaf3204ce",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-13-file-browser-directory-persistence.md": {
+    "mtime": 1783948381.2296894,
+    "ast_hash": "4e6560f1f713578a37890a0874fa7468",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-14-gui-engine-decoupling-completion.md": {
+    "mtime": 1784040332.0861683,
+    "ast_hash": "68ffbc488a20951afc74947bf8f03759",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-15-audio-editor-region-copy-paste-plan.md": {
+    "mtime": 1784166373.0133512,
+    "ast_hash": "d3f07cc33c2bf03b204da9124153a67a",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-15-clip-gain-envelope-and-slicing-plan.md": {
+    "mtime": 1784125721.9604373,
+    "ast_hash": "13081c7d044826fdfcc222c345ca192b",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase1.md": {
+    "mtime": 1784311744.708569,
+    "ast_hash": "0e8aafac972865159c3b1c3f2b8eb3df",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase2.md": {
+    "mtime": 1784319471.8838334,
+    "ast_hash": "b070aa73300ebe662de9c413cbc9b88f",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase3.md": {
+    "mtime": 1784323326.4429684,
+    "ast_hash": "2ce93752b272935c4062071a6e641edf",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase4.md": {
+    "mtime": 1784323602.9573193,
+    "ast_hash": "624ab8c1e96a359631c9ca93e63085f4",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase5.md": {
+    "mtime": 1784323984.4882994,
+    "ast_hash": "a695132357003c1f248f480be21a948c",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-17-hdaw-electron-frontend-phase6.md": {
+    "mtime": 1784324197.4517448,
+    "ast_hash": "74f1974c428edf6cb06f90493831fa85",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-18-hdaw-electron-frontend-phase7-automation-lanes.md": {
+    "mtime": 1784383206.7707772,
+    "ast_hash": "028bd05827795af0e76441f8b29d7034",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-18-hdaw-electron-frontend-phase8-automation-interaction.md": {
+    "mtime": 1784384456.9627461,
+    "ast_hash": "51b5472ec2aafc2d517c68c95d31bdac",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-18-hdaw-electron-frontend-phases-9-14-roadmap.md": {
+    "mtime": 1784400413.0092838,
+    "ast_hash": "fe6e7b9628ca3274b9adfa8e5b716d0b",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-18-html-frontend-feature-parity.md": {
+    "mtime": 1784428748.3417492,
+    "ast_hash": "f8ae4a54f76ae00ae79c15e02b55d428",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-19-html-qt-feature-parity.md": {
+    "mtime": 1784470642.2075486,
+    "ast_hash": "5b4f500060dcc9b0f48d815cd730c734",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-audio-device-preferences.md": {
+    "mtime": 1784576788.4103503,
+    "ast_hash": "383a8b71403e0aab1bca0a7ec1327f59",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-auto-trim-silence-on-import.md": {
+    "mtime": 1784582176.9084778,
+    "ast_hash": "9f0a5ed0dab4851d3448e29ee444cd7e",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-tempo-changes-on-ruler.md": {
+    "mtime": 1784579761.9402554,
+    "ast_hash": "dc8344a6fa9c3107b23e04df9e547eeb",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-track-management-rename-duplicate-add-with-fx.md": {
+    "mtime": 1784573996.96031,
+    "ast_hash": "3d3617852de95508b1a90a006f7c238e",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-transport-synced-loop-preview.md": {
+    "mtime": 1784580926.8480244,
+    "ast_hash": "3bf4466eec25ff6917e9388284320b20",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-20-ui-launcher-flag.md": {
+    "mtime": 1784561538.843006,
+    "ast_hash": "eb896be86fb2afcd846671084684a0a3",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-21-gui-inspection-mcp-tools.md": {
+    "mtime": 1784653043.3660185,
+    "ast_hash": "2390e69f7f274c1b90873fc0015f69fd",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-07-22-tempo-match-phase2.md": {
+    "mtime": 1784774505.8962722,
+    "ast_hash": "b48162b0759f80b6b536ba2f7b8f0411",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-export-design.md": {
+    "mtime": 1781025062.303318,
+    "ast_hash": "aefe13db93d3942fc0a04a51fb153894",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-plugin-editors-design.md": {
+    "mtime": 1781026534.6050987,
+    "ast_hash": "b38f7202d46536bc419e80f43a016196",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-plugin-hosting-design.md": {
+    "mtime": 1781017940.1976366,
+    "ast_hash": "9b99e25f1d6878171815df3fc7faf2f8",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-polish-gaps-design.md": {
+    "mtime": 1781016565.528771,
+    "ast_hash": "7cc5ba705600a3b048a47a72e3c20109",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-recording-design.md": {
+    "mtime": 1781020460.119732,
+    "ast_hash": "d70a4f3d41e40a51fc525b9b220d80a2",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-saveload-undo-design.md": {
+    "mtime": 1781019625.450785,
+    "ast_hash": "4e597cc6851621dbcb3ab05fb51caad5",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-09-theme-modernization-design.md": {
+    "mtime": 1781057430.1306872,
+    "ast_hash": "dfd89df00fc8848631e4d1e9ca7e4b6c",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-10-audio-sample-editor-design.md": {
+    "mtime": 1781111358.981676,
+    "ast_hash": "5c08b7faab26609073817dd34938e22b",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-10-piano-roll-snap-to-grid-design.md": {
+    "mtime": 1781108011.9332385,
+    "ast_hash": "949dd0770453932db6fb2aea680d3d3a",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md": {
+    "mtime": 1782749142.8185463,
+    "ast_hash": "8ddecb374a987e980c6c2799714a3e60",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md": {
+    "mtime": 1782838288.599239,
+    "ast_hash": "b008cbee74785caf776c62f4820c6e7a",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-30-qt-mcp-ui-inspector-roadmap.md": {
+    "mtime": 1782838525.6687732,
+    "ast_hash": "b7b1b4214afbeabcd858f868ceebdf87",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-06-30-warm-dark-visual-style-design.md": {
+    "mtime": 1782872326.901463,
+    "ast_hash": "d4753b723a05dd8f6f486ef0ef044920",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-03-modulation-system-design.md": {
+    "mtime": 1783133011.9101758,
+    "ast_hash": "d7bf4e8effe2e10e2cb278b3d8fe92aa",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-04-visual-style-refresh-design.md": {
+    "mtime": 1783277211.7887714,
+    "ast_hash": "d45a827436cfee6cd9483541e15b4cdc",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-09-full-automation-parameters-design.md": {
+    "mtime": 1783611958.6051157,
+    "ast_hash": "66c4e4eed9bd8114a6201df3ea6d8922",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-13-file-browser-directory-persistence-design.md": {
+    "mtime": 1783948307.8738291,
+    "ast_hash": "23bf2663d64144506a3b07c8c95a2d85",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-15-clip-gain-envelope-and-slicing-design.md": {
+    "mtime": 1784125562.0661144,
+    "ast_hash": "33104524b460a2e5f2e5fe123210a04a",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-15-gain-envelope-clip-slicing-design.md": {
+    "mtime": 1784124825.8408563,
+    "ast_hash": "d676e812250196670113d14cc0f82ff4",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase1-design.md": {
+    "mtime": 1784311595.6396244,
+    "ast_hash": "a4fc64eb69d51e92f33e807cc59e8e65",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase2-design.md": {
+    "mtime": 1784319459.4048667,
+    "ast_hash": "ed83a92cd2c0ac44bee132ce3710405e",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase3-design.md": {
+    "mtime": 1784323316.168371,
+    "ast_hash": "26e8ad5d05e90b901c5f158655767ee3",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase4-design.md": {
+    "mtime": 1784323594.11875,
+    "ast_hash": "d622f6bea304c43c9bd158e57cf9808a",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase5-design.md": {
+    "mtime": 1784323951.815101,
+    "ast_hash": "a336ca89fe077fb7dc701f9438d54f48",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-17-hdaw-electron-frontend-phase6-design.md": {
+    "mtime": 1784324186.9383028,
+    "ast_hash": "1ad46c4b70629b4a3790c9813beea4e9",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-18-hdaw-electron-frontend-phase7-automation-lanes-design.md": {
+    "mtime": 1784383085.1510868,
+    "ast_hash": "354269e468d9b9bef8003a4e56744c6f",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-18-hdaw-electron-frontend-phase8-automation-interaction-design.md": {
+    "mtime": 1784384240.5379155,
+    "ast_hash": "0bd643caec81ff329daba3a789c3b2b7",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-18-html-frontend-feature-parity-design.md": {
+    "mtime": 1784428068.587071,
+    "ast_hash": "782d81c464f41d5736ec36a6182e3ad6",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-19-file-browser-design.md": {
+    "mtime": 1784475286.314151,
+    "ast_hash": "ec256925aae4f7e9bfa94c6691a73916",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-20-audio-device-preferences-design.md": {
+    "mtime": 1784576526.4137712,
+    "ast_hash": "14d7e6a37d003b37668a571542a70374",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-20-auto-trim-silence-on-import-design.md": {
+    "mtime": 1784582120.0330505,
+    "ast_hash": "afe5f58849d47be2d3942b4881e35474",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-20-tempo-changes-on-ruler-design.md": {
+    "mtime": 1784578929.7836087,
+    "ast_hash": "f132c3c8b2e264d063951f6012e53cb8",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-20-transport-synced-loop-preview-design.md": {
+    "mtime": 1784580837.7653139,
+    "ast_hash": "0c748b79701c7038aa2f5ea314596cba",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-21-gui-inspection-mcp-tools-design.md": {
+    "mtime": 1784652800.8556657,
+    "ast_hash": "8f6542e3a3e361cc225082fe7520109f",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-21-paint-ghost-clips-design.md": {
+    "mtime": 1784665537.113194,
+    "ast_hash": "358ce446477f2d0a0431c7b4c226b1f7",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-07-22-tempo-match-phase2-design.md": {
+    "mtime": 1784774237.282914,
+    "ast_hash": "cfe151c990fe4a4ead521e615ea74564",
+    "semantic_hash": ""
+  },
+  "docs/testing-mcp.md": {
+    "mtime": 1784754324.8756301,
+    "ast_hash": "b1734879d09dc75470490179d20afa49",
+    "semantic_hash": ""
+  },
+  "docs/valuetree-listener-contract.md": {
+    "mtime": 1784772953.600879,
+    "ast_hash": "cb3e3a4e0f36c75df23366ddc1a11849",
+    "semantic_hash": ""
+  },
+  "frontend/electron-builder.yml": {
+    "mtime": 1784645105.061196,
+    "ast_hash": "00b87fe4b59e06ef2f64852efcd0803a",
+    "semantic_hash": ""
+  },
+  "frontend/index.html": {
+    "mtime": 1784312811.7140598,
+    "ast_hash": "a7e23ef8fa2a7d66e20d3f902b90b4b2",
+    "semantic_hash": ""
+  },
+  "implementation_plan.md": {
+    "mtime": 1781057477.6982849,
+    "ast_hash": "bc0252b5715cfa8103c34761ceb96c6d",
+    "semantic_hash": ""
+  },
+  "tests/CMakeLists.txt": {
+    "mtime": 1784812431.6975923,
+    "ast_hash": "1b2dd9fcbe1142b18068fb54732b6803",
+    "semantic_hash": ""
+  },
+  "frontend/build-resources/icon.png": {
+    "mtime": 1784594119.6468801,
+    "ast_hash": "6f35bfda9ca36e1b8cb8f63706363c86",
+    "semantic_hash": ""
+  }
+}

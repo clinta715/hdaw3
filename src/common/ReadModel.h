@@ -29,6 +29,7 @@ struct ClipSnapshot {
     double fadeIn = 0.0;
     double fadeOut = 0.0;
     bool looping = false;
+    bool muted = false;
     bool isMidi = false;
     // Timestretch (audio clips only; zeroed for MIDI).
     double sourceBpm = 0.0;      // 0 = unknown

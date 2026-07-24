@@ -78,8 +78,9 @@ export function useTimelineFade({ clips, pps, rpc, tracksRef }: UseTimelineFadeP
 
         const method = d.side === "in" ? "project.setClipFadeIn" : "project.setClipFadeOut";
         rpc.call(method, { clipId: d.clipId, [d.side === "in" ? "fadeIn" : "fadeOut"]: d.initialValue }).then(() => {
-          useProjectStore.getState().syncDirtyFlag(rpc);
-          useProjectStore.getState().syncSnapshot(rpc);
+          // Snapshot updated optimistically above; the notify.treeChanged push
+          // reconciles authoritative state ~16ms after the ValueTree mutation.
+          useProjectStore.setState({ isDirty: true });
         }).catch(() => {});
       }
       setFadeDrag(null);

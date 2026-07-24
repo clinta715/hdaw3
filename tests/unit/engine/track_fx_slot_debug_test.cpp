@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/TrackFXSlot.h"
-#include "ui/DebugLog.h"
+#include "common/DebugLog.h"
 
 // Headless diagnostic: construct a TrackFXSlot (the no-plugin ctor) and
 // rely on HDAW_LOG("FXSlotCtor",...) in TrackFXSlot.h to write the

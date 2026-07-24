@@ -33,14 +33,14 @@ export default function TransportBar() {
 
   const handleUndo = async () => {
     await rpc.call("project.undo").catch((err) => reportRpcError("project.undo", err));
-    await useProjectStore.getState().syncDirtyFlag(rpc);
-    await useProjectStore.getState().syncSnapshot(rpc);
+    // Undo replays an inverse mutation on the ValueTree; the debounced
+    // notify.treeChanged push reconciles the snapshot. Mark dirty optimistically.
+    useProjectStore.setState({ isDirty: true });
   };
 
   const handleRedo = async () => {
     await rpc.call("project.redo").catch((err) => reportRpcError("project.redo", err));
-    await useProjectStore.getState().syncDirtyFlag(rpc);
-    await useProjectStore.getState().syncSnapshot(rpc);
+    useProjectStore.setState({ isDirty: true });
   };
 
   const handleAddTrack = () => {

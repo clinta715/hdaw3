@@ -98,15 +98,15 @@ export function useTimelineTrim({ clips, pps, rpc, tracksRef }: UseTimelineTrimP
                 await rpc.call("project.setClipStart", { clipId: d.clipId, start: d.currentStartBeat });
                 await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration });
                 await rpc.call("project.endTransaction");
-                await useProjectStore.getState().syncDirtyFlag(rpc);
-                await useProjectStore.getState().syncSnapshot(rpc);
+                // Snapshot was updated optimistically above; the debounced
+                // notify.treeChanged push reconciles authoritative state.
+                useProjectStore.setState({ isDirty: true });
               } catch (e) { console.error("trim failed", e); }
             })();
           } else {
             (async () => {
               await rpc.call("project.setClipDuration", { clipId: d.clipId, duration: d.currentDuration }).catch(() => {});
-              await useProjectStore.getState().syncDirtyFlag(rpc);
-              await useProjectStore.getState().syncSnapshot(rpc);
+              useProjectStore.setState({ isDirty: true });
             })();
           }
         }

@@ -109,13 +109,11 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Project.cpp
     src/mcp/McpTools_Transport.cpp
     src/mcp/McpTools_Audio.cpp
-    src/mcp/McpGuiInspectTools.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
     src/proxy/ProxyPipe.cpp
     src/proxy/ProxySharedMemory.cpp
-    src/ui/PluginEditorWindow.cpp
     src/engine/RegionClipboard.cpp
     src/frontend/FrontendRouter.cpp
     src/frontend/FrontendServer.cpp
@@ -161,107 +159,12 @@ target_compile_definitions(HDAW_lib PUBLIC
 )
 
 # --- HDAW: main executable ---
-# Default build (HDAW_GUI=OFF): engine + browser, no Qt Widgets dependency.
-# With -DHDAW_GUI=ON: adds Qt desktop GUI mode (--gui flag).
-option(HDAW_GUI "Build with Qt desktop GUI support (default: browser-only)" OFF)
-
 add_executable(HDAW
     src/main.cpp
-    src/ui/GuiInspector.cpp
     src/resources/resources.rc
     src/resources/resources.qrc
     src/resources/frontend.qrc
 )
-
-if(HDAW_GUI)
-    target_sources(HDAW PRIVATE
-        src/ui/MainWindow.h
-        src/ui/MainWindow.cpp
-        src/ui/MainWindowMenus.cpp
-        src/ui/MainWindowConnections.cpp
-        src/ui/VUMeter.h
-        src/ui/VUMeter.cpp
-        src/ui/TimelineView.h
-        src/ui/TimelineView.cpp
-        src/ui/TimelineScene.h
-        src/ui/TimelineScene.cpp
-        src/ui/TimelineToolbar.h
-        src/ui/TimelineToolbar.cpp
-        src/ui/TimelineInteraction.h
-        src/ui/TimelineInteraction.cpp
-        src/ui/TrackHeaderWidget.h
-        src/ui/TrackHeaderWidget.cpp
-        src/ui/ClipItem.h
-        src/ui/ClipItem.cpp
-        src/ui/AudioClipItem.h
-        src/ui/AudioClipItem.cpp
-        src/ui/MidiClipItem.h
-        src/ui/MidiClipItem.cpp
-        src/ui/TimeRuler.h
-        src/ui/TimeRuler.cpp
-        src/ui/PlayheadCursor.h
-        src/ui/PlayheadCursor.cpp
-        src/ui/LoopMarker.h
-        src/ui/LoopMarker.cpp
-        src/ui/MarkerItem.h
-        src/ui/MarkerItem.cpp
-        src/ui/MixerWidget.h
-        src/ui/MixerWidget.cpp
-        src/ui/MixerStripWidget.h
-        src/ui/MixerStripWidget.cpp
-        src/ui/PianoRollModel.h
-        src/ui/PianoRollWidget.h
-        src/ui/PianoRollWidget.cpp
-        src/ui/PianoKeysWidget.h
-        src/ui/PianoKeysWidget.cpp
-        src/ui/NoteGridWidget.h
-        src/ui/NoteGridWidget.cpp
-        src/ui/VelocityLaneWidget.h
-        src/ui/VelocityLaneWidget.cpp
-        src/ui/CCLaneWidget.h
-        src/ui/CCLaneWidget.cpp
-        src/ui/PianoRollRuler.h
-        src/ui/PianoRollRuler.cpp
-        src/ui/StepEditorWidget.h
-        src/ui/StepEditorWidget.cpp
-        src/ui/StatusBar.h
-        src/ui/StatusBar.cpp
-        src/ui/StartupDialog.h
-        src/ui/StartupDialog.cpp
-        src/ui/AboutDialog.h
-        src/ui/AboutDialog.cpp
-        src/ui/PhraseGeneratorDialog.h
-        src/ui/PhraseGeneratorDialog.cpp
-        src/ui/FXChainWidget.h
-        src/ui/FXChainWidget.cpp
-        src/ui/FXSlotRow.h
-        src/ui/FXSlotRow.cpp
-        src/ui/AutomationLaneWidget.h
-        src/ui/AutomationLaneWidget.cpp
-        src/ui/ModulationWidget.h
-        src/ui/ModulationWidget.cpp
-        src/ui/AudioClipEditorWidget.h
-        src/ui/AudioClipEditorWidget.cpp
-        src/ui/GainEnvelopeEditor.h
-        src/ui/GainEnvelopeEditor.cpp
-        src/ui/AudioWaveformWidget.h
-        src/ui/AudioWaveformWidget.cpp
-        src/ui/Theme.h
-        src/ui/ProjectPoolBrowser.h
-        src/ui/ProjectPoolBrowser.cpp
-        src/ui/ExportDialog.h
-        src/ui/ExportDialog.cpp
-        src/ui/PluginScannerDialog.h
-        src/ui/PluginScannerDialog.cpp
-        src/ui/ScanProgressDialog.h
-        src/ui/ScanProgressDialog.cpp
-        src/ui/BpmInputDialog.h
-        src/ui/BpmInputDialog.cpp
-        src/ui/PreferencesDialog.h
-        src/ui/PreferencesDialog.cpp
-    )
-    target_compile_definitions(HDAW PRIVATE HDAW_GUI=1)
-endif()
 
 target_link_libraries(HDAW
     PRIVATE
@@ -275,10 +178,7 @@ target_link_libraries(HDAW
     HDAW_lib
 )
 
-# Qt6::Widgets only needed for the GUI mode.
-if(HDAW_GUI)
-    target_link_libraries(HDAW PRIVATE Qt6::Widgets)
-endif()
+
 
 # Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime speedup)
 include(CheckIPOSupported)
@@ -323,7 +223,6 @@ endif()
 #   HDAW_headless.exe --port=9000         (custom WebSocket port)
 add_executable(HDAW_headless
     src/main_headless.cpp
-    src/ui/GuiInspector.cpp
 )
 target_link_libraries(HDAW_headless
     PRIVATE

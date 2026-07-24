@@ -8,7 +8,6 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(hdaw_tests
     test_main.cpp
-    ${CMAKE_SOURCE_DIR}/src/ui/GuiInspector.cpp
     unit/mcp/json_rpc_test.cpp
     unit/mcp/schema_test.cpp
     unit/mcp/tool_registry_test.cpp
@@ -17,8 +16,7 @@ add_executable(hdaw_tests
     unit/mcp/transport_stdio_test.cpp
     unit/mcp/transport_http_test.cpp
     integration/mcp/mcp_server_test.cpp
-    integration/mcp/gui_inspect_test.cpp
-    integration/mcp/gui_functionality_test.cpp
+    integration/mcp/mcp_functionality_test.cpp
     unit/proxy/common_test.cpp
     unit/proxy/ring_buffer_test.cpp
     unit/proxy/pipe_test.cpp
@@ -34,6 +32,8 @@ add_executable(hdaw_tests
     unit/engine/clip_source_processor_test.cpp
     unit/engine/transient_detector_test.cpp
     unit/engine/region_clipboard_test.cpp
+    unit/engine/bpm_detector_test.cpp
+    unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp

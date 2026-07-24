@@ -6,25 +6,13 @@
 //   HDAW.exe --mcp-stdio        (headless MCP over stdin/stdout)
 //   HDAW.exe --headless         (headless WebSocket server)
 //   HDAW.exe --no-mcp           (default mode without MCP)
-//
-// With -DHDAW_GUI=ON (optional, not in default package):
-//   HDAW.exe --gui              (Qt desktop GUI)
-//   HDAW.exe --gui --no-mcp     (Qt GUI without MCP)
 
 #include <QCoreApplication>
 #include <QSettings>
 #include <QTimer>
 #include <cstring>
 
-#ifdef HDAW_GUI
-#include <QApplication>
-#include <QIcon>
-#include "ui/MainWindow.h"
-#include "ui/ScanProgressDialog.h"
-#include "ui/Theme.h"
-#endif
-
-#include "ui/DebugLog.h"
+#include "common/DebugLog.h"
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
@@ -84,17 +72,11 @@ int main(int argc, char *argv[])
 
     const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
     const bool headlessFrontend = parseFlag(argc, argv, "--headless");
-#ifdef HDAW_GUI
-    const bool guiMode = parseFlag(argc, argv, "--gui");
-#endif
     const bool noMcp = parseFlag(argc, argv, "--no-mcp");
 
     const char* modeName = "UI (engine + browser)";
     if (headlessMcp) modeName = "HEADLESS MCP (--mcp-stdio)";
     else if (headlessFrontend) modeName = "HEADLESS FRONTEND (--headless)";
-#ifdef HDAW_GUI
-    else if (guiMode) modeName = "GUI (--gui)";
-#endif
     HDAW_LOG("main", QString("Mode: %1").arg(modeName));
 
     // --- Mode: headless MCP over stdin/stdout ---
@@ -185,56 +167,6 @@ int main(int argc, char *argv[])
         });
         return app.exec();
     }
-
-#ifdef HDAW_GUI
-    // --- Mode: Qt desktop GUI (optional, requires -DHDAW_GUI=ON) ---
-    if (guiMode) {
-        if (const char* p = parseValue(argc, argv, "--mcp-http-port")) {
-            QSettings settings;
-            settings.setValue("mcp/httpPort", QString::fromUtf8(p));
-        }
-
-        QApplication app(argc, argv);
-        app.setStyle("Fusion");
-        app.setWindowIcon(QIcon(":/app.ico"));
-
-        if (noMcp) {
-            app.setProperty("hdaw.noMcp", true);
-        }
-
-        app.setStyleSheet(getGlobalStyleSheet());
-
-        AudioEngine engine;
-        engine.initialize();
-
-        int result;
-        {
-            MainWindow window(engine);
-            window.show();
-
-            engine.getPluginManager().loadCache();
-
-            if (engine.getPluginManager().getPlugins().empty())
-            {
-                QTimer::singleShot(0, [&engine]() {
-                    ScanProgressDialog dialog(engine.getPluginManager());
-                    dialog.exec();
-                });
-            }
-            else
-            {
-                HDAW_LOG("main", QString("Plugin cache loaded: %1 plugins").arg(
-                    static_cast<int>(engine.getPluginManager().getPlugins().size())));
-            }
-
-            result = app.exec();
-        }
-
-        juce::Logger::setCurrentLogger(nullptr);
-        engine.shutdown();
-        return result;
-    }
-#endif
 
     // --- Default mode: engine + browser (one executable, no Electron) ---
     {
