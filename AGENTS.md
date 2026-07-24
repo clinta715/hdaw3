@@ -85,6 +85,24 @@ Detailed documentation has been split into domain-specific files:
 - **Frontend build:** `cd frontend && npm run build`, then rebuild C++ project.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
 
+#### How frontend changes reach the running app (the stale-frontend trap)
+
+The React frontend can be delivered three different ways, and **a plain
+`cmake --build` updates NONE of them**. If a frontend fix "doesn't take
+effect after rebuilding," this is almost certainly why:
+
+| Run mode | Binary | Frontend source | To pick up frontend changes |
+|----------|--------|-----------------|------------------------------|
+| **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen inside `resources/app.asar` | **Repackage:** `cd frontend && npm run build && npm run package:dir` (or `frontend\build.bat`). Ctrl+Shift+R does nothing here. |
+| **Browser (standalone exe)** | `build/Debug/HDAW.exe` | Embedded via `frontend.qrc` Qt resource | `frontend\build.bat` forces a clean C++ rebuild when `dist/` is newer (AUTORCC under the VS generator does NOT treat changed `dist/` files as a rebuild trigger, so a plain rebuild silently serves the stale SPA). |
+| **Vite dev server** | `npm run dev` (+ engine for WS on 8766) | Live from `frontend/src` | Hard-refresh the browser (Ctrl+Shift+R). No build needed. |
+
+**The packaged Electron app is the one users actually run.** Its frontend
+is baked into `app.asar` at packaging time — editing source, rebuilding
+`dist/`, or refreshing the window has zero effect until you repackage.
+`frontend\build.bat` is the single command that rebuilds the SPA, the C++
+engine, runs the tests, and repackages Electron, guaranteeing consistency.
+
 ## Testing
 
 - **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
