@@ -80,9 +80,12 @@ export function TimelineContextMenu({
                 className={contextMenu.clip.looping ? "ctx-checked" : ""}
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  const clipId = contextMenu.clip!.clipId;
                   const newLooping = !contextMenu.clip!.looping;
-                  rpc.call("project.setClipLooping", { clipId, looping: newLooping }).then(() => {
+                  const { selectedClipIds } = useUiStore.getState();
+                  const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                  Promise.all(ids.map((clipId) =>
+                    rpc.call("project.setClipLooping", { clipId, looping: newLooping })
+                  )).then(() => {
                     // Reconciled by the notify.treeChanged push.
                     useProjectStore.setState({ isDirty: true });
                   });
@@ -95,9 +98,12 @@ export function TimelineContextMenu({
                 className={contextMenu.clip.muted ? "ctx-checked" : ""}
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  const clipId = contextMenu.clip!.clipId;
                   const newMuted = !contextMenu.clip!.muted;
-                  rpc.call("project.setClipMuted", { clipId, muted: newMuted }).then(() => {
+                  const { selectedClipIds } = useUiStore.getState();
+                  const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                  Promise.all(ids.map((clipId) =>
+                    rpc.call("project.setClipMuted", { clipId, muted: newMuted })
+                  )).then(() => {
                     // Reconciled by the notify.treeChanged push.
                     useProjectStore.setState({ isDirty: true });
                   });
@@ -122,35 +128,52 @@ export function TimelineContextMenu({
               <button onMouseDown={(e) => { e.stopPropagation(); onClose(); onSplitClip(); }}>
                 Split
               </button>
-              <button onMouseDown={(e) => { e.stopPropagation(); useUiStore.getState().setClipboard([contextMenu.clip!]); onClose(); }}>
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
+                const { selectedClipIds } = useUiStore.getState();
+                const copied = clips.filter((c) => selectedClipIds.has(c.clipId));
+                useUiStore.getState().setClipboard(copied.length > 0 ? copied : [contextMenu.clip!]);
+                onClose();
+              }}>
                 Copy
               </button>
               <button onMouseDown={(e) => {
                 e.stopPropagation();
-                useUiStore.getState().setClipboard([contextMenu.clip!]);
+                const { selectedClipIds } = useUiStore.getState();
+                const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                const copied = clips.filter((c) => selectedClipIds.has(c.clipId));
+                useUiStore.getState().setClipboard(copied.length > 0 ? copied : [contextMenu.clip!]);
                 onClose();
-                rpc.call("project.beginTransaction", { name: "cut clip" }).then(() =>
-                  rpc.call("project.removeClip", { clipId: contextMenu.clip!.clipId })
-                ).then(() => rpc.call("project.endTransaction")).then(() => {
+                (async () => {
+                  await rpc.call("project.beginTransaction", { name: "cut clips" });
+                  for (const id of ids) {
+                    await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
+                  }
+                  await rpc.call("project.endTransaction");
+                  useUiStore.getState().clearSelection();
                   // Reconciled by the notify.treeChanged push.
                   useProjectStore.setState({ isDirty: true });
-                }).catch(() => {});
+                })();
               }}>
                 Cut
               </button>
               <div className="ctx-separator" />
               <button onMouseDown={(e) => {
                 e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.sliceClipAtPlayhead", { clipId });
+                const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                for (const clipId of ids) {
+                  rpc.call("project.sliceClipAtPlayhead", { clipId });
+                }
                 onClose();
               }}>
                 Slice at Playhead
               </button>
               <button onMouseDown={(e) => {
                 e.stopPropagation();
-                const clipId = [...selectedClipIds][0];
-                rpc.call("project.sliceClipAtTransients", { clipId });
+                const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                for (const clipId of ids) {
+                  rpc.call("project.sliceClipAtTransients", { clipId });
+                }
                 onClose();
               }}>
                 Slice at Transients

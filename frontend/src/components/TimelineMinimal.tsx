@@ -268,7 +268,13 @@ export default function TimelineMinimal() {
   const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
     e.preventDefault();
     e.stopPropagation();
-    useUiStore.getState().selectClip(clip.clipId, clip.trackIndex);
+    // Preserve an existing multi-selection when the right-clicked clip is part
+    // of it, so context-menu actions apply to every selected clip. Only collapse
+    // the selection to this clip when it wasn't already selected.
+    const { selectedClipIds, selectClip } = useUiStore.getState();
+    if (!selectedClipIds.has(clip.clipId)) {
+      selectClip(clip.clipId, clip.trackIndex);
+    }
     setContextMenu({ x: e.clientX, y: e.clientY, type: "clip", clip });
   }, []);
 
@@ -284,34 +290,50 @@ export default function TimelineMinimal() {
   }, []);
 
   const handleDeleteClip = useCallback(() => {
-    if (!contextMenu?.clip) return;
-    const c = contextMenu.clip;
+    const { selectedClipIds } = useUiStore.getState();
+    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
+    if (ids.length === 0) return;
     (async () => {
       try {
-        await rpc.call("project.removeClip", { clipId: c.clipId });
+        await rpc.call("project.beginTransaction", { name: "delete clips" });
+        for (const id of ids) {
+          await rpc.call("project.removeClip", { clipId: id });
+        }
+        await rpc.call("project.endTransaction");
+        useUiStore.getState().clearSelection();
         // Reconciled by the debounced notify.treeChanged push.
         useProjectStore.setState({ isDirty: true });
       } catch (e) {
-        console.error("Failed to delete clip:", e);
+        console.error("Failed to delete clips:", e);
       }
     })();
   }, [contextMenu]);
 
   const handleDuplicateClip = useCallback(() => {
-    if (!contextMenu?.clip) return;
-    const c = contextMenu.clip;
+    const { selectedClipIds } = useUiStore.getState();
+    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
+    if (ids.length === 0) return;
     (async () => {
-      await rpc.call("project.duplicateClip", { clipId: c.clipId }).catch(() => {});
+      await rpc.call("project.beginTransaction", { name: "duplicate clips" });
+      for (const id of ids) {
+        await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
+      }
+      await rpc.call("project.endTransaction");
       // Reconciled by the debounced notify.treeChanged push.
       useProjectStore.setState({ isDirty: true });
     })();
   }, [contextMenu]);
 
   const handleSplitClip = useCallback(() => {
-    if (!contextMenu?.clip) return;
-    const c = contextMenu.clip;
+    const { selectedClipIds } = useUiStore.getState();
+    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
+    if (ids.length === 0) return;
     (async () => {
-      await rpc.call("project.sliceClipAtPlayhead", { clipId: c.clipId }).catch(() => {});
+      await rpc.call("project.beginTransaction", { name: "split clips" });
+      for (const id of ids) {
+        await rpc.call("project.sliceClipAtPlayhead", { clipId: id }).catch(() => {});
+      }
+      await rpc.call("project.endTransaction");
       // Reconciled by the debounced notify.treeChanged push.
       useProjectStore.setState({ isDirty: true });
     })();
