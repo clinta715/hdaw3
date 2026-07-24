@@ -4,7 +4,11 @@
 #include "../engine/ProjectSerializer.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
+#include "../frontend/FrontendServer.h"
+#include "../frontend/FrontendRpc.h"
 #include <juce_core/juce_core.h>
+#include <QCoreApplication>
+#include <QJsonObject>
 
 // ─── ProjectCommands — Undo/redo ──────────────────────────────────
 
@@ -39,18 +43,35 @@ bool AudioEngineCommands::saveProject(const std::string& filePath)
 
 bool AudioEngineCommands::loadProject(const std::string& filePath)
 {
+    auto sendProgress = [](const QString& msg, float pct) {
+        if (auto* server = frontend::FrontendServer::instance()) {
+            QJsonObject payload{
+                { "progress", static_cast<double>(pct) },
+                { "message", msg },
+            };
+            server->broadcastNotification(frontend::notify::LoadProgress, payload);
+        }
+        QCoreApplication::processEvents();
+    };
+
+    sendProgress("Reading project file...", 0.0f);
+
     bool ok = HDAW::ProjectSerializer::load(engine_.getProjectModel(), juce::File(filePath));
-    if (ok)
-    {
-        auto* proc = engine_.getMainProcessor();
-        HDAW_LOG("DIAG", "loadProject: calling rebuildRoutingGraph after load, trackCount=" + std::to_string(engine_.getProjectModel().getTrackListTree().getNumChildren()));
-        if (proc) proc->rebuildRoutingGraph();
-    }
-    else
+    if (!ok)
     {
         HDAW_LOG("DIAG", "loadProject: load FAILED");
+        sendProgress("Load failed", 1.0f);
+        return false;
     }
-    return ok;
+
+    sendProgress("Building audio graph...", 0.3f);
+
+    auto* proc = engine_.getMainProcessor();
+    HDAW_LOG("DIAG", "loadProject: calling rebuildRoutingGraph after load, trackCount=" + std::to_string(engine_.getProjectModel().getTrackListTree().getNumChildren()));
+    if (proc) proc->rebuildRoutingGraph();
+
+    sendProgress("Done", 1.0f);
+    return true;
 }
 
 // ─── ProjectCommands — Scale ──────────────────────────────────────

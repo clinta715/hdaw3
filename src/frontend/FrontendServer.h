@@ -30,6 +30,8 @@ public:
     explicit FrontendServer(AudioEngine& engine, QObject* parent = nullptr);
     ~FrontendServer() override;
 
+    static FrontendServer* instance() { return instance_; }
+
     // Bind to the given port on the loopback interface. Returns false if the
     // port is already in use. Idempotent: a second start() after stop() works.
     bool start(quint16 port);
@@ -92,6 +94,8 @@ private:
     // when the project is idle; comparing the new snapshot against this and
     // skipping identical broadcasts saves WebSocket writes when paused.
     QJsonObject lastTransportPayload_;
+
+    static inline FrontendServer* instance_ = nullptr;
 };
 
 } // namespace frontend

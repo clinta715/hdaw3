@@ -27,6 +27,7 @@ constexpr int kPushIntervalMs = 33;      // ~30 Hz, matches the Qt GUI cadence.
 FrontendServer::FrontendServer(AudioEngine& engine, QObject* parent)
     : QObject(parent), engine_(engine)
 {
+    instance_ = this;
     server_ = new QWebSocketServer(QStringLiteral("HDAW Frontend"),
                                    QWebSocketServer::NonSecureMode, this);
     connect(server_, &QWebSocketServer::newConnection,
@@ -56,7 +57,11 @@ FrontendServer::FrontendServer(AudioEngine& engine, QObject* parent)
             this, &FrontendServer::onPluginDirDebounceExpired);
 }
 
-FrontendServer::~FrontendServer() { stop(); }
+FrontendServer::~FrontendServer()
+{
+    stop();
+    if (instance_ == this) instance_ = nullptr;
+}
 
 bool FrontendServer::start(quint16 port) {
     if (port == 0) port = kDefaultPort;
