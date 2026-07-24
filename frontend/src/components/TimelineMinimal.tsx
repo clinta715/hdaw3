@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { useProjectStore } from "../store/projectStore";
+import { useProjectStore, nextTempId } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { useMarkerStore } from "../store/markerStore";
 import { rpc } from "../rpc";
@@ -317,32 +317,40 @@ export default function TimelineMinimal() {
     const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
     if (ids.length === 0) return;
 
-    // Create translucent placeholders (negative temp ids) for instant feedback.
     const tempIds: number[] = [];
-    ids.forEach((id, i) => {
+    const clipIds: number[] = [];
+    const newStarts: number[] = [];
+    const newTrackIndices: number[] = [];
+    for (const id of ids) {
       const src = snap.clips.find((c) => c.clipId === id);
-      if (!src) return;
-      const tempId = -(Date.now() + i);
+      if (!src) continue;
+      const targetStart = src.startBeat + src.durationBeats;
+      const tempId = nextTempId();
       tempIds.push(tempId);
-      useProjectStore.getState().addPendingClip({ ...src, clipId: tempId });
-    });
+      clipIds.push(id);
+      newStarts.push(targetStart);
+      newTrackIndices.push(src.trackIndex);
+      useProjectStore.getState().addPendingClip({ ...src, clipId: tempId, startBeat: targetStart });
+    }
+    if (clipIds.length === 0) return;
+
+    setTimeout(() => tempIds.forEach((t) => {
+      if (useProjectStore.getState().pendingTempIds.has(t)) useProjectStore.getState().removePending(t);
+    }), 1500);
 
     (async () => {
       try {
-        const res = await rpc.call("project.duplicateClips", { clipIds: ids });
-        const newIds: number[] = Array.isArray(res) ? res.filter((x): x is number => typeof x === "number") : [];
-        // Map placeholder -> real id by order (duplicateClips returns ids in input order).
+        const res = await rpc.call("project.duplicateClips", { clipIds, newStarts, newTrackIndices });
+        const newIds: number[] = Array.isArray(res) ? res : [];
         tempIds.forEach((tempId, i) => {
-          if (newIds[i] != null) useProjectStore.getState().resolvePending(tempId, newIds[i]);
+          const realId = newIds[i];
+          if (typeof realId === "number" && realId > 0) useProjectStore.getState().resolvePending(tempId, realId);
+          else useProjectStore.getState().removePending(tempId);
         });
         useProjectStore.setState({ isDirty: true });
       } catch {
         tempIds.forEach((t) => useProjectStore.getState().removePending(t));
       }
-      // Sweep any still-unresolved placeholders shortly (delta normally swaps them).
-      setTimeout(() => tempIds.forEach((t) => {
-        if (useProjectStore.getState().pendingTempIds.has(t)) useProjectStore.getState().removePending(t);
-      }), 1500);
     })();
   }, [contextMenu]);
 

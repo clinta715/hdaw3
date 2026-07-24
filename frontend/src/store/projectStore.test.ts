@@ -248,4 +248,16 @@ describe("pending placeholders", () => {
     expect(() => useProjectStore.getState().addPendingClip(mkClip(-1, 0, 0))).not.toThrow();
     expect(useProjectStore.getState().snapshot).toBeNull();
   });
+
+  it("resolvePending drops the placeholder immediately if the real clip already arrived", () => {
+    useProjectStore.getState().addPendingClip(mkClip(-1, 0, 8));
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsUpserted: [mkClip(500, 0, 8)] });
+    expect(useProjectStore.getState().snapshot!.clips.some((c) => c.clipId === -1)).toBe(true);
+    useProjectStore.getState().resolvePending(-1, 500);
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.some((c) => c.clipId === -1)).toBe(false);
+    expect(clips.some((c) => c.clipId === 500)).toBe(true);
+    expect(useProjectStore.getState().pendingTempIds.has(-1)).toBe(false);
+    expect(useProjectStore.getState().pendingResolution.has(-1)).toBe(false);
+  });
 });

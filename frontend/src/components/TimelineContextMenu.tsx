@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useProjectStore } from "../store/projectStore";
+import { useProjectStore, nextTempId } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { useMarkerStore } from "../store/markerStore";
 import { useUiStore } from "../store/uiStore";
@@ -261,7 +261,7 @@ export function TimelineContextMenu({
           </button>
           <button onMouseDown={(e) => {
             e.stopPropagation();
-            const tempId = -Date.now();
+            const tempId = nextTempId();
             useProjectStore.getState().addPendingClip({
               clipId: tempId, trackIndex: 0, name: "New MIDI Clip", sourceFile: "",
               startBeat: emptyContextMenu.beat, durationBeats: 4, offset: 0, gain: 1,
@@ -269,16 +269,17 @@ export function TimelineContextMenu({
               sourceBpm: 0, stretchMode: 0, stretchRatio: 1, sourceDuration: 0,
               isGhost: false, ghostSourceId: -1, gainEnvelope: [],
             });
-            rpc.call("project.addMidiClip", {
-              trackIndex: 0, start: emptyContextMenu.beat, duration: 4, name: "New MIDI Clip",
-            }).then((res) => {
-              const realId = typeof res === "number" ? res : (res && typeof res === "object" && "clipId" in (res as any) ? (res as any).clipId : null);
-              if (realId != null) useProjectStore.getState().resolvePending(tempId, realId);
-              else useProjectStore.getState().removePending(tempId);
-            }).catch(() => useProjectStore.getState().removePending(tempId));
             setTimeout(() => {
               if (useProjectStore.getState().pendingTempIds.has(tempId)) useProjectStore.getState().removePending(tempId);
             }, 1500);
+            rpc.call("project.addMidiClip", {
+              trackIndex: 0, start: emptyContextMenu.beat, duration: 4, name: "New MIDI Clip",
+            }).then((res) => {
+              const realId = typeof res === "number" ? res : null;
+              if (realId != null && realId > 0) useProjectStore.getState().resolvePending(tempId, realId);
+              else useProjectStore.getState().removePending(tempId);
+              useProjectStore.setState({ isDirty: true });
+            }).catch(() => useProjectStore.getState().removePending(tempId));
             onClose();
           }}>
             Add MIDI Clip

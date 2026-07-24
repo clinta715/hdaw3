@@ -30,6 +30,11 @@ interface ProjectState {
   updateLoadProgress: (message: string, percent: number) => void;
 }
 
+let nextTempIdCounter = -1;
+export function nextTempId(): number {
+  return nextTempIdCounter--;
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   snapshot: null,
   notesByClip: new Map(),
@@ -116,6 +121,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   }),
 
   resolvePending: (tempId: number, realId: number) => set((state) => {
+    const snap = state.snapshot;
+    if (snap && snap.clips.some((c) => c.clipId === realId)) {
+      const pendingTempIds = new Set(state.pendingTempIds);
+      pendingTempIds.delete(tempId);
+      const pendingResolution = new Map(state.pendingResolution);
+      pendingResolution.delete(tempId);
+      return {
+        snapshot: { ...snap, clips: snap.clips.filter((c) => c.clipId !== tempId) },
+        pendingTempIds,
+        pendingResolution,
+      };
+    }
     const pendingResolution = new Map(state.pendingResolution);
     pendingResolution.set(tempId, realId);
     return { pendingResolution };
