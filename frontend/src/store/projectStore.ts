@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { RpcClient } from "../rpc/client";
-import { ProjectSnapshot, TrackSnapshot, ClipSnapshot, NoteSnapshot } from "../rpc/types";
+import { ProjectSnapshot, TrackSnapshot, ClipSnapshot, NoteSnapshot, TreeDelta } from "../rpc/types";
 
 interface ProjectState {
   snapshot: ProjectSnapshot | null;
@@ -15,6 +15,7 @@ interface ProjectState {
   syncSnapshot: (rpc: RpcClient) => Promise<void>;
   syncDirtyFlag: (rpc: RpcClient) => Promise<void>;
   syncNotes: (rpc: RpcClient, clipId: number) => Promise<void>;
+  applyDelta: (delta: TreeDelta) => void;
   getTrack: (index: number) => TrackSnapshot | undefined;
   getClip: (clipId: number) => ClipSnapshot | undefined;
   setFilePath: (path: string | null) => void;
@@ -52,6 +53,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const notesByClip = new Map(get().notesByClip);
     notesByClip.set(clipId, result);
     set({ notesByClip });
+  },
+
+  applyDelta: (delta: TreeDelta) => {
+    const snap = get().snapshot;
+    if (!snap) return;
+
+    let clips = snap.clips;
+    if (delta.clipsRemoved && delta.clipsRemoved.length > 0) {
+      const rm = new Set(delta.clipsRemoved);
+      clips = clips.filter((c) => !rm.has(c.clipId));
+    }
+    if (delta.clipsUpserted && delta.clipsUpserted.length > 0) {
+      const byId = new Map(clips.map((c) => [c.clipId, c] as const));
+      for (const c of delta.clipsUpserted) byId.set(c.clipId, c);
+      clips = [...byId.values()];
+    }
+
+    let tracks = snap.tracks;
+    if (delta.tracksUpserted && delta.tracksUpserted.length > 0) {
+      const byIdx = new Map(tracks.map((t) => [t.index, t] as const));
+      for (const t of delta.tracksUpserted) byIdx.set(t.index, t);
+      tracks = [...byIdx.values()].sort((a, b) => a.index - b.index);
+    }
+
+    set({ snapshot: { ...snap, clips, tracks }, lastSync: Date.now() });
   },
 
   getTrack: (index: number) => {

@@ -72,6 +72,13 @@ export interface ProjectSnapshot {
   scaleMode: number;
 }
 
+export interface TreeDelta {
+  fullSync: boolean;
+  clipsUpserted?: ClipSnapshot[];
+  clipsRemoved?: number[];
+  tracksUpserted?: TrackSnapshot[];
+}
+
 export interface MeterLevels {
   l: number;
   r: number;

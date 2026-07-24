@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useProjectStore } from "../store/projectStore";
 import { ProjectSnapshot } from "../rpc/types";
+import type { TreeDelta, ClipSnapshot, TrackSnapshot } from "../rpc/types";
 
 const mockSnapshot: ProjectSnapshot = {
   name: "Test Project",
@@ -120,5 +121,67 @@ describe("projectStore", () => {
   it("sets dirty flag", () => {
     useProjectStore.setState({ isDirty: true });
     expect(useProjectStore.getState().isDirty).toBe(true);
+  });
+});
+
+const mkClip = (clipId: number, trackIndex: number, startBeat: number): ClipSnapshot => ({
+  clipId, trackIndex, name: `Clip ${clipId}`, sourceFile: "", startBeat,
+  durationBeats: 4, offset: 0, gain: 1, fadeIn: 0, fadeOut: 0, looping: false,
+  muted: false, isMidi: true, sourceBpm: 0, stretchMode: 0, stretchRatio: 1,
+  sourceDuration: 0, isGhost: false, ghostSourceId: -1, gainEnvelope: [],
+});
+
+describe("applyDelta", () => {
+  beforeEach(() => {
+    useProjectStore.setState({ snapshot: structuredClone(mockSnapshot), lastSync: 0 });
+  });
+
+  it("upserts a new clip", () => {
+    const before = useProjectStore.getState().snapshot!.clips.length;
+    const delta: TreeDelta = { fullSync: false, clipsUpserted: [mkClip(999, 0, 16)] };
+    useProjectStore.getState().applyDelta(delta);
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.length).toBe(before + 1);
+    expect(clips.find((c) => c.clipId === 999)?.startBeat).toBe(16);
+  });
+
+  it("replaces an existing clip in place", () => {
+    const existing = useProjectStore.getState().snapshot!.clips[0];
+    const updated = { ...existing, startBeat: 123 };
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsUpserted: [updated] });
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.filter((c) => c.clipId === existing.clipId).length).toBe(1);
+    expect(clips.find((c) => c.clipId === existing.clipId)?.startBeat).toBe(123);
+  });
+
+  it("removes clips by id", () => {
+    const target = useProjectStore.getState().snapshot!.clips[0];
+    const before = useProjectStore.getState().snapshot!.clips.length;
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsRemoved: [target.clipId] });
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.length).toBe(before - 1);
+    expect(clips.find((c) => c.clipId === target.clipId)).toBeUndefined();
+  });
+
+  it("upserts a track and keeps tracks sorted by index", () => {
+    const t: TrackSnapshot = { ...useProjectStore.getState().snapshot!.tracks[0], volume: 0.25 };
+    useProjectStore.getState().applyDelta({ fullSync: false, tracksUpserted: [t] });
+    const tracks = useProjectStore.getState().snapshot!.tracks;
+    expect(tracks.find((x) => x.index === 0)?.volume).toBe(0.25);
+    for (let i = 1; i < tracks.length; i++) expect(tracks[i].index).toBeGreaterThan(tracks[i - 1].index);
+  });
+
+  it("keeps object references for unchanged clips", () => {
+    const clipsBefore = useProjectStore.getState().snapshot!.clips;
+    const unchanged = clipsBefore[clipsBefore.length - 1];
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsUpserted: [mkClip(999, 0, 0)] });
+    const clipsAfter = useProjectStore.getState().snapshot!.clips;
+    expect(clipsAfter.find((c) => c.clipId === unchanged.clipId)).toBe(unchanged); // same reference
+  });
+
+  it("is a no-op when there is no snapshot yet", () => {
+    useProjectStore.setState({ snapshot: null });
+    expect(() => useProjectStore.getState().applyDelta({ fullSync: false, clipsRemoved: [1] })).not.toThrow();
+    expect(useProjectStore.getState().snapshot).toBeNull();
   });
 });
