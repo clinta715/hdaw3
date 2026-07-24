@@ -421,11 +421,12 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
                             entry->data[0].get(), entry->data[1].get(),
                             entry->length, entry->channels);
                     }
-                    else
+                    else if (!loadingPhase)
                     {
                         // Cache miss: request a render. When it completes,
                         // AudioEngine triggers rebuildRoutingGraph, which
                         // rebuilds this clip and adopts the buffer.
+                        // Skip during loadingPhase to avoid cascading rebuilds.
                         stretchCache->requestRender(cid, sourcePath, ratio,
                                                     sampleRate, formatManager);
                     }

@@ -55,6 +55,8 @@ public:
     void setPlaybackInfo(double sr, int bs) { sampleRate = sr; blockSize = bs; }
     void setInputMonitoring(int trackIndex, bool enabled);
 
+    bool loadingPhase = false;
+
     const std::map<std::pair<int, int>, ClipSourceProcessor*>& getAudioClipSources() const { return audioClipSources; }
 
 private:
