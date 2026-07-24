@@ -9,23 +9,30 @@ void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree) {
     const auto type = tree.getType();
     if (type == IDs::CLIP)        upsertClip(tree);
     else if (type == IDs::TRACK)  upsertTrack(tree);
-    else                          fullSync_ = true;   // PROJECT/MARKER/FX/automation/sub-clip detail/...
+    else                          escalateToFullSync();   // PROJECT/MARKER/FX/automation/sub-clip detail/...
 }
 
 void TreeDeltaAccumulator::noteChildAdded(const juce::ValueTree& child) {
     if (fullSync_) return;
     if (child.getType() == IDs::CLIP) upsertClip(child);
-    else                              fullSync_ = true;  // TRACK add (indices shift), notes, markers, ...
+    else                              escalateToFullSync();  // TRACK add (indices shift), notes, markers, ...
 }
 
 void TreeDeltaAccumulator::noteChildRemoved(const juce::ValueTree& child) {
     if (fullSync_) return;
     if (child.getType() == IDs::CLIP) removeClip(child);
-    else                              fullSync_ = true;  // TRACK remove, notes, markers, ...
+    else                              escalateToFullSync();  // TRACK remove, notes, markers, ...
 }
 
 void TreeDeltaAccumulator::noteStructuralChange() {
+    escalateToFullSync();
+}
+
+void TreeDeltaAccumulator::escalateToFullSync() {
     fullSync_ = true;
+    clipsUpserted_.clear();
+    clipsRemoved_.clear();
+    tracksUpserted_.clear();
 }
 
 void TreeDeltaAccumulator::upsertClip(const juce::ValueTree& clipTree) {

@@ -175,7 +175,7 @@ TEST(TreeDelta, StructuralChangeIsFullSync) {
     EXPECT_TRUE(acc.fullSync());
 }
 
-TEST(TreeDelta, FullSyncDiscardsPendingDelta) {
+TEST(TreeDelta, FullSyncEscalationDiscardsPendingDelta) {
     ValueTree trackList(IDs::TRACK_LIST);
     ValueTree track = makeTrackTree("Synth", 1.0);
     ValueTree clip = makeClipTree(5, 0.0, "C");
@@ -184,8 +184,30 @@ TEST(TreeDelta, FullSyncDiscardsPendingDelta) {
 
     TreeDeltaAccumulator acc;
     acc.notePropertyChanged(clip);
+    EXPECT_EQ(acc.clipsUpserted().size(), 1u);
     acc.noteStructuralChange();                        // escalates to fullSync
     EXPECT_TRUE(acc.fullSync());
+    EXPECT_TRUE(acc.clipsUpserted().empty());          // pending delta discarded
+    EXPECT_TRUE(acc.clipsRemoved().empty());
+    EXPECT_TRUE(acc.tracksUpserted().empty());
+}
+
+TEST(TreeDelta, FullSyncLatchIgnoresFurtherChanges) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.noteStructuralChange();                        // latch fullSync
+    acc.notePropertyChanged(clip);                     // ignored
+    acc.notePropertyChanged(track);                    // ignored
+    acc.noteChildAdded(clip);                          // ignored
+    EXPECT_TRUE(acc.fullSync());
+    EXPECT_TRUE(acc.clipsUpserted().empty());
+    EXPECT_TRUE(acc.tracksUpserted().empty());
+    EXPECT_TRUE(acc.clipsRemoved().empty());
 }
 
 TEST(TreeDelta, ResetClearsState) {

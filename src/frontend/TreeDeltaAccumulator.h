@@ -14,6 +14,9 @@ namespace frontend {
 // so the client falls back to a whole-snapshot re-fetch.
 //
 // Used by FrontendTreeWatcher. Unit-testable in isolation (no server needed).
+//
+// Not thread-safe: intended to be driven only from the JUCE message thread
+// (FrontendTreeWatcher's ValueTree callbacks).
 class TreeDeltaAccumulator {
 public:
     void notePropertyChanged(const juce::ValueTree& tree);
@@ -34,6 +37,7 @@ private:
     void upsertClip(const juce::ValueTree& clipTree);
     void removeClip(const juce::ValueTree& clipTree);
     void upsertTrack(const juce::ValueTree& trackTree);
+    void escalateToFullSync();
 
     std::unordered_map<int, ClipSnapshot> clipsUpserted_;   // clipId -> latest snapshot
     std::set<int> clipsRemoved_;
