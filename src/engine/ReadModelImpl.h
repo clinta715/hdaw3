@@ -39,3 +39,9 @@ private:
     ProjectModel& model_;
     class AudioEngine* engine_ = nullptr;
 };
+
+// Per-node snapshot builders, shared by ReadModelImpl::snapshot() and the
+// frontend delta path (FrontendTreeWatcher). Each reads a single ValueTree node
+// and walks up to resolve container indices.
+ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree);
+TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree);

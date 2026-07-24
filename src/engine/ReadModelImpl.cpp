@@ -10,6 +10,52 @@
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
 
+ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree)
+{
+    ClipSnapshot cs;
+    cs.clipId        = static_cast<int>(clipTree.getProperty(IDs::clipID, 0));
+    cs.name          = clipTree.getProperty(IDs::name, "").toString().toStdString();
+    cs.sourceFile    = clipTree.getProperty(IDs::sourceFile, "").toString().toStdString();
+    cs.startBeat     = clipTree.getProperty(IDs::startTime, 0.0);
+    cs.durationBeats = clipTree.getProperty(IDs::duration, 0.0);
+    cs.offset        = clipTree.getProperty(IDs::offset, 0.0);
+    cs.gain          = clipTree.getProperty(IDs::gain, 1.0);
+    cs.fadeIn        = clipTree.getProperty(IDs::fadeIn, 0.0);
+    cs.fadeOut       = clipTree.getProperty(IDs::fadeOut, 0.0);
+    cs.looping       = clipTree.getProperty(IDs::looping, false);
+    cs.muted         = clipTree.getProperty(IDs::muted, false);
+    cs.isMidi        = clipTree.getProperty(IDs::clipType, "audio").toString() == "midi";
+    cs.sourceBpm     = clipTree.getProperty(IDs::sourceBpm, 0.0);
+    cs.stretchMode   = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
+    cs.stretchRatio  = clipTree.getProperty(IDs::stretchRatio, 1.0);
+    cs.sourceDuration= clipTree.getProperty(IDs::sourceDuration, 0.0);
+    cs.isGhost       = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
+    cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
+    // CLIP -> CLIP_LIST -> TRACK -> position within TRACK_LIST
+    auto track = clipTree.getParent().getParent();
+    cs.trackIndex = track.getParent().indexOf(track);
+    return cs;
+}
+
+TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
+{
+    TrackSnapshot ts;
+    ts.index         = trackTree.getParent().indexOf(trackTree);
+    ts.name          = trackTree.getProperty(IDs::name, "Track").toString().toStdString();
+    ts.color         = static_cast<int>(trackTree.getProperty(IDs::color, 0));
+    ts.volume        = trackTree.getProperty(IDs::volume, 1.0);
+    ts.pan           = trackTree.getProperty(IDs::pan, 0.0);
+    ts.muted         = trackTree.getProperty(IDs::isMuted, false);
+    ts.soloed        = trackTree.getProperty(IDs::isSoloed, false);
+    ts.armed         = trackTree.getProperty(IDs::isArm, false);
+    ts.inputMonitor  = trackTree.getProperty(IDs::inputMonitor, false);
+    ts.height        = trackTree.getProperty(IDs::trackHeight, 80.0);
+    ts.midiChannel   = trackTree.getProperty(IDs::midiChannel, 1);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
+    return ts;
+}
+
 ProjectSnapshot ReadModelImpl::snapshot() const
 {
     ProjectSnapshot snap;
@@ -24,50 +70,13 @@ ProjectSnapshot ReadModelImpl::snapshot() const
 
     for (int t = 0; t < numTracks; ++t) {
         auto trackTree = trackList.getChild(t);
-        TrackSnapshot ts;
-        ts.index = t;
-        ts.name = trackTree.getProperty(IDs::name, "Track").toString().toStdString();
-        ts.color = static_cast<int>(trackTree.getProperty(IDs::color, 0));
-        ts.volume = trackTree.getProperty(IDs::volume, 1.0);
-        ts.pan = trackTree.getProperty(IDs::pan, 0.0);
-        ts.muted = trackTree.getProperty(IDs::isMuted, false);
-        ts.soloed = trackTree.getProperty(IDs::isSoloed, false);
-        ts.armed = trackTree.getProperty(IDs::isArm, false);
-        ts.inputMonitor = trackTree.getProperty(IDs::inputMonitor, false);
-        ts.height = trackTree.getProperty(IDs::trackHeight, 80.0);
-        ts.midiChannel = trackTree.getProperty(IDs::midiChannel, 1);
+        snap.tracks.push_back(buildTrackSnapshotFromTree(trackTree));
 
         auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-        ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
-        snap.tracks.push_back(ts);
-
         if (!clipList.isValid())
             continue;
-
-        for (int c = 0; c < clipList.getNumChildren(); ++c) {
-            auto clipTree = clipList.getChild(c);
-            ClipSnapshot cs;
-            cs.clipId = static_cast<int>(clipTree.getProperty(IDs::clipID, 0));
-            cs.trackIndex = t;
-            cs.name = clipTree.getProperty(IDs::name, "").toString().toStdString();
-            cs.sourceFile = clipTree.getProperty(IDs::sourceFile, "").toString().toStdString();
-            cs.startBeat = clipTree.getProperty(IDs::startTime, 0.0);
-            cs.durationBeats = clipTree.getProperty(IDs::duration, 0.0);
-            cs.offset = clipTree.getProperty(IDs::offset, 0.0);
-            cs.gain = clipTree.getProperty(IDs::gain, 1.0);
-            cs.fadeIn = clipTree.getProperty(IDs::fadeIn, 0.0);
-            cs.fadeOut = clipTree.getProperty(IDs::fadeOut, 0.0);
-            cs.looping = clipTree.getProperty(IDs::looping, false);
-            cs.muted = clipTree.getProperty(IDs::muted, false);
-            cs.isMidi = clipTree.getProperty(IDs::clipType, "audio").toString() == "midi";
-            cs.sourceBpm = clipTree.getProperty(IDs::sourceBpm, 0.0);
-            cs.stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
-            cs.stretchRatio = clipTree.getProperty(IDs::stretchRatio, 1.0);
-            cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
-            cs.isGhost = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
-            cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
-            snap.clips.push_back(cs);
-        }
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+            snap.clips.push_back(buildClipSnapshotFromTree(clipList.getChild(c)));
     }
 
     return snap;
