@@ -22,36 +22,48 @@ export default function StartupDialog({ onClose }: Props) {
   };
 
   const handleOpen = async () => {
-    if (window.hdaw) {
-      const result = await window.hdaw.showOpenDialog({
-        title: "Open Project",
-        filters: [
-          { name: "HDAW Projects", extensions: ["hdaw"] },
-          { name: "All Files", extensions: ["*"] },
-        ],
-        properties: ["openFile"],
-      });
-      if (!result.canceled && result.filePaths.length > 0) {
-        const path = result.filePaths[0];
-        await rpc.call("project.loadProject", { filePath: path });
-        useProjectStore.getState().addRecentProject(path);
-        onClose();
+    const { setLoadingProject } = useProjectStore.getState();
+    setLoadingProject(true);
+    try {
+      if (window.hdaw) {
+        const result = await window.hdaw.showOpenDialog({
+          title: "Open Project",
+          filters: [
+            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "All Files", extensions: ["*"] },
+          ],
+          properties: ["openFile"],
+        });
+        if (!result.canceled && result.filePaths.length > 0) {
+          const path = result.filePaths[0];
+          await rpc.call("project.loadProject", { filePath: path });
+          useProjectStore.getState().addRecentProject(path);
+          onClose();
+        }
+      } else {
+        // Fallback for browser dev mode
+        const path = prompt("Project file path:");
+        if (path) {
+          await rpc.call("project.loadProject", { filePath: path });
+          useProjectStore.getState().addRecentProject(path);
+          onClose();
+        }
       }
-    } else {
-      // Fallback for browser dev mode
-      const path = prompt("Project file path:");
-      if (path) {
-        await rpc.call("project.loadProject", { filePath: path });
-        useProjectStore.getState().addRecentProject(path);
-        onClose();
-      }
+    } finally {
+      setLoadingProject(false);
     }
   };
 
   const handleOpenRecent = async (path: string) => {
-    await rpc.call("project.loadProject", { filePath: path });
-    useProjectStore.getState().addRecentProject(path);
-    onClose();
+    const { setLoadingProject } = useProjectStore.getState();
+    setLoadingProject(true);
+    try {
+      await rpc.call("project.loadProject", { filePath: path });
+      useProjectStore.getState().addRecentProject(path);
+      onClose();
+    } finally {
+      setLoadingProject(false);
+    }
   };
 
   return (

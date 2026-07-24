@@ -10,6 +10,7 @@ import { useMeterStore } from "./store/meterStore";
 import { TransportSnapshot, MetersPayload } from "./rpc/types";
 import App from "./App";
 import StartupDialog from "./components/StartupDialog";
+import { LoadingOverlay } from "./components/LoadingOverlay";
 
 injectTheme();
 
@@ -27,6 +28,16 @@ function setupSubscriptions() {
     useMeterStore.getState().update(params as MetersPayload);
   }));
 
+  cleanups.push(rpc.onNotification("notify.loadProgress", (_method, params) => {
+    const p = params as { message?: string; progress?: number } | undefined;
+    if (p) {
+      useProjectStore.getState().updateLoadProgress(
+        p.message ?? "Loading...",
+        typeof p.progress === "number" ? p.progress : 0
+      );
+    }
+  }));
+
   cleanups.push(rpc.onNotification("notify.treeChanged", () => {
     useProjectStore.getState().syncSnapshot(rpc).catch(() => {});
     // Refresh automation lanes when the project tree changes
@@ -42,6 +53,7 @@ function Root() {
 
   return (
     <React.StrictMode>
+      <LoadingOverlay />
       {showStartup && <StartupDialog onClose={() => setShowStartup(false)} />}
       {!showStartup && <App />}
     </React.StrictMode>

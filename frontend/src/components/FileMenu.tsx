@@ -56,36 +56,48 @@ export default function FileMenu() {
   const handleOpen = async () => {
     setOpen(false);
     if (!checkUnsaved()) return;
-    if (window.hdaw) {
-      const result = await window.hdaw.showOpenDialog({
-        title: "Open Project",
-        filters: [
-          { name: "HDAW Projects", extensions: ["hdaw"] },
-          { name: "All Files", extensions: ["*"] },
-        ],
-        properties: ["openFile"],
-      });
-      if (!result.canceled && result.filePaths.length > 0) {
-        const path = result.filePaths[0];
+    const { setLoadingProject } = useProjectStore.getState();
+    setLoadingProject(true);
+    try {
+      if (window.hdaw) {
+        const result = await window.hdaw.showOpenDialog({
+          title: "Open Project",
+          filters: [
+            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "All Files", extensions: ["*"] },
+          ],
+          properties: ["openFile"],
+        });
+        if (!result.canceled && result.filePaths.length > 0) {
+          const path = result.filePaths[0];
+          await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
+          useProjectStore.getState().addRecentProject(path);
+          await useProjectStore.getState().syncDirtyFlag(rpc);
+          await useProjectStore.getState().syncSnapshot(rpc);
+        }
+      } else {
+        const path = prompt("Open project:", filePath ?? "project.hdaw");
+        if (!path) { setLoadingProject(false); return; }
         await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
         useProjectStore.getState().addRecentProject(path);
         await useProjectStore.getState().syncDirtyFlag(rpc);
         await useProjectStore.getState().syncSnapshot(rpc);
       }
-    } else {
-      const path = prompt("Open project:", filePath ?? "project.hdaw");
-      if (!path) return;
-      await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
-      useProjectStore.getState().addRecentProject(path);
-      await useProjectStore.getState().syncDirtyFlag(rpc);
-      await useProjectStore.getState().syncSnapshot(rpc);
+    } finally {
+      setLoadingProject(false);
     }
   };
 
   const handleOpenRecent = (path: string) => doAction(async () => {
     if (!checkUnsaved()) return;
-    await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
-    useProjectStore.getState().addRecentProject(path);
+    const { setLoadingProject } = useProjectStore.getState();
+    setLoadingProject(true);
+    try {
+      await rpc.call("project.loadProject", { filePath: path }).catch((err) => reportRpcError("project.loadProject", err));
+      useProjectStore.getState().addRecentProject(path);
+    } finally {
+      setLoadingProject(false);
+    }
   });
 
   const handleClearRecent = () => {
