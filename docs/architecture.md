@@ -14,7 +14,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.0**
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.1**
 with a **React 19 + TypeScript frontend** (Zustand state management,
 Vite build). The frontend runs in two contexts:
 system browser (default) or Electron shell. The C++ engine
@@ -58,7 +58,9 @@ trim/fade handle click propagation, track header resize handle
 click propagation, audio clip deletion not stopping playback
 (missing `valueTreeChildRemoved` → `rebuildRoutingGraph()`), and
 three additional asymmetric ValueTree listener fixes (TRANSPORT
-teardown in AudioEngine, MARKER_LIST teardown). For the
+teardown in AudioEngine, MARKER_LIST teardown). **v0.12.1** fixes
+rubber-band selection hit-testing (`TRACK_HEIGHT` mismatch and
+partial-overlap detection). For the
 full list of working features and the priority-ordered roadmap, see
 `README.md`.
 
@@ -91,8 +93,8 @@ full list of working features and the priority-ordered roadmap, see
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.12.0 ...)` — **canonical source** for C++ code
-- `frontend/package.json` → `"version": "0.12.0"` — **canonical source** for the React frontend
+- `CMakeLists.txt` → `project(HDAW VERSION 0.12.1 ...)` — **canonical source** for C++ code
+- `frontend/package.json` → `"version": "0.12.1"` — **canonical source** for the React frontend
 
 When bumping the version, update **both** files, then run:
 ```

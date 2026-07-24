@@ -42,13 +42,14 @@ export interface FadeDrag {
 export function computeRubberBandSelection(
   x1: number, y1: number, x2: number, y2: number,
   clips: Array<{ clipId: number; trackIndex: number; startBeat: number; durationBeats: number }>,
-  pps: number
+  pps: number,
+  trackHeight: number = TRACK_HEIGHT
 ): Set<number> {
   const selected = new Set<number>();
   const minBeat = Math.min(x1, x2) / pps;
   const maxBeat = Math.max(x1, x2) / pps;
-  const minTrack = Math.min(y1, y2) / TRACK_HEIGHT;
-  const maxTrack = Math.max(y1, y2) / TRACK_HEIGHT;
+  const minTrack = Math.floor(Math.min(y1, y2) / trackHeight);
+  const maxTrack = Math.ceil(Math.max(y1, y2) / trackHeight) - 1;
 
   for (const clip of clips) {
     const clipEnd = clip.startBeat + clip.durationBeats;

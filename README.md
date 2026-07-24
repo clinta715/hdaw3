@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.12.0
+**Current version**: 0.12.1
 
 ## Quick start
 

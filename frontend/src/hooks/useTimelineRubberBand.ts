@@ -52,7 +52,7 @@ export function useTimelineRubberBand({
       const rb = rubberBandRef.current;
       if (rb) {
         useUiStore.setState({ selectedClipIds: computeRubberBandSelection(
-          rb.x1, rb.y1, newX2, newY2, clips, pps) });
+          rb.x1, rb.y1, newX2, newY2, clips, pps, TRACK_HEIGHT) });
       }
     };
 
@@ -61,7 +61,7 @@ export function useTimelineRubberBand({
       window.removeEventListener("mouseup", onUp);
       const rb = rubberBandRef.current;
       if (rb) {
-        const selected = computeRubberBandSelection(rb.x1, rb.y1, rb.x2, rb.y2, clips, pps);
+        const selected = computeRubberBandSelection(rb.x1, rb.y1, rb.x2, rb.y2, clips, pps, TRACK_HEIGHT);
         if (selected.size > 0) {
           useUiStore.setState({ selectedClipIds: selected });
           rubberBandJustCompleted.current = true;

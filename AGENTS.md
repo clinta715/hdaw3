@@ -4,7 +4,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend â€" these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.0**
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.1**
 with a **React 19 + TypeScript frontend** (Zustand state management,
 Vite build). The frontend runs in two contexts:
 system browser (default) or Electron shell. The C++ engine
@@ -55,7 +55,9 @@ batch clip RPCs (`duplicateClips`, `moveClips`, `removeClips`, `addClips`)
 to fix the recurring ctrl-drag stale-closure regression, optimistic
 placement for NoteGrid/FXChain operations, frontend test infrastructure
 (Vitest + Playwright, 86 tests), frontend pitfalls documentation, and
-`build-fast.bat` for incremental builds. For the full list of working
+`build-fast.bat` for incremental builds. **v0.12.1** fixes rubber-band
+selection hit-testing (`TRACK_HEIGHT` mismatch and partial-overlap
+detection). For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Documentation Directory
@@ -104,8 +106,8 @@ Detailed documentation has been split into domain-specific files:
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.12.0 ...)` — **canonical source** for C++ code
-- `frontend/package.json` → `"version": "0.12.0"` — **canonical source** for the React frontend
+- `CMakeLists.txt` → `project(HDAW VERSION 0.12.1 ...)` — **canonical source** for C++ code
+- `frontend/package.json` → `"version": "0.12.1"` — **canonical source** for the React frontend
 
 See [docs/architecture.md](docs/architecture.md) for full version management details.
 
