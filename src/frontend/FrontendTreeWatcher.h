@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <juce_data_structures/juce_data_structures.h>
+#include "TreeDeltaAccumulator.h"
 
 class AudioEngine;
 
@@ -29,16 +30,20 @@ public:
     ~FrontendTreeWatcher() override;
 
 private:
-    // juce::ValueTree::Listener — all three signal "something changed".
-    void valueTreePropertyChanged(juce::ValueTree&, const juce::Identifier&) override { scheduleNotify(); }
-    void valueTreeChildAdded(juce::ValueTree&, juce::ValueTree&) override       { scheduleNotify(); }
-    void valueTreeChildRemoved(juce::ValueTree&, juce::ValueTree&, int) override{ scheduleNotify(); }
+    // juce::ValueTree::Listener — feed the accumulator, then schedule a flush.
+    void valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier&) override;
+    void valueTreeChildAdded(juce::ValueTree&, juce::ValueTree& child) override;
+    void valueTreeChildRemoved(juce::ValueTree&, juce::ValueTree& child, int) override;
+    void valueTreeChildOrderChanged(juce::ValueTree&, int, int) override;
+    void valueTreeParentChanged(juce::ValueTree&) override;
 
     void scheduleNotify();
+    void flush();
 
     AudioEngine& engine_;
     FrontendServer& server_;
     class QTimer* debounceTimer_ = nullptr;
+    TreeDeltaAccumulator accumulator_;
 };
 
 } // namespace frontend
