@@ -36,6 +36,10 @@ export function useTimelineRubberBand({
 
   const handleRubberBandStart = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    // Prevent the browser from initiating native text selection during the
+    // drag — otherwise dragging across clips highlights their name labels
+    // instead of (or in addition to) the rubber band selecting them.
+    e.preventDefault();
     rubberBandJustCompleted.current = false;
     const el = tracksRef.current;
     if (!el) return;
