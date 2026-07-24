@@ -43,6 +43,12 @@ bool AudioEngineCommands::saveProject(const std::string& filePath)
 
 bool AudioEngineCommands::loadProject(const std::string& filePath)
 {
+    // Guard against re-entrancy from processEvents() draining the Qt queue
+    // mid-load (a second loadProject RPC could arrive while we're blocked).
+    static bool loading = false;
+    if (loading) return false;
+    loading = true;
+
     auto sendProgress = [](const QString& msg, float pct) {
         if (auto* server = frontend::FrontendServer::instance()) {
             QJsonObject payload{
@@ -61,6 +67,7 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
     {
         HDAW_LOG("DIAG", "loadProject: load FAILED");
         sendProgress("Load failed", 1.0f);
+        loading = false;
         return false;
     }
 
@@ -82,6 +89,7 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
     }
 
     sendProgress("Done", 1.0f);
+    loading = false;
     return true;
 }
 

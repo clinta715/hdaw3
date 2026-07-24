@@ -38,6 +38,7 @@ export default function StartupDialog({ onClose }: Props) {
           const path = result.filePaths[0];
           await rpc.call("project.loadProject", { filePath: path });
           useProjectStore.getState().addRecentProject(path);
+          await useProjectStore.getState().syncDirtyFlag(rpc);
           onClose();
         }
       } else {
@@ -46,6 +47,7 @@ export default function StartupDialog({ onClose }: Props) {
         if (path) {
           await rpc.call("project.loadProject", { filePath: path });
           useProjectStore.getState().addRecentProject(path);
+          await useProjectStore.getState().syncDirtyFlag(rpc);
           onClose();
         }
       }
@@ -60,6 +62,7 @@ export default function StartupDialog({ onClose }: Props) {
     try {
       await rpc.call("project.loadProject", { filePath: path });
       useProjectStore.getState().addRecentProject(path);
+      await useProjectStore.getState().syncDirtyFlag(rpc);
       onClose();
     } finally {
       setLoadingProject(false);
