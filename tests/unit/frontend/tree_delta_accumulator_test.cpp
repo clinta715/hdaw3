@@ -2,6 +2,7 @@
 #include <juce_data_structures/juce_data_structures.h>
 #include "model/ProjectModel.h"
 #include "engine/ReadModelImpl.h"
+#include "frontend/TreeDeltaAccumulator.h"
 
 using namespace juce;
 
@@ -75,4 +76,128 @@ TEST(TreeDeltaBuilders, TrackSnapshotFromTree) {
     EXPECT_DOUBLE_EQ(ts.volume, 0.6);
     EXPECT_EQ(ts.color, 7);
     EXPECT_EQ(ts.clipCount, 0);
+}
+
+using frontend::TreeDeltaAccumulator;
+
+TEST(TreeDelta, ClipPropertyChangeUpsertsClip) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(clip);
+
+    EXPECT_FALSE(acc.fullSync());
+    ASSERT_EQ(acc.clipsUpserted().size(), 1u);
+    EXPECT_EQ(acc.clipsUpserted().at(5).clipId, 5);
+    EXPECT_TRUE(acc.clipsRemoved().empty());
+}
+
+TEST(TreeDelta, RepeatedClipChangesCoalesceToLatest) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(clip);
+    clip.setProperty(IDs::startTime, 9.0, nullptr);   // simulate a drag
+    acc.notePropertyChanged(clip);
+
+    EXPECT_EQ(acc.clipsUpserted().size(), 1u);        // coalesced
+    EXPECT_DOUBLE_EQ(acc.clipsUpserted().at(5).startBeat, 9.0);  // latest wins
+}
+
+TEST(TreeDelta, ClipRemovedThenReaddedCancels) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.noteChildRemoved(clip);
+    EXPECT_EQ(acc.clipsRemoved().size(), 1u);
+    acc.noteChildAdded(clip);                          // re-added
+    EXPECT_TRUE(acc.clipsRemoved().empty());           // removal cancelled
+    EXPECT_EQ(acc.clipsUpserted().size(), 1u);
+}
+
+TEST(TreeDelta, ClipAddAfterRemoveOfSameIdIsUpsert) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.noteChildAdded(clip);                          // upsert
+    acc.noteChildRemoved(clip);                        // then removed
+    EXPECT_EQ(acc.clipsRemoved().size(), 1u);
+    EXPECT_TRUE(acc.clipsUpserted().empty());          // upsert dropped
+}
+
+TEST(TreeDelta, TrackPropertyChangeUpsertsTrack) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(track);
+    EXPECT_FALSE(acc.fullSync());
+    ASSERT_EQ(acc.tracksUpserted().size(), 1u);
+    EXPECT_EQ(acc.tracksUpserted().at(0).name, "Synth");
+}
+
+TEST(TreeDelta, SubClipDetailChangeIsFullSync) {
+    ValueTree note(IDs::MIDI_NOTE);
+    note.setProperty(IDs::noteNumber, 60, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(note);
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, TrackAddIsFullSync) {
+    ValueTree track = makeTrackTree("New", 1.0);
+    TreeDeltaAccumulator acc;
+    acc.noteChildAdded(track);
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, StructuralChangeIsFullSync) {
+    TreeDeltaAccumulator acc;
+    acc.noteStructuralChange();
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, FullSyncDiscardsPendingDelta) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(clip);
+    acc.noteStructuralChange();                        // escalates to fullSync
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, ResetClearsState) {
+    ValueTree trackList(IDs::TRACK_LIST);
+    ValueTree track = makeTrackTree("Synth", 1.0);
+    ValueTree clip = makeClipTree(5, 0.0, "C");
+    track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(clip);
+    acc.reset();
+    EXPECT_TRUE(acc.empty());
+    EXPECT_FALSE(acc.fullSync());
 }

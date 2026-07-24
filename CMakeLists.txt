@@ -118,6 +118,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/FrontendRouter.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
+    src/frontend/TreeDeltaAccumulator.cpp
     src/frontend/UiHttpServer.cpp
 )
 
