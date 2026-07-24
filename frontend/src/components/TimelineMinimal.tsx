@@ -423,17 +423,9 @@ export default function TimelineMinimal() {
         }
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyD") {
         e.preventDefault();
-        if (selectedClipIds.size > 0) {
-          (async () => {
-            await rpc.call("project.beginTransaction", { name: "duplicate clips" });
-            for (const id of selectedClipIds) {
-              await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
-            }
-            await rpc.call("project.endTransaction");
-            // Reconciled by the debounced notify.treeChanged push.
-            useProjectStore.setState({ isDirty: true });
-          })();
-        }
+        // Route through the same handler as context-menu Duplicate so Ctrl+D
+        // gets the batch RPC, overlap handling, and instant placeholder.
+        handleDuplicateClip();
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
         e.preventDefault();
         if (selectedClipIds.size > 0) {
@@ -501,7 +493,7 @@ export default function TimelineMinimal() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [pasteClipboard]);
+  }, [pasteClipboard, handleDuplicateClip]);
 
   return (
     <div className="timeline-minimal">
