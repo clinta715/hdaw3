@@ -261,12 +261,24 @@ export function TimelineContextMenu({
           </button>
           <button onMouseDown={(e) => {
             e.stopPropagation();
+            const tempId = -Date.now();
+            useProjectStore.getState().addPendingClip({
+              clipId: tempId, trackIndex: 0, name: "New MIDI Clip", sourceFile: "",
+              startBeat: emptyContextMenu.beat, durationBeats: 4, offset: 0, gain: 1,
+              fadeIn: 0, fadeOut: 0, looping: false, muted: false, isMidi: true,
+              sourceBpm: 0, stretchMode: 0, stretchRatio: 1, sourceDuration: 0,
+              isGhost: false, ghostSourceId: -1, gainEnvelope: [],
+            });
             rpc.call("project.addMidiClip", {
-              trackIndex: 0,
-              start: emptyContextMenu.beat,
-              duration: 4,
-              name: "New MIDI Clip",
-            }).catch(() => {});
+              trackIndex: 0, start: emptyContextMenu.beat, duration: 4, name: "New MIDI Clip",
+            }).then((res) => {
+              const realId = typeof res === "number" ? res : (res && typeof res === "object" && "clipId" in (res as any) ? (res as any).clipId : null);
+              if (realId != null) useProjectStore.getState().resolvePending(tempId, realId);
+              else useProjectStore.getState().removePending(tempId);
+            }).catch(() => useProjectStore.getState().removePending(tempId));
+            setTimeout(() => {
+              if (useProjectStore.getState().pendingTempIds.has(tempId)) useProjectStore.getState().removePending(tempId);
+            }, 1500);
             onClose();
           }}>
             Add MIDI Clip

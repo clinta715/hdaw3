@@ -312,16 +312,37 @@ export default function TimelineMinimal() {
 
   const handleDuplicateClip = useCallback(() => {
     const { selectedClipIds } = useUiStore.getState();
+    const snap = useProjectStore.getState().snapshot;
+    if (!snap) return;
     const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
     if (ids.length === 0) return;
+
+    // Create translucent placeholders (negative temp ids) for instant feedback.
+    const tempIds: number[] = [];
+    ids.forEach((id, i) => {
+      const src = snap.clips.find((c) => c.clipId === id);
+      if (!src) return;
+      const tempId = -(Date.now() + i);
+      tempIds.push(tempId);
+      useProjectStore.getState().addPendingClip({ ...src, clipId: tempId });
+    });
+
     (async () => {
-      await rpc.call("project.beginTransaction", { name: "duplicate clips" });
-      for (const id of ids) {
-        await rpc.call("project.duplicateClip", { clipId: id }).catch(() => {});
+      try {
+        const res = await rpc.call("project.duplicateClips", { clipIds: ids });
+        const newIds: number[] = Array.isArray(res) ? res.filter((x): x is number => typeof x === "number") : [];
+        // Map placeholder -> real id by order (duplicateClips returns ids in input order).
+        tempIds.forEach((tempId, i) => {
+          if (newIds[i] != null) useProjectStore.getState().resolvePending(tempId, newIds[i]);
+        });
+        useProjectStore.setState({ isDirty: true });
+      } catch {
+        tempIds.forEach((t) => useProjectStore.getState().removePending(t));
       }
-      await rpc.call("project.endTransaction");
-      // Reconciled by the debounced notify.treeChanged push.
-      useProjectStore.setState({ isDirty: true });
+      // Sweep any still-unresolved placeholders shortly (delta normally swaps them).
+      setTimeout(() => tempIds.forEach((t) => {
+        if (useProjectStore.getState().pendingTempIds.has(t)) useProjectStore.getState().removePending(t);
+      }), 1500);
     })();
   }, [contextMenu]);
 
