@@ -185,3 +185,67 @@ describe("applyDelta", () => {
     expect(useProjectStore.getState().snapshot).toBeNull();
   });
 });
+
+describe("pending placeholders", () => {
+  beforeEach(() => {
+    useProjectStore.setState({
+      snapshot: structuredClone(mockSnapshot),
+      lastSync: 0,
+      pendingTempIds: new Set(),
+      pendingResolution: new Map(),
+    });
+  });
+
+  it("addPendingClip appends the placeholder and records its temp id", () => {
+    const before = useProjectStore.getState().snapshot!.clips.length;
+    useProjectStore.getState().addPendingClip(mkClip(-1, 0, 8));
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.length).toBe(before + 1);
+    expect(clips.find((c) => c.clipId === -1)).toBeDefined();
+    expect(useProjectStore.getState().pendingTempIds.has(-1)).toBe(true);
+  });
+
+  it("removePending removes the placeholder and prunes state", () => {
+    useProjectStore.getState().addPendingClip(mkClip(-1, 0, 8));
+    useProjectStore.getState().removePending(-1);
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.find((c) => c.clipId === -1)).toBeUndefined();
+    expect(useProjectStore.getState().pendingTempIds.has(-1)).toBe(false);
+    expect(useProjectStore.getState().pendingResolution.has(-1)).toBe(false);
+  });
+
+  it("applyDelta swaps a resolved placeholder for the real clip", () => {
+    useProjectStore.getState().addPendingClip(mkClip(-1, 0, 8));
+    useProjectStore.getState().resolvePending(-1, 500);
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsUpserted: [mkClip(500, 0, 8)] });
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.find((c) => c.clipId === 500)).toBeDefined();
+    expect(clips.find((c) => c.clipId === -1)).toBeUndefined();
+    expect(useProjectStore.getState().pendingTempIds.has(-1)).toBe(false);
+    expect(useProjectStore.getState().pendingResolution.has(-1)).toBe(false);
+  });
+
+  it("applyDelta leaves unrelated placeholders pending", () => {
+    useProjectStore.getState().addPendingClip(mkClip(-1, 0, 8));
+    useProjectStore.getState().addPendingClip(mkClip(-2, 0, 12));
+    useProjectStore.getState().resolvePending(-1, 500);
+    useProjectStore.getState().applyDelta({ fullSync: false, clipsUpserted: [mkClip(500, 0, 8)] });
+    const clips = useProjectStore.getState().snapshot!.clips;
+    expect(clips.find((c) => c.clipId === -1)).toBeUndefined();
+    expect(clips.find((c) => c.clipId === -2)).toBeDefined();
+    expect(useProjectStore.getState().pendingTempIds.has(-2)).toBe(true);
+  });
+
+  it("applyDelta is a reference-stable no-op for clips when pendingResolution is empty", () => {
+    const clipsBefore = useProjectStore.getState().snapshot!.clips;
+    useProjectStore.getState().applyDelta({ fullSync: false });
+    const clipsAfter = useProjectStore.getState().snapshot!.clips;
+    expect(clipsAfter).toBe(clipsBefore);
+  });
+
+  it("addPendingClip is a no-op without a snapshot", () => {
+    useProjectStore.setState({ snapshot: null });
+    expect(() => useProjectStore.getState().addPendingClip(mkClip(-1, 0, 0))).not.toThrow();
+    expect(useProjectStore.getState().snapshot).toBeNull();
+  });
+});
