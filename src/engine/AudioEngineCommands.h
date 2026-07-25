@@ -145,6 +145,9 @@ public:
 
     // ProjectCommands — MIDI CC
     void addCcPoint(int clipId, int controllerNumber, double beat, int value) override;
+    void setCcPoint(int ccId, double beat, int value) override;
+    void removeCcPoint(int ccId) override;
+    void setCcRecordArmed(bool armed) override;
 
     // ProjectCommands — Undo/redo
     void undo() override;
@@ -212,6 +215,9 @@ private:
     // Find note by ID in a clip's MIDI_NOTE_LIST. Sets outClipId.
     // Returns a valid ValueTree on success.
     juce::ValueTree findNoteById(int noteId, int& outClipId) const;
+
+    // Find CC point by ID in a clip's CC_LIST. Sets outClipId.
+    juce::ValueTree findCcPointById(int ccId, int& outClipId) const;
 
     // Find the FX_SLOT child at slotIndex in a track's FX_CHAIN.
     juce::ValueTree findFxSlot(int trackIndex, int slotIndex) const;

@@ -55,6 +55,7 @@ juce::ValueTree ProjectModel::createTrackAutomationList()
 }
 
 static std::atomic<int> nextClipID{1};
+static std::atomic<int> nextCcID{1};
 
 juce::ValueTree ProjectModel::getScaleInfoTree()
 {
@@ -108,6 +109,11 @@ int ProjectModel::allocateClipID()
 int ProjectModel::allocateNoteID()
 {
     return nextNoteID.fetch_add(1, std::memory_order_relaxed);
+}
+
+int ProjectModel::allocateCcID()
+{
+    return nextCcID.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ProjectModel::resetNoteIDCounter()

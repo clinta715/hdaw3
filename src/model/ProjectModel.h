@@ -56,6 +56,7 @@ namespace IDs {
     DECLARE_ID(controllerNumber)
     DECLARE_ID(beat)
     DECLARE_ID(value)
+    DECLARE_ID(ccID)
 
     // Transport / loop
     DECLARE_ID(loopStart)
@@ -187,6 +188,7 @@ public:
     static void resetClipIDCounter();
     static int allocateNoteID();
     static void resetNoteIDCounter();
+    static int allocateCcID();
     static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
     static juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
     static juce::ValueTree createMidiNote(int note, float vel, double start, double dur);

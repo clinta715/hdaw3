@@ -165,11 +165,12 @@ void AudioEngine::initialize()
         if (msg.isController() && midiCcRecordArmed
             && transportManager.isPlayingNow() && midiCcCallback)
         {
+            int channel = msg.getChannel();
             int controller = msg.getControllerNumber();
             int value = msg.getControllerValue();
-            juce::MessageManager::callAsync([this, controller, value]() {
+            juce::MessageManager::callAsync([this, channel, controller, value]() {
                 if (midiCcCallback)
-                    midiCcCallback(controller, value);
+                    midiCcCallback(channel, controller, value);
             });
         }
         mainProcessor->addExternalMidiMessage(msg);
@@ -185,6 +186,43 @@ void AudioEngine::initialize()
 
     // Wiring that previously lived in MainWindow
     projectModel.setPluginManager(&pluginManager);
+}
+
+void AudioEngine::recordMidiCc(int channel, int controllerNumber, int value)
+{
+    if (!transportManager.isPlayingNow() || !commands)
+        return;
+
+    const double globalBeat = transportManager.samplesToPpq(transportManager.getCurrentSample());
+
+    auto trackList = projectModel.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto track = trackList.getChild(t);
+        if (static_cast<int>(track.getProperty(IDs::isArm, 0)) == 0)
+            continue;
+        if (static_cast<int>(track.getProperty(IDs::midiChannel, 1)) != channel)
+            continue;
+
+        auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            if (clip.getProperty(IDs::clipType).toString() != "midi")
+                continue;
+            double startSec = static_cast<double>(clip.getProperty(IDs::startTime, 0.0));
+            double durSec = static_cast<double>(clip.getProperty(IDs::duration, 0.0));
+            double clipStartBeat = transportManager.secondsToPpq(startSec);
+            double clipEndBeat = transportManager.secondsToPpq(startSec + durSec);
+            if (globalBeat >= clipStartBeat && globalBeat < clipEndBeat)
+            {
+                int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+                commands->addCcPoint(clipId, controllerNumber, globalBeat - clipStartBeat, value);
+                return;
+            }
+        }
+    }
 }
 
 void AudioEngine::shutdown()
@@ -546,6 +584,19 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             }
         }
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::CC_POINT))
+    {
+        auto ccList = treeWhosePropertyHasChanged.getParent();
+        if (ccList.isValid() && ccList.hasType(IDs::CC_LIST))
+        {
+            auto clipTree = ccList.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP) && mainProcessor != nullptr)
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
     else if (treeWhosePropertyHasChanged.hasType(IDs::MODULATION))
     {
         // Walk up CLIP_LIST is NOT the parent chain here: the MODULATION
@@ -683,6 +734,19 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
         }
     }
 
+    if (childWhichHasBeenAdded.hasType(IDs::CC_POINT) && mainProcessor != nullptr)
+    {
+        if (parentTree.hasType(IDs::CC_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
+
     if (childWhichHasBeenAdded.hasType(IDs::MODULATION) && mainProcessor != nullptr)
     {
         if (int tIdx = modulationTrackIndexOf(parentTree); tIdx >= 0)
@@ -773,6 +837,28 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
                     }
                 }
             }
+        }
+    }
+
+    if (childWhichHasBeenRemoved.hasType(IDs::CC_POINT) && mainProcessor != nullptr)
+    {
+        if (parentTree.hasType(IDs::CC_LIST))
+        {
+            auto clipTree = parentTree.getParent();
+            if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
+            {
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    rm->rebuildMidiClipCache(clipTree);
+            }
+        }
+    }
+
+    if (childWhichHasBeenRemoved.hasType(IDs::CC_LIST) && mainProcessor != nullptr)
+    {
+        if (parentTree.hasType(IDs::CLIP))
+        {
+            if (auto* rm = mainProcessor->getRoutingManager())
+                rm->rebuildMidiClipCache(parentTree);
         }
     }
 

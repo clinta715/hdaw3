@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
 #include <array>
+#include <algorithm>
 #include "TransportManager.h"
 #include "../model/ProjectModel.h"
 
@@ -15,10 +16,17 @@ struct NoteData {
     double durationBeats;
 };
 
+struct CcData {
+    int controllerNumber;
+    double beat;
+    int value;
+};
+
 class MidiClipProcessor : public juce::AudioProcessor
 {
 public:
     static constexpr int MAX_NOTES = 512;
+    static constexpr int MAX_CC = 512;
 
     MidiClipProcessor(HDAW::TransportManager& tm)
         : AudioProcessor(BusesProperties()
@@ -33,6 +41,7 @@ public:
     {
         clipTree = tree;
         rebuildNoteCache();
+        rebuildCcCache();
     }
 
     juce::ValueTree getClipTree() const { return clipTree; }
@@ -61,10 +70,13 @@ public:
 
         buffer.clear();
 
+        if (numSamples <= 0)
+            return;
+
         int idx = activeCacheIndex.load(std::memory_order_acquire);
         int count = noteCount.load(std::memory_order_acquire);
-        if (count <= 0 || numSamples <= 0)
-            return;
+        int ccIdx = activeCcCacheIndex.load(std::memory_order_acquire);
+        int ccCnt = ccCount.load(std::memory_order_acquire);
 
         int64_t transportSample = transportManager.getCurrentSample();
         double sr = transportManager.getSampleRate();
@@ -74,9 +86,10 @@ public:
         double currentTimeSec = static_cast<double>(transportSample) / sr;
         double clipLocalSec = currentTimeSec - startSec;
 
+        const int channel = midiChannel.load();
+
         if (clipLocalSec < 0.0 || clipLocalSec > durSec)
         {
-            const int channel = midiChannel.load();
             for (int note = 0; note < 128; ++note)
             {
                 if (!activeNotes[note]) continue;
@@ -89,8 +102,6 @@ public:
 
         double currentBeat = transportManager.secondsToPpq(currentTimeSec)
                            - transportManager.secondsToPpq(startSec);
-
-        const int channel = midiChannel.load();
 
         for (int i = 0; i < count; ++i)
         {
@@ -114,6 +125,28 @@ public:
                 midiMessages.addEvent(juce::MidiMessage::noteOff(channel, note.noteNumber, 0.0f),
                                       0);
                 activeNotes[note.noteNumber] = false;
+            }
+        }
+
+        if (ccCnt > 0)
+        {
+            double blockEndBeat = transportManager.secondsToPpq(currentTimeSec + static_cast<double>(numSamples) / sr)
+                                - transportManager.secondsToPpq(startSec);
+            double beatSpan = blockEndBeat - currentBeat;
+            for (int i = 0; i < ccCnt; ++i)
+            {
+                const CcData& cc = ccCaches[ccIdx][i];
+                if (cc.beat >= currentBeat && cc.beat < blockEndBeat)
+                {
+                    int sampleOffset = 0;
+                    if (beatSpan > 1e-9)
+                        sampleOffset = static_cast<int>(((cc.beat - currentBeat) / beatSpan) * numSamples);
+                    sampleOffset = juce::jlimit(0, numSamples - 1, sampleOffset);
+                    int v = juce::jlimit(0, 127, cc.value);
+                    midiMessages.addEvent(
+                        juce::MidiMessage::controllerEvent(channel, cc.controllerNumber, v),
+                        sampleOffset);
+                }
             }
         }
 
@@ -168,6 +201,35 @@ private:
         activeCacheIndex.store(inactiveIdx, std::memory_order_release);
     }
 
+    void rebuildCcCache()
+    {
+        int inactiveIdx = 1 - activeCcCacheIndex.load(std::memory_order_relaxed);
+        auto& inactive = ccCaches[inactiveIdx];
+
+        auto cl = clipTree.getChildWithName(IDs::CC_LIST);
+        if (!cl.isValid())
+        {
+            ccCount.store(0, std::memory_order_release);
+            activeCcCacheIndex.store(inactiveIdx, std::memory_order_release);
+            return;
+        }
+
+        int count = (std::min)(cl.getNumChildren(), MAX_CC);
+        for (int i = 0; i < count; ++i)
+        {
+            auto p = cl.getChild(i);
+            inactive[i].controllerNumber = p.getProperty(IDs::controllerNumber);
+            inactive[i].beat = p.getProperty(IDs::beat);
+            inactive[i].value = p.getProperty(IDs::value);
+        }
+
+        std::sort(inactive.begin(), inactive.begin() + count,
+                  [](const CcData& a, const CcData& b) { return a.beat < b.beat; });
+
+        ccCount.store(count, std::memory_order_release);
+        activeCcCacheIndex.store(inactiveIdx, std::memory_order_release);
+    }
+
     HDAW::TransportManager& transportManager;
     juce::ValueTree clipTree;
 
@@ -182,6 +244,10 @@ private:
     std::array<std::array<NoteData, MAX_NOTES>, 2> noteCaches{};
     std::atomic<int> activeCacheIndex{0};
     std::atomic<int> noteCount{0};
+
+    std::array<std::array<CcData, MAX_CC>, 2> ccCaches{};
+    std::atomic<int> activeCcCacheIndex{0};
+    std::atomic<int> ccCount{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiClipProcessor)
 };

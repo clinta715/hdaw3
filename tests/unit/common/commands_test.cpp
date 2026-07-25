@@ -490,3 +490,57 @@ TEST(Commands, AddCcPoint)
     EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::controllerNumber)), 1);
     EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::value)), 64);
 }
+
+TEST(Commands, SetAndRemoveCcPoint)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int clipId = cmds.addMidiClip(0, 0.0, 8.0, "CC Edit");
+    cmds.addCcPoint(clipId, 74, 1.0, 64);
+
+    auto ccList = [&]() {
+        auto trackList = engine.getProjectModel().getTrackListTree();
+        return trackList.getChild(0).getChildWithName(IDs::CLIP_LIST)
+            .getChild(0).getChildWithName(IDs::CC_LIST);
+    };
+    ASSERT_TRUE(ccList().isValid());
+    ASSERT_EQ(ccList().getNumChildren(), 1);
+    int ccId = static_cast<int>(ccList().getChild(0).getProperty(IDs::ccID, 0));
+    EXPECT_GT(ccId, 0);
+
+    cmds.setCcPoint(ccId, 3.0, 100);
+    EXPECT_DOUBLE_EQ(static_cast<double>(ccList().getChild(0).getProperty(IDs::beat)), 3.0);
+    EXPECT_EQ(static_cast<int>(ccList().getChild(0).getProperty(IDs::value)), 100);
+
+    cmds.removeCcPoint(ccId);
+    EXPECT_EQ(ccList().getNumChildren(), 0);
+}
+
+TEST(Commands, CcRecordingWritesToClip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addMidiClip(0, 0.0, 8.0, "RecTarget");
+    engine.setTrackArmed(0, true);
+
+    engine.getTransportManager().setSampleRate(44100.0);
+    auto& tc = engine.getTransportCommands();
+    tc.play();
+    tc.seekToSeconds(2.0);
+
+    cmds.setCcRecordArmed(true);
+    EXPECT_TRUE(engine.isMidiCcRecordArmed());
+    engine.recordMidiCc(1, 74, 99);
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clip = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST).getChild(0);
+    auto ccList = clip.getChildWithName(IDs::CC_LIST);
+    ASSERT_TRUE(ccList.isValid());
+    ASSERT_EQ(ccList.getNumChildren(), 1);
+    EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::controllerNumber)), 74);
+    EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::value)), 99);
+    EXPECT_DOUBLE_EQ(static_cast<double>(ccList.getChild(0).getProperty(IDs::beat)), 4.0);
+}

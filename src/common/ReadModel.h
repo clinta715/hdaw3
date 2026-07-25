@@ -53,6 +53,7 @@ struct NoteSnapshot {
 };
 
 struct CcPointSnapshot {
+    int ccId = 0;
     int controllerNumber = 0;
     double beat = 0.0;
     int value = 0;

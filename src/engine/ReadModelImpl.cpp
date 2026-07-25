@@ -210,6 +210,7 @@ std::vector<CcPointSnapshot> ReadModelImpl::getCcPoints(int clipId, int controll
                 if (static_cast<int>(pt.getProperty(IDs::controllerNumber, -1)) != controllerNumber)
                     continue;
                 CcPointSnapshot s;
+                s.ccId = static_cast<int>(pt.getProperty(IDs::ccID, 0));
                 s.controllerNumber = controllerNumber;
                 s.beat = pt.getProperty(IDs::beat, 0.0);
                 s.value = static_cast<int>(pt.getProperty(IDs::value, 0));

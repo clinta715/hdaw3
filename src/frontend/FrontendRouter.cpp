@@ -313,6 +313,9 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setNoteDuration") { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "durationBeats", v, nullptr)) return makeError(-32602, "noteId and durationBeats required"); c.setNoteDuration(i, v); return { false, QJsonValue::Null }; }
     if (m == "clearNotes")      { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.clearNotes(i); return { false, QJsonValue::Null }; }
     if (m == "addCcPoint")      { int clip, cc; double beat; int val; if (!requireInt(o, "clipId", clip, nullptr) || !requireInt(o, "controllerNumber", cc, nullptr) || !requireDouble(o, "beat", beat, nullptr) || !requireInt(o, "value", val, nullptr)) return makeError(-32602, "clipId, controllerNumber, beat, value required"); c.addCcPoint(clip, cc, beat, val); return { false, QJsonValue::Null }; }
+    if (m == "setCcPoint")      { int id; double beat; int val; if (!requireInt(o, "ccId", id, nullptr) || !requireDouble(o, "beat", beat, nullptr) || !requireInt(o, "value", val, nullptr)) return makeError(-32602, "ccId, beat, value required"); c.setCcPoint(id, beat, val); return { false, QJsonValue::Null }; }
+    if (m == "removeCcPoint")   { int id; if (!requireInt(o, "ccId", id, nullptr)) return makeError(-32602, "ccId required"); c.removeCcPoint(id); return { false, QJsonValue::Null }; }
+    if (m == "setCcRecordArmed") { bool b; if (!requireBool(o, "armed", b, nullptr)) return makeError(-32602, "armed required"); c.setCcRecordArmed(b); return { false, QJsonValue::Null }; }
 
     // --- FX ---
     if (m == "addFxSlot") {

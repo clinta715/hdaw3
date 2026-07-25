@@ -66,10 +66,14 @@ public:
     // MIDI CC automation recording. When armed, incoming CC messages during
     // playback are dispatched to the registered callback (on the main thread)
     // so the UI can record them into the current clip's CC list.
-    using MidiCcCallback = std::function<void(int controllerNumber, int value)>;
+    using MidiCcCallback = std::function<void(int channel, int controllerNumber, int value)>;
     void setMidiCcRecordArmed(bool armed) { midiCcRecordArmed.store(armed); }
     bool isMidiCcRecordArmed() const { return midiCcRecordArmed.load(); }
     void setMidiCcCallback(MidiCcCallback cb) { midiCcCallback = std::move(cb); }
+
+    // Record an incoming CC event into the MIDI clip under the playhead on an
+    // armed track whose MIDI channel matches. Called on the main thread.
+    void recordMidiCc(int channel, int controllerNumber, int value);
 
 private:
     // ValueTree::Listener overrides

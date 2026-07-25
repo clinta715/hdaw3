@@ -63,6 +63,34 @@ juce::ValueTree AudioEngineCommands::findNoteById(int noteId, int& outClipId) co
     return {};
 }
 
+juce::ValueTree AudioEngineCommands::findCcPointById(int ccId, int& outClipId) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            auto ccList = clip.getChildWithName(IDs::CC_LIST);
+            if (!ccList.isValid()) continue;
+            for (int n = 0; n < ccList.getNumChildren(); ++n)
+            {
+                auto pt = ccList.getChild(n);
+                if (static_cast<int>(pt.getProperty(IDs::ccID, 0)) == ccId)
+                {
+                    outClipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+                    return pt;
+                }
+            }
+        }
+    }
+
+    outClipId = -1;
+    return {};
+}
+
 juce::ValueTree AudioEngineCommands::findFxSlot(int trackIndex, int slotIndex) const
 {
     auto trackList = engine_.getProjectModel().getTrackListTree();

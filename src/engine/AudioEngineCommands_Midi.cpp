@@ -98,8 +98,39 @@ void AudioEngineCommands::addCcPoint(int clipId, int controllerNumber, double be
     }
 
     juce::ValueTree pt(IDs::CC_POINT);
+    pt.setProperty(IDs::ccID, ProjectModel::allocateCcID(), nullptr);
     pt.setProperty(IDs::controllerNumber, controllerNumber, &um);
     pt.setProperty(IDs::beat, beat, &um);
     pt.setProperty(IDs::value, value, &um);
     ccList.addChild(pt, -1, &um);
+}
+
+void AudioEngineCommands::setCcPoint(int ccId, double beat, int value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto pt = findCcPointById(ccId, clipId);
+    if (!pt.isValid()) return;
+    pt.setProperty(IDs::beat, beat, &um);
+    pt.setProperty(IDs::value, value, &um);
+}
+
+void AudioEngineCommands::removeCcPoint(int ccId)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int clipId = -1;
+    auto pt = findCcPointById(ccId, clipId);
+    if (pt.isValid())
+        pt.getParent().removeChild(pt, &um);
+}
+
+void AudioEngineCommands::setCcRecordArmed(bool armed)
+{
+    engine_.setMidiCcRecordArmed(armed);
+    if (armed)
+        engine_.setMidiCcCallback([this](int channel, int controller, int value) {
+            engine_.recordMidiCc(channel, controller, value);
+        });
+    else
+        engine_.setMidiCcCallback(nullptr);
 }

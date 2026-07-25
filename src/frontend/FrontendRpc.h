@@ -123,6 +123,7 @@ inline QJsonObject toJson(const NoteSnapshot& n) {
 
 inline QJsonObject toJson(const CcPointSnapshot& c) {
     return QJsonObject{
+        { "ccId",             c.ccId },
         { "controllerNumber", c.controllerNumber },
         { "beat",             c.beat },
         { "value",            c.value },
