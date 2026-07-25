@@ -86,6 +86,7 @@ public:
     virtual void setNoteStart(int noteId, double startBeat) = 0;
     virtual void setNoteDuration(int noteId, double durationBeats) = 0;
     virtual void clearNotes(int clipId) = 0;
+    virtual int mergeClips(const std::vector<int>& clipIds) = 0;
 
     // FX operations (integer type: 0=eq, 1=compressor, 2=reverb, 3=delay, else=plugin)
     virtual void addFxSlot(int trackIndex, int type, int position = -1,

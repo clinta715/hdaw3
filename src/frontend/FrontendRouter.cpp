@@ -188,6 +188,18 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "duplicateClip")   { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); return { false, c.duplicateClip(i) }; }
     if (m == "duplicateClipTo") { int i, t; double s; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "newStart", s, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr)) return makeError(-32602, "clipId, newStart, newTrackIndex required"); return { false, c.duplicateClipTo(i, s, t) }; }
     if (m == "createGhostClip") { int i, t; double s; if (!requireInt(o, "sourceClipId", i, nullptr) || !requireDouble(o, "newStart", s, nullptr) || !requireInt(o, "newTrackIndex", t, nullptr)) return makeError(-32602, "sourceClipId, newStart, newTrackIndex required"); return { false, c.createGhostClip(i, s, t) }; }
+    if (m == "mergeClips") {
+        auto idsArr = o.value("clipIds");
+        if (!idsArr.isArray()) return makeError(-32602, "clipIds array required");
+        std::vector<int> ids;
+        for (const auto& e : idsArr.toArray()) {
+            if (!e.isDouble()) return makeError(-32602, "clipIds element not a number");
+            ids.push_back(static_cast<int>(e.toDouble()));
+        }
+        int result = c.mergeClips(ids);
+        if (result < 0) return makeError(-32602, "merge failed: clips must be ≥2 MIDI clips on the same track");
+        return { false, result };
+    }
     if (m == "paintClips") {
         auto srcArr = o.value("sourceClipIds");
         if (!srcArr.isArray()) return makeError(-32602, "sourceClipIds array required");
@@ -1197,7 +1209,14 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
                     continue;
                 }
                 buffer.clear();
-                reader->read(&buffer, 0, numToRead, startSample, true, true);
+                // A failed read leaves the cleared buffer full of zeros, which
+                // would otherwise be reported (and cached client-side) as a
+                // silent-but-valid waveform — a sticky blank waveform. Reading
+                // past the end returns true with zeros, so this only trips on a
+                // genuine I/O error (file busy/locked); surface it as an error
+                // so the client re-fetches instead of caching silent garbage.
+                if (!reader->read(&buffer, 0, numToRead, startSample, true, true))
+                    return makeError(-32602, "could not read audio data");
 
                 float minVal = 0.0f, maxVal = 0.0f;
                 for (int ch = 0; ch < numChannels; ++ch) {

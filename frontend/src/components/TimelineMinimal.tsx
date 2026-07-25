@@ -92,7 +92,7 @@ export default function TimelineMinimal() {
 
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; clip?: typeof clips[0]; markerIndex?: number } | null>(null);
-  const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number } | null>(null);
+  const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number; trackIndex: number } | null>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -426,6 +426,23 @@ export default function TimelineMinimal() {
         // Route through the same handler as context-menu Duplicate so Ctrl+D
         // gets the batch RPC, overlap handling, and instant placeholder.
         handleDuplicateClip();
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyM") {
+        e.preventDefault();
+        const snap = useProjectStore.getState().snapshot;
+        if (!snap) return;
+        const selClips = snap.clips.filter((c) => selectedClipIds.has(c.clipId));
+        const canMerge = selClips.length >= 2
+          && selClips.every((c) => c.isMidi && !c.isGhost);
+        if (canMerge) {
+          const ids = selClips.map((c) => c.clipId);
+          rpc.call("project.mergeClips", { clipIds: ids }).then((res) => {
+            const newId = typeof res === "number" ? res : null;
+            if (newId != null && newId > 0) {
+              useUiStore.setState({ selectedClipIds: new Set([newId]) });
+            }
+            useProjectStore.setState({ isDirty: true });
+          }).catch((err) => console.error("Merge failed:", err));
+        }
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
         e.preventDefault();
         if (selectedClipIds.size > 0) {
@@ -589,7 +606,8 @@ export default function TimelineMinimal() {
               if (!el) return;
               const rect = el.getBoundingClientRect();
               const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
-              setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat });
+              const trackIndex = Math.min(Math.max(0, Math.floor((e.clientY - rect.top + el.scrollTop) / TRACK_HEIGHT)), tracks.length - 1);
+              setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat, trackIndex });
             }}>
             {tracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
@@ -609,6 +627,7 @@ export default function TimelineMinimal() {
                     return (
                       <div
                         key={clip.clipId}
+                        data-clip-id={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}${pendingTempIds.has(clip.clipId) ? " tl-clip--pending" : ""}`}
                         style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
                         onClick={(e) => {

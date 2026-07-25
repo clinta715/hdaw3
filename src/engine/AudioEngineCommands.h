@@ -96,6 +96,7 @@ public:
     void setNoteStart(int noteId, double startBeat) override;
     void setNoteDuration(int noteId, double durationBeats) override;
     void clearNotes(int clipId) override;
+    int mergeClips(const std::vector<int>& clipIds) override;
 
     // ProjectCommands — FX operations
     void addFxSlot(int trackIndex, int type, int position,

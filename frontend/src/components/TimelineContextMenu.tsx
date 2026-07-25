@@ -10,7 +10,7 @@ import type { TransportSnapshot } from "../rpc/types";
 
 interface TimelineContextMenuProps {
   contextMenu: { x: number; y: number; type: string; clip?: ClipSnapshot; markerIndex?: number } | null;
-  emptyContextMenu: { x: number; y: number; beat: number } | null;
+  emptyContextMenu: { x: number; y: number; beat: number; trackIndex: number } | null;
   clips: ClipSnapshot[];
   markers: MarkerSnapshot[];
   selectedClipIds: Set<number>;
@@ -125,6 +125,29 @@ export function TimelineContextMenu({
                   Select Original
                 </button>
               )}
+              {(() => {
+                const { selectedClipIds } = useUiStore.getState();
+                const selClips = clips.filter((c) => selectedClipIds.has(c.clipId));
+                const canMerge = selClips.length >= 2
+                  && selClips.every((c) => c.isMidi && !c.isGhost);
+                if (!canMerge) return null;
+                return (
+                  <button onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const ids = selClips.map((c) => c.clipId);
+                    rpc.call("project.mergeClips", { clipIds: ids }).then((res) => {
+                      const newId = typeof res === "number" ? res : null;
+                      if (newId != null && newId > 0) {
+                        useUiStore.setState({ selectedClipIds: new Set([newId]) });
+                      }
+                      useProjectStore.setState({ isDirty: true });
+                    }).catch((err) => console.error("Merge failed:", err));
+                    onClose();
+                  }}>
+                    Merge Clips
+                  </button>
+                );
+              })()}
               <button onMouseDown={(e) => { e.stopPropagation(); onClose(); onSplitClip(); }}>
                 Split
               </button>
@@ -263,7 +286,7 @@ export function TimelineContextMenu({
             e.stopPropagation();
             const tempId = nextTempId();
             useProjectStore.getState().addPendingClip({
-              clipId: tempId, trackIndex: 0, name: "New MIDI Clip", sourceFile: "",
+              clipId: tempId, trackIndex: emptyContextMenu.trackIndex, name: "New MIDI Clip", sourceFile: "",
               startBeat: emptyContextMenu.beat, durationBeats: 4, offset: 0, gain: 1,
               fadeIn: 0, fadeOut: 0, looping: false, muted: false, isMidi: true,
               sourceBpm: 0, stretchMode: 0, stretchRatio: 1, sourceDuration: 0,
@@ -273,7 +296,7 @@ export function TimelineContextMenu({
               if (useProjectStore.getState().pendingTempIds.has(tempId)) useProjectStore.getState().removePending(tempId);
             }, 1500);
             rpc.call("project.addMidiClip", {
-              trackIndex: 0, start: emptyContextMenu.beat, duration: 4, name: "New MIDI Clip",
+              trackIndex: emptyContextMenu.trackIndex, start: emptyContextMenu.beat, duration: 4, name: "New MIDI Clip",
             }).then((res) => {
               const realId = typeof res === "number" ? res : null;
               if (realId != null && realId > 0) useProjectStore.getState().resolvePending(tempId, realId);

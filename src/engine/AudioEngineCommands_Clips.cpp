@@ -4,6 +4,8 @@
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 
+#include <limits>
+
 // ─── ProjectCommands — Clip operations ────────────────────────────
 
 int AudioEngineCommands::addAudioClip(int trackIndex, double start, double duration,
@@ -425,4 +427,87 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
     }
     endTransaction();
     return result;
+}
+
+int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
+{
+    if (clipIds.size() < 2) return -1;
+
+    auto& model = engine_.getProjectModel();
+    auto& um = model.getUndoManager();
+
+    struct ClipInfo { juce::ValueTree tree; int trackIndex; };
+    std::vector<ClipInfo> infos;
+    infos.reserve(clipIds.size());
+
+    for (int id : clipIds)
+    {
+        int trackIdx = -1;
+        auto clip = findClipById(id, trackIdx);
+        if (!clip.isValid()) return -1;
+        if (clip.getProperty(IDs::clipType).toString() != "midi") return -1;
+        infos.push_back({ clip, trackIdx });
+    }
+
+    int targetTrack = infos[0].trackIndex;
+    for (const auto& info : infos)
+    {
+        if (info.trackIndex != targetTrack) return -1;
+    }
+
+    beginTransaction("Merge clips");
+
+    double newStart = std::numeric_limits<double>::max();
+    double newEnd = std::numeric_limits<double>::lowest();
+    for (const auto& info : infos)
+    {
+        double start = static_cast<double>(info.tree.getProperty(IDs::startTime));
+        double dur = static_cast<double>(info.tree.getProperty(IDs::duration));
+        newStart = std::min(newStart, start);
+        newEnd = std::max(newEnd, start + dur);
+    }
+    double newDuration = newEnd - newStart;
+
+    auto mergedClip = ProjectModel::createMidiClipEmpty(
+        juce::String("Merged"), newStart, newDuration);
+    int mergedId = static_cast<int>(mergedClip.getProperty(IDs::clipID, 0));
+
+    auto mergedNoteList = mergedClip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    for (const auto& info : infos)
+    {
+        double clipStart = static_cast<double>(info.tree.getProperty(IDs::startTime));
+        double offset = clipStart - newStart;
+
+        auto noteList = info.tree.getChildWithName(IDs::MIDI_NOTE_LIST);
+        for (int n = 0; n < noteList.getNumChildren(); ++n)
+        {
+            auto srcNote = noteList.getChild(n);
+            auto newNote = ProjectModel::createMidiNote(
+                static_cast<int>(srcNote.getProperty(IDs::noteNumber)),
+                static_cast<float>(static_cast<double>(srcNote.getProperty(IDs::velocity))),
+                static_cast<double>(srcNote.getProperty(IDs::startBeat)) + offset,
+                static_cast<double>(srcNote.getProperty(IDs::durationBeats)));
+            mergedNoteList.addChild(newNote, -1, &um);
+        }
+    }
+
+    auto trackList = model.getTrackListTree();
+    auto track = trackList.getChild(targetTrack);
+    auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+    {
+        clipList = juce::ValueTree(IDs::CLIP_LIST);
+        track.addChild(clipList, -1, &um);
+    }
+    clipList.addChild(mergedClip, -1, &um);
+
+    for (int i = static_cast<int>(infos.size()) - 1; i >= 0; --i)
+    {
+        auto parent = infos[i].tree.getParent();
+        if (parent.isValid())
+            parent.removeChild(infos[i].tree, &um);
+    }
+
+    endTransaction();
+    return mergedId;
 }
