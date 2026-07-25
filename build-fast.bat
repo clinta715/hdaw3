@@ -3,7 +3,8 @@ setlocal
 
 REM build-fast.bat — incremental build script for HDAW
 REM Usage:
-REM   build-fast              Build HDAW.exe only (skip tests/headless)
+REM   build-fast              Build HDAW.exe only (RelWithDebInfo, optimized)
+REM   build-fast debug        Build HDAW.exe with Debug (breakpoints)
 REM   build-fast test         Build hdaw_tests.exe only
 REM   build-fast all          Build everything
 REM   build-fast ninja        Reconfigure with Ninja (one-time, much faster)
@@ -19,22 +20,24 @@ REM incremental build either. See AGENTS.md "How frontend changes reach the
 REM running app".
 
 set BUILD_DIR=%~dp0build
-set CONFIG=Debug
+set CONFIG=RelWithDebInfo
 
+if "%1"=="debug" set CONFIG=Debug
 if "%1"=="ninja" goto :ninja
 if "%1"=="frontend" goto :frontend
 if "%1"=="package" goto :package
 if "%1"=="test" goto :test
 if "%1"=="all" goto :all
 if "%1"=="" goto :hdaw
+if "%1"=="debug" goto :hdaw
 echo Unknown target: %1
-echo Usage: build-fast [ninja^|test^|all^|frontend^|package]
+echo Usage: build-fast [debug^|ninja^|test^|all^|frontend^|package]
 exit /b 1
 
 :hdaw
 cmake --build "%BUILD_DIR%" --config %CONFIG% --target HDAW -- /m /v:minimal 2>&1
 if %errorlevel% neq 0 exit /b %errorlevel%
-echo [build-fast] HDAW.exe up to date.
+echo [build-fast] HDAW.exe up to date (config: %CONFIG%).
 echo [build-fast] NOTE: C++ builds do NOT refresh the frontend users see.
 echo [build-fast]       After frontend changes run 'build-fast package'.
 goto :eof
@@ -42,13 +45,13 @@ goto :eof
 :test
 cmake --build "%BUILD_DIR%" --config %CONFIG% --target hdaw_tests -- /m /v:minimal 2>&1
 if %errorlevel% neq 0 exit /b %errorlevel%
-echo [build-fast] hdaw_tests.exe up to date.
+echo [build-fast] hdaw_tests.exe up to date (config: %CONFIG%).
 goto :eof
 
 :all
 cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
 if %errorlevel% neq 0 exit /b %errorlevel%
-echo [build-fast] All targets up to date.
+echo [build-fast] All targets up to date (config: %CONFIG%).
 echo [build-fast] NOTE: C++ builds do NOT refresh the frontend users see.
 echo [build-fast]       After frontend changes run 'build-fast package'.
 goto :eof

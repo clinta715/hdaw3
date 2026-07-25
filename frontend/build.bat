@@ -10,6 +10,11 @@ setlocal enabledelayedexpansion
 ::   3. Runs the gtest suite so a green build means the engine actually works
 ::   4. Packages the Electron app (release/win-unpacked/)
 ::
+:: Usage:
+::   build.bat                  Build with RelWithDebInfo (optimized + symbols)
+::   build.bat Debug            Build with Debug (breakpoints, no optimization)
+::   build.bat Release          Build with Release (max optimization, no symbols)
+::
 :: GUARANTEE against the stale-bundle trap: HDAW.exe embeds the frontend via
 :: Qt resources (src/resources/frontend.qrc). CMake's AUTORCC under the VS
 :: generator does NOT treat the referenced dist/ files (or even the .qrc mtime)
@@ -32,6 +37,11 @@ cd /d "%~dp0"
 set "ROOT=%CD%\.."
 set "BUILD_DIR=%ROOT%\build"
 
+:: Build configuration: RelWithDebInfo (optimized + debug symbols) by default.
+:: Pass Debug or Release as the first argument to override.
+set "CONFIG=%~1"
+if "%CONFIG%"=="" set "CONFIG=RelWithDebInfo"
+
 :: ── 1. Frontend (React SPA + Electron main/preload). prebuild regenerates
 ::    src/version.ts automatically; this single command covers the whole FE.
 echo === [1/4] Building frontend (dist/ + dist-electron/) ===
@@ -45,25 +55,25 @@ set "FORCE_CLEAN=0"
 :: CMakeCache.txt is the generator-independent marker that configure has run
 :: (VS 18 2026 emits an .slnx, not the legacy .sln, so don't key off .sln).
 if not exist "%BUILD_DIR%\CMakeCache.txt" set "FORCE_CLEAN=1"
-if not exist "%BUILD_DIR%\Debug\HDAW.exe" set "FORCE_CLEAN=1"
+if not exist "%BUILD_DIR%\%CONFIG%\HDAW.exe" set "FORCE_CLEAN=1"
 
 if "!FORCE_CLEAN!"=="0" (
     rem PowerShell gives a locale-independent LastWriteTime comparison.
     rem Returns 1 (dist newer) or 0 (binary already current). The [int] cast
     rem must wrap the WHOLE boolean expression, not the DateTime operands.
-    for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath 'dist\index.html').LastWriteTime -gt (Get-Item -LiteralPath '%BUILD_DIR%\Debug\HDAW.exe').LastWriteTime)"') do set "DIST_NEWER=%%r"
+    for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath 'dist\index.html').LastWriteTime -gt (Get-Item -LiteralPath '%BUILD_DIR%\%CONFIG%\HDAW.exe').LastWriteTime)"') do set "DIST_NEWER=%%r"
     if "!DIST_NEWER!"=="1" set "FORCE_CLEAN=1"
 )
 
-echo === [2/4] Building C++ engine (all targets) ===
+echo === [2/4] Building C++ engine (all targets, config: %CONFIG%) ===
 if "!FORCE_CLEAN!"=="1" goto :cpp_clean
-call cmake --build "%BUILD_DIR%" --config Debug
+call cmake --build "%BUILD_DIR%" --config %CONFIG%
 if !errorlevel! neq 0 goto :fail_cpp
 goto :cpp_done
 
 :cpp_clean
 echo Forced clean rebuild ^(frontend dist newer than embedded SPA, or first build^)
-call cmake --build "%BUILD_DIR%" --config Debug --clean-first
+call cmake --build "%BUILD_DIR%" --config %CONFIG% --clean-first
 if !errorlevel! neq 0 goto :fail_cpp
 
 :cpp_done
@@ -73,8 +83,8 @@ if !errorlevel! neq 0 goto :fail_cpp
 ::    but fails tests is not "done".
 echo === [3/4] Running engine tests ===
 set "TEST_RC=0"
-if not exist "%BUILD_DIR%\Debug\hdaw_tests.exe" goto :no_tests
-call "%BUILD_DIR%\Debug\hdaw_tests.exe" --gtest_brief=1
+if not exist "%BUILD_DIR%\%CONFIG%\hdaw_tests.exe" goto :no_tests
+call "%BUILD_DIR%\%CONFIG%\hdaw_tests.exe" --gtest_brief=1
 set "TEST_RC=!errorlevel!"
 if !TEST_RC! neq 0 goto :fail_tests
 goto :tests_done
@@ -85,17 +95,17 @@ echo WARNING: hdaw_tests.exe not found - test run skipped. >&2
 :tests_done
 
 :: ── 4. Package the Electron app. electron-builder.yml copies HDAW_headless.exe,
-::    hdaw_plugin_scanner.exe and DLLs from build/Debug/ as extraResources.
+::    hdaw_plugin_scanner.exe and DLLs from build/%CONFIG%/ as extraResources.
 echo === [4/4] Packaging Electron app ===
 call npx electron-builder --win --x64 --dir
 if !errorlevel! neq 0 goto :fail_pkg
 
 echo.
-echo === Done ===
-echo Browser mode:    %BUILD_DIR%\Debug\HDAW.exe
-echo Electron engine: %BUILD_DIR%\Debug\HDAW_headless.exe
+echo === Done (config: %CONFIG%) ===
+echo Browser mode:    %BUILD_DIR%\%CONFIG%\HDAW.exe
+echo Electron engine: %BUILD_DIR%\%CONFIG%\HDAW_headless.exe
 echo Electron app:    release\win-unpacked\HDAW.exe
-echo Tests:           %BUILD_DIR%\Debug\hdaw_tests.exe
+echo Tests:           %BUILD_DIR%\%CONFIG%\hdaw_tests.exe
 exit /b 0
 
 :: ── Failure exits ──────────────────────────────────────────────────────────
