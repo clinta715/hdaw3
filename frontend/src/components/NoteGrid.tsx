@@ -10,8 +10,10 @@ interface Props {
   notes: NoteSnapshot[];
   rpc: RpcClient;
   clipId: number | null;
+  pixelsPerBeat: number;
   onVerticalScroll?: (scrollTop: number) => void;
   onHorizontalScroll?: (scrollLeft: number) => void;
+  onZoom?: (newPixelsPerBeat: number, anchorClientX: number) => void;
   selectedNoteIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   chordShape?: number[];
@@ -41,7 +43,6 @@ interface ContextMenuState {
 }
 
 const KEY_HEIGHT = 8;
-const PIXELS_PER_BEAT = 80;
 const TOTAL_KEY_AREA = 128 * KEY_HEIGHT;
 
 function clamp(val: number, min: number, max: number): number {
@@ -54,8 +55,10 @@ export default function NoteGrid({
   notes,
   rpc,
   clipId,
+  pixelsPerBeat,
   onVerticalScroll,
   onHorizontalScroll,
+  onZoom,
   selectedNoteIds: externalSelectedIds,
   onSelectionChange,
   chordShape,
@@ -83,6 +86,8 @@ export default function NoteGrid({
 
   const gridRef = useRef<HTMLDivElement>(null);
   const lastClickedNoteRef = useRef<number | null>(null);
+  const ppbRef = useRef(pixelsPerBeat);
+  ppbRef.current = pixelsPerBeat;
 
   const noteMap = useMemo(() => {
     const m = new Map<number, NoteSnapshot>();
@@ -103,17 +108,17 @@ export default function NoteGrid({
       let w: number;
 
       if (dragState && dragState.noteId === n.noteId) {
-        x = dragState.currentStart * PIXELS_PER_BEAT;
+        x = dragState.currentStart * pixelsPerBeat;
         y = (127 - dragState.currentPitch) * KEY_HEIGHT;
-        w = Math.max(2, n.durationBeats * PIXELS_PER_BEAT);
+        w = Math.max(2, n.durationBeats * pixelsPerBeat);
       } else if (resizeState && resizeState.noteId === n.noteId) {
-        x = n.startBeat * PIXELS_PER_BEAT;
+        x = n.startBeat * pixelsPerBeat;
         y = (127 - n.pitch) * KEY_HEIGHT;
-        w = Math.max(2, resizeState.currentDuration * PIXELS_PER_BEAT);
+        w = Math.max(2, resizeState.currentDuration * pixelsPerBeat);
       } else {
-        x = n.startBeat * PIXELS_PER_BEAT;
+        x = n.startBeat * pixelsPerBeat;
         y = (127 - n.pitch) * KEY_HEIGHT;
-        w = Math.max(2, n.durationBeats * PIXELS_PER_BEAT);
+        w = Math.max(2, n.durationBeats * pixelsPerBeat);
       }
 
       const h = KEY_HEIGHT - 1;
@@ -127,7 +132,7 @@ export default function NoteGrid({
     setResizeState((prev) => {
       if (!prev) return null;
       const deltaX = e.clientX - prev.startX;
-      const rawDuration = Math.max(0.03125, prev.initialDuration + deltaX / PIXELS_PER_BEAT);
+      const rawDuration = Math.max(0.03125, prev.initialDuration + deltaX / ppbRef.current);
       const newDuration = snapEnabled ? Math.max(0.03125, snapToGrid(rawDuration, snapDivision)) : rawDuration;
       return { ...prev, currentDuration: newDuration };
     });
@@ -139,7 +144,7 @@ export default function NoteGrid({
         0, 127
       );
       const rawStart = Math.max(0,
-        prev.startBeat + (e.clientX - prev.offsetX) / PIXELS_PER_BEAT
+        prev.startBeat + (e.clientX - prev.offsetX) / ppbRef.current
       );
       const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
       return { ...prev, currentPitch: newPitch, currentStart: newStart };
@@ -229,7 +234,7 @@ export default function NoteGrid({
     const x = e.clientX - rect.left + gridEl.scrollLeft;
     const y = e.clientY - rect.top + gridEl.scrollTop;
     const pitch = clamp(127 - Math.floor(y / KEY_HEIGHT), 0, 127);
-    const rawBeat = x / PIXELS_PER_BEAT;
+    const rawBeat = x / ppbRef.current;
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const startBeat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
     
@@ -439,7 +444,7 @@ export default function NoteGrid({
   const pasteAtScroll = useCallback(async () => {
     if (clipId == null || noteClipboard.length === 0) return;
     const gridEl = gridRef.current;
-    const scrollBeat = gridEl ? gridEl.scrollLeft / PIXELS_PER_BEAT : 0;
+    const scrollBeat = gridEl ? gridEl.scrollLeft / ppbRef.current : 0;
     const minBeat = Math.min(...noteClipboard.map((n) => n.startBeat));
     
     // Optimistic: add pasted notes to local store immediately
@@ -532,6 +537,24 @@ export default function NoteGrid({
     [clipId, deleteSelected, transposeSelected, quantizeSelected, humanizeSelected, copySelected, cutSelected, pasteAtScroll, selectAll]
   );
 
+  // Ctrl+wheel zoom: scale pixelsPerBeat, keep the beat under the cursor fixed.
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (!e.ctrlKey || !onZoom) return;
+      e.preventDefault();
+      const el = gridRef.current;
+      if (!el) return;
+      const oldPpb = ppbRef.current;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const newPpb = Math.round(Math.min(400, Math.max(20, oldPpb * factor)));
+      if (newPpb === oldPpb) return;
+      const rect = el.getBoundingClientRect();
+      const anchorX = e.clientX - rect.left;
+      onZoom(newPpb, e.clientX - anchorX);
+    },
+    [onZoom]
+  );
+
   const handleGridClick = useCallback(
     (e: React.MouseEvent) => {
       if (!(e.target as HTMLElement).closest(".ng-note")) {
@@ -580,10 +603,12 @@ export default function NoteGrid({
     <div
       className="note-grid"
       ref={gridRef}
+      style={{ "--ng-px-per-beat": `${pixelsPerBeat}px` } as React.CSSProperties}
       onDoubleClick={handleDoubleClick}
       onClick={handleGridClick}
       onContextMenu={handleContextMenu}
       onScroll={handleScroll}
+      onWheel={handleWheel}
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >

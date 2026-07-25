@@ -7,18 +7,19 @@ interface Props {
   notes: NoteSnapshot[];
   selectedNoteIds: Set<number>;
   rpc: RpcClient;
+  pixelsPerBeat: number;
   onVelocityChange: (noteId: number, velocity: number) => void;
   scrollLeft?: number;
   onScrollChange?: (scrollLeft: number) => void;
 }
 
-const PIXELS_PER_BEAT = 80;
 const LANE_HEIGHT = 40;
 
 export default function VelocityLane({
   notes,
   selectedNoteIds,
   rpc,
+  pixelsPerBeat,
   onVelocityChange,
   scrollLeft,
   onScrollChange,
@@ -30,7 +31,7 @@ export default function VelocityLane({
   const gap = 2;
 
   const getBarX = (note: NoteSnapshot, index: number) => {
-    return note.startBeat * PIXELS_PER_BEAT + index * (barWidth + gap);
+    return note.startBeat * pixelsPerBeat + index * (barWidth + gap);
   };
 
   const getBarHeight = (velocity: number) => {

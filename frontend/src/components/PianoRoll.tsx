@@ -18,6 +18,7 @@ export default function PianoRoll() {
   const [ccController, setCcController] = useState(1);
   const [chordEnabled, setChordEnabled] = useState(false);
   const [chordType, setChordType] = useState("major");
+  const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
 
   const CHORD_SHAPES: Record<string, number[]> = {
     major: [0, 4, 7],
@@ -62,8 +63,8 @@ export default function PianoRoll() {
       const end = n.startBeat + n.durationBeats;
       if (end > maxEnd) maxEnd = end;
     }
-    return Math.max(800, Math.ceil(maxEnd * 80) + 200);
-  }, [notes]);
+    return Math.max(800, Math.ceil(maxEnd * pixelsPerBeat) + 200);
+  }, [notes, pixelsPerBeat]);
 
   const loadNotes = (clipId: number) => {
     setInternalClipId(clipId);
@@ -77,6 +78,22 @@ export default function PianoRoll() {
       keysRef.current.scrollTop = scrollTop;
     }
   }, []);
+
+  // Called by NoteGrid's Ctrl+wheel zoom. Adjusts scroll so the beat under the
+  // cursor stays fixed on screen.
+  const handleZoom = useCallback(
+    (newPpb: number, anchorLeft: number) => {
+      setPixelsPerBeat((oldPpb) => {
+        const gridEl = document.querySelector(".pr-grid-area .note-grid") as HTMLElement | null;
+        if (!gridEl) return newPpb;
+        const beat = (gridEl.scrollLeft + anchorLeft) / oldPpb;
+        const newScrollLeft = Math.max(0, beat * newPpb - anchorLeft);
+        requestAnimationFrame(() => { gridEl.scrollLeft = newScrollLeft; });
+        return newPpb;
+      });
+    },
+    []
+  );
 
   const handleVelocityChange = useCallback(
     async (noteId: number, velocity: number) => {
@@ -148,8 +165,10 @@ export default function PianoRoll() {
             notes={notes}
             rpc={rpc}
             clipId={activeClip?.clipId ?? null}
+            pixelsPerBeat={pixelsPerBeat}
             onVerticalScroll={handleGridScroll}
             onHorizontalScroll={setGridScrollLeft}
+            onZoom={handleZoom}
             selectedNoteIds={selectedNoteIds}
             onSelectionChange={setSelectedNoteIds}
             chordShape={chordEnabled ? CHORD_SHAPES[chordType] : undefined}
@@ -158,6 +177,7 @@ export default function PianoRoll() {
             notes={notes}
             selectedNoteIds={selectedNoteIds}
             rpc={rpc}
+            pixelsPerBeat={pixelsPerBeat}
             onVelocityChange={handleVelocityChange}
             scrollLeft={gridScrollLeft}
             onScrollChange={setGridScrollLeft}
@@ -173,7 +193,7 @@ export default function PianoRoll() {
                 clipId={activeClip.clipId}
                 controllerNumber={ccController}
                 width={gridWidth}
-                pixelsPerBeat={80}
+                pixelsPerBeat={pixelsPerBeat}
                 scrollX={gridScrollLeft}
               />
             )}

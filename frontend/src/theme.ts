@@ -39,9 +39,9 @@ export const theme = {
   scrollbarHandle: "#3a3a40",
   scrollbarHover: "#d97706",
 
-  gridLineBar: "rgba(255, 255, 255, 0.07)",
-  gridLineBeat: "rgba(255, 255, 255, 0.03)",
-  gridLineSub: "rgba(255, 255, 255, 0.016)",
+  gridLineBar: "rgba(255, 255, 255, 0.12)",
+  gridLineBeat: "rgba(255, 255, 255, 0.06)",
+  gridLineSub: "rgba(255, 255, 255, 0.03)",
   placeholderText: "rgba(255, 255, 255, 0.31)",
 } as const;
 
