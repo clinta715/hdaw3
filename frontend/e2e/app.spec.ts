@@ -1,56 +1,50 @@
 import { test, expect } from "@playwright/test";
+import { startApp } from "./helpers";
 
 test.describe("HDAW Application", () => {
+  // The StartupDialog gates the App; startApp clicks "New Project" to reach the
+  // main UI with a fresh default project.
+  test.beforeEach(async ({ page }) => {
+    await startApp(page);
+  });
+
   test("loads the application", async ({ page }) => {
-    await page.goto("/");
     await expect(page).toHaveTitle(/HDAW/);
   });
 
   test("renders transport bar", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".transport-bar")).toBeVisible();
+    await expect(page.locator("header.transport-bar")).toBeVisible();
   });
 
   test("renders timeline", async ({ page }) => {
-    await page.goto("/");
     await expect(page.locator(".timeline-minimal")).toBeVisible();
   });
 
   test("renders track headers", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".track-headers")).toBeVisible();
+    await expect(page.locator("aside.track-headers")).toBeVisible();
   });
 
   test("renders status bar", async ({ page }) => {
-    await page.goto("/");
     await expect(page.locator(".status-bar")).toBeVisible();
   });
 
   test("displays BPM in transport bar", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".transport-bar")).toContainText(/\d+/);
+    await expect(page.locator("header.transport-bar")).toContainText(/BPM/);
   });
 
   test("displays sample rate in status bar", async ({ page }) => {
-    await page.goto("/");
     await expect(page.locator(".status-bar")).toContainText(/Hz/);
   });
 
   test("shows default tracks", async ({ page }) => {
-    await page.goto("/");
-    const tracks = page.locator(".track-header");
-    await expect(tracks.first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".th-row").first()).toBeVisible({ timeout: 10000 });
   });
 
-  test("play button is clickable", async ({ page }) => {
-    await page.goto("/");
-    const playBtn = page.locator(".transport-bar button").filter({ hasText: /▶|Play/i });
-    await expect(playBtn).toBeVisible();
+  test("play button is visible", async ({ page }) => {
+    await expect(page.locator("header.transport-bar .tb-play")).toBeVisible();
   });
 
-  test("stop button is clickable", async ({ page }) => {
-    await page.goto("/");
-    const stopBtn = page.locator(".transport-bar button").filter({ hasText: /■|Stop/i });
-    await expect(stopBtn).toBeVisible();
+  test("stop button is visible", async ({ page }) => {
+    await expect(page.locator('header.transport-bar button[title="Stop"]')).toBeVisible();
   });
 });

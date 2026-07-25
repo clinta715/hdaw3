@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.12.1
+**Current version**: 0.13.0
 
 ## Quick start
 
@@ -12,19 +12,18 @@ application — clone, configure, build, run.
 # Configure (one-time, with Qt 6 prefix):
 cmake -S . -B build -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64
 
-# Build:
-cmake --build build --config Debug
+# Build (RelWithDebInfo = optimized + debug symbols, recommended):
+cmake --build build --config RelWithDebInfo
 
 # Run:
-build\Debug\HDAW.exe
+build\RelWithDebInfo\HDAW.exe
 ```
 
-Run the **Debug** binary. The `build\Release\HDAW.exe` is a stale
-binary from an earlier point in the project's history and is
-intentionally not maintained. See `AGENTS.md` for the full build
-pipeline and the rationale.
+Or use the build scripts: `frontend\build.bat` (full pipeline) or
+`build-fast.bat` (incremental). Both default to RelWithDebInfo;
+pass `Debug` for breakpoint debugging.
 
-## What works today (v0.10.0)
+## What works today (v0.13.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -49,12 +48,15 @@ pipeline and the rationale.
   ship sample audio files — see "Known limitations" below).
 - Drag-drop audio or MIDI files from File Explorer onto a track
   to import them.
-- Right-click empty timeline area for Add Track, Add MIDI Clip,
-  Set BPM, Add Tempo Change.
+- Right-click empty timeline area for Add Track, Add MIDI Clip
+  (placed at the mouse position), Set BPM, Add Tempo Change.
 - Right-click a clip for Delete / Open in Editor.
 - Multi-clip selection (rubber band, Ctrl+click, Shift+click range,
   Ctrl+A). Move, delete, cut, copy, paste, duplicate selected clips
   (Ctrl+C/X/V/D). Paste offsets clips relative to the playhead.
+- **Merge MIDI clips**: select ≥2 MIDI clips on the same track,
+  then Ctrl+M or right-click → Merge Clips. Creates one clip
+  spanning the full range with all notes preserved. Undoable.
 - Named markers on the time ruler (right-click ruler → Add Marker).
   Click to seek, drag to move, double-click to rename.
 - **Tempo changes on the ruler**: right-click to add/edit/remove tempo
@@ -71,7 +73,9 @@ pipeline and the rationale.
   Right-click context menu provides Quantize, Humanize, and
   Transpose. Keyboard shortcuts: Up/Down arrows for transpose
   (±1 semitone, ±1 octave with Ctrl), Q for quantize, H for
-  humanize.
+  humanize. **Ctrl+wheel zoom** in the piano roll grid. Toolbar
+  controls: loop toggle, velocity scaling, duration scaling,
+  and quantize strength (partial quantize 0–100%).
 - **Audio clips**: clips render waveforms from the source file.
   Drag the body to move; drag the left/right 6 px edge to trim
   the start or duration; drag the top corners to set fade-in /

@@ -4,7 +4,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend â€" these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.12.1**
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.0**
 with a **React 19 + TypeScript frontend** (Zustand state management,
 Vite build). The frontend runs in two contexts:
 system browser (default) or Electron shell. The C++ engine
@@ -57,7 +57,19 @@ placement for NoteGrid/FXChain operations, frontend test infrastructure
 (Vitest + Playwright, 86 tests), frontend pitfalls documentation, and
 `build-fast.bat` for incremental builds. **v0.12.1** fixes rubber-band
 selection hit-testing (`TRACK_HEIGHT` mismatch and partial-overlap
-detection). For the full list of working
+detection). **v0.13.0** adds Playwright E2E user-journey tests (22 tests
+driving the real app: drag, ctrl-drag duplicate, rubber-band selection,
+undo/redo, multi-select drag, delete, copy-paste, cross-track move,
+Ctrl+M merge, audio editor + waveform render), a waveform cache-poisoning
+fix (don't cache silent/empty peaks, retry transient failures), a delta
+sync kill-switch (`HDAW_FORCE_FULL_SYNC=1`), MIDI clip merge
+(`project.mergeClips` RPC, context menu + Ctrl+M), piano roll grid
+visibility fix (beat/bar line opacity doubled) + Ctrl+wheel zoom,
+piano roll MIDI toolbar (loop toggle, velocity/duration scaling,
+quantize strength), right-click Add MIDI Clip now places at the mouse
+position (was hardcoded to track 0), and build optimizations
+(RelWithDebInfo/Release CMake presets, AVX2, per-config MSVC flags,
+Vite es2020 target). For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Documentation Directory
@@ -117,8 +129,26 @@ engine, runs the tests, and repackages Electron, guaranteeing consistency.
   - Watch mode: `npm run test:watch`
   - Coverage: `npm run test:coverage`
 - **Frontend E2E tests (Playwright):** `cd frontend && npm run test:e2e`
-  - Tests: `e2e/*.spec.ts`
-  - Requires running `HDAW.exe` (engine serves the frontend on port 8765)
+  - Tests: `e2e/*.spec.ts`. `app.spec.ts` = render smoke tests; `editing.spec.ts` =
+    user-journey regression tests that drive the real app (click/drag/keyboard) and
+    assert on the resulting DOM/canvas/snapshot state — the layer that catches the
+    recurring interaction bugs unit tests miss (drag stale-closures, rubber-band
+    hit-testing, waveform-display, selection→editor opening).
+  - The `webServer` in `playwright.config.ts` auto-starts the engine
+    (`build\Debug\HDAW.exe`, with `HDAW_NO_BROWSER=1` so it doesn't spawn a browser)
+    plus the Vite dev server (port 5173); tests run against the **live** frontend, so
+    frontend changes are picked up with no rebuild/repackage. Requires a current
+    `build/Debug/HDAW.exe` (`cmake --build build --config Debug --target HDAW`) and
+    Playwright browsers (`npx playwright install chromium`).
+  - `workers: 1` — the engine is a singleton serving one project, so tests run
+    serially; each test calls `startApp()` (clicks "New Project") for a clean,
+    deterministic starting state.
+  - Test seams: `window.rpc` (rpc.ts) for RPC setup, `data-clip-id` on `.tl-clip`
+    (TimelineMinimal) for targeting clips, `HDAW_NO_BROWSER` (main.cpp). Shared helpers
+    live in `e2e/helpers.ts` (`startApp`, `rpcCall`, `addMidiClip`/`addAudioClip`,
+    `dragClip`, `writeSineWav`).
+  - **Regression wall:** every UI bug fix should ship with an E2E test that reproduces
+    it. The pitfalls in `docs/pitfalls-frontend.md` are a backlog of tests to write.
   - Interactive UI: `npm run test:e2e:ui`
 
 ## Version Management
@@ -204,6 +234,9 @@ propagate via **incremental deltas**, not whole-snapshot re-fetches:
   automation points), reorder, project load, undo/redo — sets `fullSync: true`,
   and the frontend falls back to the full `read.snapshot` re-fetch. Automation
   lane refresh lives on this full-sync branch, so recording still updates.
+- **Kill-switch:** set `HDAW_FORCE_FULL_SYNC=1` (read once at watcher startup) to
+  route every snapshot-relevant change to a `fullSync` re-fetch instead of a delta —
+  disables the delta path in the field if a drift bug ever surfaces. Default off.
 - **Key invariant (tested in `frontend_server_test.cpp`):** a clip add/remove
   reaches the root listener as an incremental delta, *not* a fullSync. This relies
   on JUCE propagating `valueTreeChildAdded/Removed/PropertyChanged` up to the root

@@ -35,6 +35,7 @@ add_executable(hdaw_tests
     unit/engine/bpm_detector_test.cpp
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
+    unit/engine/merge_clips_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp

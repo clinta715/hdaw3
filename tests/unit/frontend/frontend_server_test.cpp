@@ -375,3 +375,41 @@ TEST(FrontendServer, ClipAddRemoveBroadcastsIncrementalDelta) {
     client.close();
     s.tearDown();
 }
+
+// Kill-switch: with HDAW_FORCE_FULL_SYNC armed, a change that would normally
+// broadcast an incremental delta (a pure clip add) is routed to a fullSync
+// instead, so the delta path can be disabled in the field if drift surfaces.
+TEST(FrontendServer, ForceFullSyncKillSwitchBroadcastsFullSync) {
+    // The watcher reads the flag once at construction (inside setUp), so set it
+    // before setUp and clear it immediately after to avoid leaking into other
+    // tests.
+    qputenv("HDAW_FORCE_FULL_SYNC", "1");
+    EngineAndServer s;
+    s.setUp();
+    qunsetenv("HDAW_FORCE_FULL_SYNC");
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+    client.drainMessages();
+
+    // A pure CLIP child-add is an incremental delta when the kill-switch is off
+    // (see ClipAddRemoveBroadcastsIncrementalDelta). With it armed -> fullSync.
+    QJsonObject addParams;
+    addParams.insert("trackIndex", 0);
+    addParams.insert("start", 0.0);
+    addParams.insert("duration", 4.0);
+    addParams.insert("name", "KillSwitchClip");
+    auto addResp = client.call(1, "project.addMidiClip", addParams);
+    ASSERT_FALSE(addResp.isEmpty());
+    ASSERT_FALSE(addResp.contains("error"))
+        << addResp.value("error").toObject().value("message").toString().toStdString();
+
+    QJsonValue notify = client.waitForNotificationParams("notify.treeChanged");
+    ASSERT_TRUE(notify.isObject()) << "no notify.treeChanged after addMidiClip";
+    EXPECT_TRUE(notify.toObject().value("fullSync").toBool(false))
+        << "HDAW_FORCE_FULL_SYNC should force fullSync=true, got: "
+        << QString::fromUtf8(QJsonDocument(notify.toObject()).toJson(QJsonDocument::Compact)).toStdString();
+
+    client.close();
+    s.tearDown();
+}

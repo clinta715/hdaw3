@@ -8,6 +8,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
+#include <cstdlib>
+
 namespace frontend {
 
 namespace {
@@ -17,6 +19,15 @@ constexpr int kDebounceMs = 16;   // coalesce burst edits into one broadcast
 FrontendTreeWatcher::FrontendTreeWatcher(AudioEngine& engine, FrontendServer& server, QObject* parent)
     : QObject(parent), engine_(engine), server_(server)
 {
+    // Kill-switch: HDAW_FORCE_FULL_SYNC=1 forces a full snapshot re-fetch for
+    // every change (disables the delta path). Mirrors the HDAW_WATCH_PLUGINS
+    // parsing in FrontendServer; default is off (delta path active).
+    forceFullSync_ = []() {
+        const auto* v = std::getenv("HDAW_FORCE_FULL_SYNC");
+        if (v == nullptr) return false;
+        return v[0] != '0' && v[0] != 'f' && v[0] != 'F';
+    }();
+
     // Attach to the ROOT project tree (documented-safe pattern; survives
     // File->New / load rebuilds). See AGENTS.md "ValueTree listener orphans".
     engine_.getProjectModel().getTree().addListener(this);
@@ -63,7 +74,10 @@ void FrontendTreeWatcher::scheduleNotify() {
 }
 
 void FrontendTreeWatcher::flush() {
-    if (accumulator_.fullSync()) {
+    // A fullSync is broadcast when the accumulator escalated, or when the
+    // kill-switch is armed and there is any snapshot-relevant change (routing
+    // what would have been a delta to a full re-fetch instead).
+    if (accumulator_.fullSync() || (forceFullSync_ && !accumulator_.empty())) {
         server_.broadcastNotification(notify::TreeChanged,
             QJsonObject{ { "fullSync", true } });
     } else if (!accumulator_.empty()) {

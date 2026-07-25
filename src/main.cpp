@@ -207,10 +207,14 @@ int main(int argc, char *argv[])
         }
         HDAW_LOG("main", QString("HTTP server on http://127.0.0.1:%1").arg(httpServer.port()));
 
-        // Open the system browser.
-        QUrl url(QString("http://127.0.0.1:%1").arg(httpServer.port()));
-        QDesktopServices::openUrl(url);
-        HDAW_LOG("main", QString("Opened browser: %1").arg(url.toString()));
+        // Open the system browser. Suppress with HDAW_NO_BROWSER=1 (the
+        // Playwright E2E suite drives its own headless browser against the Vite
+        // dev server and doesn't want a system browser spawned per run).
+        if (qEnvironmentVariableIsEmpty("HDAW_NO_BROWSER")) {
+            QUrl url(QString("http://127.0.0.1:%1").arg(httpServer.port()));
+            QDesktopServices::openUrl(url);
+            HDAW_LOG("main", QString("Opened browser: %1").arg(url.toString()));
+        }
 
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
             httpServer.stop();

@@ -22,6 +22,10 @@ class FrontendServer;
 // A debounce timer (~16 ms) coalesces burst edits (e.g. a multi-property
 // clip drag) into a single broadcast so the client re-fetches the snapshot
 // once per burst instead of once per property write.
+//
+// Kill-switch: set HDAW_FORCE_FULL_SYNC=1 to route every change to a full
+// snapshot re-fetch instead of an incremental delta (disables the delta path
+// in the field if a drift bug ever surfaces). See forceFullSync_.
 class FrontendTreeWatcher : public QObject,
                             private juce::ValueTree::Listener {
     Q_OBJECT
@@ -44,6 +48,12 @@ private:
     FrontendServer& server_;
     class QTimer* debounceTimer_ = nullptr;
     TreeDeltaAccumulator accumulator_;
+
+    // Kill-switch (HDAW_FORCE_FULL_SYNC): when armed, every snapshot-relevant
+    // change broadcasts a full re-fetch instead of an incremental delta, so the
+    // delta path can be disabled in the field if a drift bug ever surfaces.
+    // Read once at construction; default false (delta path active).
+    bool forceFullSync_ = false;
 };
 
 } // namespace frontend

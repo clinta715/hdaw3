@@ -18,6 +18,16 @@ function cacheKey(clip: ClipSnapshot): string {
   return `${clip.clipId}|${clip.sourceFile}|${clip.stretchMode}:${clip.stretchRatio.toFixed(4)}`;
 }
 
+// A peaks payload with no non-zero samples is almost never a real waveform —
+// it's the signature of a transient backend read failure (the reader's cleared
+// buffer comes back all-zeros when the source file is momentarily busy/locked,
+// e.g. mid-timestretch render or an AV/indexer scan). Caching that would make a
+// blank waveform stick until the cache key changes or the app reloads, so we
+// treat it as "no data yet" and re-fetch instead of caching it.
+function hasAudibleContent(peaks: WaveformPeaks): boolean {
+  return peaks.peaks.length >= 2 && peaks.peaks.some((v) => v !== 0);
+}
+
 const peaksCache = new Map<string, WaveformPeaks>();
 
 export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }) => {
@@ -36,23 +46,47 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }
       return;
     }
     let cancelled = false;
-    rpc.call("read.getWaveformPeaks", { clipId: clip.clipId })
-      .then((result) => {
-        if (cancelled) return;
-        const data = result as WaveformPeaks;
-        peaksCache.set(key, data);
-        setPeaks(data);
-        setFetched(true);
-        setError(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFetched(true);
-          setError(true);
-          onError?.(true);
-        }
-      });
-    return () => { cancelled = true; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const attempt = (retriesLeft: number) => {
+      rpc.call("read.getWaveformPeaks", { clipId: clip.clipId })
+        .then((result) => {
+          if (cancelled) return;
+          const data = result as WaveformPeaks;
+          if (hasAudibleContent(data)) {
+            peaksCache.set(key, data);
+            setPeaks(data);
+            setFetched(true);
+            setError(false);
+          } else if (retriesLeft > 0) {
+            // Silent/empty peaks — usually a transient backend read failure
+            // (source file busy/locked). Don't cache it (that would stick the
+            // blank waveform); show the flat line for now and retry shortly so
+            // the waveform recovers once the file is readable again.
+            setPeaks(data);
+            timer = setTimeout(() => attempt(retriesLeft - 1), 500);
+          } else {
+            // Genuinely silent or still unreadable: show the flat line but leave
+            // it uncached so the next open re-fetches fresh peak data.
+            setPeaks(data);
+            setFetched(true);
+            setError(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFetched(true);
+            setError(true);
+            onError?.(true);
+          }
+        });
+    };
+    attempt(3);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [key, clip.clipId]);
 
   // Opportunistic GC: drop cache entries we haven't seen in a while. The Map
