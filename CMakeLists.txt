@@ -181,12 +181,15 @@ target_link_libraries(HDAW
 
 
 
-# Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime speedup)
+# Link-Time Optimization: allows inlining across .cpp boundaries (10-30% runtime
+# speedup). Only for optimized configs — Debug keeps full debuggability.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_supported)
 if(ipo_supported)
-    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_property(TARGET HDAW_lib PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+    set_property(TARGET HDAW PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
 # JUCE_PLUGINHOST_VST3 / JUCE_MODAL_LOOPS_PERMITTED are inherited from HDAW_lib (PUBLIC)
@@ -195,6 +198,24 @@ endif()
 if(MSVC)
     target_compile_options(HDAW_lib PRIVATE /MP)
     target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa /MP)
+
+    # AVX2 for DSP-heavy code (peak calculation, waveform rendering, audio
+    # processing). Every desktop CPU from ~2013+ supports it. Disable with
+    # -DHDAW_ENABLE_AVX2=OFF if targeting older hardware.
+    option(HDAW_ENABLE_AVX2 "Enable AVX2 SIMD instructions" ON)
+    if(HDAW_ENABLE_AVX2)
+        target_compile_options(HDAW_lib PRIVATE /arch:AVX2)
+        target_compile_options(HDAW PRIVATE /arch:AVX2)
+    endif()
+
+    # Per-config optimization flags for Release and RelWithDebInfo.
+    # Debug keeps /Od (no optimization) for full debuggability.
+    target_compile_options(HDAW_lib PRIVATE
+        $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
+    )
+    target_compile_options(HDAW PRIVATE
+        $<$<CONFIG:Release,RelWithDebInfo>:/O2 /Ob2 /Oi /Oy /GT>
+    )
 endif()
 
 set_target_properties(HDAW PROPERTIES
