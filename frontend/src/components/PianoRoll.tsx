@@ -19,6 +19,7 @@ export default function PianoRoll() {
   const [chordEnabled, setChordEnabled] = useState(false);
   const [chordType, setChordType] = useState("major");
   const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
+  const [quantizeStrength, setQuantizeStrength] = useState(100);
 
   const CHORD_SHAPES: Record<string, number[]> = {
     major: [0, 4, 7],
@@ -109,6 +110,59 @@ export default function PianoRoll() {
     [activeClip]
   );
 
+  const handleToggleLooping = useCallback(async () => {
+    if (!activeClip) return;
+    await rpc.call("project.setClipLooping", {
+      clipId: activeClip.clipId,
+      looping: !activeClip.looping,
+    }).catch((err) => console.warn("loop toggle failed", err));
+    useProjectStore.setState({ isDirty: true });
+  }, [activeClip]);
+
+  const handleScaleVelocity = useCallback(
+    async (factor: number) => {
+      if (!activeClip || selectedNoteIds.size === 0) return;
+      const notesArr = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+      try {
+        await rpc.call("project.beginTransaction", { name: "scale velocity" });
+        for (const noteId of selectedNoteIds) {
+          const note = notesArr.find((n) => n.noteId === noteId);
+          if (!note) continue;
+          const newVel = Math.max(1, Math.min(127, Math.round(note.velocity * factor)));
+          await rpc.call("project.setNoteVelocity", { noteId, velocity: newVel });
+        }
+        await rpc.call("project.endTransaction");
+        useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+        useProjectStore.setState({ isDirty: true });
+      } catch (err) {
+        console.warn("scale velocity failed", err);
+      }
+    },
+    [activeClip, selectedNoteIds]
+  );
+
+  const handleScaleDuration = useCallback(
+    async (factor: number) => {
+      if (!activeClip || selectedNoteIds.size === 0) return;
+      const notesArr = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+      try {
+        await rpc.call("project.beginTransaction", { name: "scale duration" });
+        for (const noteId of selectedNoteIds) {
+          const note = notesArr.find((n) => n.noteId === noteId);
+          if (!note) continue;
+          const newDur = Math.max(0.03125, note.durationBeats * factor);
+          await rpc.call("project.setNoteDuration", { noteId, durationBeats: newDur });
+        }
+        await rpc.call("project.endTransaction");
+        useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+        useProjectStore.setState({ isDirty: true });
+      } catch (err) {
+        console.warn("scale duration failed", err);
+      }
+    },
+    [activeClip, selectedNoteIds]
+  );
+
   const keys = useMemo(() => {
     const k: { note: number; name: string; isBlack: boolean }[] = [];
     for (let n = 127; n >= 0; n--) {
@@ -148,6 +202,66 @@ export default function PianoRoll() {
             ))}
           </select>
         )}
+        {activeClip && (
+          <>
+            <span className="pr-toolbar-sep" />
+            <label className="pr-chord-toggle">
+              <input
+                type="checkbox"
+                checked={activeClip.looping}
+                onChange={handleToggleLooping}
+              />
+              Loop
+            </label>
+          </>
+        )}
+        {selectedNoteIds.size > 0 && (
+          <>
+            <span className="pr-toolbar-sep" />
+            <label className="pr-slider-ctrl">
+              <span className="pr-slider-label">Vel</span>
+              <input
+                type="range"
+                min={10}
+                max={200}
+                defaultValue={100}
+                className="pr-slider"
+                onMouseUp={(e) => {
+                  const factor = Number((e.target as HTMLInputElement).value) / 100;
+                  handleScaleVelocity(factor);
+                  (e.target as HTMLInputElement).value = "100";
+                }}
+              />
+            </label>
+            <label className="pr-slider-ctrl">
+              <span className="pr-slider-label">Dur</span>
+              <input
+                type="range"
+                min={10}
+                max={200}
+                defaultValue={100}
+                className="pr-slider"
+                onMouseUp={(e) => {
+                  const factor = Number((e.target as HTMLInputElement).value) / 100;
+                  handleScaleDuration(factor);
+                  (e.target as HTMLInputElement).value = "100";
+                }}
+              />
+            </label>
+            <label className="pr-slider-ctrl">
+              <span className="pr-slider-label">Q.Str</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={quantizeStrength}
+                className="pr-slider"
+                onChange={(e) => setQuantizeStrength(Number(e.target.value))}
+              />
+              <span className="pr-slider-val">{quantizeStrength}%</span>
+            </label>
+          </>
+        )}
       </div>
       <div className="pr-editor">
         <div className="pr-keys" ref={keysRef}>
@@ -172,6 +286,7 @@ export default function PianoRoll() {
             selectedNoteIds={selectedNoteIds}
             onSelectionChange={setSelectedNoteIds}
             chordShape={chordEnabled ? CHORD_SHAPES[chordType] : undefined}
+            quantizeStrength={quantizeStrength}
           />
           <VelocityLane
             notes={notes}

@@ -128,3 +128,30 @@
 .pr-chord-toggle input {
   margin: 0;
 }
+
+.pr-slider-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.pr-slider-label {
+  font-size: 10px;
+  min-width: 24px;
+  text-align: right;
+}
+
+.pr-slider {
+  width: 60px;
+  height: 12px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.pr-slider-val {
+  font-size: 10px;
+  min-width: 28px;
+  text-align: left;
+}

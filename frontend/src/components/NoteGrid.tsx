@@ -17,6 +17,7 @@ interface Props {
   selectedNoteIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   chordShape?: number[];
+  quantizeStrength?: number;
 }
 
 interface NoteDragState {
@@ -62,6 +63,7 @@ export default function NoteGrid({
   selectedNoteIds: externalSelectedIds,
   onSelectionChange,
   chordShape,
+  quantizeStrength = 100,
 }: Props) {
   const [dragState, setDragState] = useState<NoteDragState | null>(null);
   const dragRef = useRef<NoteDragState | null>(null);
@@ -355,6 +357,8 @@ export default function NoteGrid({
     const { snapEnabled, snapDivision } = useUiStore.getState();
     if (!snapEnabled) return;
     
+    const strength = quantizeStrength / 100;
+
     // Optimistic: update start times in local store immediately
     useProjectStore.setState((s) => {
       const arr = s.notesByClip.get(clipId);
@@ -362,11 +366,12 @@ export default function NoteGrid({
       return {
         notesByClip: new Map(s.notesByClip).set(
           clipId,
-          arr.map((n) =>
-            selectedNoteIds.has(n.noteId)
-              ? { ...n, startBeat: snapToGrid(n.startBeat, snapDivision) }
-              : n
-          )
+          arr.map((n) => {
+            if (!selectedNoteIds.has(n.noteId)) return n;
+            const snapped = snapToGrid(n.startBeat, snapDivision);
+            const newStart = n.startBeat + (snapped - n.startBeat) * strength;
+            return { ...n, startBeat: newStart };
+          })
         ),
       };
     });
@@ -376,13 +381,14 @@ export default function NoteGrid({
         const note = noteMap.get(noteId);
         if (!note) continue;
         const snapped = snapToGrid(note.startBeat, snapDivision);
-        await rpc.call("project.setNoteStart", { noteId, startBeat: snapped });
+        const newStart = note.startBeat + (snapped - note.startBeat) * strength;
+        await rpc.call("project.setNoteStart", { noteId, startBeat: newStart });
       }
       useProjectStore.getState().syncNotes(rpc, clipId);
     } catch (err) {
       console.warn("quantize failed", err);
     }
-  }, [selectedNoteIds, rpc, clipId, noteMap]);
+  }, [selectedNoteIds, rpc, clipId, noteMap, quantizeStrength]);
 
   const humanizeSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;
