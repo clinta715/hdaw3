@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { injectTheme } from "./theme";
@@ -54,6 +54,23 @@ function setupSubscriptions() {
 
 function Root() {
   const [showStartup, setShowStartup] = useState(true);
+
+  // Handle .hdaw file open from the Electron shell (double-click file
+  // association). Loads the project and skips the startup dialog.
+  useEffect(() => {
+    const hdaw = (window as any).hdaw;
+    if (!hdaw?.on) return;
+    return hdaw.on("open-project-file", async (filePath: string) => {
+      try {
+        await rpc.call("project.loadProject", { filePath });
+        await useProjectStore.getState().syncSnapshot(rpc);
+        useProjectStore.getState().addRecentProject(filePath);
+        setShowStartup(false);
+      } catch (err) {
+        console.error("Failed to open project from file association:", err);
+      }
+    });
+  }, []);
 
   return (
     <React.StrictMode>

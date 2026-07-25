@@ -12,12 +12,18 @@ files:
   - package.json
 
 extraResources:
-  - from: ../build/Debug/
+  - from: ../build/RelWithDebInfo/
     to: engine/
     filter:
       - "HDAW_headless.exe"
       - "hdaw_plugin_scanner.exe"
       - "*.dll"
+
+fileAssociations:
+  - ext: hdaw
+    name: HDAW Project
+    description: HDAW Project File
+    role: Editor
 
 win:
   icon: build-resources/icon.png
@@ -35,3 +41,8 @@ nsis:
 
 portable:
   artifactName: "${productName} ${version} Portable.exe"
+
+publish:
+  provider: github
+  owner: clinta715
+  repo: hdaw3

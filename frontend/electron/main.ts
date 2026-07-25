@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, dialog, ipcMain } from "electron";
+import { autoUpdater } from "electron-updater";
 import { ChildProcess, spawn } from "child_process";
 import * as path from "path";
 import * as net from "net";
@@ -48,6 +49,9 @@ function enginePath(): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "engine", "HDAW_headless.exe");
   }
+  // Dev mode: prefer the optimized build, fall back to Debug.
+  const rwdi = path.resolve(__dirname, "..", "..", "build", "RelWithDebInfo", "HDAW_headless.exe");
+  if (fs.existsSync(rwdi)) return rwdi;
   return path.resolve(__dirname, "..", "..", "build", "Debug", "HDAW_headless.exe");
 }
 
@@ -117,8 +121,8 @@ async function createWindow() {
     backgroundColor: "#141416",
     autoHideMenuBar: true,
     icon: app.isPackaged
-      ? path.join(process.resourcesPath, "..", "build-resources", "icon.ico")
-      : path.resolve(__dirname, "..", "build-resources", "icon.ico"),
+      ? path.join(process.resourcesPath, "..", "build-resources", "icon.png")
+      : path.resolve(__dirname, "..", "build-resources", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -231,6 +235,21 @@ app.whenReady().then(async () => {
     return;
   }
   await createWindow();
+
+  // Auto-update: check for new versions on GitHub Releases.
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.warn("[updater] check failed:", err.message);
+    });
+  }
+
+  // Handle .hdaw file open from command line (double-click file association).
+  const filePath = process.argv.find((arg) => arg.endsWith(".hdaw"));
+  if (filePath && mainWindow) {
+    mainWindow.webContents.once("did-finish-load", () => {
+      mainWindow?.webContents.send("open-project-file", filePath);
+    });
+  }
 });
 
 app.on("window-all-closed", () => {
