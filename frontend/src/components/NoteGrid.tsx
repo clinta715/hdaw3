@@ -4,6 +4,7 @@ import { RpcClient } from "../rpc/client";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { snapToGrid } from "./snapUtils";
+import { quantizeWithGroove } from "./grooveUtils";
 import "./NoteGrid.css";
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   onSelectionChange?: (ids: Set<number>) => void;
   chordShape?: number[];
   quantizeStrength?: number;
+  swing?: number;
 }
 
 interface NoteDragState {
@@ -64,6 +66,7 @@ export default function NoteGrid({
   onSelectionChange,
   chordShape,
   quantizeStrength = 100,
+  swing = 0,
 }: Props) {
   const [dragState, setDragState] = useState<NoteDragState | null>(null);
   const dragRef = useRef<NoteDragState | null>(null);
@@ -368,8 +371,7 @@ export default function NoteGrid({
           clipId,
           arr.map((n) => {
             if (!selectedNoteIds.has(n.noteId)) return n;
-            const snapped = snapToGrid(n.startBeat, snapDivision);
-            const newStart = n.startBeat + (snapped - n.startBeat) * strength;
+            const newStart = quantizeWithGroove(n.startBeat, snapDivision, strength, swing);
             return { ...n, startBeat: newStart };
           })
         ),
@@ -380,15 +382,14 @@ export default function NoteGrid({
       for (const noteId of selectedNoteIds) {
         const note = noteMap.get(noteId);
         if (!note) continue;
-        const snapped = snapToGrid(note.startBeat, snapDivision);
-        const newStart = note.startBeat + (snapped - note.startBeat) * strength;
+        const newStart = quantizeWithGroove(note.startBeat, snapDivision, strength, swing);
         await rpc.call("project.setNoteStart", { noteId, startBeat: newStart });
       }
       useProjectStore.getState().syncNotes(rpc, clipId);
     } catch (err) {
       console.warn("quantize failed", err);
     }
-  }, [selectedNoteIds, rpc, clipId, noteMap, quantizeStrength]);
+  }, [selectedNoteIds, rpc, clipId, noteMap, quantizeStrength, swing]);
 
   const humanizeSelected = useCallback(async () => {
     if (clipId == null || selectedNoteIds.size === 0) return;

@@ -21,6 +21,7 @@ export default function PianoRoll() {
   const [chordType, setChordType] = useState("major");
   const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
   const [quantizeStrength, setQuantizeStrength] = useState(100);
+  const [swing, setSwing] = useState(0);
 
   const CHORD_SHAPES: Record<string, number[]> = {
     major: [0, 4, 7],
@@ -261,6 +262,18 @@ export default function PianoRoll() {
               />
               <span className="pr-slider-val">{quantizeStrength}%</span>
             </label>
+            <label className="pr-slider-ctrl">
+              <span className="pr-slider-label">Swing</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(swing * 100)}
+                className="pr-slider"
+                onChange={(e) => setSwing(Number(e.target.value) / 100)}
+              />
+              <span className="pr-slider-val">{Math.round(swing * 100)}%</span>
+            </label>
           </>
         )}
       </div>
@@ -288,6 +301,7 @@ export default function PianoRoll() {
             onSelectionChange={setSelectedNoteIds}
             chordShape={chordEnabled ? CHORD_SHAPES[chordType] : undefined}
             quantizeStrength={quantizeStrength}
+            swing={swing}
           />
           <VelocityLane
             notes={notes}
