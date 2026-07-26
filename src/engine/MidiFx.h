@@ -3,9 +3,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <vector>
 #include <set>
+#include <map>
 #include <memory>
 #include <atomic>
 #include <algorithm>
+#include <cmath>
 
 namespace HDAW {
 
@@ -149,6 +151,239 @@ private:
     int currentNote = -1;
     double currentNoteOffBeat = 0.0;
     int channel = 1;
+};
+
+// Scales note-on velocities by a factor (clamped to 1..127).
+class VelocityScaler : public MidiEffect
+{
+public:
+    double factor = 1.0;
+
+    void process(juce::MidiBuffer& buffer, const juce::AudioPlayHead::PositionInfo*,
+                 double, int) override
+    {
+        juce::MidiBuffer out;
+        for (const auto meta : buffer)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                int v = static_cast<int>(std::lround(msg.getVelocity() * factor));
+                out.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), msg.getNoteNumber(),
+                             static_cast<juce::uint8>(juce::jlimit(1, 127, v))), meta.samplePosition);
+            }
+            else
+            {
+                out.addEvent(msg, meta.samplePosition);
+            }
+        }
+        buffer = out;
+    }
+};
+
+// Adds chord tones above each played note. chordType: 0 major, 1 minor,
+// 2 power, 3 octave.
+class Chorder : public MidiEffect
+{
+public:
+    int chordType = 0;
+
+    void process(juce::MidiBuffer& buffer, const juce::AudioPlayHead::PositionInfo*,
+                 double, int) override
+    {
+        const auto intervals = intervalsFor(chordType);
+        juce::MidiBuffer out;
+        for (const auto meta : buffer)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                for (int iv : intervals)
+                {
+                    int note = msg.getNoteNumber() + iv;
+                    if (note >= 0 && note < 128)
+                        out.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), note,
+                                     static_cast<juce::uint8>(msg.getVelocity())), meta.samplePosition);
+                }
+            }
+            else if (msg.isNoteOff())
+            {
+                for (int iv : intervals)
+                {
+                    int note = msg.getNoteNumber() + iv;
+                    if (note >= 0 && note < 128)
+                        out.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), note), meta.samplePosition);
+                }
+            }
+            else
+            {
+                out.addEvent(msg, meta.samplePosition);
+            }
+        }
+        buffer = out;
+    }
+
+private:
+    static std::vector<int> intervalsFor(int type)
+    {
+        switch (type)
+        {
+            case 1: return { 0, 3, 7 };   // minor
+            case 2: return { 0, 7 };      // power
+            case 3: return { 0, 12 };     // octave
+            default: return { 0, 4, 7 };  // major
+        }
+    }
+};
+
+// Snaps note pitches to a scale. scaleType: 0 major, 1 natural minor,
+// 2 chromatic.
+class ScaleQuantize : public MidiEffect
+{
+public:
+    int root = 0;
+    int scaleType = 0;
+
+    void process(juce::MidiBuffer& buffer, const juce::AudioPlayHead::PositionInfo*,
+                 double, int) override
+    {
+        const auto intervals = intervalsFor(scaleType);
+        juce::MidiBuffer out;
+        for (const auto meta : buffer)
+        {
+            const auto msg = meta.getMessage();
+            if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                out.addEvent(juce::MidiMessage::noteOn(msg.getChannel(), snap(msg.getNoteNumber(), intervals),
+                             static_cast<juce::uint8>(msg.getVelocity())), meta.samplePosition);
+            }
+            else if (msg.isNoteOff())
+            {
+                out.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), snap(msg.getNoteNumber(), intervals)),
+                             meta.samplePosition);
+            }
+            else
+            {
+                out.addEvent(msg, meta.samplePosition);
+            }
+        }
+        buffer = out;
+    }
+
+private:
+    static std::vector<int> intervalsFor(int type)
+    {
+        switch (type)
+        {
+            case 1: return { 0, 2, 3, 5, 7, 8, 10 };                 // natural minor
+            case 2: return { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };  // chromatic
+            default: return { 0, 2, 4, 5, 7, 9, 11 };                // major
+        }
+    }
+
+    int snap(int pitch, const std::vector<int>& intervals) const
+    {
+        int best = pitch;
+        int bestDist = 999;
+        const int octave = pitch / 12;
+        for (int oct = octave - 1; oct <= octave + 1; ++oct)
+        {
+            for (int iv : intervals)
+            {
+                int cand = root + oct * 12 + iv;
+                int d = std::abs(cand - pitch);
+                if (d < bestDist) { bestDist = d; best = cand; }
+            }
+        }
+        return juce::jlimit(0, 127, best);
+    }
+};
+
+// Scales note durations by a factor, using the transport clock to reschedule
+// note-offs. factor < 1 shortens (staccato), > 1 lengthens (legato).
+class NoteLengthScaler : public MidiEffect
+{
+public:
+    double factor = 1.0;
+
+    void reset() override
+    {
+        pendingOns.clear();
+        scheduledOffs.clear();
+    }
+
+    void process(juce::MidiBuffer& buffer, const juce::AudioPlayHead::PositionInfo* position,
+                 double sampleRate, int numSamples) override
+    {
+        const double bpm = position != nullptr ? position->getBpm().orFallback(120.0) : 120.0;
+        const double blockStart = position != nullptr ? position->getPpqPosition().orFallback(0.0) : 0.0;
+        const double beatsPerSample = sampleRate > 0 ? bpm / 60.0 / sampleRate : 0.0;
+        const double blockEnd = blockStart + numSamples * beatsPerSample;
+
+        juce::MidiBuffer out;
+
+        for (auto it = scheduledOffs.begin(); it != scheduledOffs.end(); )
+        {
+            if (it->offBeat < blockEnd)
+            {
+                int sample = beatsPerSample > 0
+                    ? static_cast<int>((it->offBeat - blockStart) / beatsPerSample) : 0;
+                out.addEvent(juce::MidiMessage::noteOff(it->channel, it->note),
+                             juce::jlimit(0, numSamples - 1, sample));
+                it = scheduledOffs.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+
+        for (const auto meta : buffer)
+        {
+            const auto msg = meta.getMessage();
+            const double beat = blockStart + meta.samplePosition * beatsPerSample;
+            if (msg.isNoteOn() && msg.getVelocity() > 0)
+            {
+                out.addEvent(msg, meta.samplePosition);
+                pendingOns[msg.getNoteNumber()] = beat;
+            }
+            else if (msg.isNoteOff())
+            {
+                auto it = pendingOns.find(msg.getNoteNumber());
+                if (it != pendingOns.end())
+                {
+                    const double onBeat = it->second;
+                    const double offBeat = onBeat + (beat - onBeat) * factor;
+                    pendingOns.erase(it);
+                    if (offBeat < blockEnd)
+                    {
+                        int sample = beatsPerSample > 0
+                            ? static_cast<int>((offBeat - blockStart) / beatsPerSample) : 0;
+                        out.addEvent(juce::MidiMessage::noteOff(msg.getChannel(), msg.getNoteNumber()),
+                                     juce::jlimit(0, numSamples - 1, sample));
+                    }
+                    else
+                    {
+                        scheduledOffs.push_back({ msg.getNoteNumber(), msg.getChannel(), offBeat });
+                    }
+                }
+                else
+                {
+                    out.addEvent(msg, meta.samplePosition);
+                }
+            }
+            else
+            {
+                out.addEvent(msg, meta.samplePosition);
+            }
+        }
+        buffer = out;
+    }
+
+private:
+    struct ScheduledOff { int note; int channel; double offBeat; };
+    std::map<int, double> pendingOns;
+    std::vector<ScheduledOff> scheduledOffs;
 };
 
 // A slot wraps a MidiEffect with a bypass flag, mirroring TrackFXSlot.

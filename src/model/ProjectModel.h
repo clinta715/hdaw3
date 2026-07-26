@@ -100,6 +100,10 @@ namespace IDs {
     DECLARE_ID(arpPattern)
     DECLARE_ID(arpOctaves)
     DECLARE_ID(arpGate)
+    DECLARE_ID(velFactor)
+    DECLARE_ID(chordType)
+    DECLARE_ID(scaleType)
+    DECLARE_ID(lengthFactor)
 
     // Automation
     DECLARE_ID(AUTOMATION_LIST)

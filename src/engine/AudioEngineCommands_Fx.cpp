@@ -104,6 +104,23 @@ void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type,
         slot.setProperty(IDs::arpOctaves, 1, &um);
         slot.setProperty(IDs::arpGate, 0.5, &um);
     }
+    else if (type == "velocity")
+    {
+        slot.setProperty(IDs::velFactor, 1.0, &um);
+    }
+    else if (type == "chord")
+    {
+        slot.setProperty(IDs::chordType, 0, &um);
+    }
+    else if (type == "scale")
+    {
+        slot.setProperty(IDs::scaleRoot, 0, &um);
+        slot.setProperty(IDs::scaleType, 0, &um);
+    }
+    else if (type == "notelength")
+    {
+        slot.setProperty(IDs::lengthFactor, 1.0, &um);
+    }
 
     int n = chain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;

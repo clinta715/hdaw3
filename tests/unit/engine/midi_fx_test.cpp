@@ -168,3 +168,64 @@ TEST(TrackMidiFx, ArpeggiatorInProcessBlock)
     EXPECT_EQ(notes[2], 67);
     EXPECT_EQ(notes[3], 60);
 }
+
+TEST(VelocityScaler, ScalesVelocity)
+{
+    VelocityScaler vs;
+    vs.factor = 2.0;
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)64), 0);
+    vs.process(buf, nullptr, 44100.0, 512);
+    int vel = -1;
+    for (const auto meta : buf)
+    {
+        const auto msg = meta.getMessage();
+        if (msg.isNoteOn()) vel = msg.getVelocity();
+    }
+    EXPECT_EQ(vel, 127); // 64 * 2 = 128 clamped to 127
+}
+
+TEST(Chorder, MajorTriad)
+{
+    Chorder ch;
+    ch.chordType = 0;
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0);
+    ch.process(buf, nullptr, 44100.0, 512);
+    auto notes = collectNoteOns(buf);
+    ASSERT_EQ(notes.size(), 3u);
+    EXPECT_EQ(notes[0], 60);
+    EXPECT_EQ(notes[1], 64);
+    EXPECT_EQ(notes[2], 67);
+}
+
+TEST(ScaleQuantize, SnapsToMajor)
+{
+    ScaleQuantize sq;
+    sq.root = 0;
+    sq.scaleType = 0; // C major
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOn(1, 61, (juce::uint8)100), 0); // C#
+    sq.process(buf, nullptr, 44100.0, 512);
+    auto notes = collectNoteOns(buf);
+    ASSERT_EQ(notes.size(), 1u);
+    EXPECT_EQ(notes[0], 60); // snapped to C
+}
+
+TEST(NoteLengthScaler, HalvesDuration)
+{
+    NoteLengthScaler nl;
+    nl.factor = 0.5;
+    juce::MidiBuffer buf;
+    buf.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0); // beat 0
+    buf.addEvent(juce::MidiMessage::noteOff(1, 60), 22050);              // beat 1.0
+    auto pos = makePos(0.0, 120.0);
+    nl.process(buf, &pos, 44100.0, 44100); // two beats
+    int offSample = -1;
+    for (const auto meta : buf)
+    {
+        const auto msg = meta.getMessage();
+        if (msg.isNoteOff()) offSample = meta.samplePosition;
+    }
+    EXPECT_EQ(offSample, 11025); // beat 0.5
+}

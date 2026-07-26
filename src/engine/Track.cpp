@@ -228,6 +228,31 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
             arp->gate = static_cast<double>(slotTree.getProperty(IDs::arpGate, 0.5));
             effect = std::move(arp);
         }
+        else if (type == "velocity")
+        {
+            auto v = std::make_unique<VelocityScaler>();
+            v->factor = static_cast<double>(slotTree.getProperty(IDs::velFactor, 1.0));
+            effect = std::move(v);
+        }
+        else if (type == "chord")
+        {
+            auto c = std::make_unique<Chorder>();
+            c->chordType = static_cast<int>(slotTree.getProperty(IDs::chordType, 0));
+            effect = std::move(c);
+        }
+        else if (type == "scale")
+        {
+            auto s = std::make_unique<ScaleQuantize>();
+            s->root = static_cast<int>(slotTree.getProperty(IDs::scaleRoot, 0));
+            s->scaleType = static_cast<int>(slotTree.getProperty(IDs::scaleType, 0));
+            effect = std::move(s);
+        }
+        else if (type == "notelength")
+        {
+            auto nl = std::make_unique<NoteLengthScaler>();
+            nl->factor = static_cast<double>(slotTree.getProperty(IDs::lengthFactor, 1.0));
+            effect = std::move(nl);
+        }
         if (effect)
         {
             auto slot = std::make_unique<MidiFxSlot>(std::move(effect), type);
