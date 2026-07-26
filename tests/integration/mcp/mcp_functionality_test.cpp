@@ -426,6 +426,41 @@ TEST_F(GuiFuncTest, AddNoteToNonMidiClip) {
     EXPECT_FALSE(isError(r));
 }
 
+TEST_F(GuiFuncTest, CcPointAddGetSetRemove) {
+    auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
+    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+
+    auto addCc = call("add_cc_point", {{"clipId", clipId}, {"controllerNumber", 74},
+                                       {"beat", 1.0}, {"value", 100}});
+    EXPECT_FALSE(isError(addCc));
+    int ccId = text(addCc).mid(text(addCc).indexOf('=') + 1).toInt();
+
+    auto getList = [&]() {
+        auto r = call("get_cc_points", {{"clipId", clipId}});
+        return QJsonDocument::fromJson(text(r).toUtf8()).array();
+    };
+
+    auto pts = getList();
+    ASSERT_EQ(pts.size(), 1);
+    auto p = pts[0].toObject();
+    EXPECT_EQ(p.value("ccId").toInt(), ccId);
+    EXPECT_EQ(p.value("controllerNumber").toInt(), 74);
+    EXPECT_NEAR(p.value("beat").toDouble(), 1.0, 0.001);
+    EXPECT_EQ(p.value("value").toInt(), 100);
+
+    auto setR = call("set_cc_point", {{"ccId", ccId}, {"value", 64}});
+    EXPECT_FALSE(isError(setR));
+    EXPECT_EQ(getList()[0].toObject().value("value").toInt(), 64);
+
+    auto dry = call("remove_cc_point", {{"ccId", ccId}, {"dryRun", true}});
+    EXPECT_FALSE(isError(dry));
+    EXPECT_EQ(getList().size(), 1);
+
+    auto rm = call("remove_cc_point", {{"ccId", ccId}});
+    EXPECT_FALSE(isError(rm));
+    EXPECT_EQ(getList().size(), 0);
+}
+
 // ============================================================================
 // TRANSPORT OPERATIONS
 // ============================================================================

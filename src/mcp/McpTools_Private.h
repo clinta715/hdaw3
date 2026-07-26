@@ -14,6 +14,7 @@ QString jstr(const juce::String& s);
 QJsonObject objSchema(const QJsonObject& props, const QJsonArray& required = {});
 juce::ValueTree findClip(AudioEngine* e, int clipId, int* outTrackIdx);
 juce::ValueTree findNote(AudioEngine* e, int noteId, int* outClipId);
+juce::ValueTree findCcPoint(AudioEngine* e, int ccId, int* outClipId);
 juce::ValueTree findLane(AudioEngine* e, int trackId, const QJsonValue& ref);
 
 void registerProjectDomain(McpServer& s, AudioEngine* e);

@@ -13,6 +13,7 @@ interface CCLaneProps {
   width: number;
   pixelsPerBeat: number;
   scrollX: number;
+  onRemove?: () => void;
 }
 
 const H = 60;
@@ -45,7 +46,7 @@ function beatValueAt(
   return { beat, value };
 }
 
-export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat, scrollX }: CCLaneProps) {
+export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat, scrollX, onRemove }: CCLaneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [points, setPoints] = useState<CcPoint[]>([]);
   const dragRef = useRef<{ ccId: number; beat: number; value: number } | null>(null);
@@ -165,7 +166,12 @@ export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat,
 
   return (
     <div className="cc-lane">
-      <div className="cc-label">CC{controllerNumber}</div>
+      <div className="cc-label">
+        CC{controllerNumber}
+        {onRemove && (
+          <button className="cc-remove" onClick={onRemove} title="Remove lane">×</button>
+        )}
+      </div>
       <canvas
         ref={canvasRef}
         width={width}

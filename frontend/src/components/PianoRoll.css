@@ -93,11 +93,18 @@
 
 .pr-cc-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 4px;
   padding: 4px 0;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.pr-cc-add {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pr-cc-row select {
@@ -107,6 +114,16 @@
   color: var(--text-secondary);
   border: 1px solid var(--border);
   border-radius: 2px;
+}
+
+.pr-cc-add-btn {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
 }
 
 .pr-toolbar-sep {

@@ -57,6 +57,26 @@ juce::ValueTree findNote(AudioEngine* e, int noteId, int* outClipId)
     return {};
 }
 
+juce::ValueTree findCcPoint(AudioEngine* e, int ccId, int* outClipId)
+{
+    auto tl = e->getProjectModel().getTrackListTree();
+    for (int i = 0; i < tl.getNumChildren(); ++i) {
+        auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
+        for (int j = 0; j < cl.getNumChildren(); ++j) {
+            auto ccl = cl.getChild(j).getChildWithName(IDs::CC_LIST);
+            if (!ccl.isValid()) continue;
+            for (int k = 0; k < ccl.getNumChildren(); ++k) {
+                auto pt = ccl.getChild(k);
+                if (static_cast<int>(pt.getProperty(IDs::ccID)) == ccId) {
+                    if (outClipId) *outClipId = static_cast<int>(cl.getChild(j).getProperty(IDs::clipID));
+                    return pt;
+                }
+            }
+        }
+    }
+    return {};
+}
+
 juce::ValueTree findLane(AudioEngine* e, int trackId, const QJsonValue& ref)
 {
     auto tl = e->getProjectModel().getTrackListTree();

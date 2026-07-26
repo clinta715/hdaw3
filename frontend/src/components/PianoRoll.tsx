@@ -15,7 +15,8 @@ export default function PianoRoll() {
   const keysRef = useRef<HTMLDivElement>(null);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
-  const [ccController, setCcController] = useState(1);
+  const [ccLanes, setCcLanes] = useState<number[]>([1]);
+  const [ccToAdd, setCcToAdd] = useState(7);
   const [chordEnabled, setChordEnabled] = useState(false);
   const [chordType, setChordType] = useState("major");
   const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
@@ -298,20 +299,28 @@ export default function PianoRoll() {
             onScrollChange={setGridScrollLeft}
           />
           <div className="pr-cc-row">
-            <select value={ccController} onChange={(e) => setCcController(Number(e.target.value))}>
-              {Array.from({ length: 128 }, (_, i) => (
-                <option key={i} value={i}>CC{i}</option>
-              ))}
-            </select>
-            {activeClip && (
+            <div className="pr-cc-add">
+              <select value={ccToAdd} onChange={(e) => setCcToAdd(Number(e.target.value))}>
+                {Array.from({ length: 128 }, (_, i) => (
+                  <option key={i} value={i}>CC{i}</option>
+                ))}
+              </select>
+              <button
+                className="pr-cc-add-btn"
+                onClick={() => setCcLanes((prev) => (prev.includes(ccToAdd) ? prev : [...prev, ccToAdd]))}
+              >+ Lane</button>
+            </div>
+            {activeClip && ccLanes.map((cc) => (
               <CCLane
+                key={cc}
                 clipId={activeClip.clipId}
-                controllerNumber={ccController}
+                controllerNumber={cc}
                 width={gridWidth}
                 pixelsPerBeat={pixelsPerBeat}
                 scrollX={gridScrollLeft}
+                onRemove={() => setCcLanes((prev) => prev.filter((c) => c !== cc))}
               />
-            )}
+            ))}
           </div>
         </div>
       </div>
