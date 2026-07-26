@@ -25,6 +25,7 @@ export default function TransportBar() {
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [ccRecArmed, setCcRecArmed] = useState(false);
+  const [midiRecArmed, setMidiRecArmed] = useState(false);
   const showPhraseGenerator = useUiStore((s) => s.showPhraseGenerator);
   const setShowPhraseGenerator = useUiStore((s) => s.setShowPhraseGenerator);
 
@@ -127,6 +128,17 @@ export default function TransportBar() {
           title="Record MIDI CC automation"
         >
           CC
+        </button>
+        <button
+          className={`tb-btn ${midiRecArmed ? "recording" : ""}`}
+          onClick={() => {
+            const next = !midiRecArmed;
+            setMidiRecArmed(next);
+            rpc.call("project.setMidiNoteRecordArmed", { armed: next }).catch((err) => reportRpcError("project.setMidiNoteRecordArmed", err));
+          }}
+          title="Record MIDI notes (armed tracks)"
+        >
+          MI
         </button>
         <button className="tb-btn" onClick={cmd("transport.stop")} title="Stop">⏹</button>
       </div>

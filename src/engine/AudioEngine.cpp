@@ -173,6 +173,18 @@ void AudioEngine::initialize()
                     midiCcCallback(channel, controller, value);
             });
         }
+        if ((msg.isNoteOn() || msg.isNoteOff()) && midiNoteRecordArmed
+            && transportManager.isPlayingNow())
+        {
+            int channel = msg.getChannel();
+            int note = msg.getNoteNumber();
+            int vel = msg.getVelocity();
+            bool noteOn = msg.isNoteOn();
+            int64_t sample = transportManager.getCurrentSample();
+            juce::MessageManager::callAsync([this, channel, note, vel, noteOn, sample]() {
+                recordMidiNoteEvent(channel, note, vel, noteOn, sample);
+            });
+        }
         mainProcessor->addExternalMidiMessage(msg);
     });
 
@@ -220,6 +232,130 @@ void AudioEngine::recordMidiCc(int channel, int controllerNumber, int value)
                 int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
                 commands->addCcPoint(clipId, controllerNumber, globalBeat - clipStartBeat, value);
                 return;
+            }
+        }
+    }
+}
+
+void AudioEngine::setMidiNoteRecordArmed(bool armed)
+{
+    bool wasArmed = midiNoteRecordArmed.exchange(armed);
+    if (armed)
+    {
+        midiNoteRecClips.clear();
+        midiPendingNotes.clear();
+        return;
+    }
+    if (wasArmed)
+    {
+        flushAllPendingMidiNotes(transportManager.getCurrentSample());
+        finalizeMidiRecClips();
+        midiNoteRecClips.clear();
+        midiPendingNotes.clear();
+    }
+}
+
+void AudioEngine::recordMidiNoteEvent(int channel, int noteNumber, int velocity, bool isNoteOn, int64_t sample)
+{
+    if (!commands) return;
+
+    auto trackList = projectModel.getTrackListTree();
+    int trackIndex = -1;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto track = trackList.getChild(t);
+        if (static_cast<int>(track.getProperty(IDs::isArm, 0)) == 0) continue;
+        if (static_cast<int>(track.getProperty(IDs::midiChannel, 1)) != channel) continue;
+        trackIndex = t;
+        break;
+    }
+    if (trackIndex < 0) return;
+
+    auto& pending = midiPendingNotes[trackIndex];
+    if (isNoteOn && velocity > 0)
+    {
+        if (pending.find(noteNumber) != pending.end())
+            flushPendingMidiNote(trackIndex, noteNumber, sample);
+        pending[noteNumber] = { sample, velocity };
+    }
+    else
+    {
+        flushPendingMidiNote(trackIndex, noteNumber, sample);
+    }
+}
+
+void AudioEngine::flushPendingMidiNote(int trackIndex, int noteNumber, int64_t endSample)
+{
+    auto tit = midiPendingNotes.find(trackIndex);
+    if (tit == midiPendingNotes.end()) return;
+    auto it = tit->second.find(noteNumber);
+    if (it == tit->second.end()) return;
+
+    int64_t startSample = it->second.first;
+    int velocity = it->second.second;
+    tit->second.erase(it);
+
+    int clipId = ensureMidiRecClip(trackIndex, startSample);
+    if (clipId < 0) return;
+
+    int64_t clipStartSample = startSample;
+    for (const auto& rc : midiNoteRecClips)
+        if (rc.trackIndex == trackIndex) { clipStartSample = rc.startSample; break; }
+
+    double localStartBeat = transportManager.samplesToPpq(startSample)
+                          - transportManager.samplesToPpq(clipStartSample);
+    double durationBeats = transportManager.samplesToPpq(endSample)
+                         - transportManager.samplesToPpq(startSample);
+    if (durationBeats < 1e-6) durationBeats = 0.25;
+
+    commands->addNote(clipId, noteNumber, velocity, localStartBeat, durationBeats);
+
+    for (auto& rc : midiNoteRecClips)
+        if (rc.trackIndex == trackIndex && endSample > rc.maxEndSample)
+            rc.maxEndSample = endSample;
+}
+
+void AudioEngine::flushAllPendingMidiNotes(int64_t endSample)
+{
+    for (auto& tkv : midiPendingNotes)
+    {
+        std::vector<int> pitches;
+        for (const auto& pkv : tkv.second) pitches.push_back(pkv.first);
+        for (int p : pitches) flushPendingMidiNote(tkv.first, p, endSample);
+    }
+}
+
+int AudioEngine::ensureMidiRecClip(int trackIndex, int64_t startSample)
+{
+    for (const auto& rc : midiNoteRecClips)
+        if (rc.trackIndex == trackIndex) return rc.clipId;
+
+    double sr = transportManager.getSampleRate();
+    double startSec = sr > 0 ? static_cast<double>(startSample) / sr : 0.0;
+    int clipId = commands->addMidiClip(trackIndex, startSec, 8.0, "Recording");
+    if (clipId < 0) return -1;
+    midiNoteRecClips.push_back({ clipId, trackIndex, startSample, startSample });
+    return clipId;
+}
+
+void AudioEngine::finalizeMidiRecClips()
+{
+    double sr = transportManager.getSampleRate();
+    if (sr <= 0) return;
+    auto trackList = projectModel.getTrackListTree();
+    auto& um = projectModel.getUndoManager();
+    for (const auto& rc : midiNoteRecClips)
+    {
+        double durSec = static_cast<double>(rc.maxEndSample - rc.startSample) / sr;
+        if (durSec < 0.5) durSec = 0.5;
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+        {
+            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+            for (int c = 0; c < clipList.getNumChildren(); ++c)
+            {
+                auto clip = clipList.getChild(c);
+                if (static_cast<int>(clip.getProperty(IDs::clipID, 0)) == rc.clipId)
+                    clip.setProperty(IDs::duration, durSec, &um);
             }
         }
     }

@@ -16,7 +16,9 @@
 #include "MidiServiceImpl.h"
 #include "../model/ProjectModel.h"
 #include <functional>
+#include <map>
 #include <memory>
+#include <vector>
 
 class AudioEngine : private juce::ValueTree::Listener
 {
@@ -75,6 +77,12 @@ public:
     // armed track whose MIDI channel matches. Called on the main thread.
     void recordMidiCc(int channel, int controllerNumber, int value);
 
+    // MIDI note recording. When armed, incoming notes during playback are
+    // captured into a MIDI clip on the armed track whose channel matches.
+    void setMidiNoteRecordArmed(bool armed);
+    bool isMidiNoteRecordArmed() const { return midiNoteRecordArmed.load(); }
+    void recordMidiNoteEvent(int channel, int noteNumber, int velocity, bool isNoteOn, int64_t sample);
+
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
@@ -97,6 +105,16 @@ private:
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;
+
+    std::atomic<bool> midiNoteRecordArmed{ false };
+    struct MidiNoteRecClip { int clipId = -1; int trackIndex = -1; int64_t startSample = 0; int64_t maxEndSample = 0; };
+    std::vector<MidiNoteRecClip> midiNoteRecClips;
+    std::map<int, std::map<int, std::pair<int64_t, int>>> midiPendingNotes;
+
+    void flushPendingMidiNote(int trackIndex, int noteNumber, int64_t endSample);
+    void flushAllPendingMidiNotes(int64_t endSample);
+    int ensureMidiRecClip(int trackIndex, int64_t startSample);
+    void finalizeMidiRecClips();
     bool isPropagating_ = false;
     bool removingGhosts_ = false;
     std::unique_ptr<AudioEngineCommands> commands;

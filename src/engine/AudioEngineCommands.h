@@ -148,6 +148,7 @@ public:
     void setCcPoint(int ccId, double beat, int value) override;
     void removeCcPoint(int ccId) override;
     void setCcRecordArmed(bool armed) override;
+    void setMidiNoteRecordArmed(bool armed) override;
 
     // ProjectCommands — Undo/redo
     void undo() override;

@@ -178,6 +178,7 @@ public:
     virtual void setCcPoint(int ccId, double beat, int value) = 0;
     virtual void removeCcPoint(int ccId) = 0;
     virtual void setCcRecordArmed(bool armed) = 0;
+    virtual void setMidiNoteRecordArmed(bool armed) = 0;
 
     // Undo/redo
     virtual void undo() = 0;

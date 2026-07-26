@@ -134,3 +134,8 @@ void AudioEngineCommands::setCcRecordArmed(bool armed)
     else
         engine_.setMidiCcCallback(nullptr);
 }
+
+void AudioEngineCommands::setMidiNoteRecordArmed(bool armed)
+{
+    engine_.setMidiNoteRecordArmed(armed);
+}

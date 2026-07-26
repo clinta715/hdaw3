@@ -544,3 +544,65 @@ TEST(Commands, CcRecordingWritesToClip)
     EXPECT_EQ(static_cast<int>(ccList.getChild(0).getProperty(IDs::value)), 99);
     EXPECT_DOUBLE_EQ(static_cast<double>(ccList.getChild(0).getProperty(IDs::beat)), 4.0);
 }
+
+TEST(Commands, MidiNoteRecording)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    engine.setTrackArmed(0, true);
+    engine.getTransportManager().setSampleRate(44100.0);
+
+    cmds.setMidiNoteRecordArmed(true);
+    engine.recordMidiNoteEvent(1, 60, 100, true, 0);
+    engine.recordMidiNoteEvent(1, 60, 0, false, 44100);
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
+    bool found = false;
+    for (int c = 0; c < clipList.getNumChildren(); ++c)
+    {
+        auto nl = clipList.getChild(c).getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!nl.isValid()) continue;
+        for (int n = 0; n < nl.getNumChildren(); ++n)
+        {
+            auto note = nl.getChild(n);
+            if (static_cast<int>(note.getProperty(IDs::noteNumber)) == 60)
+            {
+                EXPECT_NEAR(static_cast<double>(note.getProperty(IDs::startBeat)), 0.0, 1e-6);
+                EXPECT_NEAR(static_cast<double>(note.getProperty(IDs::durationBeats)), 2.0, 0.01);
+                found = true;
+            }
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(Commands, MidiNoteRecordingFlushOnDisarm)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    engine.setTrackArmed(0, true);
+    engine.getTransportManager().setSampleRate(44100.0);
+
+    cmds.setMidiNoteRecordArmed(true);
+    engine.recordMidiNoteEvent(1, 62, 90, true, 0);
+    engine.getTransportManager().setCurrentSample(44100);
+    cmds.setMidiNoteRecordArmed(false);
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
+    bool found = false;
+    for (int c = 0; c < clipList.getNumChildren(); ++c)
+    {
+        auto nl = clipList.getChild(c).getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!nl.isValid()) continue;
+        for (int n = 0; n < nl.getNumChildren(); ++n)
+        {
+            if (static_cast<int>(nl.getChild(n).getProperty(IDs::noteNumber)) == 62)
+                found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
