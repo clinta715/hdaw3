@@ -545,6 +545,19 @@ TEST(Commands, CcRecordingWritesToClip)
     EXPECT_DOUBLE_EQ(static_cast<double>(ccList.getChild(0).getProperty(IDs::beat)), 4.0);
 }
 
+TEST(Commands, AddMidiFxSlot)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addMidiFxSlot(0, "arpeggiator");
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto chain = trackList.getChild(0).getChildWithName(IDs::MIDI_FX_CHAIN);
+    ASSERT_TRUE(chain.isValid());
+    ASSERT_EQ(chain.getNumChildren(), 1);
+    EXPECT_EQ(chain.getChild(0).getProperty(IDs::fxType).toString(), juce::String("arpeggiator"));
+}
+
 TEST(Commands, MidiNoteRecording)
 {
     AudioEngine engine;

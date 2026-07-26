@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "LevelMeter.h"
 #include "TrackFXSlot.h"
+#include "MidiFx.h"
 #include "AutomationManager.h"
 #include "ModulationManager.h"
 #include "PluginManager.h"
@@ -32,6 +33,9 @@ public:
     int getNumFXSlots() const { return static_cast<int>(fxChain.size()); }
     std::vector<std::unique_ptr<TrackFXSlot>>& getFXChain() { return fxChain; }
     void toggleFXEditor(int slotIndex);
+
+    void rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree);
+    int getNumMidiFxSlots() const { return static_cast<int>(midiFxChain.size()); }
 
     // FX chain mutation (used by the MCP server's add_fx/remove_fx/set_fx_bypass tools).
     // The in-memory chain and the track's FX_CHAIN ValueTree stay in sync.
@@ -88,6 +92,7 @@ private:
 
     juce::SpinLock stateLock;
     std::vector<std::unique_ptr<TrackFXSlot>> fxChain;
+    std::vector<std::unique_ptr<MidiFxSlot>> midiFxChain;
     juce::dsp::ProcessSpec fxSpec;
 
     std::vector<std::unique_ptr<AutomationManager>> automationManagers;

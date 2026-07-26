@@ -31,6 +31,7 @@ add_executable(hdaw_tests
     unit/engine/modulation_test.cpp
     unit/engine/clip_source_processor_test.cpp
     unit/engine/midi_clip_processor_test.cpp
+    unit/engine/midi_fx_test.cpp
     unit/engine/transient_detector_test.cpp
     unit/engine/region_clipboard_test.cpp
     unit/engine/bpm_detector_test.cpp

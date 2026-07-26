@@ -343,6 +343,21 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         c.addFxSlot(i, type, pos, pluginId);  // string overload
         return { false, QJsonValue::Null };
     }
+    if (m == "addMidiFxSlot") {
+        int i; std::string type; int pos = -1;
+        if (!requireInt(o, "trackIndex", i, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (o.contains("type") && o.value("type").isString())
+            type = o.value("type").toString().toStdString();
+        else if (o.contains("fxType") && o.value("fxType").isString())
+            type = o.value("fxType").toString().toStdString();
+        else
+            return makeError(-32602, "type (or fxType) required");
+        if (o.contains("position") && o.value("position").isDouble())
+            pos = static_cast<int>(o.value("position").toDouble());
+        c.addMidiFxSlot(i, type, pos);
+        return { false, QJsonValue::Null };
+    }
     if (m == "removeFxSlot")        { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotBypassed")   { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotParam")      { int i, s, p; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }

@@ -93,6 +93,14 @@ namespace IDs {
     DECLARE_ID(slotIndex)
     DECLARE_ID(bypassed)
 
+    // Per-track MIDI FX chain
+    DECLARE_ID(MIDI_FX_CHAIN)
+    DECLARE_ID(MIDI_FX_SLOT)
+    DECLARE_ID(arpRate)
+    DECLARE_ID(arpPattern)
+    DECLARE_ID(arpOctaves)
+    DECLARE_ID(arpGate)
+
     // Automation
     DECLARE_ID(AUTOMATION_LIST)
     DECLARE_ID(AUTOMATION)

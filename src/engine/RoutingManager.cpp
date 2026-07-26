@@ -148,6 +148,10 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     if (fxChainTree.isValid())
         trackProcessors[trackIndex]->rebuildFXChain(fxChainTree);
 
+    auto midiFxChainTree = trackTree.getChildWithName(IDs::MIDI_FX_CHAIN);
+    if (midiFxChainTree.isValid())
+        trackProcessors[trackIndex]->rebuildMidiFXChain(midiFxChainTree);
+
     rebuildClipsForTrack(trackIndex, trackTree);
 
     // A routing-graph rebuild (graph.clear) destroys the physical
@@ -516,6 +520,7 @@ void RoutingManager::rebuildTrackFX(int trackIndex)
     auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
 
     trackIt->second->rebuildFXChain(fxChainTree);
+    trackIt->second->rebuildMidiFXChain(trackTree.getChildWithName(IDs::MIDI_FX_CHAIN));
     auto modulationListTree = trackTree.getChildWithName(IDs::MODULATION_LIST);
     trackIt->second->rebuildModulation(modulationListTree);
 }

@@ -103,6 +103,7 @@ public:
                    const std::string& pluginId) override;
     void addFxSlot(int trackIndex, const std::string& type,
                    int position, const std::string& pluginId) override;
+    void addMidiFxSlot(int trackIndex, const std::string& type, int position) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,

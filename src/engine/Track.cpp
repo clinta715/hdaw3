@@ -208,10 +208,37 @@ void Track::rebuildModulation(const juce::ValueTree& modulationListTree)
     modulationManager->rebuild(modulationListTree, getSampleRate());
 }
 
+void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
+{
+    juce::SpinLock::ScopedLockType lock(stateLock);
+    midiFxChain.clear();
+    if (!midiFxChainTree.isValid()) return;
+
+    for (int i = 0; i < midiFxChainTree.getNumChildren(); ++i)
+    {
+        auto slotTree = midiFxChainTree.getChild(i);
+        juce::String type = slotTree.getProperty(IDs::fxType).toString();
+        std::unique_ptr<MidiEffect> effect;
+        if (type == "arpeggiator")
+        {
+            auto arp = std::make_unique<Arpeggiator>();
+            arp->rate = static_cast<double>(slotTree.getProperty(IDs::arpRate, 0.25));
+            arp->pattern = static_cast<int>(slotTree.getProperty(IDs::arpPattern, 0));
+            arp->octaves = static_cast<int>(slotTree.getProperty(IDs::arpOctaves, 1));
+            arp->gate = static_cast<double>(slotTree.getProperty(IDs::arpGate, 0.5));
+            effect = std::move(arp);
+        }
+        if (effect)
+        {
+            auto slot = std::make_unique<MidiFxSlot>(std::move(effect), type);
+            slot->setBypassed(static_cast<bool>(slotTree.getProperty(IDs::bypassed, false)));
+            midiFxChain.push_back(std::move(slot));
+        }
+    }
+}
+
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    juce::ignoreUnused(midiMessages);
-
     // Run automation loop BEFORE mute check so mute automation can both
     // silence and un-silence the track.
     if (auto* ph = getPlayHead())
@@ -256,9 +283,28 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         return;
     }
 
-    // Apply FX chain (DSP + plugins)
+    // Apply MIDI FX (arpeggiator etc.) first, then the audio FX chain
+    // (DSP + plugins). The MIDI FX transforms midiMessages so the instrument
+    // slot in the audio chain receives the arpeggiated/processed MIDI.
     if (stateLock.tryEnter())
     {
+        if (!midiFxChain.empty())
+        {
+            juce::AudioPlayHead::PositionInfo midiPos;
+            bool hasPos = false;
+            if (auto* ph = getPlayHead())
+            {
+                if (auto p = ph->getPosition())
+                {
+                    midiPos = *p;
+                    hasPos = true;
+                }
+            }
+            for (const auto& slot : midiFxChain)
+                if (slot)
+                    slot->process(midiMessages, hasPos ? &midiPos : nullptr,
+                                  fxSpec.sampleRate, buffer.getNumSamples());
+        }
         for (const auto& slot : fxChain)
         {
             if (slot)

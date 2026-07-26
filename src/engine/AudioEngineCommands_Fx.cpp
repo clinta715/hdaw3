@@ -80,6 +80,36 @@ void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
     fxChain.addChild(slot, insertIdx, &um);
 }
 
+void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type, int position)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto chain = track.getChildWithName(IDs::MIDI_FX_CHAIN);
+    if (!chain.isValid())
+    {
+        chain = juce::ValueTree(IDs::MIDI_FX_CHAIN);
+        track.addChild(chain, -1, &um);
+    }
+
+    juce::ValueTree slot(IDs::MIDI_FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String(type), &um);
+    slot.setProperty(IDs::bypassed, false, &um);
+    if (type == "arpeggiator")
+    {
+        slot.setProperty(IDs::arpRate, 0.25, &um);
+        slot.setProperty(IDs::arpPattern, 0, &um);
+        slot.setProperty(IDs::arpOctaves, 1, &um);
+        slot.setProperty(IDs::arpGate, 0.5, &um);
+    }
+
+    int n = chain.getNumChildren();
+    int insertIdx = (position < 0 || position > n) ? n : position;
+    chain.addChild(slot, insertIdx, &um);
+}
+
 void AudioEngineCommands::removeFxSlot(int trackIndex, int slotIndex)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
