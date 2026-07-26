@@ -1,32 +1,57 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
+import { useTransportStore } from "../store/transportStore";
 import { reportRpcError } from "../store/notifyStore";
 import { rpc } from "../rpc";
 import { NoteSnapshot } from "../rpc/types";
 import "./StepSequencer.css";
 
 const ROWS = 8;
-const STEPS = 16;
+const MAX_STEPS = 16;
 const BASE_NOTE = 48; // C3
 const STEP_BEATS = 1 / 16;  // each column is a 1/16 note
 const DEFAULT_VELOCITY = 96;
 
+// Drum-style row labels (top row 0 = highest pitch). Cosmetic guidance for
+// drum-style programming.
+export const DRUM_LABELS = [
+  "Crash", "OpHat", "ClHat", "HiTom", "MidTom", "LoTom", "Snare", "Kick",
+];
+
 // Map a grid cell to the pitch it represents. Row 0 = top = highest pitch.
-function cellPitch(row: number): number {
+export function cellPitch(row: number): number {
   return BASE_NOTE + (ROWS - 1 - row);
 }
 // Map a grid cell to its start beat (column 0 = beat 0).
 function cellStartBeat(col: number): number {
   return col * STEP_BEATS;
 }
+// Current sequencer step for a clip-local beat position. -1 if out of range.
+export function computeCurrentStep(localBeat: number, stepBeats: number, patternLength: number): number {
+  if (patternLength <= 0 || stepBeats <= 0 || localBeat < 0) return -1;
+  return Math.floor(localBeat / stepBeats) % patternLength;
+}
+
+const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function noteLabel(row: number): string {
+  const p = cellPitch(row);
+  return `${noteNames[p % 12]}${Math.floor(p / 12) - 1}`;
+}
+
+function blank<T>(value: T): T[][] {
+  return Array.from({ length: ROWS }, () => Array(MAX_STEPS).fill(value));
+}
 
 export default function StepSequencer() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
-  const [steps, setSteps] = useState<boolean[][]>(
-    Array.from({ length: ROWS }, () => Array(STEPS).fill(false))
-  );
+  const [steps, setSteps] = useState<boolean[][]>(blank(false));
+  const [velocity, setVelocity] = useState<number[][]>(blank(DEFAULT_VELOCITY));
+  const [patternLength, setPatternLength] = useState(MAX_STEPS);
+  const [labelMode, setLabelMode] = useState<"note" | "drum">("note");
+  const [currentStep, setCurrentStep] = useState(-1);
   const lastLoadedClipId = useRef<number | null>(null);
 
   const midiClip = snapshot?.clips.find(
@@ -34,13 +59,13 @@ export default function StepSequencer() {
   );
 
   // Populate the grid from existing MIDI notes whenever the selected clip
-  // changes. Notes whose pitch is in our row range and whose startBeat lines
-  // up with a column are turned on; everything else is left off.
+  // changes, capturing per-step velocity.
   useEffect(() => {
     const clipId = midiClip?.clipId ?? null;
     if (clipId == null) {
       if (lastLoadedClipId.current !== null) {
-        setSteps(Array.from({ length: ROWS }, () => Array(STEPS).fill(false)));
+        setSteps(blank(false));
+        setVelocity(blank(DEFAULT_VELOCITY));
         lastLoadedClipId.current = null;
       }
       return;
@@ -51,19 +76,54 @@ export default function StepSequencer() {
     rpc.call("read.getNotes", { clipId })
       .then((data) => {
         if (!Array.isArray(data)) return;
-        const next = Array.from({ length: ROWS }, () => Array(STEPS).fill(false));
+        const nextOn = blank(false);
+        const nextVel = blank(DEFAULT_VELOCITY);
         for (const n of data as NoteSnapshot[]) {
           const row = ROWS - 1 - (n.pitch - BASE_NOTE);
           if (row < 0 || row >= ROWS) continue;
           const col = Math.round(n.startBeat / STEP_BEATS);
-          if (col < 0 || col >= STEPS) continue;
-          if (Math.abs(n.startBeat - col * STEP_BEATS) < STEP_BEATS / 4)
-            next[row][col] = true;
+          if (col < 0 || col >= MAX_STEPS) continue;
+          if (Math.abs(n.startBeat - col * STEP_BEATS) < STEP_BEATS / 4) {
+            nextOn[row][col] = true;
+            nextVel[row][col] = n.velocity;
+          }
         }
-        setSteps(next);
+        setSteps(nextOn);
+        setVelocity(nextVel);
       })
       .catch((err) => reportRpcError("read.getNotes", err));
   }, [midiClip?.clipId]);
+
+  // Playhead highlight: poll the transport position on an animation frame while
+  // playing, mapping the clip-local beat to the current step.
+  useEffect(() => {
+    if (!midiClip) {
+      setCurrentStep(-1);
+      return;
+    }
+    const clipStartBeat = midiClip.startBeat;
+    let raf = 0;
+    const tick = () => {
+      const tr = useTransportStore.getState().transport;
+      if (!tr.isPlaying) {
+        setCurrentStep(-1);
+      } else {
+        const localBeat = tr.currentTimeSeconds * (tr.bpm / 60) - clipStartBeat;
+        setCurrentStep(computeCurrentStep(localBeat, STEP_BEATS, patternLength));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [midiClip?.clipId, midiClip?.startBeat, patternLength]);
+
+  const setStepVel = (row: number, col: number, value: number) => {
+    setVelocity((prev) => {
+      const next = prev.map((r) => [...r]);
+      next[row][col] = value;
+      return next;
+    });
+  };
 
   const toggleStep = useCallback((row: number, col: number) => {
     const clipId = midiClip?.clipId;
@@ -72,14 +132,12 @@ export default function StepSequencer() {
     const pitch = cellPitch(row);
     const startBeat = cellStartBeat(col);
 
-    // Optimistic local flip
     setSteps((prev) => {
       const next = prev.map((r) => [...r]);
       next[row][col] = !next[row][col];
       return next;
     });
 
-    // Rollback the optimistic flip on RPC failure
     const rollback = () => {
       setSteps((prev) => {
         const next = prev.map((r) => [...r]);
@@ -89,7 +147,6 @@ export default function StepSequencer() {
     };
 
     if (wasOn) {
-      // Turn off: find the note at this pitch+beat and remove it.
       rpc.call("read.getNotes", { clipId })
         .then((data) => {
           if (!Array.isArray(data)) { rollback(); return; }
@@ -103,18 +160,44 @@ export default function StepSequencer() {
         })
         .catch((err) => { reportRpcError("read.getNotes", err); rollback(); });
     } else {
-      // Turn on: add a 1/16-length note.
       rpc.call("project.addNote", {
         clipId,
         pitch,
-        velocity: DEFAULT_VELOCITY,
+        velocity: velocity[row][col],
         startBeat,
         durationBeats: STEP_BEATS,
       }).catch((err) => { reportRpcError("project.addNote", err); rollback(); });
     }
-  }, [midiClip?.clipId, steps]);
+  }, [midiClip?.clipId, steps, velocity]);
 
-  const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  // Per-step velocity editing: shift-click louder, alt-click quieter. Only
+  // affects active steps; persists via setNoteVelocity.
+  const adjustVelocity = useCallback((row: number, col: number, delta: number) => {
+    const clipId = midiClip?.clipId;
+    if (clipId == null || !steps[row][col]) return;
+    const pitch = cellPitch(row);
+    const startBeat = cellStartBeat(col);
+    const next = Math.max(1, Math.min(127, velocity[row][col] + delta));
+    setStepVel(row, col, next);
+    rpc.call("read.getNotes", { clipId })
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const match = (data as NoteSnapshot[]).find(
+          (n) => n.pitch === pitch && Math.abs(n.startBeat - startBeat) < STEP_BEATS / 4
+        );
+        if (match) {
+          rpc.call("project.setNoteVelocity", { noteId: match.noteId, velocity: next })
+            .catch((err) => reportRpcError("project.setNoteVelocity", err));
+        }
+      })
+      .catch((err) => reportRpcError("read.getNotes", err));
+  }, [midiClip?.clipId, steps, velocity]);
+
+  const handleCell = (row: number, col: number, e: React.MouseEvent) => {
+    if (e.shiftKey) { adjustVelocity(row, col, 8); return; }
+    if (e.altKey) { adjustVelocity(row, col, -8); return; }
+    toggleStep(row, col);
+  };
 
   return (
     <div className="step-sequencer">
@@ -125,30 +208,54 @@ export default function StepSequencer() {
         ) : (
           <span className="ss-empty-hint">Select a MIDI clip to edit</span>
         )}
+        <span className="ss-spacer" />
+        <label className="ss-toggle">
+          <input
+            type="checkbox"
+            checked={labelMode === "drum"}
+            onChange={(e) => setLabelMode(e.target.checked ? "drum" : "note")}
+          />
+          Drum
+        </label>
+        <select
+          className="ss-length"
+          value={patternLength}
+          onChange={(e) => setPatternLength(Number(e.target.value))}
+          title="Pattern length"
+        >
+          <option value={8}>8</option>
+          <option value={16}>16</option>
+        </select>
       </div>
       <div className="ss-grid">
         {Array.from({ length: ROWS }, (_, row) => (
           <div key={row} className="ss-row">
             <div className="ss-note-label">
-              {noteNames[cellPitch(row) % 12]}
-              {Math.floor(cellPitch(row) / 12) - 1}
+              {labelMode === "drum" ? DRUM_LABELS[row] : noteLabel(row)}
             </div>
-            {Array.from({ length: STEPS }, (_, col) => (
-              <div
-                key={col}
-                className={`ss-cell${steps[row][col] ? " active" : ""}${col % 4 === 0 ? " beat" : ""}`}
-                onClick={() => toggleStep(row, col)}
-              />
-            ))}
+            {Array.from({ length: patternLength }, (_, col) => {
+              const on = steps[row][col];
+              const opacity = on ? 0.35 + 0.65 * (velocity[row][col] / 127) : 1;
+              return (
+                <div
+                  key={col}
+                  className={`ss-cell${on ? " active" : ""}${col % 4 === 0 ? " beat" : ""}${col === currentStep ? " playhead" : ""}`}
+                  style={on ? { opacity } : undefined}
+                  title={on ? `vel ${velocity[row][col]}` : undefined}
+                  onClick={(e) => handleCell(row, col, e)}
+                />
+              );
+            })}
           </div>
         ))}
         <div className="ss-step-labels">
           <div className="ss-note-label" />
-          {Array.from({ length: STEPS }, (_, i) => (
-            <div key={i} className="ss-step-num">{i + 1}</div>
+          {Array.from({ length: patternLength }, (_, i) => (
+            <div key={i} className={`ss-step-num${i === currentStep ? " playhead" : ""}`}>{i + 1}</div>
           ))}
         </div>
       </div>
+      <div className="ss-hint">click: toggle · shift-click: louder · alt-click: quieter</div>
     </div>
   );
 }
