@@ -12,6 +12,7 @@ import AudioClipEditor from "./components/AudioClipEditor";
 import StepSequencer from "./components/StepSequencer";
 import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
+import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
@@ -126,6 +127,7 @@ function App() {
     { id: "piano-roll", label: "Piano Roll", content: <PianoRoll /> },
     { id: "automation", label: "Automation", content: <AutomationPanel rpc={rpc} /> },
     { id: "fx", label: "FX Chain", content: <FXChain /> },
+    { id: "midi-fx", label: "MIDI FX", content: <MidiFxChain /> },
     { id: "audio-editor", label: "Audio Editor", content: <AudioClipEditor /> },
     { id: "modulation", label: "Modulation", content: <ModulationPanel /> },
     { id: "step-seq", label: "Step Seq", content: <StepSequencer /> },

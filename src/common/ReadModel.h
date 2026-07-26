@@ -88,6 +88,12 @@ struct FxSlotSnapshot {
     int paramCount = 0;
 };
 
+struct MidiFxSlotSnapshot {
+    int slotIndex = 0;
+    std::string fxType;
+    bool bypassed = false;
+};
+
 struct AutomationLaneSnapshot {
     int laneIndex = 0;
     std::string name;
@@ -162,6 +168,7 @@ public:
     virtual int getScaleMode() const = 0;
 
     virtual std::vector<FxSlotSnapshot> getFxSlots(int trackIndex) const = 0;
+    virtual std::vector<MidiFxSlotSnapshot> getMidiFxSlots(int trackIndex) const = 0;
     virtual std::vector<InternalFxParamSnapshot> getInternalFxParams(int trackIndex,
         int slotIndex) const = 0;
     virtual std::vector<AutomationLaneSnapshot> getAutomationLanes(int trackIndex) const = 0;

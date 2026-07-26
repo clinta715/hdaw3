@@ -525,6 +525,18 @@ void RoutingManager::rebuildTrackFX(int trackIndex)
     trackIt->second->rebuildModulation(modulationListTree);
 }
 
+void RoutingManager::rebuildMidiTrackFX(int trackIndex)
+{
+    auto trackIt = trackProcessors.find(trackIndex);
+    if (trackIt == trackProcessors.end()) return;
+
+    auto trackList = projectModel.getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return;
+
+    auto trackTree = trackList.getChild(trackIndex);
+    trackIt->second->rebuildMidiFXChain(trackTree.getChildWithName(IDs::MIDI_FX_CHAIN));
+}
+
 HDAW::Track* RoutingManager::getTrackNode(int trackIndex) const
 {
     auto it = trackProcessors.find(trackIndex);

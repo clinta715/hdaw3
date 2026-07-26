@@ -96,6 +96,8 @@ public:
                            int position = -1, const std::string& pluginId = "") = 0;
     // MIDI FX operations (type: "arpeggiator")
     virtual void addMidiFxSlot(int trackIndex, const std::string& type, int position = -1) = 0;
+    virtual void removeMidiFxSlot(int trackIndex, int slotIndex) = 0;
+    virtual void setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     virtual void removeFxSlot(int trackIndex, int slotIndex) = 0;
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,

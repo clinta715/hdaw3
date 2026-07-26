@@ -104,6 +104,8 @@ public:
     void addFxSlot(int trackIndex, const std::string& type,
                    int position, const std::string& pluginId) override;
     void addMidiFxSlot(int trackIndex, const std::string& type, int position) override;
+    void removeMidiFxSlot(int trackIndex, int slotIndex) override;
+    void setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
@@ -223,6 +225,7 @@ private:
 
     // Find the FX_SLOT child at slotIndex in a track's FX_CHAIN.
     juce::ValueTree findFxSlot(int trackIndex, int slotIndex) const;
+    juce::ValueTree findMidiFxSlot(int trackIndex, int slotIndex) const;
 
     // Look up a plugin's display name from the plugin service by fileOrIdentifier.
     std::string resolvePluginName(const std::string& pluginId) const;

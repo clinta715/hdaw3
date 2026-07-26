@@ -105,6 +105,12 @@ export interface FxSlotSnapshot {
   paramCount: number;
 }
 
+export interface MidiFxSlotSnapshot {
+  slotIndex: number;
+  fxType: string;
+  bypassed: boolean;
+}
+
 export interface AutomatableParamSnapshot {
   slotIndex: number;
   paramIndex: number;

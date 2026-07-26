@@ -1,0 +1,81 @@
+.midi-fx-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.mfx-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mfx-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.mfx-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.mfx-add-select {
+  font-size: 11px;
+  padding: 2px 4px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.mfx-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.mfx-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-widget);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.mfx-slot--bypassed {
+  opacity: 0.5;
+}
+
+.mfx-slot-index {
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 14px;
+  text-align: right;
+}
+
+.mfx-slot-type {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.mfx-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.mfx-btn:hover {
+  color: var(--text-muted);
+}

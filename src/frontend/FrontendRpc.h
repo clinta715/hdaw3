@@ -154,6 +154,14 @@ inline QJsonObject toJson(const FxSlotSnapshot& f) {
     };
 }
 
+inline QJsonObject toJson(const MidiFxSlotSnapshot& f) {
+    return QJsonObject{
+        { "slotIndex", f.slotIndex },
+        { "fxType",    QString::fromStdString(f.fxType) },
+        { "bypassed",  f.bypassed },
+    };
+}
+
 inline QJsonObject toJson(const AutomationLaneSnapshot& l) {
     return QJsonObject{
         { "laneIndex", l.laneIndex },

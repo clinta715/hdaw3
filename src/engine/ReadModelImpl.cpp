@@ -313,6 +313,29 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
     return result;
 }
 
+std::vector<MidiFxSlotSnapshot> ReadModelImpl::getMidiFxSlots(int trackIndex) const
+{
+    std::vector<MidiFxSlotSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+
+    auto chain = trackList.getChild(trackIndex).getChildWithName(IDs::MIDI_FX_CHAIN);
+    if (!chain.isValid())
+        return result;
+
+    for (int i = 0; i < chain.getNumChildren(); ++i)
+    {
+        auto slot = chain.getChild(i);
+        MidiFxSlotSnapshot s;
+        s.slotIndex = i;
+        s.fxType = slot.getProperty(IDs::fxType, "").toString().toStdString();
+        s.bypassed = slot.getProperty(IDs::bypassed, false);
+        result.push_back(s);
+    }
+    return result;
+}
+
 std::vector<InternalFxParamSnapshot> ReadModelImpl::getInternalFxParams(int trackIndex,
     int slotIndex) const
 {

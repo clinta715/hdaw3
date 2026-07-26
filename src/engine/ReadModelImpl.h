@@ -22,6 +22,7 @@ public:
     int getScaleMode() const override;
 
     std::vector<FxSlotSnapshot> getFxSlots(int trackIndex) const override;
+    std::vector<MidiFxSlotSnapshot> getMidiFxSlots(int trackIndex) const override;
     std::vector<InternalFxParamSnapshot> getInternalFxParams(int trackIndex,
         int slotIndex) const override;
     std::vector<AutomationLaneSnapshot> getAutomationLanes(int trackIndex) const override;

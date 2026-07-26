@@ -125,6 +125,40 @@ void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type,
     int n = chain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
     chain.addChild(slot, insertIdx, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildMidiTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::removeMidiFxSlot(int trackIndex, int slotIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findMidiFxSlot(trackIndex, slotIndex);
+    if (slot.isValid())
+        slot.getParent().removeChild(slot, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildMidiTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findMidiFxSlot(trackIndex, slotIndex);
+    if (slot.isValid())
+        slot.setProperty(IDs::bypassed, bypassed, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildMidiTrackFX(trackIndex);
+}
+
+juce::ValueTree AudioEngineCommands::findMidiFxSlot(int trackIndex, int slotIndex) const
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return {};
+    auto chain = trackList.getChild(trackIndex).getChildWithName(IDs::MIDI_FX_CHAIN);
+    if (!chain.isValid() || slotIndex < 0 || slotIndex >= chain.getNumChildren())
+        return {};
+    return chain.getChild(slotIndex);
 }
 
 void AudioEngineCommands::removeFxSlot(int trackIndex, int slotIndex)

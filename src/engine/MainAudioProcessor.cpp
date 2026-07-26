@@ -343,6 +343,12 @@ void MainAudioProcessor::rebuildTrackFX(int trackIndex)
         routingManager->rebuildTrackFX(trackIndex);
 }
 
+void MainAudioProcessor::rebuildMidiTrackFX(int trackIndex)
+{
+    if (routingManager != nullptr)
+        routingManager->rebuildMidiTrackFX(trackIndex);
+}
+
 void MainAudioProcessor::rebuildModulation(int trackIndex)
 {
     if (routingManager == nullptr) return;
