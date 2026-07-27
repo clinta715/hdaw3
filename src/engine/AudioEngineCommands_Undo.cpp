@@ -71,6 +71,18 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
         return false;
     }
 
+    // Migration: ensure all existing tracks have trackType property (default 0 = audio)
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackList.isValid())
+    {
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+        {
+            auto track = trackList.getChild(t);
+            if (!track.hasProperty(IDs::trackType))
+                track.setProperty(IDs::trackType, 0, nullptr);
+        }
+    }
+
     sendProgress("Building audio graph...", 0.3f);
 
     auto* proc = engine_.getMainProcessor();
