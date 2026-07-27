@@ -29,6 +29,10 @@ public:
     void setTrackInputMonitor(int trackIndex, bool monitor) override;
     void setTrackHeight(int trackIndex, int height) override;
     void setTrackMidiChannel(int trackIndex, int channel) override;
+    void setTrackType(int trackIndex, int type) override;
+    void setTrackCollapsed(int trackIndex, bool collapsed) override;
+    void moveTrackIntoFolder(int trackIndex, int folderIndex) override;
+    void moveTrackOutOfFolder(int trackIndex) override;
 
     // ProjectCommands — Clip operations
     int addAudioClip(int trackIndex, double start, double duration,

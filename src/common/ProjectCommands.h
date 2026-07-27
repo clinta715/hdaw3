@@ -22,6 +22,10 @@ public:
     virtual void setTrackInputMonitor(int trackIndex, bool monitor) = 0;
     virtual void setTrackHeight(int trackIndex, int height) = 0;
     virtual void setTrackMidiChannel(int trackIndex, int channel) = 0;
+    virtual void setTrackType(int trackIndex, int type) = 0;
+    virtual void setTrackCollapsed(int trackIndex, bool collapsed) = 0;
+    virtual void moveTrackIntoFolder(int trackIndex, int folderIndex) = 0;
+    virtual void moveTrackOutOfFolder(int trackIndex) = 0;
 
     // Clip operations
     virtual int addAudioClip(int trackIndex, double start, double duration,

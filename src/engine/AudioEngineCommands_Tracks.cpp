@@ -1,6 +1,7 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
+#include <sstream>
 
 // ─── ProjectCommands — Track operations ───────────────────────────
 
@@ -145,4 +146,97 @@ int AudioEngineCommands::duplicateTrack(int trackIndex)
     int newIdx = trackList.getNumChildren();
     trackList.addChild(copy, newIdx, &um);
     return newIdx;
+}
+
+void AudioEngineCommands::setTrackType(int trackIndex, int type)
+{
+    auto& project = engine_.getProjectModel();
+    auto trackList = project.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto track = trackList.getChild(trackIndex);
+    track.setProperty(IDs::trackType, type, &project.getUndoManager());
+}
+
+void AudioEngineCommands::setTrackCollapsed(int trackIndex, bool collapsed)
+{
+    auto& project = engine_.getProjectModel();
+    auto trackList = project.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto track = trackList.getChild(trackIndex);
+    track.setProperty(IDs::isCollapsed, collapsed, &project.getUndoManager());
+}
+
+void AudioEngineCommands::moveTrackIntoFolder(int trackIndex, int folderIndex)
+{
+    auto& project = engine_.getProjectModel();
+    auto trackList = project.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    if (folderIndex < 0 || folderIndex >= trackList.getNumChildren()) return;
+    if (trackIndex == folderIndex) return;
+
+    auto track = trackList.getChild(trackIndex);
+    auto folder = trackList.getChild(folderIndex);
+
+    // Check folder is actually a folder
+    if (static_cast<int>(folder.getProperty(IDs::trackType, 0)) != 2) return;
+
+    // Remove from old parent if any
+    int oldParent = track.getProperty(IDs::parentId, -1);
+    if (oldParent >= 0 && oldParent < trackList.getNumChildren())
+    {
+        auto oldFolder = trackList.getChild(oldParent);
+        auto childIds = oldFolder.getProperty(IDs::childIds, "").toString().toStdString();
+        std::string newChildIds;
+        std::istringstream iss(childIds);
+        std::string token;
+        bool first = true;
+        while (std::getline(iss, token, ','))
+        {
+            if (!token.empty() && std::stoi(token) != trackIndex)
+            {
+                if (!first) newChildIds += ",";
+                newChildIds += token;
+                first = false;
+            }
+        }
+        oldFolder.setProperty(IDs::childIds, juce::String(newChildIds), &project.getUndoManager());
+    }
+
+    // Add to new folder
+    auto childIds = folder.getProperty(IDs::childIds, "").toString().toStdString();
+    if (!childIds.empty()) childIds += ",";
+    childIds += std::to_string(trackIndex);
+    folder.setProperty(IDs::childIds, juce::String(childIds), &project.getUndoManager());
+    track.setProperty(IDs::parentId, folderIndex, &project.getUndoManager());
+}
+
+void AudioEngineCommands::moveTrackOutOfFolder(int trackIndex)
+{
+    auto& project = engine_.getProjectModel();
+    auto trackList = project.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+
+    auto track = trackList.getChild(trackIndex);
+    int parentId = track.getProperty(IDs::parentId, -1);
+    if (parentId < 0 || parentId >= trackList.getNumChildren()) return;
+
+    auto parent = trackList.getChild(parentId);
+
+    // Remove from parent's childIds
+    auto childIds = parent.getProperty(IDs::childIds, "").toString().toStdString();
+    std::string newChildIds;
+    std::istringstream iss(childIds);
+    std::string token;
+    bool first = true;
+    while (std::getline(iss, token, ','))
+    {
+        if (!token.empty() && std::stoi(token) != trackIndex)
+        {
+            if (!first) newChildIds += ",";
+            newChildIds += token;
+            first = false;
+        }
+    }
+    parent.setProperty(IDs::childIds, juce::String(newChildIds), &project.getUndoManager());
+    track.setProperty(IDs::parentId, -1, &project.getUndoManager());
 }
