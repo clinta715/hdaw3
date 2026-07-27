@@ -28,6 +28,22 @@ export default function TimelineMinimal() {
   const tracks = snapshot?.tracks ?? [];
   const clips = snapshot?.clips ?? [];
 
+  // Build set of hidden track indices (children of collapsed folders)
+  const hiddenIndices = useMemo(() => {
+    const hidden = new Set<number>();
+    for (const track of tracks) {
+      if (track.trackType === 2 && track.isCollapsed) {
+        for (const child of tracks) {
+          if (child.parentId === track.index) {
+            hidden.add(child.index);
+          }
+        }
+      }
+    }
+    return hidden;
+  }, [tracks]);
+  const visibleTracks = useMemo(() => tracks.filter(t => !hiddenIndices.has(t.index)), [tracks, hiddenIndices]);
+
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
   const engagementRef = useRef<"none" | "clip" | "rubber">("none");
@@ -52,7 +68,7 @@ export default function TimelineMinimal() {
     pps,
     TRACK_HEIGHT,
     tracksRef,
-    trackCount: tracks.length,
+    trackCount: visibleTracks.length,
     rpc,
     engagementRef,
   });
@@ -123,7 +139,7 @@ export default function TimelineMinimal() {
 
   // --- Dimensions ---
   const totalW = Math.max(maxEnd * pps, 800);
-  const totalH = tracks.length * TRACK_HEIGHT;
+  const totalH = visibleTracks.length * TRACK_HEIGHT;
 
   // --- Playhead ---
   const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
@@ -607,12 +623,12 @@ export default function TimelineMinimal() {
               if (!el) return;
               const rect = el.getBoundingClientRect();
               const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
-              const trackIndex = Math.min(Math.max(0, Math.floor((e.clientY - rect.top + el.scrollTop) / TRACK_HEIGHT)), tracks.length - 1);
+              const trackIndex = Math.min(Math.max(0, Math.floor((e.clientY - rect.top + el.scrollTop) / TRACK_HEIGHT)), visibleTracks.length - 1);
               setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat, trackIndex });
             }}>
-            {tracks.map((track, idx) => {
+            {visibleTracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
-              const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), tracks.length - 1);
+              const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), visibleTracks.length - 1);
               return (
                 <div
                   key={track.index}
