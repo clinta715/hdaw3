@@ -122,6 +122,10 @@ namespace IDs {
 
     // Track UI state
     DECLARE_ID(trackHeight)
+    DECLARE_ID(trackType)
+    DECLARE_ID(childIds)
+    DECLARE_ID(parentId)
+    DECLARE_ID(isCollapsed)
 
     // Plugin hosting
     DECLARE_ID(pluginID)
