@@ -5,9 +5,35 @@ import { rpc } from "../rpc";
 import { colorStr } from "../theme";
 import "./TrackHeaders.css";
 
+const TRACK_TYPE_ICONS: Record<number, string> = {
+  0: "\u25B2",       // audio: triangle
+  1: "\u266B",       // instrument: music note
+  2: "\u25BC",       // folder: down triangle
+};
+
+const TRACK_TYPE_COLORS: Record<number, string> = {
+  0: "#4a9eff",      // audio: blue
+  1: "#9b59b6",      // instrument: purple
+  2: "#f39c12",      // folder: orange
+};
+
 export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const tracks = snapshot?.tracks ?? [];
+
+  // Build set of hidden track indices (children of collapsed folders)
+  const hiddenIndices = new Set<number>();
+  for (const track of tracks) {
+    if (track.trackType === 2 && track.isCollapsed) {
+      for (const child of tracks) {
+        if (child.parentId === track.index) {
+          hiddenIndices.add(child.index);
+        }
+      }
+    }
+  }
+  const visibleTracks = tracks.filter(t => !hiddenIndices.has(t.index));
+
   const trackMeters = useMeterStore((s) => s.tracks);
   const selectClip = useUiStore((s) => s.selectClip);
 
@@ -70,10 +96,30 @@ export default function TrackHeaders() {
       {tracks.length === 0 && (
         <div className="th-empty">No tracks loaded</div>
       )}
-      {tracks.map((track, i) => {
-        const meter = trackMeters[i] ?? { l: 0, r: 0 };
+      {visibleTracks.map((track) => {
+        const meter = trackMeters[track.index] ?? { l: 0, r: 0 };
         return (
-        <div key={track.index} className="th-row" onClick={() => selectClip(null, track.index)}>
+        <div
+          key={track.index}
+          className={`th-row${track.trackType === 2 ? " th-folder" : ""}`}
+          style={{ paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
+          onClick={() => selectClip(null, track.index)}
+        >
+          <div className="th-type-badge" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>
+            {track.trackType === 2 && (
+              <span
+                className="th-chevron"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.setTrackCollapsed", { trackIndex: track.index, collapsed: !track.isCollapsed }).catch(console.error);
+                }}
+                title={track.isCollapsed ? "Expand folder" : "Collapse folder"}
+              >
+                {track.isCollapsed ? "\u25B6" : "\u25BC"}
+              </span>
+            )}
+            {TRACK_TYPE_ICONS[track.trackType] ?? TRACK_TYPE_ICONS[0]}
+          </div>
           <div
             className="th-color"
             style={{ background: colorStr(track.color), cursor: "pointer" }}

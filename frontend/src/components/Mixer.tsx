@@ -33,6 +33,7 @@ export default function Mixer() {
             volume: 1, pan: 0, muted: false, soloed: false,
             armed: false, inputMonitor: false,
             height: 80, midiChannel: 0, clipCount: 0,
+            trackType: 0, effectiveMuted: false, effectiveSoloed: false,
           }}
           meter={masterMeter}
           isMaster

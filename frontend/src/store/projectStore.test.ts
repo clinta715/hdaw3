@@ -29,6 +29,9 @@ const mockSnapshot: ProjectSnapshot = {
       height: 80,
       midiChannel: 0,
       clipCount: 2,
+      trackType: 0,
+      effectiveMuted: false,
+      effectiveSoloed: false,
     },
     {
       index: 1,
@@ -43,6 +46,9 @@ const mockSnapshot: ProjectSnapshot = {
       height: 80,
       midiChannel: 0,
       clipCount: 0,
+      trackType: 0,
+      effectiveMuted: false,
+      effectiveSoloed: false,
     },
   ],
   clips: [

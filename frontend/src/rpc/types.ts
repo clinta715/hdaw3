@@ -25,6 +25,12 @@ export interface TrackSnapshot {
   height: number;
   midiChannel: number;
   clipCount: number;
+  trackType: number;      // 0=audio, 1=instrument, 2=folder
+  childIds?: number[];    // folder tracks: indices of children
+  parentId?: number;      // child tracks: index of parent folder (-1 = none)
+  isCollapsed?: boolean;  // folder tracks: collapse state
+  effectiveMuted: boolean;   // cascaded from parent folders
+  effectiveSoloed: boolean;  // cascaded from parent folders
 }
 
 export interface GainEnvelopePoint {

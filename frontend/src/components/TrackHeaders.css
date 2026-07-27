@@ -195,3 +195,22 @@
 .th-resize-handle:hover {
   background: rgba(217, 119, 6, 0.3);
 }
+
+.th-type-badge {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.th-chevron {
+  cursor: pointer;
+  font-size: 8px;
+  user-select: none;
+}
+
+.th-folder {
+  background: rgba(243, 156, 18, 0.08);
+}

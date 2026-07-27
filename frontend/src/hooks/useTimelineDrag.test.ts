@@ -64,6 +64,7 @@ describe("useTimelineDrag", () => {
             index: 0, name: "Track 1", color: 0, volume: 1, pan: 0,
             muted: false, soloed: false, armed: false, inputMonitor: false,
             height: 56, midiChannel: 0, clipCount: 1,
+            trackType: 0, effectiveMuted: false, effectiveSoloed: false,
           },
         ],
         clips: [makeClip(1, 0, 0)],
