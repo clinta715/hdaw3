@@ -28,6 +28,13 @@ RoutingManager::~RoutingManager()
     midiInputNode = nullptr;
 }
 
+bool RoutingManager::isFolderTrack(const juce::ValueTree& trackTree)
+{
+    if (!trackTree.isValid()) return false;
+    int type = trackTree.getProperty(IDs::trackType, 0);
+    return type == 2; // 2 = folder
+}
+
 void RoutingManager::rebuildFromValueTree()
 {
     graph.clear();
@@ -80,6 +87,7 @@ void RoutingManager::rebuildFromValueTree()
     for (int t = 0; t < trackList.getNumChildren(); ++t)
     {
         auto trackTree = trackList.getChild(t);
+        if (isFolderTrack(trackTree)) continue; // Folders are visual-only, no audio routing
         addTrack(t, trackTree);
     }
 }
@@ -107,6 +115,8 @@ void RoutingManager::reconnectMasterToOutput()
 
 void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
 {
+    if (isFolderTrack(trackTree)) return; // Folders are visual-only
+
     auto newTrack = std::make_unique<HDAW::Track>();
     newTrack->setPluginManager(pluginManager);
     newTrack->setProjectContext(&projectModel, trackIndex);

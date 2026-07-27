@@ -31,6 +31,7 @@ public:
     // Connections added before prepareToPlay are silently rejected (the IO
     // node reports 0 channels until its bus layout is reconciled).
     void reconnectMasterToOutput();
+    static bool isFolderTrack(const juce::ValueTree& trackTree);
     void addTrack(int trackIndex, juce::ValueTree trackTree);
     void removeTrack(int trackIndex);
     void addBus(int busID, juce::ValueTree busTree);
