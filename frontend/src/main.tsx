@@ -9,6 +9,7 @@ import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
 import { TransportSnapshot, MetersPayload, TreeDelta } from "./rpc/types";
 import App from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import StartupDialog from "./components/StartupDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 
@@ -74,9 +75,11 @@ function Root() {
 
   return (
     <React.StrictMode>
-      <LoadingOverlay />
-      {showStartup && <StartupDialog onClose={() => setShowStartup(false)} />}
-      {!showStartup && <App />}
+      <ErrorBoundary>
+        <LoadingOverlay />
+        {showStartup && <StartupDialog onClose={() => setShowStartup(false)} />}
+        {!showStartup && <App />}
+      </ErrorBoundary>
     </React.StrictMode>
   );
 }

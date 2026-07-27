@@ -140,6 +140,35 @@ async function createWindow() {
     }
   });
 
+  // Diagnostics for the "black screen" class of bug: if the renderer or GPU
+  // process dies (crash / OOM), the window goes black with no JS error and no
+  // error boundary to catch it. Surface the reason instead of failing silent.
+  mainWindow.webContents.on("render-process-gone", (_e, details) => {
+    console.error("[main] render-process-gone:", details);
+    if (mainWindow && !mainWindow.isDestroyed() && !showingCrashDialog) {
+      showingCrashDialog = true;
+      dialog.showErrorBox(
+        "Renderer Crashed",
+        `The UI renderer stopped unexpectedly.\nReason: ${details.reason}\nExit code: ${details.exitCode}\n\n` +
+        "Press Ctrl+Shift+A after restarting to open DevTools if it recurs."
+      );
+      showingCrashDialog = false;
+    }
+  });
+
+  mainWindow.webContents.on("unresponsive", () => {
+    console.error("[main] renderer unresponsive (likely infinite loop)");
+    if (mainWindow && !mainWindow.isDestroyed() && !showingCrashDialog) {
+      showingCrashDialog = true;
+      dialog.showErrorBox(
+        "UI Unresponsive",
+        "The UI thread stopped responding (possible infinite loop).\n" +
+        "Press Ctrl+Shift+A to open DevTools and inspect, or close the app."
+      );
+      showingCrashDialog = false;
+    }
+  });
+
   if (process.env.NODE_ENV === "development" || !app.isPackaged) {
     await mainWindow.loadURL("http://localhost:5173");
   } else {
@@ -217,12 +246,13 @@ app.whenReady().then(async () => {
   // shortcuts in the renderer, so the menu provides no value here.
   Menu.setApplicationMenu(null);
   // Keep a convenient way to open DevTools now that the default menu is gone.
+  // Registered regardless of packaging: the packaged app has no menu and no
+  // other way to open DevTools, which made renderer crashes (black screen)
+  // impossible to diagnose. Ctrl+Shift+A toggles DevTools.
   const { globalShortcut } = await import("electron");
-  if (!app.isPackaged) {
-    globalShortcut.register("CommandOrControl+Shift+I", () => {
-      mainWindow?.webContents.toggleDevTools();
-    });
-  }
+  globalShortcut.register("CommandOrControl+Shift+A", () => {
+    mainWindow?.webContents.toggleDevTools();
+  });
 
   const port = getPort();
   childProcess = spawnEngine(port);
