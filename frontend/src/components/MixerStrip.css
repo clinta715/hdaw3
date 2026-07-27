@@ -107,6 +107,11 @@
   border-color: var(--accent);
 }
 
+.ms-btn--cascaded {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
 .ms-fader {
   writing-mode: vertical-lr;
   direction: reverse;

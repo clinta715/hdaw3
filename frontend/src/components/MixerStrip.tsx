@@ -61,20 +61,20 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
       {!isMaster && (
         <div className="ms-buttons">
           <button
-            className={`ms-btn${track.muted ? " active" : ""}`}
+            className={`ms-btn${track.effectiveMuted ? " active" : ""}${track.muted !== track.effectiveMuted ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               rpc.call("project.setTrackMuted", { trackIndex: track.index, muted: !track.muted }).catch(console.error);
             }}
-            title="Mute"
+            title={track.muted !== track.effectiveMuted ? "Muted by parent folder" : "Mute"}
           >M</button>
           <button
-            className={`ms-btn${track.soloed ? " active" : ""}`}
+            className={`ms-btn${track.effectiveSoloed ? " active" : ""}${track.soloed !== track.effectiveSoloed ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               rpc.call("project.setTrackSoloed", { trackIndex: track.index, soloed: !track.soloed }).catch(console.error);
             }}
-            title="Solo"
+            title={track.soloed !== track.effectiveSoloed ? "Soloed by parent folder" : "Solo"}
           >S</button>
           <button
             className={`ms-btn${track.armed ? " active" : ""}`}
