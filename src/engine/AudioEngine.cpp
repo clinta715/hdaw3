@@ -364,6 +364,7 @@ void AudioEngine::finalizeMidiRecClips()
 void AudioEngine::shutdown()
 {
     projectModel.getTree().removeListener(this);
+    cancelPendingUpdate(); // no deferred rebuild fires after teardown
     deviceManager.removeAudioCallback(&processorPlayer);
     processorPlayer.setProcessor(nullptr);
 }
@@ -895,13 +896,13 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
     // arrange window) but the AudioProcessorGraph never processes it (silent).
     if (childWhichHasBeenAdded.hasType(IDs::CLIP) && mainProcessor != nullptr)
     {
-        HDAW_LOG("DIAG", "valueTreeChildAdded: new CLIP, rebuilding routing graph");
-        mainProcessor->rebuildRoutingGraph();
+        HDAW_LOG("DIAG", "valueTreeChildAdded: new CLIP, scheduling routing graph rebuild");
+        triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
     if (childWhichHasBeenAdded.hasType(IDs::TRACK) && mainProcessor != nullptr)
     {
-        HDAW_LOG("DIAG", "valueTreeChildAdded: new TRACK, rebuilding routing graph");
-        mainProcessor->rebuildRoutingGraph();
+        HDAW_LOG("DIAG", "valueTreeChildAdded: new TRACK, scheduling routing graph rebuild");
+        triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
 }
 
@@ -1038,15 +1039,24 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
 
         if (mainProcessor != nullptr)
         {
-            HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, rebuilding routing graph");
-            mainProcessor->rebuildRoutingGraph();
+            HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, scheduling routing graph rebuild");
+            triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
         }
     }
     if (childWhichHasBeenRemoved.hasType(IDs::TRACK) && mainProcessor != nullptr)
     {
-        HDAW_LOG("DIAG", "valueTreeChildRemoved: TRACK removed, rebuilding routing graph");
-        mainProcessor->rebuildRoutingGraph();
+        HDAW_LOG("DIAG", "valueTreeChildRemoved: TRACK removed, scheduling routing graph rebuild");
+        triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
+}
+
+void AudioEngine::handleAsyncUpdate()
+{
+    // Runs on the message thread. Any number of clip/track add/remove events
+    // that called triggerAsyncUpdate() during the same tick collapse into this
+    // single rebuild.
+    if (mainProcessor != nullptr)
+        mainProcessor->rebuildRoutingGraph();
 }
 
 void AudioEngine::rebuildTempoMap()

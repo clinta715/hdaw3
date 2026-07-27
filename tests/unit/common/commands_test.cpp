@@ -285,6 +285,32 @@ TEST(Commands, DuplicateClipToInvalidReturnsNegative)
     EXPECT_LT(cmds.duplicateClipTo(clipId, 0.0, 999), 0);
 }
 
+// Regression: moving (or duplicating) a clip to a position that FULLY COVERS
+// another clip must NOT delete the covered clip. Previously moveClipWithOverlap
+// Case 1 removed it — silent data loss that made clips vanish during normal
+// arrange edits and cascaded into the renderer black screen.
+TEST(Commands, MoveFullyCoveringDoesNotDeleteCoveredClip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int origId = cmds.addMidiClip(0, 0.0, 4.0, "Orig");   // [0, 4]
+    EXPECT_GT(origId, 0);
+    int otherId = cmds.addMidiClip(0, 20.0, 8.0, "Other"); // elsewhere
+    EXPECT_GT(otherId, 0);
+
+    // Move the 8-beat clip to start 0 → it fully covers Orig ([0,8] ⊇ [0,4]).
+    cmds.moveClipWithOverlap(otherId, 0, 0.0);
+
+    auto orig = engine.getReadModel().getClip(origId);
+    EXPECT_EQ(orig.clipId, origId) << "fully-covered clip was deleted (data loss)";
+    EXPECT_DOUBLE_EQ(orig.startBeat, 0.0);
+    EXPECT_DOUBLE_EQ(orig.durationBeats, 4.0);
+
+    auto other = engine.getReadModel().getClip(otherId);
+    EXPECT_DOUBLE_EQ(other.startBeat, 0.0); // incoming clip is still placed
+}
+
 TEST(Commands, ReorderFxSlots)
 {
     AudioEngine engine;

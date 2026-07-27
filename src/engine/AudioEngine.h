@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-class AudioEngine : private juce::ValueTree::Listener
+class AudioEngine : private juce::ValueTree::Listener, private juce::AsyncUpdater
 {
 public:
     AudioEngine();
@@ -88,6 +88,15 @@ private:
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
     void valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenAdded) override;
     void valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved) override;
+
+    // Coalesces routing-graph rebuilds triggered by clip/track add/remove.
+    // Batch clip operations (duplicateClips, moveClips, slicing) mutate many
+    // clips at once; rebuilding the whole AudioProcessorGraph on every single
+    // add/remove made those operations O(N) rebuilds × O(project) each — a
+    // super-linear cliff that stalled the engine (RPC timeouts → black screen).
+    // AsyncUpdater merges any number of triggerAsyncUpdate() calls within one
+    // message-loop tick into a single handleAsyncUpdate() rebuild.
+    void handleAsyncUpdate() override;
 
     void rebuildTempoMap();
 

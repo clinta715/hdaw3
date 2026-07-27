@@ -158,8 +158,16 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
 
         if (newStart <= otherStart && newEnd >= otherEnd)
         {
-            // Case 1: Incoming clip fully covers the existing clip → remove it
-            clipList.removeChild(info.clip, &um);
+            // Case 1: Incoming clip fully covers the existing clip.
+            // NON-DESTRUCTIVE: leave the existing clip in place. Previously this
+            // removed the covered clip, which was silent data loss — clips kept
+            // vanishing during normal move/duplicate arrange edits, eventually
+            // cascading into the renderer black screen. The two clips now
+            // coexist/overlap (both audible, summed), matching the default move
+            // behavior in most DAWs. Partial overlaps still trim/split (Cases 2–4),
+            // which preserve the existing clip's content. If strict overwrite
+            // semantics are ever wanted, gate them behind an explicit edit mode
+            // rather than the default move/duplicate path.
         }
         else if (newStart <= otherStart && newEnd > otherStart && newEnd < otherEnd)
         {
