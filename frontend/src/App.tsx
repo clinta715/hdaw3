@@ -100,16 +100,25 @@ function App() {
     };
   }, []);
 
-  // Auto-switch bottom tab when a single clip is selected
+  // Auto-switch bottom tab when a single clip is selected. The guard ref
+  // ensures we only auto-switch ONCE per clip selection — without it, every
+  // snapshot refresh (e.g. toggling a note in the Step Sequencer, which
+  // triggers a fullSync) would re-fire this effect and yank the user back to
+  // the piano-roll/audio-editor tab even though the selection never changed.
+  const lastAutoSwitchedClipRef = useRef<number | null>(null);
   useEffect(() => {
-    if (selectedClipIds.size === 1) {
-      const id = selectedClipIds.values().next().value;
-      const clip = snapshot?.clips.find((c) => c.clipId === id);
-      if (clip) {
-        prevTabRef.current = useUiStore.getState().activeBottomTab;
-        setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
-      }
+    if (selectedClipIds.size !== 1) {
+      lastAutoSwitchedClipRef.current = null;
+      return;
     }
+    const id = selectedClipIds.values().next().value;
+    if (id == null) return;
+    const clip = snapshot?.clips.find((c) => c.clipId === id);
+    if (!clip) return; // clip data not in snapshot yet — wait for the next update
+    if (lastAutoSwitchedClipRef.current === id) return; // already switched for this clip
+    lastAutoSwitchedClipRef.current = id;
+    prevTabRef.current = useUiStore.getState().activeBottomTab;
+    setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
   }, [selectedClipIds, snapshot, setActiveBottomTab]);
 
   // When selection clears and we're on a clip-specific tab, restore previous tab
