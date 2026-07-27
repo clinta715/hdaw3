@@ -104,6 +104,9 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Parallel processing** — parallel compression and other techniques
 
 ### Arrangement
+- [ ] **Insert silence** — select a time range (like the loop region) and insert it as silence, splitting any clip crossing the boundary and shifting all later content right by the range length
+- [ ] **Duplicate region** — copy all clips/notes within a selected time range and insert them at the region end (shift-and-paste)
+- [ ] **Ripple delete** — remove all content within a selected time range and close the gap, shifting later content left (auto-close gaps on delete)
 - [ ] **Arranger track / sections** — define song sections (intro, verse, chorus), rearrange by dragging
 - [ ] **Folder tracks** — track grouping with collapse/expand
 - [ ] **Track templates** — save/load track configurations (name, color, FX, routing)
@@ -208,3 +211,9 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Preferences: Audio Settings (driver/device/SR/buffer), MIDI device persistence, count-in bars
 - [x] MCP HTTP host configurable via Preferences (was hardcoded 127.0.0.1)
 - [x] `--no-mcp` CLI flag implemented (disables MCP HTTP auto-start)
+- [x] MIDI clip editor properties (transpose / quantize / velocity-offset / humanize, operates on all notes)
+- [x] MIDI note thumbnails on the timeline arrange view (pitch-range-fitted mini piano-roll per clip)
+- [x] Zoom buttons + Ctrl+wheel zoom in piano roll and audio/sample editor
+- [x] Renderer-crash diagnostics: React ErrorBoundary, packaged-app DevTools (Ctrl+Shift+A), render-process-gone / unresponsive dialogs
+- [x] Fix: engine no longer rebuilds the whole routing graph per clip add/remove (coalesced via AsyncUpdater) — fixes black-screen crash after repeated arrange ops
+- [x] Fix: moving/duplicating a clip no longer silently deletes a fully-covered clip (non-destructive overlap)

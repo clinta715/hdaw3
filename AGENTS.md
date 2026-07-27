@@ -69,7 +69,30 @@ piano roll MIDI toolbar (loop toggle, velocity/duration scaling,
 quantize strength), right-click Add MIDI Clip now places at the mouse
 position (was hardcoded to track 0), and build optimizations
 (RelWithDebInfo/Release CMake presets, AVX2, per-config MSVC flags,
-Vite es2020 target). For the full list of working
+Vite es2020 target). **v0.13.0+** adds MIDI-clip editor properties
+(transpose / quantize / velocity-offset / humanize, operating on all notes —
+shown for MIDI clips instead of the audio gain/fade/timestretch panel),
+MIDI note thumbnails on the timeline (`MidiThumbnailCanvas` — a pitch-range-
+fitted mini piano-roll per clip), and zoom buttons + Ctrl+wheel zoom in both
+the piano roll and the audio/sample editor. Fixes a regression where the
+auto-switch-tab effect hijacked the Step Sequencer (and any non-editor tab)
+on every snapshot refresh — it now fires once per clip selection. Diagnosed
+and fixed the **"black screen after several arrange operations"** crash:
+(1) the engine rebuilt the entire `AudioProcessorGraph` on **every** clip
+add/remove (`valueTreeChildAdded`/`valueTreeChildRemoved` in `AudioEngine`),
+so a single `duplicateClips`/`moveClips` batch did N full rebuilds → a
+super-linear cliff (4→8 clips: 1s, 32→64: 31s) → RPC timeout → renderer
+death. Now coalesced into one rebuild per message-loop tick via
+`AsyncUpdater` (`AudioEngine::handleAsyncUpdate`). (2) `moveClipWithOverlap`
+Case 1 silently deleted any clip fully covered by a move/duplicate — now
+non-destructive (clips coexist/overlap). Added a React `ErrorBoundary`, a
+packaged-app DevTools shortcut (Ctrl+Shift+A — was dev-only, which is why
+packaged crashes were invisible), and `render-process-gone`/`unresponsive`
+handlers so future renderer faults surface instead of black-screening.
+**Caveat:** `rebuildRoutingGraph()` is still O(project) per call (tears down
++ re-instantiates every clip/plugin); at extreme counts (128+ clips in one
+burst) a single rebuild can still take ~30s — incremental routing is the
+remaining follow-up. For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
 
 ## Documentation Directory
