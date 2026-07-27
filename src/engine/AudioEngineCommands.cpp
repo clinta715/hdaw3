@@ -129,7 +129,7 @@ juce::ValueTree AudioEngineCommands::findAutomationLane(int trackIndex, const st
     return {};
 }
 
-juce::ValueTree AudioEngineCommands::createTrackValueTree(const std::string& name, int color, int parentBus)
+juce::ValueTree AudioEngineCommands::createTrackValueTree(const std::string& name, int color, int parentBus, int trackType)
 {
     juce::ValueTree track(IDs::TRACK);
     track.setProperty(IDs::name, juce::String(name), nullptr);
@@ -141,6 +141,7 @@ juce::ValueTree AudioEngineCommands::createTrackValueTree(const std::string& nam
     track.setProperty(IDs::inputMonitor, false, nullptr);
     track.setProperty(IDs::midiChannel, 1, nullptr);
     track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, trackType, nullptr);
     if (parentBus >= 0)
         track.setProperty(IDs::parentBus, parentBus, nullptr);
     if (color >= 0)

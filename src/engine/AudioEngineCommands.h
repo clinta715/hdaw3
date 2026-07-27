@@ -234,7 +234,7 @@ private:
     juce::ValueTree findAutomationLane(int trackIndex, const std::string& lane) const;
 
     // Add a new track ValueTree to the project. Returns the new index.
-    juce::ValueTree createTrackValueTree(const std::string& name, int color, int parentBus);
+    juce::ValueTree createTrackValueTree(const std::string& name, int color, int parentBus, int trackType = 0);
 
     // Gain envelope helpers
     std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);
