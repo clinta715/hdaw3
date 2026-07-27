@@ -14,6 +14,11 @@ struct TrackSnapshot {
     bool inputMonitor = false;
     double height = 80.0;
     int midiChannel = 1;
+    int trackType = 0;            // 0=audio, 1=instrument, 2=folder
+    bool isCollapsed = false;     // folder only
+    bool effectiveMuted = false;  // computed: true if self or ancestor muted
+    bool effectiveSoloed = false; // computed: true if self or ancestor soloed
+    int parentId = -1;            // track index of parent folder, -1 if none
     int clipCount = 0;
 };
 

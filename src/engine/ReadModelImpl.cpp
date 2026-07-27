@@ -51,6 +51,9 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     ts.inputMonitor  = trackTree.getProperty(IDs::inputMonitor, false);
     ts.height        = trackTree.getProperty(IDs::trackHeight, 80.0);
     ts.midiChannel   = trackTree.getProperty(IDs::midiChannel, 1);
+    ts.trackType   = static_cast<int>(trackTree.getProperty(IDs::trackType, 0));
+    ts.isCollapsed = trackTree.getProperty(IDs::isCollapsed, false);
+    ts.parentId    = trackTree.getProperty(IDs::parentId, -1);
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
     return ts;
