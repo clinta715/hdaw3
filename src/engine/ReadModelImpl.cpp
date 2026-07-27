@@ -6,6 +6,7 @@
 #include "../model/ProjectModel.h"
 
 #include <algorithm>
+#include <map>
 
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
@@ -80,6 +81,36 @@ ProjectSnapshot ReadModelImpl::snapshot() const
             continue;
         for (int c = 0; c < clipList.getNumChildren(); ++c)
             snap.clips.push_back(buildClipSnapshotFromTree(clipList.getChild(c)));
+    }
+
+    // Compute effective mute/solo by walking parent chain
+    {
+        std::map<int, int> childToParent;
+        for (int t = 0; t < numTracks; ++t)
+        {
+            int parentId = trackList.getChild(t).getProperty(IDs::parentId, -1);
+            if (parentId >= 0)
+                childToParent[t] = parentId;
+        }
+        for (auto& ts : snap.tracks)
+        {
+            bool effMuted = ts.muted;
+            bool effSoloed = ts.soloed;
+            int current = ts.index;
+            while (true)
+            {
+                auto it = childToParent.find(current);
+                if (it == childToParent.end()) break;
+                int parentIdx = it->second;
+                if (parentIdx < 0 || parentIdx >= numTracks) break;
+                const auto& parent = snap.tracks[parentIdx];
+                effMuted = effMuted || parent.muted;
+                effSoloed = effSoloed || parent.soloed;
+                current = parentIdx;
+            }
+            ts.effectiveMuted = effMuted;
+            ts.effectiveSoloed = effSoloed;
+        }
     }
 
     return snap;
