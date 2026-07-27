@@ -5,11 +5,11 @@
 
 // ─── ProjectCommands — Track operations ───────────────────────────
 
-int AudioEngineCommands::addTrack(const std::string& name, int color, int parentBus)
+int AudioEngineCommands::addTrack(const std::string& name, int color, int parentBus, int trackType)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
-    auto track = createTrackValueTree(name, color, parentBus);
+    auto track = createTrackValueTree(name, color, parentBus, trackType);
     int idx = trackList.getNumChildren();
     trackList.addChild(track, idx, &um);
     return idx;

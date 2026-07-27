@@ -153,7 +153,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         std::string name; if (!requireString(o, "name", name, nullptr)) name = "Track";
         int color = optInt(o, "color", -1, nullptr);
         int parentBus = optInt(o, "parentBus", -1, nullptr);
-        return { false, c.addTrack(name, color, parentBus) };
+        int trackType = optInt(o, "trackType", 0, nullptr);
+        return { false, c.addTrack(name, color, parentBus, trackType) };
     }
     if (m == "removeTrack")     { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.removeTrack(i); return { false, QJsonValue::Null }; }
     if (m == "moveTrack")       { int i, n; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "newIndex", n, nullptr)) return makeError(-32602, "trackIndex and newIndex required"); c.moveTrack(i, n); return { false, QJsonValue::Null }; }
@@ -168,6 +169,10 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setTrackInputMonitor") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "monitor", b, nullptr)) return makeError(-32602, "trackIndex and monitor required"); c.setTrackInputMonitor(i, b); return { false, QJsonValue::Null }; }
     if (m == "setTrackHeight")  { int i, h; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "height", h, nullptr)) return makeError(-32602, "trackIndex and height required"); c.setTrackHeight(i, h); return { false, QJsonValue::Null }; }
     if (m == "setTrackMidiChannel") { int i, ch; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "channel", ch, nullptr)) return makeError(-32602, "trackIndex and channel required"); c.setTrackMidiChannel(i, ch); return { false, QJsonValue::Null }; }
+    if (m == "setTrackType") { int i, t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "trackType", t, nullptr)) return makeError(-32602, "trackIndex and trackType required"); c.setTrackType(i, t); return { false, QJsonValue::Null }; }
+    if (m == "setTrackCollapsed") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "collapsed", b, nullptr)) return makeError(-32602, "trackIndex and collapsed required"); c.setTrackCollapsed(i, b); return { false, QJsonValue::Null }; }
+    if (m == "moveTrackIntoFolder") { int i, f; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "folderIndex", f, nullptr)) return makeError(-32602, "trackIndex and folderIndex required"); c.moveTrackIntoFolder(i, f); return { false, QJsonValue::Null }; }
+    if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
 
     // --- Clips ---
     if (m == "addAudioClip") {

@@ -9,7 +9,7 @@ public:
     virtual ~ProjectCommands() = default;
 
     // Track operations
-    virtual int addTrack(const std::string& name, int color = -1, int parentBus = -1) = 0;
+    virtual int addTrack(const std::string& name, int color = -1, int parentBus = -1, int trackType = 0) = 0;
     virtual void removeTrack(int trackIndex) = 0;
     virtual void moveTrack(int trackIndex, int newIndex) = 0;
     virtual void setTrackName(int trackIndex, const std::string& name) = 0;

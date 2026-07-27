@@ -16,7 +16,7 @@ public:
     ~AudioEngineCommands() override;
 
     // ProjectCommands — Track operations
-    int addTrack(const std::string& name, int color, int parentBus) override;
+    int addTrack(const std::string& name, int color, int parentBus, int trackType) override;
     void removeTrack(int trackIndex) override;
     void moveTrack(int trackIndex, int newIndex) override;
     void setTrackName(int trackIndex, const std::string& name) override;
