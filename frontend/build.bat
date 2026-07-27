@@ -100,6 +100,19 @@ echo === [4/4] Packaging Electron app ===
 call npx electron-builder --win --x64 --dir
 if !errorlevel! neq 0 goto :fail_pkg
 
+:: ── 4b. Guarantee the packaged app.asar is fresh. electron-builder rewrites
+::    app.asar from dist/ every run; if it ever silently failed to, the
+::    packaged app would run an obsolete frontend (the trap behind the React
+::    #300 black-screen). Refuse to claim success if app.asar is still older
+::    than dist/. Heavy work kept at top level (not in an if-block) per the
+::    cmd-block-parser note at the top of this file.
+set "PKG_ASAR=release\win-unpacked\resources\app.asar"
+set "PKG_STALE=0"
+if not exist "!PKG_ASAR!" goto :pkg_check_done
+for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath 'dist\index.html').LastWriteTime -gt (Get-Item -LiteralPath '!PKG_ASAR!').LastWriteTime)"') do set "PKG_STALE=%%r"
+if "!PKG_STALE!"=="1" goto :fail_pkg_stale
+:pkg_check_done
+
 echo.
 echo === Done (config: %CONFIG%) ===
 echo Browser mode:    %BUILD_DIR%\%CONFIG%\HDAW.exe
@@ -123,4 +136,10 @@ exit /b !TEST_RC!
 
 :fail_pkg
 echo ERROR: Electron packaging failed. >&2
+exit /b 1
+
+:fail_pkg_stale
+echo ERROR: app.asar is older than dist/ after packaging. >&2
+echo        The packaged app would run a stale frontend. >&2
+echo        Delete release\win-unpacked\ and re-run build.bat. >&2
 exit /b 1

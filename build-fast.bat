@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 REM build-fast.bat — incremental build script for HDAW
 REM Usage:
@@ -11,15 +11,19 @@ REM   build-fast ninja        Reconfigure with Ninja (one-time, much faster)
 REM   build-fast frontend     Build frontend only (dist/ + dist-electron/)
 REM   build-fast package      Build frontend + repackage the Electron app
 REM
-REM STALE-FRONTEND TRAP: the app users run is the PACKAGED Electron app
+REM STALE-ASAR GUARD: the app users run is the PACKAGED Electron app
 REM (frontend/release/win-unpacked/HDAW.exe), whose frontend is frozen into
-REM resources/app.asar. Plain C++ builds (build-fast / build-fast all) do NOT
-REM update it — after frontend changes use 'build-fast package'. The standalone
-REM HDAW.exe embeds the SPA via a Qt resource that AUTORCC won't re-embed on an
-REM incremental build either. See AGENTS.md "How frontend changes reach the
-REM running app".
+REM resources/app.asar. Plain C++/frontend builds (build-fast / all / frontend)
+REM do NOT refresh app.asar — only 'build-fast package' does. After every such
+REM build this script compares frontend/dist/ against app.asar and prints a
+REM loud warning when the packaged app is stale, so you never accidentally test
+REM an obsolete frontend. The standalone HDAW.exe embeds the SPA via a Qt
+REM resource that AUTORCC won't re-embed on an incremental build either — use
+REM frontend\build.bat for a guaranteed-fresh browser build. See AGENTS.md
+REM "How frontend changes reach the running app".
 
-set BUILD_DIR=%~dp0build
+set "ROOT=%~dp0"
+set BUILD_DIR=%ROOT%build
 set CONFIG=RelWithDebInfo
 
 if "%1"=="debug" set CONFIG=Debug
@@ -36,10 +40,9 @@ exit /b 1
 
 :hdaw
 cmake --build "%BUILD_DIR%" --config %CONFIG% --target HDAW -- /m /v:minimal 2>&1
-if %errorlevel% neq 0 exit /b %errorlevel%
+if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] HDAW.exe up to date (config: %CONFIG%).
-echo [build-fast] NOTE: C++ builds do NOT refresh the frontend users see.
-echo [build-fast]       After frontend changes run 'build-fast package'.
+call :check_pkg
 goto :eof
 
 :test
@@ -50,27 +53,53 @@ goto :eof
 
 :all
 cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
-if %errorlevel% neq 0 exit /b %errorlevel%
+if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] All targets up to date (config: %CONFIG%).
-echo [build-fast] NOTE: C++ builds do NOT refresh the frontend users see.
-echo [build-fast]       After frontend changes run 'build-fast package'.
+call :check_pkg
 goto :eof
 
 :frontend
-cd /d "%~dp0frontend"
+cd /d "%ROOT%frontend"
 call npm run build
-if %errorlevel% neq 0 exit /b %errorlevel%
+if !errorlevel! neq 0 exit /b !errorlevel!
+cd /d "%ROOT%"
 echo [build-fast] Frontend built (dist/ + dist-electron/).
-echo [build-fast] To update the app users run, now use 'build-fast package'.
+call :check_pkg
 goto :eof
 
 :package
-cd /d "%~dp0frontend"
+cd /d "%ROOT%frontend"
 call npm run build
-if %errorlevel% neq 0 exit /b %errorlevel%
+if !errorlevel! neq 0 exit /b !errorlevel!
 call npm run package:dir
-if %errorlevel% neq 0 exit /b %errorlevel%
+if !errorlevel! neq 0 exit /b !errorlevel!
+cd /d "%ROOT%"
 echo [build-fast] Electron app repackaged: frontend\release\win-unpacked\HDAW.exe
+call :check_pkg
+goto :eof
+
+:check_pkg
+:: Warn loudly when the packaged Electron app's app.asar is older than the
+:: frontend dist/ — i.e. the app users would run is stale. Only `package`
+:: refreshes app.asar; plain C++/frontend builds do not. Uses ROOT (captured at
+:: top) because %~dp0 is NOT the script dir inside a called label.
+set "CK_DIST=!ROOT!frontend\dist\index.html"
+set "CK_ASAR=!ROOT!frontend\release\win-unpacked\resources\app.asar"
+if not exist "!CK_DIST!" goto :eof
+if not exist "!CK_ASAR!" goto :eof
+set "CK_STALE=0"
+for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath '!CK_DIST!').LastWriteTime -gt (Get-Item -LiteralPath '!CK_ASAR!').LastWriteTime)"') do set "CK_STALE=%%r"
+if "!CK_STALE!"=="1" (
+    echo.
+    echo **********************************************************
+    echo *  STALE PACKAGED APP: frontend\dist\ is newer than       *
+    echo *  frontend\release\win-unpacked\resources\app.asar.      *
+    echo *  The packaged Electron app will run an OUTDATED frontend *
+    echo *  ^(the obsolete-.asar trap^).                            *
+    echo *  Fix:  build-fast package   ^(or frontend\build.bat^)     *
+    echo **********************************************************
+    echo.
+) >&2
 goto :eof
 
 :ninja

@@ -138,6 +138,14 @@ is baked into `app.asar` at packaging time — editing source, rebuilding
 `frontend\build.bat` is the single command that rebuilds the SPA, the C++
 engine, runs the tests, and repackages Electron, guaranteeing consistency.
 
+**Build-script guards against the stale-asar trap:** both build scripts now
+detect an obsolete `app.asar` automatically. `frontend\build.bat` verifies
+`app.asar` is newer than `dist/` after packaging and fails the build if not.
+`build-fast.bat` compares `frontend/dist/` against `app.asar` after every
+C++/frontend/package target and prints a loud `STALE PACKAGED APP` warning
+(with the fix command) when the packaged app would run an outdated frontend —
+so you can't silently iterate against a stale `.asar`.
+
 ## Testing
 
 - **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
