@@ -172,3 +172,30 @@
   min-width: 28px;
   text-align: left;
 }
+
+.pr-zoom-group {
+  display: flex;
+  gap: 2px;
+}
+
+.pr-zoom-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pr-zoom-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+  color: var(--text-primary);
+}

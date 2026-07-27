@@ -98,6 +98,20 @@ export default function PianoRoll() {
     []
   );
 
+  // Button-driven zoom (clamped to the same range as Ctrl+wheel).
+  const zoomBy = useCallback((factor: number) => {
+    setPixelsPerBeat((p) => Math.round(Math.min(400, Math.max(20, p * factor))));
+  }, []);
+
+  const zoomFit = useCallback(() => {
+    const el = document.querySelector(".pr-grid-area") as HTMLElement | null;
+    const cw = el?.clientWidth ?? 800;
+    const dur = activeClip?.durationBeats ?? 0;
+    if (dur > 0) {
+      setPixelsPerBeat(Math.round(Math.min(400, Math.max(20, cw / dur))));
+    }
+  }, [activeClip]);
+
   const handleVelocityChange = useCallback(
     async (noteId: number, velocity: number) => {
       try {
@@ -188,6 +202,12 @@ export default function PianoRoll() {
             {c.name ?? `Clip ${c.clipId}`}
           </button>
         ))}
+        <span className="pr-toolbar-sep" />
+        <div className="pr-zoom-group">
+          <button className="pr-zoom-btn" onClick={() => zoomBy(1 / 1.25)} title="Zoom Out (Ctrl+wheel to zoom)">−</button>
+          <button className="pr-zoom-btn" onClick={zoomFit} title="Fit Clip to View">⟷</button>
+          <button className="pr-zoom-btn" onClick={() => zoomBy(1.25)} title="Zoom In (Ctrl+wheel to zoom)">+</button>
+        </div>
         <span className="pr-toolbar-sep" />
         <label className="pr-chord-toggle">
           <input

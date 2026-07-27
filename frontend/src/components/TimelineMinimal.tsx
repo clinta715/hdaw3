@@ -5,6 +5,7 @@ import { useMarkerStore } from "../store/markerStore";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
+import { MidiThumbnailCanvas } from "./MidiThumbnailCanvas";
 import { snapToGrid } from "./snapUtils";
 import { useTimelineDrag } from "../hooks/useTimelineDrag";
 import { useTimelineTrim } from "../hooks/useTimelineTrim";
@@ -667,6 +668,9 @@ export default function TimelineMinimal() {
                         {!clip.isMidi && (
                           <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
                         )}
+                        {clip.isMidi && !clip.isGhost && (
+                          <MidiThumbnailCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
+                        )}
                         {(clip.fadeIn > 0 || clip.fadeOut > 0 || (fadeDrag?.clipId === clip.clipId)) && (
                           <svg viewBox="0 0 100 48" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
                             <path
@@ -725,6 +729,9 @@ export default function TimelineMinimal() {
               >
                 {!dragPreviewClip.isMidi && (
                   <WaveformCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
+                )}
+                {dragPreviewClip.isMidi && (
+                  <MidiThumbnailCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
                 )}
                 <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{dragPreviewClip.name ?? `Clip ${dragPreviewClip.clipId}`}</span>
               </div>

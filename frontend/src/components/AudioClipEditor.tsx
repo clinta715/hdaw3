@@ -32,17 +32,36 @@ export default function AudioClipEditor() {
   const [waveformWidth, setWaveformWidth] = useState(400);
   const [fileMissing, setFileMissing] = useState(false);
 
+  // Horizontal waveform zoom. 1.0 = whole clip fits the viewport; zooming in
+  // widens the inner canvas past the viewport and the container scrolls.
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 64;
+  const [zoom, setZoomState] = useState(1);
+  const zoomRef = useRef(1);
+  const setZoom = useCallback((z: number) => {
+    const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+    zoomRef.current = clamped;
+    setZoomState(clamped);
+  }, []);
+
   const lastClipRef = useRef(clipId);
   useEffect(() => {
-    setFileMissing(false);
+    // `clip` is a fresh object reference on every snapshot refresh, so this
+    // effect re-fires often — guard the whole body on an actual clip change
+    // so we don't, e.g., flicker the "file missing" banner on every unrelated
+    // snapshot update.
     if (clip && clipId !== lastClipRef.current) {
       lastClipRef.current = clipId;
+      setFileMissing(false);
       setGainVal(clip.gain);
       setFadeInVal(clip.fadeIn);
       setFadeOutVal(clip.fadeOut);
       setStretchRatioVal(clip.stretchRatio);
+      // Reset zoom to fit when switching clips.
+      setZoom(1);
+      if (waveformRef.current) waveformRef.current.scrollLeft = 0;
     }
-  }, [clipId, clip]);
+  }, [clipId, clip, setZoom]);
 
   useEffect(() => {
     const el = waveformRef.current;
@@ -85,14 +104,37 @@ export default function AudioClipEditor() {
   const track = snapshot?.tracks.find((t) => t.index === clip.trackIndex);
   const dur = clip.durationBeats;
   const maxFade = dur / 2;
+  const effectiveWidth = Math.max(1, waveformWidth * zoom);
   const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
   const clipRelBeats = playheadBeats - clip.startBeat;
 
   const handlePlay = () => call("transport.play", {});
   const handleStop = () => call("transport.stop", {});
-  const handleZoomIn = () => { /* waveform auto-scales */ };
-  const handleZoomOut = () => { /* waveform auto-scales */ };
+  const handleZoomIn = () => setZoom(zoomRef.current * 1.5);
+  const handleZoomOut = () => setZoom(zoomRef.current / 1.5);
+  const handleZoomFit = () => setZoom(1);
   const handleClose = () => useUiStore.getState().clearSelection();
+
+  // Ctrl+wheel zoom on the waveform, keeping the beat under the cursor fixed.
+  const onWaveformWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const el = waveformRef.current;
+    if (!el || waveformWidth <= 0) return;
+    const oldZoom = zoomRef.current;
+    const factor = e.deltaY < 0 ? 1.5 : 1 / 1.5;
+    const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, oldZoom * factor));
+    if (newZoom === oldZoom) return;
+    const rect = el.getBoundingClientRect();
+    const cursorViewportX = e.clientX - rect.left;
+    const oldInner = waveformWidth * oldZoom;
+    const frac = oldInner > 0 ? (el.scrollLeft + cursorViewportX) / oldInner : 0;
+    setZoom(newZoom);
+    const newCursorInnerX = frac * (waveformWidth * newZoom);
+    requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, newCursorInnerX - cursorViewportX);
+    });
+  }, [waveformWidth, setZoom]);
 
   const setGain = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
@@ -158,23 +200,28 @@ export default function AudioClipEditor() {
         {track && <span className="ace-track-name">— {track.name}</span>}
         <span className="ace-badge">Audio</span>
         <div className="ace-spacer" />
+        <div className="ace-zoom-group">
+          <button className="ace-zoom-btn" onClick={handleZoomOut} title="Zoom Out (Ctrl+wheel to zoom)">−</button>
+          <button className="ace-zoom-btn" onClick={handleZoomFit} title="Fit Clip to View">⟷</button>
+          <button className="ace-zoom-btn" onClick={handleZoomIn} title="Zoom In (Ctrl+wheel to zoom)">+</button>
+        </div>
         <button className="ace-close" onClick={handleClose} title="Close">✕</button>
       </div>
 
       {/* Waveform display */}
-      <div className="ace-waveform" ref={waveformRef}>
+      <div className="ace-waveform" ref={waveformRef} onWheel={onWaveformWheel}>
         {fileMissing ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 80, gap: 4 }}>
             <span style={{ fontSize: 13, color: "#e05555", fontWeight: 600 }}>Source file not found</span>
             <span style={{ fontSize: 11, color: "#999" }}>{clip.sourceFile || "unknown path"}</span>
           </div>
         ) : (
-          <div className="ace-waveform-inner" style={{ width: waveformWidth }}>
-            <WaveformCanvas clip={clip} width={waveformWidth} height={80} onError={setFileMissing} />
+          <div className="ace-waveform-inner" style={{ width: effectiveWidth }}>
+            <WaveformCanvas clip={clip} width={effectiveWidth} height={80} onError={setFileMissing} />
             {clipRelBeats >= 0 && clipRelBeats <= dur && (
               <div
                 className="ace-playhead-overlay"
-                style={{ left: (clipRelBeats / dur) * waveformWidth }}
+                style={{ left: (clipRelBeats / dur) * effectiveWidth }}
               />
             )}
           </div>

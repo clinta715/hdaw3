@@ -90,6 +90,31 @@
   accent-color: var(--accent);
 }
 
+.ce-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.ce-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.ce-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ce-row input[type="number"] {
+  width: 48px;
+}
+
 .ce-val {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
   font-size: 10px;

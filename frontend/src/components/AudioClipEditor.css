@@ -85,6 +85,32 @@
   background: rgba(255,255,255,0.06);
 }
 
+.ace-zoom-group {
+  display: flex;
+  gap: 2px;
+}
+
+.ace-zoom-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ace-zoom-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--accent-dim);
+}
+
 /* Waveform section */
 .ace-waveform {
   flex: 1;
