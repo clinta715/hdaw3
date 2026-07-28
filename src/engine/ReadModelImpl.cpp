@@ -11,14 +11,16 @@
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
 
-ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree)
+ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double bpm)
 {
     ClipSnapshot cs;
     cs.clipId        = static_cast<int>(clipTree.getProperty(IDs::clipID, 0));
     cs.name          = clipTree.getProperty(IDs::name, "").toString().toStdString();
     cs.sourceFile    = clipTree.getProperty(IDs::sourceFile, "").toString().toStdString();
-    cs.startBeat     = clipTree.getProperty(IDs::startTime, 0.0);
-    cs.durationBeats = clipTree.getProperty(IDs::duration, 0.0);
+    double startTimeSec = clipTree.getProperty(IDs::startTime, 0.0);
+    double durationSec  = clipTree.getProperty(IDs::duration, 0.0);
+    cs.startBeat     = (bpm > 0) ? startTimeSec * bpm / 60.0 : startTimeSec;
+    cs.durationBeats = (bpm > 0) ? durationSec * bpm / 60.0 : durationSec;
     cs.offset        = clipTree.getProperty(IDs::offset, 0.0);
     cs.gain          = clipTree.getProperty(IDs::gain, 1.0);
     cs.fadeIn        = clipTree.getProperty(IDs::fadeIn, 0.0);
@@ -72,6 +74,8 @@ ProjectSnapshot ReadModelImpl::snapshot() const
     const int numTracks = trackList.getNumChildren();
     snap.tracks.reserve(numTracks);
 
+    double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
+
     for (int t = 0; t < numTracks; ++t) {
         auto trackTree = trackList.getChild(t);
         snap.tracks.push_back(buildTrackSnapshotFromTree(trackTree));
@@ -80,7 +84,7 @@ ProjectSnapshot ReadModelImpl::snapshot() const
         if (!clipList.isValid())
             continue;
         for (int c = 0; c < clipList.getNumChildren(); ++c)
-            snap.clips.push_back(buildClipSnapshotFromTree(clipList.getChild(c)));
+            snap.clips.push_back(buildClipSnapshotFromTree(clipList.getChild(c), bpm));
     }
 
     // Compute effective mute/solo by walking parent chain
@@ -165,8 +169,11 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 cs.trackIndex = t;
                 cs.name = clipTree.getProperty(IDs::name, "").toString().toStdString();
                 cs.sourceFile = clipTree.getProperty(IDs::sourceFile, "").toString().toStdString();
-                cs.startBeat = clipTree.getProperty(IDs::startTime, 0.0);
-                cs.durationBeats = clipTree.getProperty(IDs::duration, 0.0);
+                double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
+                double startTimeSec = clipTree.getProperty(IDs::startTime, 0.0);
+                double durationSec = clipTree.getProperty(IDs::duration, 0.0);
+                cs.startBeat = (bpm > 0) ? startTimeSec * bpm / 60.0 : startTimeSec;
+                cs.durationBeats = (bpm > 0) ? durationSec * bpm / 60.0 : durationSec;
                 cs.offset = clipTree.getProperty(IDs::offset, 0.0);
                 cs.gain = clipTree.getProperty(IDs::gain, 1.0);
                 cs.fadeIn = clipTree.getProperty(IDs::fadeIn, 0.0);
@@ -303,10 +310,12 @@ TransportSnapshot ReadModelImpl::getTransport() const
         // Use the live TransportManager position (audio-thread atomic advanced
         // each processBlock) instead of the ValueTree position property, which
         // is only written on seek/stop and never updated during playback.
-        if (engine_ != nullptr)
+        if (engine_ != nullptr) {
             ts.currentTimeSeconds = engine_->getTransportManager().getCurrentPositionSeconds();
-        else
+            ts.isRecording = engine_->getTransportManager().isRecordingNow();
+        } else {
             ts.currentTimeSeconds = transport.getProperty(IDs::position, 0.0);
+        }
     }
     return ts;
 }

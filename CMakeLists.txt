@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.13.0 LANGUAGES CXX)
+project(HDAW VERSION 0.13.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +16,12 @@ include_directories(${CMAKE_BINARY_DIR}/generated)
 
 # Qt 6 Configuration
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network HttpServer WebSockets Test)
+# Components: Core (implicit), Network/HttpServer/WebSockets (transport),
+# Gui (QDesktopServices in main.cpp), Test (QSignalSpy in tests).
+# Widgets is intentionally NOT included — the only Widgets consumer was the
+# dead proxy::CrashDialog, which has been removed. The UI is React; JUCE
+# provides the only native windowing (HDAW target).
+find_package(Qt6 REQUIRED COMPONENTS Gui Network HttpServer WebSockets Test)
 qt_standard_project_setup()
 
 # JUCE Configuration
@@ -31,6 +36,12 @@ include(cmake/AubioHelper.cmake)
 
 # Deploy Qt DLLs alongside an executable on Windows via windeployqt.
 # Skipped silently on non-Windows or when windeployqt isn't found.
+#
+# A --debug/--release flag is passed per-config via a generator expression.
+# Without it, windeployqt's auto-detection (which sniffs the binary for debug
+# markers) mis-classifies RelWithDebInfo builds and silently skips some Qt
+# DLLs the binary imports — notably Qt6Test.dll, which hdaw_tests needs
+# (QSignalSpy). Forcing the variant makes the deploy complete and stable.
 function(hdaw_deploy_qt target)
     if(NOT WIN32)
         return()
@@ -48,7 +59,8 @@ function(hdaw_deploy_qt target)
                 --no-translations
                 --no-system-d3d-compiler
                 --no-opengl-sw
-                $<TARGET_FILE_DIR:${target}>
+                $<IF:$<CONFIG:Debug>,--debug,--release>
+                $<TARGET_FILE:${target}>
         COMMENT "Running windeployqt for ${target}"
         VERBATIM
     )
@@ -287,7 +299,10 @@ target_link_libraries(hdaw_plugin_scanner PRIVATE
     juce::juce_audio_processors
     juce::juce_core
 )
-hdaw_deploy_qt(hdaw_plugin_scanner)
+# NOTE: hdaw_plugin_scanner does NOT link Qt (JUCE-only exe — verified via
+# dumpbin /DEPENDENTS: no Qt6*.dll in its import table). Do not call
+# hdaw_deploy_qt() here: windeployqt fails the build on a non-Qt executable
+# ("does not seem to be a Qt executable"), and there are no Qt DLLs to deploy.
 
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)

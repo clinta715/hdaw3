@@ -93,6 +93,33 @@ export default function AudioClipEditor() {
   const stretchRatioRef = useRef(stretchRatio);
   stretchRatioRef.current = stretchRatio;
 
+  // Ctrl+wheel zoom on the waveform, keeping the beat under the cursor fixed.
+  // NOTE: this useCallback must run BEFORE any early return — React requires
+  // the same hooks in the same order on every render. When a selected clip is
+  // deleted, `clip` briefly becomes null (applyDelta removes it from the
+  // snapshot before clearSelection runs); a hook after the early return below
+  // would then be skipped and React throws error #300 ("Rendered fewer hooks
+  // than expected").
+  const onWaveformWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const el = waveformRef.current;
+    if (!el || waveformWidth <= 0) return;
+    const oldZoom = zoomRef.current;
+    const factor = e.deltaY < 0 ? 1.5 : 1 / 1.5;
+    const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, oldZoom * factor));
+    if (newZoom === oldZoom) return;
+    const rect = el.getBoundingClientRect();
+    const cursorViewportX = e.clientX - rect.left;
+    const oldInner = waveformWidth * oldZoom;
+    const frac = oldInner > 0 ? (el.scrollLeft + cursorViewportX) / oldInner : 0;
+    setZoom(newZoom);
+    const newCursorInnerX = frac * (waveformWidth * newZoom);
+    requestAnimationFrame(() => {
+      el.scrollLeft = Math.max(0, newCursorInnerX - cursorViewportX);
+    });
+  }, [waveformWidth, setZoom]);
+
   if (!isAudio || !clip) {
     return (
       <div className="audio-clip-editor">
@@ -114,27 +141,6 @@ export default function AudioClipEditor() {
   const handleZoomOut = () => setZoom(zoomRef.current / 1.5);
   const handleZoomFit = () => setZoom(1);
   const handleClose = () => useUiStore.getState().clearSelection();
-
-  // Ctrl+wheel zoom on the waveform, keeping the beat under the cursor fixed.
-  const onWaveformWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    const el = waveformRef.current;
-    if (!el || waveformWidth <= 0) return;
-    const oldZoom = zoomRef.current;
-    const factor = e.deltaY < 0 ? 1.5 : 1 / 1.5;
-    const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, oldZoom * factor));
-    if (newZoom === oldZoom) return;
-    const rect = el.getBoundingClientRect();
-    const cursorViewportX = e.clientX - rect.left;
-    const oldInner = waveformWidth * oldZoom;
-    const frac = oldInner > 0 ? (el.scrollLeft + cursorViewportX) / oldInner : 0;
-    setZoom(newZoom);
-    const newCursorInnerX = frac * (waveformWidth * newZoom);
-    requestAnimationFrame(() => {
-      el.scrollLeft = Math.max(0, newCursorInnerX - cursorViewportX);
-    });
-  }, [waveformWidth, setZoom]);
 
   const setGain = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);

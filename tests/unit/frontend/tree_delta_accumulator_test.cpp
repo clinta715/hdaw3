@@ -88,7 +88,7 @@ TEST(TreeDelta, ClipPropertyChangeUpsertsClip) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(clip);
+    acc.notePropertyChanged(clip, IDs::name);
 
     EXPECT_FALSE(acc.fullSync());
     ASSERT_EQ(acc.clipsUpserted().size(), 1u);
@@ -104,9 +104,9 @@ TEST(TreeDelta, RepeatedClipChangesCoalesceToLatest) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(clip);
+    acc.notePropertyChanged(clip, IDs::startTime);
     clip.setProperty(IDs::startTime, 9.0, nullptr);   // simulate a drag
-    acc.notePropertyChanged(clip);
+    acc.notePropertyChanged(clip, IDs::startTime);
 
     EXPECT_EQ(acc.clipsUpserted().size(), 1u);        // coalesced
     EXPECT_DOUBLE_EQ(acc.clipsUpserted().at(5).startBeat, 9.0);  // latest wins
@@ -147,7 +147,7 @@ TEST(TreeDelta, TrackPropertyChangeUpsertsTrack) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(track);
+    acc.notePropertyChanged(track, IDs::name);
     EXPECT_FALSE(acc.fullSync());
     ASSERT_EQ(acc.tracksUpserted().size(), 1u);
     EXPECT_EQ(acc.tracksUpserted().at(0).name, "Synth");
@@ -158,7 +158,7 @@ TEST(TreeDelta, SubClipDetailChangeIsFullSync) {
     note.setProperty(IDs::noteNumber, 60, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(note);
+    acc.notePropertyChanged(note, IDs::noteNumber);
     EXPECT_TRUE(acc.fullSync());
 }
 
@@ -183,7 +183,7 @@ TEST(TreeDelta, FullSyncEscalationDiscardsPendingDelta) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(clip);
+    acc.notePropertyChanged(clip, IDs::name);
     EXPECT_EQ(acc.clipsUpserted().size(), 1u);
     acc.noteStructuralChange();                        // escalates to fullSync
     EXPECT_TRUE(acc.fullSync());
@@ -201,8 +201,8 @@ TEST(TreeDelta, FullSyncLatchIgnoresFurtherChanges) {
 
     TreeDeltaAccumulator acc;
     acc.noteStructuralChange();                        // latch fullSync
-    acc.notePropertyChanged(clip);                     // ignored
-    acc.notePropertyChanged(track);                    // ignored
+    acc.notePropertyChanged(clip, IDs::name);                     // ignored
+    acc.notePropertyChanged(track, IDs::name);                    // ignored
     acc.noteChildAdded(clip);                          // ignored
     EXPECT_TRUE(acc.fullSync());
     EXPECT_TRUE(acc.clipsUpserted().empty());
@@ -218,8 +218,48 @@ TEST(TreeDelta, ResetClearsState) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
-    acc.notePropertyChanged(clip);
+    acc.notePropertyChanged(clip, IDs::name);
     acc.reset();
     EXPECT_TRUE(acc.empty());
     EXPECT_FALSE(acc.fullSync());
+}
+
+TEST(TreeDelta, FolderMuteEscalatesToFullSync) {
+    ValueTree folder(IDs::TRACK);
+    folder.setProperty(IDs::name, "Group", nullptr);
+    folder.setProperty(IDs::trackType, 2, nullptr);
+    folder.setProperty(IDs::childIds, "1", nullptr);
+    folder.addChild(ValueTree(IDs::CLIP_LIST), -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(folder, IDs::isMuted);
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, FolderSoloEscalatesToFullSync) {
+    ValueTree folder(IDs::TRACK);
+    folder.setProperty(IDs::name, "Group", nullptr);
+    folder.setProperty(IDs::trackType, 2, nullptr);
+    folder.setProperty(IDs::childIds, "1", nullptr);
+    folder.addChild(ValueTree(IDs::CLIP_LIST), -1, nullptr);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(folder, IDs::isSoloed);
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, AnyMuteChangeEscalatesToFullSync) {
+    ValueTree track = makeTrackTree("Audio", 1.0);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(track, IDs::isMuted);
+    EXPECT_TRUE(acc.fullSync());
+}
+
+TEST(TreeDelta, AnySoloChangeEscalatesToFullSync) {
+    ValueTree track = makeTrackTree("Audio", 1.0);
+
+    TreeDeltaAccumulator acc;
+    acc.notePropertyChanged(track, IDs::isSoloed);
+    EXPECT_TRUE(acc.fullSync());
 }

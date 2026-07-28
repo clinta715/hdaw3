@@ -136,3 +136,16 @@ export function writeSineWav(
 export function tempWavPath(name: string): string {
   return path.join(os.tmpdir(), `hdaw-e2e-${Date.now()}-${name}.wav`);
 }
+
+// ── Wait for snapshot sync after an RPC that mutates the project ─────────────
+// The backend pushes snapshot updates via a debounced tree-change notification
+// (~16 ms). After an RPC that adds/removes/modifies tracks or clips, the DOM
+// won't reflect the change until the push arrives. This helper waits for a
+// DOM condition to become true, bridging the async gap.
+export async function waitForTrackCount(page: Page, count: number, timeout = 10000) {
+  await expect(page.locator(".th-row")).toHaveCount(count, { timeout });
+}
+
+export async function waitForClipCount(page: Page, count: number, timeout = 10000) {
+  await expect(page.locator(".tl-clip")).toHaveCount(count, { timeout });
+}

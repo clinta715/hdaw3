@@ -95,26 +95,20 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
 
     setPlayHead(internalPlayHead.get());
 
-    if (countInActive.load() && transportManager)
-    {
-        if (transportManager->getCurrentSample() >= pendingRecordStartSample)
-        {
-            countInActive.store(false);
-            metronome.setEnabled(wasMetronomeOn);
-            beginActualRecording();
-        }
-    }
-
-    if (transportManager && transportManager->isRecordingNow())
-        audioRecorder->processBlock(buffer);
-
+    // SPSC param updates must always drain even when stopped, so UI knobs
+    // don't back up.
+    bool clipTimingChanged = false;
     if (spscBridge != nullptr)
     {
-        spscBridge->popUpdates([this](const ParamUpdate& update) {
+        spscBridge->popUpdates([this, &clipTimingChanged](const ParamUpdate& update) {
             if (update.clipIndex >= 0)
             {
                 if (routingManager != nullptr)
                     routingManager->updateClipParam(update.trackIndex, update.clipIndex, update.paramID, update.value);
+                // Params 13 (startTime), 14 (duration), 16 (looping) affect
+                // the project end position — flag for recompute.
+                if (update.paramID >= 13 && update.paramID <= 16)
+                    clipTimingChanged = true;
                 return;
             }
             auto* track = routingManager ? routingManager->getTrackNode(update.trackIndex) : nullptr;
@@ -129,6 +123,58 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
             }
         });
     }
+
+    // Recompute project end if clip timing or looping changed via SPSC.
+    if (clipTimingChanged && routingManager != nullptr && transportManager != nullptr)
+    {
+        double sr = getSampleRate();
+        if (sr <= 0) sr = 44100.0;
+        int64_t maxEnd = 0;
+        for (auto& kv : routingManager->getAudioClipSources())
+        {
+            auto* clip = kv.second;
+            if (clip->isLooping()) continue;
+            double endSec = clip->getStartTime() + clip->getDuration();
+            int64_t endSample = static_cast<int64_t>(endSec * sr);
+            if (endSample > maxEnd) maxEnd = endSample;
+        }
+        for (auto& kv : routingManager->getMidiClipSources())
+        {
+            auto* clip = kv.second;
+            double endSec = clip->getStartTime() + clip->getDuration();
+            int64_t endSample = static_cast<int64_t>(endSec * sr);
+            if (endSample > maxEnd) maxEnd = endSample;
+        }
+        transportManager->setProjectEndSample(maxEnd);
+    }
+
+    // Silence the entire graph when transport is stopped and not recording
+    // or counting in.  Without this, clip sources at position 0 read the
+    // same block of samples every callback (position never advances),
+    // producing an audible buzz at the buffer-rate frequency.
+    if (transportManager != nullptr
+        && !transportManager->isPlayingNow()
+        && !transportManager->isRecordingNow()
+        && !countInActive.load())
+    {
+        buffer.clear();
+        midiMessages.clear();
+        transportManager->advance(buffer.getNumSamples());
+        return;
+    }
+
+    if (countInActive.load() && transportManager)
+    {
+        if (transportManager->getCurrentSample() >= pendingRecordStartSample)
+        {
+            countInActive.store(false);
+            metronome.setEnabled(wasMetronomeOn);
+            beginActualRecording();
+        }
+    }
+
+    if (transportManager && transportManager->isRecordingNow())
+        audioRecorder->processBlock(buffer);
 
     if (graphLock.tryEnter())
     {
@@ -396,12 +442,36 @@ void MainAudioProcessor::rebuildRoutingGraph()
         if (getSampleRate() > 0)
         {
             graph.prepareToPlay(getSampleRate(), getBlockSize());
-            // Re-establish master→output after bus-layout negotiation (see
-            // prepareToPlay above for why this is required).
             routingManager->reconnectMasterToOutput();
         }
         graphLock.exit();
         graphRebuildPending.store(false, std::memory_order_release);
+
+        // Compute project end: the latest sample position across all clips.
+        // The transport auto-stops when it reaches this position (unless looping).
+        {
+            double sr = getSampleRate();
+            if (sr <= 0) sr = 44100.0;
+            int64_t maxEnd = 0;
+            if (routingManager) {
+                for (auto& kv : routingManager->getAudioClipSources())
+                {
+                    auto* clip = kv.second;
+                    if (clip->isLooping()) continue;   // looping clips don't bound the project
+                    double endSec = clip->getStartTime() + clip->getDuration();
+                    int64_t endSample = static_cast<int64_t>(endSec * sr);
+                    if (endSample > maxEnd) maxEnd = endSample;
+                }
+                for (auto& kv : routingManager->getMidiClipSources())
+                {
+                    auto* clip = kv.second;
+                    double endSec = clip->getStartTime() + clip->getDuration();
+                    int64_t endSample = static_cast<int64_t>(endSec * sr);
+                    if (endSample > maxEnd) maxEnd = endSample;
+                }
+            }
+            transportManager->setProjectEndSample(maxEnd);
+        }
     }
 }
 

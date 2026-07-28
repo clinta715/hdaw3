@@ -211,6 +211,14 @@
   user-select: none;
 }
 
-.th-folder {
+.th-row--audio {
+  background: rgba(74, 158, 255, 0.06);
+}
+
+.th-row--instrument {
+  background: rgba(155, 89, 182, 0.08);
+}
+
+.th-row--folder {
   background: rgba(243, 156, 18, 0.08);
 }

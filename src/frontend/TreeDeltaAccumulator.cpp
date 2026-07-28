@@ -4,12 +4,23 @@
 
 namespace frontend {
 
-void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree) {
+void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree, const juce::Identifier& property) {
     if (fullSync_) return;
     const auto type = tree.getType();
-    if (type == IDs::CLIP)        upsertClip(tree);
-    else if (type == IDs::TRACK)  upsertTrack(tree);
-    else                          escalateToFullSync();   // PROJECT/MARKER/FX/automation/sub-clip detail/...
+    if (type == IDs::CLIP) {
+        upsertClip(tree);
+    } else if (type == IDs::TRACK) {
+        // Mute/solo changes affect effectiveMuted/effectiveSoloed which depend on
+        // the parent chain — the delta path can't compute these, so we must fullSync
+        // so the frontend receives the correct values from ReadModelImpl.
+        if (property == IDs::isMuted || property == IDs::isSoloed) {
+            escalateToFullSync();
+            return;
+        }
+        upsertTrack(tree);
+    } else {
+        escalateToFullSync();
+    }
 }
 
 void TreeDeltaAccumulator::noteChildAdded(const juce::ValueTree& child) {
@@ -36,7 +47,7 @@ void TreeDeltaAccumulator::escalateToFullSync() {
 }
 
 void TreeDeltaAccumulator::upsertClip(const juce::ValueTree& clipTree) {
-    ClipSnapshot snap = buildClipSnapshotFromTree(clipTree);
+    ClipSnapshot snap = buildClipSnapshotFromTree(clipTree, bpm_);
     clipsUpserted_[snap.clipId] = snap;
     clipsRemoved_.erase(snap.clipId);   // re-added cancels a pending removal
 }

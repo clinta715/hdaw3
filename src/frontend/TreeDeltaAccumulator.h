@@ -19,10 +19,12 @@ namespace frontend {
 // (FrontendTreeWatcher's ValueTree callbacks).
 class TreeDeltaAccumulator {
 public:
-    void notePropertyChanged(const juce::ValueTree& tree);
+    void notePropertyChanged(const juce::ValueTree& tree, const juce::Identifier& property);
     void noteChildAdded(const juce::ValueTree& child);
     void noteChildRemoved(const juce::ValueTree& child);
     void noteStructuralChange();
+
+    void setBpm(double bpm) { bpm_ = bpm; }
 
     bool fullSync() const { return fullSync_; }
     const std::unordered_map<int, ClipSnapshot>& clipsUpserted() const { return clipsUpserted_; }
@@ -43,6 +45,7 @@ private:
     std::set<int> clipsRemoved_;
     std::unordered_map<int, TrackSnapshot> tracksUpserted_; // trackIndex -> latest snapshot
     bool fullSync_ = false;
+    double bpm_ = 120.0;
 };
 
 } // namespace frontend

@@ -60,6 +60,7 @@ public:
     bool loadingPhase = false;
 
     const std::map<std::pair<int, int>, ClipSourceProcessor*>& getAudioClipSources() const { return audioClipSources; }
+    const std::map<std::pair<int, int>, MidiClipProcessor*>& getMidiClipSources() const { return midiClipSources; }
 
 private:
     void connectTrackToBus(int trackIndex, int busID);

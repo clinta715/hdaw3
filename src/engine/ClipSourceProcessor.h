@@ -68,6 +68,7 @@ public:
     void setFadeIn(float f) { fadeIn.store(f); }
     void setFadeOut(float f) { fadeOut.store(f); }
     void setLooping(bool l) { looping.store(l); }
+    bool isLooping() const { return looping.load(); }
 
     // Identifies this clip for StretchCache lookups. Set by RoutingManager
     // when the processor is built/updated from the ValueTree.

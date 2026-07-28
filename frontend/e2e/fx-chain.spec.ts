@@ -4,49 +4,40 @@ import { startApp, rpcCall } from "./helpers";
 test.describe("FX Chain (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
-    // Select track 0
-    await page.locator(".th-row").first().click();
-    // Switch to FX Chain tab
+    // Click a track type badge to set selectedTrackIndex (no stopPropagation)
+    await page.locator(".th-row .th-type-badge").first().click();
+    // Then switch to FX Chain tab
     await page.locator(".bt-tab", { hasText: "FX Chain" }).click();
   });
 
   test("FX chain panel renders", async ({ page }) => {
-    const panel = page.locator(".fx-chain, [class*='fx-chain']");
-    await expect(panel).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".fx-chain")).toBeVisible({ timeout: 5000 });
   });
 
   test("add FX button opens the plugin menu", async ({ page }) => {
-    const addBtn = page.locator('button[title="Add Effect"], button', { hasText: /add|plus|\+/i }).first();
-    if (await addBtn.isVisible({ timeout: 3000 })) {
-      await addBtn.click();
-      // Plugin menu should appear
-      await expect(page.locator(".fx-menu, [class*='fx-menu'], [class*='plugin-menu']")).toBeVisible({ timeout: 3000 });
-    }
+    const addBtn = page.locator(".fx-add-btn");
+    await expect(addBtn).toBeVisible({ timeout: 10000 });
+    await addBtn.click();
+    await expect(page.locator(".fx-dropdown")).toBeVisible({ timeout: 3000 });
   });
 
   test("internal FX options are listed in the menu", async ({ page }) => {
-    const addBtn = page.locator('button[title="Add Effect"], button', { hasText: /add|plus|\+/i }).first();
-    if (await addBtn.isVisible({ timeout: 3000 })) {
-      await addBtn.click();
-      const menu = page.locator(".fx-menu, [class*='fx-menu'], [class*='plugin-menu']");
-      if (await menu.isVisible({ timeout: 3000 })) {
-        // Internal FX include EQ, Compressor, Reverb, Delay
-        await expect(menu).toContainText(/EQ|Compressor|Reverb|Delay/i);
-      }
-    }
+    await expect(page.locator(".fx-add-btn")).toBeVisible({ timeout: 10000 });
+    await page.locator(".fx-add-btn").click();
+    const menu = page.locator(".fx-dropdown");
+    await expect(menu).toBeVisible({ timeout: 3000 });
+    await expect(menu).toContainText(/EQ|Compressor|Reverb|Delay/i);
   });
 
-  test("FX slot shows track name in header", async ({ page }) => {
-    // The FX chain should display which track it's editing
-    const header = page.locator(".fx-chain-header, [class*='fx-header']");
+  test("FX header shows track name", async ({ page }) => {
+    const header = page.locator(".fx-header");
     if (await header.isVisible({ timeout: 3000 })) {
       await expect(header).toContainText(/Track/);
     }
   });
 
   test("empty FX chain shows placeholder message", async ({ page }) => {
-    // Track 0 has no FX by default
-    const empty = page.locator(".fx-empty, [class*='empty']");
+    const empty = page.locator(".fx-empty-slots, .fx-empty");
     if (await empty.isVisible({ timeout: 3000 })) {
       await expect(empty).toBeVisible();
     }

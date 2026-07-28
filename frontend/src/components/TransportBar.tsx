@@ -113,7 +113,7 @@ export default function TransportBar() {
         </button>
         <button
           className={`tb-btn ${transport.isRecording ? "recording" : ""}`}
-          onClick={cmd(transport.isRecording ? "transport.stop" : "transport.record")}
+          onClick={cmd("transport.record")}
           title="Record"
         >
           ●

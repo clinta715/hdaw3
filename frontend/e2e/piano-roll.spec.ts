@@ -5,7 +5,7 @@ test.describe("Piano Roll (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
     // Create a MIDI clip to work with
-    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 4 });
+    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 4, name: "E2E MIDI" });
     // Select it so the piano roll shows notes
     await page.locator(".tl-clip").first().click();
     // Switch to piano roll tab

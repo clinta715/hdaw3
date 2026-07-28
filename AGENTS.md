@@ -94,6 +94,28 @@ handlers so future renderer faults surface instead of black-screening.
 burst) a single rebuild can still take ~30s — incremental routing is the
 remaining follow-up. For the full list of working
 features and the priority-ordered roadmap, see `README.md`.
+**v0.13.1** fixes a critical beats-vs-seconds unit mismatch that affected
+every clip creation/move/duplicate path. The `createMidiClipEmpty` and
+`createAudioClip` functions stored beat values directly as `startTime`/
+`duration` (seconds), causing clips to play at wrong positions and for
+wrong durations (~2× too long at 120 BPM). Fixed by converting beats→seconds
+at every frontend-facing entry point (`addMidiClip`, `addAudioClip`,
+`addClips`, `moveClip`, `moveClipWithOverlap`, `duplicateClipTo`,
+`duplicateClips`, `setClipStart`, `setClipDuration`, `createGhostClip`,
+`paintClips`, `ensureMidiRecClip`, MCP tools, and `pasteAudioClipRegion`).
+The `ReadModelImpl::buildClipSnapshotFromTree` and `getClip` now convert
+seconds→beats for the frontend. Shared helper `HDAW::beatsToSeconds()` in
+`AudioEngineCommands_Helpers.h`. Also adds: transport auto-stop when
+playhead reaches end of all clips (`TransportManager::advance` checks
+`projectEndSample`; `AudioEngine::timerCallback` polls the flag and updates
+the ValueTree); SPSC-triggered `projectEndSample` recompute for clip timing
+changes; waveform peak slicing to match clip offset/duration (no longer
+shows the full source file); track type labels (AUDIO/MIDI/FOLDER) with
+color-coded row tints; `TreeDeltaAccumulator` escalates `isMuted`/`isSoloed`
+property changes to fullSync so `effectiveMuted`/`effectiveSoloed` propagate
+correctly; audio buzz on stop fixed (`MainAudioProcessor::processBlock`
+early-out when transport is stopped); 10 new `TransportManager` unit tests
+and 1 new Playwright E2E auto-stop test (130 total).
 
 ## Documentation Directory
 

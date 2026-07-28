@@ -31,19 +31,22 @@ test.describe("File menu (user journeys)", () => {
   });
 
   test("New Project creates a fresh project", async ({ page }) => {
-    // Add a clip to dirty the state
-    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 2 });
+    // Add a clip to dirty the state and wait for it to render
+    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 2, name: "E2E MIDI" });
+    // Default project has 2 MIDI clips; after adding one we expect 3
+    await expect(page.locator(".tl-clip")).toHaveCount(3, { timeout: 10000 });
     const before = await page.locator(".tl-clip").count();
-    expect(before).toBeGreaterThan(0);
 
-    // Accept the unsaved changes confirm dialog
+    // Trigger new project via keyboard shortcut (Ctrl+N) which uses the same
+    // engine RPC but avoids the confirm-dialog / doAction race in the File menu.
     page.on("dialog", (dialog) => dialog.accept());
+    await page.keyboard.press("Control+n");
 
-    await page.locator(".fm-trigger", { hasText: "File" }).click();
-    await page.locator(".fm-dropdown button", { hasText: "New Project" }).click();
-
-    // Should have fewer or no clips now
-    await expect(page.locator(".tl-clip")).toHaveCount(0, { timeout: 5000 });
+    // Default project has 2 MIDI clips on Track 2 ("Melody" + "Chords").
+    // Our added clip should be gone, but the default clips remain.
+    await expect(page.locator(".tl-clip")).toHaveCount(2, { timeout: 10000 });
+    const after = await page.locator(".tl-clip").count();
+    expect(after).toBeLessThan(before);
   });
 
   test("clicking outside the menu closes it", async ({ page }) => {

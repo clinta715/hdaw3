@@ -198,6 +198,11 @@ void AudioEngine::initialize()
 
     // Wiring that previously lived in MainWindow
     projectModel.setPluginManager(&pluginManager);
+
+    // Poll for audio-thread auto-stop requests (position exceeded project end).
+    // The audio thread sets an atomic flag; this timer fires the proper
+    // ValueTree stop command on the message thread so the UI updates.
+    startTimer(50);
 }
 
 void AudioEngine::recordMidiCc(int channel, int controllerNumber, int value)
@@ -332,7 +337,11 @@ int AudioEngine::ensureMidiRecClip(int trackIndex, int64_t startSample)
 
     double sr = transportManager.getSampleRate();
     double startSec = sr > 0 ? static_cast<double>(startSample) / sr : 0.0;
-    int clipId = commands->addMidiClip(trackIndex, startSec, 8.0, "Recording");
+    // addMidiClip expects beats; convert seconds → beats
+    double bpm = transportManager.getBPM();
+    double startBeat = (bpm > 0) ? startSec * bpm / 60.0 : startSec;
+    double durBeats = (bpm > 0) ? 8.0 * bpm / 60.0 : 8.0;
+    int clipId = commands->addMidiClip(trackIndex, startBeat, durBeats, "Recording");
     if (clipId < 0) return -1;
     midiNoteRecClips.push_back({ clipId, trackIndex, startSample, startSample });
     return clipId;
@@ -1057,6 +1066,22 @@ void AudioEngine::handleAsyncUpdate()
     // single rebuild.
     if (mainProcessor != nullptr)
         mainProcessor->rebuildRoutingGraph();
+}
+
+void AudioEngine::timerCallback()
+{
+    if (transportManager.consumeAutoStopRequested())
+    {
+        // The audio thread stopped playback because position exceeded the
+        // project end. Update the ValueTree so the frontend transport bar
+        // reflects the stopped state.
+        auto transportTree = projectModel.getTransportTree();
+        if (transportTree.isValid())
+        {
+            auto& um = projectModel.getUndoManager();
+            transportTree.setProperty(IDs::isPlaying, false, &um);
+        }
+    }
 }
 
 void AudioEngine::rebuildTempoMap()

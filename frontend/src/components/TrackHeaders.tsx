@@ -11,6 +11,18 @@ const TRACK_TYPE_ICONS: Record<number, string> = {
   2: "\u25BC",       // folder: down triangle
 };
 
+const TRACK_TYPE_LABELS: Record<number, string> = {
+  0: "AUDIO",
+  1: "MIDI",
+  2: "FOLDER",
+};
+
+const TRACK_TYPE_CLASSES: Record<number, string> = {
+  0: "audio",
+  1: "instrument",
+  2: "folder",
+};
+
 const TRACK_TYPE_COLORS: Record<number, string> = {
   0: "#4a9eff",      // audio: blue
   1: "#9b59b6",      // instrument: purple
@@ -101,7 +113,7 @@ export default function TrackHeaders() {
         return (
         <div
           key={track.index}
-          className={`th-row${track.trackType === 2 ? " th-folder" : ""}`}
+          className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}`}
           style={{ paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
           onClick={() => selectClip(null, track.index)}
         >
@@ -128,17 +140,20 @@ export default function TrackHeaders() {
           />
           <div className="th-info">
             <div className="th-name">{track.name}</div>
+            <div className="th-type" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>
+              {TRACK_TYPE_LABELS[track.trackType] ?? "AUDIO"}
+            </div>
           </div>
           <div className="th-controls">
             <button
-              className={`th-btn th-mute${track.muted ? " active" : ""}`}
+              className={`th-btn th-mute${track.muted || track.effectiveMuted ? " active" : ""}`}
               onClick={(e) => handleMute(track.index, track.muted, e)}
               title="Mute"
             >
               M
             </button>
             <button
-              className={`th-btn th-solo${track.soloed ? " active" : ""}`}
+              className={`th-btn th-solo${track.soloed || track.effectiveSoloed ? " active" : ""}`}
               onClick={(e) => handleSolo(track.index, track.soloed, e)}
               title="Solo"
             >

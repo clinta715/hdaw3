@@ -31,6 +31,7 @@ FrontendTreeWatcher::FrontendTreeWatcher(AudioEngine& engine, FrontendServer& se
     // Attach to the ROOT project tree (documented-safe pattern; survives
     // File->New / load rebuilds). See AGENTS.md "ValueTree listener orphans".
     engine_.getProjectModel().getTree().addListener(this);
+    accumulator_.setBpm(engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0));
 
     debounceTimer_ = new QTimer(this);
     debounceTimer_->setSingleShot(true);
@@ -42,8 +43,10 @@ FrontendTreeWatcher::~FrontendTreeWatcher() {
     engine_.getProjectModel().getTree().removeListener(this);
 }
 
-void FrontendTreeWatcher::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier&) {
-    accumulator_.notePropertyChanged(tree);
+void FrontendTreeWatcher::valueTreePropertyChanged(juce::ValueTree& tree, const juce::Identifier& property) {
+    if (tree.hasType(IDs::PROJECT) && property == IDs::tempo)
+        accumulator_.setBpm(tree.getProperty(IDs::tempo, 120.0));
+    accumulator_.notePropertyChanged(tree, property);
     scheduleNotify();
 }
 

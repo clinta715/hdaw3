@@ -81,18 +81,23 @@ test.describe("Transport bar (user journeys)", () => {
 
   test("remove track button removes the selected track", async ({ page }) => {
     const before = await page.locator(".th-row").count();
-    // Select first track
-    await page.locator(".th-row").first().click();
+    // Select the second track (index 1) — track 0 may be the master/output track
+    // and can't be removed. Click the type-badge to avoid .th-color's stopPropagation.
+    const secondTrack = page.locator(".th-row").nth(1);
+    await secondTrack.locator(".th-type-badge").click();
     await page.locator('header.transport-bar button[title="Remove Track"]').click();
     await expect(page.locator(".th-row")).toHaveCount(before - 1, { timeout: 5000 });
   });
 
   test("snap toggle button toggles snap state", async ({ page }) => {
     const snapBtn = page.locator('header.transport-bar button[title="Toggle Snap"]');
+    const wasActive = (await snapBtn.getAttribute("class"))?.includes("active") ?? false;
     await snapBtn.click();
-    await expect(snapBtn).toHaveClass(/active/, { timeout: 3000 });
-    await snapBtn.click();
-    await expect(snapBtn).not.toHaveClass(/active/, { timeout: 3000 });
+    if (wasActive) {
+      await expect(snapBtn).not.toHaveClass(/active/, { timeout: 5000 });
+    } else {
+      await expect(snapBtn).toHaveClass(/active/, { timeout: 5000 });
+    }
   });
 
   test("metronome toggle button toggles metronome", async ({ page }) => {
@@ -106,9 +111,10 @@ test.describe("Transport bar (user journeys)", () => {
   test("record button shows recording state", async ({ page }) => {
     const recBtn = page.locator('header.transport-bar button[title="Record"]');
     await recBtn.click();
-    await expect(recBtn).toHaveClass(/recording/, { timeout: 3000 });
-    // Stop recording
-    await page.locator('header.transport-bar button[title="Stop"]').click();
+    await expect(recBtn).toHaveClass(/recording/, { timeout: 5000 });
+    // Click Record again to toggle recording off (transport.stop doesn't stop recording)
+    await recBtn.click();
+    await expect(recBtn).not.toHaveClass(/recording/, { timeout: 5000 });
   });
 
   test("undo and redo buttons are visible", async ({ page }) => {

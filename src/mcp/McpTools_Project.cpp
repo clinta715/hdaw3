@@ -77,6 +77,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
             auto tl = e->getProjectModel().getTrackListTree();
             int wanted = a.value("trackId").toInt(-1);
             QJsonArray arr;
+            double bpm = e->getTransportManager().getBPM();
+            double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
             for (int i = 0; i < tl.getNumChildren(); ++i) {
                 if (wanted >= 0 && wanted != i) continue;
                 auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
@@ -86,8 +88,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                         {"id", static_cast<int>(c.getProperty(IDs::clipID))},
                         {"trackId", i},
                         {"name", jstr(c.getProperty(IDs::name).toString())},
-                        {"start", static_cast<double>(c.getProperty(IDs::startTime))},
-                        {"duration", static_cast<double>(c.getProperty(IDs::duration))},
+                        {"start", static_cast<double>(c.getProperty(IDs::startTime)) * toBeats},
+                        {"duration", static_cast<double>(c.getProperty(IDs::duration)) * toBeats},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
                         {"gain", static_cast<double>(c.getProperty(IDs::gain))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
@@ -112,11 +114,13 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                 for (int j = 0; j < cl.getNumChildren(); ++j) {
                     auto c = cl.getChild(j);
                     if (static_cast<int>(c.getProperty(IDs::clipID)) != cid) continue;
+                    double bpm = e->getTransportManager().getBPM();
+                    double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
                     QJsonObject out{
                         {"id", cid}, {"trackId", i},
                         {"name", jstr(c.getProperty(IDs::name).toString())},
-                        {"start", static_cast<double>(c.getProperty(IDs::startTime))},
-                        {"duration", static_cast<double>(c.getProperty(IDs::duration))},
+                        {"start", static_cast<double>(c.getProperty(IDs::startTime)) * toBeats},
+                        {"duration", static_cast<double>(c.getProperty(IDs::duration)) * toBeats},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
                         {"gain", static_cast<double>(c.getProperty(IDs::gain))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
@@ -317,9 +321,12 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = a.value("trackId").toInt();
             auto tl = m.getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
+            double bpm = e->getTransportManager().getBPM();
+            double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
+            double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
             auto c = ProjectModel::createMidiClipEmpty(
                 juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()),
-                a.value("start").toDouble(), a.value("length").toDouble());
+                startSec, durSec);
             c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
             int cid = static_cast<int>(c.getProperty(IDs::clipID));
             tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
@@ -339,9 +346,12 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
             juce::File src(QString::fromUtf8(a.value("sourceFile").toString().toUtf8()).toStdString());
             if (!src.existsAsFile()) return McpToolResult::text("source file not found", true);
+            double bpm = e->getTransportManager().getBPM();
+            double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
+            double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
             auto c = ProjectModel::createAudioClip(
                 juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()),
-                a.value("start").toDouble(), a.value("length").toDouble(),
+                startSec, durSec,
                 src.getFullPathName());
             c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
             int cid = static_cast<int>(c.getProperty(IDs::clipID));
@@ -371,7 +381,11 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
-            if (a.contains("start")) c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
+            if (a.contains("start")) {
+                double bpm = e->getTransportManager().getBPM();
+                double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
+                c.setProperty(IDs::startTime, startSec, &um);
+            }
             if (a.contains("trackId")) {
                 int nti = a.value("trackId").toInt();
                 auto tl = e->getProjectModel().getTrackListTree();
@@ -396,9 +410,11 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
+            double bpm = e->getTransportManager().getBPM();
+            double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
             if (a.contains("name"))     c.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
-            if (a.contains("start"))    c.setProperty(IDs::startTime, a.value("start").toDouble(), &um);
-            if (a.contains("duration")) c.setProperty(IDs::duration, a.value("duration").toDouble(), &um);
+            if (a.contains("start"))    c.setProperty(IDs::startTime, a.value("start").toDouble() * factor, &um);
+            if (a.contains("duration")) c.setProperty(IDs::duration, a.value("duration").toDouble() * factor, &um);
             if (a.contains("gain"))     c.setProperty(IDs::gain, a.value("gain").toDouble(), &um);
             if (a.contains("fadeIn"))   c.setProperty(IDs::fadeIn, a.value("fadeIn").toDouble(), &um);
             if (a.contains("fadeOut"))  c.setProperty(IDs::fadeOut, a.value("fadeOut").toDouble(), &um);
@@ -416,7 +432,9 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto src = findClip(e, a.value("clipId").toInt(), &ti);
             if (!src.isValid()) return McpToolResult::text("clip not found", true);
             int nti = a.contains("trackId") ? a.value("trackId").toInt() : ti;
-            double ns = a.contains("start") ? a.value("start").toDouble()
+            double bpm = e->getTransportManager().getBPM();
+            double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
+            double ns = a.contains("start") ? a.value("start").toDouble() * factor
                                             : static_cast<double>(src.getProperty(IDs::startTime));
             if (a.value("dryRun").toBool(false))
                 return McpToolResult::text(QString("would duplicate clip %1 to track %2 @ %3")
@@ -613,7 +631,10 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         auto tl = m.getTrackListTree();
         if (trackId < 0 || trackId >= tl.getNumChildren())
             return McpToolResult::text("track not found", true);
-        auto c = ProjectModel::createMidiClipEmpty("Generated", start, length);
+        double bpm = e->getTransportManager().getBPM();
+        double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
+        double durSec = (bpm > 0) ? length * 60.0 / bpm : length;
+        auto c = ProjectModel::createMidiClipEmpty("Generated", startSec, durSec);
         c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), nullptr);
         auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
         for (const auto& gn : notes)

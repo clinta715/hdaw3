@@ -20,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-class AudioEngine : private juce::ValueTree::Listener, private juce::AsyncUpdater
+class AudioEngine : private juce::ValueTree::Listener, private juce::AsyncUpdater, private juce::Timer
 {
 public:
     AudioEngine();
@@ -97,6 +97,7 @@ private:
     // AsyncUpdater merges any number of triggerAsyncUpdate() calls within one
     // message-loop tick into a single handleAsyncUpdate() rebuild.
     void handleAsyncUpdate() override;
+    void timerCallback() override;
 
     void rebuildTempoMap();
 

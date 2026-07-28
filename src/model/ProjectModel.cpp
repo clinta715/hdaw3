@@ -192,13 +192,13 @@ void ProjectModel::scanAndSyncNoteIDs()
     while (cur <= maxExisting && !nextNoteID.compare_exchange_weak(cur, maxExisting + 1)) {}
 }
 
-juce::ValueTree ProjectModel::createAudioClip(juce::String name, double start, double dur, juce::String file)
+juce::ValueTree ProjectModel::createAudioClip(juce::String name, double startSec, double durSec, juce::String file)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
     clip.setProperty(IDs::name, name, nullptr);
-    clip.setProperty(IDs::startTime, start, nullptr);
-    clip.setProperty(IDs::duration, dur, nullptr);
+    clip.setProperty(IDs::startTime, startSec, nullptr);
+    clip.setProperty(IDs::duration, durSec, nullptr);
     clip.setProperty(IDs::offset, 0.0, nullptr);
     clip.setProperty(IDs::clipType, "audio", nullptr);
     clip.setProperty(IDs::sourceFile, file, nullptr);
@@ -210,28 +210,28 @@ juce::ValueTree ProjectModel::createAudioClip(juce::String name, double start, d
     clip.setProperty(IDs::sourceBpm, 0.0, nullptr);
     clip.setProperty(IDs::stretchMode, 0, nullptr);
     clip.setProperty(IDs::stretchRatio, 1.0, nullptr);
-    clip.setProperty(IDs::sourceDuration, dur, nullptr);
+    clip.setProperty(IDs::sourceDuration, durSec, nullptr);
     return clip;
 }
 
-juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double start, double dur)
+juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double startBeat, double durBeats)
 {
     juce::ValueTree noteNode(IDs::MIDI_NOTE);
     noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
     noteNode.setProperty(IDs::noteNumber, note, nullptr);
     noteNode.setProperty(IDs::velocity, vel, nullptr);
-    noteNode.setProperty(IDs::startBeat, start, nullptr);
-    noteNode.setProperty(IDs::durationBeats, dur, nullptr);
+    noteNode.setProperty(IDs::startBeat, startBeat, nullptr);
+    noteNode.setProperty(IDs::durationBeats, durBeats, nullptr);
     return noteNode;
 }
 
-juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double start, double dur)
+juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double startSec, double durSec)
 {
     juce::ValueTree clip(IDs::CLIP);
     clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
     clip.setProperty(IDs::name, name, nullptr);
-    clip.setProperty(IDs::startTime, start, nullptr);
-    clip.setProperty(IDs::duration, dur, nullptr);
+    clip.setProperty(IDs::startTime, startSec, nullptr);
+    clip.setProperty(IDs::duration, durSec, nullptr);
     clip.setProperty(IDs::offset, 0.0, nullptr);
     clip.setProperty(IDs::clipType, "midi", nullptr);
     clip.setProperty(IDs::gain, 1.0, nullptr);
@@ -251,9 +251,11 @@ juce::ValueTree ProjectModel::getTrackOfClip(const juce::ValueTree& clip)
     return clipList.getParent();
 }
 
-static juce::ValueTree createMidiClip(juce::String name, double start, double dur)
+static juce::ValueTree createMidiClip(juce::String name, double start, double dur, double bpm)
 {
-    juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, start, dur);
+    double startSec = start * 60.0 / bpm;
+    double durSec = dur * 60.0 / bpm;
+    juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, startSec, durSec);
     auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
     midiNotes.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
     midiNotes.addChild(ProjectModel::createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
@@ -362,8 +364,8 @@ void ProjectModel::createDefaultProject()
     track2.setProperty(IDs::midiChannel, 1, nullptr); // Default MIDI channel 1
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
-        clipList.addChild(createMidiClip("Melody", 0.0, 4.0), -1, nullptr);
-        clipList.addChild(createMidiClip("Chords", 4.0, 4.0), -1, nullptr);
+        clipList.addChild(createMidiClip("Melody", 0.0, 4.0, 120.0), -1, nullptr);
+        clipList.addChild(createMidiClip("Chords", 4.0, 4.0, 120.0), -1, nullptr);
         track2.addChild(clipList, -1, nullptr);
         track2.addChild(createFXChain(), -1, nullptr);
         track2.addChild(createTrackAutomationList(), -1, nullptr);

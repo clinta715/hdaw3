@@ -65,18 +65,23 @@ inline DispatchResult makeError(int code, const QString& message) {
 
 inline QJsonObject toJson(const TrackSnapshot& t) {
     return QJsonObject{
-        { "index",        t.index },
-        { "name",         QString::fromStdString(t.name) },
-        { "color",        t.color },
-        { "volume",       t.volume },
-        { "pan",          t.pan },
-        { "muted",        t.muted },
-        { "soloed",       t.soloed },
-        { "armed",        t.armed },
-        { "inputMonitor", t.inputMonitor },
-        { "height",       t.height },
-        { "midiChannel",  t.midiChannel },
-        { "clipCount",    t.clipCount },
+        { "index",          t.index },
+        { "name",           QString::fromStdString(t.name) },
+        { "color",          t.color },
+        { "volume",         t.volume },
+        { "pan",            t.pan },
+        { "muted",          t.muted },
+        { "soloed",         t.soloed },
+        { "armed",          t.armed },
+        { "inputMonitor",   t.inputMonitor },
+        { "height",         t.height },
+        { "midiChannel",    t.midiChannel },
+        { "trackType",      t.trackType },
+        { "isCollapsed",    t.isCollapsed },
+        { "effectiveMuted", t.effectiveMuted },
+        { "effectiveSoloed",t.effectiveSoloed },
+        { "parentId",       t.parentId },
+        { "clipCount",      t.clipCount },
     };
 }
 

@@ -185,7 +185,9 @@ int AudioEngineCommands::pasteAudioClipRegion(int clipId, double pasteTime)
     juce::String clipName = srcClip.getProperty(IDs::name).toString();
     juce::String newName = clipName + " (pasted)";
 
-    int newId = addAudioClip(trackIdx, pasteTime, reg.duration,
+    double bpm = engine_.getTransportManager().getBPM();
+    double durBeats = (bpm > 0) ? reg.duration * bpm / 60.0 : reg.duration;
+    int newId = addAudioClip(trackIdx, pasteTime, durBeats,
                              reg.sourceFile.toStdString(), newName.toStdString());
     if (newId < 0) return -1;
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { reportRpcError } from "./store/notifyStore";
+import { withHookSentinel } from "./dev/hookSentinel";
 import "./App.css";
 import TransportBar from "./components/TransportBar";
 import TrackHeaders from "./components/TrackHeaders";
@@ -22,6 +23,17 @@ import { useUiStore } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
+
+const SClipEditor = withHookSentinel(ClipEditor, "ClipEditor");
+const SAudioClipEditor = withHookSentinel(AudioClipEditor, "AudioClipEditor");
+const SPianoRoll = withHookSentinel(PianoRoll, "PianoRoll");
+const SMixer = withHookSentinel(Mixer, "Mixer");
+const SBottomTabs = withHookSentinel(BottomTabs, "BottomTabs");
+const SStepSequencer = withHookSentinel(StepSequencer, "StepSequencer");
+const SAutomationPanel = withHookSentinel(AutomationPanel, "AutomationPanel");
+const SFXChain = withHookSentinel(FXChain, "FXChain");
+const SMidiFxChain = withHookSentinel(MidiFxChain, "MidiFxChain");
+const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
 
 function App() {
   useKeyboardShortcuts();
@@ -121,10 +133,12 @@ function App() {
     setActiveBottomTab(clip.isMidi ? "piano-roll" : "audio-editor");
   }, [selectedClipIds, snapshot, setActiveBottomTab]);
 
-  // When selection clears and we're on a clip-specific tab, restore previous tab
+  // When selection clears and we're on a clip-specific tab, restore previous tab.
+  // Only restore if an auto-switch actually happened (lastAutoSwitchedClipRef was set),
+  // otherwise manual tab switches get immediately reverted.
   useEffect(() => {
     const isClipTab = activeBottomTab === "audio-editor" || activeBottomTab === "piano-roll";
-    if (isClipTab && selectedClipIds.size !== 1) {
+    if (isClipTab && selectedClipIds.size !== 1 && lastAutoSwitchedClipRef.current != null) {
       const restored = prevTabRef.current === "audio-editor" || prevTabRef.current === "piano-roll"
         ? "mixer" : prevTabRef.current;
       setActiveBottomTab(restored);
@@ -132,14 +146,14 @@ function App() {
   }, [selectedClipIds, activeBottomTab, setActiveBottomTab]);
 
   const bottomTabs = [
-    { id: "mixer", label: "Mixer", content: <Mixer /> },
-    { id: "piano-roll", label: "Piano Roll", content: <PianoRoll /> },
-    { id: "automation", label: "Automation", content: <AutomationPanel rpc={rpc} /> },
-    { id: "fx", label: "FX Chain", content: <FXChain /> },
-    { id: "midi-fx", label: "MIDI FX", content: <MidiFxChain /> },
-    { id: "audio-editor", label: "Audio Editor", content: <AudioClipEditor /> },
-    { id: "modulation", label: "Modulation", content: <ModulationPanel /> },
-    { id: "step-seq", label: "Step Seq", content: <StepSequencer /> },
+    { id: "mixer", label: "Mixer", content: <SMixer /> },
+    { id: "piano-roll", label: "Piano Roll", content: <SPianoRoll /> },
+    { id: "automation", label: "Automation", content: <SAutomationPanel rpc={rpc} /> },
+    { id: "fx", label: "FX Chain", content: <SFXChain /> },
+    { id: "midi-fx", label: "MIDI FX", content: <SMidiFxChain /> },
+    { id: "audio-editor", label: "Audio Editor", content: <SAudioClipEditor /> },
+    { id: "modulation", label: "Modulation", content: <SModulationPanel /> },
+    { id: "step-seq", label: "Step Seq", content: <SStepSequencer /> },
   ];
 
   return (
@@ -167,11 +181,11 @@ function App() {
       )}
       {useUiStore((s) => s.selectedClipIds.size === 1) && (
         <div className="clip-editor-container">
-          <ClipEditor />
+          <SClipEditor />
         </div>
       )}
       <footer className="bottom-panel">
-        <BottomTabs
+        <SBottomTabs
           tabs={bottomTabs}
           defaultTab="mixer"
           activeTab={activeBottomTab}

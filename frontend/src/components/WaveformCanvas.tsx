@@ -121,14 +121,33 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }
     grad.addColorStop(1, "rgba(200, 140, 60, 0.15)");
 
     if (peaks && peaks.peaks.length >= 2) {
-      const pairs = peaks.peaks.length / 2;
-      const step = Math.max(1, Math.floor(pairs / width));
+      const totalPairs = peaks.peaks.length / 2;
+
+      // Slice peaks to the clip's audible range.  The peaks cover the entire
+      // source file but the clip may start at an offset and/or be shorter.
+      // For timestretched clips the offset is in source beats and the
+      // duration in timestretched beats, so convert to source beats via
+      // dividing by stretchRatio.
+      const sourceDurationBeats = clip.sourceDuration * clip.sourceBpm / 60;
+      const audibleSourceBeats = clip.stretchRatio > 0
+        ? clip.durationBeats / clip.stretchRatio
+        : clip.durationBeats;
+      let startFrac = sourceDurationBeats > 0 ? clip.offset / sourceDurationBeats : 0;
+      let endFrac = sourceDurationBeats > 0 ? (clip.offset + audibleSourceBeats) / sourceDurationBeats : 1;
+      startFrac = Math.max(0, Math.min(1, startFrac));
+      endFrac = Math.max(startFrac, Math.min(1, endFrac));
+
+      const startPair = Math.floor(startFrac * totalPairs);
+      const endPair = Math.max(startPair + 1, Math.ceil(endFrac * totalPairs));
+      const slicePairs = endPair - startPair;
+
+      const step = Math.max(1, Math.floor(slicePairs / width));
       const drawn: { x: number; min: number; max: number }[] = [];
-      for (let i = 0; i < pairs; i += step) {
+      for (let i = startPair; i < endPair; i += step) {
         const idx = i * 2;
-        const min = peaks.peaks[idx];
-        const max = peaks.peaks[idx + 1];
-        drawn.push({ x: (i / pairs) * width, min, max });
+        const min = peaks.peaks[idx] ?? 0;
+        const max = peaks.peaks[idx + 1] ?? 0;
+        drawn.push({ x: ((i - startPair) / slicePairs) * width, min, max });
       }
       if (drawn.length > 0 && drawn[drawn.length - 1].x < width - 1) {
         const last = drawn[drawn.length - 1];

@@ -6,6 +6,14 @@
 
 #include <limits>
 
+// Convert beats to seconds using the current project BPM.
+// The frontend sends clip positions/durations in beats; the audio engine
+// stores them in seconds (processors, timeline, auto-stop all use seconds).
+static double beatsToSeconds(double beats, double bpm)
+{
+    return (bpm > 0) ? beats * 60.0 / bpm : beats;
+}
+
 // ─── ProjectCommands — Clip operations ────────────────────────────
 
 int AudioEngineCommands::addAudioClip(int trackIndex, double start, double duration,
@@ -15,8 +23,13 @@ int AudioEngineCommands::addAudioClip(int trackIndex, double start, double durat
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
 
+    // Convert beats → seconds (frontend sends beats, processors expect seconds)
+    double bpm = engine_.getTransportManager().getBPM();
+    double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
+    double durSec = (bpm > 0) ? duration * 60.0 / bpm : duration;
+
     auto clip = ProjectModel::createAudioClip(
-        juce::String(name), start, duration, juce::String(sourceFile));
+        juce::String(name), startSec, durSec, juce::String(sourceFile));
 
     auto track = trackList.getChild(trackIndex);
     auto clipList = track.getChildWithName(IDs::CLIP_LIST);
@@ -37,8 +50,13 @@ int AudioEngineCommands::addMidiClip(int trackIndex, double start, double durati
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return -1;
 
+    // Convert beats → seconds (frontend sends beats, processors expect seconds)
+    double bpm = engine_.getTransportManager().getBPM();
+    double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
+    double durSec = (bpm > 0) ? duration * 60.0 / bpm : duration;
+
     auto clip = ProjectModel::createMidiClipEmpty(
-        juce::String(name), start, duration);
+        juce::String(name), startSec, durSec);
 
     auto track = trackList.getChild(trackIndex);
     auto clipList = track.getChildWithName(IDs::CLIP_LIST);
@@ -70,7 +88,8 @@ void AudioEngineCommands::moveClip(int clipId, int newTrackIndex, double newStar
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
 
-    clip.setProperty(IDs::startTime, newStart, &um);
+    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    clip.setProperty(IDs::startTime, newStartSec, &um);
 
     if (newTrackIndex != oldTrackIdx)
     {
@@ -96,8 +115,9 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
 
+    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
     double clipDur = clip.getProperty(IDs::duration);
-    double newEnd = newStart + clipDur;
+    double newEnd = newStartSec + clipDur;
 
     // Move to target track first if needed
     if (newTrackIndex != oldTrackIdx)
@@ -119,7 +139,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
     auto clipList = targetTrack.getChildWithName(IDs::CLIP_LIST);
     if (!clipList.isValid())
     {
-        clip.setProperty(IDs::startTime, newStart, &um);
+        clip.setProperty(IDs::startTime, newStartSec, &um);
         return;
     }
 
@@ -143,7 +163,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
         double otherEnd = otherStart + otherDur;
 
         // Check if there's an overlap
-        if (newStart < otherEnd && newEnd > otherStart)
+        if (newStartSec < otherEnd && newEnd > otherStart)
         {
             overlapping.push_back({ other, otherStart, otherEnd });
         }
@@ -156,7 +176,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
         double otherEnd = info.end;
         double otherDur = otherEnd - otherStart;
 
-        if (newStart <= otherStart && newEnd >= otherEnd)
+        if (newStartSec <= otherStart && newEnd >= otherEnd)
         {
             // Case 1: Incoming clip fully covers the existing clip.
             // NON-DESTRUCTIVE: leave the existing clip in place. Previously this
@@ -169,7 +189,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
             // semantics are ever wanted, gate them behind an explicit edit mode
             // rather than the default move/duplicate path.
         }
-        else if (newStart <= otherStart && newEnd > otherStart && newEnd < otherEnd)
+        else if (newStartSec <= otherStart && newEnd > otherStart && newEnd < otherEnd)
         {
             // Case 2: Incoming clip overlaps the left portion → trim existing to the right
             double newOtherStart = newEnd;
@@ -179,20 +199,20 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
             info.clip.setProperty(IDs::duration, newOtherDur, &um);
             info.clip.setProperty(IDs::offset, newOtherOffset, &um);
         }
-        else if (newStart > otherStart && newEnd >= otherEnd)
+        else if (newStartSec > otherStart && newEnd >= otherEnd)
         {
             // Case 3: Incoming clip overlaps the right portion → trim existing to the left
-            double newOtherDur = newStart - otherStart;
+            double newOtherDur = newStartSec - otherStart;
             info.clip.setProperty(IDs::duration, newOtherDur, &um);
         }
-        else if (newStart > otherStart && newEnd < otherEnd)
+        else if (newStartSec > otherStart && newEnd < otherEnd)
         {
             // Case 4: Incoming clip is in the middle → split existing into two
             // First, create the right portion
             auto rightClip = info.clip.createCopy();
             double rightStart = newEnd;
             double rightDur = otherEnd - newEnd;
-            double rightOffset = static_cast<double>(info.clip.getProperty(IDs::offset)) + (newStart - otherStart) + clipDur;
+            double rightOffset = static_cast<double>(info.clip.getProperty(IDs::offset)) + (newStartSec - otherStart) + clipDur;
             rightClip.setProperty(IDs::startTime, rightStart, &um);
             rightClip.setProperty(IDs::duration, rightDur, &um);
             rightClip.setProperty(IDs::offset, rightOffset, &um);
@@ -200,13 +220,13 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
             clipList.addChild(rightClip, -1, &um);
 
             // Trim the left portion
-            double leftDur = newStart - otherStart;
+            double leftDur = newStartSec - otherStart;
             info.clip.setProperty(IDs::duration, leftDur, &um);
         }
     }
 
     // Finally, set the incoming clip's new start position
-    clip.setProperty(IDs::startTime, newStart, &um);
+    clip.setProperty(IDs::startTime, newStartSec, &um);
 }
 
 void AudioEngineCommands::setClipStart(int clipId, double start)
@@ -215,7 +235,10 @@ void AudioEngineCommands::setClipStart(int clipId, double start)
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
-        clip.setProperty(IDs::startTime, start, &um);
+    {
+        double startSec = beatsToSeconds(start, engine_.getTransportManager().getBPM());
+        clip.setProperty(IDs::startTime, startSec, &um);
+    }
 }
 
 void AudioEngineCommands::setClipDuration(int clipId, double duration)
@@ -224,7 +247,10 @@ void AudioEngineCommands::setClipDuration(int clipId, double duration)
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
-        clip.setProperty(IDs::duration, duration, &um);
+    {
+        double durSec = beatsToSeconds(duration, engine_.getTransportManager().getBPM());
+        clip.setProperty(IDs::duration, durSec, &um);
+    }
 }
 
 void AudioEngineCommands::setClipGain(int clipId, float gain)
@@ -322,7 +348,8 @@ int AudioEngineCommands::duplicateClipTo(int clipId, double newStart, int newTra
     // positioning + target-track logic of createGhostClip, without the ghost
     // re-parenting). Unlike duplicateClip this is a direct placement, so the
     // frontend doesn't need a follow-up moveClipWithOverlap round trip.
-    newClip.setProperty(IDs::startTime, newStart, nullptr);
+    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    newClip.setProperty(IDs::startTime, newStartSec, nullptr);
 
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren())
@@ -362,7 +389,8 @@ std::vector<int> AudioEngineCommands::duplicateClips(const std::vector<int>& cli
         juce::String origName = newClip.getProperty(IDs::name).toString();
         if (!origName.endsWith(" copy"))
             newClip.setProperty(IDs::name, origName + " copy", nullptr);
-        newClip.setProperty(IDs::startTime, newStarts[i], nullptr);
+        double newStartSec = beatsToSeconds(newStarts[i], engine_.getTransportManager().getBPM());
+        newClip.setProperty(IDs::startTime, newStartSec, nullptr);
 
         auto clipList = trackList.getChild(targetTrack).getChildWithName(IDs::CLIP_LIST);
         if (!clipList.isValid()) { result.push_back(-1); continue; }
@@ -420,11 +448,17 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
         track.addChild(clipList, -1, &um);
     }
 
+    // Convert beats → seconds (frontend sends beats, processors expect seconds)
+    double bpm = engine_.getTransportManager().getBPM();
+    double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
+
     beginTransaction("Add clips");
     for (size_t i = 0; i < starts.size(); ++i)
     {
+        double startSec = starts[i] * factor;
+        double durSec = durations[i] * factor;
         auto clip = ProjectModel::createMidiClipEmpty(
-            juce::String(names[i]), starts[i], durations[i]);
+            juce::String(names[i]), startSec, durSec);
         int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
         clipList.addChild(clip, -1, &um);
 
@@ -481,10 +515,12 @@ int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
     int mergedId = static_cast<int>(mergedClip.getProperty(IDs::clipID, 0));
 
     auto mergedNoteList = mergedClip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    double bpm = engine_.getTransportManager().getBPM();
     for (const auto& info : infos)
     {
         double clipStart = static_cast<double>(info.tree.getProperty(IDs::startTime));
-        double offset = clipStart - newStart;
+        double offsetSec = clipStart - newStart;
+        double offsetBeats = (bpm > 0) ? offsetSec * bpm / 60.0 : offsetSec;
 
         auto noteList = info.tree.getChildWithName(IDs::MIDI_NOTE_LIST);
         for (int n = 0; n < noteList.getNumChildren(); ++n)
@@ -493,7 +529,7 @@ int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
             auto newNote = ProjectModel::createMidiNote(
                 static_cast<int>(srcNote.getProperty(IDs::noteNumber)),
                 static_cast<float>(static_cast<double>(srcNote.getProperty(IDs::velocity))),
-                static_cast<double>(srcNote.getProperty(IDs::startBeat)) + offset,
+                static_cast<double>(srcNote.getProperty(IDs::startBeat)) + offsetBeats,
                 static_cast<double>(srcNote.getProperty(IDs::durationBeats)));
             mergedNoteList.addChild(newNote, -1, &um);
         }

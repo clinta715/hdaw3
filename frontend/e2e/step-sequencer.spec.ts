@@ -5,7 +5,7 @@ test.describe("Step Sequencer (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
     // Create a MIDI clip
-    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 4 });
+    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 4, name: "E2E MIDI" });
     // Select it
     await page.locator(".tl-clip").first().click();
     // Switch to step seq tab
@@ -38,7 +38,7 @@ test.describe("Step Sequencer (user journeys)", () => {
   });
 
   test("row labels show note names", async ({ page }) => {
-    const labels = page.locator(".ss-label, [class*='ss-label'], .step-label");
+    const labels = page.locator(".ss-note-label");
     await expect(labels.first()).toBeVisible({ timeout: 5000 });
     // Should contain note names like C, D, E, etc.
     const text = await labels.first().textContent();
@@ -57,7 +57,7 @@ test.describe("Step Sequencer (user journeys)", () => {
     if (await toggle.isVisible({ timeout: 2000 })) {
       await toggle.click();
       // Labels should change to drum names (Kick, Snare, etc.)
-      await expect(page.locator(".ss-label, [class*='ss-label'], .step-label").first()).toContainText(/Kick|Snare|Hat|Tom|Crash/i, { timeout: 2000 });
+      await expect(page.locator(".ss-note-label").first()).toContainText(/Kick|Snare|Hat|Tom|Crash/i, { timeout: 2000 });
     }
   });
 });

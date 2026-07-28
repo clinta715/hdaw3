@@ -35,4 +35,12 @@ inline void setProp(juce::ValueTree tree, const juce::Identifier& prop, T value,
         tree.setProperty(prop, value, um);
 }
 
+// Convert beats to seconds using the given BPM.
+// The frontend sends clip positions/durations in beats; the audio engine
+// stores them in seconds (processors, timeline, auto-stop all use seconds).
+inline double beatsToSeconds(double beats, double bpm)
+{
+    return (bpm > 0) ? beats * 60.0 / bpm : beats;
+}
+
 } // namespace HDAW

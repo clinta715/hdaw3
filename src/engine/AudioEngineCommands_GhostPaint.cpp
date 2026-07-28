@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 
@@ -28,7 +29,8 @@ int AudioEngineCommands::createGhostClip(int sourceClipId, double newStart, int 
     newClip.setProperty(IDs::clipID, newId, nullptr);
     newClip.setProperty(IDs::ghostSourceId, rootId, nullptr);
     newClip.setProperty(IDs::isGhost, 1, nullptr);
-    newClip.setProperty(IDs::startTime, newStart, nullptr);
+    double newStartSec = HDAW::beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    newClip.setProperty(IDs::startTime, newStartSec, nullptr);
 
     // Remove MIDI_NOTE_LIST so it gets a fresh one via the listener
     auto noteList = newClip.getChildWithName(IDs::MIDI_NOTE_LIST);
@@ -120,7 +122,9 @@ std::vector<int> AudioEngineCommands::paintClips(const std::vector<int>& sourceC
             // Compute relative offset within the pattern
             double srcStart = srcClip.getProperty(IDs::startTime, 0.0);
             double relativeOffset = srcStart - patternOrigin;
-            newClip.setProperty(IDs::startTime, originBeat + (tile + 1) * spacing + relativeOffset, &um);
+            double bpm = engine_.getTransportManager().getBPM();
+            double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
+            newClip.setProperty(IDs::startTime, originBeat * factor + (tile + 1) * spacing * factor + relativeOffset, &um);
 
             // Copy MIDI notes from root
             int rootIdx = -1;

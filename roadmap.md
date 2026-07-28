@@ -3,9 +3,9 @@
 Sequenced roadmap for closing the gaps in [`feature_parity.md`](feature_parity.md),
 ordered by domain priority:
 
-1. MIDI editing
-2. Audio recording & editing
-3. Arrangement & timeline
+1. Arrangement & timeline
+2. MIDI editing
+3. Audio recording & editing
 4. Instruments & sound generation
 5. FX & processing
 6. Automation
@@ -18,27 +18,34 @@ multiple times across phases.
 
 ## Cross-cutting dependencies
 
-- **Groove engine** (built in Phase 1) is reused by audio quantize
-  (Phase 2) and tempo swing (Phase 7) — build it once.
-- **Typed tracks** (Phase 3) is a prerequisite for instruments
+- **Typed tracks** (Phase 1) is a prerequisite for instruments
   (Phase 4). The priority order already respects this.
+- **Groove engine** (built in Phase 2) is reused by audio quantize
+  (Phase 3) and tempo swing (Phase 7) — build it once.
 - **Sidechain routing** (Phase 8) is shared by Routing and Mixing —
   do the routing engine once, the mixer UI consumes it.
-- **Bounce/render engine** (Phase 2 freeze) is reused by
+- **Bounce/render engine** (Phase 3 freeze) is reused by
   instrument-to-audio (Phase 4).
 
 ---
 
-## Phase 1 — MIDI editing
+## Phase 1 — Arrangement & timeline
+1. **Typed tracks** (audio/instrument/bus/folder/group) *(foundation — unlocks Phase 4)*
+2. Track folders / grouping
+3. Track colors, height, show/hide
+4. Ripple edit
+5. **Clip-launch / session view** *(epic — non-linear paradigm, could split to its own phase)*
+
+## Phase 2 — MIDI editing
 1. Finish CC controller lanes (complete the partial)
 2. Step sequencer / drum pattern editor
 3. **MIDI effects rack** — arpeggiator, chord, scale, velocity, note-length (needs a MIDI FX chain)
 4. Input quantize while recording
-5. **Groove/swing engine** *(foundation — reused Phase 2 & 7)*
+5. **Groove/swing engine** *(foundation — reused Phase 3 & 7)*
 6. Logical MIDI transforms (rule-based note ops)
 7. **MPE / note expression** *(epic — per-note pitch/pressure/slide)*
 
-## Phase 2 — Audio recording & editing
+## Phase 3 — Audio recording & editing
 1. Auto crossfades between adjacent clips
 2. Comping / take lanes + flatten
 3. Punch in/out
@@ -47,19 +54,12 @@ multiple times across phases.
 6. Freeze / bounce-in-place *(foundation — reused Phase 4)*
 7. Offline FX processing chain
 
-## Phase 3 — Arrangement & timeline
-1. **Typed tracks** (audio/instrument/bus/folder/group) *(foundation — unlocks Phase 4)*
-2. Track folders / grouping
-3. Track colors, height, show/hide
-4. Ripple edit
-5. **Clip-launch / session view** *(epic — non-linear paradigm, could split to its own phase)*
-
 ## Phase 4 — Instruments & sound generation
-1. Built-in synth *(needs instrument track type from Phase 3)*
+1. Built-in synth *(needs instrument track type from Phase 1)*
 2. Sampler / multisample instrument
 3. Drum machine / drum rack
 4. Stock instrument library
-5. Render MIDI+instrument to audio *(consumes bounce engine from Phase 2)*
+5. Render MIDI+instrument to audio *(consumes bounce engine from Phase 3)*
 
 ## Phase 5 — FX & processing
 1. Modulation FX — chorus/flanger/phaser/tremolo *(quick juce_dsp wins)*

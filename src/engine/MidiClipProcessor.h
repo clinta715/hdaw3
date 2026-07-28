@@ -48,6 +48,8 @@ public:
 
     void setStartTime(double t) { startTime.store(t); }
     void setDuration(double d) { duration.store(d); }
+    double getStartTime() const { return startTime.load(); }
+    double getDuration() const { return duration.load(); }
     void setGain(float g) { gain.store(g); }
     void setMidiChannel(int ch) { midiChannel.store(juce::jlimit(1, 16, ch)); }
     int  getMidiChannel() const { return midiChannel.load(); }
