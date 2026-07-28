@@ -11,6 +11,7 @@ import type { TransportSnapshot } from "../rpc/types";
 interface TimelineContextMenuProps {
   contextMenu: { x: number; y: number; type: string; clip?: ClipSnapshot; markerIndex?: number } | null;
   emptyContextMenu: { x: number; y: number; beat: number; trackIndex: number } | null;
+  belowMenu: { x: number; y: number } | null;
   clips: ClipSnapshot[];
   markers: MarkerSnapshot[];
   selectedClipIds: Set<number>;
@@ -24,6 +25,7 @@ interface TimelineContextMenuProps {
 export function TimelineContextMenu({
   contextMenu,
   emptyContextMenu,
+  belowMenu,
   clips,
   markers,
   selectedClipIds,
@@ -53,7 +55,7 @@ export function TimelineContextMenu({
     useProjectStore.setState({ isDirty: true });
   }, []);
 
-  if (!contextMenu && !emptyContextMenu) return null;
+  if (!contextMenu && !emptyContextMenu && !belowMenu) return null;
 
   return (
     <>
@@ -306,6 +308,24 @@ export function TimelineContextMenu({
             onClose();
           }}>
             Add MIDI Clip
+          </button>
+          <div className="ctx-separator" />
+          <button className="ctx-danger" onMouseDown={(e) => {
+            e.stopPropagation();
+            rpc.call("project.removeTrack", { trackIndex: emptyContextMenu.trackIndex }).catch(() => {});
+            useProjectStore.setState({ isDirty: true });
+            onClose();
+          }}>
+            Delete Track
+          </button>
+        </div>
+      )}
+
+      {belowMenu && (
+        <div className="clip-context-menu" style={{ left: belowMenu.x, top: belowMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}>
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack").catch(() => {}); onClose(); }}>
+            Add Track
           </button>
         </div>
       )}

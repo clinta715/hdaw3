@@ -113,6 +113,8 @@ export default function TimelineMinimal() {
   // --- Context menu ---
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; clip?: typeof clips[0]; markerIndex?: number } | null>(null);
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number; trackIndex: number } | null>(null);
+  // Right-click in the dead space below the last track (outside .tl-tracks-inner).
+  const [belowMenu, setBelowMenu] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -123,6 +125,7 @@ export default function TimelineMinimal() {
       }
       setContextMenu(null);
       setEmptyContextMenu(null);
+      setBelowMenu(null);
     };
     // Use mousedown instead of click to avoid conflicts with button onClick
     window.addEventListener("mousedown", close);
@@ -352,6 +355,7 @@ export default function TimelineMinimal() {
   const handleCloseContextMenu = useCallback(() => {
     setContextMenu(null);
     setEmptyContextMenu(null);
+    setBelowMenu(null);
   }, []);
 
   const handleDeleteClip = useCallback(() => {
@@ -653,6 +657,15 @@ export default function TimelineMinimal() {
           ref={tracksRef}
           onScroll={onTracksScroll}
           style={dragCursor ? { cursor: dragCursor } : undefined}
+          onContextMenu={(e) => {
+            // Clicks inside the content area are handled by .tl-tracks-inner;
+            // only the dead space below the last track reaches here.
+            if ((e.target as HTMLElement).closest(".tl-tracks-inner")) return;
+            e.preventDefault();
+            setContextMenu(null);
+            setEmptyContextMenu(null);
+            setBelowMenu({ x: e.clientX, y: e.clientY });
+          }}
         >
           <div className="tl-tracks-inner" style={{ width: totalW, height: totalH, position: "relative" }}
             onClick={() => {
@@ -670,7 +683,11 @@ export default function TimelineMinimal() {
               if (!el) return;
               const rect = el.getBoundingClientRect();
               const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
-              const trackIndex = rowAtY(layout, e.clientY - rect.top + el.scrollTop);
+              const row = rowAtY(layout, e.clientY - rect.top + el.scrollTop);
+              // Map the visible row to its real track index (folder collapse
+              // makes these differ) so Add MIDI Clip / Delete Track target the
+              // track the user actually right-clicked.
+              const trackIndex = visibleTracks[row] ? visibleTracks[row].index : row;
               setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat, trackIndex });
             }}>
             {visibleTracks.map((track, idx) => {
@@ -837,6 +854,7 @@ export default function TimelineMinimal() {
       <TimelineContextMenu
         contextMenu={contextMenu}
         emptyContextMenu={emptyContextMenu}
+        belowMenu={belowMenu}
         clips={clips}
         markers={markers}
         selectedClipIds={selectedClipIds}

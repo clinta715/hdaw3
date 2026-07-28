@@ -14,6 +14,16 @@ test.describe("Timeline context menu (user journeys)", () => {
     await tracksInner.click({ button: "right", position: { x: box.width - 20, y: box.height - 20 } });
   }
 
+  // Right-click in the dead space below the last track row (inside the scroll
+  // container but outside .tl-tracks-inner).
+  async function rightClickBelowTracks(page: import("@playwright/test").Page) {
+    const tracks = page.locator(".tl-tracks");
+    await expect(tracks).toBeVisible({ timeout: 5000 });
+    const box = await tracks.boundingBox();
+    if (!box) throw new Error(".tl-tracks has no bounding box");
+    await tracks.click({ button: "right", position: { x: box.width - 30, y: box.height - 30 } });
+  }
+
   async function waitForContextMenu(page: import("@playwright/test").Page) {
     await expect(page.locator(".clip-context-menu")).toBeVisible({ timeout: 5000 });
   }
@@ -102,5 +112,61 @@ test.describe("Timeline context menu (user journeys)", () => {
     await waitForContextMenu(page);
     await page.locator(".tl-tracks-inner").click({ position: { x: 10, y: 10 } });
     await expect(page.locator(".clip-context-menu")).not.toBeVisible({ timeout: 3000 });
+  });
+
+  test("right-clicking below the existing tracks shows Add Track", async ({ page }) => {
+    await rightClickBelowTracks(page);
+    await waitForContextMenu(page);
+    await expect(page.locator(".clip-context-menu")).toContainText("Add Track");
+  });
+
+  test("Add Track from below-tracks menu creates a track", async ({ page }) => {
+    const before = await page.locator(".th-row").count();
+    await rightClickBelowTracks(page);
+    await waitForContextMenu(page);
+    await page.locator(".clip-context-menu button", { hasText: "Add Track" }).click();
+    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+  });
+
+  test("empty-lane context menu shows Delete Track option", async ({ page }) => {
+    await rightClickEmptyTimeline(page);
+    await waitForContextMenu(page);
+    await expect(page.locator(".clip-context-menu")).toContainText("Delete Track");
+  });
+
+  test("Delete Track from empty-lane menu removes the track", async ({ page }) => {
+    const before = await page.locator(".th-row").count();
+    await rpcCall(page, "project.addTrack", {});
+    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+    await rightClickEmptyTimeline(page);
+    await waitForContextMenu(page);
+    await page.locator(".clip-context-menu button", { hasText: "Delete Track" }).click();
+    await expect(page.locator(".th-row")).toHaveCount(before, { timeout: 5000 });
+  });
+
+  test("right-clicking a track header shows track operations", async ({ page }) => {
+    const row = page.locator(".th-row").first();
+    await row.click({ button: "right" });
+    const menu = page.locator(".clip-context-menu");
+    await expect(menu).toBeVisible({ timeout: 3000 });
+    await expect(menu).toContainText("Add Track");
+    await expect(menu).toContainText("Duplicate Track");
+    await expect(menu).toContainText("Delete Track");
+  });
+
+  test("Delete Track from header menu removes the track", async ({ page }) => {
+    const before = await page.locator(".th-row").count();
+    await rpcCall(page, "project.addTrack", {});
+    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+    await page.locator(".th-row").last().click({ button: "right" });
+    await page.locator(".clip-context-menu button", { hasText: "Delete Track" }).click();
+    await expect(page.locator(".th-row")).toHaveCount(before, { timeout: 5000 });
+  });
+
+  test("Duplicate Track from header menu adds a track", async ({ page }) => {
+    const before = await page.locator(".th-row").count();
+    await page.locator(".th-row").first().click({ button: "right" });
+    await page.locator(".clip-context-menu button", { hasText: "Duplicate Track" }).click();
+    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useMeterStore } from "../store/meterStore";
 import { useUiStore } from "../store/uiStore";
@@ -75,6 +75,18 @@ export default function TrackHeaders() {
       lanes.removeEventListener("scroll", onLanes);
       header.removeEventListener("scroll", onHeader);
     };
+  }, []);
+
+  // Right-click a track header for track operations (add / duplicate / delete).
+  const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number; trackIndex: number } | null>(null);
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest(".clip-context-menu")) return;
+      setHeaderMenu(null);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
   }, []);
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
@@ -158,6 +170,11 @@ export default function TrackHeaders() {
             className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}`}
             style={{ height: layout.heights[idx], paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
             onClick={() => selectClip(null, track.index)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setHeaderMenu({ x: e.clientX, y: e.clientY, trackIndex: track.index });
+            }}
           >
           <div className="th-type-badge" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>
             {track.trackType === 2 && (
@@ -252,6 +269,36 @@ export default function TrackHeaders() {
         );
       })}
       </div>
+      {headerMenu && (
+        <div
+          className="clip-context-menu"
+          style={{ left: headerMenu.x, top: headerMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button onMouseDown={(e) => {
+            e.stopPropagation();
+            rpc.call("project.addTrack").catch(() => {});
+            setHeaderMenu(null);
+          }}>
+            Add Track
+          </button>
+          <button onMouseDown={(e) => {
+            e.stopPropagation();
+            rpc.call("project.duplicateTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+            setHeaderMenu(null);
+          }}>
+            Duplicate Track
+          </button>
+          <div className="ctx-separator" />
+          <button className="ctx-danger" onMouseDown={(e) => {
+            e.stopPropagation();
+            rpc.call("project.removeTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+            setHeaderMenu(null);
+          }}>
+            Delete Track
+          </button>
+        </div>
+      )}
     </div>
   );
 }
