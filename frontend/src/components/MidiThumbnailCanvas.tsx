@@ -2,11 +2,14 @@ import React from "react";
 import { ClipSnapshot } from "../rpc/types";
 import { useProjectStore } from "../store/projectStore";
 import { rpc } from "../rpc";
+import { hexToRgba } from "../theme";
 
 interface Props {
   clip: ClipSnapshot;
   width: number;
   height: number;
+  /** Track color (#rrggbb) used to tint the note blocks. Defaults to cyan. */
+  color?: string;
 }
 
 // Draws a mini piano-roll preview of a MIDI clip's notes, fitted to the
@@ -14,7 +17,7 @@ interface Props {
 // of collapsing to a single line. Mirrors the WaveformCanvas pattern:
 // data lives in the project store's notesByClip (fetched once via syncNotes),
 // and the canvas redraws when the notes reference for this clip changes.
-export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height }) => {
+export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, color = "#38b2df" }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   // Subscribe to just this clip's notes array — stable across other clips'
   // note edits (syncNotes builds a new Map but reuses other keys' refs).
@@ -76,10 +79,10 @@ export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height }) =>
       const top = Math.max(0, y - rowH);
       // Velocity (1..127) maps to opacity for a sense of dynamics.
       const alpha = 0.35 + (n.velocity / 127) * 0.5;
-      ctx.fillStyle = `rgba(56, 178, 223, ${alpha.toFixed(3)})`;
+      ctx.fillStyle = hexToRgba(color, alpha);
       ctx.fillRect(x, top, Math.min(noteW, width - x), rowH - 1);
     }
-  }, [notes, clip.durationBeats, width, height]);
+  }, [notes, clip.durationBeats, width, height, color]);
 
   return <canvas ref={canvasRef} style={{ width, height, display: "block" }} />;
 };

@@ -132,13 +132,61 @@
   position: relative;
 }
 
-.tl-empty {
+/* Empty-state overlay (no tracks). Sits below the ruler and invites the two
+   ways to get content in: add a track, or drop a file. */
+.tl-empty-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
+  z-index: 5;
+}
+
+.tl-empty-card {
+  max-width: 340px;
+  text-align: center;
+  padding: 28px 36px;
+  border: 1px dashed var(--border-light);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+.tl-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.tl-empty-hint {
   font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.tl-empty-btn {
+  padding: 7px 18px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-bright);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.tl-empty-btn:hover {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.tl-empty-btn:active {
+  transform: scale(0.97);
 }
 
 .tl-track-row {
@@ -172,12 +220,12 @@
 
 .tl-clip--audio {
   background: transparent;
-  border: 1px solid var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--clip-color, #d97706) 50%, transparent);
 }
 
 .tl-clip--midi {
-  background: rgba(56, 178, 223, 0.2);
-  border: 1px solid rgba(56, 178, 223, 0.5);
+  background: color-mix(in srgb, var(--clip-color, #38b2df) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--clip-color, #38b2df) 55%, transparent);
 }
 
 .tl-clip--dragging {
@@ -206,8 +254,12 @@
 .clip-trim {
   position: absolute; top: 0; width: 6px; height: 100%;
   cursor: col-resize; z-index: 2; opacity: 0;
+  transition: opacity 0.12s;
 }
-.clip-trim:hover { opacity: 0.3; background: white; }
+.clip-trim:hover {
+  opacity: 0.55;
+  background: var(--clip-color, #ffffff);
+}
 .clip-trim-left {
   left: 0;
 }
@@ -231,6 +283,36 @@
 
 .fade-handle-out {
   right: 0;
+}
+
+/* Discoverability: a small corner grip fades in when the clip is hovered or
+   selected, signalling that the edges are draggable for fades. */
+.fade-handle::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+
+.fade-handle-in::after {
+  left: 2px;
+  border-top: 7px solid var(--clip-color, #d97706);
+  border-right: 7px solid transparent;
+}
+
+.fade-handle-out::after {
+  right: 2px;
+  border-top: 7px solid var(--clip-color, #d97706);
+  border-left: 7px solid transparent;
+}
+
+.tl-clip:hover .fade-handle::after,
+.tl-clip--selected .fade-handle::after {
+  opacity: 0.85;
 }
 
 /* --- Loop band on tracks --- */

@@ -2,6 +2,8 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import type { ClipSnapshot } from "../rpc/types";
 import type { RpcClient } from "../rpc/client";
 import type { DragState } from "../utils/timelineConstants";
+import type { RowLayout } from "../utils/rowLayout";
+import { rowAtY } from "../utils/rowLayout";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { snapToGrid } from "../components/snapUtils";
@@ -9,7 +11,7 @@ import { snapToGrid } from "../components/snapUtils";
 interface UseTimelineDragParams {
   clips: ClipSnapshot[];
   pps: number;
-  TRACK_HEIGHT: number;
+  layout: RowLayout;
   tracksRef: React.RefObject<HTMLDivElement | null>;
   trackCount: number;
   rpc: RpcClient;
@@ -45,14 +47,15 @@ interface UseTimelineDragReturn {
   dragCursor: string;
   dragPreviewStyle: React.CSSProperties | null;
   dragPreviewClip: ClipSnapshot | null;
-  paintTiles: Array<{ left: number; width: number; top: number }>;
+  dragPreviewHeight: number;
+  paintTiles: Array<{ left: number; width: number; top: number; height: number }>;
   paintCount: number;
 }
 
 export function useTimelineDrag({
   clips,
   pps,
-  TRACK_HEIGHT,
+  layout,
   tracksRef,
   trackCount,
   rpc,
@@ -184,7 +187,7 @@ export function useTimelineDrag({
     const rawStart = Math.max(0, (relX - d.offsetX) / pps);
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
-    const newTrackIndex = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), trackCount - 1);
+    const newTrackIndex = rowAtY(layout, relY);
     const deltaStart = newStart - d.startBeat;
     const deltaTrack = newTrackIndex - d.startTrackIndex;
 
@@ -265,7 +268,7 @@ export function useTimelineDrag({
         useProjectStore.setState({ isDirty: true });
       })();
     }
-  }, [pps, trackCount, clips, updateDrag, tracksRef, rpc, TRACK_HEIGHT]);
+  }, [pps, trackCount, clips, updateDrag, tracksRef, rpc, layout]);
 
   handleMouseMoveRef.current = handleMouseMove;
   handleMouseUpRef.current = handleMouseUp;
@@ -280,27 +283,30 @@ export function useTimelineDrag({
           : "grabbing"
     : "";
 
-  const { dragPreviewStyle, dragPreviewClip } = useMemo(() => {
-    if (!dragState || dragState.paintRepeat) return { dragPreviewStyle: null, dragPreviewClip: null };
+  const { dragPreviewStyle, dragPreviewClip, dragPreviewHeight } = useMemo(() => {
+    if (!dragState || dragState.paintRepeat)
+      return { dragPreviewStyle: null, dragPreviewClip: null, dragPreviewHeight: 0 };
     const el = tracksRef.current;
-    if (!el) return { dragPreviewStyle: null, dragPreviewClip: null };
+    if (!el) return { dragPreviewStyle: null, dragPreviewClip: null, dragPreviewHeight: 0 };
     const cr = el.getBoundingClientRect();
     const relX = dragState.mouseX - cr.left;
     const relY = dragState.mouseY - cr.top;
     const rawStart = Math.max(0, (relX - dragState.offsetX) / pps);
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const gs = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
-    const gi = Math.min(Math.max(0, Math.floor(relY / TRACK_HEIGHT)), trackCount - 1);
+    const gi = rowAtY(layout, relY);
     const orig = clips.find((c) => c.clipId === dragState.clipId);
-    if (!orig) return { dragPreviewStyle: null, dragPreviewClip: null };
+    if (!orig) return { dragPreviewStyle: null, dragPreviewClip: null, dragPreviewHeight: 0 };
+    const h = Math.max(8, layout.heights[gi] - 8);
     return {
-      dragPreviewStyle: { left: gs * pps, width: Math.max(4, orig.durationBeats * pps), height: TRACK_HEIGHT - 8, top: gi * TRACK_HEIGHT + 4 } as React.CSSProperties,
+      dragPreviewStyle: { left: gs * pps, width: Math.max(4, orig.durationBeats * pps), height: h, top: layout.tops[gi] + 4 } as React.CSSProperties,
       dragPreviewClip: orig,
+      dragPreviewHeight: h,
     };
-  }, [dragState, pps, TRACK_HEIGHT, trackCount, clips, tracksRef]);
+  }, [dragState, pps, layout, clips, tracksRef]);
 
   const paintTiles = useMemo(() => {
-    const tiles: { left: number; width: number; top: number }[] = [];
+    const tiles: { left: number; width: number; top: number; height: number }[] = [];
     if (!dragState?.paintRepeat || dragState.paintSpacing <= 0) return tiles;
     const el = tracksRef.current;
     if (!el) return tiles;
@@ -308,17 +314,19 @@ export function useTimelineDrag({
     const mouseBeat = Math.max(0, (dragState.mouseX - cr.left + el.scrollLeft) / pps);
     const desiredCount = Math.max(0, Math.floor((mouseBeat - dragState.paintOriginBeat) / dragState.paintSpacing));
     const orig = clips.find((c) => c.clipId === dragState.clipId);
-    const trackTop = dragState.startTrackIndex * TRACK_HEIGHT;
+    const row = Math.min(dragState.startTrackIndex, Math.max(0, layout.count - 1));
+    const trackTop = layout.tops[row] ?? 0;
+    const tileH = Math.max(8, (layout.heights[row] ?? 0) - 8);
     if (!orig) return tiles;
     const tileW = Math.max(4, orig.durationBeats * pps);
     // Tiles now represent pending previews only (clips are committed once on
     // release), so all desiredCount+1 tiles are uncommitted.
     for (let i = 0; i <= desiredCount; i++) {
       const tileBeat = dragState.paintOriginBeat + i * dragState.paintSpacing;
-      tiles.push({ left: tileBeat * pps, width: tileW, top: trackTop + 4 });
+      tiles.push({ left: tileBeat * pps, width: tileW, top: trackTop + 4, height: tileH });
     }
     return tiles;
-  }, [dragState, pps, TRACK_HEIGHT, clips, tracksRef]);
+  }, [dragState, pps, layout, clips, tracksRef]);
 
   // Intended number of copies (excludes the original). Drives the +N badge;
   // mirrors the count computed in the paintRepeat branch of handleMouseUp.
@@ -340,6 +348,7 @@ export function useTimelineDrag({
     dragCursor,
     dragPreviewStyle,
     dragPreviewClip,
+    dragPreviewHeight,
     paintTiles,
     paintCount,
   };

@@ -1,8 +1,12 @@
+import { useEffect, useMemo, useRef } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useMeterStore } from "../store/meterStore";
 import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
 import { colorStr } from "../theme";
+import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
+import { buildRowLayout } from "../utils/rowLayout";
+import { getVisibleTracks } from "../utils/timelineUtils";
 import "./TrackHeaders.css";
 
 const TRACK_TYPE_ICONS: Record<number, string> = {
@@ -33,21 +37,45 @@ export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const tracks = snapshot?.tracks ?? [];
 
-  // Build set of hidden track indices (children of collapsed folders)
-  const hiddenIndices = new Set<number>();
-  for (const track of tracks) {
-    if (track.trackType === 2 && track.isCollapsed) {
-      for (const child of tracks) {
-        if (child.parentId === track.index) {
-          hiddenIndices.add(child.index);
-        }
-      }
-    }
-  }
-  const visibleTracks = tracks.filter(t => !hiddenIndices.has(t.index));
+  // Must match the timeline's visible-track set and row geometry exactly, so
+  // header rows and lanes stay in register (see rowLayout.ts).
+  const visibleTracks = useMemo(() => getVisibleTracks(tracks), [tracks]);
+  const layout = useMemo(
+    () => buildRowLayout(visibleTracks.map((t) => t.height)),
+    [visibleTracks]
+  );
 
   const trackMeters = useMeterStore((s) => s.tracks);
   const selectClip = useUiStore((s) => s.selectClip);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+
+  // Keep the header column vertically locked to the timeline lanes. Scrolling
+  // either side mirrors to the other; the guard stops the programmatic scroll
+  // from re-triggering its counterpart (feedback loop).
+  useEffect(() => {
+    const header = scrollRef.current;
+    const lanes = document.querySelector<HTMLElement>(".tl-tracks");
+    if (!header || !lanes) return;
+    const mirror = (src: HTMLElement, dst: HTMLElement) => {
+      if (syncingRef.current) return;
+      if (dst.scrollTop === src.scrollTop) return;
+      syncingRef.current = true;
+      dst.scrollTop = src.scrollTop;
+      requestAnimationFrame(() => {
+        syncingRef.current = false;
+      });
+    };
+    const onLanes = () => mirror(lanes, header);
+    const onHeader = () => mirror(header, lanes);
+    lanes.addEventListener("scroll", onLanes);
+    header.addEventListener("scroll", onHeader);
+    return () => {
+      lanes.removeEventListener("scroll", onLanes);
+      header.removeEventListener("scroll", onHeader);
+    };
+  }, []);
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -103,20 +131,34 @@ export default function TrackHeaders() {
   };
 
   return (
-    <div className="track-headers">
-      <div className="th-title">Tracks</div>
-      {tracks.length === 0 && (
-        <div className="th-empty">No tracks loaded</div>
-      )}
-      {visibleTracks.map((track) => {
-        const meter = trackMeters[track.index] ?? { l: 0, r: 0 };
-        return (
-        <div
-          key={track.index}
-          className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}`}
-          style={{ paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
-          onClick={() => selectClip(null, track.index)}
-        >
+    <div className="th-root">
+      {/* Corner + ruler band reproduce the timeline's toolbar + ruler so the
+          rows below start at the exact same Y as the timeline lanes. */}
+      <div className="th-corner" style={{ height: TOOLBAR_HEIGHT }} />
+      <div className="th-ruler-row" style={{ height: RULER_HEIGHT }}>
+        <span className="th-title">Tracks</span>
+      </div>
+      <div className="th-scroll" ref={scrollRef}>
+        {tracks.length === 0 && (
+          <div className="th-empty">
+            <span>No tracks loaded</span>
+            <button
+              className="th-empty-btn"
+              onClick={() => rpc.call("project.addTrack").catch(() => {})}
+            >
+              + Add Track
+            </button>
+          </div>
+        )}
+        {visibleTracks.map((track, idx) => {
+          const meter = trackMeters[track.index] ?? { l: 0, r: 0 };
+          return (
+          <div
+            key={track.index}
+            className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}`}
+            style={{ height: layout.heights[idx], paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
+            onClick={() => selectClip(null, track.index)}
+          >
           <div className="th-type-badge" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>
             {track.trackType === 2 && (
               <span
@@ -209,6 +251,7 @@ export default function TrackHeaders() {
         </div>
         );
       })}
+      </div>
     </div>
   );
 }

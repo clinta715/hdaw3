@@ -1,7 +1,24 @@
 // frontend/src/utils/timelineUtils.ts
 
+import type { TrackSnapshot } from "../rpc/types";
+
 export const AUDIO_EXTENSIONS = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
 export const MIDI_EXTENSIONS = [".mid", ".midi"];
+
+// Tracks visible after collapsing folder children. The track-header column
+// and the timeline lanes MUST use the same definition, or their rows (built
+// from a shared RowLayout) would index different tracks and misalign.
+export function getVisibleTracks(tracks: TrackSnapshot[]): TrackSnapshot[] {
+  const hidden = new Set<number>();
+  for (const track of tracks) {
+    if (track.trackType === 2 && track.isCollapsed) {
+      for (const child of tracks) {
+        if (child.parentId === track.index) hidden.add(child.index);
+      }
+    }
+  }
+  return tracks.filter((t) => !hidden.has(t.index));
+}
 
 export function isAudioFile(name: string): boolean {
   const ext = "." + name.split(".").pop()?.toLowerCase();

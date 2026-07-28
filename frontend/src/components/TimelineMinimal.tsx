@@ -14,10 +14,11 @@ import { useTimelineLoopDrag } from "../hooks/useTimelineLoopDrag";
 import { useTimelineRubberBand } from "../hooks/useTimelineRubberBand";
 import { useTimelineZoom, MIN_PPS, MAX_PPS } from "../hooks/useTimelineZoom";
 import { TimelineContextMenu } from "./TimelineContextMenu";
+import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
+import { buildRowLayout, rowAtY, rowAtYOrCount } from "../utils/rowLayout";
+import { getVisibleTracks } from "../utils/timelineUtils";
+import { colorStr } from "../theme";
 import "./TimelineMinimal.css";
-
-const TRACK_HEIGHT = 56;
-const RULER_HEIGHT = 24;
 
 export default function TimelineMinimal() {
   const snapshot = useProjectStore((s) => s.snapshot);
@@ -28,21 +29,22 @@ export default function TimelineMinimal() {
   const tracks = snapshot?.tracks ?? [];
   const clips = snapshot?.clips ?? [];
 
-  // Build set of hidden track indices (children of collapsed folders)
-  const hiddenIndices = useMemo(() => {
-    const hidden = new Set<number>();
-    for (const track of tracks) {
-      if (track.trackType === 2 && track.isCollapsed) {
-        for (const child of tracks) {
-          if (child.parentId === track.index) {
-            hidden.add(child.index);
-          }
-        }
-      }
-    }
-    return hidden;
+  // Shared with TrackHeaders so header rows and lanes index the same tracks.
+  const visibleTracks = useMemo(() => getVisibleTracks(tracks), [tracks]);
+  // Single source of truth for row geometry (consumes each track's persisted
+  // height). The lanes and the header column both lay out from this.
+  const layout = useMemo(
+    () => buildRowLayout(visibleTracks.map((t) => t.height)),
+    [visibleTracks]
+  );
+  // Track color (formatted to CSS hex) by track index, used to tint each
+  // clip with its owning track's color. Built from ALL tracks (not just
+  // visible) since clips reference absolute track indices.
+  const trackColorByIndex = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const t of tracks) m.set(t.index, colorStr(t.color));
+    return m;
   }, [tracks]);
-  const visibleTracks = useMemo(() => tracks.filter(t => !hiddenIndices.has(t.index)), [tracks, hiddenIndices]);
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
@@ -61,12 +63,13 @@ export default function TimelineMinimal() {
     dragCursor,
     dragPreviewStyle,
     dragPreviewClip,
+    dragPreviewHeight,
     paintTiles,
     paintCount,
   } = useTimelineDrag({
     clips,
     pps,
-    TRACK_HEIGHT,
+    layout,
     tracksRef,
     trackCount: visibleTracks.length,
     rpc,
@@ -101,7 +104,7 @@ export default function TimelineMinimal() {
   const { handleRubberBandStart, rubberBand, rubberBandJustCompleted } = useTimelineRubberBand({
     clips,
     pps,
-    TRACK_HEIGHT,
+    layout,
     selectedClipIds,
     tracksRef,
     engagementRef,
@@ -139,7 +142,7 @@ export default function TimelineMinimal() {
 
   // --- Dimensions ---
   const totalW = Math.max(maxEnd * pps, 800);
-  const totalH = visibleTracks.length * TRACK_HEIGHT;
+  const totalH = layout.total;
 
   // --- Playhead ---
   const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
@@ -231,7 +234,7 @@ export default function TimelineMinimal() {
         const { path: filePath, name: fileName } = JSON.parse(hdawData);
         const rect = e.currentTarget.getBoundingClientRect();
         const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
-        const trackIdx = Math.floor(y / TRACK_HEIGHT);
+        const trackIdx = rowAtYOrCount(layout, y);
         const elScroll = tracksRef.current?.scrollLeft ?? 0;
         const beatX = (e.clientX - rect.left + elScroll) / pps;
         const { snapEnabled, snapDivision } = useUiStore.getState();
@@ -281,7 +284,7 @@ export default function TimelineMinimal() {
     const midiExts = [".mid", ".midi"];
     const rect = e.currentTarget.getBoundingClientRect();
     const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
-    const trackIdx = Math.floor(y / TRACK_HEIGHT);
+    const trackIdx = rowAtYOrCount(layout, y);
     const elScroll = tracksRef.current?.scrollLeft ?? 0;
     const beatX = (e.clientX - rect.left + elScroll) / pps;
     const { snapEnabled, snapDivision } = useUiStore.getState();
@@ -576,7 +579,7 @@ export default function TimelineMinimal() {
   return (
     <div className="timeline-minimal">
       {/* Toolbar */}
-      <div className="tl-toolbar">
+      <div className="tl-toolbar" style={{ height: TOOLBAR_HEIGHT }}>
         <button className="tl-tb-btn" onClick={zoomOut} title="Zoom Out">−</button>
         <span className="tl-tb-label">{pps} px/beat</span>
         <button className="tl-tb-btn" onClick={zoomIn} title="Zoom In">+</button>
@@ -667,17 +670,17 @@ export default function TimelineMinimal() {
               if (!el) return;
               const rect = el.getBoundingClientRect();
               const beat = (e.clientX - rect.left + el.scrollLeft) / pps;
-              const trackIndex = Math.min(Math.max(0, Math.floor((e.clientY - rect.top + el.scrollTop) / TRACK_HEIGHT)), visibleTracks.length - 1);
+              const trackIndex = rowAtY(layout, e.clientY - rect.top + el.scrollTop);
               setEmptyContextMenu({ x: e.clientX, y: e.clientY, beat, trackIndex });
             }}>
             {visibleTracks.map((track, idx) => {
               const trackClips = clipsByTrack.get(track.index) ?? [];
-              const isTarget = dragState && idx === Math.min(Math.max(0, Math.floor(dragState.mouseY / TRACK_HEIGHT)), visibleTracks.length - 1);
+              const isTarget = dragState && idx === rowAtY(layout, dragState.mouseY);
               return (
                 <div
                   key={track.index}
                   className={`tl-track-row${isTarget ? " tl-track-row--target" : ""}`}
-                  style={{ top: idx * TRACK_HEIGHT, height: TRACK_HEIGHT }}
+                  style={{ top: layout.tops[idx], height: layout.heights[idx] }}
                 >
                     {trackClips.map((clip) => {
                     const isDragging = dragState != null && dragSelectedIdsRef.current.has(clip.clipId);
@@ -685,12 +688,13 @@ export default function TimelineMinimal() {
                     const isSelected = selectedClipIds.has(clip.clipId);
                     const dispLeft = isTrimming ? trimState.currentStartBeat * pps : clip.startBeat * pps;
                     const dispWidth = isTrimming ? Math.max(4, trimState.currentDuration * pps) : Math.max(4, clip.durationBeats * pps);
+                    const trackColor = trackColorByIndex.get(track.index) ?? "#38b2df";
                     return (
                       <div
                         key={clip.clipId}
                         data-clip-id={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}${pendingTempIds.has(clip.clipId) ? " tl-clip--pending" : ""}`}
-                        style={{ left: dispLeft, width: dispWidth, height: TRACK_HEIGHT - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ...(clip.isMidi ? {} : { background: "transparent" }) }}
+                        style={{ left: dispLeft, width: dispWidth, height: layout.heights[idx] - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ["--clip-color" as string]: trackColor, ...(clip.isMidi ? {} : { background: "transparent" }) } as React.CSSProperties}
                         onClick={(e) => {
                           e.stopPropagation();
                           // Ensure focus is on the timeline (not a bottom-panel
@@ -726,10 +730,10 @@ export default function TimelineMinimal() {
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
                         {!clip.isMidi && (
-                          <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
+                          <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={layout.heights[idx] - 8} color={trackColor} />
                         )}
                         {clip.isMidi && !clip.isGhost && (
-                          <MidiThumbnailCanvas clip={clip} width={Math.max(4, dispWidth)} height={TRACK_HEIGHT - 8} />
+                          <MidiThumbnailCanvas clip={clip} width={Math.max(4, dispWidth)} height={layout.heights[idx] - 8} color={trackColor} />
                         )}
                         {(clip.fadeIn > 0 || clip.fadeOut > 0 || (fadeDrag?.clipId === clip.clipId)) && (
                           <svg viewBox="0 0 100 48" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
@@ -775,7 +779,7 @@ export default function TimelineMinimal() {
 
             {/* Paint tile previews */}
             {paintTiles.map((tile, i) => (
-              <div key={`paint-${i}`} className="tl-paint-tile tl-paint-tile--pending" style={{ left: tile.left, width: tile.width, top: tile.top, height: TRACK_HEIGHT - 8 }} />
+              <div key={`paint-${i}`} className="tl-paint-tile tl-paint-tile--pending" style={{ left: tile.left, width: tile.width, top: tile.top, height: tile.height }} />
             ))}
             {dragState?.paintRepeat && paintCount > 0 && (
               <span className="tl-paint-badge" style={{ left: dragState.paintOriginBeat * pps + dragState.paintSpacing * paintCount * pps }}>+{paintCount}</span>
@@ -785,13 +789,13 @@ export default function TimelineMinimal() {
             {dragPreviewStyle && dragPreviewClip && (
               <div
                 className={`tl-clip tl-ghost ${dragPreviewClip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}`}
-                style={{ ...dragPreviewStyle, ...(dragPreviewClip.isMidi ? {} : { background: "transparent" }) }}
+                style={{ ...dragPreviewStyle, ["--clip-color" as string]: trackColorByIndex.get(dragPreviewClip.trackIndex) ?? "#38b2df", ...(dragPreviewClip.isMidi ? {} : { background: "transparent" }) } as React.CSSProperties}
               >
                 {!dragPreviewClip.isMidi && (
-                  <WaveformCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
+                  <WaveformCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={dragPreviewHeight} color={trackColorByIndex.get(dragPreviewClip.trackIndex) ?? "#38b2df"} />
                 )}
                 {dragPreviewClip.isMidi && (
-                  <MidiThumbnailCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={TRACK_HEIGHT - 8} />
+                  <MidiThumbnailCanvas clip={dragPreviewClip} width={Math.max(4, dragPreviewClip.durationBeats * pps)} height={dragPreviewHeight} color={trackColorByIndex.get(dragPreviewClip.trackIndex) ?? "#38b2df"} />
                 )}
                 <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{dragPreviewClip.name ?? `Clip ${dragPreviewClip.clipId}`}</span>
               </div>
@@ -811,6 +815,23 @@ export default function TimelineMinimal() {
             )}
           </div>
         </div>
+        {visibleTracks.length === 0 && (
+          <div className="tl-empty-overlay" style={{ top: RULER_HEIGHT }}>
+            <div className="tl-empty-card">
+              <div className="tl-empty-title">No tracks yet</div>
+              <div className="tl-empty-hint">
+                Add a track to start arranging — or drop an audio or MIDI file
+                anywhere here to create one.
+              </div>
+              <button
+                className="tl-empty-btn"
+                onClick={() => rpc.call("project.addTrack").catch(() => {})}
+              >
+                + Add Track
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <TimelineContextMenu

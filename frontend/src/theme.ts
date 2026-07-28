@@ -23,6 +23,12 @@ export const theme = {
   success: "#10b981",
   info: "#38b2df",
 
+  // Mute / solo state colors. Deliberately far apart in hue (amber vs green)
+  // so the two most-used, mutually-exclusive track states are unmistakable at
+  // a glance — the old near-identical yellows (#ffb300 / #ffd600) were not.
+  muteColor: "#fbbf24",
+  soloColor: "#4ade80",
+
   vuGreen: "#10b981",
   vuYellow: "#f59e0b",
   vuRed: "#ef4444",
@@ -59,4 +65,14 @@ export function injectTheme() {
 // browsers parse as an invalid color (silent no-op). Always format first.
 export function colorStr(c: number): string {
   return "#" + (c & 0xffffff).toString(16).padStart(6, "0");
+}
+
+// Build an rgba() string from a #rrggbb hex + alpha. Used to tint waveforms,
+// MIDI thumbnails, and clip chrome with the owning track's color. Falls back
+// to a neutral grey so a malformed color never yields an invalid CSS value.
+export function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return `rgba(140, 140, 150, ${alpha})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }

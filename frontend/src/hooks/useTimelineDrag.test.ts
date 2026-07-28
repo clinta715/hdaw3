@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useTimelineDrag } from "./useTimelineDrag";
+import { buildRowLayout } from "../utils/rowLayout";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import type { ClipSnapshot } from "../rpc/types";
@@ -95,7 +96,7 @@ describe("useTimelineDrag", () => {
       mockRpc.call.mockResolvedValue(null);
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -133,7 +134,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : null));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -163,7 +164,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -191,7 +192,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -228,7 +229,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.duplicateClips" ? [2] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -255,7 +256,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.paintClips" ? [2, 3] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -288,7 +289,7 @@ describe("useTimelineDrag", () => {
       withRpc((m) => (m === "project.paintClips" ? [2, 3] : {}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {
@@ -312,7 +313,7 @@ describe("useTimelineDrag", () => {
       withRpc(() => ({}));
 
       const { result } = renderHook(() =>
-        useTimelineDrag({ clips, pps: 100, TRACK_HEIGHT: 56, tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
       );
 
       act(() => {

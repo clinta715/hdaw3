@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import type { ClipSnapshot } from "../rpc/types";
+import type { RowLayout } from "../utils/rowLayout";
 import { useUiStore } from "../store/uiStore";
 import { computeRubberBandSelection } from "../utils/timelineConstants";
 
@@ -8,7 +9,7 @@ const DRAG_THRESHOLD = 4;
 interface UseTimelineRubberBandParams {
   clips: ClipSnapshot[];
   pps: number;
-  TRACK_HEIGHT: number;
+  layout: RowLayout;
   selectedClipIds: Set<number>;
   engagementRef: React.MutableRefObject<"none" | "clip" | "rubber">;
 }
@@ -22,7 +23,7 @@ interface UseTimelineRubberBandReturn {
 export function useTimelineRubberBand({
   clips,
   pps,
-  TRACK_HEIGHT,
+  layout,
   selectedClipIds,
   tracksRef,
   engagementRef,
@@ -75,7 +76,7 @@ export function useTimelineRubberBand({
       const rb = rubberBandRef.current;
       if (rb) {
         useUiStore.setState({ selectedClipIds: computeRubberBandSelection(
-          rb.x1, rb.y1, newX2, newY2, clips, pps, TRACK_HEIGHT) });
+          rb.x1, rb.y1, newX2, newY2, clips, pps, layout) });
       }
     };
 
@@ -86,7 +87,7 @@ export function useTimelineRubberBand({
       if (activated) {
         const rb = rubberBandRef.current;
         if (rb) {
-          const selected = computeRubberBandSelection(rb.x1, rb.y1, rb.x2, rb.y2, clips, pps, TRACK_HEIGHT);
+          const selected = computeRubberBandSelection(rb.x1, rb.y1, rb.x2, rb.y2, clips, pps, layout);
           useUiStore.setState({ selectedClipIds: selected });
           rubberBandJustCompleted.current = true;
         }

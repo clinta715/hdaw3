@@ -1,25 +1,71 @@
-.track-headers {
-  padding: 4px 0;
+.th-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* Corner + ruler band mirror the timeline's toolbar + ruler heights so the
+   header rows below begin at the exact same Y as the timeline lanes. */
+.th-corner {
+  flex-shrink: 0;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.th-ruler-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  background: var(--ruler-bg, var(--bg-panel));
+  border-bottom: 1px solid var(--border);
+}
+
 .th-title {
-  padding: 8px 12px;
+  padding: 0 12px;
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 2px;
+}
+
+/* Vertically scroll-synced with .tl-tracks (see TrackHeaders.tsx). No
+   vertical padding here — it would offset the rows from the lanes. */
+.th-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .th-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   padding: 24px 12px;
   text-align: center;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.th-empty-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-bright);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.th-empty-btn:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .th-row {
@@ -32,6 +78,8 @@
   cursor: pointer;
   transition: background 0.12s;
   position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .th-row:hover {
@@ -98,20 +146,20 @@
 }
 
 .th-mute.active {
-  background: #ffb300;
-  border-color: #ffb300;
-  color: #fff;
+  background: var(--mute-color);
+  border-color: var(--mute-color);
+  color: #1a1206;
 }
 
 .th-solo.active {
-  background: #ffd600;
-  border-color: #ffd600;
-  color: #000;
+  background: var(--solo-color);
+  border-color: var(--solo-color);
+  color: #06220f;
 }
 
 .th-arm.active {
-  background: #e53935;
-  border-color: #e53935;
+  background: var(--danger);
+  border-color: var(--danger);
   color: #fff;
 }
 

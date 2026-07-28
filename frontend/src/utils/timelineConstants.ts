@@ -1,7 +1,13 @@
 // frontend/src/utils/timelineConstants.ts
 
-export const TRACK_HEIGHT = 64;
-export const RULER_HEIGHT = 32;
+import type { RowLayout } from "./rowLayout";
+import { rowAtY } from "./rowLayout";
+
+// Vertical chrome shared by the timeline and the track-header column. The
+// header column reproduces the toolbar + ruler band so its rows start at the
+// exact same Y as the timeline lanes (see rowLayout.ts / TrackHeaders.tsx).
+export const TOOLBAR_HEIGHT = 28;
+export const RULER_HEIGHT = 24;
 export const DEFAULT_PPS = 80; // pixels per second
 export const MIN_PPS = 20;
 export const MAX_PPS = 400;
@@ -43,13 +49,16 @@ export function computeRubberBandSelection(
   x1: number, y1: number, x2: number, y2: number,
   clips: Array<{ clipId: number; trackIndex: number; startBeat: number; durationBeats: number }>,
   pps: number,
-  trackHeight: number = TRACK_HEIGHT
+  layout: RowLayout
 ): Set<number> {
   const selected = new Set<number>();
+  if (layout.count === 0) return selected;
   const minBeat = Math.min(x1, x2) / pps;
   const maxBeat = Math.max(x1, x2) / pps;
-  const minTrack = Math.floor(Math.min(y1, y2) / trackHeight);
-  const maxTrack = Math.ceil(Math.max(y1, y2) / trackHeight) - 1;
+  const minTrack = rowAtY(layout, Math.min(y1, y2));
+  // Preserve the legacy `ceil(maxY / h) - 1` behaviour: a band whose bottom
+  // edge lands exactly on a row boundary does not select the row below it.
+  const maxTrack = rowAtY(layout, Math.max(y1, y2) - 1e-6);
 
   for (const clip of clips) {
     const clipEnd = clip.startBeat + clip.durationBeats;

@@ -1,11 +1,14 @@
 import React from "react";
 import { ClipSnapshot, WaveformPeaks } from "../rpc/types";
 import { rpc } from "../rpc";
+import { hexToRgba } from "../theme";
 
 interface Props {
   clip: ClipSnapshot;
   width: number;
   height: number;
+  /** Track color (#rrggbb) used to tint the waveform. Defaults to amber. */
+  color?: string;
   onError?: (failed: boolean) => void;
 }
 
@@ -30,7 +33,7 @@ function hasAudibleContent(peaks: WaveformPeaks): boolean {
 
 const peaksCache = new Map<string, WaveformPeaks>();
 
-export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }) => {
+export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, color = "#d99a4e", onError }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const dpr = window.devicePixelRatio || 1;
   const key = cacheKey(clip);
@@ -116,9 +119,9 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }
 
     const mid = height / 2;
     const grad = ctx.createLinearGradient(0, 0, 0, height);
-    grad.addColorStop(0, "rgba(200, 140, 60, 0.15)");
-    grad.addColorStop(0.5, "rgba(220, 160, 80, 0.35)");
-    grad.addColorStop(1, "rgba(200, 140, 60, 0.15)");
+    grad.addColorStop(0, hexToRgba(color, 0.12));
+    grad.addColorStop(0.5, hexToRgba(color, 0.32));
+    grad.addColorStop(1, hexToRgba(color, 0.12));
 
     if (peaks && peaks.peaks.length >= 2) {
       const totalPairs = peaks.peaks.length / 2;
@@ -166,7 +169,7 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }
       ctx.closePath();
       ctx.fill();
 
-      ctx.strokeStyle = "rgba(230, 180, 100, 0.70)";
+      ctx.strokeStyle = hexToRgba(color, 0.7);
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i < drawn.length; i++) {
@@ -186,14 +189,14 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, onError }
       // Fallback: subtle flat line when no peak data
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = "rgba(230, 180, 100, 0.30)";
+      ctx.strokeStyle = hexToRgba(color, 0.3);
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, mid);
       ctx.lineTo(width, mid);
       ctx.stroke();
     }
-  }, [clip, width, height, dpr, peaks]);
+  }, [clip, width, height, dpr, peaks, color]);
 
   if (error) {
     return (
