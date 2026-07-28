@@ -47,6 +47,7 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
   const removeFolder = useBrowserStore((s) => s.removeFolder);
   const addFavorite = useBrowserStore((s) => s.addFavorite);
   const favorites = useBrowserStore((s) => s.favorites);
+  const autoPreview = useBrowserStore((s) => s.autoPreview);
   const [children, setChildren] = useState<DirEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -156,7 +157,12 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
             key={child.path}
             className={`fb-tree-row fb-tree-row--file${selectedFile === child.path ? " fb-tree-row--selected" : ""}`}
             style={{ paddingLeft: (depth + 1) * 16 }}
-            onClick={() => setSelectedFile(child.path)}
+            onClick={() => {
+              setSelectedFile(child.path);
+              if (autoPreview && isAudio(child.name)) {
+                onPreviewFile(child.path, child.name);
+              }
+            }}
             onDoubleClick={() => handleFileDoubleClick(child.path, child.name)}
             draggable
             onDragStart={(e) => handleDragStart(e, child.path, child.name)}
@@ -192,6 +198,8 @@ export default function FileBrowser() {
   const moveFavorite = useBrowserStore((s) => s.moveFavorite);
   const visible = useBrowserStore((s) => s.visible);
   const selectedFile = useBrowserStore((s) => s.selectedFile);
+  const autoPreview = useBrowserStore((s) => s.autoPreview);
+  const setAutoPreview = useBrowserStore((s) => s.setAutoPreview);
   const bpm = useTransportStore((s) => s.transport.bpm);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -424,6 +432,14 @@ export default function FileBrowser() {
           />
         </div>
         <div className="fb-preview-options">
+          <label className="fb-tempo-match-label">
+            <input
+              type="checkbox"
+              checked={autoPreview}
+              onChange={(e) => setAutoPreview(e.target.checked)}
+            />
+            <span>Auto-play</span>
+          </label>
           <label className="fb-tempo-match-label">
             <input
               type="checkbox"

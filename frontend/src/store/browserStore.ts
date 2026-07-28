@@ -12,6 +12,7 @@ interface BrowserState {
   selectedFile: string | null;
   searchQuery: string;
   visible: boolean;
+  autoPreview: boolean;
   addFolder: (path: string) => void;
   removeFolder: (path: string) => void;
   addFavorite: (path: string, label?: string) => void;
@@ -21,6 +22,7 @@ interface BrowserState {
   setSelectedFile: (path: string | null) => void;
   setSearchQuery: (q: string) => void;
   toggleVisible: () => void;
+  setAutoPreview: (v: boolean) => void;
 }
 
 const STORAGE_KEY = "hdaw_browser_folders";
@@ -66,6 +68,18 @@ function saveExpanded(paths: string[]) {
   localStorage.setItem(EXPANDED_KEY, JSON.stringify(paths));
 }
 
+function loadAutoPreview(): boolean {
+  try {
+    return localStorage.getItem("hdaw_browser_autopreview") === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveAutoPreview(v: boolean) {
+  localStorage.setItem("hdaw_browser_autopreview", String(v));
+}
+
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   folders: loadFolders(),
   favorites: loadFavorites(),
@@ -73,6 +87,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   selectedFile: null,
   searchQuery: "",
   visible: false,
+  autoPreview: loadAutoPreview(),
 
   addFolder: (path) => {
     const { folders } = get();
@@ -131,4 +146,5 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   setSelectedFile: (path) => set({ selectedFile: path }),
   setSearchQuery: (q) => set({ searchQuery: q }),
   toggleVisible: () => set((s) => ({ visible: !s.visible })),
+  setAutoPreview: (v) => { saveAutoPreview(v); set({ autoPreview: v }); },
 }));
