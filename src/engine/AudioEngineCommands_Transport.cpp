@@ -108,7 +108,19 @@ void AudioEngineCommands::play()
     auto& um = engine_.getProjectModel().getUndoManager();
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
+    {
+        // Standard DAW behavior: pressing Play when already playing restarts
+        // from the beginning (like pressing Rewind + Play).
+        bool alreadyPlaying = static_cast<bool>(transport.getProperty(IDs::isPlaying, false));
+        if (alreadyPlaying)
+        {
+            auto& tm = engine_.getTransportManager();
+            tm.setCurrentSample(0);
+            transport.setProperty(IDs::position, 0.0001, &um);
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
         transport.setProperty(IDs::isPlaying, true, &um);
+    }
 }
 
 void AudioEngineCommands::stop()
@@ -118,7 +130,20 @@ void AudioEngineCommands::stop()
     if (transport.isValid())
     {
         transport.setProperty(IDs::isPlaying, false, &um);
-        transport.setProperty(IDs::position, 0.0, &um);
+        auto& tm = engine_.getTransportManager();
+        tm.setCurrentSample(0);
+        double curPos = static_cast<double>(transport.getProperty(IDs::position, 0.0));
+        if (curPos != 0.0)
+        {
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
+        else
+        {
+            // JUCE only fires valueTreePropertyChanged when the value
+            // changes.  Nudge to force the listener when already at 0.
+            transport.setProperty(IDs::position, 0.0001, &um);
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
     }
 }
 
@@ -175,7 +200,18 @@ void AudioEngineCommands::seekToSample(int64_t sample)
     {
         double sr = engine_.getTransportManager().getSampleRate();
         if (sr <= 0.0) return;
-        transport.setProperty(IDs::position, static_cast<double>(sample) / sr, &um);
+        double target = static_cast<double>(sample) / sr;
+        engine_.getTransportManager().setCurrentSample(sample);
+        double curPos = static_cast<double>(transport.getProperty(IDs::position, 0.0));
+        if (curPos != target)
+        {
+            transport.setProperty(IDs::position, target, &um);
+        }
+        else
+        {
+            transport.setProperty(IDs::position, target + 0.0001, &um);
+            transport.setProperty(IDs::position, target, &um);
+        }
     }
 }
 
@@ -184,7 +220,20 @@ void AudioEngineCommands::seekToSeconds(double seconds)
     auto& um = engine_.getProjectModel().getUndoManager();
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
-        transport.setProperty(IDs::position, seconds, &um);
+    {
+        double sr = engine_.getTransportManager().getSampleRate();
+        engine_.getTransportManager().setCurrentSample(sr > 0 ? static_cast<int64_t>(seconds * sr) : 0);
+        double curPos = static_cast<double>(transport.getProperty(IDs::position, 0.0));
+        if (curPos != seconds)
+        {
+            transport.setProperty(IDs::position, seconds, &um);
+        }
+        else
+        {
+            transport.setProperty(IDs::position, seconds + 0.0001, &um);
+            transport.setProperty(IDs::position, seconds, &um);
+        }
+    }
 }
 
 void AudioEngineCommands::startRecording()
