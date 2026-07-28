@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useUiStore } from "../store/uiStore";
+import { useUiStore, MIN_BOTTOM_PANEL_H } from "../store/uiStore";
 import { ClipSnapshot } from "../rpc/types";
 
 const makeClip = (clipId: number, trackIndex: number): ClipSnapshot => ({
@@ -103,5 +103,15 @@ describe("uiStore", () => {
     const clips = [makeClip(1, 0)];
     useUiStore.getState().setClipboard(clips);
     expect(useUiStore.getState().clipClipboard).toEqual(clips);
+  });
+
+  it("sets and persists the bottom panel height", () => {
+    useUiStore.getState().setBottomPanelHeight(320);
+    expect(useUiStore.getState().bottomPanelHeight).toBe(320);
+    expect(localStorage.getItem("hdaw_bottom_panel_h")).toBe("320");
+  });
+
+  it("exposes a sane minimum for the bottom panel", () => {
+    expect(MIN_BOTTOM_PANEL_H).toBeGreaterThanOrEqual(80);
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { reportRpcError } from "./store/notifyStore";
 import { withHookSentinel } from "./dev/hookSentinel";
@@ -19,7 +19,7 @@ import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
 import Toaster from "./components/Toaster";
-import { useUiStore } from "./store/uiStore";
+import { useUiStore, MIN_BOTTOM_PANEL_H } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
@@ -44,7 +44,31 @@ function App() {
   const isDirty = useProjectStore((s) => s.isDirty);
   const prevTabRef = useRef(activeBottomTab);
   const browserVisible = useBrowserStore((s) => s.visible);
-  const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
+  const bottomPanelHeight = useUiStore((s) => s.bottomPanelHeight);
+  const setBottomPanelHeight = useUiStore((s) => s.setBottomPanelHeight);
+  const [panelResizing, setPanelResizing] = useState(false);
+
+  // Drag the divider above the bottom panel to resize it. The height feeds
+  // the --bottom-h CSS variable that sizes the panel's grid row; it persists
+  // across sessions via the uiStore setter.
+  const startPanelResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = useUiStore.getState().bottomPanelHeight;
+    setPanelResizing(true);
+    const onMove = (ev: MouseEvent) => {
+      const max = Math.max(MIN_BOTTOM_PANEL_H, window.innerHeight - 48 - 24 - 120);
+      const next = Math.min(max, Math.max(MIN_BOTTOM_PANEL_H, startH + (startY - ev.clientY)));
+      setBottomPanelHeight(Math.round(next));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setPanelResizing(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [setBottomPanelHeight]);
 
   // Warn before closing if there are unsaved changes
   useEffect(() => {
@@ -157,17 +181,13 @@ function App() {
   ];
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      style={{ "--bottom-h": `${bottomPanelHeight}px` } as React.CSSProperties}
+    >
       <header className="transport-bar">
         <TransportBar />
       </header>
-      <button
-        className={`browser-toggle-btn${browserVisible ? " browser-toggle-btn--active" : ""}`}
-        onClick={toggleBrowser}
-        title="Toggle File Browser (Ctrl+B)"
-      >
-        📁
-      </button>
       <aside className="track-headers">
         <TrackHeaders />
       </aside>
@@ -184,6 +204,11 @@ function App() {
           <SClipEditor />
         </div>
       )}
+      <div
+        className={`panel-resize-handle${panelResizing ? " panel-resize-handle--active" : ""}`}
+        onMouseDown={startPanelResize}
+        title="Drag to resize the bottom panel"
+      />
       <footer className="bottom-panel">
         <SBottomTabs
           tabs={bottomTabs}

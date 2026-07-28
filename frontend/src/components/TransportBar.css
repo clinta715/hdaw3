@@ -1,23 +1,63 @@
 .transport-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 10px;
   height: 100%;
   padding: 0 12px;
   overflow: visible;
 }
 
-.transport-left, .transport-right {
+/* Control clusters. The file group pins left and the tools group pins right,
+   leaving the transport/display clusters centered between them. */
+.tb-group {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.transport-center {
+.tb-group--file {
+  margin-right: auto;
+}
+
+.tb-group--tools {
+  margin-left: auto;
+}
+
+/* Thin vertical divider between clusters. */
+.tb-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border-light);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* LCD-style position/tempo readout — the visual anchor of the bar. */
+.tb-display {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 14px;
+  background: #0d0d0f;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+.tb-display-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.tb-display-bottom {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .tb-btn {
@@ -63,20 +103,24 @@
 
 .tb-bar-beat {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
-  font-size: 14px;
+  font-size: 20px;
   font-weight: 700;
+  line-height: 1;
   color: var(--accent-bright, #f59e0b);
-  min-width: 36px;
+  min-width: 44px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .tb-time {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
+  line-height: 1;
   color: var(--text-primary);
   letter-spacing: 0.5px;
-  min-width: 48px;
+  min-width: 40px;
+  font-variant-numeric: tabular-nums;
 }
 
 .tb-bpm-btn {
@@ -115,12 +159,6 @@
   font-size: 11px;
   text-align: center;
   outline: none;
-}
-
-.transport-snap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 .tb-snap-btn {
@@ -164,30 +202,76 @@
 }
 
 .tb-dirty {
-  color: var(--accent-bright, #88aaff);
+  color: var(--accent-bright);
   font-size: 10px;
   margin-right: 4px;
   vertical-align: middle;
 }
 
-.tb-undo {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-right: 4px;
+/* Compact uppercase text toggles (Loop / Met / 1Bar / Follow). */
+.tb-toggle {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-.transport-track-ops {
+.tb-toggle:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+}
+
+.tb-toggle.active {
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  border-color: var(--accent);
+}
+
+/* Square monochrome icon button (dialog openers + file-browser toggle). */
+.tb-icon-btn {
+  width: 30px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-secondary);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.tb-icon-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+}
+
+/* File-browser toggle keeps its historic class (E2E targets it); the active
+   state tints with the info accent so "browser open" reads at a glance. */
+.browser-toggle-btn--active {
+  background: color-mix(in srgb, var(--info) 22%, var(--bg-panel));
+  color: var(--text-primary);
+  border-color: var(--info);
 }
 
 .tb-time-sig {
   font-size: 12px;
   color: var(--text-secondary);
-  margin-left: 8px;
   padding: 2px 6px;
   background: var(--bg-widget);
   border-radius: 3px;
+  font-variant-numeric: tabular-nums;
 }

@@ -3,17 +3,22 @@ import { useTransportStore } from "../store/transportStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { useTransportExtrasStore } from "../store/transportExtrasStore";
+import { useBrowserStore } from "../store/browserStore";
 import { rpc } from "../rpc";
 import { reportRpcError } from "../store/notifyStore";
 import FileMenu from "./FileMenu";
 import PluginManagerDialog from "./PluginManagerDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import PhraseGeneratorDialog from "./PhraseGeneratorDialog";
+import { FolderIcon, KnobIcon, NoteIcon, SlidersIcon } from "./Icons";
 import "./TransportBar.css";
 
 export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
-  const { snapEnabled, snapDivision, setSnapEnabled, setSnapDivision } = useUiStore();
+  const snapEnabled = useUiStore((s) => s.snapEnabled);
+  const snapDivision = useUiStore((s) => s.snapDivision);
+  const setSnapEnabled = useUiStore((s) => s.setSnapEnabled);
+  const setSnapDivision = useUiStore((s) => s.setSnapDivision);
   const isDirty = useProjectStore((s) => s.isDirty);
   const metronomeEnabled = useTransportExtrasStore((s) => s.metronomeEnabled);
   const countInEnabled = useTransportExtrasStore((s) => s.countInEnabled);
@@ -28,6 +33,8 @@ export default function TransportBar() {
   const [midiRecArmed, setMidiRecArmed] = useState(false);
   const showPhraseGenerator = useUiStore((s) => s.showPhraseGenerator);
   const setShowPhraseGenerator = useUiStore((s) => s.setShowPhraseGenerator);
+  const browserVisible = useBrowserStore((s) => s.visible);
+  const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -101,8 +108,20 @@ export default function TransportBar() {
 
   return (
     <div className="transport-bar">
-      <div className="transport-left">
+      {/* File cluster — pinned to the far left */}
+      <div className="tb-group tb-group--file">
         <FileMenu />
+        <button
+          className={`tb-icon-btn browser-toggle-btn${browserVisible ? " browser-toggle-btn--active" : ""}`}
+          onClick={toggleBrowser}
+          title="Toggle File Browser (Ctrl+B)"
+        >
+          <FolderIcon />
+        </button>
+      </div>
+
+      {/* Core transport */}
+      <div className="tb-group">
         <button className="tb-btn" onClick={cmd("transport.rewind")} title="Rewind">⏮</button>
         <button
           className={`tb-btn tb-play ${transport.isPlaying ? "active" : ""}`}
@@ -111,6 +130,7 @@ export default function TransportBar() {
         >
           {transport.isPlaying ? "⏸" : "▶"}
         </button>
+        <button className="tb-btn" onClick={cmd("transport.stop")} title="Stop">⏹</button>
         <button
           className={`tb-btn ${transport.isRecording ? "recording" : ""}`}
           onClick={cmd("transport.record")}
@@ -118,6 +138,12 @@ export default function TransportBar() {
         >
           ●
         </button>
+      </div>
+
+      <div className="tb-sep" />
+
+      {/* Record arm */}
+      <div className="tb-group">
         <button
           className={`tb-btn ${ccRecArmed ? "recording" : ""}`}
           onClick={() => {
@@ -140,37 +166,48 @@ export default function TransportBar() {
         >
           MI
         </button>
-        <button className="tb-btn" onClick={cmd("transport.stop")} title="Stop">⏹</button>
       </div>
-      <div className="transport-center">
-        <span className="tb-bar-beat">{barBeat}</span>
-        <span className="tb-time">
-          {isDirty && <span className="tb-dirty" title="Project has unsaved changes">●</span>}
-          {fmtTime(transport.currentTimeSeconds)}
-        </span>
-        <button className="tb-bpm-btn" onClick={handleTapBpm} title="Tap tempo">♩</button>
-        <span
-          className="tb-bpm"
-          onDoubleClick={() => setBpmInput(transport.bpm.toFixed(1))}
-        >
-          {bpmInput != null ? (
-            <input
-              className="tb-bpm-input"
-              autoFocus
-              value={bpmInput}
-              onChange={(e) => setBpmInput(e.target.value)}
-              onBlur={() => { rpc.call("project.setTempo", { bpm: parseFloat(bpmInput) || 120 }).catch((err) => reportRpcError("project.setTempo", err)); setBpmInput(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLElement).blur(); } if (e.key === "Escape") setBpmInput(null); }}
-            />
-          ) : (
-            `${transport.bpm.toFixed(1)} BPM`
-          )}
-        </span>
-        <span className="tb-time-sig">
-          {timeSignatureNum}/{timeSignatureDen}
-        </span>
+
+      <div className="tb-sep" />
+
+      {/* LCD display — the primary readout */}
+      <div className="tb-display">
+        <div className="tb-display-top">
+          <span className="tb-bar-beat">{barBeat}</span>
+          <span className="tb-time">
+            {isDirty && <span className="tb-dirty" title="Project has unsaved changes">●</span>}
+            {fmtTime(transport.currentTimeSeconds)}
+          </span>
+        </div>
+        <div className="tb-display-bottom">
+          <button className="tb-bpm-btn" onClick={handleTapBpm} title="Tap tempo">♩</button>
+          <span
+            className="tb-bpm"
+            onDoubleClick={() => setBpmInput(transport.bpm.toFixed(1))}
+          >
+            {bpmInput != null ? (
+              <input
+                className="tb-bpm-input"
+                autoFocus
+                value={bpmInput}
+                onChange={(e) => setBpmInput(e.target.value)}
+                onBlur={() => { rpc.call("project.setTempo", { bpm: parseFloat(bpmInput) || 120 }).catch((err) => reportRpcError("project.setTempo", err)); setBpmInput(null); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLElement).blur(); } if (e.key === "Escape") setBpmInput(null); }}
+              />
+            ) : (
+              `${transport.bpm.toFixed(1)} BPM`
+            )}
+          </span>
+          <span className="tb-time-sig">
+            {timeSignatureNum}/{timeSignatureDen}
+          </span>
+        </div>
       </div>
-      <div className="transport-snap">
+
+      <div className="tb-sep" />
+
+      {/* Snap */}
+      <div className="tb-group">
         <button
           className={`tb-snap-btn ${snapEnabled ? "active" : ""}`}
           onClick={() => setSnapEnabled(!snapEnabled)}
@@ -188,24 +225,36 @@ export default function TransportBar() {
           <option value={4}>1/32</option>
         </select>
       </div>
-      <div className="transport-track-ops">
-        <button className="tb-btn" onClick={handleAddTrack} title="Add Track">+T</button>
-        <button className="tb-btn" onClick={handleRemoveTrack} title="Remove Track">-T</button>
+
+      <div className="tb-sep" />
+
+      {/* Track ops */}
+      <div className="tb-group">
+        <button className="tb-btn" onClick={handleAddTrack} title="Add Track">+</button>
+        <button className="tb-btn" onClick={handleRemoveTrack} title="Remove Track">−</button>
       </div>
-      <div className="transport-right">
-        <div className="tb-undo">
-          <button className="tb-btn" onClick={handleUndo} title="Undo (Ctrl+Z)">↩</button>
-          <button className="tb-btn" onClick={handleRedo} title="Redo (Ctrl+Shift+Z)">↪</button>
-        </div>
+
+      <div className="tb-sep" />
+
+      {/* Edit */}
+      <div className="tb-group">
+        <button className="tb-btn" onClick={handleUndo} title="Undo (Ctrl+Z)">↩</button>
+        <button className="tb-btn" onClick={handleRedo} title="Redo (Ctrl+Shift+Z)">↪</button>
+      </div>
+
+      <div className="tb-sep" />
+
+      {/* Transport options — compact text toggles */}
+      <div className="tb-group">
         <button
-          className={`tb-btn ${transport.isLooping ? "active" : ""}`}
+          className={`tb-toggle ${transport.isLooping ? "active" : ""}`}
           onClick={cmd("transport.toggleLoop")}
           title="Toggle Loop"
         >
-          🔁
+          Loop
         </button>
         <button
-          className={`tb-btn ${metronomeEnabled ? "active" : ""}`}
+          className={`tb-toggle ${metronomeEnabled ? "active" : ""}`}
           onClick={() => {
             const next = !metronomeEnabled;
             setExtras({ metronomeEnabled: next });
@@ -213,25 +262,29 @@ export default function TransportBar() {
           }}
           title="Metronome"
         >
-          ♪
+          Met
         </button>
         <button
-          className={`tb-btn ${countInEnabled ? "active" : ""}`}
+          className={`tb-toggle ${countInEnabled ? "active" : ""}`}
           onClick={() => setExtras({ countInEnabled: !countInEnabled })}
           title="Count-in (1 bar)"
         >
           1Bar
         </button>
         <button
-          className={`tb-btn ${followPlayhead ? "active" : ""}`}
+          className={`tb-toggle ${followPlayhead ? "active" : ""}`}
           onClick={() => setExtras({ followPlayhead: !followPlayhead })}
           title="Follow Playhead"
         >
-          →|
+          Follow
         </button>
-        <button className="tb-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager">🎛️</button>
-        <button className="tb-btn" onClick={() => setShowPhraseGenerator(true)} title="Phrase Generator (Ctrl+Shift+G)">🎵</button>
-        <button className="tb-btn" onClick={() => setShowPrefs(true)} title="Preferences">⚙</button>
+      </div>
+
+      {/* Window tools — pinned to the far right, monochrome icons */}
+      <div className="tb-group tb-group--tools">
+        <button className="tb-icon-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager"><KnobIcon /></button>
+        <button className="tb-icon-btn" onClick={() => setShowPhraseGenerator(true)} title="Phrase Generator (Ctrl+Shift+G)"><NoteIcon /></button>
+        <button className="tb-icon-btn" onClick={() => setShowPrefs(true)} title="Preferences"><SlidersIcon /></button>
       </div>
       {showPluginManager && <PluginManagerDialog onClose={() => setShowPluginManager(false)} />}
       {showPrefs && <PreferencesDialog onClose={() => setShowPrefs(false)} />}

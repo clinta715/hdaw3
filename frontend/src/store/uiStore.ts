@@ -1,6 +1,22 @@
 import { create } from "zustand";
 import { ClipSnapshot } from "../rpc/types";
 
+export const MIN_BOTTOM_PANEL_H = 120;
+const BOTTOM_PANEL_H_KEY = "hdaw_bottom_panel_h";
+
+function loadBottomPanelHeight(): number {
+  try {
+    const raw = localStorage.getItem(BOTTOM_PANEL_H_KEY);
+    if (raw != null) {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n >= MIN_BOTTOM_PANEL_H) return n;
+    }
+  } catch {
+    /* storage unavailable (e.g. test env) — fall through to default */
+  }
+  return 200;
+}
+
 interface UiState {
   selectedClipIds: Set<number>;
   lastSelectedClipId: number | null;
@@ -10,6 +26,7 @@ interface UiState {
   snapEnabled: boolean;
   snapDivision: number;
   showPhraseGenerator: boolean;
+  bottomPanelHeight: number;
 
   selectClip: (id: number | null, trackIndex?: number | null) => void;
   toggleClipSelection: (id: number) => void;
@@ -21,6 +38,7 @@ interface UiState {
   setSnapEnabled: (enabled: boolean) => void;
   setSnapDivision: (division: number) => void;
   setShowPhraseGenerator: (show: boolean) => void;
+  setBottomPanelHeight: (h: number) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -32,6 +50,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   snapEnabled: true,
   snapDivision: 1,
   showPhraseGenerator: false,
+  bottomPanelHeight: loadBottomPanelHeight(),
 
   selectClip: (id, trackIndex) => set({
     selectedClipIds: id != null ? new Set([id]) : new Set<number>(),
@@ -75,4 +94,12 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSnapDivision: (division) => set({ snapDivision: division }),
   setShowPhraseGenerator: (show) => set({ showPhraseGenerator: show }),
+  setBottomPanelHeight: (h) => {
+    try {
+      localStorage.setItem(BOTTOM_PANEL_H_KEY, String(h));
+    } catch {
+      /* storage unavailable — height still applies for this session */
+    }
+    set({ bottomPanelHeight: h });
+  },
 }));

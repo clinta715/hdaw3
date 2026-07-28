@@ -11,7 +11,7 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
   });
 
   async function openDialog(page: import("@playwright/test").Page) {
-    await page.locator(".tb-btn[title^='Phrase Generator']").click();
+    await page.locator("header.transport-bar [title^='Phrase Generator']").click();
     await expect(page.locator(".pgd-dialog")).toBeVisible({ timeout: 5000 });
   }
 
