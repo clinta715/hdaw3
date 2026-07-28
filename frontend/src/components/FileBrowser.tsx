@@ -200,6 +200,8 @@ export default function FileBrowser() {
   const selectedFile = useBrowserStore((s) => s.selectedFile);
   const autoPreview = useBrowserStore((s) => s.autoPreview);
   const setAutoPreview = useBrowserStore((s) => s.setAutoPreview);
+  const syncPreview = useBrowserStore((s) => s.syncPreview);
+  const setSyncPreview = useBrowserStore((s) => s.setSyncPreview);
   const bpm = useTransportStore((s) => s.transport.bpm);
 
   const [isPlaying, setIsPlaying] = useState(false);
@@ -240,7 +242,10 @@ export default function FileBrowser() {
     try {
       await rpc.call("preview.load", { filePath });
       await rpc.call("preview.setVolume", { volume });
-      if (tempoMatch) {
+      // When sync is enabled, always tempo-match so the preview plays at the
+      // project tempo — the SyncableAudioSource reads from the transport
+      // position when the DAW is playing, keeping the preview in sync.
+      if (syncPreview || tempoMatch) {
         await rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm });
         await rpc.call("preview.setProjectBpm", { bpm });
       } else {
@@ -279,7 +284,7 @@ export default function FileBrowser() {
         setIsPlaying(false);
       }
     }, 500);
-  }, [volume, tempoMatch, sourceBpm, bpm, stopPreview]);
+  }, [volume, tempoMatch, syncPreview, sourceBpm, bpm, stopPreview]);
 
   const handlePreviewFile = useCallback(async (filePath: string, fileName: string) => {
     if (isPlaying && previewFile?.path === filePath) {
@@ -439,6 +444,14 @@ export default function FileBrowser() {
               onChange={(e) => setAutoPreview(e.target.checked)}
             />
             <span>Auto-play</span>
+          </label>
+          <label className="fb-tempo-match-label">
+            <input
+              type="checkbox"
+              checked={syncPreview}
+              onChange={(e) => setSyncPreview(e.target.checked)}
+            />
+            <span>Sync</span>
           </label>
           <label className="fb-tempo-match-label">
             <input

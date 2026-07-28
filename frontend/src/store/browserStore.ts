@@ -13,6 +13,7 @@ interface BrowserState {
   searchQuery: string;
   visible: boolean;
   autoPreview: boolean;
+  syncPreview: boolean;
   addFolder: (path: string) => void;
   removeFolder: (path: string) => void;
   addFavorite: (path: string, label?: string) => void;
@@ -23,6 +24,7 @@ interface BrowserState {
   setSearchQuery: (q: string) => void;
   toggleVisible: () => void;
   setAutoPreview: (v: boolean) => void;
+  setSyncPreview: (v: boolean) => void;
 }
 
 const STORAGE_KEY = "hdaw_browser_folders";
@@ -80,6 +82,18 @@ function saveAutoPreview(v: boolean) {
   localStorage.setItem("hdaw_browser_autopreview", String(v));
 }
 
+function loadSyncPreview(): boolean {
+  try {
+    return localStorage.getItem("hdaw_browser_syncpreview") !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function saveSyncPreview(v: boolean) {
+  localStorage.setItem("hdaw_browser_syncpreview", String(v));
+}
+
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   folders: loadFolders(),
   favorites: loadFavorites(),
@@ -88,6 +102,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   searchQuery: "",
   visible: false,
   autoPreview: loadAutoPreview(),
+  syncPreview: loadSyncPreview(),
 
   addFolder: (path) => {
     const { folders } = get();
@@ -147,4 +162,5 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   toggleVisible: () => set((s) => ({ visible: !s.visible })),
   setAutoPreview: (v) => { saveAutoPreview(v); set({ autoPreview: v }); },
+  setSyncPreview: (v) => { saveSyncPreview(v); set({ syncPreview: v }); },
 }));
