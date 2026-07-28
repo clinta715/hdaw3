@@ -92,4 +92,14 @@ describe("WaveformCanvas peak caching", () => {
     await flush();
     expect(mockedCall.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
+
+  it("renders with a custom track color without crashing", async () => {
+    mockedCall.mockResolvedValue(audiblePeaks);
+    const clip = mkClip(400);
+    const { container } = render(
+      <WaveformCanvas clip={clip} width={100} height={40} color="#5b9bd5" />
+    );
+    await flush();
+    expect(container.querySelector("canvas")).not.toBeNull();
+  });
 });
