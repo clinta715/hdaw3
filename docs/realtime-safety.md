@@ -130,6 +130,67 @@ expected state, the fix isn't running — probably a stale
 binary (see "Build pipeline" above) or a missed compile of the
 edited file.
 
+## `processBlock` must early-out when the transport is stopped (audio buzz)
+
+**Symptom (v0.13.1):** a steady buzz/hum at the buffer-rate frequency
+(~86 Hz for a 512-sample block at 44.1 kHz) whenever playback is
+stopped, even with no clips under the playhead.
+
+**Root cause:** `MainAudioProcessor::processBlock` ran the whole
+`AudioProcessorGraph` on every callback regardless of transport state.
+When stopped, `TransportManager::advance()` is a no-op, so the position
+never moves. Any clip whose start sits at the current position (very
+common at position 0) reads the **same block of source samples every
+callback** — the DAC replays an identical 512-sample buffer at the
+callback rate, which is audible as a buzz.
+
+**The fix** — silence the graph and skip processing when not playing,
+recording, or counting in:
+
+```cpp
+// MainAudioProcessor::processBlock, after draining the SPSC bridge:
+if (transportManager != nullptr
+    && !transportManager->isPlayingNow()
+    && !transportManager->isRecordingNow()
+    && !countInActive.load())
+{
+    buffer.clear();
+    midiMessages.clear();
+    return;
+}
+```
+
+**Rules:**
+- The SPSC bridge must be drained **before** this guard, so UI knob
+  changes don't back up while stopped.
+- This is also why per-clip bounds checks alone are insufficient — a
+  looping clip, or a clip straddling position 0, still feeds the graph.
+  The top-level guard is the authoritative silence.
+
+## Transport auto-stop and the `projectEndSample` staleness trap
+
+There is no JUCE concept of "end of project"; the transport advances
+forever unless told to stop. v0.13.1 added auto-stop:
+`TransportManager` holds an atomic `projectEndSample`, and `advance()`
+stops playback (clamping position to the end) once the playhead passes
+it. `AudioEngine::timerCallback` (50 ms) polls `consumeAutoStopRequested()`
+and writes `isPlaying=false` back to the ValueTree so the frontend
+updates.
+
+**The staleness trap:** `projectEndSample` is recomputed in
+`rebuildRoutingGraph()`, which only runs on clip/track **add/remove**
+(coalesced via `AsyncUpdater`). But clip **timing** edits (move, resize,
+toggle-loop) arrive over the `SPSCBridge` (paramIDs 13–16) and do **not**
+trigger a graph rebuild — so `projectEndSample` would go stale and
+auto-stop would fire at the wrong place.
+
+**The fix:** after draining the SPSC bridge in `processBlock`, if any
+timing param (13–16) changed this block, recompute `projectEndSample`
+from the live clip sources. Looping clips are excluded from the end
+(they don't bound the project). Keep this recompute cheap — it iterates
+the clip-source maps, which is fine on the audio thread for normal
+project sizes.
+
 ## Codebase hardening (v0.3.x, 2026-06-30)
 
 The codebase hardening pass addressed 23 tasks across 6 phases:

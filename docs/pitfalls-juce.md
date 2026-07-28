@@ -169,3 +169,59 @@ master, broken plugin, phase-cancellation. The natural instinct is to
 chase the signal path *inside* the graph. The actual cause is one layer
 *above* the graph: the bus layout that the graph's IO node derives
 from. Nothing in the graph itself is wrong.
+
+## `ValueTree::setProperty` does NOT fire listeners when the value is unchanged
+
+JUCE's `ValueTree::setProperty(id, newValue, undoManager)` only fires
+`valueTreePropertyChanged` when `newValue` differs from the current
+value. Setting a property to the value it already holds is a silent
+no-op — no listener, no undo entry, no notification.
+
+**Why this bit us (v0.13.1):** the transport Rewind / Stop / Play /
+`seekToSample` / `seekToSeconds` commands all did
+`transport.setProperty(IDs::position, 0.0, &um)` (or the target
+position) and relied on the `valueTreePropertyChanged` listener in
+`AudioEngine` to push the new position to `TransportManager` and on to
+the frontend. When the transport was *already* at that position (e.g.
+after auto-stop parked it at 0, or at startup), the property didn't
+change, the listener never fired, and the button appeared dead.
+
+**The fix pattern** — update the atomic directly AND force a property
+change so the listener chain runs:
+
+```cpp
+void AudioEngineCommands::rewind()
+{
+    auto& tm = engine_.getTransportManager();
+    tm.setCurrentSample(0);                       // immediate, always
+    double cur = transport.getProperty(IDs::position, 0.0);
+    if (cur != 0.0) {
+        transport.setProperty(IDs::position, 0.0, &um);
+    } else {
+        // Nudge to a distinct value then back so the listener fires.
+        transport.setProperty(IDs::position, 0.0001, &um);
+        transport.setProperty(IDs::position, 0.0, &um);
+    }
+}
+```
+
+**Rule:** any command whose *side effect* depends on a ValueTree listener
+firing must not assume `setProperty` fires when the value is unchanged.
+Either (a) drive the side effect directly (call the manager method), or
+(b) nudge the value. This applies to any "set to a fixed value" command
+(rewind-to-zero, stop, reset-to-default), not just transport.
+
+## Frontend transport display only updates via the `notify.transport` push
+
+The React `transportStore` is populated exclusively by the
+`notify.transport` WebSocket push (`frontend/src/main.tsx`). That push
+is emitted by `FrontendServer::onTransportTimer()` (30 Hz) **and is
+deduplicated** — it skips the broadcast when the payload (quantized to
+centiseconds) equals the last one sent.
+
+Consequence: if a transport command changes nothing observable (the
+`setProperty` no-op above) the timer sees no diff and never pushes, so
+the UI stays stale even though the user clicked a button. The two
+pitfalls compound: a silent `setProperty` → no `TransportManager`
+update → no payload diff → no push → dead button. Fixing the
+`setProperty` side (above) restores the whole chain.

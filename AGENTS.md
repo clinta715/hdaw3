@@ -4,7 +4,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend â€" these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.0**
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.1**
 with a **React 19 + TypeScript frontend** (Zustand state management,
 Vite build). The frontend runs in two contexts:
 system browser (default) or Electron shell. The C++ engine
@@ -123,15 +123,39 @@ Detailed documentation has been split into domain-specific files:
 
 | File | Contents |
 |------|----------|
-| [`docs/architecture.md`](docs/architecture.md) | Build, Version Management, Key Classes, GUI-Engine Decoupling, Frontend Architecture, Timestretch, JUCE 9 Migration |
-| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-Thread Safety Rules, Hardening Lessons, Diagnostic Pattern, Codebase Hardening, Plugin Process Isolation |
+| [`docs/architecture.md`](docs/architecture.md) | Build, Version Management, Key Classes, GUI-Engine Decoupling, Frontend Architecture, Timestretch, JUCE 9 Migration, **beats-vs-seconds unit convention** |
+| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-Thread Safety Rules, Hardening Lessons, Diagnostic Pattern, Codebase Hardening, Plugin Process Isolation, **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness** |
 
-| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout |
-| [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads |
+| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup** |
+| [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads, **vertical fader `direction: reverse` invalid** |
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest Suite, TransportLoopback Test Seam, MCP Server Architecture, MCP Tool Safety, File Browser Audio Preview |
-| [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist |
+| [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
 
 **Quick reference:** For a specific pitfall, search the relevant domain file. For architecture questions, start with `docs/architecture.md`. For realtime safety constraints, see `docs/realtime-safety.md`.
+
+### Lessons learned (v0.13.1)
+
+These cost real debugging time this cycle — read before touching the
+relevant area:
+
+1. **Beats vs seconds is the #1 data-convention bug source.** Frontend
+   speaks beats; the clip ValueTree (`startTime`/`duration`) and the
+   processors speak seconds. Every boundary-crossing command must
+   convert. See `docs/architecture.md` → "Time-unit convention".
+2. **`ValueTree::setProperty` is a silent no-op when the value is
+   unchanged.** Any command relying on the listener side-effect (transport
+   rewind/stop/play/seek) must drive the manager directly or nudge the
+   value. See `docs/pitfalls-juce.md`.
+3. **`processBlock` must early-out when the transport is stopped**, or
+   clips at the current position replay the same block every callback
+   (audible buzz). See `docs/realtime-safety.md`.
+4. **The delta-sync path can't compute derived state** (`effectiveMuted`/
+   `effectiveSoloed`); mute/solo changes escalate to fullSync. See
+   `docs/valuetree-listener-contract.md` §6.
+5. **`projectEndSample` (auto-stop) goes stale on SPSC timing edits**
+   because those don't rebuild the graph; it's recomputed in
+   `processBlock` when a timing param changes. See
+   `docs/realtime-safety.md`.
 
 ### Build (summary)
 

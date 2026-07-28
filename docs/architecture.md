@@ -178,6 +178,51 @@ to verify they match. The `check_version` target runs automatically during full 
   `%TEMP%/hdaw_debug.log` is the primary diagnostic tool (see
   "Diagnostic pattern" section).
 
+## Time-unit convention: beats at the boundary, seconds in the engine
+
+**This is the single most important data-convention in the codebase.**
+A v0.13.1 audit found 12+ call sites that violated it, causing clips to
+play at the wrong position and ~2× too long at 120 BPM.
+
+The contract:
+
+- **Frontend ↔ RPC boundary: BEATS.** The React frontend thinks in
+  beats. `ClipSnapshot.startBeat` / `durationBeats`, the timeline's
+  pixels-per-beat, drag positions, and every clip RPC param (`start`,
+  `duration`, `newStart`, `originBeat`, `spacing`) are in beats.
+- **ValueTree + processors: SECONDS.** The clip ValueTree properties
+  `IDs::startTime` and `IDs::duration` are stored in **seconds**, and
+  `ClipSourceProcessor` / `MidiClipProcessor` read them as seconds
+  (`startTime * sampleRate`). MIDI *notes* are the exception — note
+  `IDs::startBeat` / `IDs::durationBeats` stay in beats (they are
+  clip-relative, not timeline-absolute).
+
+Therefore **every command that crosses the boundary must convert**:
+
+```cpp
+// beats -> seconds when writing the ValueTree (frontend -> engine)
+inline double beatsToSeconds(double beats, double bpm)   // AudioEngineCommands_Helpers.h
+{ return (bpm > 0) ? beats * 60.0 / bpm : beats; }
+
+// seconds -> beats when building a snapshot (engine -> frontend)
+cs.startBeat     = startTimeSec * bpm / 60.0;            // ReadModelImpl
+cs.durationBeats = durationSec  * bpm / 60.0;
+```
+
+**Rules to avoid re-introducing the bug:**
+
+1. Any new `ProjectCommands` method that takes a clip position/duration
+   from the frontend receives **beats** and must call `beatsToSeconds`
+   before `setProperty(IDs::startTime / IDs::duration, ...)`.
+2. Any new `ReadModel` field that surfaces a clip position to the
+   frontend must convert seconds → beats (see
+   `buildClipSnapshotFromTree(clipTree, bpm)` and `getClip`).
+3. `TreeDeltaAccumulator` carries a `bpm_` (kept in sync by
+   `FrontendTreeWatcher` on `IDs::tempo` changes) so its incremental
+   clip snapshots convert correctly too.
+4. When in doubt about a value's unit, check whether it came from the
+   frontend (beats) or from `getProperty(IDs::startTime)` (seconds).
+
 ## Commit Message Style
 
 - Use `<area>: <imperative-summary>` format:

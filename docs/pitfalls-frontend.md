@@ -192,6 +192,29 @@ const newStarts = clipIds.map(id => {
 await rpc.call("project.duplicateClips", { clipIds, newStarts, newTrackIndices });
 ```
 
+## 7. Vertical range faders: `direction: reverse` is not valid CSS
+
+The mixer volume fader is a vertical `<input type="range">` made vertical
+with `writing-mode: vertical-lr`. A previous version added
+`direction: reverse` to flip it so dragging up = louder. **`reverse` is
+not a valid value for the CSS `direction` property** (valid values are
+`ltr` / `rtl`), so browsers silently ignored it and the fader rendered
+upside-down (drag up = quieter).
+
+**Fix:** flip with a transform instead:
+
+```css
+.ms-fader {
+  writing-mode: vertical-lr;
+  transform: scaleY(-1);   /* min at bottom, max at top */
+}
+```
+
+**Rule:** to invert a vertical range input, use `transform: scaleY(-1)`,
+never `direction: reverse`. Verify any "it should be flipped" CSS in a
+real browser — an invalid declaration produces no error, just wrong
+behavior.
+
 ## Audit Checklist
 
 When reviewing drag/drop or async UI code, check:

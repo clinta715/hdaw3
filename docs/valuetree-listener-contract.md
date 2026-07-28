@@ -121,7 +121,34 @@ For each result, verify:
 - `MixerStripWidget` (v0.3.x hardening)
 - `FrontendTreeWatcher` (constructor)
 
-## 6. Adding a New Listener
+## 6. The delta-sync path cannot compute *derived* state
+
+`FrontendTreeWatcher` + `TreeDeltaAccumulator` coalesce ValueTree edits
+into a minimal delta (`clipsUpserted` / `tracksUpserted`) pushed on
+`notify.treeChanged`, so the frontend patches its snapshot instead of
+re-fetching. The delta builds each `TrackSnapshot` straight from the
+single changed node via `buildTrackSnapshotFromTree`.
+
+**The trap:** some snapshot fields are *derived* — they depend on the
+whole tree, not just the changed node. `effectiveMuted` /
+`effectiveSoloed` are computed by walking the folder parent chain in
+`ReadModelImpl::snapshot()`. A delta that only carries the changed track
+**cannot** recompute these, so a mute/solo change sent as a delta would
+leave the frontend's effective state wrong (the mixer M/S buttons and
+folder-cascade highlighting would not update).
+
+**The fix (v0.13.1):** `TreeDeltaAccumulator::notePropertyChanged`
+escalates to a **fullSync** whenever `IDs::isMuted` or `IDs::isSoloed`
+changes, forcing the frontend down the `read.snapshot` re-fetch path
+where derived state is computed correctly.
+
+**Rule:** when adding a new *derived* snapshot field (anything computed
+from more than the single node being delta'd), either escalate that
+property change to fullSync in `TreeDeltaAccumulator`, or teach the
+delta path to recompute it. A field that is a pure copy of one node's
+property is delta-safe; a field that aggregates across nodes is not.
+
+## 7. Adding a New Listener
 
 When adding a new `ValueTree::Listener` to the codebase:
 
