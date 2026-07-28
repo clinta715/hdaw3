@@ -45,8 +45,8 @@ TEST(TreeDeltaBuilders, ClipSnapshotFromTree) {
     EXPECT_EQ(cs.clipId, 42);
     EXPECT_EQ(cs.trackIndex, 0);          // first (only) track
     EXPECT_EQ(cs.name, "Riff");
-    EXPECT_DOUBLE_EQ(cs.startBeat, 4.0);
-    EXPECT_DOUBLE_EQ(cs.durationBeats, 4.0);
+    EXPECT_DOUBLE_EQ(cs.startBeat, 8.0);   // 4.0 sec * 120 BPM / 60 = 8 beats
+    EXPECT_DOUBLE_EQ(cs.durationBeats, 8.0); // 4.0 sec * 120 BPM / 60 = 8 beats
     EXPECT_DOUBLE_EQ(cs.gain, 0.5);
     EXPECT_TRUE(cs.isMidi);
     EXPECT_TRUE(cs.looping);
@@ -104,12 +104,13 @@ TEST(TreeDelta, RepeatedClipChangesCoalesceToLatest) {
     trackList.addChild(track, -1, nullptr);
 
     TreeDeltaAccumulator acc;
+    acc.setBpm(60.0);  // 60 BPM: 1 sec = 1 beat for easy verification
     acc.notePropertyChanged(clip, IDs::startTime);
-    clip.setProperty(IDs::startTime, 9.0, nullptr);   // simulate a drag
+    clip.setProperty(IDs::startTime, 9.0, nullptr);   // simulate a drag (9 sec)
     acc.notePropertyChanged(clip, IDs::startTime);
 
     EXPECT_EQ(acc.clipsUpserted().size(), 1u);        // coalesced
-    EXPECT_DOUBLE_EQ(acc.clipsUpserted().at(5).startBeat, 9.0);  // latest wins
+    EXPECT_DOUBLE_EQ(acc.clipsUpserted().at(5).startBeat, 9.0);  // 9 sec * 60 BPM / 60 = 9 beats
 }
 
 TEST(TreeDelta, ClipRemovedThenReaddedCancels) {
