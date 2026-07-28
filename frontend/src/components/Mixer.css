@@ -7,11 +7,30 @@
 
 .mixer-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   width: 100%;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.mixer-empty-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-bright);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mixer-empty-btn:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .mixer-strips {

@@ -29,12 +29,12 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
   return (
     <div className={`mixer-strip ${isMaster ? "mixer-strip--master" : ""}`}>
       <div className="ms-color" style={{ background: colorStr(track.color) }} />
-      <div className="ms-vu">
-        <MeterBar value={pctL} />
-        <MeterBar value={pctR} />
-      </div>
       <div className="ms-name">{track.name}</div>
-      <div className="ms-controls">
+      <div className="ms-fader-row">
+        <div className="ms-vu">
+          <MeterBar value={pctL} />
+          <MeterBar value={pctR} />
+        </div>
         <input
           type="range"
           className="ms-fader"
@@ -46,22 +46,24 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
           onMouseUp={commitVolume}
           onBlur={commitVolume}
         />
-        <input
-          type="range"
-          className="ms-pan-fader"
-          min={-1}
-          max={1}
-          step={0.01}
-          value={pan}
-          onChange={(e) => setPan(parseFloat(e.target.value))}
-          onMouseUp={commitPan}
-          onBlur={commitPan}
-        />
       </div>
+      <div className="ms-readout">{Math.round(volume * 100)}%</div>
+      <input
+        type="range"
+        className="ms-pan-fader"
+        min={-1}
+        max={1}
+        step={0.01}
+        value={pan}
+        onChange={(e) => setPan(parseFloat(e.target.value))}
+        onMouseUp={commitPan}
+        onBlur={commitPan}
+        title={`Pan ${formatPan(pan)}`}
+      />
       {!isMaster && (
         <div className="ms-buttons">
           <button
-            className={`ms-btn${track.effectiveMuted ? " active" : ""}${track.muted !== track.effectiveMuted ? " ms-btn--cascaded" : ""}`}
+            className={`ms-btn ms-mute${track.effectiveMuted ? " active" : ""}${track.muted !== track.effectiveMuted ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               rpc.call("project.setTrackMuted", { trackIndex: track.index, muted: !track.muted }).catch(console.error);
@@ -69,7 +71,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             title={track.muted !== track.effectiveMuted ? "Muted by parent folder" : "Mute"}
           >M</button>
           <button
-            className={`ms-btn${track.effectiveSoloed ? " active" : ""}${track.soloed !== track.effectiveSoloed ? " ms-btn--cascaded" : ""}`}
+            className={`ms-btn ms-solo${track.effectiveSoloed ? " active" : ""}${track.soloed !== track.effectiveSoloed ? " ms-btn--cascaded" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               rpc.call("project.setTrackSoloed", { trackIndex: track.index, soloed: !track.soloed }).catch(console.error);
@@ -77,7 +79,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             title={track.soloed !== track.effectiveSoloed ? "Soloed by parent folder" : "Solo"}
           >S</button>
           <button
-            className={`ms-btn${track.armed ? " active" : ""}`}
+            className={`ms-btn ms-arm${track.armed ? " active" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               rpc.call("project.setTrackArmed", { trackIndex: track.index, armed: !track.armed }).catch(console.error);
@@ -88,6 +90,12 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
       )}
     </div>
   );
+}
+
+function formatPan(pan: number): string {
+  if (pan === 0) return "C";
+  const pct = Math.round(Math.abs(pan) * 100);
+  return pan < 0 ? `L${pct}` : `R${pct}`;
 }
 
 function MeterBar({ value }: { value: number }) {

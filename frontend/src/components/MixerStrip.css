@@ -2,12 +2,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 52px;
+  width: 60px;
   gap: 4px;
   background: var(--bg-widget);
   border-radius: 4px;
-  padding: 4px;
+  padding: 6px 4px;
   flex-shrink: 0;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .mixer-strip--master {
@@ -21,15 +23,39 @@
   flex-shrink: 0;
 }
 
+.ms-name {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  max-width: 52px;
+  flex-shrink: 0;
+}
+
+/* Fader + VU share a row and stretch to fill the strip. The bottom panel is
+   resizable, so a taller panel lengthens the fader throw — like pulling up a
+   real console's faders rather than squinting at a stub. */
+.ms-fader-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  min-height: 70px;
+  width: 100%;
+}
+
 .ms-vu {
   display: flex;
   gap: 2px;
-  height: 80px;
-  align-items: flex-end;
+  align-items: stretch;
 }
 
 .ms-meter {
-  width: 8px;
+  width: 6px;
   height: 100%;
   background: var(--bg-panel);
   border-radius: 2px;
@@ -49,34 +75,38 @@
 .ms-fill.ms-hot { background: var(--vu-yellow); }
 .ms-fill.ms-clip { background: var(--vu-red); }
 
-.ms-name {
-  font-size: 10px;
-  color: var(--text-secondary);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
-  max-width: 48px;
+.ms-fader {
+  writing-mode: vertical-lr;
+  transform: scaleY(-1);
+  width: 22px;
+  height: 100%;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.ms-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: 9px;
-  color: var(--text-muted);
-}
-
-.ms-volume, .ms-pan {
+.ms-readout {
   font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.ms-pan-fader {
+  width: 44px;
+  height: 14px;
+  accent-color: var(--accent);
+  margin: 0 auto;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .ms-buttons {
   display: flex;
   gap: 2px;
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .ms-btn {
@@ -94,37 +124,36 @@
   justify-content: center;
   line-height: 1;
   padding: 0;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 
 .ms-btn:hover {
   border-color: var(--accent-dim);
   background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
-.ms-btn.active {
-  background: var(--accent-dim);
-  color: var(--accent-bright);
-  border-color: var(--accent);
+/* Mute / solo / arm get distinct, high-contrast active colors (shared with
+   the track headers) so state is unmistakable across the whole strip. */
+.ms-btn.ms-mute.active {
+  background: var(--mute-color);
+  border-color: var(--mute-color);
+  color: #1a1206;
+}
+
+.ms-btn.ms-solo.active {
+  background: var(--solo-color);
+  border-color: var(--solo-color);
+  color: #06220f;
+}
+
+.ms-btn.ms-arm.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 .ms-btn--cascaded {
   opacity: 0.6;
   border-style: dashed;
-}
-
-.ms-fader {
-  writing-mode: vertical-lr;
-  transform: scaleY(-1);
-  width: 20px;
-  height: 60px;
-  margin: 2px auto;
-  flex-shrink: 0;
-  accent-color: var(--accent);
-}
-
-.ms-pan-fader {
-  width: 40px;
-  height: 14px;
-  accent-color: var(--accent);
-  margin: 0 auto;
 }

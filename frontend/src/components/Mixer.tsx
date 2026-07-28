@@ -1,5 +1,6 @@
 import { useProjectStore } from "../store/projectStore";
 import { useMeterStore } from "../store/meterStore";
+import { rpc } from "../rpc";
 import MixerStrip from "./MixerStrip";
 import "./Mixer.css";
 
@@ -12,7 +13,15 @@ export default function Mixer() {
   return (
     <div className="mixer">
       {tracks.length === 0 && (
-        <div className="mixer-empty">No tracks</div>
+        <div className="mixer-empty">
+          <span>No tracks</span>
+          <button
+            className="mixer-empty-btn"
+            onClick={() => rpc.call("project.addTrack").catch(() => {})}
+          >
+            + Add Track
+          </button>
+        </div>
       )}
       <div className="mixer-strips">
         {tracks.map((track, i) => (
