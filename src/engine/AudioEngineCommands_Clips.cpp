@@ -429,6 +429,92 @@ void AudioEngineCommands::removeClips(const std::vector<int>& clipIds)
     endTransaction();
 }
 
+void AudioEngineCommands::rippleDelete(double startBeat, double endBeat)
+{
+    if (endBeat <= startBeat) return;  // empty/invalid range: no-op
+
+    double bpm = engine_.getTransportManager().getBPM();
+    double rs = beatsToSeconds(startBeat, bpm);   // range start, seconds
+    double re = beatsToSeconds(endBeat, bpm);     // range end, seconds
+    double rangeLen = re - rs;
+    if (rangeLen <= 0.0) return;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Ripple delete");
+
+    // Phase 1: slice every clip that straddles a range boundary, so that
+    // afterward each clip is fully-inside, fully-before, or fully-after.
+    // Use the model-level slice (no per-clip routing rebuild); one rebuild
+    // runs at the end of this command.
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+
+        // Collect first: slicing mutates the tree and invalidates iteration.
+        std::vector<std::pair<int, std::vector<double>>> toSlice;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            double ce = cs + static_cast<double>(clip.getProperty(IDs::duration));
+            std::vector<double> times;
+            if (cs < rs && rs < ce) times.push_back(rs);  // straddles start
+            if (cs < re && re < ce) times.push_back(re);  // straddles end
+            if (!times.empty())
+                toSlice.push_back({ static_cast<int>(clip.getProperty(IDs::clipID)), times });
+        }
+        for (auto& [id, times] : toSlice)
+        {
+            int ti = -1;
+            auto clip = findClipById(id, ti);
+            if (clip.isValid())
+                ProjectModel::sliceClipAtTimes(clip, times, &um);
+        }
+    }
+
+    // Phase 2: classify every clip against [rs, re] and act. After phase 1
+    // no clip straddles a boundary, so the inside/before/after split is clean.
+    std::vector<int> toRemove;
+    struct ShiftInfo { juce::ValueTree clip; double newStartSec; };
+    std::vector<ShiftInfo> toShift;
+
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            double ce = cs + static_cast<double>(clip.getProperty(IDs::duration));
+
+            if (cs >= rs && ce <= re)
+                toRemove.push_back(static_cast<int>(clip.getProperty(IDs::clipID)));
+            else if (cs >= re)
+                toShift.push_back({ clip, cs - rangeLen });
+            // fully-before (ce <= rs): untouched
+        }
+    }
+
+    for (int id : toRemove)
+    {
+        int ti = -1;
+        auto clip = findClipById(id, ti);
+        if (clip.isValid())
+            clip.getParent().removeChild(clip, &um);
+    }
+    for (auto& s : toShift)
+        s.clip.setProperty(IDs::startTime, s.newStartSec, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+
+    endTransaction();
+}
+
 std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names)
 {
     std::vector<int> result;

@@ -42,6 +42,7 @@ public:
     void removeClip(int clipId) override;
     void moveClip(int clipId, int newTrackIndex, double newStart) override;
     void moveClipWithOverlap(int clipId, int newTrackIndex, double newStart) override;
+    void rippleDelete(double startBeat, double endBeat) override;
     void setClipStart(int clipId, double start) override;
     void setClipDuration(int clipId, double duration) override;
     void setClipGain(int clipId, float gain) override;

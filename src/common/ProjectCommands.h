@@ -61,6 +61,10 @@ public:
     virtual void moveClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) = 0;
     // Batch remove: remove multiple clips in one transaction.
     virtual void removeClips(const std::vector<int>& clipIds) = 0;
+    // Ripple delete: remove all clip content within [startBeat, endBeat) and
+    // close the gap by shifting every clip that starts at or after endBeat
+    // leftward by (endBeat - startBeat). Beats at this boundary (lesson #1).
+    virtual void rippleDelete(double startBeat, double endBeat) = 0;
     // Batch add: add multiple MIDI clips in one transaction (for clipboard paste).
     // Returns the new clip IDs.
     virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) = 0;
