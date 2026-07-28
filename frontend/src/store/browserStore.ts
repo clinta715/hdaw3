@@ -25,6 +25,7 @@ interface BrowserState {
 
 const STORAGE_KEY = "hdaw_browser_folders";
 const FAVORITES_KEY = "hdaw_browser_favorites";
+const EXPANDED_KEY = "hdaw_browser_expanded";
 
 function loadFolders(): string[] {
   try {
@@ -52,10 +53,23 @@ function saveFavorites(favorites: FavoriteFolder[]) {
   localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
 }
 
+function loadExpanded(): string[] {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveExpanded(paths: string[]) {
+  localStorage.setItem(EXPANDED_KEY, JSON.stringify(paths));
+}
+
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   folders: loadFolders(),
   favorites: loadFavorites(),
-  expandedPaths: new Set<string>(),
+  expandedPaths: new Set<string>(loadExpanded()),
   selectedFile: null,
   searchQuery: "",
   visible: false,
@@ -74,6 +88,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     saveFolders(next);
     const nextExpanded = new Set(expandedPaths);
     nextExpanded.delete(path);
+    saveExpanded([...nextExpanded]);
     set({ folders: next, expandedPaths: nextExpanded });
   },
 
@@ -109,6 +124,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     const next = new Set(expandedPaths);
     if (next.has(path)) next.delete(path);
     else next.add(path);
+    saveExpanded([...next]);
     set({ expandedPaths: next });
   },
 
