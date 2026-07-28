@@ -241,21 +241,34 @@ export default function TimelineMinimal() {
         const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
         const midiExts = [".mid", ".midi"];
 
-        if (audioExts.includes(ext)) {
-          rpc.call("project.addAudioClip", {
-            trackIndex: Math.max(0, trackIdx),
-            start: Math.max(0, startBeat),
-            duration: 4,
-            sourceFile: filePath,
-            name: fileName,
+        const doImport = async (targetTrack: number) => {
+          if (audioExts.includes(ext)) {
+            await rpc.call("project.addAudioClip", {
+              trackIndex: targetTrack,
+              start: Math.max(0, startBeat),
+              duration: 4,
+              sourceFile: filePath,
+              name: fileName,
+            });
+          } else if (midiExts.includes(ext)) {
+            await rpc.call("project.addMidiClip", {
+              trackIndex: targetTrack,
+              start: Math.max(0, startBeat),
+              duration: 4,
+              name: fileName,
+            });
+          }
+        };
+
+        const currentTracks = useProjectStore.getState().snapshot?.tracks ?? [];
+        if (trackIdx >= currentTracks.length && (audioExts.includes(ext) || midiExts.includes(ext))) {
+          // Drop below existing tracks → create a new track first
+          const trackType = midiExts.includes(ext) ? 1 : 0; // instrument for MIDI, audio for audio
+          rpc.call("project.addTrack", { trackType }).then((newIdx) => {
+            doImport(typeof newIdx === "number" ? newIdx : currentTracks.length);
           }).catch(() => {});
-        } else if (midiExts.includes(ext)) {
-          rpc.call("project.addMidiClip", {
-            trackIndex: Math.max(0, trackIdx),
-            start: Math.max(0, startBeat),
-            duration: 4,
-            name: fileName,
-          }).catch(() => {});
+        } else {
+          doImport(Math.max(0, Math.min(trackIdx, currentTracks.length - 1)));
         }
         // Reconciled by the debounced notify.treeChanged push.
       } catch {}
@@ -265,18 +278,49 @@ export default function TimelineMinimal() {
     // External file drop (from OS)
     const files = Array.from(e.dataTransfer.files);
     const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
-    const tr = useTransportStore.getState().transport;
+    const midiExts = [".mid", ".midi"];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
+    const trackIdx = Math.floor(y / TRACK_HEIGHT);
+    const elScroll = tracksRef.current?.scrollLeft ?? 0;
+    const beatX = (e.clientX - rect.left + elScroll) / pps;
+    const { snapEnabled, snapDivision } = useUiStore.getState();
+    const startBeat = snapEnabled ? Math.round(beatX / snapDivision) * snapDivision : beatX;
+    const currentTracks = useProjectStore.getState().snapshot?.tracks ?? [];
+
     for (const file of files) {
       const ext = "." + file.name.split(".").pop()?.toLowerCase();
-      if (audioExts.includes(ext)) {
-        const startBeat = tr.currentTimeSeconds * (tr.bpm / 60);
-        rpc.call("project.addAudioClip", {
-          trackIndex: 0,
-          start: startBeat,
-          duration: 4,
-          sourceFile: (file as any).path ?? file.name,
-          name: file.name,
+      const isAudio = audioExts.includes(ext);
+      const isMidi = midiExts.includes(ext);
+      if (!isAudio && !isMidi) continue;
+
+      const doImport = async (targetTrack: number) => {
+        if (isAudio) {
+          await rpc.call("project.addAudioClip", {
+            trackIndex: targetTrack,
+            start: Math.max(0, startBeat),
+            duration: 4,
+            sourceFile: (file as any).path ?? file.name,
+            name: file.name,
+          });
+        } else {
+          await rpc.call("project.addMidiClip", {
+            trackIndex: targetTrack,
+            start: Math.max(0, startBeat),
+            duration: 4,
+            name: file.name,
+          });
+        }
+      };
+
+      if (trackIdx >= currentTracks.length) {
+        // Drop below existing tracks → create a new track first
+        const trackType = isMidi ? 1 : 0;
+        rpc.call("project.addTrack", { trackType }).then((newIdx) => {
+          doImport(typeof newIdx === "number" ? newIdx : currentTracks.length);
         }).catch(() => {});
+      } else {
+        doImport(Math.max(0, Math.min(trackIdx, currentTracks.length - 1)));
       }
     }
     // Reconciled by the debounced notify.treeChanged push.
