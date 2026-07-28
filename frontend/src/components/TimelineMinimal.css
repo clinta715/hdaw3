@@ -189,6 +189,39 @@
   transform: scale(0.97);
 }
 
+/* "+" add-track button in the dead space below the last track (left-aligned).
+   Sits inside the scroll container so it stays parked under the tracks. */
+.tl-add-track {
+  position: absolute;
+  left: 12px;
+  z-index: 6;
+}
+
+.tl-add-track .add-track-trigger {
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--border-light);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-panel) 60%, transparent);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.tl-add-track .add-track-trigger:hover {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.tl-add-track .add-track-trigger:active {
+  transform: scale(0.94);
+}
+
 .tl-track-row {
   position: absolute;
   left: 0;

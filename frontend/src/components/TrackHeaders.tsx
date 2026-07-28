@@ -7,31 +7,14 @@ import { colorStr } from "../theme";
 import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
 import { buildRowLayout } from "../utils/rowLayout";
 import { getVisibleTracks } from "../utils/timelineUtils";
+import {
+  TRACK_TYPE_ICONS,
+  TRACK_TYPE_LABELS,
+  TRACK_TYPE_CLASSES,
+  TRACK_TYPE_COLORS,
+} from "../utils/trackTypes";
+import { AddTrackMenu } from "./AddTrackMenu";
 import "./TrackHeaders.css";
-
-const TRACK_TYPE_ICONS: Record<number, string> = {
-  0: "\u25B2",       // audio: triangle
-  1: "\u266B",       // instrument: music note
-  2: "\u25BC",       // folder: down triangle
-};
-
-const TRACK_TYPE_LABELS: Record<number, string> = {
-  0: "AUDIO",
-  1: "MIDI",
-  2: "FOLDER",
-};
-
-const TRACK_TYPE_CLASSES: Record<number, string> = {
-  0: "audio",
-  1: "instrument",
-  2: "folder",
-};
-
-const TRACK_TYPE_COLORS: Record<number, string> = {
-  0: "#4a9eff",      // audio: blue
-  1: "#9b59b6",      // instrument: purple
-  2: "#f39c12",      // folder: orange
-};
 
 export default function TrackHeaders() {
   const snapshot = useProjectStore((s) => s.snapshot);
@@ -154,12 +137,7 @@ export default function TrackHeaders() {
         {tracks.length === 0 && (
           <div className="th-empty">
             <span>No tracks loaded</span>
-            <button
-              className="th-empty-btn"
-              onClick={() => rpc.call("project.addTrack").catch(() => {})}
-            >
-              + Add Track
-            </button>
+            <AddTrackMenu label="+ Add Track" triggerClassName="th-empty-btn" />
           </div>
         )}
         {visibleTracks.map((track, idx) => {
@@ -176,19 +154,23 @@ export default function TrackHeaders() {
               setHeaderMenu({ x: e.clientX, y: e.clientY, trackIndex: track.index });
             }}
           >
-          <div className="th-type-badge" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>
-            {track.trackType === 2 && (
-              <span
-                className="th-chevron"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  rpc.call("project.setTrackCollapsed", { trackIndex: track.index, collapsed: !track.isCollapsed }).catch(console.error);
-                }}
-                title={track.isCollapsed ? "Expand folder" : "Collapse folder"}
-              >
-                {track.isCollapsed ? "\u25B6" : "\u25BC"}
-              </span>
-            )}
+          {track.trackType === 2 && (
+            <span
+              className="th-chevron"
+              onClick={(e) => {
+                e.stopPropagation();
+                rpc.call("project.setTrackCollapsed", { trackIndex: track.index, collapsed: !track.isCollapsed }).catch(console.error);
+              }}
+              title={track.isCollapsed ? "Expand folder" : "Collapse folder"}
+            >
+              {track.isCollapsed ? "\u25B6" : "\u25BC"}
+            </span>
+          )}
+          <div
+            className="th-type-badge"
+            style={{ background: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}
+            title={TRACK_TYPE_LABELS[track.trackType] ?? "AUDIO"}
+          >
             {TRACK_TYPE_ICONS[track.trackType] ?? TRACK_TYPE_ICONS[0]}
           </div>
           <div
@@ -269,7 +251,10 @@ export default function TrackHeaders() {
         );
       })}
       </div>
-      {headerMenu && (
+      {headerMenu && (() => {
+        const menuTrack = tracks.find((t) => t.index === headerMenu.trackIndex);
+        const menuType = menuTrack?.trackType ?? 0;
+        return (
         <div
           className="clip-context-menu"
           style={{ left: headerMenu.x, top: headerMenu.y }}
@@ -277,10 +262,17 @@ export default function TrackHeaders() {
         >
           <button onMouseDown={(e) => {
             e.stopPropagation();
-            rpc.call("project.addTrack").catch(() => {});
+            rpc.call("project.addTrack", { trackType: 0 }).catch(() => {});
             setHeaderMenu(null);
           }}>
-            Add Track
+            Add Audio Track
+          </button>
+          <button onMouseDown={(e) => {
+            e.stopPropagation();
+            rpc.call("project.addTrack", { trackType: 1 }).catch(() => {});
+            setHeaderMenu(null);
+          }}>
+            Add MIDI Track
           </button>
           <button onMouseDown={(e) => {
             e.stopPropagation();
@@ -288,6 +280,27 @@ export default function TrackHeaders() {
             setHeaderMenu(null);
           }}>
             Duplicate Track
+          </button>
+          <div className="ctx-separator" />
+          <button
+            className={menuType === 0 ? "ctx-checked" : ""}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 0 }).catch(() => {});
+              setHeaderMenu(null);
+            }}
+          >
+            {menuType === 0 ? "✓ " : ""}Set Type: Audio
+          </button>
+          <button
+            className={menuType === 1 ? "ctx-checked" : ""}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 1 }).catch(() => {});
+              setHeaderMenu(null);
+            }}
+          >
+            {menuType === 1 ? "✓ " : ""}Set Type: MIDI
           </button>
           <div className="ctx-separator" />
           <button className="ctx-danger" onMouseDown={(e) => {
@@ -298,7 +311,8 @@ export default function TrackHeaders() {
             Delete Track
           </button>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

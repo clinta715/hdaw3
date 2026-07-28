@@ -18,6 +18,7 @@ import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
 import { buildRowLayout, rowAtY, rowAtYOrCount } from "../utils/rowLayout";
 import { getVisibleTracks } from "../utils/timelineUtils";
 import { colorStr } from "../theme";
+import { AddTrackMenu } from "./AddTrackMenu";
 import "./TimelineMinimal.css";
 
 export default function TimelineMinimal() {
@@ -831,6 +832,11 @@ export default function TimelineMinimal() {
               />
             )}
           </div>
+          {visibleTracks.length > 0 && (
+            <div className="tl-add-track" style={{ top: layout.total + 10 }}>
+              <AddTrackMenu label="+" title="Add Track" />
+            </div>
+          )}
         </div>
         {visibleTracks.length === 0 && (
           <div className="tl-empty-overlay" style={{ top: RULER_HEIGHT }}>
@@ -840,12 +846,7 @@ export default function TimelineMinimal() {
                 Add a track to start arranging — or drop an audio or MIDI file
                 anywhere here to create one.
               </div>
-              <button
-                className="tl-empty-btn"
-                onClick={() => rpc.call("project.addTrack").catch(() => {})}
-              >
-                + Add Track
-              </button>
+              <AddTrackMenu label="+ Add Track" triggerClassName="tl-empty-btn" />
             </div>
           </div>
         )}

@@ -62,17 +62,18 @@ describe("TimelineContextMenu", () => {
   });
 
   describe("empty-lane menu", () => {
-    it("offers Add Track, Add MIDI Clip, and Delete Track", () => {
+    it("offers Add Audio/MIDI Track, Add MIDI Clip, and Delete Track", () => {
       renderMenu({ emptyContextMenu: { x: 10, y: 10, beat: 0, trackIndex: 2 } });
-      expect(screen.getByText("Add Track")).toBeInTheDocument();
+      expect(screen.getByText("Add Audio Track")).toBeInTheDocument();
+      expect(screen.getByText("Add MIDI Track")).toBeInTheDocument();
       expect(screen.getByText("Add MIDI Clip")).toBeInTheDocument();
       expect(screen.getByText("Delete Track")).toBeInTheDocument();
     });
 
-    it("Add Track calls project.addTrack and closes", () => {
+    it("Add Audio Track calls project.addTrack with trackType 0 and closes", () => {
       const { onClose } = renderMenu({ emptyContextMenu: { x: 10, y: 10, beat: 0, trackIndex: 0 } });
-      fireEvent.mouseDown(screen.getByText("Add Track"));
-      expect(mockedCall).toHaveBeenCalledWith("project.addTrack");
+      fireEvent.mouseDown(screen.getByText("Add Audio Track"));
+      expect(mockedCall).toHaveBeenCalledWith("project.addTrack", { trackType: 0 });
       expect(onClose).toHaveBeenCalled();
     });
 
@@ -85,10 +86,10 @@ describe("TimelineContextMenu", () => {
   });
 
   describe("below-tracks menu", () => {
-    it("offers Add Track and creates a track", () => {
+    it("offers Add MIDI Track and creates a MIDI track", () => {
       const { onClose } = renderMenu({ belowMenu: { x: 10, y: 10 } });
-      fireEvent.mouseDown(screen.getByText("Add Track"));
-      expect(mockedCall).toHaveBeenCalledWith("project.addTrack");
+      fireEvent.mouseDown(screen.getByText("Add MIDI Track"));
+      expect(mockedCall).toHaveBeenCalledWith("project.addTrack", { trackType: 1 });
       expect(onClose).toHaveBeenCalled();
     });
   });

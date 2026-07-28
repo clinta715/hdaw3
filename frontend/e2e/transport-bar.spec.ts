@@ -73,22 +73,6 @@ test.describe("Transport bar (user journeys)", () => {
     await expect(page.locator("header.transport-bar .tb-time-sig")).toContainText("4/4");
   });
 
-  test("add track button adds a new track to the headers", async ({ page }) => {
-    const before = await page.locator(".th-row").count();
-    await page.locator('header.transport-bar button[title="Add Track"]').click();
-    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
-  });
-
-  test("remove track button removes the selected track", async ({ page }) => {
-    const before = await page.locator(".th-row").count();
-    // Select the second track (index 1) — track 0 may be the master/output track
-    // and can't be removed. Click the type-badge to avoid .th-color's stopPropagation.
-    const secondTrack = page.locator(".th-row").nth(1);
-    await secondTrack.locator(".th-type-badge").click();
-    await page.locator('header.transport-bar button[title="Remove Track"]').click();
-    await expect(page.locator(".th-row")).toHaveCount(before - 1, { timeout: 5000 });
-  });
-
   test("snap toggle button toggles snap state", async ({ page }) => {
     const snapBtn = page.locator('header.transport-bar button[title="Toggle Snap"]');
     const wasActive = (await snapBtn.getAttribute("class"))?.includes("active") ?? false;

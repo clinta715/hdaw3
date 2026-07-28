@@ -264,8 +264,11 @@ export function TimelineContextMenu({
       {emptyContextMenu && (
         <div className="clip-context-menu" style={{ left: emptyContextMenu.x, top: emptyContextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}>
-          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack").catch(() => {}); onClose(); }}>
-            Add Track
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack", { trackType: 0 }).catch(() => {}); onClose(); }}>
+            Add Audio Track
+          </button>
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack", { trackType: 1 }).catch(() => {}); onClose(); }}>
+            Add MIDI Track
           </button>
           {useUiStore.getState().clipClipboard.length > 0 && (
             <button onMouseDown={(e) => {
@@ -324,8 +327,11 @@ export function TimelineContextMenu({
       {belowMenu && (
         <div className="clip-context-menu" style={{ left: belowMenu.x, top: belowMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}>
-          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack").catch(() => {}); onClose(); }}>
-            Add Track
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack", { trackType: 0 }).catch(() => {}); onClose(); }}>
+            Add Audio Track
+          </button>
+          <button onMouseDown={(e) => { e.stopPropagation(); rpc.call("project.addTrack", { trackType: 1 }).catch(() => {}); onClose(); }}>
+            Add MIDI Track
           </button>
         </div>
       )}

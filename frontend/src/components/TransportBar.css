@@ -1,15 +1,23 @@
 .transport-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
   height: 100%;
   padding: 0 12px;
   overflow: visible;
+  /* The <header> and this inner div share the .transport-bar class, which makes
+     the header a flex container — without an explicit width this inner bar
+     shrink-wraps to its content and the auto margins below have no room. Full
+     width restores the file-left / tools-right / centered-middle layout. */
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Control clusters. The file group pins left and the tools group pins right,
-   leaving the transport/display clusters centered between them. */
+/* Control clusters. The file group's margin-right:auto pins it left and the
+   tools group's margin-left:auto pins it right; the remaining free space is
+   split between those two margins, which centers the clusters between them.
+   (No justify-content here — with `center` set, Chromium centers the whole
+   block and collapses the auto margins to 0, unpinning the file group.) */
 .tb-group {
   display: flex;
   align-items: center;

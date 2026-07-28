@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startApp, rpcCall } from "./helpers";
+import { startApp, rpcCall, waitForTrackCount } from "./helpers";
 
 test.describe("Timeline context menu (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
@@ -28,10 +28,11 @@ test.describe("Timeline context menu (user journeys)", () => {
     await expect(page.locator(".clip-context-menu")).toBeVisible({ timeout: 5000 });
   }
 
-  test("right-clicking empty timeline shows context menu with Add Track", async ({ page }) => {
+  test("right-clicking empty timeline shows context menu with Add Audio Track", async ({ page }) => {
     await rightClickEmptyTimeline(page);
     await waitForContextMenu(page);
-    await expect(page.locator(".clip-context-menu")).toContainText("Add Track");
+    await expect(page.locator(".clip-context-menu")).toContainText("Add Audio Track");
+    await expect(page.locator(".clip-context-menu")).toContainText("Add MIDI Track");
   });
 
   test("right-clicking empty timeline shows Add MIDI Clip option", async ({ page }) => {
@@ -46,11 +47,11 @@ test.describe("Timeline context menu (user journeys)", () => {
     await expect(page.locator(".clip-context-menu")).toContainText(/Set Global BPM/i);
   });
 
-  test("Add Track from context menu creates a new track", async ({ page }) => {
+  test("Add Audio Track from context menu creates a new track", async ({ page }) => {
     const before = await page.locator(".th-row").count();
     await rightClickEmptyTimeline(page);
     await waitForContextMenu(page);
-    await page.locator(".clip-context-menu button", { hasText: "Add Track" }).click();
+    await page.locator(".clip-context-menu button", { hasText: "Add Audio Track" }).click();
     await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
   });
 
@@ -114,18 +115,20 @@ test.describe("Timeline context menu (user journeys)", () => {
     await expect(page.locator(".clip-context-menu")).not.toBeVisible({ timeout: 3000 });
   });
 
-  test("right-clicking below the existing tracks shows Add Track", async ({ page }) => {
+  test("right-clicking below the existing tracks shows Add Audio Track", async ({ page }) => {
     await rightClickBelowTracks(page);
     await waitForContextMenu(page);
-    await expect(page.locator(".clip-context-menu")).toContainText("Add Track");
+    await expect(page.locator(".clip-context-menu")).toContainText("Add Audio Track");
   });
 
-  test("Add Track from below-tracks menu creates a track", async ({ page }) => {
+  test("Add MIDI Track from below-tracks menu creates a MIDI track", async ({ page }) => {
     const before = await page.locator(".th-row").count();
     await rightClickBelowTracks(page);
     await waitForContextMenu(page);
-    await page.locator(".clip-context-menu button", { hasText: "Add Track" }).click();
+    await page.locator(".clip-context-menu button", { hasText: "Add MIDI Track" }).click();
     await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+    // The new track is typed MIDI (instrument badge).
+    await expect(page.locator(".th-row").last().locator(".th-type-badge")).toContainText("\u266B", { timeout: 5000 });
   });
 
   test("empty-lane context menu shows Delete Track option", async ({ page }) => {
@@ -149,7 +152,8 @@ test.describe("Timeline context menu (user journeys)", () => {
     await row.click({ button: "right" });
     const menu = page.locator(".clip-context-menu");
     await expect(menu).toBeVisible({ timeout: 3000 });
-    await expect(menu).toContainText("Add Track");
+    await expect(menu).toContainText("Add Audio Track");
+    await expect(menu).toContainText("Add MIDI Track");
     await expect(menu).toContainText("Duplicate Track");
     await expect(menu).toContainText("Delete Track");
   });
@@ -168,5 +172,36 @@ test.describe("Timeline context menu (user journeys)", () => {
     await page.locator(".th-row").first().click({ button: "right" });
     await page.locator(".clip-context-menu button", { hasText: "Duplicate Track" }).click();
     await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+  });
+
+  test("the + button below the tracks offers a track-type choice", async ({ page }) => {
+    // The previous test leaves an extra track; wait for the fresh project's
+    // default 3 tracks so `before` isn't captured against the stale snapshot.
+    await waitForTrackCount(page, 3);
+    const before = await page.locator(".th-row").count();
+    const addBtn = page.locator(".tl-add-track .add-track-trigger");
+    await expect(addBtn).toBeVisible({ timeout: 5000 });
+    await addBtn.click();
+    // Popover offers both types.
+    await expect(page.locator(".add-track-popover")).toContainText("Audio Track");
+    await expect(page.locator(".add-track-popover")).toContainText("MIDI Track");
+    await page.locator(".add-track-popover .add-track-opt", { hasText: "MIDI Track" }).click();
+    await expect(page.locator(".th-row")).toHaveCount(before + 1, { timeout: 5000 });
+    await expect(page.locator(".th-row").last().locator(".th-type-badge")).toContainText("\u266B", { timeout: 5000 });
+  });
+
+  test("Set Type from the header menu retypes a track", async ({ page }) => {
+    // Default track 0 is audio; switch it to MIDI.
+    await page.locator(".th-row").first().click({ button: "right" });
+    await page.locator(".clip-context-menu button", { hasText: "Set Type: MIDI" }).click();
+    await expect(page.locator(".th-row").first().locator(".th-type-badge")).toContainText("\u266B", { timeout: 5000 });
+  });
+
+  test("audio and MIDI tracks show distinct type chips", async ({ page }) => {
+    await rpcCall(page, "project.addTrack", { trackType: 1 });
+    const audioBadge = page.locator(".th-row").first().locator(".th-type-badge");
+    const midiBadge = page.locator(".th-row").last().locator(".th-type-badge");
+    await expect(audioBadge).toContainText("\u25B2"); // audio triangle
+    await expect(midiBadge).toContainText("\u266B");  // midi note
   });
 });

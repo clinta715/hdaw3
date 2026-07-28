@@ -52,16 +52,6 @@ export default function TransportBar() {
     useProjectStore.setState({ isDirty: true });
   };
 
-  const handleAddTrack = () => {
-    rpc.call("project.addTrack").catch((err) => reportRpcError("project.addTrack", err));
-  };
-  const handleRemoveTrack = () => {
-    const idx = useUiStore.getState().selectedTrackIndex;
-    if (idx != null) {
-      rpc.call("project.removeTrack", { trackIndex: idx }).catch((err) => reportRpcError("project.removeTrack", err));
-    }
-  };
-
   // BPM tap state
   const tapTimesRef = useRef<number[]>([]);
   const handleTapBpm = useCallback(() => {
@@ -224,14 +214,6 @@ export default function TransportBar() {
           <option value={3}>1/16</option>
           <option value={4}>1/32</option>
         </select>
-      </div>
-
-      <div className="tb-sep" />
-
-      {/* Track ops */}
-      <div className="tb-group">
-        <button className="tb-btn" onClick={handleAddTrack} title="Add Track">+</button>
-        <button className="tb-btn" onClick={handleRemoveTrack} title="Remove Track">−</button>
       </div>
 
       <div className="tb-sep" />

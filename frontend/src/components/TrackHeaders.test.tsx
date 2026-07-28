@@ -57,19 +57,21 @@ describe("TrackHeaders", () => {
     expect(row.style.height).toBe("90px");
   });
 
-  it("shows an empty state with an Add Track action when there are no tracks", () => {
+  it("shows an empty state whose Add Track action offers a type choice", () => {
     setTracks([]);
     render(<TrackHeaders />);
     expect(screen.getByText("No tracks loaded")).toBeInTheDocument();
     fireEvent.click(screen.getByText("+ Add Track"));
-    expect(mockedCall).toHaveBeenCalledWith("project.addTrack");
+    fireEvent.click(screen.getByText("Audio Track"));
+    expect(mockedCall).toHaveBeenCalledWith("project.addTrack", { trackType: 0 });
   });
 
   it("right-clicking a row opens a menu with Add/Duplicate/Delete Track", () => {
     setTracks([mkTrack(0), mkTrack(1)]);
     const { container } = render(<TrackHeaders />);
     fireEvent.contextMenu(container.querySelectorAll(".th-row")[1]);
-    expect(screen.getByText("Add Track")).toBeInTheDocument();
+    expect(screen.getByText("Add Audio Track")).toBeInTheDocument();
+    expect(screen.getByText("Add MIDI Track")).toBeInTheDocument();
     expect(screen.getByText("Duplicate Track")).toBeInTheDocument();
     expect(screen.getByText("Delete Track")).toBeInTheDocument();
   });
@@ -88,5 +90,13 @@ describe("TrackHeaders", () => {
     fireEvent.contextMenu(container.querySelectorAll(".th-row")[0]);
     fireEvent.mouseDown(screen.getByText("Duplicate Track"));
     expect(mockedCall).toHaveBeenCalledWith("project.duplicateTrack", { trackIndex: 0 });
+  });
+
+  it("Set Type: MIDI from the header menu retypes the track", () => {
+    setTracks([mkTrack(0, { trackType: 0 })]);
+    const { container } = render(<TrackHeaders />);
+    fireEvent.contextMenu(container.querySelector(".th-row") as HTMLElement);
+    fireEvent.mouseDown(screen.getByText("Set Type: MIDI"));
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackType", { trackIndex: 0, trackType: 1 });
   });
 });

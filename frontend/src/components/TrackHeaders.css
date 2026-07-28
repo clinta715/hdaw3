@@ -251,9 +251,13 @@
 .th-type-badge {
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: #fff;
   font-size: 10px;
-  width: 20px;
+  line-height: 1;
   flex-shrink: 0;
 }
 
@@ -261,6 +265,10 @@
   cursor: pointer;
   font-size: 8px;
   user-select: none;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .th-row--audio {
