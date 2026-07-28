@@ -55,6 +55,34 @@ These cost real debugging time — read before touching the relevant area:
    extreme bursts (128+ clips) it can stall ~30s. Incremental routing is the
    remaining follow-up.
 
+## Performance rules: batch RPCs, walk the tree incrementally
+
+Standing rules for any code that mutates or reads the project. These are what
+keep the arrange view smooth and avoid the "black screen" cliff (lesson 6).
+
+1. **Consolidate RPC calls — one batch, not N loops.** A set of related
+   mutations must be a single batch RPC (`addClips`, `removeClips`, `moveClips`,
+   `duplicateClips`, `paintClips`, `mergeClips`) or one
+   `beginTransaction`/`endTransaction` block — never N separate `await rpc.call`
+   in a loop. This is the most efficient path, and the win is *not* just fewer
+   round-trips: every engine mutation fires the root `ValueTree` listeners
+   synchronously, so one batched call lands in a single message-loop tick and the
+   16 ms `TreeDeltaAccumulator` + `AsyncUpdater` coalesce it into **one** delta
+   broadcast and **one** graph rebuild (and one atomic undo unit). N separate
+   calls are N round-trips that can span ticks → N rebuilds, N deltas.
+2. **Prefer incremental deltas over full re-serialization.** Express a change as
+   a clip/track delta whenever possible so `notify.treeChanged` carries a minimal
+   payload and the frontend `applyDelta` patches the snapshot in place (stable
+   object references → minimal React re-render). Reserve `fullSync` (whole
+   `read.snapshot` re-fetch) for changes that restructure the tree or touch
+   non-clip/track entities. Derived state (`effectiveMuted`/`effectiveSoloed`)
+   can't be deltaed (lesson 4) — that's the exception, not the default.
+3. **Don't re-walk the whole `ValueTree` to touch one node.** Use indexed access
+   / `getChildWithProperty` and held references instead of full-tree scans per
+   mutation. `rebuildRoutingGraph()` and `ReadModel` snapshot building are
+   O(project) and are the hot path to keep incremental (lesson 6 is the remaining
+   follow-up).
+
 ## Build (summary)
 
 - Configure/build: `cmake --build build --config Debug`
@@ -148,6 +176,129 @@ See [docs/architecture.md](docs/architecture.md) for full details.
 ## Code Style
 
 See [docs/architecture.md](docs/architecture.md) for code style conventions.
+
+## UI design & aesthetic guidelines
+
+HDAW's interface idiom is **Bitwig's Arranger + Ableton's fixed-tile flow**.
+The north star is **spatial stability**: the screen is a fixed mosaic of
+regions that never move, so the user's spatial memory stays valid and nothing
+breaks their flow. Depth comes from **drilling down in place**, never from
+popping windows that reflow the layout. This is Ableton's "flow" — simple up
+front, a small amount of drilling down for much more control, and a screen
+that never interrupts the user's train of thought. When in doubt, ask: *"would
+this feel at home in Bitwig or Ableton?"* If it feels like a Cubase floating
+window, it doesn't belong here.
+
+### Core principles
+
+1. **Spatial stability is sacred.** A fixed set of screen regions, always in
+   the same place. Regions are shown/hidden or resized — never rearranged,
+   never overlapped by floating windows. The user's hands and eyes build a map
+   of the screen; don't invalidate it.
+2. **Progressive disclosure — simple up front, depth a click away.** The
+   surface shows the essentials; detail lives one drill-down away, *in place*.
+   Never stack windows to reach more control.
+3. **One primary focus area at a time.** Switching views swaps content inside a
+   stable frame; it doesn't change the frame.
+4. **Conform to muscle memory.** Timeline/track/clip/mixer conventions follow
+   the established DAW idiom (Bitwig/Cubase lineage). Deviation is a friction
+   cost — spend it only where HDAW is deliberately better.
+
+### The fixed layout (HDAW's regions)
+
+The app shell (`App.tsx` / `App.css`) is a CSS grid of fixed regions. New UI
+must live inside this mosaic — do not add floating/absolute-positioned panels
+to the core workflow.
+
+| Region | Grid area | Role | Model |
+|--------|-----------|------|-------|
+| Transport | `transport` (top, 48px) | Play/stop/record, position, tempo, global toggles | Always present |
+| Track headers | `headers` (left, 220px) | Track list, mute/solo, selection | Always present |
+| Timeline | `timeline` (center) | Arranger — clips, ruler, lanes | Always present |
+| File browser | `browser` (right) | Media / Audio Pool, drag source | Toggled, docked |
+| Clip editor strip | `clipedit` | In-place detail for the selected clip | Docked strip |
+| Bottom panel | `bottom` (resizable) | **The detail view** — tabs swap content in a stable frame | Always present |
+| Status bar | `status` (bottom, 24px) | Hints, readouts | Always present |
+
+The **bottom panel is HDAW's Ableton Detail View / Bitwig device-mixer panel**:
+Mixer, Piano Roll, Automation, FX Chain, MIDI FX, Audio Editor, Modulation, and
+Step Seq are all *tabs in the same stable frame*. Adding a new editor or
+inspector = adding a tab here, not a new window.
+
+**Showing/hiding a region must not reflow the rest of the layout
+unpredictably.** Prefer reserved/collapsible space (a region keeps its slot and
+collapses to a handle) over mount/unmount that shifts everything.
+
+### Windows & dialogs
+
+- **No floating windows or pop-outs in the core workflow** (browse, edit, mix,
+  arrange). Everything docks into the grid.
+- **Modal dialogs only for genuinely modal, infrequent, or destructive acts**:
+  close-with-unsaved-changes confirm, Preferences, Plugin Manager, Import,
+  project startup. If a task is part of the flow of making music, it is not a
+  dialog.
+- Never drive a repeated workflow through a dialog.
+
+### Audio Pool (the one Cubase convention we keep)
+
+Project media follows **Cubase's Audio Pool model** — a centralized pool of all
+audio in the project, independent of the arrangement:
+
+- Every imported/recorded audio file appears **once**, with name, source path,
+  length, and **usage/reference count** — regardless of how many clips use it.
+- Clips **reference** pool items; dragging from the pool to the timeline mints
+  a clip. Deleting a clip does not delete the pool item.
+- The pool surfaces **unused items** for cleanup and is the single place to see
+  what media the project actually carries.
+- This lives in / alongside the file-browser region as the project-media side.
+
+### Keyboard-first
+
+- Every repeated action has a shortcut; hands rarely leave the keys.
+- Transport follows DAW convention — **R = record**, return-to-zero, loop
+  toggle; **Space = play/stop is the target idiom** (currently Shift+Space =
+  stop, Home = rewind, Ctrl+L = loop).
+- Editing follows **CUA**: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo/redo, plus
+  save/copy/paste/duplicate (file shortcuts live in `FileMenu.tsx`).
+- Shortcuts are discoverable (status-bar hints / tooltips) and don't collide
+  with the host browser or OS.
+
+### Visual language
+
+- **Dark, calm, neutral base** (`--bg-window`/`--bg-panel` charcoal). The
+  canvas recedes so content (clips, waveforms, meters) reads.
+- **Color = meaning, never decoration.** Track/clip identity, state, and signal:
+
+  | Token | Meaning |
+  |-------|---------|
+  | `--accent` (amber `#d97706`) | focus / active / selection / interaction |
+  | `--mute-color` (amber) / `--solo-color` (green) | mutually-exclusive track states — kept far apart in hue on purpose |
+  | `--vu-green/yellow/red` | signal level |
+  | `--danger/--warning/--success/--info` | status semantics |
+
+- **Hierarchy from weight, size, and spacing — not ornament.** Dense but
+  organized; no gratuitous borders, shadows, or gradients.
+- **Tabular numerals** (`font-variant-numeric: tabular-nums`) for any
+  time/position/level readout so digits don't jitter. The transport position
+  display is the one place a distinctive display treatment is welcome.
+- **13px system-ui base** for density; step up size/weight deliberately for
+  emphasis.
+
+### Motion & feedback
+
+- The UI is **alive but never theatrical**: every control gives immediate,
+  perceptible feedback (hover, pressed, focus states).
+- **Meters are living elements** — they move with the audio and are always on.
+- Micro-transitions (~100–150 ms) for hover/resize/reveal; nothing slower that
+  would lag the feel of an instrument.
+- Motion signals state changes, it doesn't entertain. Respect
+  `prefers-reduced-motion`.
+
+### Known deviation to reconcile
+
+- `.clip-editor-container` mounts/unmounts with selection, reflowing the
+  timeline. Long-term it should collapse into reserved space (or merge into the
+  bottom-panel tabs) so showing it never shifts the arrange view.
 
 ## Frontend Pitfalls
 
