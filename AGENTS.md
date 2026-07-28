@@ -1,240 +1,149 @@
 ﻿# AGENTS.md
 
 Project-specific lessons learned. Read this before working on the timeline,
-the project model, or the frontend â€" these are the pitfalls that cost
-real debugging time.
+the project model, or the frontend — these are the pitfalls that cost real
+debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.1**
-with a **React 19 + TypeScript frontend** (Zustand state management,
-Vite build). The frontend runs in two contexts:
-system browser (default) or Electron shell. The C++ engine
-exposes its state via JSON-RPC 2.0 over WebSocket (port 8766) and serves
-the bundled React SPA via HTTP (port 8765). The
-core engine (project model, transport, routing, JUCE plugin hosting,
-internal FX) and the frontend (track headers, timeline, mixer, piano
-roll, FX chain, automation) work end-to-end.
-v0.3.x added the MCP server and a gtest test suite. v0.4.x added
-multi-clip selection, clipboard, markers, MIDI CC recording, MIDI
-channel routing, FX drag-reorder, status bar, zoom-to-fit, expanded
-preferences, and a bugfix pass. v0.5.0 added full automation
-parameters (Volume, Pan, Mute as default lanes; plugin FX parameter
-automation via `TrackFXSlot` atomic cache and compound paramID scheme),
-Mute automation recording, and compile-time build optimizations
-(LTO, `/MP` parallel builds, JUCE define cleanup). v0.7.0 added
-GUI-engine decoupling via abstract command interfaces, ReadModel,
-PluginParamService, and PluginService/MidiService interfaces;
-automation copy-paste and selection model, snap persistence across
-editors, file browser drive navigation, and several bug fixes. **v0.8.0**
-added pitch-preserving audio clip timestretch (SoundTouch, off-thread
-render), BPM metadata extraction on import, auto tempo-match on import,
-project-tempo tracking for existing tempo-matched clips, and fixed
-the waveform visibility dark-background issue. **v0.9.0** adds the
-per-clip audio editor (waveform display, zoom, gain, fades, timestretch
-controls, loop, offset/duration), gain envelope editor with draggable
-control points, audio clip slicing (at playhead, at transients, at
-region boundaries), and the region clipboard (drag-select to copy/cut
-audio regions and paste at the playhead). **v0.9.1** fixes the clip
-drag Y-tracking â€” clips now follow the mouse smoothly across tracks
-instead of snapping at track boundaries with a discrete jump.
-**v0.10.0** adds tempo point interactions on the ruler (add/edit/
-remove/drag), duplicate track with ID-safe deep copy, audio device
-preference persistence, transport-synced loop preview, auto-trim
-silence on import (-60 dB), missing-file error indicators, and two
-new MCP tools (`duplicate_track`, `add_track_with_fx`). **v0.12.0**
-adds 49 MCP functionality tests, the Plugin Manager dialog, file
-browser audio preview, collapsible right panel, and bugfixes for
-clip rubber-band selection (live highlighting, stale-click guard),
-trim/fade handle click propagation, track header resize handle
-click propagation, audio clip deletion not stopping playback
-(missing `valueTreeChildRemoved` → `rebuildRoutingGraph()`), and
-three additional asymmetric ValueTree listener fixes (TRANSPORT
-teardown in AudioEngine, MARKER_LIST teardown),
-and an optimized track removal (incremental `removeTrackRow()` replacing
-full `rebuildFromValueTree()` on track deletion). **v0.12.0+** adds
-batch clip RPCs (`duplicateClips`, `moveClips`, `removeClips`, `addClips`)
-to fix the recurring ctrl-drag stale-closure regression, optimistic
-placement for NoteGrid/FXChain operations, frontend test infrastructure
-(Vitest + Playwright, 86 tests), frontend pitfalls documentation, and
-`build-fast.bat` for incremental builds. **v0.12.1** fixes rubber-band
-selection hit-testing (`TRACK_HEIGHT` mismatch and partial-overlap
-detection). **v0.13.0** adds Playwright E2E user-journey tests (22 tests
-driving the real app: drag, ctrl-drag duplicate, rubber-band selection,
-undo/redo, multi-select drag, delete, copy-paste, cross-track move,
-Ctrl+M merge, audio editor + waveform render), a waveform cache-poisoning
-fix (don't cache silent/empty peaks, retry transient failures), a delta
-sync kill-switch (`HDAW_FORCE_FULL_SYNC=1`), MIDI clip merge
-(`project.mergeClips` RPC, context menu + Ctrl+M), piano roll grid
-visibility fix (beat/bar line opacity doubled) + Ctrl+wheel zoom,
-piano roll MIDI toolbar (loop toggle, velocity/duration scaling,
-quantize strength), right-click Add MIDI Clip now places at the mouse
-position (was hardcoded to track 0), and build optimizations
-(RelWithDebInfo/Release CMake presets, AVX2, per-config MSVC flags,
-Vite es2020 target). **v0.13.0+** adds MIDI-clip editor properties
-(transpose / quantize / velocity-offset / humanize, operating on all notes —
-shown for MIDI clips instead of the audio gain/fade/timestretch panel),
-MIDI note thumbnails on the timeline (`MidiThumbnailCanvas` — a pitch-range-
-fitted mini piano-roll per clip), and zoom buttons + Ctrl+wheel zoom in both
-the piano roll and the audio/sample editor. Fixes a regression where the
-auto-switch-tab effect hijacked the Step Sequencer (and any non-editor tab)
-on every snapshot refresh — it now fires once per clip selection. Diagnosed
-and fixed the **"black screen after several arrange operations"** crash:
-(1) the engine rebuilt the entire `AudioProcessorGraph` on **every** clip
-add/remove (`valueTreeChildAdded`/`valueTreeChildRemoved` in `AudioEngine`),
-so a single `duplicateClips`/`moveClips` batch did N full rebuilds → a
-super-linear cliff (4→8 clips: 1s, 32→64: 31s) → RPC timeout → renderer
-death. Now coalesced into one rebuild per message-loop tick via
-`AsyncUpdater` (`AudioEngine::handleAsyncUpdate`). (2) `moveClipWithOverlap`
-Case 1 silently deleted any clip fully covered by a move/duplicate — now
-non-destructive (clips coexist/overlap). Added a React `ErrorBoundary`, a
-packaged-app DevTools shortcut (Ctrl+Shift+A — was dev-only, which is why
-packaged crashes were invisible), and `render-process-gone`/`unresponsive`
-handlers so future renderer faults surface instead of black-screening.
-**Caveat:** `rebuildRoutingGraph()` is still O(project) per call (tears down
-+ re-instantiates every clip/plugin); at extreme counts (128+ clips in one
-burst) a single rebuild can still take ~30s — incremental routing is the
-remaining follow-up. For the full list of working
-features and the priority-ordered roadmap, see `README.md`.
-**v0.13.1** fixes a critical beats-vs-seconds unit mismatch that affected
-every clip creation/move/duplicate path. The `createMidiClipEmpty` and
-`createAudioClip` functions stored beat values directly as `startTime`/
-`duration` (seconds), causing clips to play at wrong positions and for
-wrong durations (~2× too long at 120 BPM). Fixed by converting beats→seconds
-at every frontend-facing entry point (`addMidiClip`, `addAudioClip`,
-`addClips`, `moveClip`, `moveClipWithOverlap`, `duplicateClipTo`,
-`duplicateClips`, `setClipStart`, `setClipDuration`, `createGhostClip`,
-`paintClips`, `ensureMidiRecClip`, MCP tools, and `pasteAudioClipRegion`).
-The `ReadModelImpl::buildClipSnapshotFromTree` and `getClip` now convert
-seconds→beats for the frontend. Shared helper `HDAW::beatsToSeconds()` in
-`AudioEngineCommands_Helpers.h`. Also adds: transport auto-stop when
-playhead reaches end of all clips (`TransportManager::advance` checks
-`projectEndSample`; `AudioEngine::timerCallback` polls the flag and updates
-the ValueTree); SPSC-triggered `projectEndSample` recompute for clip timing
-changes; waveform peak slicing to match clip offset/duration (no longer
-shows the full source file); track type labels (AUDIO/MIDI/FOLDER) with
-color-coded row tints; `TreeDeltaAccumulator` escalates `isMuted`/`isSoloed`
-property changes to fullSync so `effectiveMuted`/`effectiveSoloed` propagate
-correctly; audio buzz on stop fixed (`MainAudioProcessor::processBlock`
-early-out when transport is stopped); 10 new `TransportManager` unit tests
-and 1 new Playwright E2E auto-stop test (130 total).
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.1** with a
+**React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
+contexts: system browser (default) or Electron shell. The C++ engine exposes
+state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
+SPA over HTTP (port 8765). The core engine (project model, transport, routing,
+JUCE plugin hosting, internal FX) and the frontend (track headers, timeline,
+mixer, piano roll, FX chain, automation) work end-to-end. For the feature
+history and roadmap see `README.md`; per-version changes live in the git log.
 
 ## Documentation Directory
 
-Detailed documentation has been split into domain-specific files:
+Detailed documentation is split into domain-specific files. For a specific
+pitfall, search the relevant file; for architecture start with
+`docs/architecture.md`; for realtime constraints see `docs/realtime-safety.md`.
 
 | File | Contents |
 |------|----------|
-| [`docs/architecture.md`](docs/architecture.md) | Build, Version Management, Key Classes, GUI-Engine Decoupling, Frontend Architecture, Timestretch, JUCE 9 Migration, **beats-vs-seconds unit convention** |
-| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-Thread Safety Rules, Hardening Lessons, Diagnostic Pattern, Codebase Hardening, Plugin Process Isolation, **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness** |
-
+| [`docs/architecture.md`](docs/architecture.md) | Build, version management, key classes, GUI-engine decoupling, frontend architecture, timestretch, JUCE 9 migration, **beats-vs-seconds unit convention** |
+| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation, **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness** |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup** |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads, **vertical fader `direction: reverse` invalid** |
-| [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest Suite, TransportLoopback Test Seam, MCP Server Architecture, MCP Tool Safety, File Browser Audio Preview |
+| [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest suite, TransportLoopback test seam, MCP server architecture, MCP tool safety, file browser audio preview |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
 
-**Quick reference:** For a specific pitfall, search the relevant domain file. For architecture questions, start with `docs/architecture.md`. For realtime safety constraints, see `docs/realtime-safety.md`.
+## Lessons learned
 
-### Lessons learned (v0.13.1)
+These cost real debugging time — read before touching the relevant area:
 
-These cost real debugging time this cycle — read before touching the
-relevant area:
-
-1. **Beats vs seconds is the #1 data-convention bug source.** Frontend
-   speaks beats; the clip ValueTree (`startTime`/`duration`) and the
-   processors speak seconds. Every boundary-crossing command must
-   convert. See `docs/architecture.md` → "Time-unit convention".
-2. **`ValueTree::setProperty` is a silent no-op when the value is
-   unchanged.** Any command relying on the listener side-effect (transport
-   rewind/stop/play/seek) must drive the manager directly or nudge the
-   value. See `docs/pitfalls-juce.md`.
-3. **`processBlock` must early-out when the transport is stopped**, or
-   clips at the current position replay the same block every callback
-   (audible buzz). See `docs/realtime-safety.md`.
+1. **Beats vs seconds is the #1 data-convention bug source.** Frontend speaks
+   beats; the clip ValueTree (`startTime`/`duration`) and the processors speak
+   seconds. Every boundary-crossing command must convert. See
+   `docs/architecture.md` → "Time-unit convention".
+2. **`ValueTree::setProperty` is a silent no-op when the value is unchanged.**
+   Any command relying on the listener side-effect (transport
+   rewind/stop/play/seek) must drive the manager directly or nudge the value.
+   See `docs/pitfalls-juce.md`.
+3. **`processBlock` must early-out when the transport is stopped**, or clips at
+   the current position replay the same block every callback (audible buzz).
+   See `docs/realtime-safety.md`.
 4. **The delta-sync path can't compute derived state** (`effectiveMuted`/
    `effectiveSoloed`); mute/solo changes escalate to fullSync. See
    `docs/valuetree-listener-contract.md` §6.
-5. **`projectEndSample` (auto-stop) goes stale on SPSC timing edits**
-   because those don't rebuild the graph; it's recomputed in
-   `processBlock` when a timing param changes. See
-   `docs/realtime-safety.md`.
+5. **`projectEndSample` (auto-stop) goes stale on SPSC timing edits** because
+   those don't rebuild the graph; it's recomputed in `processBlock` when a
+   timing param changes. See `docs/realtime-safety.md`.
+6. **`rebuildRoutingGraph()` is O(project) per call.** Clip add/remove is
+   coalesced into one rebuild per message-loop tick (`AsyncUpdater`), but a
+   single rebuild still tears down and re-instantiates every clip/plugin — at
+   extreme bursts (128+ clips) it can stall ~30s. Incremental routing is the
+   remaining follow-up.
 
-### Build (summary)
+## Build (summary)
 
-- Configuration: `cmake --build build --config Debug`
+- Configure/build: `cmake --build build --config Debug`
 - Outputs: `build/Debug/HDAW.exe`, `build/Debug/HDAW_headless.exe`, `build/Debug/hdaw_tests.exe`
-- Do NOT run `build/Release/HDAW.exe` â€” stale binary, contains none of the fixes.
-- **Two launch modes:** Default (browser), Headless (Electron)
-- **Frontend build:** `cd frontend && npm run build`, then rebuild C++ project.
+- Do NOT run `build/Release/HDAW.exe` — stale binary, contains none of the fixes.
+- **Two launch modes:** Default (browser), Headless (Electron).
+- **Frontend build:** `cd frontend && npm run build`, then rebuild the C++ project.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
 
-#### How frontend changes reach the running app (the stale-frontend trap)
+### How frontend changes reach the running app (the stale-frontend trap)
 
-The React frontend can be delivered three different ways, and **a plain
-`cmake --build` updates NONE of them**. If a frontend fix "doesn't take
-effect after rebuilding," this is almost certainly why:
+The React frontend is delivered three ways, and **a plain `cmake --build`
+updates NONE of them**. If a frontend fix "doesn't take effect after
+rebuilding," this is almost certainly why:
 
 | Run mode | Binary | Frontend source | To pick up frontend changes |
 |----------|--------|-----------------|------------------------------|
-| **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen inside `resources/app.asar` | **Repackage:** `cd frontend && npm run build && npm run package:dir` (or `frontend\build.bat`). Ctrl+Shift+R does nothing here. |
-| **Browser (standalone exe)** | `build/Debug/HDAW.exe` | Embedded via `frontend.qrc` Qt resource | `frontend\build.bat` forces a clean C++ rebuild when `dist/` is newer (AUTORCC under the VS generator does NOT treat changed `dist/` files as a rebuild trigger, so a plain rebuild silently serves the stale SPA). |
+| **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen in `resources/app.asar` | **Repackage:** `frontend\build.bat` (or `npm run build && npm run package:dir`). Ctrl+Shift+R does nothing here. |
+| **Browser (standalone exe)** | `build/Debug/HDAW.exe` | Embedded via `frontend.qrc` | `frontend\build.bat` forces a clean C++ rebuild when `dist/` is newer (AUTORCC under the VS generator does NOT treat changed `dist/` as a rebuild trigger). |
 | **Vite dev server** | `npm run dev` (+ engine for WS on 8766) | Live from `frontend/src` | Hard-refresh the browser (Ctrl+Shift+R). No build needed. |
 
-**The packaged Electron app is the one users actually run.** Its frontend
-is baked into `app.asar` at packaging time — editing source, rebuilding
-`dist/`, or refreshing the window has zero effect until you repackage.
-`frontend\build.bat` is the single command that rebuilds the SPA, the C++
-engine, runs the tests, and repackages Electron, guaranteeing consistency.
-
-**Build-script guards against the stale-asar trap:** both build scripts now
-detect an obsolete `app.asar` automatically. `frontend\build.bat` verifies
-`app.asar` is newer than `dist/` after packaging and fails the build if not.
-`build-fast.bat` compares `frontend/dist/` against `app.asar` after every
-C++/frontend/package target and prints a loud `STALE PACKAGED APP` warning
-(with the fix command) when the packaged app would run an outdated frontend —
+**The packaged Electron app is the one users run.** Its frontend is baked into
+`app.asar` at packaging time — editing source, rebuilding `dist/`, or
+refreshing the window has zero effect until you repackage. `frontend\build.bat`
+rebuilds the SPA, the C++ engine, runs the tests, and repackages Electron in one
+command. Both build scripts detect an obsolete `app.asar` and fail/warn loudly,
 so you can't silently iterate against a stale `.asar`.
 
 ## Testing
 
 - **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
   - Filter: `--gtest_filter=SuiteName.*`
-  - ~62 tests covering MCP tools, transport, tracks, clips, notes, FX,
-    automation, undo, save/load, phrase generation, error conditions, batch ops
+  - 250+ cases across ~35 suites: MCP tools/server, transport, tracks, clips,
+    notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
+    ghost clips, stretch, markers, error conditions, batch ops.
+  - **Engine change test discipline:** when modifying the C++ core, RPC surface,
+    or JUCE interfaces, assess test impact before finishing: (1) identify gtest
+    suites that exercise the changed code (RPC handlers → MCP tool tests,
+    ValueTree mutations → track/clip/note tests, audio-thread logic → transport
+    tests) and update them if signatures/return shapes/behavior changed; (2) if
+    the change adds a new RPC method, command, or JUCE-facing interface with no
+    coverage, add a gtest — the suite is the contract the frontend and MCP
+    server rely on; (3) run `build/Debug/hdaw_tests.exe` to confirm no
+    regression. An engine change with no test consideration is incomplete.
 - **Frontend unit tests (Vitest):** `cd frontend && npm test`
-  - Component tests: `src/components/*.test.tsx`
-  - Store tests: `src/store/*.test.ts`
-  - ~86 tests covering Zustand stores (transport, ui, project, notify, meter, browser)
-    and React components (StatusBar, Toaster, BottomTabs) and hooks (useTimelineDrag)
-  - Watch mode: `npm run test:watch`
-  - Coverage: `npm run test:coverage`
+  - ~177 tests: Zustand stores (transport, ui, project, notify, meter, browser),
+    hooks (useTimelineDrag), utils (rowLayout, theme, grooveUtils), and
+    components (StatusBar, Toaster, BottomTabs, MidiFxChain, WaveformCanvas,
+    MidiThumbnailCanvas, StepSequencer, TimelineContextMenu, MixerStrip,
+    TrackHeaders, Icons).
+  - Watch: `npm run test:watch` · Coverage: `npm run test:coverage`
 - **Frontend E2E tests (Playwright):** `cd frontend && npm run test:e2e`
-  - Tests: `e2e/*.spec.ts`. `app.spec.ts` = render smoke tests; `editing.spec.ts` =
-    user-journey regression tests that drive the real app (click/drag/keyboard) and
-    assert on the resulting DOM/canvas/snapshot state — the layer that catches the
-    recurring interaction bugs unit tests miss (drag stale-closures, rubber-band
-    hit-testing, waveform-display, selection→editor opening).
+  - ~197 tests in `e2e/*.spec.ts`. `app.spec.ts` = render smoke; the rest are
+    user-journey regressions that drive the real app (click/drag/keyboard) and
+    assert on DOM/canvas/snapshot state — the layer that catches the recurring
+    interaction bugs unit tests miss (drag stale-closures, rubber-band
+    hit-testing, waveform display, selection→editor opening, context menus).
   - The `webServer` in `playwright.config.ts` auto-starts the engine
-    (`build\Debug\HDAW.exe`, with `HDAW_NO_BROWSER=1` so it doesn't spawn a browser)
-    plus the Vite dev server (port 5173); tests run against the **live** frontend, so
-    frontend changes are picked up with no rebuild/repackage. Requires a current
-    `build/Debug/HDAW.exe` (`cmake --build build --config Debug --target HDAW`) and
-    Playwright browsers (`npx playwright install chromium`).
+    (`build\Debug\HDAW.exe`, with `HDAW_NO_BROWSER=1`) plus the Vite dev server
+    (port 5173); tests run against the **live** frontend, so frontend changes
+    are picked up with no rebuild/repackage. Requires a current
+    `build/Debug/HDAW.exe` and Playwright browsers (`npx playwright install chromium`).
   - `workers: 1` — the engine is a singleton serving one project, so tests run
-    serially; each test calls `startApp()` (clicks "New Project") for a clean,
-    deterministic starting state.
-  - Test seams: `window.rpc` (rpc.ts) for RPC setup, `data-clip-id` on `.tl-clip`
-    (TimelineMinimal) for targeting clips, `HDAW_NO_BROWSER` (main.cpp). Shared helpers
-    live in `e2e/helpers.ts` (`startApp`, `rpcCall`, `addMidiClip`/`addAudioClip`,
-    `dragClip`, `writeSineWav`).
-  - **Regression wall:** every UI bug fix should ship with an E2E test that reproduces
-    it. The pitfalls in `docs/pitfalls-frontend.md` are a backlog of tests to write.
+    serially; each calls `startApp()` (clicks "New Project") for a clean state.
+  - Test seams: `window.rpc` for RPC setup, `data-clip-id` on `.tl-clip` for
+    targeting clips, `HDAW_NO_BROWSER`. Shared helpers in `e2e/helpers.ts`
+    (`startApp`, `rpcCall`, `addMidiClip`/`addAudioClip`, `dragClip`, `writeSineWav`).
+  - Select by **`title`/role, not styling class**, for transport buttons — the
+    icon restyle broke class-based selectors.
+  - **Regression wall:** every UI bug fix should ship with an E2E test that
+    reproduces it. The pitfalls in `docs/pitfalls-frontend.md` are a backlog of
+    tests to write.
+  - **UI change test discipline:** when creating/modifying UI, assess test
+    impact before finishing: (1) identify Vitest component/store tests and
+    Playwright E2E tests that exercise the changed element and update them if
+    selectors/behavior/expectations changed; (2) if the change adds new
+    user-facing behavior (interaction, panel, shortcut), add coverage — a
+    Vitest unit/component test for isolated logic and/or a Playwright E2E test
+    for the journey; (3) run the affected suites (`npm test`, `npm run test:e2e`).
+    A UI change with no test consideration is incomplete.
   - Interactive UI: `npm run test:e2e:ui`
 
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.12.1 ...)` — **canonical source** for C++ code
-- `frontend/package.json` → `"version": "0.12.1"` — **canonical source** for the React frontend
+- `CMakeLists.txt` → `project(HDAW VERSION 0.13.1 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.13.1"` — **canonical** for the frontend.
 
-See [docs/architecture.md](docs/architecture.md) for full version management details.
+See [docs/architecture.md](docs/architecture.md) for full details.
 
 ## Code Style
 
@@ -242,56 +151,26 @@ See [docs/architecture.md](docs/architecture.md) for code style conventions.
 
 ## Frontend Pitfalls
 
-These are recurring, non-obvious bugs that have cost real debugging time.
-Full details in [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md).
+Recurring, non-obvious bugs that have cost real debugging time. Full detail in
+[`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md).
 
-1. **Stale `clips` closure after async mutations.** Hooks receive `clips`
-   as a prop (from the component's render). After an async operation
-   (duplicate, syncSnapshot, etc.), the store has newer data than the
-   prop. Any code that looks up clips by ID **after** an async op must
-   read from `useProjectStore.getState().snapshot?.clips`, NOT from the
-   `clips` prop. The original ctrl-drag bug: `handleMouseUp` used
-   `clips.find(id)` on the stale prop, silently skipped the RPC move for
-   duplicated clips, then `syncSnapshot` overwrote the optimistic update
-   — clips jumped back to their original position.
-
-2. **Optimistic placement + `syncSnapshot` conflict.** If you
-   optimistically update the store AND then call `syncSnapshot`, the
-   sync replaces the entire snapshot. If the RPC didn't actually make
-   the change on the backend (e.g., it was skipped due to pitfall #1),
-   the optimistic update is lost. Always verify the RPC path runs
-   correctly before calling `syncSnapshot`.
-
-3. **Optimistic placement during continuous drag is wrong.** Creating
-   optimistic clips at the initial mouse position during a drag causes
-   double-movement: the clip is placed at position X, then the drag
-   applies an offset relative to the original, moving it again. For
-   drag operations where position changes continuously, either:
-   - Don't use optimistic placement (let RPC complete first), OR
-   - Update the optimistic clip's position on every mousemove, OR
-   - Only place optimistically on mouseup (like normal drag does)
-
-4. **`dragSelectedIdsRef` changes identity during async ops.** When
-   ctrl-drag duplicates clips, `dragSelectedIdsRef.current` is replaced
-   with new clip IDs. But the `clips` array in the closure still
-   references the old clips. Any code that iterates over
-   `dragSelectedIdsRef.current` after the async duplicate must look up
-   clips from the store, not from the closure prop.
-
-5. **Window-level listeners and stale closures.** The drag hook
-   registers `mousemove`/`mouseup` on `window` via refs
-   (`handleMouseMoveRef`/`handleMouseUpRef`) to avoid stale closures.
-   But the refs point to `useCallback` functions that may still close
-   over stale `clips`. The fix from pitfall #1 applies here too: read
-   from the store inside the callback, not from the closure.
-
-6. **Clip placement must go through `moveClipWithOverlap`.** Any
-   function that places a clip at a position (duplicate, paste, import)
-   must call `moveClipWithOverlap` after `clipList.addChild` to
-   handle overlapping clips (trim, split, remove). Without this,
-   clips can overlap instead of overwriting. Functions that skip
-   this: `duplicateClipTo`, `duplicateClips`, `addClips`. Always
-   call `moveClipWithOverlap(newId, trackIndex, start)` after adding.
+1. **Stale `clips` closure after async mutations.** After an async op the store
+   is newer than the `clips` prop. Look up clips from
+   `useProjectStore.getState().snapshot?.clips`, never the closure prop.
+2. **Optimistic placement + `syncSnapshot` conflict.** `syncSnapshot` replaces
+   the whole snapshot; if the RPC didn't actually apply, the optimistic update
+   is lost. Verify the RPC path runs before syncing.
+3. **Optimistic placement during continuous drag double-moves.** Either skip
+   optimistic placement, update it on every mousemove, or place only on mouseup.
+4. **`dragSelectedIdsRef` changes identity during async ops.** After a
+   ctrl-drag duplicate it holds new ids while the closure's `clips` are stale —
+   read from the store.
+5. **Window-level listeners still close over stale data.** The ref indirection
+   avoids stale *handlers* but not stale *closures*; read from the store inside
+   the callback.
+6. **Clip placement must go through `moveClipWithOverlap`.** Any function that
+   places a clip (duplicate, paste, import) must call it after
+   `clipList.addChild` to handle overlaps.
 
 ## Frontend ↔ engine state synchronization
 
@@ -300,45 +179,30 @@ propagate via **incremental deltas**, not whole-snapshot re-fetches:
 
 - `FrontendTreeWatcher` (root `ValueTree` listener) feeds every JUCE change into
   a `TreeDeltaAccumulator` (`src/frontend/TreeDeltaAccumulator.{h,cpp}`), which
-  coalesces a burst (16 ms debounce) into a minimal delta and broadcasts it on
+  coalesces a burst (16 ms debounce) into a minimal delta broadcast on
   `notify.treeChanged` as
-  `{ fullSync: false, clipsUpserted: [...], clipsRemoved: [...], tracksUpserted: [...] }`.
+  `{ fullSync: false, clipsUpserted, clipsRemoved, tracksUpserted }`.
 - The frontend `applyDelta` (`frontend/src/store/projectStore.ts`) patches the
-  existing snapshot in place (upsert/remove clips by id, upsert tracks by index),
-  keeping object references stable for unchanged entities.
+  snapshot in place (upsert/remove clips by id, tracks by index), keeping object
+  references stable for unchanged entities.
 - **Fallback:** any change that can't be expressed as a clip/track delta — track
   add/remove, markers, tempo, FX, automation, sub-clip detail (notes/CC/gain-env/
-  automation points), reorder, project load, undo/redo — sets `fullSync: true`,
-  and the frontend falls back to the full `read.snapshot` re-fetch. Automation
-  lane refresh lives on this full-sync branch, so recording still updates.
-- **Kill-switch:** set `HDAW_FORCE_FULL_SYNC=1` (read once at watcher startup) to
-  route every snapshot-relevant change to a `fullSync` re-fetch instead of a delta —
-  disables the delta path in the field if a drift bug ever surfaces. Default off.
+  automation points), reorder, project load, undo/redo — sets `fullSync: true`
+  and the frontend re-fetches `read.snapshot`. Automation lane refresh lives on
+  this branch, so recording still updates.
+- **Kill-switch:** `HDAW_FORCE_FULL_SYNC=1` (read once at watcher startup) routes
+  every snapshot-relevant change to a fullSync re-fetch. Default off.
 - **Key invariant (tested in `frontend_server_test.cpp`):** a clip add/remove
-  reaches the root listener as an incremental delta, *not* a fullSync. This relies
-  on JUCE propagating `valueTreeChildAdded/Removed/PropertyChanged` up to the root
-  listener while `valueTreeParentChanged` only propagates down — so descendant clip
-  reparents stay incremental.
+  reaches the root listener as an incremental delta, *not* a fullSync. This
+  relies on JUCE propagating `valueTreeChildAdded/Removed/PropertyChanged` up to
+  the root listener while `valueTreeParentChanged` only propagates down.
 - **Pending placeholders:** Duplicate / Add-Clip (which mint ids on the backend)
   show a translucent placeholder (`addPendingClip`, negative temp id from
-  `nextTempId()`) for instant feedback, then reconcile when the RPC returns the
-  real id (`resolvePending`) and the delta delivers the real clip (`applyDelta`
-  swaps the placeholder out). A 1500 ms sweep removes unresolved placeholders.
+  `nextTempId()`), then reconcile when the RPC returns the real id
+  (`resolvePending`) and the delta delivers the real clip. A 1500 ms sweep
+  removes unresolved placeholders.
 
 When adding a new edit operation: if it only changes clip/track properties or
 adds/removes clips, it deltas automatically. If it restructures the tree or
-touches other entity types, it fullSyncs (correct, just slower) — no extra wiring
-needed.
-
-## Further Reading
-
-All detailed documentation lives in the domain-specific files above. This file
-serves as the entry point and quick reference. For the full content that was
-previously in this file, see:
-
-- **Architecture, Build, Frontend:** [docs/architecture.md](docs/architecture.md)
-- **Realtime Safety, Hardening:** [docs/realtime-safety.md](docs/realtime-safety.md)
-- **Frontend Pitfalls:** [docs/pitfalls-frontend.md](docs/pitfalls-frontend.md)
-- **JUCE Engine Pitfalls:** [docs/pitfalls-juce.md](docs/pitfalls-juce.md)
-- **Testing, MCP Server:** [docs/testing-mcp.md](docs/testing-mcp.md)
-- **ValueTree Listener Contract:** [docs/valuetree-listener-contract.md](docs/valuetree-listener-contract.md)
+touches other entity types, it fullSyncs (correct, just slower) — no extra
+wiring needed.
