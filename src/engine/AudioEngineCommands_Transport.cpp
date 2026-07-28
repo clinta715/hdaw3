@@ -135,7 +135,25 @@ void AudioEngineCommands::rewind()
     auto& um = engine_.getProjectModel().getUndoManager();
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
-        transport.setProperty(IDs::position, 0.0, &um);
+    {
+        auto& tm = engine_.getTransportManager();
+        tm.setCurrentSample(0);
+        double curPos = static_cast<double>(transport.getProperty(IDs::position, 0.0));
+        if (curPos != 0.0)
+        {
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
+        else
+        {
+            // JUCE only fires valueTreePropertyChanged when the value
+            // changes.  When the position is already 0 (e.g. after
+            // auto-stop or at startup), nudge it to a tiny non-zero
+            // value then back to 0 so the listener fires and the
+            // frontend receives the notification.
+            transport.setProperty(IDs::position, 0.0001, &um);
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
+    }
 }
 
 void AudioEngineCommands::toggleLoop()
