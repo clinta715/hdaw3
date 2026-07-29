@@ -200,6 +200,11 @@ so you can't silently iterate against a stale `.asar`.
   - Test seams: `window.rpc` for RPC setup, `data-clip-id` on `.tl-clip` for
     targeting clips, `HDAW_NO_BROWSER`. Shared helpers in `e2e/helpers.ts`
     (`startApp`, `rpcCall`, `addMidiClip`/`addAudioClip`, `dragClip`, `writeSineWav`).
+  - **Clip-position assertions must poll.** After an RPC that shifts clips
+    (insert silence, duplicate region, move), the tree-change notification is
+    debounced (~16 ms) so the DOM doesn't update immediately. Assert positions
+    with Playwright's `expect.toPass()` polling, not a one-shot read:
+    `await expect(async () => { expect(await clipLeft(...)).toBeGreaterThan(...); }).toPass({ timeout: 10000 });`
   - Select by **`title`/role, not styling class**, for transport buttons — the
     icon restyle broke class-based selectors.
   - **Regression wall:** every UI bug fix should ship with an E2E test that
