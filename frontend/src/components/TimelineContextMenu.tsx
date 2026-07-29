@@ -313,6 +313,43 @@ export function TimelineContextMenu({
             Add MIDI Clip
           </button>
           <div className="ctx-separator" />
+          {transport.loopEnd > transport.loopStart && (
+            <button onMouseDown={(e) => {
+              e.stopPropagation();
+              rpc.call("project.rippleDelete", {
+                startBeat: transport.loopStart,
+                endBeat: transport.loopEnd,
+              }).then(() => {
+                useProjectStore.setState({ isDirty: true });
+              }).catch((err) => console.error("Ripple delete failed:", err));
+              onClose();
+            }}>
+              Ripple Delete Range
+            </button>
+          )}
+          {(() => {
+            const selClips = clips.filter((c) => selectedClipIds.has(c.clipId));
+            if (selClips.length === 0) return null;
+            const minStart = Math.min(...selClips.map((c) => c.startBeat));
+            const maxEnd = Math.max(...selClips.map((c) => c.startBeat + c.durationBeats));
+            if (maxEnd <= minStart) return null;
+            return (
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
+                rpc.call("project.rippleDelete", {
+                  startBeat: minStart,
+                  endBeat: maxEnd,
+                }).then(() => {
+                  useUiStore.getState().clearSelection();
+                  useProjectStore.setState({ isDirty: true });
+                }).catch((err) => console.error("Ripple delete failed:", err));
+                onClose();
+              }}>
+                Ripple Delete Selection
+              </button>
+            );
+          })()}
+          <div className="ctx-separator" />
           <button className="ctx-danger" onMouseDown={(e) => {
             e.stopPropagation();
             rpc.call("project.removeTrack", { trackIndex: emptyContextMenu.trackIndex }).catch(() => {});
