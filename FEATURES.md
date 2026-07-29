@@ -48,7 +48,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Plugin presets** — save/recall/load plugin factory presets ✅ Done (Presets button in FX chain; browse + select from plugin's built-in presets via pluginParam.listPrograms)
 - [x] **Plugin state save/load per slot** — `getStateInformation`/`setStateInformation` wired to project ✅ Done (base64 in FX_SLOT.pluginState; round-trip tested)
 - [ ] **FX chain presets** — save/load entire FX chain configurations
-- [ ] **FX A/B comparison** — compare two plugin states
+- [x] **FX A/B comparison** — compare two plugin states ✅ Done (A/B button on each plugin FX slot; first click captures snapshot B, subsequent clicks swap A↔B)
 - [ ] **Plugin categorization / tagging** — organize plugins by type/instrument/effect
 - [ ] **MIDI effect plugins** — distinguish MIDI FX from audio FX
 - [ ] **Instrument plugins** — distinguish instrument plugins from audio FX
@@ -65,7 +65,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Status bar** — show current tool, position, selection info ✅ Done (BPM, time sig, sample rate, track, MIDI device, REC, selection count)
 
 ### Recording
-- [ ] **Metronome audio rendering** — actual click sound during recording/playback ✅ Done
+- [x] **Metronome audio rendering** — actual click sound during recording/playback ✅ Done (synthesized clicks: 1500 Hz downbeat / 880 Hz regular beat, exponential decay, count-in support)
 - [ ] **Overdub recording** — layer new takes on top of existing audio
 - [ ] **Punch-in / punch-out** — record only within a defined region
 
