@@ -4,7 +4,9 @@ import { useUiStore } from "../store/uiStore";
 import "./StatusBar.css";
 
 export default function StatusBar() {
-  const transport = useTransportStore((s) => s.transport);
+  const bpm = useTransportStore((s) => s.transport.bpm);
+  const sampleRate = useTransportStore((s) => s.transport.sampleRate);
+  const isRecording = useTransportStore((s) => s.transport.isRecording);
   const snapshot = useProjectStore((s) => s.snapshot);
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
@@ -13,13 +15,13 @@ export default function StatusBar() {
 
   return (
     <div className="status-bar">
-      <span className="sb-field">♩ {transport.bpm.toFixed(1)}</span>
-      <span className="sb-field">{transport.sampleRate} Hz</span>
+      <span className="sb-field">♩ {bpm.toFixed(1)}</span>
+      <span className="sb-field">{sampleRate} Hz</span>
       {selectedTrack && (
         <span className="sb-field">Track: {selectedTrack.name}</span>
       )}
       <span className="sb-field">{selectedClipIds.size} selected</span>
-      {transport.isRecording && <span className="sb-field sb-rec">● REC</span>}
+      {isRecording && <span className="sb-field sb-rec">● REC</span>}
     </div>
   );
 }

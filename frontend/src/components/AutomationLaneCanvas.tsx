@@ -72,8 +72,13 @@ export default function AutomationLaneCanvas({
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hitTime: number } | null>(null);
 
-  const store = useAutomationStore();
-  const laneSel = store.selectedPointTimes.get(laneName) ?? new Set<number>();
+  const selectedPointTimes = useAutomationStore((s) => s.selectedPointTimes);
+  const fetchForTrack = useAutomationStore((s) => s.fetchForTrack);
+  const clearSelection = useAutomationStore((s) => s.clearSelection);
+  const addPoint = useAutomationStore((s) => s.addPoint);
+  const selectPoint = useAutomationStore((s) => s.selectPoint);
+  const removePoints = useAutomationStore((s) => s.removePoints);
+  const laneSel = selectedPointTimes.get(laneName) ?? new Set<number>();
 
   // ResizeObserver for HiDPI
   useEffect(() => {
@@ -290,9 +295,9 @@ export default function AutomationLaneCanvas({
         await rpc.call("project.setAutomationPointValue", { trackIndex, lane: laneName, time: orig.time, value: newValue });
       }
     }
-    await store.fetchForTrack(trackIndex, rpc);
-    store.clearSelection(laneName);
-  }, [dragOrigTime, dragOrigValue, dragCurrentTime, dragCurrentValue, trackIndex, laneName, rpc, store]);
+    await fetchForTrack(trackIndex, rpc);
+    clearSelection(laneName);
+  }, [dragOrigTime, dragOrigValue, dragCurrentTime, dragCurrentValue, trackIndex, laneName, rpc, fetchForTrack, clearSelection]);
 
   // Keep the latest commitMove in a ref so the window-level mouseup listener
   // (registered once when the drag starts) can call the current version
@@ -307,8 +312,8 @@ export default function AutomationLaneCanvas({
     const { snapEnabled, snapDivision } = useUiStore.getState();
     const t = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
     const v = valueFromY(my, size.h);
-    await store.addPoint(trackIndex, laneName, t, v, rpc);
-  }, [size, viewStartBeat, viewEndBeat, trackIndex, laneName, rpc, store]);
+    await addPoint(trackIndex, laneName, t, v, rpc);
+  }, [size, viewStartBeat, viewEndBeat, trackIndex, laneName, rpc, addPoint]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
@@ -321,15 +326,15 @@ export default function AutomationLaneCanvas({
     const hitTime = getPointAt(mx, my);
     if (hitTime !== null) {
       if (e.ctrlKey) {
-        store.selectPoint(laneName, hitTime, false, true);
+        selectPoint(laneName, hitTime, false, true);
         return;
       }
       if (e.shiftKey) {
-        store.selectPoint(laneName, hitTime, true, false);
+        selectPoint(laneName, hitTime, true, false);
         return;
       }
       if (!laneSel.has(hitTime)) {
-        store.selectPoint(laneName, hitTime, false, false);
+        selectPoint(laneName, hitTime, false, false);
       }
       const currentSel = useAutomationStore.getState().selectedPointTimes.get(laneName) ?? new Set<number>();
       const origins = new Map<number, { time: number; value: number }>();
@@ -349,13 +354,13 @@ export default function AutomationLaneCanvas({
       setDragCurrentValue(points.find((p) => p.time === hitTime)?.value ?? 0);
     } else {
       if (!e.shiftKey && !e.ctrlKey) {
-        store.clearSelection(laneName);
+        clearSelection(laneName);
         addPointAt(mx, my);
       } else {
-        store.clearSelection(laneName);
+        clearSelection(laneName);
       }
     }
-  }, [getPointAt, laneName, points, store, addPointAt, laneSel]);
+  }, [getPointAt, laneName, points, selectPoint, clearSelection, addPointAt, laneSel]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -438,11 +443,11 @@ export default function AutomationLaneCanvas({
     const hitTime = getPointAt(mx, my);
     if (hitTime !== null) {
       if (!laneSel.has(hitTime)) {
-        store.selectPoint(laneName, hitTime, false, false);
+        selectPoint(laneName, hitTime, false, false);
       }
       setContextMenu({ x: e.clientX, y: e.clientY, hitTime });
     }
-  }, [getPointAt, laneSel, laneName, store]);
+  }, [getPointAt, laneSel, laneName, selectPoint]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -478,14 +483,14 @@ export default function AutomationLaneCanvas({
           <button onMouseDown={(e) => {
             e.stopPropagation();
             const timesToDelete = laneSel.has(contextMenu.hitTime) ? [...laneSel] : [contextMenu.hitTime];
-            store.removePoints(trackIndex, laneName, timesToDelete, rpc);
+            removePoints(trackIndex, laneName, timesToDelete, rpc);
             setContextMenu(null);
           }}>
             Delete Point{laneSel.has(contextMenu.hitTime) && laneSel.size > 1 ? `s (${laneSel.size})` : ""}
           </button>
           <button onMouseDown={(e) => {
             e.stopPropagation();
-            store.clearSelection(laneName);
+            clearSelection(laneName);
             setContextMenu(null);
           }}>
             Clear Selection

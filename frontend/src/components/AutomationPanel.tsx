@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { RpcClient } from "../rpc/client";
 import { useUiStore } from "../store/uiStore";
 import { useAutomationStore } from "../store/automationStore";
@@ -13,7 +14,10 @@ interface Props {
 export default function AutomationPanel({ rpc }: Props) {
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const [automatableParams, setAutomatableParams] = useState<AutomatableParamSnapshot[]>([]);
-  const { lanes, pointsByLane, activeTrackIndex, loading, fetchForTrack } = useAutomationStore();
+  const { lanes, pointsByLane, activeTrackIndex, loading } = useAutomationStore(
+    useShallow((s) => ({ lanes: s.lanes, pointsByLane: s.pointsByLane, activeTrackIndex: s.activeTrackIndex, loading: s.loading }))
+  );
+  const fetchForTrack = useAutomationStore((s) => s.fetchForTrack);
 
   // Resolve trackIndex from selected clip
   const clipTrackIndex = selectedTrackIndex;
