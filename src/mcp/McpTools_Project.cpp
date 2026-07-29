@@ -397,6 +397,22 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"ripple_delete",
+        "Ripple-delete a time range: remove all clip content within "
+        "[startBeat, endBeat) and shift later clips left to close the gap.",
+        objSchema({{"startBeat", QJsonObject{{"type","number"}}},
+                   {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            if (!a.contains("startBeat") || !a.contains("endBeat"))
+                return McpToolResult::text("startBeat and endBeat required", true);
+            double sb = a.value("startBeat").toDouble();
+            double eb = a.value("endBeat").toDouble();
+            if (eb <= sb)
+                return McpToolResult::text("endBeat must be greater than startBeat", true);
+            e->getProjectCommands().rippleDelete(sb, eb);
+            return McpToolResult::text(QString("rippled [%1, %2)").arg(sb).arg(eb));
+        }});
+
     s.registerTool({"set_clip", "Update clip properties (partial).",
         objSchema({{"clipId",    QJsonObject{{"type","integer"}}},
                   {"name",      QJsonObject{{"type","string"}}},

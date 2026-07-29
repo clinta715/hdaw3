@@ -266,6 +266,13 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         c.removeClips(ids);
         return { false, QJsonValue::Null };
     }
+    if (m == "rippleDelete") {
+        double sb, eb;
+        if (!requireDouble(o, "startBeat", sb, nullptr) || !requireDouble(o, "endBeat", eb, nullptr))
+            return makeError(-32602, "startBeat and endBeat required");
+        c.rippleDelete(sb, eb);
+        return { false, QJsonValue::Null };
+    }
     if (m == "addClips") {
         int trackIndex;
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
