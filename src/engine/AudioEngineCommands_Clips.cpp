@@ -515,6 +515,165 @@ void AudioEngineCommands::rippleDelete(double startBeat, double endBeat)
     endTransaction();
 }
 
+void AudioEngineCommands::insertSilence(double startBeat, double endBeat)
+{
+    if (endBeat <= startBeat) return;  // empty/invalid range: no-op
+
+    double bpm = engine_.getTransportManager().getBPM();
+    double rs = beatsToSeconds(startBeat, bpm);   // insertion point, seconds
+    double re = beatsToSeconds(endBeat, bpm);
+    double gapLen = re - rs;
+    if (gapLen <= 0.0) return;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Insert silence");
+
+    // Phase 1: slice clips straddling the insertion point rs (only one slice
+    // point -- re just defines the gap length). Model-level slice: no rebuild.
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        std::vector<int> toSlice;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            double ce = cs + static_cast<double>(clip.getProperty(IDs::duration));
+            if (cs < rs && rs < ce)                       // straddles insertion point
+                toSlice.push_back(static_cast<int>(clip.getProperty(IDs::clipID)));
+        }
+        for (int id : toSlice)
+        {
+            int ti = -1;
+            auto clip = findClipById(id, ti);
+            if (clip.isValid())
+                ProjectModel::sliceClipAtTimes(clip, { rs }, &um);
+        }
+    }
+
+    // Phase 2: shift every clip with start >= rs right by gapLen. After phase 1
+    // no clip straddles rs, so "start >= rs" cleanly selects the moved tail.
+    std::vector<std::pair<juce::ValueTree, double>> toShift;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            if (cs >= rs)
+                toShift.push_back({ clip, cs + gapLen });
+        }
+    }
+    for (auto& s : toShift)
+        s.first.setProperty(IDs::startTime, s.second, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+
+    endTransaction();
+}
+
+void AudioEngineCommands::duplicateRegion(double startBeat, double endBeat)
+{
+    if (endBeat <= startBeat) return;  // empty/invalid range: no-op
+
+    double bpm = engine_.getTransportManager().getBPM();
+    double rs = beatsToSeconds(startBeat, bpm);
+    double re = beatsToSeconds(endBeat, bpm);
+    double regionLen = re - rs;
+    if (regionLen <= 0.0) return;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Duplicate region");
+
+    // Phase 1: slice clips straddling rs or re, so inside/before/after are clean.
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        std::vector<std::pair<int, std::vector<double>>> toSlice;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            double ce = cs + static_cast<double>(clip.getProperty(IDs::duration));
+            std::vector<double> times;
+            if (cs < rs && rs < ce) times.push_back(rs);
+            if (cs < re && re < ce) times.push_back(re);
+            if (!times.empty())
+                toSlice.push_back({ static_cast<int>(clip.getProperty(IDs::clipID)), times });
+        }
+        for (auto& [id, times] : toSlice)
+        {
+            int ti = -1;
+            auto clip = findClipById(id, ti);
+            if (clip.isValid())
+                ProjectModel::sliceClipAtTimes(clip, times, &um);
+        }
+    }
+
+    // Phase 2: collect inside clips (to copy) and after-clip ids (to shift).
+    // Collect BEFORE copying so the copies are never in the shift set.
+    struct InsideClip { juce::ValueTree clip; int trackIndex; double startSec; };
+    std::vector<InsideClip> insideClips;
+    std::vector<int> afterIds;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto clip = clipList.getChild(c);
+            double cs = clip.getProperty(IDs::startTime);
+            double ce = cs + static_cast<double>(clip.getProperty(IDs::duration));
+            if (cs >= rs && ce <= re)
+                insideClips.push_back({ clip, t, cs });
+            else if (cs >= re)
+                afterIds.push_back(static_cast<int>(clip.getProperty(IDs::clipID)));
+        }
+    }
+
+    // Phase 3: shift after-clips right by regionLen (by id, so copies added
+    // next are not affected).
+    for (int id : afterIds)
+    {
+        int ti = -1;
+        auto clip = findClipById(id, ti);
+        if (clip.isValid())
+        {
+            double cs = clip.getProperty(IDs::startTime);
+            clip.setProperty(IDs::startTime, cs + regionLen, &um);
+        }
+    }
+
+    // Phase 4: copy each inside clip to startSec + regionLen (lands in [re, re+len]).
+    // createCopy deep-copies notes/gain-envelope; mint a fresh id.
+    for (const auto& ic : insideClips)
+    {
+        auto newClip = ic.clip.createCopy();
+        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+        newClip.setProperty(IDs::startTime, ic.startSec + regionLen, &um);
+        juce::String origName = newClip.getProperty(IDs::name).toString();
+        if (!origName.endsWith(" copy"))
+            newClip.setProperty(IDs::name, origName + " copy", &um);
+        auto clipList = trackList.getChild(ic.trackIndex).getChildWithName(IDs::CLIP_LIST);
+        if (clipList.isValid())
+            clipList.addChild(newClip, -1, &um);
+    }
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+
+    endTransaction();
+}
+
 std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names)
 {
     std::vector<int> result;

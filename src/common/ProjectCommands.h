@@ -65,6 +65,14 @@ public:
     // close the gap by shifting every clip that starts at or after endBeat
     // leftward by (endBeat - startBeat). Beats at this boundary (lesson #1).
     virtual void rippleDelete(double startBeat, double endBeat) = 0;
+    // Insert silence: split any clip crossing startBeat, then shift every clip
+    // that starts at or after startBeat rightward by (endBeat - startBeat),
+    // opening an empty gap [startBeat, endBeat). Beats at this boundary.
+    virtual void insertSilence(double startBeat, double endBeat) = 0;
+    // Duplicate region: copy all clip content within [startBeat, endBeat) and
+    // paste it at endBeat, shifting every clip that starts at or after endBeat
+    // rightward by (endBeat - startBeat). Beats at this boundary.
+    virtual void duplicateRegion(double startBeat, double endBeat) = 0;
     // Batch add: add multiple MIDI clips in one transaction (for clipboard paste).
     // Returns the new clip IDs.
     virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) = 0;
