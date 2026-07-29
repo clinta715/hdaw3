@@ -860,6 +860,73 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         return { false, QJsonValue::Null };
     }
 
+    // FX A/B comparison: capture/swap plugin state snapshots.
+    if (m == "captureFxSnapshot") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        auto* proc = engine.getMainProcessor();
+        if (!proc) return makeError(-32603, "audio engine not initialized");
+        auto* track = proc->getTrack(ti);
+        if (!track) return makeError(-32602, "track not found");
+        auto& chain = track->getFXChain();
+        if (si < 0 || si >= static_cast<int>(chain.size())) return makeError(-32602, "slot not found");
+        auto* slot = chain[si].get();
+        if (!slot->isPlugin() || !slot->getPluginInstance()) return makeError(-32602, "slot is not a plugin");
+        juce::MemoryBlock state;
+        slot->getPluginInstance()->getStateInformation(state);
+        auto& model = engine.getProjectModel();
+        auto slotTree = model.getTrackListTree().getChild(ti)
+            .getChildWithName(IDs::FX_CHAIN).getChild(si);
+        if (slotTree.isValid())
+            slotTree.setProperty(juce::Identifier("pluginStateB"), state.toBase64Encoding(), &model.getUndoManager());
+        return { false, QJsonValue::Null };
+    }
+    if (m == "swapFxSnapshot") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        auto* proc = engine.getMainProcessor();
+        if (!proc) return makeError(-32603, "audio engine not initialized");
+        auto* track = proc->getTrack(ti);
+        if (!track) return makeError(-32602, "track not found");
+        auto& chain = track->getFXChain();
+        if (si < 0 || si >= static_cast<int>(chain.size())) return makeError(-32602, "slot not found");
+        auto* slot = chain[si].get();
+        if (!slot->isPlugin() || !slot->getPluginInstance()) return makeError(-32602, "slot is not a plugin");
+        auto& model = engine.getProjectModel();
+        auto& um = model.getUndoManager();
+        auto slotTree = model.getTrackListTree().getChild(ti)
+            .getChildWithName(IDs::FX_CHAIN).getChild(si);
+        if (!slotTree.isValid()) return makeError(-32602, "slot tree not found");
+        // Capture current state.
+        juce::MemoryBlock currentState;
+        slot->getPluginInstance()->getStateInformation(currentState);
+        // Load snapshot B (if exists), swap.
+        juce::String b64 = slotTree.getProperty(juce::Identifier("pluginStateB")).toString();
+        if (b64.isNotEmpty())
+        {
+            juce::MemoryBlock bState;
+            bState.fromBase64Encoding(b64);
+            slot->getPluginInstance()->setStateInformation(bState.getData(), static_cast<int>(bState.getSize()));
+            // Store current as the new snapshot B.
+            slotTree.setProperty(juce::Identifier("pluginStateB"), currentState.toBase64Encoding(), &um);
+        }
+        else
+        {
+            // No snapshot B yet: capture current as B, load project state as A.
+            slotTree.setProperty(juce::Identifier("pluginStateB"), currentState.toBase64Encoding(), &um);
+            juce::String a64 = slotTree.getProperty(IDs::pluginState).toString();
+            if (a64.isNotEmpty())
+            {
+                juce::MemoryBlock aState;
+                aState.fromBase64Encoding(a64);
+                slot->getPluginInstance()->setStateInformation(aState.getData(), static_cast<int>(aState.getSize()));
+            }
+        }
+        return { false, QJsonValue::Null };
+    }
+
     return makeError(-32601, "unknown audio method: " + m);
 }
 

@@ -61,6 +61,7 @@ export default function FXChain() {
   const [dragSlot, setDragSlot] = useState<number | null>(null);
   const [presetSlot, setPresetSlot] = useState<number | null>(null);
   const [presets, setPresets] = useState<{index: number; name: string; current: boolean}[]>([]);
+  const [abSlots, setAbSlots] = useState<Set<number>>(new Set());
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -332,6 +333,24 @@ export default function FXChain() {
     } catch (e) { console.error("setCurrentProgram failed", e); }
   }, [selectedTrackIndex, loadPresets]);
 
+  const handleAb = useCallback(async (slot: FxSlotSnapshot) => {
+    if (selectedTrackIndex == null || !slot.pluginId) return;
+    if (!abSlots.has(slot.slotIndex)) {
+      // First click: capture snapshot B.
+      await rpc.call("audio.captureFxSnapshot", {
+        trackIndex: selectedTrackIndex,
+        slotIndex: slot.slotIndex,
+      }).catch((e) => console.error("captureFxSnapshot failed", e));
+      setAbSlots(prev => new Set(prev).add(slot.slotIndex));
+    } else {
+      // Subsequent clicks: swap A ↔ B.
+      await rpc.call("audio.swapFxSnapshot", {
+        trackIndex: selectedTrackIndex,
+        slotIndex: slot.slotIndex,
+      }).catch((e) => console.error("swapFxSnapshot failed", e));
+    }
+  }, [selectedTrackIndex, abSlots]);
+
   if (selectedTrackIndex == null) {
     return <div className="fx-chain"><div className="fx-empty">Select a track to edit FX</div></div>;
   }
@@ -453,6 +472,16 @@ export default function FXChain() {
               >
                 <span className="fx-btn-icon">P</span>
                 <span className="fx-btn-label">Presets</span>
+              </button>
+            )}
+            {slot.pluginId && (
+              <button
+                className={`fx-btn fx-ab-btn${abSlots.has(slot.slotIndex) ? " active" : ""}`}
+                onClick={() => handleAb(slot)}
+                title={abSlots.has(slot.slotIndex) ? "Swap A/B" : "Capture A/B snapshot"}
+              >
+                <span className="fx-btn-icon">A/B</span>
+                <span className="fx-btn-label">{abSlots.has(slot.slotIndex) ? "Swap" : "Save"}</span>
               </button>
             )}
           </div>
