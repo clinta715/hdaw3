@@ -21,7 +21,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 
 ### Audio Editing
 - [ ] **Per-clip waveform editor** — destructive cut/splice/trim within a clip
-- [ ] **Audio crossfades** — automatic and manual crossfades between adjacent clips
+- [x] **Audio crossfades** — automatic and manual crossfades between adjacent clips ✅ Done (CrossfadeEngine computes ephemeral crossfade gain points at graph-build time; auto-crossfades adjacent + overlapping audio clips; respects existing fadeIn/fadeOut; visual indicator follow-up)
 - [ ] **Clip gain overlay** — visual gain adjustment directly on timeline clips
 - [x] **Reverse audio** — reverse clip contents ✅ Done
 - [x] **Normalize** — gain normalization per clip or selection ✅ Done
