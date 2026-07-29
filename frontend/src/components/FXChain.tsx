@@ -59,6 +59,8 @@ export default function FXChain() {
   const [slotParams, setSlotParams] = useState<Map<number, ParamInfo[]>>(new Map());
   const [internalSlotParams, setInternalSlotParams] = useState<Map<number, InternalParamInfo[]>>(new Map());
   const [dragSlot, setDragSlot] = useState<number | null>(null);
+  const [presetSlot, setPresetSlot] = useState<number | null>(null);
+  const [presets, setPresets] = useState<{index: number; name: string; current: boolean}[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -303,6 +305,33 @@ export default function FXChain() {
 
   const handleDragEnd = useCallback(() => setDragSlot(null), []);
 
+  const loadPresets = useCallback(async (slot: FxSlotSnapshot) => {
+    if (selectedTrackIndex == null || !slot.pluginId) return;
+    try {
+      const data = await rpc.call("pluginParam.listPrograms", {
+        trackIndex: selectedTrackIndex,
+        pluginID: slot.pluginId,
+      });
+      if (Array.isArray(data)) {
+        setPresets(data as {index: number; name: string; current: boolean}[]);
+        setPresetSlot(slot.slotIndex);
+      }
+    } catch (e) { console.error("listPrograms failed", e); }
+  }, [selectedTrackIndex]);
+
+  const selectPreset = useCallback(async (slot: FxSlotSnapshot, programIndex: number) => {
+    if (selectedTrackIndex == null || !slot.pluginId) return;
+    try {
+      await rpc.call("pluginParam.setCurrentProgram", {
+        trackIndex: selectedTrackIndex,
+        pluginID: slot.pluginId,
+        programIndex,
+      });
+      // Refresh the preset list to reflect the new current selection.
+      loadPresets(slot);
+    } catch (e) { console.error("setCurrentProgram failed", e); }
+  }, [selectedTrackIndex, loadPresets]);
+
   if (selectedTrackIndex == null) {
     return <div className="fx-chain"><div className="fx-empty">Select a track to edit FX</div></div>;
   }
@@ -414,9 +443,33 @@ export default function FXChain() {
               title="Toggle parameter list"
             >
               <span className="fx-params-icon">&#9881;</span>
-              <span className="fx-params-label">Params</span>
+              <span className="fx-btn-label">Params</span>
             </button>
+            {slot.pluginId && (
+              <button
+                className={`fx-btn fx-preset-btn${presetSlot === slot.slotIndex ? " active" : ""}`}
+                onClick={() => { if (presetSlot === slot.slotIndex) setPresetSlot(null); else loadPresets(slot); }}
+                title="Browse presets"
+              >
+                <span className="fx-btn-icon">P</span>
+                <span className="fx-btn-label">Presets</span>
+              </button>
+            )}
           </div>
+          {presetSlot === slot.slotIndex && presets.length > 0 && (
+            <div className="fx-preset-list">
+              {presets.map((p) => (
+                <div
+                  key={p.index}
+                  className={`fx-preset-item${p.current ? " fx-preset-item--current" : ""}`}
+                  onClick={() => selectPreset(slot, p.index)}
+                >
+                  <span className="fx-preset-dot" />
+                  <span className="fx-preset-name">{p.name || `Preset ${p.index}`}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {expandedParams.has(slot.slotIndex) && (
             slot.pluginId ? (slotParams.has(slot.slotIndex) && (
               <div className="fx-params-list">

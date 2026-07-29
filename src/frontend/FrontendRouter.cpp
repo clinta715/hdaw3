@@ -709,6 +709,17 @@ DispatchResult dispatchPluginParam(PluginParamService& s, const QString& m, cons
     if (m == "getCurrentProgram"){ int i; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "trackIndex and pluginID required"); return { false, s.getCurrentProgram(i, id) }; }
     if (m == "getProgramName")   { int i, pi; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return makeError(-32602, "trackIndex, pluginID, programIndex required"); return { false, QString::fromStdString(s.getProgramName(i, id, pi)) }; }
     if (m == "setCurrentProgram"){ int i, pi; std::string id; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr) || !requireInt(o, "programIndex", pi, nullptr)) return makeError(-32602, "trackIndex, pluginID, programIndex required"); s.setCurrentProgram(i, id, pi); return { false, QJsonValue::Null }; }
+    if (m == "listPrograms") {
+        int i; std::string id;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "pluginID", id, nullptr))
+            return makeError(-32602, "trackIndex and pluginID required");
+        int count = s.getProgramCount(i, id);
+        int current = s.getCurrentProgram(i, id);
+        QJsonArray arr;
+        for (int pi = 0; pi < count; ++pi)
+            arr.append(QJsonObject{{"index", pi}, {"name", QString::fromStdString(s.getProgramName(i, id, pi))}, {"current", pi == current}});
+        return { false, arr };
+    }
     return makeError(-32601, "unknown pluginParam method: " + m);
 }
 
