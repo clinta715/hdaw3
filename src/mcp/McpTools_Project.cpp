@@ -413,6 +413,38 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString("rippled [%1, %2)").arg(sb).arg(eb));
         }});
 
+    s.registerTool({"insert_silence",
+        "Insert silence: split any clip crossing startBeat and shift all later "
+        "content right by (endBeat - startBeat), opening an empty gap.",
+        objSchema({{"startBeat", QJsonObject{{"type","number"}}},
+                   {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            if (!a.contains("startBeat") || !a.contains("endBeat"))
+                return McpToolResult::text("startBeat and endBeat required", true);
+            double sb = a.value("startBeat").toDouble();
+            double eb = a.value("endBeat").toDouble();
+            if (eb <= sb)
+                return McpToolResult::text("endBeat must be greater than startBeat", true);
+            e->getProjectCommands().insertSilence(sb, eb);
+            return McpToolResult::text(QString("inserted silence [%1, %2)").arg(sb).arg(eb));
+        }});
+
+    s.registerTool({"duplicate_region",
+        "Duplicate region: copy all clip content within [startBeat, endBeat) "
+        "and paste it at endBeat, shifting later content right.",
+        objSchema({{"startBeat", QJsonObject{{"type","number"}}},
+                   {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            if (!a.contains("startBeat") || !a.contains("endBeat"))
+                return McpToolResult::text("startBeat and endBeat required", true);
+            double sb = a.value("startBeat").toDouble();
+            double eb = a.value("endBeat").toDouble();
+            if (eb <= sb)
+                return McpToolResult::text("endBeat must be greater than startBeat", true);
+            e->getProjectCommands().duplicateRegion(sb, eb);
+            return McpToolResult::text(QString("duplicated [%1, %2) to %3").arg(sb).arg(eb).arg(eb));
+        }});
+
     s.registerTool({"set_clip", "Update clip properties (partial).",
         objSchema({{"clipId",    QJsonObject{{"type","integer"}}},
                   {"name",      QJsonObject{{"type","string"}}},

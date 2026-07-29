@@ -273,6 +273,20 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         c.rippleDelete(sb, eb);
         return { false, QJsonValue::Null };
     }
+    if (m == "insertSilence") {
+        double sb, eb;
+        if (!requireDouble(o, "startBeat", sb, nullptr) || !requireDouble(o, "endBeat", eb, nullptr))
+            return makeError(-32602, "startBeat and endBeat required");
+        c.insertSilence(sb, eb);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "duplicateRegion") {
+        double sb, eb;
+        if (!requireDouble(o, "startBeat", sb, nullptr) || !requireDouble(o, "endBeat", eb, nullptr))
+            return makeError(-32602, "startBeat and endBeat required");
+        c.duplicateRegion(sb, eb);
+        return { false, QJsonValue::Null };
+    }
     if (m == "addClips") {
         int trackIndex;
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
