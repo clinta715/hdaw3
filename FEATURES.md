@@ -61,7 +61,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Horizontal scroll via mouse wheel** — scroll timeline with Shift+wheel or horizontal wheel ✅ Done
 - [x] **Drag-reorder FX slots** — reorder plugins in FX chain via drag ✅ Done (drag handle button + drop target with off-by-one fix)
 - [x] **Search/filter in plugin list** — search plugins by name in add-FX menu ✅ Done
-- [ ] **Undo history UI** — visual list of undo steps for navigation
+- [x] **Undo history UI** — visual list of undo steps for navigation ✅ Done (History bottom-panel tab; full undo/redo stack from JUCE UndoManager; click any entry to jump)
 - [x] **Status bar** — show current tool, position, selection info ✅ Done (BPM, time sig, sample rate, track, MIDI device, REC, selection count)
 
 ### Recording
