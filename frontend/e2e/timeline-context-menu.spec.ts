@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startApp, rpcCall, waitForTrackCount } from "./helpers";
+import { startApp, rpcCall, waitForTrackCount, addMidiClip, clipLeft, waitForClipCount } from "./helpers";
 
 test.describe("Timeline context menu (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
@@ -203,5 +203,50 @@ test.describe("Timeline context menu (user journeys)", () => {
     const midiBadge = page.locator(".th-row").last().locator(".th-type-badge");
     await expect(audioBadge).toContainText("\u25B2"); // audio triangle
     await expect(midiBadge).toContainText("\u266B");  // midi note
+  });
+
+  test("Ripple Delete Range closes the gap via the context menu", async ({ page }) => {
+    // Two clips on track 0: one inside the future range [2,6), one after it.
+    const insideId = await addMidiClip(page, { trackIndex: 0, start: 3, duration: 2, name: "inside" });
+    const afterId  = await addMidiClip(page, { trackIndex: 0, start: 8, duration: 4, name: "after" });
+    const beforeLeft = await clipLeft(page, afterId);
+
+    // Set the loop region to [2,6) so the "Ripple Delete Range" item appears
+    // (it is conditional on transport.loopEnd > loopStart).
+    await rpcCall(page, "project.setLoopStart", { beat: 2 });
+    await rpcCall(page, "project.setLoopEnd", { beat: 6 });
+
+    // Drive the menu: right-click empty timeline, choose Ripple Delete Range.
+    await rightClickEmptyTimeline(page);
+    await waitForContextMenu(page);
+    await page.locator(".clip-context-menu button", { hasText: "Ripple Delete Range" }).click();
+
+    // The inside clip is gone; the after clip shifted left to ~beat 4.
+    await expect(page.locator(`.tl-clip[data-clip-id="${insideId}"]`)).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator(`.tl-clip[data-clip-id="${afterId}"]`)).toBeVisible({ timeout: 10000 });
+    const afterLeft = await clipLeft(page, afterId);
+    expect(afterLeft).toBeLessThan(beforeLeft);
+  });
+
+  test("Ripple Delete Selection derives the range from selected clips", async ({ page }) => {
+    // One clip will be the selection-derived range; another sits after it.
+    const targetId = await addMidiClip(page, { trackIndex: 0, start: 2, duration: 4, name: "target" });
+    const afterId  = await addMidiClip(page, { trackIndex: 0, start: 10, duration: 4, name: "after" });
+    const beforeLeft = await clipLeft(page, afterId);
+
+    // Select only the target clip (the selection defines the ripple range).
+    await rpcCall(page, "project.setLoopStart", { beat: 0 });
+    await rpcCall(page, "project.setLoopEnd", { beat: 0 });
+    await page.locator(`.tl-clip[data-clip-id="${targetId}"]`).click();
+
+    await rightClickEmptyTimeline(page);
+    await waitForContextMenu(page);
+    await page.locator(".clip-context-menu button", { hasText: "Ripple Delete Selection" }).click();
+
+    // target removed; after shifted left by the target's 4-beat span.
+    await expect(page.locator(`.tl-clip[data-clip-id="${targetId}"]`)).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator(`.tl-clip[data-clip-id="${afterId}"]`)).toBeVisible({ timeout: 10000 });
+    const afterLeft = await clipLeft(page, afterId);
+    expect(afterLeft).toBeLessThan(beforeLeft);
   });
 });
