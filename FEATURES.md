@@ -106,7 +106,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 ### Arrangement
 - [ ] **Insert silence** — select a time range (like the loop region) and insert it as silence, splitting any clip crossing the boundary and shifting all later content right by the range length
 - [ ] **Duplicate region** — copy all clips/notes within a selected time range and insert them at the region end (shift-and-paste)
-- [ ] **Ripple delete** — remove all content within a selected time range and close the gap, shifting later content left (auto-close gaps on delete)
+- [x] **Ripple delete** — remove all content within a selected time range and close the gap, shifting later content left (auto-close gaps on delete) ✅ Done (project.rippleDelete RPC + ripple_delete MCP tool; loop-region + selection menu entries)
 - [ ] **Arranger track / sections** — define song sections (intro, verse, chorus), rearrange by dragging
 - [ ] **Folder tracks** — track grouping with collapse/expand
 - [ ] **Track templates** — save/load track configurations (name, color, FX, routing)

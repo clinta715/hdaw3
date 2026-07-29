@@ -53,7 +53,22 @@ These cost real debugging time — read before touching the relevant area:
    coalesced into one rebuild per message-loop tick (`AsyncUpdater`), but a
    single rebuild still tears down and re-instantiates every clip/plugin — at
    extreme bursts (128+ clips) it can stall ~30s. Incremental routing is the
-   remaining follow-up.
+   remaining follow-up. For batched multi-clip ops that need slicing (ripple
+   delete, future insert-silence/duplicate-region), call the model-level
+   `ProjectModel::sliceClipAtTimes` directly — it does NOT rebuild — and do one
+   `rebuildRoutingGraph()` at the end; the command-layer `sliceClipAtTimes`
+   wrapper rebuilds per call, which defeats the coalescing.
+7. **The default project isn't empty — snapshot tests must scope to a track
+   they control.** `createDefaultProject()` ships track 1 ("Synth") with
+   `Melody`/`Chords` clips; only track 0 ("Track 1") starts empty. Any
+   project-wide op (ripple delete, region ops) processes those too, so
+   `getReadModel().snapshot().clips` contains them — a count assertion that
+   assumes "only the clips I added" will be off. Scope assertions to a track
+   you control (filter by `trackIndex`); `merge_clips_test` dodges this by
+   asserting on specific ids, `clip_slicing_test` by reading the raw
+   `ValueTree`. Corollary: `ProjectModel::sliceClipAtTimes` **reassigns ids**
+   to the pieces (the original clip is removed), so across a slice, track clips
+   by position/count, not by the original id.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -82,6 +97,41 @@ keep the arrange view smooth and avoid the "black screen" cliff (lesson 6).
    mutation. `rebuildRoutingGraph()` and `ReadModel` snapshot building are
    O(project) and are the hot path to keep incremental (lesson 6 is the remaining
    follow-up).
+
+## MCP feature parity
+
+The MCP server is a first-class client of the engine, not a secondary surface.
+**Any feature available to the user through the UI must also be available
+through the MCP** — if a human can do it from the frontend, an MCP tool must be
+able to do it too. When you add a user-facing capability (a command, edit op,
+transport action, or project mutation), expose it as an MCP tool in the same
+change; when you audit a feature gap, the MCP side counts as unfinished until
+it's reachable. The UI and MCP share the same RPC/command layer, so this is
+usually wiring a tool onto an existing command rather than new engine work.
+
+## Generative composition, randomization & modulation
+
+HDAW is a *generative* DAW, not just a recorder. Assisted creation is a core
+product pillar and should be reached for wherever it fits:
+
+- **Generative composition** lives in `PhraseGenerator` (`src/engine/PhraseGenerator.h`):
+  scale-aware phrase styles (Standard, Arpeggio, BassLine, ChordStab, Pad, Lead,
+  RandomWalk, Buildup), single-chord and chord-progression generation, scale
+  modes, chord types/voicings/inversions. Exposed over RPC as
+  `composition.generatePhrase/generateChord/generateProgression` (and matching
+  MCP tools), surfaced in the UI by `PhraseGeneratorDialog` (TransportBar 🎵 /
+  Ctrl+Shift+G).
+- **Randomization / humanization** — note timing, velocity, and pitch
+  humanize in the piano roll (`NoteGrid`) and clip editor (`ClipEditor`).
+- **Modulation** — a per-track LFO system (`ModulationManager` /
+  `LFOModulationSource`, track `MODULATION_LIST` ValueTree, `rebuildModulation`)
+  that modulates parameters in the audio engine.
+
+**Guideline: when adding a feature, ask whether the generative/random/modulation
+toolkit applies.** New note or parameter editing should offer humanize/randomize;
+new content types should consider a generative path; new modulatable parameters
+should be wired as modulation targets. Prefer extending these shared utilities
+over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
 
 ## Build (summary)
 
@@ -117,7 +167,7 @@ so you can't silently iterate against a stale `.asar`.
   - Filter: `--gtest_filter=SuiteName.*`
   - 250+ cases across ~35 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
-    ghost clips, stretch, markers, error conditions, batch ops.
+    ripple delete, ghost clips, stretch, markers, error conditions, batch ops.
   - **Engine change test discipline:** when modifying the C++ core, RPC surface,
     or JUCE interfaces, assess test impact before finishing: (1) identify gtest
     suites that exercise the changed code (RPC handlers → MCP tool tests,
