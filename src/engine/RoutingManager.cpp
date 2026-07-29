@@ -1,4 +1,6 @@
 #include "RoutingManager.h"
+#include "CrossfadeEngine.h"
+#include <unordered_map>
 
 namespace HDAW {
 
@@ -367,6 +369,40 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt == trackNodes.end()) return;
 
+    // Pre-compute crossfade envelope points for all audio clips on this track.
+    // Crossfades are ephemeral (not stored in the project) — they're recomputed
+    // on every graph rebuild so they always reflect the current clip layout.
+    std::unordered_map<int, std::vector<HDAW::ClipSourceProcessor::GainPoint>> crossfadeMap;
+    {
+        std::vector<CrossfadeEngine::ClipInfo> trackClips;
+        for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+        {
+            auto ct = clipList.getChild(ci);
+            if (ct.getProperty(IDs::clipType, "audio").toString() != "audio")
+                continue;
+            trackClips.push_back({
+                static_cast<int>(ct.getProperty(IDs::clipID, 0)),
+                static_cast<double>(ct.getProperty(IDs::startTime, 0.0)),
+                static_cast<double>(ct.getProperty(IDs::duration, 0.0)),
+                static_cast<double>(ct.getProperty(IDs::fadeIn, 0.0)),
+                static_cast<double>(ct.getProperty(IDs::fadeOut, 0.0)),
+            });
+        }
+        std::sort(trackClips.begin(), trackClips.end(),
+            [](const auto& a, const auto& b) { return a.startSec < b.startSec; });
+
+        auto crossfades = CrossfadeEngine::computeCrossfades(trackClips, 0.01);
+        for (const auto& cf : crossfades)
+        {
+            if (cf.points.empty()) continue;
+            std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
+            gpts.reserve(cf.points.size());
+            for (const auto& p : cf.points)
+                gpts.push_back({ p.time, p.gain });
+            crossfadeMap[cf.clipId] = std::move(gpts);
+        }
+    }
+
     for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
     {
         auto clipTree = clipList.getChild(ci);
@@ -394,24 +430,37 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
             clipProc->setLooping(clipTree.getProperty(IDs::looping));
 
-            // Push the per-clip gain envelope to the freshly-built processor.
-            // A new ClipSourceProcessor starts with an empty envelope vector,
-            // so without this the envelope is silently dropped after every
-            // routing rebuild (stretch, transport change, slice, take switch).
-            // notifyClipGainEnvelopeChanged only updates the *existing*
-            // processor by clipID; it does not run during rebuild.
-            auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
-            if (envTree.isValid())
+            // Push the per-clip gain envelope to the freshly-built processor,
+            // merged with any crossfade points for this clip. Crossfade points
+            // are ephemeral (computed above, not stored in the project).
             {
-                auto envPoints = ProjectModel::getGainEnvelopePoints(envTree);
-                if (!envPoints.empty())
+                std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
+                auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
+                if (envTree.isValid())
                 {
-                    std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
-                    gpts.reserve(envPoints.size());
+                    auto envPoints = ProjectModel::getGainEnvelopePoints(envTree);
+                    gpts.reserve(envPoints.size() + 4);
                     for (const auto& p : envPoints)
                         gpts.push_back({ p.time, p.gain });
-                    clipProc->setGainEnvelopePoints(gpts);
                 }
+                // Merge crossfade points if this clip has any.
+                int clipId = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+                auto cfIt = crossfadeMap.find(clipId);
+                if (cfIt != crossfadeMap.end())
+                {
+                    for (const auto& cp : cfIt->second)
+                        gpts.push_back({ cp.time, cp.gain });
+                    // Sort by time, then deduplicate (keep last value at each time).
+                    std::sort(gpts.begin(), gpts.end(),
+                        [](const auto& a, const auto& b) { return a.time < b.time; });
+                    auto last = std::unique(gpts.begin(), gpts.end(),
+                        [](const auto& a, const auto& b) {
+                            return std::abs(a.time - b.time) < 1e-6;
+                        });
+                    gpts.erase(last, gpts.end());
+                }
+                if (!gpts.empty())
+                    clipProc->setGainEnvelopePoints(gpts);
             }
 
             // Resolve stretch intent from the ValueTree. clipID lets the
