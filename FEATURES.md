@@ -45,7 +45,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [ ] **Track freeze / bounce** — flatten track to audio to reduce CPU
 
 ### Plugin Hosting
-- [ ] **Plugin presets** — save/recall/load plugin factory presets
+- [x] **Plugin presets** — save/recall/load plugin factory presets ✅ Done (Presets button in FX chain; browse + select from plugin's built-in presets via pluginParam.listPrograms)
 - [x] **Plugin state save/load per slot** — `getStateInformation`/`setStateInformation` wired to project ✅ Done (base64 in FX_SLOT.pluginState; round-trip tested)
 - [ ] **FX chain presets** — save/load entire FX chain configurations
 - [ ] **FX A/B comparison** — compare two plugin states
