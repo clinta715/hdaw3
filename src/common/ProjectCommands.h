@@ -205,6 +205,9 @@ public:
     virtual void redo() = 0;
     virtual bool canUndo() const = 0;
     virtual bool canRedo() const = 0;
+    // Undo/redo history (transaction names, oldest-first).
+    virtual std::vector<std::string> getUndoDescriptions() const = 0;
+    virtual std::vector<std::string> getRedoDescriptions() const = 0;
 
     // Transaction lifecycle (wraps UndoManager::beginNewTransaction / endTransaction)
     virtual void beginTransaction(const std::string& name) = 0;

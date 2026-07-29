@@ -468,6 +468,16 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "redo")  { c.redo();  return { false, QJsonValue::Null }; }
     if (m == "canUndo")  { return { false, c.canUndo() }; }
     if (m == "canRedo")  { return { false, c.canRedo() }; }
+    if (m == "getUndoDescriptions") {
+        QJsonArray arr;
+        for (const auto& d : c.getUndoDescriptions()) arr.append(QString::fromStdString(d));
+        return { false, arr };
+    }
+    if (m == "getRedoDescriptions") {
+        QJsonArray arr;
+        for (const auto& d : c.getRedoDescriptions()) arr.append(QString::fromStdString(d));
+        return { false, arr };
+    }
     if (m == "beginTransaction") { std::string name = optString(o, "name", "edit"); c.beginTransaction(name); return { false, QJsonValue::Null }; }
     if (m == "endTransaction")   { c.endTransaction(); return { false, QJsonValue::Null }; }
 

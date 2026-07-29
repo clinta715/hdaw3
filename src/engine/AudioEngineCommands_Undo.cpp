@@ -17,6 +17,22 @@ void AudioEngineCommands::redo()  { engine_.getProjectModel().getUndoManager().r
 bool AudioEngineCommands::canUndo() const { return engine_.getProjectModel().getUndoManager().canUndo(); }
 bool AudioEngineCommands::canRedo() const { return engine_.getProjectModel().getUndoManager().canRedo(); }
 
+std::vector<std::string> AudioEngineCommands::getUndoDescriptions() const
+{
+    std::vector<std::string> result;
+    for (const auto& d : engine_.getProjectModel().getUndoManager().getUndoDescriptions())
+        result.push_back(d.toStdString());
+    return result;
+}
+
+std::vector<std::string> AudioEngineCommands::getRedoDescriptions() const
+{
+    std::vector<std::string> result;
+    for (const auto& d : engine_.getProjectModel().getUndoManager().getRedoDescriptions())
+        result.push_back(d.toStdString());
+    return result;
+}
+
 void AudioEngineCommands::beginTransaction(const std::string& name)
 {
     engine_.getProjectModel().getUndoManager().beginNewTransaction(juce::String(name));

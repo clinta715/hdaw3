@@ -165,6 +165,8 @@ public:
     void redo() override;
     bool canUndo() const override;
     bool canRedo() const override;
+    std::vector<std::string> getUndoDescriptions() const override;
+    std::vector<std::string> getRedoDescriptions() const override;
 
     // ProjectCommands — Transaction lifecycle
     void beginTransaction(const std::string& name) override;

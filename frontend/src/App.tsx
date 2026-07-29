@@ -15,6 +15,7 @@ import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
 import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
+import UndoHistory from "./components/UndoHistory";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
@@ -178,6 +179,7 @@ function App() {
     { id: "audio-editor", label: "Audio Editor", content: <SAudioClipEditor /> },
     { id: "modulation", label: "Modulation", content: <SModulationPanel /> },
     { id: "step-seq", label: "Step Seq", content: <SStepSequencer /> },
+    { id: "undo-history", label: "History", content: <UndoHistory /> },
   ];
 
   return (
