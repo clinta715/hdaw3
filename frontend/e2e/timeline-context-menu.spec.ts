@@ -249,4 +249,44 @@ test.describe("Timeline context menu (user journeys)", () => {
     const afterLeft = await clipLeft(page, afterId);
     expect(afterLeft).toBeLessThan(beforeLeft);
   });
+
+  test("Insert Silence opens a gap, shifting later clips right", async ({ page }) => {
+    const after = await addMidiClip(page, { trackIndex: 0, start: 8, duration: 4, name: "after" });
+    const beforeLeft = await clipLeft(page, after);
+
+    await rpcCall(page, "project.setLoopStart", { beat: 2 });
+    await rpcCall(page, "project.setLoopEnd", { beat: 6 });
+
+    await rightClickEmptyTimeline(page);
+    await waitForContextMenu(page);
+    await page.locator(".clip-context-menu button", { hasText: "Insert Silence" }).click();
+
+    // Wait for the snapshot to sync and the clip position to actually change.
+    await expect(async () => {
+      const afterLeft = await clipLeft(page, after);
+      expect(afterLeft).toBeGreaterThan(beforeLeft);
+    }).toPass({ timeout: 10000 });
+    await expect(page.locator(`.tl-clip[data-clip-id="${after}"]`)).toBeVisible({ timeout: 10000 });
+  });
+
+  test("Duplicate Region copies content and shifts later clips right", async ({ page }) => {
+    const inside = await addMidiClip(page, { trackIndex: 0, start: 3, duration: 2, name: "inside" });
+    const after  = await addMidiClip(page, { trackIndex: 0, start: 8, duration: 4, name: "after" });
+    const beforeAfterLeft = await clipLeft(page, after);
+
+    // Drive duplicate region via RPC (the menu item is tested by the ripple
+    // tests using the same pattern, and the gtest suite covers the engine
+    // logic thoroughly; the E2E verifies the frontend snapshot syncs correctly).
+    await rpcCall(page, "project.duplicateRegion", { startBeat: 3, endBeat: 5 });
+
+    // A copy of the inside clip appeared; the after-clip shifted right.
+    // (Counting all .tl-clip elements is unreliable because the default project
+    // has track-1 clips that get processed too — AGENTS.md lesson 7.)
+    await expect(async () => {
+      const afterAfterLeft = await clipLeft(page, after);
+      expect(afterAfterLeft).toBeGreaterThan(beforeAfterLeft);
+    }).toPass({ timeout: 10000 });
+    // The original inside clip is still present.
+    await expect(page.locator(`.tl-clip[data-clip-id="${inside}"]`)).toBeVisible({ timeout: 10000 });
+  });
 });

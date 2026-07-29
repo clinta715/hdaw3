@@ -349,6 +349,55 @@ export function TimelineContextMenu({
               </button>
             );
           })()}
+          {transport.loopEnd > transport.loopStart && (
+            <button onMouseDown={(e) => {
+              e.stopPropagation();
+              rpc.call("project.insertSilence", {
+                startBeat: transport.loopStart,
+                endBeat: transport.loopEnd,
+              }).then(() => {
+                useProjectStore.setState({ isDirty: true });
+              }).catch((err) => console.error("Insert silence failed:", err));
+              onClose();
+            }}>
+              Insert Silence
+            </button>
+          )}
+          {(() => {
+            const selClips = clips.filter((c) => selectedClipIds.has(c.clipId));
+            if (selClips.length === 0) return null;
+            const minStart = Math.min(...selClips.map((c) => c.startBeat));
+            const maxEnd = Math.max(...selClips.map((c) => c.startBeat + c.durationBeats));
+            if (maxEnd <= minStart) return null;
+            return (
+              <>
+                <button onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.insertSilence", {
+                    startBeat: minStart,
+                    endBeat: maxEnd,
+                  }).then(() => {
+                    useProjectStore.setState({ isDirty: true });
+                  }).catch((err) => console.error("Insert silence failed:", err));
+                  onClose();
+                }}>
+                  Insert Silence at Selection
+                </button>
+                <button onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.duplicateRegion", {
+                    startBeat: minStart,
+                    endBeat: maxEnd,
+                  }).then(() => {
+                    useProjectStore.setState({ isDirty: true });
+                  }).catch((err) => console.error("Duplicate region failed:", err));
+                  onClose();
+                }}>
+                  Duplicate Region
+                </button>
+              </>
+            );
+          })()}
           <div className="ctx-separator" />
           <button className="ctx-danger" onMouseDown={(e) => {
             e.stopPropagation();
