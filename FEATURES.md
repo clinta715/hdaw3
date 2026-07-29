@@ -108,7 +108,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] **Duplicate region** — copy all clips/notes within a selected time range and insert them at the region end (shift-and-paste) ✅ Done (project.duplicateRegion RPC + duplicate_region MCP tool; loop-region + selection menu entries)
 - [x] **Ripple delete** — remove all content within a selected time range and close the gap, shifting later content left (auto-close gaps on delete) ✅ Done (project.rippleDelete RPC + ripple_delete MCP tool; loop-region + selection menu entries)
 - [ ] **Arranger track / sections** — define song sections (intro, verse, chorus), rearrange by dragging
-- [ ] **Folder tracks** — track grouping with collapse/expand
+- [x] **Folder tracks** — track grouping with collapse/expand ✅ Done (trackType audio/instrument/folder; folder chevron collapse/expand; mute/solo cascades from parent folders via effectiveMuted/effectiveSoloed; folders are visual-only — skipped in the audio graph; project.addTrack trackType + setTrackType/setTrackCollapsed/moveTrackIntoFolder/moveTrackOutOfFolder RPCs)
 - [ ] **Track templates** — save/load track configurations (name, color, FX, routing)
 - [ ] **Track color picker** — user-selectable track colors (not just palette rotation)
 
