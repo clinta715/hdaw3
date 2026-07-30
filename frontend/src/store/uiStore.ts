@@ -27,6 +27,7 @@ interface UiState {
   snapDivision: number;
   showPhraseGenerator: boolean;
   bottomPanelHeight: number;
+  viewMode: "arrange" | "session";
 
   selectClip: (id: number | null, trackIndex?: number | null) => void;
   toggleClipSelection: (id: number) => void;
@@ -39,6 +40,7 @@ interface UiState {
   setSnapDivision: (division: number) => void;
   setShowPhraseGenerator: (show: boolean) => void;
   setBottomPanelHeight: (h: number) => void;
+  setViewMode: (mode: "arrange" | "session") => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -51,6 +53,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   snapDivision: 1,
   showPhraseGenerator: false,
   bottomPanelHeight: loadBottomPanelHeight(),
+  viewMode: "arrange",
 
   selectClip: (id, trackIndex) => set({
     selectedClipIds: id != null ? new Set([id]) : new Set<number>(),
@@ -102,4 +105,5 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     set({ bottomPanelHeight: h });
   },
+  setViewMode: (mode) => set({ viewMode: mode }),
 }));

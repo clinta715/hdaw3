@@ -35,6 +35,8 @@ export default function TransportBar() {
   const setShowPhraseGenerator = useUiStore((s) => s.setShowPhraseGenerator);
   const browserVisible = useBrowserStore((s) => s.visible);
   const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
+  const viewMode = useUiStore((s) => s.viewMode);
+  const setViewMode = useUiStore((s) => s.setViewMode);
 
   const cmd = (method: string) => () => {
     rpc.call(method).catch(console.error);
@@ -107,6 +109,13 @@ export default function TransportBar() {
           title="Toggle File Browser (Ctrl+B)"
         >
           <FolderIcon />
+        </button>
+        <button
+          className={`tb-btn${viewMode === "session" ? " active" : ""}`}
+          onClick={() => setViewMode(viewMode === "arrange" ? "session" : "arrange")}
+          title="Toggle Session/Arrangement View (Tab)"
+        >
+          {viewMode === "session" ? "Sess" : "Arr"}
         </button>
       </div>
 

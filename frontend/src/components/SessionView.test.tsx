@@ -1,0 +1,68 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import SessionView from "./SessionView";
+import { useProjectStore } from "../store/projectStore";
+import { useUiStore } from "../store/uiStore";
+
+vi.mock("../rpc", () => ({
+  rpc: { call: vi.fn().mockResolvedValue(null) },
+}));
+
+function makeTracks(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    index: i,
+    name: `Track ${i + 1}`,
+    color: 0x4488cc,
+    volume: 1,
+    pan: 0,
+    muted: false,
+    soloed: false,
+    armed: false,
+    inputMonitor: false,
+    height: 80,
+    midiChannel: 0,
+    clipCount: 0,
+    trackType: 0,
+    effectiveMuted: false,
+    effectiveSoloed: false,
+  }));
+}
+
+describe("SessionView", () => {
+  beforeEach(() => {
+    useProjectStore.setState({
+      snapshot: {
+        name: "Test",
+        transport: {
+          bpm: 120,
+          isPlaying: false,
+          isLooping: false,
+          isRecording: false,
+          loopStart: 0,
+          loopEnd: 8,
+          currentTimeSeconds: 0,
+          sampleRate: 44100,
+        },
+        tracks: makeTracks(3),
+        clips: [],
+        scaleRoot: 0,
+        scaleMode: 0,
+        launchedScene: -1,
+        sceneCount: 8,
+      },
+    } as any);
+    useUiStore.setState({ viewMode: "session" });
+  });
+
+  it("renders scene buttons", () => {
+    render(<SessionView />);
+    expect(screen.getByText("Scene 1")).toBeTruthy();
+    expect(screen.getByText("Scene 8")).toBeTruthy();
+  });
+
+  it("renders clip slot grid", () => {
+    render(<SessionView />);
+    const slots = document.querySelectorAll(".sv-slot");
+    expect(slots.length).toBe(24); // 3 tracks x 8 scenes
+  });
+});

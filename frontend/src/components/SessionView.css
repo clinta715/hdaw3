@@ -1,0 +1,117 @@
+.sv-root {
+  display: flex;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-panel);
+}
+
+.sv-scene-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.sv-scene-btn {
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.sv-scene-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.sv-scene-btn--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.sv-grid {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  padding: 4px;
+}
+
+.sv-track-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 100px;
+  gap: 2px;
+}
+
+.sv-track-header {
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  background: var(--bg-widget);
+  border-radius: 4px 4px 0 0;
+}
+
+.sv-slot {
+  flex: 1;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-widget);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, border-color 0.12s;
+  opacity: 0.7;
+}
+
+.sv-slot:hover {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+.sv-slot--filled {
+  opacity: 0.85;
+}
+
+.sv-slot--playing {
+  opacity: 1;
+  border-color: var(--accent-bright);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: sv-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sv-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+}
+
+.sv-slot-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  text-align: center;
+  padding: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

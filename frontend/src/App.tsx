@@ -8,6 +8,7 @@ import TrackHeaders from "./components/TrackHeaders";
 import Mixer from "./components/Mixer";
 import PianoRoll from "./components/PianoRoll";
 import TimelineMinimal from "./components/TimelineMinimal";
+import SessionView from "./components/SessionView";
 import ClipEditor from "./components/ClipEditor";
 import AudioClipEditor from "./components/AudioClipEditor";
 import StepSequencer from "./components/StepSequencer";
@@ -47,6 +48,7 @@ function App() {
   const browserVisible = useBrowserStore((s) => s.visible);
   const bottomPanelHeight = useUiStore((s) => s.bottomPanelHeight);
   const setBottomPanelHeight = useUiStore((s) => s.setBottomPanelHeight);
+  const viewMode = useUiStore((s) => s.viewMode);
   const [panelResizing, setPanelResizing] = useState(false);
 
   // Drag the divider above the bottom panel to resize it. The height feeds
@@ -194,7 +196,7 @@ function App() {
         <TrackHeaders />
       </aside>
       <main className="timeline">
-        <TimelineMinimal />
+        {viewMode === "session" ? <SessionView /> : <TimelineMinimal />}
       </main>
       {browserVisible && (
         <aside className="file-browser">
