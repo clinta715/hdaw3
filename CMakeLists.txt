@@ -70,7 +70,7 @@ endfunction()
 # Contains all non-GUI sources so tests can link the engine+model
 # without spinning up a QApplication. Future MCP sources will be added
 # here in later tasks.
-option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" OFF)
+option(HDAW_PLUGIN_ISOLATION "Build with plugin process isolation support" ON)
 add_library(HDAW_lib STATIC
     src/engine/AudioEngine.cpp
     src/engine/AudioEngineCommands.cpp
