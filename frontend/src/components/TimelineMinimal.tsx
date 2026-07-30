@@ -49,12 +49,13 @@ export default function TimelineMinimal() {
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const engagementRef = useRef<"none" | "clip" | "rubber">("none");
 
   const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
 
   // --- Zoom (extracted hook) ---
-  const { pps, setPps, zoomIn, zoomOut, zoomFit, onWheel } = useTimelineZoom({ maxEnd, tracksRef });
+  const { pps, setPps, zoomIn, zoomOut, zoomFit } = useTimelineZoom({ maxEnd, bodyRef });
 
   // --- Clip drag (extracted hook) ---
   const {
@@ -592,7 +593,7 @@ export default function TimelineMinimal() {
       </div>
 
       {/* Body */}
-      <div className="tl-body" onWheel={onWheel} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      <div className="tl-body" ref={bodyRef} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         {/* Ruler */}
         <div className={`tl-ruler${isScrubbing ? " tl-ruler--scrubbing" : ""}`} ref={rulerRef} style={{ height: RULER_HEIGHT }} onMouseDown={handleRulerMouseDown} onContextMenu={(e) => {
           e.preventDefault();
