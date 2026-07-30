@@ -178,7 +178,7 @@ bool PluginProxySlot::restoreStateFromTemp() {
         juce::String(static_cast<int>(slotId)) + ".bin");
 
     juce::FileInputStream stream(file);
-    if (stream.failedToIntOpen()) return false;
+    if (!stream.openedOk()) return false;
 
     juce::MemoryBlock block(stream.getTotalLength());
     stream.read(block.getData(), block.getSize());
