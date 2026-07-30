@@ -121,7 +121,7 @@ public:
     virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
 
     // Automation
-    virtual void addAutomationLane(int trackIndex, const std::string& laneName) = 0;
+    virtual void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
     virtual void removeAutomationLane(int trackIndex, const std::string& laneName) = 0;
     virtual void addAutomationPoint(int trackIndex, const std::string& lane,
                                      double time, float value) = 0;

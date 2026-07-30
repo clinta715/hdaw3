@@ -5,7 +5,7 @@
 
 // ─── ProjectCommands — Automation ─────────────────────────────────
 
-void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName)
+void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName, int paramID)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
@@ -19,16 +19,24 @@ void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& l
         track.addChild(autoList, -1, &um);
     }
 
-    // Don't add duplicate lanes
+    // Don't add duplicate lanes — reject an existing lane name, or (for FX-param
+    // lanes) an existing lane already bound to the same target paramID so two
+    // lanes can't drive the same plugin parameter. paramID 0 means "unbound"
+    // (the legacy default before this overload existed) and is never a conflict.
     for (int i = 0; i < autoList.getNumChildren(); ++i)
     {
-        if (autoList.getChild(i).getProperty(IDs::name, "").toString().toStdString() == laneName)
+        auto existing = autoList.getChild(i);
+        if (existing.getProperty(IDs::name, "").toString().toStdString() == laneName)
+            return;
+        if (paramID != 0 && static_cast<int>(existing.getProperty(IDs::paramID, 0)) == paramID)
             return;
     }
 
     juce::ValueTree lane(IDs::AUTOMATION);
     lane.setProperty(IDs::name, juce::String(laneName), &um);
     lane.setProperty(IDs::automationEnabled, true, &um);
+    if (paramID != 0)
+        lane.setProperty(IDs::paramID, paramID, &um);
     lane.addChild(juce::ValueTree(IDs::POINT_LIST), -1, nullptr);
     autoList.addChild(lane, -1, &um);
     if (auto* proc = engine_.getMainProcessor())

@@ -120,7 +120,7 @@ public:
     void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
 
     // ProjectCommands — Automation
-    void addAutomationLane(int trackIndex, const std::string& laneName) override;
+    void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;
     void removeAutomationLane(int trackIndex, const std::string& laneName) override;
     void addAutomationPoint(int trackIndex, const std::string& lane,
                             double time, float value) override;

@@ -323,6 +323,42 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
                 proc->rebuildAutomationCache(a.value("trackId").toInt());
             return McpToolResult::text("ok");
         }});
+
+    // add_automation_lane / remove_automation_lane — the lane-authoring surface.
+    // paramID 0 leaves the lane unbound (legacy default); for FX-parameter
+    // automation pass the compound id (100 + slotIndex*100 + paramIndex).
+    // Mirrors project.addAutomationLane / project.removeAutomationLane so the
+    // UI and MCP share one command path (AGENTS.md feature-parity contract).
+    s.registerTool({"add_automation_lane", "Create an automation lane, optionally bound to a target paramID (1=volume, 2=pan, 3=mute, or 100+slotIndex*100+paramIndex for a plugin FX param).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"laneName",  QJsonObject{{"type","string"}}},
+                  {"paramID",   QJsonObject{{"type","integer"}}}}, {"trackId","laneName"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int trackId = a.value("trackId").toInt(-1);
+            QString laneNameQ = a.value("laneName").toString();
+            if (laneNameQ.isEmpty()) return McpToolResult::text("laneName required", true);
+            int paramID = a.value("paramID").toInt(0);
+            e->getProjectCommands().addAutomationLane(
+                trackId, laneNameQ.toUtf8().constData(), paramID);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"remove_automation_lane", "Remove an automation lane (by paramID integer, or by name string).",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"lane",   QJsonObject{{"oneOf", QJsonArray{
+                      QJsonObject{{"type","integer"}},
+                      QJsonObject{{"type","string"}}}}}}}, {"trackId","lane"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int trackId = a.value("trackId").toInt(-1);
+            auto ref = a.value("lane");
+            // Resolve the lane by paramID/name, then delete by its name (the
+            // command path addresses lanes by name; findLane handles both).
+            auto lane = findLane(e, trackId, ref);
+            if (!lane.isValid()) return McpToolResult::text("lane not found", true);
+            std::string name = lane.getProperty(IDs::name, "").toString().toStdString();
+            e->getProjectCommands().removeAutomationLane(trackId, name);
+            return McpToolResult::text("ok");
+        }});
 }
 
 void registerAudioDomain(McpServer& s, AudioEngine* e)
