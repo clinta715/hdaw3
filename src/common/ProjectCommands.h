@@ -31,6 +31,8 @@ public:
     // Session
     virtual void setClipScene(int clipId, int sceneIndex) = 0;
     virtual int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) = 0;
+    virtual void launchScene(int sceneIndex) = 0;
+    virtual void stopAllSessionClips() = 0;
 
     // Clip operations
     virtual int addAudioClip(int trackIndex, double start, double duration,

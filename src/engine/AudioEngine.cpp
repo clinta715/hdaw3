@@ -34,6 +34,7 @@ int modulationTrackIndexOf(const juce::ValueTree& tree)
 } // namespace
 
 AudioEngine::AudioEngine()
+    : sessionManager(transportManager, projectModel)
 {
     mainProcessor = std::make_unique<MainAudioProcessor>();
     projectModel.getTree().addListener(this);

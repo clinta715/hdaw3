@@ -40,3 +40,13 @@ int AudioEngineCommands::createSessionClip(int trackIndex, int sceneIndex, bool 
     clipList.addChild(clip, -1, &um);
     return newId;
 }
+
+void AudioEngineCommands::launchScene(int sceneIndex)
+{
+    engine_.getSessionManager().launchScene(sceneIndex);
+}
+
+void AudioEngineCommands::stopAllSessionClips()
+{
+    engine_.getSessionManager().stopAll();
+}

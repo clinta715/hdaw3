@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
+#include "engine/SessionManager.h"
 #include "model/ProjectModel.h"
 
 TEST(SessionModel, ClipHasDefaultSceneIndex)
@@ -104,4 +105,75 @@ TEST(SessionModel, CreateSessionClipInvalidSceneReturnsNegOne)
 
     int clipId = cmds.createSessionClip(0, -1, true);
     EXPECT_EQ(clipId, -1);
+}
+
+TEST(SessionManager, LaunchSceneStartsClips)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    int clip1 = cmds.createSessionClip(0, 0, true);
+    int clip2 = cmds.createSessionClip(1, 0, true);
+    ASSERT_GT(clip1, 0);
+    ASSERT_GT(clip2, 0);
+
+    auto& sm = engine.getSessionManager();
+    sm.launchScene(0);
+
+    EXPECT_EQ(sm.getLaunchedScene(), 0);
+}
+
+TEST(SessionManager, StopAllClearsLaunchedScene)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.createSessionClip(0, 0, true);
+    auto& sm = engine.getSessionManager();
+    sm.launchScene(0);
+    EXPECT_EQ(sm.getLaunchedScene(), 0);
+
+    sm.stopAll();
+    EXPECT_EQ(sm.getLaunchedScene(), -1);
+}
+
+TEST(SessionManager, SceneSwitchChangesLaunchedScene)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.createSessionClip(0, 0, true);
+    cmds.createSessionClip(0, 1, true);
+
+    auto& sm = engine.getSessionManager();
+    sm.launchScene(0);
+    EXPECT_EQ(sm.getLaunchedScene(), 0);
+
+    sm.launchScene(1);
+    EXPECT_EQ(sm.getLaunchedScene(), 1);
+}
+
+TEST(SessionManager, GetClipStatesReturnsSessionClips)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    int clip1 = cmds.createSessionClip(0, 0, true);
+    int clip2 = cmds.createSessionClip(0, 1, true);
+    cmds.addMidiClip(0, 0.0, 4.0, "arrangement"); // not a session clip
+
+    auto& sm = engine.getSessionManager();
+    auto states = sm.getClipStates();
+    EXPECT_EQ(states.size(), 2u);  // only session clips
+
+    sm.launchScene(0);
+    states = sm.getClipStates();
+    for (const auto& s : states) {
+        if (s.sceneIndex == 0) EXPECT_TRUE(s.isPlaying);
+        if (s.sceneIndex == 1) EXPECT_FALSE(s.isPlaying);
+    }
 }
