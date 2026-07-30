@@ -1,5 +1,6 @@
 #include "PluginHost.h"
 #include "proxy/ProxyRingBuffer.h"
+#include "engine/CLAPPluginFormat.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cstring>
 
@@ -9,6 +10,7 @@ PluginHost::PluginHost(uint32_t id, const std::string& pipe,
       pipe(pipeName)
 {
     formatManager.addFormat(new juce::VST3PluginFormat());
+    formatManager.addFormat(new CLAPPluginFormat());
 }
 
 PluginHost::~PluginHost() {
