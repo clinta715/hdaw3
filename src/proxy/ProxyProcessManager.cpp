@@ -18,11 +18,7 @@ ProxyProcessManager::~ProxyProcessManager() {
 }
 
 bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_t slotId) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    if (children.count(slotId) && children[slotId].processHandle != INVALID_HANDLE_VALUE)
-        return false;
-
+    // Create pipe and shm outside the lock
     auto pipeName = makePipeName(slotId);
     auto shmNameStr = makeShmName(slotId);
     auto hostExe = getHostExePath();
@@ -51,8 +47,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     cmdBuf.push_back(0);
 
     BOOL ok = CreateProcessA(
-        nullptr,
-        cmdBuf.data(),
+        nullptr, cmdBuf.data(),
         nullptr, nullptr, FALSE,
         CREATE_NO_WINDOW,
         nullptr, nullptr,
@@ -65,6 +60,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
 
     CloseHandle(pi.hThread);
 
+    // Wait for READY outside the lock (with timeout)
     ProxyMessage readyMsg{};
     if (!pipeServer->receive(readyMsg)) {
         TerminateProcess(pi.hProcess, 0);
@@ -73,6 +69,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         return false;
     }
 
+    // Now take the lock to insert the child info
     ChildInfo info;
     info.processHandle = pi.hProcess;
     info.pipeName = pipeName;
@@ -83,8 +80,11 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     info.lastHeartbeat.store(static_cast<uint32_t>(
         std::chrono::steady_clock::now().time_since_epoch().count()));
 
-    children.erase(slotId);
-    children.emplace(slotId, std::move(info));
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        children.erase(slotId);
+        children.emplace(slotId, std::move(info));
+    }
     return true;
 }
 
