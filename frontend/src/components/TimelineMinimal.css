@@ -241,6 +241,16 @@
   background: var(--accent-dim, rgba(255,255,255,0.08));
 }
 
+.tl-track-row--audio {
+  background: rgba(74, 158, 255, 0.08);
+}
+.tl-track-row--instrument {
+  background: rgba(155, 89, 182, 0.09);
+}
+.tl-track-row--folder {
+  background: rgba(243, 156, 18, 0.09);
+}
+
 .tl-clip {
   position: absolute;
   border-radius: 4px;
@@ -252,8 +262,8 @@
 }
 
 .tl-clip--audio {
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--clip-color, #d97706) 50%, transparent);
+  background: color-mix(in srgb, var(--clip-color, #d97706) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--clip-color, #d97706) 55%, transparent);
 }
 
 .tl-clip--midi {

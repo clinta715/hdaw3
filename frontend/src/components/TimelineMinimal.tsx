@@ -697,7 +697,7 @@ export default function TimelineMinimal() {
               return (
                 <div
                   key={track.index}
-                  className={`tl-track-row${isTarget ? " tl-track-row--target" : ""}`}
+                  className={`tl-track-row${isTarget ? " tl-track-row--target" : ""} tl-track-row--${track.trackType === 2 ? "folder" : track.trackType === 1 ? "instrument" : "audio"}`}
                   style={{ top: layout.tops[idx], height: layout.heights[idx] }}
                 >
                     {trackClips.map((clip) => {
@@ -712,7 +712,7 @@ export default function TimelineMinimal() {
                         key={clip.clipId}
                         data-clip-id={clip.clipId}
                         className={`tl-clip ${clip.isMidi ? "tl-clip--midi" : "tl-clip--audio"}${isDragging ? " tl-clip--dragging" : ""}${isSelected ? " tl-clip--selected" : ""}${clip.isGhost ? " tl-clip--ghost" : ""}${pendingTempIds.has(clip.clipId) ? " tl-clip--pending" : ""}`}
-                        style={{ left: dispLeft, width: dispWidth, height: layout.heights[idx] - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ["--clip-color" as string]: trackColor, ...(clip.isMidi ? {} : { background: "transparent" }) } as React.CSSProperties}
+                        style={{ left: dispLeft, width: dispWidth, height: layout.heights[idx] - 8, top: 4, zIndex: isTrimming ? 3 : undefined, ["--clip-color" as string]: trackColor } as React.CSSProperties}
                         onClick={(e) => {
                           e.stopPropagation();
                           // Ensure focus is on the timeline (not a bottom-panel
