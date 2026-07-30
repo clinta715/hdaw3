@@ -37,7 +37,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         + " --slot=" + std::to_string(slotId)
         + " --pipe=" + pipeName
         + " --shm=" + shmNameStr
-        + " --plugin=" + pluginPath;
+        + " \"--plugin=" + pluginPath + "\"";
 
     STARTUPINFOA si{};
     si.cb = sizeof(si);
