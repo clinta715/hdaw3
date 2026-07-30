@@ -171,8 +171,13 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setTrackMidiChannel") { int i, ch; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "channel", ch, nullptr)) return makeError(-32602, "trackIndex and channel required"); c.setTrackMidiChannel(i, ch); return { false, QJsonValue::Null }; }
     if (m == "setTrackType") { int i, t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "trackType", t, nullptr)) return makeError(-32602, "trackIndex and trackType required"); c.setTrackType(i, t); return { false, QJsonValue::Null }; }
     if (m == "setTrackCollapsed") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "collapsed", b, nullptr)) return makeError(-32602, "trackIndex and collapsed required"); c.setTrackCollapsed(i, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackHidden") { int i; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireBool(o, "hidden", b, nullptr)) return makeError(-32602, "trackIndex and hidden required"); c.setTrackHidden(i, b); return { false, QJsonValue::Null }; }
     if (m == "moveTrackIntoFolder") { int i, f; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "folderIndex", f, nullptr)) return makeError(-32602, "trackIndex and folderIndex required"); c.moveTrackIntoFolder(i, f); return { false, QJsonValue::Null }; }
     if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
+
+    // Session commands
+    if (m == "session.setClipScene") { int clipId, scene; if (!requireInt(o, "clipId", clipId, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "clipId and sceneIndex required"); c.setClipScene(clipId, scene); return { false, QJsonValue::Null }; }
+    if (m == "session.createClip") { int track, scene; bool isMidi = true; if (!requireInt(o, "trackIndex", track, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "trackIndex and sceneIndex required"); if (o.contains("isMidi")) { bool b; requireBool(o, "isMidi", b, nullptr); isMidi = b; } return { false, c.createSessionClip(track, scene, isMidi) }; }
 
     // --- Clips ---
     if (m == "addAudioClip") {

@@ -29,6 +29,7 @@ export interface TrackSnapshot {
   childIds?: number[];    // folder tracks: indices of children
   parentId?: number;      // child tracks: index of parent folder (-1 = none)
   isCollapsed?: boolean;  // folder tracks: collapse state
+  isHidden?: boolean;     // user-hidden track (still in project, not rendered)
   effectiveMuted: boolean;   // cascaded from parent folders
   effectiveSoloed: boolean;  // cascaded from parent folders
 }
@@ -58,6 +59,7 @@ export interface ClipSnapshot {
   sourceDuration: number;
   isGhost: boolean;
   ghostSourceId: number;
+  sceneIndex?: number;  // -1 or undefined = arrangement only, 0–7 = session scene
   gainEnvelope: GainEnvelopePoint[];
 }
 
@@ -76,6 +78,8 @@ export interface ProjectSnapshot {
   clips: ClipSnapshot[];
   scaleRoot: number;
   scaleMode: number;
+  launchedScene?: number;
+  sceneCount?: number;
 }
 
 export interface TreeDelta {
