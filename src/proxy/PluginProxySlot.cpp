@@ -13,6 +13,7 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
       slotId(id),
       pluginDisplayName(name)
 {
+    startTimer(5000);
 }
 
 PluginProxySlot::~PluginProxySlot() {
@@ -208,6 +209,11 @@ bool PluginProxySlot::restoreStateFromTemp() {
         return true;
     }
     return false;
+}
+
+void PluginProxySlot::timerCallback() {
+    if (!crashed.load())
+        saveStateToTemp();
 }
 
 } // namespace proxy

@@ -9,7 +9,8 @@
 
 namespace proxy {
 
-class PluginProxySlot : public juce::AudioPluginInstance {
+class PluginProxySlot : public juce::AudioPluginInstance,
+                         private juce::Timer {
 public:
     PluginProxySlot(ProxyProcessManager& mgr, uint32_t slotId,
                     const juce::String& pluginName);
@@ -59,6 +60,8 @@ private:
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;
     int numChannels = 2;
+
+    void timerCallback() override;
 };
 
 } // namespace proxy
