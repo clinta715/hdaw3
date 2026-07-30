@@ -235,6 +235,22 @@
   color: #d97706;
 }
 
+.th-expand {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.th-expand:hover {
+  color: var(--text-primary);
+}
+
+.th-expand--active {
+  background: rgba(200, 140, 60, 0.15);
+  border-color: rgba(200, 140, 60, 0.3);
+  color: var(--accent-bright, #e8a040);
+}
+
 .th-resize-handle {
   position: absolute;
   bottom: 0;
