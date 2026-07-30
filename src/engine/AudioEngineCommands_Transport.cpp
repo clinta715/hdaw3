@@ -254,3 +254,13 @@ bool AudioEngineCommands::isRecording() const
         return proc->isRecording();
     return false;
 }
+
+void AudioEngineCommands::setPunchEnabled(bool enabled)
+{
+    engine_.getTransportManager().setPunchEnabled(enabled);
+}
+
+bool AudioEngineCommands::isPunchEnabled() const
+{
+    return engine_.getTransportManager().isPunchEnabled();
+}

@@ -144,6 +144,7 @@ inline QJsonObject toJson(const TransportSnapshot& t) {
         { "isPlaying",        t.isPlaying },
         { "isLooping",        t.isLooping },
         { "isRecording",      t.isRecording },
+        { "punchEnabled",     t.punchEnabled },
         { "loopStart",        t.loopStart },
         { "loopEnd",          t.loopEnd },
         { "currentTimeSeconds", t.currentTimeSeconds },

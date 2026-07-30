@@ -3,6 +3,7 @@ export interface TransportSnapshot {
   isPlaying: boolean;
   isLooping: boolean;
   isRecording: boolean;
+  punchEnabled?: boolean;
   loopStart: number;
   loopEnd: number;
   currentTimeSeconds: number;

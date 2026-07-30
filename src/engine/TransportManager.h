@@ -42,10 +42,16 @@ public:
     void setProjectEndSample(int64_t sample) { projectEndSample.store(sample); }
     int64_t getProjectEndSample() const { return projectEndSample.load(); }
 
+    void setPunchEnabled(bool enabled) { punchEnabled.store(enabled); }
+    bool isPunchEnabled() const { return punchEnabled.load(); }
+
     // Auto-stop flag: set by the audio thread in advance() when position
     // exceeds project end. The message thread must observe this and fire
     // the proper stop command (ValueTree update + UI notification).
     bool consumeAutoStopRequested() { return autoStopRequested.exchange(false); }
+
+    bool consumePunchOutRequested() { return punchOutRequested.exchange(false); }
+    void requestPunchOut() { punchOutRequested.store(true); }
 
     // Returns true if auto-stop fired (position exceeded project end).
     bool advance(int numSamples)
@@ -148,7 +154,9 @@ private:
     std::atomic<int64_t> loopStartSample { 0 };
     std::atomic<int64_t> loopEndSample { 0 };
     std::atomic<int64_t> projectEndSample { 0 };
+    std::atomic<bool> punchEnabled { false };
     std::atomic<bool> autoStopRequested { false };
+    std::atomic<bool> punchOutRequested { false };
     std::atomic<double> sampleRate { 44100.0 };
     std::atomic<double> bpm { 120.0 };
     std::shared_ptr<const std::vector<TempoPoint>> tempoMap;

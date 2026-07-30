@@ -174,7 +174,20 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     }
 
     if (transportManager && transportManager->isRecordingNow())
-        audioRecorder->processBlock(buffer);
+    {
+        if (transportManager->isPunchEnabled() && transportManager->isLoopingNow())
+        {
+            int64_t current = transportManager->getCurrentSample();
+            int64_t loopStart = transportManager->getLoopStartSample();
+            int64_t loopEnd = transportManager->getLoopEndSample();
+            if (current >= loopStart && current < loopEnd)
+                audioRecorder->processBlock(buffer);
+        }
+        else
+        {
+            audioRecorder->processBlock(buffer);
+        }
+    }
 
     if (graphLock.tryEnter())
     {
@@ -197,6 +210,14 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     {
         metronome.processBlock(buffer, *transportManager);
         transportManager->advance(buffer.getNumSamples());
+
+        if (transportManager->isPunchEnabled() && transportManager->isRecordingNow())
+        {
+            int64_t current = transportManager->getCurrentSample();
+            int64_t loopEnd = transportManager->getLoopEndSample();
+            if (current >= loopEnd)
+                transportManager->requestPunchOut();
+        }
     }
 }
 

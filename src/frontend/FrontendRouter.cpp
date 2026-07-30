@@ -524,6 +524,7 @@ DispatchResult dispatchTransport(TransportCommands& c, const QString& m, const Q
     // current state.
     if (m == "record") { if (c.isRecording()) c.stopRecording(); else c.startRecording(); return { false, QJsonValue::Null }; }
     if (m == "isRecording")    { return { false, c.isRecording() }; }
+    if (m == "setPunchEnabled") { bool b; if (!requireBool(o, "enabled", b, nullptr)) return makeError(-32602, "enabled required"); c.setPunchEnabled(b); return { false, QJsonValue::Null }; }
     return makeError(-32601, "unknown transport method: " + m);
 }
 

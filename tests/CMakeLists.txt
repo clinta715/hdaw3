@@ -46,6 +46,7 @@ add_executable(hdaw_tests
     unit/engine/automation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp
+    unit/engine/punch_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp

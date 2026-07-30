@@ -71,6 +71,7 @@ struct TransportSnapshot {
     bool isPlaying = false;
     bool isLooping = false;
     bool isRecording = false;
+    bool punchEnabled = false;
     double loopStart = 0.0;
     double loopEnd = 8.0;
     double currentTimeSeconds = 0.0;

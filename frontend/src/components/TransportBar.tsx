@@ -245,6 +245,13 @@ export default function TransportBar() {
           Loop
         </button>
         <button
+          className={`tb-toggle ${transport.punchEnabled ? "active" : ""}`}
+          onClick={() => rpc.call("transport.setPunchEnabled", { enabled: !transport.punchEnabled })}
+          title="Punch In/Out (uses loop region)"
+        >
+          Punch
+        </button>
+        <button
           className={`tb-toggle ${metronomeEnabled ? "active" : ""}`}
           onClick={() => {
             const next = !metronomeEnabled;

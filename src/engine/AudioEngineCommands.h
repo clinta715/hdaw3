@@ -209,6 +209,8 @@ public:
     void startRecording() override;
     void stopRecording() override;
     bool isRecording() const override;
+    void setPunchEnabled(bool enabled) override;
+    bool isPunchEnabled() const override;
 
     // AudioGraphCommands
     void rebuildRoutingGraph() override;

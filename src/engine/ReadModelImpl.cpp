@@ -324,6 +324,7 @@ TransportSnapshot ReadModelImpl::getTransport() const
         if (engine_ != nullptr) {
             ts.currentTimeSeconds = engine_->getTransportManager().getCurrentPositionSeconds();
             ts.isRecording = engine_->getTransportManager().isRecordingNow();
+            ts.punchEnabled = engine_->getTransportManager().isPunchEnabled();
         } else {
             ts.currentTimeSeconds = transport.getProperty(IDs::position, 0.0);
         }

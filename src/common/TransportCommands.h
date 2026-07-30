@@ -18,4 +18,7 @@ public:
     virtual void startRecording() = 0;
     virtual void stopRecording() = 0;
     virtual bool isRecording() const = 0;
+
+    virtual void setPunchEnabled(bool enabled) = 0;
+    virtual bool isPunchEnabled() const = 0;
 };

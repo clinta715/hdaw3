@@ -1083,6 +1083,12 @@ void AudioEngine::timerCallback()
             transportTree.setProperty(IDs::isPlaying, false, &um);
         }
     }
+
+    if (transportManager.consumePunchOutRequested())
+    {
+        if (auto* proc = getMainProcessor())
+            proc->stopRecording();
+    }
 }
 
 void AudioEngine::rebuildTempoMap()
