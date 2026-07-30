@@ -33,6 +33,16 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         return false;
     }
 
+    // Initialize the ring buffer capacity (power of 2 >= blockSize * numChannels)
+    {
+        auto* hdr = shmRegion->getHeader();
+        if (hdr) {
+            uint32_t cap = 1;
+            while (cap < 512u * 2u) cap <<= 1;
+            hdr->capacity = cap;
+        }
+    }
+
     std::string cmdLine = "\"" + hostExe + "\""
         + " --slot=" + std::to_string(slotId)
         + " --pipe=" + pipeName

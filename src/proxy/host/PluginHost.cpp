@@ -4,6 +4,52 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <cstring>
 
+namespace {
+
+class PassthroughProcessor : public juce::AudioPluginInstance
+{
+public:
+    PassthroughProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    const juce::String getName() const override { return "Passthrough"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        // Audio passes through unchanged — input IS the output buffer
+        // (JUCE processes in-place for matching I/O layouts)
+        (void)buffer;
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock& dest) override
+    {
+        const char marker[] = "PASSTHROUGH";
+        dest.setSize(sizeof(marker));
+        std::memcpy(dest.getData(), marker, sizeof(marker));
+    }
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "Passthrough";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__passthrough__";
+    }
+};
+
+} // anonymous namespace
+
 PluginHost::PluginHost(uint32_t id, const std::string& pipe,
                        const std::string& shm, const std::string& plugin)
     : slotId(id), pipeName(pipe), shmName(shm), pluginPath(plugin),
@@ -20,6 +66,8 @@ PluginHost::~PluginHost() {
 }
 
 int PluginHost::run() {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
     if (!pipe.connect()) return 1;
     if (!shm.open(shmName)) return 1;
 
@@ -178,6 +226,12 @@ void PluginHost::audioLoop() {
     hdr->blockSize = static_cast<uint32_t>(preparedBlockSize);
     hdr->sampleRate = static_cast<uint32_t>(preparedSampleRate);
 
+    if (hdr->capacity == 0) {
+        uint32_t cap = 1;
+        while (cap < static_cast<uint32_t>(preparedBlockSize * preparedNumChannels)) cap <<= 1;
+        hdr->capacity = cap;
+    }
+
     juce::AudioBuffer<float> inputBuffer(preparedNumChannels, preparedBlockSize);
     juce::AudioBuffer<float> outputBuffer(preparedNumChannels, preparedBlockSize);
     juce::MidiBuffer midiBuffer;
@@ -217,6 +271,12 @@ bool PluginHost::loadPlugin() {
 }
 
 bool PluginHost::loadPluginByPath(const juce::String& path) {
+    if (path == "__passthrough__") {
+        plugin = std::make_unique<PassthroughProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
     juce::String error;
 
     for (auto* fmt : formatManager.getFormats()) {

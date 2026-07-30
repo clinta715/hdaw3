@@ -201,36 +201,102 @@ TEST(PluginIsolation, ProxySlotFillInPluginDescription) {
 }
 
 // ========================================================================
-// End-to-end tests with test plugin (requires HDAWTestPlugin VST3)
-// These tests verify the full proxy pipeline with a real plugin.
-// Currently skipped because the child can't load the debug VST3 DLL
-// (likely a CRT dependency issue). These tests are ready to enable once
-// a loadable test plugin is available.
+// End-to-end audio round-trip using built-in passthrough mode
+// (no external DLL — the child creates an internal passthrough processor
+//  when given the special path "__passthrough__")
 // ========================================================================
 
-static juce::File findTestPlugin() {
-    auto exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                      .getParentDirectory();
-    auto pluginPath = exeDir.getChildFile("..")
-        .getChildFile("tests")
-        .getChildFile("test-plugin")
-        .getChildFile("HDAWTestPlugin_artefacts")
-        .getChildFile("Debug")
-        .getChildFile("VST3")
-        .getChildFile("PassthroughTest.vst3");
-    if (pluginPath.exists()) return pluginPath;
+TEST(PluginIsolation, AudioRoundTripWithPassthrough) {
+    ProxyProcessManager mgr;
 
-    pluginPath = exeDir.getChildFile("tests")
-        .getChildFile("test-plugin")
-        .getChildFile("HDAWTestPlugin_artefacts")
-        .getChildFile("Debug")
-        .getChildFile("VST3")
-        .getChildFile("PassthroughTest.vst3");
-    return pluginPath;
+    bool spawned = mgr.spawnPluginHost("__passthrough__", 9014);
+    ASSERT_TRUE(spawned) << "Child should start with passthrough mode";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(9014)) << "Child should still be alive";
+
+    auto* pipe = mgr.getPipe(9014);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9014;
+    struct { double sr; int32_t bs; int32_t ch; } prepareData{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &prepareData, sizeof(prepareData));
+    prepareMsg.dataSize = sizeof(prepareData);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp)) << "Child should respond to PREPARE";
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    auto* shm = mgr.getShm(9014);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 100;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "Child didn't initialize shared memory header";
+
+    uint32_t blockSize = hdr->blockSize > 0 ? hdr->blockSize : 512;
+    uint32_t numChannels = hdr->numChannels > 0 ? hdr->numChannels : 2;
+    uint32_t totalSamples = blockSize * numChannels;
+
+    std::vector<float> input(totalSamples);
+    for (uint32_t i = 0; i < totalSamples; ++i)
+        input[i] = 0.5f * std::sin(2.0f * 3.14159265f * 440.0f * static_cast<float>(i) / 44100.0f);
+
+    ASSERT_TRUE(shm->writeInput(input.data(), totalSamples));
+
+    retries = 200;
+    uint32_t outAvail = 0;
+    while (retries-- > 0) {
+        uint32_t ow = hdr->outputWritePos.load(std::memory_order_acquire);
+        uint32_t or_ = hdr->outputReadPos.load(std::memory_order_relaxed);
+        outAvail = ow - or_;
+        if (outAvail >= totalSamples) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(outAvail, totalSamples) << "Child didn't produce output in time";
+
+    std::vector<float> output(totalSamples);
+    ASSERT_TRUE(shm->readOutput(output.data(), totalSamples));
+
+    for (uint32_t i = 0; i < totalSamples; ++i) {
+        EXPECT_NEAR(output[i], input[i], 0.0001f)
+            << "Sample " << i << " mismatch (passthrough should be identical)";
+    }
+
+    mgr.killPluginHost(9014);
 }
 
-TEST(PluginIsolation, AudioRoundTripWithTestPlugin) {
-    GTEST_SKIP() << "Requires a loadable VST3 test plugin (CRT dependency issue with debug build)";
+TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
+    ProxyProcessManager mgr;
+
+    std::atomic<bool> crashDetected{false};
+    mgr.setCrashCallback([&](uint32_t) { crashDetected.store(true); });
+
+    bool spawned = mgr.spawnPluginHost("__passthrough__", 9015);
+    ASSERT_TRUE(spawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(9015));
+
+    mgr.killPluginHost(9015);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_FALSE(mgr.isAlive(9015));
+
+    bool respawned = mgr.spawnPluginHost("__passthrough__", 9016);
+    ASSERT_TRUE(respawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_TRUE(mgr.isAlive(9016));
+
+    mgr.killPluginHost(9016);
 }
 
 // ========================================================================
