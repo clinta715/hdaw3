@@ -46,6 +46,31 @@ int PluginHost::run() {
                 running.store(false);
                 break;
 
+            case proxy::MessageType::PREPARE: {
+                if (msg.dataSize >= 16) {
+                    struct PrepareData {
+                        double sampleRate;
+                        int32_t blockSize;
+                        int32_t numChannels;
+                    };
+                    PrepareData data{};
+                    std::memcpy(&data, msg.data, sizeof(data));
+                    preparedSampleRate = data.sampleRate;
+                    preparedBlockSize = data.blockSize;
+                    preparedNumChannels = data.numChannels;
+
+                    if (plugin) {
+                        plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
+                        pluginLoaded.store(true);
+                    }
+                }
+                proxy::ProxyResponse r{};
+                r.type = proxy::MessageType::PREPARE_RESULT;
+                r.result = 1;
+                pipe.send(r);
+                break;
+            }
+
             case proxy::MessageType::SET_STATE: {
                 if (plugin && msg.dataSize > 0) {
                     plugin->setStateInformation(msg.data, static_cast<int>(msg.dataSize));
@@ -149,12 +174,12 @@ void PluginHost::audioLoop() {
     auto* hdr = shm.getHeader();
     if (!hdr || !plugin) return;
 
-    hdr->numChannels = 2;
-    hdr->blockSize = 512;
-    hdr->sampleRate = 44100;
+    hdr->numChannels = static_cast<uint32_t>(preparedNumChannels);
+    hdr->blockSize = static_cast<uint32_t>(preparedBlockSize);
+    hdr->sampleRate = static_cast<uint32_t>(preparedSampleRate);
 
-    juce::AudioBuffer<float> inputBuffer(2, 512);
-    juce::AudioBuffer<float> outputBuffer(2, 512);
+    juce::AudioBuffer<float> inputBuffer(preparedNumChannels, preparedBlockSize);
+    juce::AudioBuffer<float> outputBuffer(preparedNumChannels, preparedBlockSize);
     juce::MidiBuffer midiBuffer;
 
     while (running.load()) {
@@ -162,25 +187,25 @@ void PluginHost::audioLoop() {
         uint32_t r = hdr->inputReadPos.load(std::memory_order_relaxed);
         uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
 
-        if (w - r >= 1024) {
+        if (w - r >= static_cast<uint32_t>(preparedBlockSize * preparedNumChannels)) {
             float* inRing = shm.getInputRing();
             float* outRing = shm.getOutputRing();
 
-            for (int ch = 0; ch < 2; ++ch) {
-                for (int s = 0; s < 512; ++s)
-                    inputBuffer.setSample(ch, s, inRing[(r + ch * 512 + s) & (cap - 1)]);
+            for (int ch = 0; ch < preparedNumChannels; ++ch) {
+                for (int s = 0; s < preparedBlockSize; ++s)
+                    inputBuffer.setSample(ch, s, inRing[(r + ch * preparedBlockSize + s) & (cap - 1)]);
             }
-            hdr->inputReadPos.store(r + 1024, std::memory_order_release);
+            hdr->inputReadPos.store(r + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
 
             midiBuffer.clear();
             plugin->processBlock(inputBuffer, midiBuffer);
 
             uint32_t ow = hdr->outputWritePos.load(std::memory_order_relaxed);
-            for (int ch = 0; ch < 2; ++ch) {
-                for (int s = 0; s < 512; ++s)
-                    outRing[(ow + ch * 512 + s) & (cap - 1)] = inputBuffer.getSample(ch, s);
+            for (int ch = 0; ch < preparedNumChannels; ++ch) {
+                for (int s = 0; s < preparedBlockSize; ++s)
+                    outRing[(ow + ch * preparedBlockSize + s) & (cap - 1)] = inputBuffer.getSample(ch, s);
             }
-            hdr->outputWritePos.store(ow + 1024, std::memory_order_release);
+            hdr->outputWritePos.store(ow + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
         } else {
             std::this_thread::yield();
         }

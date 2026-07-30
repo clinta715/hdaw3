@@ -32,6 +32,10 @@ private:
     std::atomic<bool> pluginLoaded{false};
     std::atomic<bool> editorVisible{false};
 
+    double preparedSampleRate = 44100.0;
+    int preparedBlockSize = 512;
+    int preparedNumChannels = 2;
+
     std::unique_ptr<juce::AudioPluginInstance> plugin;
     juce::AudioPluginFormatManager formatManager;
 
