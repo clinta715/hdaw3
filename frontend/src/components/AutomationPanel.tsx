@@ -159,16 +159,31 @@ export default function AutomationPanel({ rpc }: Props) {
           <div className="ap-empty-no-lanes">No automation lanes. Pick a parameter above and click + Add Lane.</div>
         )}
         {lanes.map((lane) => (
-          <AutomationLaneCanvas
-            key={lane.laneIndex}
-            laneName={lane.name}
-            points={pointsByLane.get(lane.name) ?? []}
-            trackIndex={activeTrackIndex!}
-            rpc={rpc}
-            viewStartBeat={0}
-            viewEndBeat={32}
-            onRemoveLane={() => handleRemoveLane(lane.name)}
-          />
+          <div key={lane.laneIndex} className="ap-lane-row">
+            <div className="ap-mode-btns">
+              {(["read", "write", "touch", "latch"] as const).map((m) => (
+                <button
+                  key={m}
+                  className={`ap-mode-btn${(lane.mode ?? "read") === m ? " ap-mode-btn--active" : ""}`}
+                  onClick={() => {
+                    rpc.call("project.setAutomationMode", { trackIndex: activeTrackIndex, laneName: lane.name, mode: m });
+                    fetchForTrack(activeTrackIndex!, rpc);
+                  }}
+                >
+                  {m[0].toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <AutomationLaneCanvas
+              laneName={lane.name}
+              points={pointsByLane.get(lane.name) ?? []}
+              trackIndex={activeTrackIndex!}
+              rpc={rpc}
+              viewStartBeat={0}
+              viewEndBeat={32}
+              onRemoveLane={() => handleRemoveLane(lane.name)}
+            />
+          </div>
         ))}
       </div>
     </div>

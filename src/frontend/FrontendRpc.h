@@ -177,6 +177,7 @@ inline QJsonObject toJson(const AutomationLaneSnapshot& l) {
         { "name",      QString::fromStdString(l.name) },
         { "paramID",   l.paramID },
         { "enabled",   l.enabled },
+        { "mode",      QString::fromStdString(l.mode) },
     };
 }
 

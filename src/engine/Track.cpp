@@ -279,22 +279,44 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 for (const auto& am : automationManagers)
                 {
                     if (!am) continue;
-                    double value = am->getValueAtTime(timeSec);
-                    if (value >= 0.0)
+                    int pid = am->getParamID();
+
+                    if (am->shouldWrite())
                     {
-                        int pid = am->getParamID();
+                        float currentVal = 0.0f;
                         if (pid == 1)
-                            volumeGain.setTargetValue(static_cast<float>(value));
+                            currentVal = volumeGain.getCurrentValue();
                         else if (pid == 2)
-                            panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
+                            currentVal = panPosition.getCurrentValue() * 0.5f + 0.5f;
                         else if (pid == 3)
-                            isMuted.store(value >= 0.5f);
+                            currentVal = isMuted.load() ? 1.0f : 0.0f;
                         else if (pid >= 100)
                         {
                             int si = (pid - 100) / 100;
                             int pi = (pid - 100) % 100;
                             if (si < static_cast<int>(fxChain.size()) && fxChain[si])
-                                fxChain[si]->setAutomationParam(pi, static_cast<float>(value));
+                                currentVal = fxChain[si]->getAutomationParam(pi);
+                        }
+                        am->recordPoint(timeSec, static_cast<double>(currentVal));
+                    }
+                    else
+                    {
+                        double value = am->getValueAtTime(timeSec);
+                        if (value >= 0.0)
+                        {
+                            if (pid == 1)
+                                volumeGain.setTargetValue(static_cast<float>(value));
+                            else if (pid == 2)
+                                panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
+                            else if (pid == 3)
+                                isMuted.store(value >= 0.5f);
+                            else if (pid >= 100)
+                            {
+                                int si = (pid - 100) / 100;
+                                int pi = (pid - 100) % 100;
+                                if (si < static_cast<int>(fxChain.size()) && fxChain[si])
+                                    fxChain[si]->setAutomationParam(pi, static_cast<float>(value));
+                            }
                         }
                     }
                 }

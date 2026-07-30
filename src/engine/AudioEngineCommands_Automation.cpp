@@ -111,6 +111,54 @@ void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string
     }
 }
 
+void AudioEngineCommands::setAutomationMode(int trackIndex, const std::string& laneName,
+                                             const std::string& mode)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto autoLane = findAutomationLane(trackIndex, laneName);
+    if (!autoLane.isValid()) return;
+
+    autoLane.setProperty(IDs::automationMode, juce::String(mode), &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* track = proc->getTrack(trackIndex))
+        {
+            for (int i = 0; i < track->getNumAutomations(); ++i)
+            {
+                auto& am = track->getAutomation(i);
+                if (am.getAutomationTree().getProperty(IDs::name, "").toString().toStdString() == laneName)
+                {
+                    HDAW::AutomationManager::Mode m = HDAW::AutomationManager::Mode::Read;
+                    if (mode == "write") m = HDAW::AutomationManager::Mode::Write;
+                    else if (mode == "touch") m = HDAW::AutomationManager::Mode::Touch;
+                    else if (mode == "latch") m = HDAW::AutomationManager::Mode::Latch;
+                    am.setMode(m);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void AudioEngineCommands::notifyAutomationTouch(int trackIndex, int paramID, bool touching)
+{
+    auto* proc = engine_.getMainProcessor();
+    if (!proc) return;
+    auto* track = proc->getTrack(trackIndex);
+    if (!track) return;
+
+    for (int i = 0; i < track->getNumAutomations(); ++i)
+    {
+        auto& am = track->getAutomation(i);
+        if (am.getParamID() == paramID)
+        {
+            am.setTouching(touching);
+            break;
+        }
+    }
+}
+
 void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::string& lane,
                                                    double time, float value)
 {

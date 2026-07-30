@@ -136,6 +136,9 @@ public:
                                         double time) = 0;
     virtual void setAutomationEnabled(int trackIndex, const std::string& lane,
                                        bool enabled) = 0;
+    virtual void setAutomationMode(int trackIndex, const std::string& laneName,
+                                    const std::string& mode) = 0;
+    virtual void notifyAutomationTouch(int trackIndex, int paramID, bool touching) = 0;
 
     // Transport properties
     virtual void setTempo(double bpm) = 0;

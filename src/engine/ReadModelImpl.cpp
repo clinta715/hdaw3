@@ -447,6 +447,7 @@ std::vector<AutomationLaneSnapshot> ReadModelImpl::getAutomationLanes(int trackI
         l.name = lane.getProperty(IDs::name, "").toString().toStdString();
         l.paramID = static_cast<int>(lane.getProperty(IDs::paramID, 0));
         l.enabled = lane.getProperty(IDs::automationEnabled, false);
+        l.mode = lane.getProperty(IDs::automationMode, "read").toString().toStdString();
         result.push_back(l);
     }
     return result;

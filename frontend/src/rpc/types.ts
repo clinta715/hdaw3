@@ -103,6 +103,7 @@ export interface AutomationLaneSnapshot {
   name: string;
   paramID: number;
   enabled: boolean;
+  mode?: string;
 }
 
 export interface AutomationPointSnapshot {

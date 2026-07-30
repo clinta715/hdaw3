@@ -9,8 +9,35 @@ namespace HDAW {
 class AutomationManager
 {
 public:
+    enum class Mode { Read, Write, Touch, Latch };
+
     AutomationManager() = default;
     ~AutomationManager() = default;
+
+    void setMode(Mode m) { mode = m; isTouching = false; hasTouched = false; }
+    Mode getMode() const { return mode; }
+    void setTouching(bool t) { isTouching = t; if (t) hasTouched = true; }
+
+    bool shouldWrite() const
+    {
+        switch (mode)
+        {
+            case Mode::Write: return true;
+            case Mode::Touch: return isTouching;
+            case Mode::Latch: return hasTouched;
+            case Mode::Read:
+            default: return false;
+        }
+    }
+
+    void recordPoint(double time, double value)
+    {
+        juce::SpinLock::ScopedLockType lock(cacheLock);
+        if (!points.empty() && std::abs(points.back().first - time) < 0.01)
+            points.back().second = value;
+        else
+            points.push_back({time, value});
+    }
 
     void setAutomationTree(const juce::ValueTree& tree)
     {
@@ -135,6 +162,9 @@ private:
     std::vector<std::pair<double, double>> points;
     bool enabled = false;
     int paramID = 1;
+    Mode mode = Mode::Read;
+    bool isTouching = false;
+    bool hasTouched = false;
 };
 
 } // namespace HDAW

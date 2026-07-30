@@ -157,6 +157,13 @@ public:
         }
     }
 
+    float getAutomationParam(int paramIndex) const
+    {
+        if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
+            return paramValues[paramIndex].load(std::memory_order_relaxed);
+        return 0.0f;
+    }
+
     void applyAutomation()
     {
         if (!isExternal || !pluginInstance) return;

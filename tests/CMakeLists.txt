@@ -44,6 +44,7 @@ add_executable(hdaw_tests
     unit/engine/region_ops_test.cpp
     unit/engine/crossfade_test.cpp
     unit/engine/automation_test.cpp
+    unit/engine/automation_mode_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp
     unit/engine/punch_test.cpp

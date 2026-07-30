@@ -76,3 +76,31 @@
   overflow-y: auto;
   min-height: 0;
 }
+
+.ap-lane-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.ap-mode-btns {
+  display: flex;
+  gap: 2px;
+  padding: 2px 8px;
+}
+
+.ap-mode-btn {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--bg-elevated, #2a2a2a);
+  color: var(--text-secondary, #999);
+  border: 1px solid var(--border, #333);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.ap-mode-btn--active {
+  background: var(--accent, #d97706);
+  color: #000;
+  border-color: var(--accent, #d97706);
+}

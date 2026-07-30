@@ -109,6 +109,7 @@ struct AutomationLaneSnapshot {
     std::string name;
     int paramID = 0;
     bool enabled = false;
+    std::string mode = "read";
 };
 
 struct AutomationPointSnapshot {
