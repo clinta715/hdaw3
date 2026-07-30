@@ -46,6 +46,7 @@ namespace notify {
     inline constexpr const char* ScanProgress   = "notify.scanProgress";
     inline constexpr const char* ExportProgress = "notify.exportProgress";
     inline constexpr const char* LoadProgress   = "notify.loadProgress";
+    inline constexpr const char* SessionState   = "notify.sessionStateChanged";
 } // namespace notify
 
 // Normalized dispatch outcome. Mirrors mcp::McpServer::DispatchResult so the

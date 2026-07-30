@@ -100,6 +100,7 @@ void registerAllTools(McpServer& s) {
     registerProjectDomain(s, e);
     registerTransportDomain(s, e);
     registerAudioDomain(s, e);
+    registerSessionDomain(s, e);
     registerExportTool(s);
 }
 
