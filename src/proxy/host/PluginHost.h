@@ -25,7 +25,7 @@ private:
     uint32_t slotId;
     std::string pipeName, shmName, pluginPath;
 
-    proxy::PipeServer pipe;
+    proxy::PipeClient pipe;
     proxy::ShmRegion shm;
 
     std::atomic<bool> running{true};

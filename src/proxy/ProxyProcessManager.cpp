@@ -61,8 +61,9 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     CloseHandle(pi.hThread);
 
     // Wait for READY outside the lock (with timeout)
-    ProxyMessage readyMsg{};
-    if (!pipeServer->receive(readyMsg)) {
+    // Child sends READY as a ProxyResponse
+    ProxyResponse readyResp{};
+    if (!pipeServer->receiveResp(readyResp)) {
         TerminateProcess(pi.hProcess, 0);
         CloseHandle(pi.hProcess);
         pipeServer->stop();

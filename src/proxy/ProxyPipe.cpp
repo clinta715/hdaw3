@@ -119,4 +119,16 @@ bool PipeClient::receive(ProxyResponse& resp) {
     return ReadFile(hPipe, &resp, sizeof(ProxyResponse), &bytesRead, nullptr);
 }
 
+bool PipeClient::sendResp(const ProxyResponse& resp) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    DWORD bytesWritten = 0;
+    return WriteFile(hPipe, &resp, sizeof(ProxyResponse), &bytesWritten, nullptr);
+}
+
+bool PipeClient::receiveMsg(ProxyMessage& msg) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    DWORD bytesRead = 0;
+    return ReadFile(hPipe, &msg, sizeof(ProxyMessage), &bytesRead, nullptr);
+}
+
 } // namespace proxy

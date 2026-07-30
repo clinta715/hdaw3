@@ -20,13 +20,13 @@ PluginHost::~PluginHost() {
 }
 
 int PluginHost::run() {
-    if (!pipe.start()) return 1;
-    if (!shm.create(shmName, proxy::computeShmSize(2, 512))) return 1;
+    if (!pipe.connect()) return 1;
+    if (!shm.open(shmName)) return 1;
 
     proxy::ProxyResponse readyResp{};
     readyResp.type = proxy::MessageType::READY;
     readyResp.result = 1;
-    if (!pipe.send(readyResp)) return 1;
+    if (!pipe.sendResp(readyResp)) return 1;
 
     controlThread = std::thread(&PluginHost::controlLoop, this);
 
@@ -36,7 +36,7 @@ int PluginHost::run() {
 
     while (running.load()) {
         proxy::ProxyMessage msg{};
-        if (!pipe.receive(msg)) {
+        if (!pipe.receiveMsg(msg)) {
             running.store(false);
             break;
         }
@@ -67,7 +67,7 @@ int PluginHost::run() {
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::PREPARE_RESULT;
                 r.result = 1;
-                pipe.send(r);
+                pipe.sendResp(r);
                 break;
             }
 
@@ -78,7 +78,7 @@ int PluginHost::run() {
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::SET_STATE;
                 resp.result = 1;
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
@@ -95,7 +95,7 @@ int PluginHost::run() {
                 } else {
                     resp.result = 0;
                 }
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
@@ -103,7 +103,7 @@ int PluginHost::run() {
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::SET_PARAM;
                 resp.result = 1;
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
@@ -111,7 +111,7 @@ int PluginHost::run() {
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::GET_PARAM_RESULT;
                 resp.result = plugin ? 1 : 0;
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
@@ -126,7 +126,7 @@ int PluginHost::run() {
                 } else {
                     resp.result = 0;
                 }
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
@@ -134,18 +134,18 @@ int PluginHost::run() {
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::GET_PARAM_INFO_RESULT;
                 resp.result = plugin ? 1 : 0;
-                pipe.send(resp);
+                pipe.sendResp(resp);
                 break;
             }
 
             case proxy::MessageType::SHOW_EDITOR:
                 editorVisible.store(true);
-                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::SHOW_EDITOR; r.result = 1; pipe.send(r); }
+                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::SHOW_EDITOR; r.result = 1; pipe.sendResp(r); }
                 break;
 
             case proxy::MessageType::CLOSE_EDITOR:
                 editorVisible.store(false);
-                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::CLOSE_EDITOR; r.result = 1; pipe.send(r); }
+                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::CLOSE_EDITOR; r.result = 1; pipe.sendResp(r); }
                 break;
 
             case proxy::MessageType::HEARTBEAT: {
@@ -155,7 +155,7 @@ int PluginHost::run() {
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::HEARTBEAT;
                 r.result = 1;
-                pipe.send(r);
+                pipe.sendResp(r);
                 break;
             }
 

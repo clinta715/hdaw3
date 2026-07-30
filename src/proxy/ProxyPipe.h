@@ -40,6 +40,8 @@ public:
     void disconnect();
     bool send(const ProxyMessage& msg);
     bool receive(ProxyResponse& resp);
+    bool sendResp(const ProxyResponse& resp);
+    bool receiveMsg(ProxyMessage& msg);
 
 private:
     std::string name;

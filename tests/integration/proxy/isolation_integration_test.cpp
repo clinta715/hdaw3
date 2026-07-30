@@ -11,13 +11,6 @@ using namespace proxy;
 
 // ========================================================================
 // Spawn lifecycle tests
-//
-// NOTE: The actual spawn/kill lifecycle tests are skipped because the child
-// process (PluginHost) uses PipeServer instead of PipeClient for pipe
-// communication. This means the child creates its own pipe instance rather
-// than connecting to the DAW's pipe, so spawnPluginHost() blocks forever
-// on ConnectNamedPipe(). The child process's pipe architecture needs to be
-// fixed (use PipeClient) before these tests can run.
 // ========================================================================
 
 TEST(PluginIsolation, HostExePathResolves) {
@@ -27,23 +20,75 @@ TEST(PluginIsolation, HostExePathResolves) {
 }
 
 TEST(PluginIsolation, SpawnWithBadPluginExits) {
-    GTEST_SKIP() << "Child process uses PipeServer instead of PipeClient — "
-                    "spawnPluginHost blocks on ConnectNamedPipe";
+    // Spawn with a non-existent plugin. The child sends READY then exits
+    // because loadPlugin fails. Verify the spawn succeeds and the child dies.
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9001);
+    ASSERT_TRUE(spawned) << "Child should send READY before exiting";
+
+    // Give the child time to exit (loadPlugin fails → child returns 1)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // The child should now be dead
+    EXPECT_FALSE(mgr.isAlive(9001));
+
+    mgr.killPluginHost(9001);
 }
 
 TEST(PluginIsolation, SpawnAndShutdownCleanExit) {
-    GTEST_SKIP() << "Child process uses PipeServer instead of PipeClient — "
-                    "spawnPluginHost blocks on ConnectNamedPipe";
+    // Spawn, then verify clean shutdown path works.
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9002);
+    ASSERT_TRUE(spawned);
+
+    // Wait for child to exit naturally
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // killPluginHost should handle the already-dead process without crashing
+    mgr.killPluginHost(9002);
+    SUCCEED();
 }
 
 TEST(PluginIsolation, KillReportsNotAlive) {
-    GTEST_SKIP() << "Child process uses PipeServer instead of PipeClient — "
-                    "spawnPluginHost blocks on ConnectNamedPipe";
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9003);
+    ASSERT_TRUE(spawned);
+
+    // Kill the child
+    bool killed = mgr.killPluginHost(9003);
+    EXPECT_TRUE(killed);
+
+    // isAlive should return false
+    EXPECT_FALSE(mgr.isAlive(9003));
 }
 
 TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
-    GTEST_SKIP() << "Child process uses PipeServer instead of PipeClient — "
-                    "spawnPluginHost blocks on ConnectNamedPipe";
+    ProxyProcessManager mgr;
+
+    std::atomic<int> crashCount{0};
+    std::atomic<uint32_t> crashedSlotId{0};
+
+    mgr.setCrashCallback([&](uint32_t slotId) {
+        crashCount.fetch_add(1);
+        crashedSlotId.store(slotId);
+    });
+
+    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9004);
+    ASSERT_TRUE(spawned);
+
+    // Wait for child to exit
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    // checkAllChildren should detect the dead child and fire the callback
+    mgr.checkAllChildren();
+
+    EXPECT_GE(crashCount.load(), 1);
+    EXPECT_EQ(crashedSlotId.load(), 9004u);
+
+    mgr.killPluginHost(9004);
 }
 
 // ========================================================================
