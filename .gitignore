@@ -88,3 +88,14 @@ test_song.hdaw
 # Local tool state (Superpowers/Cline brainstorm sessions)
 .superpowers/
 
+# Playwright run artifacts
+frontend/playwright-report/
+frontend/test-results/
+
+# Stray redirect/empty error logs
+err.txt
+
+# Code-graph analysis tool output (regenerable; was tracked, now ignored)
+graphify-out/
+
+
