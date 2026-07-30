@@ -41,6 +41,10 @@ public:
 
     bool isCrashed() const { return crashed.load(); }
     void onChildCrashed();
+    bool restartAfterCrash();
+
+    ProxyProcessManager& getProcessManager() { return processManager; }
+    uint32_t getSlotId() const { return slotId; }
 
     void saveStateToTemp();
     bool restoreStateFromTemp();

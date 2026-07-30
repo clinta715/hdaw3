@@ -50,9 +50,20 @@ void ProxyEditor::resized() {
 }
 
 void ProxyEditor::onOpenEditorClicked() {
+    auto* pipe = slot.getProcessManager().getPipe(slot.getSlotId());
+    if (!pipe) return;
+
+    proxy::ProxyMessage msg{};
+    msg.type = proxy::MessageType::SHOW_EDITOR;
+    msg.slotId = slot.getSlotId();
+    pipe->sendMsg(msg);
+
+    proxy::ProxyResponse resp{};
+    pipe->receiveResp(resp);
 }
 
 void ProxyEditor::onCrashRestart() {
+    slot.restartAfterCrash();
 }
 
 } // namespace proxy

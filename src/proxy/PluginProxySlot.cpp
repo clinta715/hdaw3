@@ -172,6 +172,17 @@ void PluginProxySlot::saveStateToTemp() {
     file.replaceWithData(block.getData(), block.getSize());
 }
 
+bool PluginProxySlot::restartAfterCrash() {
+    if (!crashed.load()) return true;
+
+    processManager.killPluginHost(slotId);
+
+    if (!restoreStateFromTemp()) return false;
+
+    crashed.store(false);
+    return true;
+}
+
 bool PluginProxySlot::restoreStateFromTemp() {
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
     auto file = tempDir.getChildFile("hdaw_proxy_state_" +
