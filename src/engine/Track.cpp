@@ -148,8 +148,9 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             }
 
             juce::String error;
+            bool wantIsolated = pluginManager && pluginManager->isolationEnabled;
             auto plugin = pluginManager != nullptr
-                ? pluginManager->createPluginInstance(desc, error, getSampleRate(), getBlockSize())
+                ? pluginManager->createPluginInstance(desc, error, getSampleRate(), getBlockSize(), wantIsolated)
                 : nullptr;
 
             if (plugin != nullptr)

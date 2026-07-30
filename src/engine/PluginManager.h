@@ -16,6 +16,8 @@ public:
     PluginManager();
     ~PluginManager();
 
+    bool isolationEnabled = true;  // default ON — load all plugins via PluginProxySlot
+
     using ScanProgressCallback = std::function<void(const juce::String& fileName, int completed, int total)>;
 
     void scanAll(ScanProgressCallback progressCb = nullptr);

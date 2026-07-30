@@ -463,7 +463,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     }
 
 #if HDAW_PLUGIN_ISOLATION
-    if (isolated)
+    if (isolated || isolationEnabled)
     {
         auto slotId = static_cast<uint32_t>(knownPlugins.size());
         auto* proxy = new proxy::PluginProxySlot(
