@@ -73,6 +73,20 @@ function App() {
     window.addEventListener("mouseup", onUp);
   }, [setBottomPanelHeight]);
 
+  // Tab toggles between arrange and session view
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        useUiStore.getState().setViewMode(
+          useUiStore.getState().viewMode === "arrange" ? "session" : "arrange"
+        );
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Warn before closing if there are unsaved changes
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
