@@ -44,6 +44,8 @@ export default function AudioClipEditor() {
     setZoomState(clamped);
   }, []);
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const lastClipRef = useRef(clipId);
   useEffect(() => {
     // `clip` is a fresh object reference on every snapshot refresh, so this
@@ -211,6 +213,13 @@ export default function AudioClipEditor() {
           <button className="ace-zoom-btn" onClick={handleZoomFit} title="Fit Clip to View">⟷</button>
           <button className="ace-zoom-btn" onClick={handleZoomIn} title="Zoom In (Ctrl+wheel to zoom)">+</button>
         </div>
+        <button
+          className={`ace-zoom-btn${showAdvanced ? " ace-toggle--active" : ""}`}
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          title={showAdvanced ? "Hide advanced controls" : "Show advanced controls"}
+        >
+          ⚙
+        </button>
         <button className="ace-close" onClick={handleClose} title="Close">✕</button>
       </div>
 
@@ -236,139 +245,138 @@ export default function AudioClipEditor() {
 
       {/* Controls */}
       <div className="ace-controls">
-        <div className="ace-section">
-          {/* Left column: Timestretch */}
-          <div className="ace-section-col">
-            <div className="ace-section-title">Timestretch</div>
-            <div className="ace-row">
-              <label>Src BPM</label>
-              <input
-                type="number"
-                min={0}
-                max={400}
-                step={0.1}
-                defaultValue={clip.sourceBpm || ""}
-                onBlur={setSrcBpm}
-              />
+        {/* Essential controls — always visible (compact row) */}
+        <div className="ace-essential">
+          <div className="ace-row">
+            <label>Gain</label>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.01}
+              value={gain}
+              onChange={setGain}
+              onMouseUp={commitGain}
+              onBlur={commitGain}
+            />
+            <span className="ace-val">{gainDb} dB</span>
+          </div>
+          <div className="ace-row">
+            <label>Fade In</label>
+            <input
+              type="range"
+              min={0}
+              max={maxFade}
+              step={0.1}
+              value={fadeIn}
+              onChange={setFadeIn}
+              onMouseUp={commitFadeIn}
+              onBlur={commitFadeIn}
+            />
+            <span className="ace-val">{fadeIn.toFixed(1)}b</span>
+          </div>
+          <div className="ace-row">
+            <label>Fade Out</label>
+            <input
+              type="range"
+              min={0}
+              max={maxFade}
+              step={0.1}
+              value={fadeOut}
+              onChange={setFadeOut}
+              onMouseUp={commitFadeOut}
+              onBlur={commitFadeOut}
+            />
+            <span className="ace-val">{fadeOut.toFixed(1)}b</span>
+          </div>
+        </div>
+
+        {/* Advanced controls — hidden behind ⚙ toggle */}
+        {showAdvanced && (
+          <>
+            <div className="ace-section">
+              <div className="ace-section-col">
+                <div className="ace-section-title">Timestretch</div>
+                <div className="ace-row">
+                  <label>Src BPM</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={400}
+                    step={0.1}
+                    defaultValue={clip.sourceBpm || ""}
+                    onBlur={setSrcBpm}
+                  />
+                </div>
+                <div className="ace-row">
+                  <label>Mode</label>
+                  <select defaultValue={clip.stretchMode} onChange={setStretchMode}>
+                    <option value={0}>Off</option>
+                    <option value={1}>Tempo Match</option>
+                    <option value={2}>Manual Ratio</option>
+                  </select>
+                </div>
+                <div className="ace-row">
+                  <label>Ratio</label>
+                  <input
+                    type="range"
+                    min={0.25}
+                    max={4}
+                    step={0.01}
+                    value={stretchRatio}
+                    disabled={clip.stretchMode !== 2}
+                    onChange={setStretchRatio}
+                    onMouseUp={commitStretchRatio}
+                    onBlur={commitStretchRatio}
+                  />
+                  <span className="ace-val">{stretchRatio.toFixed(2)}x</span>
+                </div>
+                <div className="ace-row">
+                  <button className="ace-btn ace-btn--accent" onClick={fitToLoop}>
+                    Fit to Loop
+                  </button>
+                </div>
+              </div>
+              <div className="ace-section-col">
+                <div className="ace-section-title">Position</div>
+                <div className="ace-row">
+                  <label>Loop</label>
+                  <input type="checkbox" checked={clip.looping} onChange={toggleLoop} />
+                </div>
+                <div className="ace-row">
+                  <label>Offset</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    defaultValue={clip.offset}
+                    onBlur={setOffset}
+                  />
+                  <span className="ace-val">b</span>
+                </div>
+                <div className="ace-row">
+                  <label>Duration</label>
+                  <input
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    defaultValue={clip.durationBeats}
+                    onBlur={setDuration}
+                  />
+                  <span className="ace-val">b</span>
+                </div>
+              </div>
             </div>
             <div className="ace-row">
-              <label>Mode</label>
-              <select defaultValue={clip.stretchMode} onChange={setStretchMode}>
-                <option value={0}>Off</option>
-                <option value={1}>Tempo Match</option>
-                <option value={2}>Manual Ratio</option>
-              </select>
-            </div>
-            <div className="ace-row">
-              <label>Ratio</label>
-              <input
-                type="range"
-                min={0.25}
-                max={4}
-                step={0.01}
-                value={stretchRatio}
-                disabled={clip.stretchMode !== 2}
-                onChange={setStretchRatio}
-                onMouseUp={commitStretchRatio}
-                onBlur={commitStretchRatio}
-              />
-              <span className="ace-val">{stretchRatio.toFixed(2)}x</span>
-            </div>
-            <div className="ace-row">
-              <button className="ace-btn ace-btn--accent" onClick={fitToLoop}>
-                Fit to Loop
+              <button className="ace-btn" onClick={sliceAtPlayhead}>
+                Slice @ Playhead
+              </button>
+              <button className="ace-btn" onClick={sliceAtTransients}>
+                Slice @ Transients
               </button>
             </div>
-          </div>
-
-          {/* Middle column: Gain / Fades */}
-          <div className="ace-section-col">
-            <div className="ace-section-title">Levels</div>
-            <div className="ace-row">
-              <label>Gain</label>
-              <input
-                type="range"
-                min={0}
-                max={2}
-                step={0.01}
-                value={gain}
-                onChange={setGain}
-                onMouseUp={commitGain}
-                onBlur={commitGain}
-              />
-              <span className="ace-val">{gainDb} dB</span>
-            </div>
-            <div className="ace-row">
-              <label>Fade In</label>
-              <input
-                type="range"
-                min={0}
-                max={maxFade}
-                step={0.1}
-                value={fadeIn}
-                onChange={setFadeIn}
-                onMouseUp={commitFadeIn}
-                onBlur={commitFadeIn}
-              />
-              <span className="ace-val">{fadeIn.toFixed(1)}b</span>
-            </div>
-            <div className="ace-row">
-              <label>Fade Out</label>
-              <input
-                type="range"
-                min={0}
-                max={maxFade}
-                step={0.1}
-                value={fadeOut}
-                onChange={setFadeOut}
-                onMouseUp={commitFadeOut}
-                onBlur={commitFadeOut}
-              />
-              <span className="ace-val">{fadeOut.toFixed(1)}b</span>
-            </div>
-          </div>
-
-          {/* Right column: Position / Loop */}
-          <div className="ace-section-col">
-            <div className="ace-section-title">Position</div>
-            <div className="ace-row">
-              <label>Loop</label>
-              <input type="checkbox" checked={clip.looping} onChange={toggleLoop} />
-            </div>
-            <div className="ace-row">
-              <label>Offset</label>
-              <input
-                type="number"
-                min={0}
-                step={0.1}
-                defaultValue={clip.offset}
-                onBlur={setOffset}
-              />
-              <span className="ace-val">b</span>
-            </div>
-            <div className="ace-row">
-              <label>Duration</label>
-              <input
-                type="number"
-                min={0.1}
-                step={0.1}
-                defaultValue={clip.durationBeats}
-                onBlur={setDuration}
-              />
-              <span className="ace-val">b</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Slice buttons */}
-        <div className="ace-row">
-          <button className="ace-btn" onClick={sliceAtPlayhead}>
-            Slice @ Playhead
-          </button>
-          <button className="ace-btn" onClick={sliceAtTransients}>
-            Slice @ Transients
-          </button>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );

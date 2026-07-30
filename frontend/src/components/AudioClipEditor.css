@@ -210,6 +210,29 @@
   gap: 3px;
 }
 
+/* Essential controls — always-visible compact row */
+.ace-essential {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.ace-essential .ace-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.ace-essential .ace-row label {
+  min-width: auto;
+  font-size: 10px;
+}
+
+.ace-toggle--active {
+  background: rgba(200, 140, 60, 0.2) !important;
+  border-color: var(--accent-dim) !important;
+  color: var(--accent-bright) !important;
+}
+
 .ace-section-title {
   font-size: 10px;
   font-weight: 600;
