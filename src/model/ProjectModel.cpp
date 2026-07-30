@@ -308,6 +308,14 @@ void ProjectModel::createDefaultProject()
         projectTree.addChild(scaleInfo, -1, nullptr);
     }
 
+    // Session state
+    {
+        juce::ValueTree sessionState(IDs::SESSION_STATE);
+        sessionState.setProperty(IDs::launchedScene, -1, nullptr);
+        sessionState.setProperty(IDs::sceneCount, 8, nullptr);
+        projectTree.addChild(sessionState, -1, nullptr);
+    }
+
     // Tempo track
     projectTree.addChild(createTempoPointList(), -1, nullptr);
 
