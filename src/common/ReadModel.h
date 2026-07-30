@@ -16,6 +16,7 @@ struct TrackSnapshot {
     int midiChannel = 1;
     int trackType = 0;            // 0=audio, 1=instrument, 2=folder
     bool isCollapsed = false;     // folder only
+    bool isHidden = false;        // user-hidden track (still in project, not rendered)
     bool effectiveMuted = false;  // computed: true if self or ancestor muted
     bool effectiveSoloed = false; // computed: true if self or ancestor soloed
     int parentId = -1;            // track index of parent folder, -1 if none
@@ -43,6 +44,7 @@ struct ClipSnapshot {
     double sourceDuration = 0.0; // original source length in seconds
     bool isGhost = false;
     int ghostSourceId = -1;
+    int sceneIndex = -1;  // -1 = arrangement only, 0–7 = session scene
 
     // Gain envelope
     struct GainEnvelopePoint { double time; double gain; };
@@ -82,6 +84,8 @@ struct ProjectSnapshot {
     std::vector<ClipSnapshot> clips;
     int scaleRoot = 0;
     int scaleMode = 0;
+    int launchedScene = -1;  // currently active session scene, -1 = none
+    int sceneCount = 8;      // number of scene rows
 };
 
 struct FxSlotSnapshot {

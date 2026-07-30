@@ -34,6 +34,7 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
     cs.sourceDuration= clipTree.getProperty(IDs::sourceDuration, 0.0);
     cs.isGhost       = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
     cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
+    cs.sceneIndex    = static_cast<int>(clipTree.getProperty(IDs::sceneIndex, -1));
     // CLIP -> CLIP_LIST -> TRACK -> position within TRACK_LIST
     auto track = clipTree.getParent().getParent();
     cs.trackIndex = track.getParent().indexOf(track);
@@ -56,6 +57,7 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     ts.midiChannel   = trackTree.getProperty(IDs::midiChannel, 1);
     ts.trackType   = static_cast<int>(trackTree.getProperty(IDs::trackType, 0));
     ts.isCollapsed = trackTree.getProperty(IDs::isCollapsed, false);
+    ts.isHidden    = trackTree.getProperty(IDs::isHidden, false);
     ts.parentId    = trackTree.getProperty(IDs::parentId, -1);
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
@@ -117,6 +119,13 @@ ProjectSnapshot ReadModelImpl::snapshot() const
         }
     }
 
+    // Session state
+    auto sessionState = model_.getTree().getChildWithName(IDs::SESSION_STATE);
+    if (sessionState.isValid()) {
+        snap.launchedScene = static_cast<int>(sessionState.getProperty(IDs::launchedScene, -1));
+        snap.sceneCount = static_cast<int>(sessionState.getProperty(IDs::sceneCount, 8));
+    }
+
     return snap;
 }
 
@@ -148,6 +157,7 @@ TrackSnapshot ReadModelImpl::getTrack(int index) const
     ts.inputMonitor = trackTree.getProperty(IDs::inputMonitor, false);
     ts.height = trackTree.getProperty(IDs::trackHeight, 80.0);
     ts.midiChannel = trackTree.getProperty(IDs::midiChannel, 1);
+    ts.isHidden = trackTree.getProperty(IDs::isHidden, false);
 
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
@@ -187,6 +197,7 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 cs.sourceDuration = clipTree.getProperty(IDs::sourceDuration, 0.0);
                 cs.isGhost = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
                 cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
+                cs.sceneIndex = static_cast<int>(clipTree.getProperty(IDs::sceneIndex, -1));
                 return cs;
             }
         }

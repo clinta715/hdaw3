@@ -42,6 +42,8 @@ add_executable(hdaw_tests
     unit/engine/ripple_delete_test.cpp
     unit/engine/region_ops_test.cpp
     unit/engine/crossfade_test.cpp
+    unit/engine/automation_test.cpp
+    unit/engine/session_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp

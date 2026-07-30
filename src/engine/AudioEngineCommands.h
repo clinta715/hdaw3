@@ -31,8 +31,13 @@ public:
     void setTrackMidiChannel(int trackIndex, int channel) override;
     void setTrackType(int trackIndex, int type) override;
     void setTrackCollapsed(int trackIndex, bool collapsed) override;
+    void setTrackHidden(int trackIndex, bool hidden) override;
     void moveTrackIntoFolder(int trackIndex, int folderIndex) override;
     void moveTrackOutOfFolder(int trackIndex) override;
+
+    // Session
+    void setClipScene(int clipId, int sceneIndex) override;
+    int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) override;
 
     // ProjectCommands — Clip operations
     int addAudioClip(int trackIndex, double start, double duration,

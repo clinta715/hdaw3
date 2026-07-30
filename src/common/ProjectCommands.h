@@ -24,8 +24,13 @@ public:
     virtual void setTrackMidiChannel(int trackIndex, int channel) = 0;
     virtual void setTrackType(int trackIndex, int type) = 0;
     virtual void setTrackCollapsed(int trackIndex, bool collapsed) = 0;
+    virtual void setTrackHidden(int trackIndex, bool hidden) = 0;
     virtual void moveTrackIntoFolder(int trackIndex, int folderIndex) = 0;
     virtual void moveTrackOutOfFolder(int trackIndex) = 0;
+
+    // Session
+    virtual void setClipScene(int clipId, int sceneIndex) = 0;
+    virtual int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) = 0;
 
     // Clip operations
     virtual int addAudioClip(int trackIndex, double start, double duration,

@@ -126,6 +126,13 @@ namespace IDs {
     DECLARE_ID(childIds)
     DECLARE_ID(parentId)
     DECLARE_ID(isCollapsed)
+    DECLARE_ID(isHidden)
+    DECLARE_ID(sceneIndex)
+
+    // Session state
+    DECLARE_ID(SESSION_STATE)
+    DECLARE_ID(launchedScene)
+    DECLARE_ID(sceneCount)
 
     // Plugin hosting
     DECLARE_ID(pluginID)

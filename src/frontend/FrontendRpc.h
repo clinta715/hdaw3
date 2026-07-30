@@ -78,6 +78,7 @@ inline QJsonObject toJson(const TrackSnapshot& t) {
         { "midiChannel",    t.midiChannel },
         { "trackType",      t.trackType },
         { "isCollapsed",    t.isCollapsed },
+        { "isHidden",       t.isHidden },
         { "effectiveMuted", t.effectiveMuted },
         { "effectiveSoloed",t.effectiveSoloed },
         { "parentId",       t.parentId },
@@ -109,6 +110,7 @@ inline QJsonObject toJson(const ClipSnapshot& c) {
         { "sourceDuration", c.sourceDuration },
         { "isGhost",       c.isGhost },
         { "ghostSourceId", c.ghostSourceId },
+        { "sceneIndex",    c.sceneIndex },
     };
     QJsonArray env;
     for (const auto& p : c.gainEnvelope) env.append(toJson(p));
@@ -241,6 +243,8 @@ inline QJsonObject toJson(const ProjectSnapshot& s) {
         { "transport", toJson(s.transport) },
         { "scaleRoot", s.scaleRoot },
         { "scaleMode", s.scaleMode },
+        { "launchedScene", s.launchedScene },
+        { "sceneCount",    s.sceneCount },
     };
     QJsonArray tracks;
     for (const auto& t : s.tracks) tracks.append(toJson(t));
