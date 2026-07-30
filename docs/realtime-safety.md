@@ -298,7 +298,7 @@ live in the "Hardening lessons learned" section above.
 ## Plugin Process Isolation (v0.4 candidate)
 
 VST3/CLAP plugins run in a separate child process so crashes don't
-take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
+take down the DAW. Enabled by default; disable with `-DHDAW_PLUGIN_ISOLATION=OFF`.
 
 **Architecture:**
 - `hdaw_plugin_host.exe` — child process that loads and runs a
@@ -328,7 +328,7 @@ take down the DAW. Opt-in via `-DHDAW_PLUGIN_ISOLATION=ON`.
 **Shared types:** `src/proxy/ProxyCommon.h` — `MessageType`,
 `ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent`.
 
-**Build flag:** `-DHDAW_PLUGIN_ISOLATION=ON` (default OFF). Guards
+**Build flag:** `-DHDAW_PLUGIN_ISOLATION=OFF` to disable (default ON). Guards
 `ProxyProcessManager`, `PluginProxySlot`, `ProxyEditor`, and the
 `hdaw_plugin_host` target. Zero overhead when disabled.
 

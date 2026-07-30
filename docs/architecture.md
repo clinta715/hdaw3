@@ -88,6 +88,9 @@ full list of working features and the priority-ordered roadmap, see
   launched as a subprocess by an MCP client), `--no-mcp` disables MCP
   entirely, `--mcp-http-port=<N>` overrides the MCP HTTP server's bind
   port. `--port=N` overrides the WebSocket port (default 8766). `--http-port=N` overrides the HTTP serving port (default 8765).
+- Plugin process isolation is **ON by default** — every VST3/CLAP plugin
+  runs in a separate `hdaw_plugin_host.exe` child process. Disable with
+  `-DHDAW_PLUGIN_ISOLATION=OFF`. See `docs/realtime-safety.md` for details.
 - **Frontend build:** The React frontend is built separately with `cd frontend && npm run build`. The output (`dist/index.html`, `dist/assets/index.js`, `dist/assets/index.css`) is compiled into `HDAW.exe` via Qt resources (`src/resources/frontend.qrc`). Changes to the frontend require rebuilding the frontend, then rebuilding the C++ project.
 
 ## Version Management
