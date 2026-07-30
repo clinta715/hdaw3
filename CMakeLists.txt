@@ -315,6 +315,9 @@ if(HDAW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# --- Test VST3 plugin for plugin host isolation testing ---
+add_subdirectory(tests/test-plugin)
+
 # --- Version sync check ---
 # Verify that CMakeLists.txt project version matches frontend/package.json.
 # Run with: cmake --build build --target check_version
