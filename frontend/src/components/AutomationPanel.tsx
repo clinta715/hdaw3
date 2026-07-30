@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { RpcClient } from "../rpc/client";
 import { useUiStore } from "../store/uiStore";
@@ -14,10 +14,12 @@ interface Props {
 export default function AutomationPanel({ rpc }: Props) {
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const [automatableParams, setAutomatableParams] = useState<AutomatableParamSnapshot[]>([]);
+  const addLaneSelectRef = useRef<HTMLSelectElement>(null);
   const { lanes, pointsByLane, activeTrackIndex, loading } = useAutomationStore(
     useShallow((s) => ({ lanes: s.lanes, pointsByLane: s.pointsByLane, activeTrackIndex: s.activeTrackIndex, loading: s.loading }))
   );
   const fetchForTrack = useAutomationStore((s) => s.fetchForTrack);
+  const removeLane = useAutomationStore((s) => s.removeLane);
 
   // Resolve trackIndex from selected clip
   const clipTrackIndex = selectedTrackIndex;
@@ -36,20 +38,46 @@ export default function AutomationPanel({ rpc }: Props) {
 
   const handleAddLane = async () => {
     if (activeTrackIndex === null) return;
-    // Pick first un-added automatable param
-    const existing = new Set(lanes.map((l) => l.paramID));
-    const next = automatableParams.find((p) => !existing.has(p.paramIndex));
-    if (!next) return;
+    const select = addLaneSelectRef.current;
+    if (!select || !select.value) return;
+    const [slotStr, idxStr] = select.value.split(":");
+    const slotIndex = Number(slotStr);
+    const paramIndex = Number(idxStr);
+    const chosen = automatableParams.find((p) => p.slotIndex === slotIndex && p.paramIndex === paramIndex);
+    if (!chosen) return;
+    // Compound paramID consumed by the engine: 100 + slotIndex*100 + paramIndex.
+    // Lane name is prefixed with the slot so two plugins that each expose a
+    // param named "Gain" don't collide on the name-keyed store/RPC path.
+    const paramID = 100 + slotIndex * 100 + paramIndex;
+    const laneName = `S${slotIndex} ${chosen.name}`;
     try {
       await rpc.call("project.addAutomationLane", {
         trackIndex: activeTrackIndex,
-        laneName: next.name,
+        laneName,
+        paramID,
       });
       await fetchForTrack(activeTrackIndex, rpc);
     } catch (err) {
       console.error("Add lane failed:", err);
     }
   };
+
+  const handleRemoveLane = async (laneName: string) => {
+    if (activeTrackIndex === null) return;
+    try {
+      await removeLane(activeTrackIndex, laneName, rpc);
+    } catch (err) {
+      console.error("Remove lane failed:", err);
+    }
+  };
+
+  // Params not yet bound to a lane — keyed by the compound paramID so the same
+  // plugin param can't be added twice. (Previously this compared a set of
+  // paramIDs against a paramIndex — a namespace mismatch that always passed.)
+  const boundParamIDs = new Set(lanes.map((l) => l.paramID));
+  const availableParams = automatableParams.filter(
+    (p) => !boundParamIDs.has(100 + p.slotIndex * 100 + p.paramIndex)
+  );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     const { lanes, selectedPointTimes, activeTrackIndex, removePoints, selectAll, clearSelection } = useAutomationStore.getState();
@@ -101,14 +129,34 @@ export default function AutomationPanel({ rpc }: Props) {
   return (
     <div className="automation-panel" tabIndex={0} onKeyDown={handleKeyDown}>
       <div className="ap-toolbar">
-        <button className="ap-add-btn" onClick={handleAddLane} disabled={lanes.length >= automatableParams.length}>
+        <select
+          ref={addLaneSelectRef}
+          className="ap-param-select"
+          disabled={availableParams.length === 0}
+          value=""
+        >
+          {availableParams.length === 0 ? (
+            <option value="">{automatableParams.length === 0 ? "No automatable params" : "All params added"}</option>
+          ) : (
+            availableParams.map((p) => (
+              <option key={`${p.slotIndex}:${p.paramIndex}`} value={`${p.slotIndex}:${p.paramIndex}`}>
+                S{p.slotIndex} · {p.name}
+              </option>
+            ))
+          )}
+        </select>
+        <button
+          className="ap-add-btn"
+          onClick={handleAddLane}
+          disabled={availableParams.length === 0}
+        >
           + Add Lane
         </button>
         <span className="ap-track-label">Track {activeTrackIndex}</span>
       </div>
       <div className="ap-canvas-list">
         {lanes.length === 0 && (
-          <div className="ap-empty-no-lanes">No automation lanes. Click + Add Lane to create one.</div>
+          <div className="ap-empty-no-lanes">No automation lanes. Pick a parameter above and click + Add Lane.</div>
         )}
         {lanes.map((lane) => (
           <AutomationLaneCanvas
@@ -119,6 +167,7 @@ export default function AutomationPanel({ rpc }: Props) {
             rpc={rpc}
             viewStartBeat={0}
             viewEndBeat={32}
+            onRemoveLane={() => handleRemoveLane(lane.name)}
           />
         ))}
       </div>

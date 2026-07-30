@@ -16,6 +16,7 @@ interface Props {
   viewStartBeat: number;
   viewEndBeat: number;
   color?: string;
+  onRemoveLane?: () => void;
 }
 
 const POINT_RADIUS = 3;
@@ -56,6 +57,7 @@ export default function AutomationLaneCanvas({
   viewStartBeat = 0,
   viewEndBeat = 32,
   color = theme.automationLine,
+  onRemoveLane,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 600, h: 80 });
@@ -464,7 +466,16 @@ export default function AutomationLaneCanvas({
 
   return (
     <div className="automation-lane-canvas">
-      <div className="alc-header">{laneName}</div>
+      <div className="alc-header">
+        <span className="alc-lane-name" title={laneName}>{laneName}</span>
+        {onRemoveLane && (
+          <button
+            className="alc-remove-lane"
+            title="Remove lane"
+            onMouseDown={(e) => { e.stopPropagation(); onRemoveLane(); }}
+          >✕</button>
+        )}
+      </div>
       <canvas
         ref={canvasRef}
         className="alc-canvas"

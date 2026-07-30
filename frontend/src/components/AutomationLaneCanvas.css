@@ -8,17 +8,42 @@
 }
 
 .alc-header {
-  width: 100px;
+  width: 120px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 6px;
   font-size: 11px;
   color: var(--text-secondary, #999);
   border-right: 1px solid var(--border, #333);
   overflow: hidden;
+}
+
+.alc-lane-name {
+  flex: 1;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.alc-remove-lane {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #999);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.alc-remove-lane:hover {
+  background: var(--danger, #d33);
+  color: #fff;
 }
 
 .alc-canvas {

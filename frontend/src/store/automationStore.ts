@@ -18,6 +18,7 @@ interface AutomationState {
   clearSelection: (laneName?: string) => void;
   addPoint: (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => Promise<void>;
   removePoints: (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => Promise<void>;
+  removeLane: (trackIndex: number, laneName: string, rpc: RpcClient) => Promise<void>;
 }
 
 export const useAutomationStore = create<AutomationState>((set, get) => ({
@@ -111,6 +112,11 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
     if (times.length > 1) {
       await rpc.call("project.endTransaction");
     }
+    await get().fetchForTrack(trackIndex, rpc);
+  },
+
+  removeLane: async (trackIndex: number, laneName: string, rpc: RpcClient) => {
+    await rpc.call("project.removeAutomationLane", { trackIndex, laneName });
     await get().fetchForTrack(trackIndex, rpc);
   },
 }));
