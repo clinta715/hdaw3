@@ -24,6 +24,8 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
     fxSpec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
     fxSpec.numChannels = 2;
 
+    meter.prepare(sampleRate, samplesPerBlock);
+
     for (const auto& slot : fxChain)
         if (slot)
             slot->prepare(fxSpec);

@@ -209,6 +209,9 @@ inline QJsonObject toJson(const MeterSnapshot& m, const char* leftKey = "l", con
     return QJsonObject{
         { leftKey,  static_cast<double>(m.leftLevel) },
         { rightKey, static_cast<double>(m.rightLevel) },
+        { "rmsL",  static_cast<double>(m.rmsLeftLevel) },
+        { "rmsR",  static_cast<double>(m.rmsRightLevel) },
+        { "lufs",  static_cast<double>(m.lufsMomentary) },
     };
 }
 

@@ -16,6 +16,9 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
 
   const pctL = Math.min(100, Math.max(0, meter.l * 100));
   const pctR = Math.min(100, Math.max(0, meter.r * 100));
+  const rmsPctL = Math.min(100, Math.max(0, (meter.rmsL ?? 0) * 100));
+  const rmsPctR = Math.min(100, Math.max(0, (meter.rmsR ?? 0) * 100));
+  const lufsVal = meter.lufs ?? -70;
 
   const commitVolume = () => {
     if (volume !== track.volume)
@@ -32,8 +35,8 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
       <div className="ms-name">{track.name}</div>
       <div className="ms-fader-row">
         <div className="ms-vu">
-          <MeterBar value={pctL} />
-          <MeterBar value={pctR} />
+          <MeterBar value={pctL} rmsValue={rmsPctL} />
+          <MeterBar value={pctR} rmsValue={rmsPctR} />
         </div>
         <input
           type="range"
@@ -47,6 +50,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
           onBlur={commitVolume}
         />
       </div>
+      <div className="ms-lufs">{lufsVal > -70 ? lufsVal.toFixed(1) : "-∞"}</div>
       <div className="ms-readout">{Math.round(volume * 100)}%</div>
       <input
         type="range"
@@ -98,12 +102,13 @@ function formatPan(pan: number): string {
   return pan < 0 ? `L${pct}` : `R${pct}`;
 }
 
-function MeterBar({ value }: { value: number }) {
+function MeterBar({ value, rmsValue }: { value: number; rmsValue: number }) {
   let cls = "ms-fill";
   if (value > 90) cls += " ms-clip";
   else if (value > 75) cls += " ms-hot";
   return (
     <div className="ms-meter">
+      <div className="ms-rms-fill" style={{ height: `${rmsValue}%` }} />
       <div className={cls} style={{ height: `${value}%` }} />
     </div>
   );

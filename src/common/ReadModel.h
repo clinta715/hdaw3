@@ -137,6 +137,9 @@ struct AutomatableParamSnapshot {
 struct MeterSnapshot {
     float leftLevel = 0.0f;
     float rightLevel = 0.0f;
+    float rmsLeftLevel = 0.0f;
+    float rmsRightLevel = 0.0f;
+    float lufsMomentary = -70.0f;
 };
 
 struct LfoSnapshot {

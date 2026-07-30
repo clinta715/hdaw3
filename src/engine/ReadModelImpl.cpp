@@ -599,6 +599,9 @@ MeterSnapshot ReadModelImpl::getTrackMeter(int trackIndex) const
     MeterSnapshot ms;
     ms.leftLevel = track->getMeter().getLeftLevel();
     ms.rightLevel = track->getMeter().getRightLevel();
+    ms.rmsLeftLevel = track->getMeter().getRmsLeft();
+    ms.rmsRightLevel = track->getMeter().getRmsRight();
+    ms.lufsMomentary = track->getMeter().getLufsMomentary();
     return ms;
 }
 
@@ -610,6 +613,9 @@ MeterSnapshot ReadModelImpl::getMasterMeter() const
     MeterSnapshot ms;
     ms.leftLevel = proc->getMasterMeter().getLeftLevel();
     ms.rightLevel = proc->getMasterMeter().getRightLevel();
+    ms.rmsLeftLevel = proc->getMasterMeter().getRmsLeft();
+    ms.rmsRightLevel = proc->getMasterMeter().getRmsRight();
+    ms.lufsMomentary = proc->getMasterMeter().getLufsMomentary();
     return ms;
 }
 

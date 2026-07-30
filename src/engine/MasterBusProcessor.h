@@ -18,6 +18,7 @@ public:
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
         scratchBuffer.setSize(2, samplesPerBlock);
+        meter.prepare(sampleRate, samplesPerBlock);
     }
 
     void releaseResources() override

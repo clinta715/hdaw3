@@ -75,6 +75,25 @@
 .ms-fill.ms-hot { background: var(--vu-yellow); }
 .ms-fill.ms-clip { background: var(--vu-red); }
 
+.ms-rms-fill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  background: var(--vu-green);
+  opacity: 0.35;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.06s;
+}
+
+.ms-lufs {
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
 .ms-fader {
   writing-mode: vertical-lr;
   transform: scaleY(-1);

@@ -92,6 +92,9 @@ export interface TreeDelta {
 export interface MeterLevels {
   l: number;
   r: number;
+  rmsL: number;
+  rmsR: number;
+  lufs: number;
 }
 
 export interface AutomationLaneSnapshot {
