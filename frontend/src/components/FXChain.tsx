@@ -46,6 +46,9 @@ const INTERNAL_FX = [
   { label: "Compressor", fxType: "compressor" },
   { label: "Reverb", fxType: "reverb" },
   { label: "Delay", fxType: "delay" },
+  { label: "Chorus", fxType: "chorus" },
+  { label: "Flanger", fxType: "flanger" },
+  { label: "Phaser", fxType: "phaser" },
 ];
 
 export default function FXChain() {

@@ -49,6 +49,30 @@ public:
                 { 1, "Feedback",   0.3f, 0.0f,   0.99f   },
                 { 2, "Mix",        0.5f, 0.0f,   1.0f    },
             };
+        if (type == "chorus")
+            return {
+                { 0, "Rate",         1.5f,  0.1f,  5.0f   },
+                { 1, "Depth",        0.25f, 0.0f,  1.0f   },
+                { 2, "Centre Delay", 7.0f,  1.0f, 50.0f   },
+                { 3, "Feedback",     0.0f, -1.0f,  1.0f   },
+                { 4, "Mix",          0.5f,  0.0f,  1.0f   },
+            };
+        if (type == "flanger")
+            return {
+                { 0, "Rate",         0.5f,  0.1f,  5.0f   },
+                { 1, "Depth",        0.5f,  0.0f,  1.0f   },
+                { 2, "Centre Delay", 3.0f,  1.0f,  5.0f   },
+                { 3, "Feedback",     0.5f, -1.0f,  1.0f   },
+                { 4, "Mix",          0.5f,  0.0f,  1.0f   },
+            };
+        if (type == "phaser")
+            return {
+                { 0, "Rate",             0.5f,    0.1f,    5.0f     },
+                { 1, "Depth",            0.5f,    0.0f,    1.0f     },
+                { 2, "Centre Frequency", 1000.0f, 20.0f,   20000.0f },
+                { 3, "Feedback",         0.0f,   -1.0f,    1.0f     },
+                { 4, "Mix",              0.5f,    0.0f,    1.0f     },
+            };
         return {};
     }
 
@@ -64,6 +88,12 @@ public:
             activeType = ActiveType::Reverb;
         else if (type == "delay")
             activeType = ActiveType::Delay;
+        else if (type == "chorus")
+            activeType = ActiveType::Chorus;
+        else if (type == "flanger")
+            activeType = ActiveType::Flanger;
+        else if (type == "phaser")
+            activeType = ActiveType::Phaser;
         else if (type == "plugin")
             activeType = ActiveType::Plugin;
         else
@@ -210,6 +240,29 @@ public:
                 if (internalParamValues.size() > 3) comp->setRelease(internalParamValues[3]);
                 break;
             }
+            case ActiveType::Chorus:
+            case ActiveType::Flanger:
+            {
+                chorusDsp = std::make_unique<juce::dsp::Chorus<float>>();
+                chorusDsp->prepare(spec);
+                if (internalParamValues.size() > 0) chorusDsp->setRate(internalParamValues[0]);
+                if (internalParamValues.size() > 1) chorusDsp->setDepth(internalParamValues[1]);
+                if (internalParamValues.size() > 2) chorusDsp->setCentreDelay(internalParamValues[2]);
+                if (internalParamValues.size() > 3) chorusDsp->setFeedback(internalParamValues[3]);
+                if (internalParamValues.size() > 4) chorusDsp->setMix(internalParamValues[4]);
+                break;
+            }
+            case ActiveType::Phaser:
+            {
+                phaserDsp = std::make_unique<juce::dsp::Phaser<float>>();
+                phaserDsp->prepare(spec);
+                if (internalParamValues.size() > 0) phaserDsp->setRate(internalParamValues[0]);
+                if (internalParamValues.size() > 1) phaserDsp->setDepth(internalParamValues[1]);
+                if (internalParamValues.size() > 2) phaserDsp->setCentreFrequency(internalParamValues[2]);
+                if (internalParamValues.size() > 3) phaserDsp->setFeedback(internalParamValues[3]);
+                if (internalParamValues.size() > 4) phaserDsp->setMix(internalParamValues[4]);
+                break;
+            }
             case ActiveType::None:
             default:
                 break;
@@ -262,6 +315,9 @@ public:
             }
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
             case ActiveType::Compressor:  if (comp)   comp->process(context);    break;
+            case ActiveType::Chorus:
+            case ActiveType::Flanger:     if (chorusDsp) chorusDsp->process(context); break;
+            case ActiveType::Phaser:      if (phaserDsp) phaserDsp->process(context); break;
             default: break;
         }
     }
@@ -273,10 +329,12 @@ public:
             pluginInstance->reset();
             return;
         }
-        if (reverb)  reverb->reset();
-        if (delay)   delay->reset();
-        if (eq)      eq->reset();
-        if (comp)    comp->reset();
+        if (reverb)    reverb->reset();
+        if (delay)     delay->reset();
+        if (eq)        eq->reset();
+        if (comp)      comp->reset();
+        if (chorusDsp) chorusDsp->reset();
+        if (phaserDsp) phaserDsp->reset();
     }
 
     std::unique_ptr<juce::AudioPluginInstance> releasePlugin()
@@ -362,7 +420,7 @@ public:
     }
 
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Plugin };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -380,6 +438,8 @@ private:
     std::unique_ptr<juce::dsp::DelayLine<float>> delay;
     std::unique_ptr<EQProcessor> eq;
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
+    std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
+    std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
 
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
@@ -442,6 +502,35 @@ private:
                     int delaySamps = juce::roundToInt(value * sampleRate_);
                     delaySamps = std::max(1, delaySamps);
                     delay->setDelay(delaySamps);
+                }
+                break;
+            }
+            case ActiveType::Chorus:
+            case ActiveType::Flanger:
+            {
+                if (!chorusDsp) return;
+                switch (paramIndex)
+                {
+                    case 0: chorusDsp->setRate(value);        break;
+                    case 1: chorusDsp->setDepth(value);       break;
+                    case 2: chorusDsp->setCentreDelay(value); break;
+                    case 3: chorusDsp->setFeedback(value);    break;
+                    case 4: chorusDsp->setMix(value);         break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::Phaser:
+            {
+                if (!phaserDsp) return;
+                switch (paramIndex)
+                {
+                    case 0: phaserDsp->setRate(value);            break;
+                    case 1: phaserDsp->setDepth(value);           break;
+                    case 2: phaserDsp->setCentreFrequency(value); break;
+                    case 3: phaserDsp->setFeedback(value);        break;
+                    case 4: phaserDsp->setMix(value);             break;
+                    default: return;
                 }
                 break;
             }

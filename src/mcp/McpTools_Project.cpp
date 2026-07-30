@@ -263,10 +263,10 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"add_track_with_fx",
-        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay}, or provide pluginId for a VST3/CLAP plugin.",
+        "Add a track with an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser}, or provide pluginId for a VST3/CLAP plugin.",
         objSchema({{"name",     QJsonObject{{"type","string"}}},
                    {"fxType",   QJsonObject{{"type","string"},
-                       {"enum", QJsonArray{"eq","compressor","reverb","delay"}}}},
+                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser"}}}},
                    {"pluginId", QJsonObject{{"type","string"}}},
                    {"color",    QJsonObject{{"type","integer"}}},
                    {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),

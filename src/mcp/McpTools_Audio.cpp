@@ -137,10 +137,10 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
 static void registerFxTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay"}}}},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser"}}}},
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
