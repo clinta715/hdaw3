@@ -18,10 +18,9 @@ include_directories(${CMAKE_BINARY_DIR}/generated)
 # Note: Set -DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2022_64 when running cmake
 # Components: Core (implicit), Network/HttpServer/WebSockets (transport),
 # Gui (QDesktopServices in main.cpp), Test (QSignalSpy in tests).
-# Widgets is intentionally NOT included — the only Widgets consumer was the
-# dead proxy::CrashDialog, which has been removed. The UI is React; JUCE
-# provides the only native windowing (HDAW target).
-find_package(Qt6 REQUIRED COMPONENTS Gui Network HttpServer WebSockets Test)
+# Widgets is included for proxy::CrashDialog (plugin isolation only) and
+# linked conditionally via Qt6::Widgets in the HDAW_PLUGIN_ISOLATION block.
+find_package(Qt6 REQUIRED COMPONENTS Gui Network HttpServer WebSockets Test Widgets)
 qt_standard_project_setup()
 
 # JUCE Configuration
@@ -142,8 +141,10 @@ if(HDAW_PLUGIN_ISOLATION)
         src/proxy/ProxyProcessManager.cpp
         src/proxy/PluginProxySlot.cpp
         src/proxy/ProxyEditor.cpp
+        src/proxy/CrashDialog.cpp
     )
     target_compile_definitions(HDAW_lib PUBLIC HDAW_PLUGIN_ISOLATION=1)
+    target_link_libraries(HDAW_lib PUBLIC Qt6::Widgets)
 endif()
 
 target_include_directories(HDAW_lib PUBLIC src)

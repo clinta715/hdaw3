@@ -1,5 +1,6 @@
 #include "PluginProxySlot.h"
 #include "ProxyEditor.h"
+#include "CrashDialog.h"
 #include <cstring>
 
 namespace proxy {
@@ -158,6 +159,14 @@ bool PluginProxySlot::hasEditor() const {
 void PluginProxySlot::onChildCrashed() {
     crashed.store(true);
     saveStateToTemp();
+
+    // Show crash dialog on the message thread
+    juce::MessageManager::callAsync([this]() {
+        proxy::CrashDialog dialog(juce::String(pluginDisplayName).toRawUTF8());
+        if (dialog.exec() == QDialog::Accepted && dialog.shouldRestart()) {
+            restartAfterCrash();
+        }
+    });
 }
 
 void PluginProxySlot::saveStateToTemp() {
