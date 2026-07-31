@@ -280,12 +280,14 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
     juce::String error;
 
     for (auto* fmt : formatManager.getFormats()) {
-        if (fmt->fileMightContainThisPluginType(path)) {
-            juce::PluginDescription desc;
-            desc.fileOrIdentifier = path;
-            desc.pluginFormatName = fmt->getName();
+        if (!fmt->fileMightContainThisPluginType(path))
+            continue;
 
-            plugin = formatManager.createPluginInstance(desc, 44100.0, 512, error);
+        juce::OwnedArray<juce::PluginDescription> types;
+        fmt->findAllTypesForFile(types, path);
+
+        for (auto* desc : types) {
+            plugin = formatManager.createPluginInstance(*desc, 44100.0, 512, error);
             if (plugin) {
                 pluginLoaded.store(true);
                 return true;
