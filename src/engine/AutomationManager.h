@@ -32,11 +32,13 @@ public:
 
     void recordPoint(double time, double value)
     {
-        juce::SpinLock::ScopedLockType lock(cacheLock);
+        if (!cacheLock.tryEnter())
+            return;
         if (!points.empty() && std::abs(points.back().first - time) < 0.01)
             points.back().second = value;
-        else
+        else if (points.size() < points.capacity())
             points.push_back({time, value});
+        cacheLock.exit();
     }
 
     void setAutomationTree(const juce::ValueTree& tree)
@@ -150,6 +152,7 @@ public:
         }
 
         juce::SpinLock::ScopedLockType lock(cacheLock);
+        newPoints.reserve(newPoints.size() + 4096);
         points.swap(newPoints);
         enabled = automationTree.isValid()
             ? static_cast<bool>(automationTree.getProperty(IDs::automationEnabled))

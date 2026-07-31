@@ -134,16 +134,21 @@ int AudioEngineCommands::cutAudioClipRegion(int clipId, double regionStart, doub
 {
     if (regionEnd <= regionStart) return -1;
 
-    copyAudioClipRegion(clipId, regionStart, regionEnd);
-
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid() || trackIdx < 0) return -1;
 
+    double clipDur = clip.getProperty(IDs::duration, 0.0);
+    double rs = std::clamp(regionStart, 0.0, clipDur);
+    double re = std::clamp(regionEnd, 0.0, clipDur);
+    if (re <= rs) return -1;
+
+    copyAudioClipRegion(clipId, rs, re);
+
     auto& um = engine_.getProjectModel().getUndoManager();
     double startTime = clip.getProperty(IDs::startTime, 0.0);
-    double slice1 = startTime + regionStart;
-    double slice2 = startTime + regionEnd;
+    double slice1 = startTime + rs;
+    double slice2 = startTime + re;
 
     // sliceClipAtTimes returns the created slices in order. Cutting a region
     // produces up to three slices [head, middle(=the cut region), tail]; the
@@ -198,6 +203,7 @@ int AudioEngineCommands::pasteAudioClipRegion(int clipId, double pasteTime)
         newClip.setProperty(IDs::offset, reg.offset, &um);
     }
 
-    engine_.getMainProcessor()->rebuildRoutingGraph();
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
     return newId;
 }

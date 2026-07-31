@@ -115,7 +115,7 @@ export function useTimelineRubberBand({
 
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [clips, pps, tracksRef, engagementRef, setPps]);
+  }, [clips, pps, layout, tracksRef, engagementRef, setPps]);
 
   return { handleRubberBandStart, rubberBand, rubberBandJustCompleted };
 }

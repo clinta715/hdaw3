@@ -119,7 +119,7 @@ export default function ClipEditor() {
     }
   };
 
-  const snapEnabled = useUiStore.getState().snapEnabled;
+  const snapEnabled = useUiStore((s) => s.snapEnabled);
 
   return (
     <div className="clip-editor" key={clip.clipId}>

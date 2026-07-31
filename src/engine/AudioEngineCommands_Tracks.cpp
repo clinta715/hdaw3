@@ -1,6 +1,7 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
+#include <charconv>
 #include <sstream>
 
 // ─── ProjectCommands — Track operations ───────────────────────────
@@ -201,7 +202,9 @@ void AudioEngineCommands::moveTrackIntoFolder(int trackIndex, int folderIndex)
         bool first = true;
         while (std::getline(iss, token, ','))
         {
-            if (!token.empty() && std::stoi(token) != trackIndex)
+            int val = 0;
+            auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+            if (ec == std::errc() && ptr == token.data() + token.size() && val != trackIndex)
             {
                 if (!first) newChildIds += ",";
                 newChildIds += token;
@@ -239,7 +242,9 @@ void AudioEngineCommands::moveTrackOutOfFolder(int trackIndex)
     bool first = true;
     while (std::getline(iss, token, ','))
     {
-        if (!token.empty() && std::stoi(token) != trackIndex)
+        int val = 0;
+        auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), val);
+        if (ec == std::errc() && ptr == token.data() + token.size() && val != trackIndex)
         {
             if (!first) newChildIds += ",";
             newChildIds += token;

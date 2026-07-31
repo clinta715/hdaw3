@@ -242,7 +242,8 @@ std::string AudioEngineCommands::findMissingClipSourceFile(int clipId, const std
         auto& um = engine_.getProjectModel().getUndoManager();
         um.beginNewTransaction("Find missing clip source file");
         clip.setProperty(IDs::sourceFile, found, &um);
-        engine_.getMainProcessor()->rebuildRoutingGraph();
+        if (auto* proc = engine_.getMainProcessor())
+            proc->rebuildRoutingGraph();
         return found.toStdString();
     }
     return {};
@@ -288,7 +289,8 @@ ProjectCommands::RelinkResult AudioEngineCommands::relinkAllMissingFiles(const s
     }
 
     if (anyRelinked)
-        engine_.getMainProcessor()->rebuildRoutingGraph();
+        if (auto* proc = engine_.getMainProcessor())
+            proc->rebuildRoutingGraph();
 
     return result;
 }

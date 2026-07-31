@@ -333,7 +333,7 @@ export default function TimelineMinimal() {
       }
     }
     // Reconciled by the debounced notify.treeChanged push.
-  }, [rpc, pps]);
+  }, [rpc, pps, layout]);
 
   // --- Context menu handler ---
   const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
@@ -565,7 +565,7 @@ export default function TimelineMinimal() {
             setPps(Math.max(MIN_PPS, Math.min(MAX_PPS, newPps)));
             requestAnimationFrame(() => {
               if (tracksRef.current) {
-                tracksRef.current.scrollLeft = minStart * pps - cw * 0.1;
+                tracksRef.current.scrollLeft = minStart * newPps - cw * 0.1;
               }
             });
           }

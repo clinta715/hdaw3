@@ -1078,12 +1078,15 @@ void AudioEngine::timerCallback()
     {
         // The audio thread stopped playback because position exceeded the
         // project end. Update the ValueTree so the frontend transport bar
-        // reflects the stopped state.
+        // reflects the stopped state, and reset position to zero so the
+        // next Play starts from the beginning (standard DAW behavior).
+        transportManager.setCurrentSample(0);
         auto transportTree = projectModel.getTransportTree();
         if (transportTree.isValid())
         {
             auto& um = projectModel.getUndoManager();
             transportTree.setProperty(IDs::isPlaying, false, &um);
+            transportTree.setProperty(IDs::position, 0.0, &um);
         }
     }
 
