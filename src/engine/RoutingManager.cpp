@@ -126,7 +126,20 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     float trackVol = trackTree.getProperty(IDs::volume, 1.0);
     float trackPan = trackTree.getProperty(IDs::pan, 0.0);
     bool trackMuted = trackTree.getProperty(IDs::isMuted, false);
-    newTrack->restoreMixerState(trackVol, trackPan, trackMuted);
+    bool trackSoloed = trackTree.getProperty(IDs::isSoloed, false);
+
+    bool anySoloed = false;
+    auto allTracks = projectModel.getTrackListTree();
+    for (int i = 0; i < allTracks.getNumChildren(); ++i)
+    {
+        if (static_cast<bool>(allTracks.getChild(i).getProperty(IDs::isSoloed, false)))
+        {
+            anySoloed = true;
+            break;
+        }
+    }
+    bool effectiveMute = trackMuted || (anySoloed && !trackSoloed);
+    newTrack->restoreMixerState(trackVol, trackPan, effectiveMute);
     auto node = graph.addNode(std::move(newTrack));
     trackProcessors[trackIndex] = static_cast<HDAW::Track*>(node->getProcessor());
     trackNodes[trackIndex] = node;
@@ -433,6 +446,7 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setFadeIn(clipTree.getProperty(IDs::fadeIn));
             clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
             clipProc->setLooping(clipTree.getProperty(IDs::looping));
+            clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
 
             // Push the per-clip gain envelope to the freshly-built processor,
             // merged with any crossfade points for this clip. Crossfade points
@@ -516,6 +530,7 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
             clipProc->setDuration(clipTree.getProperty(IDs::duration));
             clipProc->setGain(clipTree.getProperty(IDs::gain));
+            clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
             // Apply the track's MIDI channel to the new clip processor.
             // The track's midiChannel defaults to 1; the user can change
             // it via the track header.
@@ -551,6 +566,7 @@ void RoutingManager::updateClipParam(int trackIndex, int clipIndex, int paramID,
             case 14: clip->setDuration(static_cast<double>(value));     break;
             case 15: clip->setOffset(static_cast<double>(value));       break;
             case 16: clip->setLooping(value > 0.5f);                    break;
+            case 17: clip->setMuted(value > 0.5f);                      break;
         }
         return;
     }
@@ -561,6 +577,8 @@ void RoutingManager::updateClipParam(int trackIndex, int clipIndex, int paramID,
         auto* clip = midiIt->second;
         if (paramID == 10)
             clip->setGain(value);
+        else if (paramID == 17)
+            clip->setMuted(value > 0.5f);
     }
 }
 

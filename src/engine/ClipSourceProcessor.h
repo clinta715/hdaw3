@@ -69,6 +69,8 @@ public:
     void setFadeOut(float f) { fadeOut.store(f); }
     void setLooping(bool l) { looping.store(l); }
     bool isLooping() const { return looping.load(); }
+    void setMuted(bool m) { muted.store(m); }
+    bool isMuted() const { return muted.load(); }
 
     // Identifies this clip for StretchCache lookups. Set by RoutingManager
     // when the processor is built/updated from the ValueTree.
@@ -181,6 +183,12 @@ public:
 
         if (numSamples <= 0)
             return;
+
+        if (muted.load())
+        {
+            buffer.clear();
+            return;
+        }
 
         // Calculate clip-local sample position
         int64_t transportSample = transportManager.getCurrentSample();
@@ -502,6 +510,7 @@ private:
     std::atomic<float> fadeIn{ 0.0f };
     std::atomic<float> fadeOut{ 0.0f };
     std::atomic<bool> looping{ false };
+    std::atomic<bool> muted{ false };
 
     juce::HeapBlock<float> preloadedData[2];
     int preloadedChannels = 0;

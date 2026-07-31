@@ -49,6 +49,9 @@ void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
     int n = fxChain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
     fxChain.addChild(slot, insertIdx, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
@@ -81,6 +84,9 @@ void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
     int n = fxChain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
     fxChain.addChild(slot, insertIdx, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type, int position)
@@ -170,6 +176,9 @@ void AudioEngineCommands::removeFxSlot(int trackIndex, int slotIndex)
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (slot.isValid())
         slot.getParent().removeChild(slot, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed)
@@ -178,6 +187,9 @@ void AudioEngineCommands::setFxSlotBypassed(int trackIndex, int slotIndex, bool 
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (slot.isValid())
         slot.setProperty(IDs::bypassed, bypassed, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
@@ -205,6 +217,9 @@ void AudioEngineCommands::reorderFxSlots(int trackIndex, int fromSlot, int toSlo
     fxChain.removeChild(fromSlot, &um);
     if (toSlot > fromSlot) --toSlot;
     fxChain.addChild(slot, toSlot, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::setFxSlotPlugin(int trackIndex, int slotIndex,
@@ -219,4 +234,7 @@ void AudioEngineCommands::setFxSlotPlugin(int trackIndex, int slotIndex,
     slot.setProperty(IDs::pluginID, juce::String(pluginID), &um);
     slot.setProperty(IDs::pluginFormat, juce::String(pluginFormat), &um);
     slot.setProperty(IDs::pluginPath, juce::String(pluginPath), &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
 }

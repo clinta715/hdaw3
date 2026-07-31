@@ -51,6 +51,8 @@ public:
     double getStartTime() const { return startTime.load(); }
     double getDuration() const { return duration.load(); }
     void setGain(float g) { gain.store(g); }
+    void setMuted(bool m) { muted.store(m); }
+    bool isMuted() const { return muted.load(); }
     void setMidiChannel(int ch) { midiChannel.store(juce::jlimit(1, 16, ch)); }
     int  getMidiChannel() const { return midiChannel.load(); }
 
@@ -74,6 +76,17 @@ public:
 
         if (numSamples <= 0)
             return;
+
+        if (muted.load())
+        {
+            for (int note = 0; note < 128; ++note)
+            {
+                if (!activeNotes[note]) continue;
+                midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel.load(), note, 0.0f), 0);
+            }
+            std::fill(activeNotes.begin(), activeNotes.end(), false);
+            return;
+        }
 
         int idx = activeCacheIndex.load(std::memory_order_acquire);
         int count = noteCount.load(std::memory_order_acquire);
@@ -238,6 +251,7 @@ private:
     std::atomic<double> startTime{ 0.0 };
     std::atomic<double> duration{ 1.0 };
     std::atomic<float> gain{ 1.0f };
+    std::atomic<bool> muted{ false };
 
     std::atomic<int> midiChannel{ 1 }; // 1-16 = specific MIDI channel
     uint8_t lastCcByte = 255;

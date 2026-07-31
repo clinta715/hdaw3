@@ -579,12 +579,10 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     rm->setTrackMidiChannel(tIdx, newChannel);
             }
         }
-        else if (property == IDs::volume || property == IDs::pan || property == IDs::isMuted)
+        else if (property == IDs::volume || property == IDs::pan)
         {
             float value = treeWhosePropertyHasChanged.getProperty(property);
-            int paramID = (property == IDs::volume) ? 1
-                        : (property == IDs::pan)     ? 2
-                                                     : 3;
+            int paramID = (property == IDs::volume) ? 1 : 2;
 
             auto trackList = projectModel.getTrackListTree();
             for (int i = 0; i < trackList.getNumChildren(); ++i)
@@ -624,12 +622,16 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                 }
             }
         }
+        else if (property == IDs::isMuted || property == IDs::isSoloed)
+        {
+            pushEffectiveMuteState();
+        }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::CLIP))
     {
         if (property == IDs::gain    || property == IDs::fadeIn  || property == IDs::fadeOut ||
             property == IDs::startTime || property == IDs::duration ||
-            property == IDs::offset   || property == IDs::looping)
+            property == IDs::offset   || property == IDs::looping || property == IDs::muted)
         {
             float value = treeWhosePropertyHasChanged.getProperty(property);
             int paramID;
@@ -639,7 +641,8 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             else if (property == IDs::startTime) paramID = 13;
             else if (property == IDs::duration)  paramID = 14;
             else if (property == IDs::offset)    paramID = 15;
-            else                                  paramID = 16; // looping
+            else if (property == IDs::looping)   paramID = 16;
+            else                                  paramID = 17; // muted
 
             // Find which track + clip index this belongs to
             auto trackList = projectModel.getTrackListTree();
@@ -1118,3 +1121,29 @@ ProjectCommands& AudioEngine::getProjectCommands()  { return *commands; }
 TransportCommands& AudioEngine::getTransportCommands() { return *commands; }
 AudioGraphCommands& AudioEngine::getAudioGraphCommands() { return *commands; }
 ReadModel& AudioEngine::getReadModel() { return *readModel; }
+
+void AudioEngine::pushEffectiveMuteState()
+{
+    auto trackList = projectModel.getTrackListTree();
+    int numTracks = trackList.getNumChildren();
+
+    bool anySoloed = false;
+    for (int i = 0; i < numTracks; ++i)
+    {
+        if (static_cast<bool>(trackList.getChild(i).getProperty(IDs::isSoloed, false)))
+        {
+            anySoloed = true;
+            break;
+        }
+    }
+
+    for (int i = 0; i < numTracks; ++i)
+    {
+        auto t = trackList.getChild(i);
+        bool muted = t.getProperty(IDs::isMuted, false);
+        bool soloed = t.getProperty(IDs::isSoloed, false);
+        bool effectiveMute = muted || (anySoloed && !soloed);
+        ParamUpdate update{ i, 3, effectiveMute ? 1.0f : 0.0f };
+        spscBridge.pushUpdate(update);
+    }
+}

@@ -102,6 +102,7 @@ private:
     void timerCallback() override;
 
     void rebuildTempoMap();
+    void pushEffectiveMuteState();
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;

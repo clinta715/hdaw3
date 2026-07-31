@@ -75,14 +75,6 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     hdr->inputWritePos.store(w + static_cast<uint32_t>(totalSamples),
                               std::memory_order_release);
 
-    auto* pipe = processManager.getPipe(slotId);
-    if (pipe) {
-        ProxyMessage msg{};
-        msg.type = MessageType::PROCESS_BLOCK;
-        msg.slotId = slotId;
-        pipe->sendMsg(msg);
-    }
-
     uint32_t ow = hdr->outputWritePos.load(std::memory_order_relaxed);
     uint32_t or_ = hdr->outputReadPos.load(std::memory_order_acquire);
     uint32_t available = (ow >= or_) ? (ow - or_) : 0;
