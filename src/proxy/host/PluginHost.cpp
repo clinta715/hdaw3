@@ -48,6 +48,41 @@ public:
     }
 };
 
+class CrashingProcessor : public juce::AudioPluginInstance
+{
+public:
+    CrashingProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    const juce::String getName() const override { return "CrashTest"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override
+    {
+        std::abort();
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "CrashTest";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__crash__";
+    }
+};
+
 } // anonymous namespace
 
 PluginHost::PluginHost(uint32_t id, const std::string& pipe,
@@ -273,6 +308,12 @@ bool PluginHost::loadPlugin() {
 bool PluginHost::loadPluginByPath(const juce::String& path) {
     if (path == "__passthrough__") {
         plugin = std::make_unique<PassthroughProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__crash__") {
+        plugin = std::make_unique<CrashingProcessor>();
         pluginLoaded.store(true);
         return true;
     }
