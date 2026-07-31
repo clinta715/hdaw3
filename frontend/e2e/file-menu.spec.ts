@@ -69,7 +69,7 @@ test.describe("File menu (user journeys)", () => {
   test("keyboard shortcut Ctrl+E opens Export dialog", async ({ page }) => {
     await page.keyboard.press("Control+e");
     // Export dialog should appear (look for export-related class)
-    await expect(page.locator(".export-dialog, [class*='export']")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".ed-dialog")).toBeVisible({ timeout: 5000 });
     // Close it
     await page.keyboard.press("Escape");
   });

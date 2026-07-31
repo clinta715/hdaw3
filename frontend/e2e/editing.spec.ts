@@ -151,6 +151,33 @@ test.describe("Clip editing (user journeys)", () => {
     await expect(clipLocator(page, c2)).toHaveClass(/tl-clip--selected/);
   });
 
+  test("vertical drag on empty track background zooms the timeline", async ({ page }) => {
+    await startApp(page);
+    // Add clips so we can detect zoom changes via their rendered width
+    const c1 = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 4, name: "ZoomClip" });
+
+    // Get the timeline tracks container
+    const trackRow = page.locator(".tl-track-row").first();
+    const rowBox = await trackRow.boundingBox();
+    if (!rowBox) throw new Error("track row has no bounding box");
+
+    const startX = rowBox.x + 5;
+    const startY = rowBox.y + 2;
+
+    // Record initial clip width
+    const widthBefore = await clipLocator(page, c1).evaluate((el) => el.getBoundingClientRect().width);
+
+    // Vertical drag downward (predominantly vertical: dy > dx*2) → zoom out
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 5, startY + 200, { steps: 15 });
+    await page.mouse.up();
+
+    // After zooming out, the clip should be narrower
+    const widthAfter = await clipLocator(page, c1).evaluate((el) => el.getBoundingClientRect().width);
+    expect(widthAfter).toBeLessThan(widthBefore);
+  });
+
   test("undo and redo restore and re-apply clip changes", async ({ page }) => {
     await startApp(page);
     await expect

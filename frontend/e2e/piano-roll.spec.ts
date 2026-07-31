@@ -16,12 +16,12 @@ test.describe("Piano Roll (user journeys)", () => {
     const grid = page.locator(".note-grid");
     await expect(grid).toBeVisible({ timeout: 5000 });
     // Default MIDI clip has notes — check for note rectangles
-    const notes = page.locator(".note-rect, .note-block, [class*='note']");
+    const notes = page.locator(".ng-note");
     await expect(notes.first()).toBeVisible({ timeout: 5000 });
   });
 
   test("piano roll shows piano keys on the left", async ({ page }) => {
-    const keys = page.locator(".pr-keys, [class*='piano-key'], [class*='pr-key']");
+    const keys = page.locator(".pr-keys");
     await expect(keys.first()).toBeVisible({ timeout: 5000 });
   });
 
@@ -58,7 +58,7 @@ test.describe("Piano Roll (user journeys)", () => {
   });
 
   test("clicking a note selects it", async ({ page }) => {
-    const noteEl = page.locator(".note-rect, .note-block, [class*='note-rect']").first();
+    const noteEl = page.locator(".ng-note").first();
     if (await noteEl.isVisible({ timeout: 3000 })) {
       await noteEl.click();
       // Selected note should have a selection class

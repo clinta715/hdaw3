@@ -18,19 +18,19 @@ test.describe("Step Sequencer (user journeys)", () => {
   });
 
   test("step grid has clickable cells", async ({ page }) => {
-    const cells = page.locator(".ss-cell, [class*='ss-cell'], .step-cell");
+    const cells = page.locator(".ss-cell");
     await expect(cells.first()).toBeVisible({ timeout: 5000 });
     expect(await cells.count()).toBeGreaterThan(0);
   });
 
   test("clicking a cell toggles it on", async ({ page }) => {
-    const cell = page.locator(".ss-cell, [class*='ss-cell'], .step-cell").first();
+    const cell = page.locator(".ss-cell").first();
     await cell.click();
     await expect(cell).toHaveClass(/active|on|filled/, { timeout: 2000 });
   });
 
   test("clicking an active cell toggles it off", async ({ page }) => {
-    const cell = page.locator(".ss-cell, [class*='ss-cell'], .step-cell").first();
+    const cell = page.locator(".ss-cell").first();
     await cell.click();
     await expect(cell).toHaveClass(/active|on|filled/, { timeout: 2000 });
     await cell.click();
@@ -46,7 +46,7 @@ test.describe("Step Sequencer (user journeys)", () => {
   });
 
   test("pattern length selector is present", async ({ page }) => {
-    const selector = page.locator(".ss-length, [class*='pattern-length'], select");
+    const selector = page.locator(".ss-length, select");
     if (await selector.first().isVisible({ timeout: 3000 })) {
       await expect(selector.first()).toBeVisible();
     }

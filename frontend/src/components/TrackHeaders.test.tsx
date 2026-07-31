@@ -99,4 +99,31 @@ describe("TrackHeaders", () => {
     fireEvent.mouseDown(screen.getByText("Set Type: MIDI"));
     expect(mockedCall).toHaveBeenCalledWith("project.setTrackType", { trackIndex: 0, trackType: 1 });
   });
+
+  it("hide button toggles track hidden state via RPC", () => {
+    setTracks([mkTrack(0), mkTrack(1)]);
+    const { container } = render(<TrackHeaders />);
+    const hideBtns = container.querySelectorAll(".th-hide");
+    expect(hideBtns).toHaveLength(2);
+    // Click hide on track 1
+    fireEvent.click(hideBtns[1]);
+    expect(mockedCall).toHaveBeenCalledWith("project.setTrackHidden", { trackIndex: 1, hidden: true });
+  });
+
+  it("hidden tracks are excluded from rendered rows", () => {
+    setTracks([mkTrack(0, { isHidden: true }), mkTrack(1)]);
+    const { container } = render(<TrackHeaders />);
+    const rows = container.querySelectorAll(".th-row");
+    // Only track 1 should render; track 0 (hidden) is filtered by getVisibleTracks
+    expect(rows).toHaveLength(1);
+    expect(screen.getByText("Track 1")).toBeInTheDocument();
+    expect(screen.queryByText("Track 0")).not.toBeInTheDocument();
+  });
+
+  it("all visible tracks have a hide button", () => {
+    setTracks([mkTrack(0), mkTrack(1), mkTrack(2)]);
+    const { container } = render(<TrackHeaders />);
+    const hideBtns = container.querySelectorAll(".th-hide");
+    expect(hideBtns).toHaveLength(3);
+  });
 });
