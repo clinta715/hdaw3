@@ -3,11 +3,31 @@
 #include "proxy/ProxyCommon.h"
 #include "proxy/PluginProxySlot.h"
 #include "proxy/ProxySharedMemory.h"
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <thread>
 #include <atomic>
+#include <iostream>
 
 using namespace proxy;
+
+static juce::File findBuiltTestPlugin() {
+    auto exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                      .getParentDirectory();
+    auto candidates = {
+        exeDir.getChildFile("..").getChildFile("tests").getChildFile("test-plugin")
+              .getChildFile("HDAWTestPlugin_artefacts").getChildFile("Debug")
+              .getChildFile("VST3").getChildFile("PassthroughTest.vst3"),
+        exeDir.getChildFile("tests").getChildFile("test-plugin")
+              .getChildFile("HDAWTestPlugin_artefacts").getChildFile("Debug")
+              .getChildFile("VST3").getChildFile("PassthroughTest.vst3"),
+    };
+    for (const auto& c : candidates)
+        if (c.exists()) return c;
+    return {};
+}
 
 // ========================================================================
 // Spawn lifecycle tests
@@ -385,4 +405,316 @@ TEST(PluginIsolation, ProcessBlockWithSharedMemory) {
     // or cleared (no output available → buffer.clear()).
     // Either way, it should not crash.
     SUCCEED();
+}
+
+// ========================================================================
+// DIAGNOSTIC: trace JUCE VST3 loading failure point
+// ========================================================================
+
+TEST(PluginIsolation, DIAG_VST3LoadingTrace) {
+    juce::ScopedJuceInitialiser_GUI init;
+
+    auto pluginPath = juce::File(
+        "D:\\pdf\\roo projects\\hdaw3\\build\\tests\\test-plugin\\"
+        "HDAWTestPlugin_artefacts\\Debug\\VST3\\PassthroughTest.vst3");
+
+    if (!pluginPath.exists())
+        GTEST_SKIP() << "Test plugin not built";
+
+    juce::AudioPluginFormatManager fmtMgr;
+    fmtMgr.addFormat(new juce::VST3PluginFormat());
+
+    auto* vst3Fmt = fmtMgr.getFormats()[0];
+    std::cout << "[DIAG] fileMightContain: "
+              << vst3Fmt->fileMightContainThisPluginType(pluginPath.getFullPathName()) << std::endl;
+
+    // Step 1: findAllTypesForFile
+    juce::OwnedArray<juce::PluginDescription> types;
+    vst3Fmt->findAllTypesForFile(types, pluginPath.getFullPathName());
+    std::cout << "[DIAG] findAllTypesForFile found: " << types.size() << " types" << std::endl;
+    for (auto* t : types) {
+        std::cout << "[DIAG]   name=" << t->name.toRawUTF8()
+                  << " format=" << t->pluginFormatName.toRawUTF8()
+                  << " uid=" << t->createIdentifierString().toRawUTF8() << std::endl;
+    }
+
+    // Step 2: createPluginInstance via format manager (synchronous API)
+    if (types.size() > 0) {
+        juce::String error;
+        auto inst = fmtMgr.createPluginInstance(*types[0], 44100.0, 512, error);
+        std::cout << "[DIAG] createPluginInstance (from findAllTypes): "
+                  << (inst ? "OK" : "FAIL")
+                  << " error=" << error.toRawUTF8() << std::endl;
+    }
+
+    // Step 3: createPluginInstance with manual description
+    {
+        juce::PluginDescription desc;
+        desc.fileOrIdentifier = pluginPath.getFullPathName();
+        desc.pluginFormatName = "VST3";
+        juce::String error;
+        auto inst = fmtMgr.createPluginInstance(desc, 44100.0, 512, error);
+        std::cout << "[DIAG] createPluginInstance (manual desc): "
+                  << (inst ? "OK" : "FAIL")
+                  << " error=" << error.toRawUTF8() << std::endl;
+    }
+
+    // Step 4: try a third-party plugin
+    auto monoPath = juce::File("C:\\Program Files\\Common Files\\VST3\\Mono.vst3");
+    if (monoPath.exists()) {
+        juce::OwnedArray<juce::PluginDescription> monoTypes;
+        vst3Fmt->findAllTypesForFile(monoTypes, monoPath.getFullPathName());
+        std::cout << "[DIAG] Mono.vst3 findAllTypes: " << monoTypes.size() << " types" << std::endl;
+        if (monoTypes.size() > 0) {
+            juce::String error;
+            auto inst = fmtMgr.createPluginInstance(*monoTypes[0], 44100.0, 512, error);
+            std::cout << "[DIAG] Mono createPluginInstance: "
+                      << (inst ? "OK" : "FAIL")
+                      << " error=" << error.toRawUTF8() << std::endl;
+        }
+    }
+
+    SUCCEED();
+}
+
+// ========================================================================
+// DLL loading tests (real VST3 plugin via child process)
+// ========================================================================
+
+TEST(PluginIsolation, DLLLoadAndAudioRoundTrip) {
+    auto pluginPath = findBuiltTestPlugin();
+    if (!pluginPath.exists())
+        GTEST_SKIP() << "PassthroughTest.vst3 not built";
+
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost(
+        pluginPath.getFullPathName().toStdString(), 9050);
+    ASSERT_TRUE(spawned) << "Child should start with real VST3 DLL";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    ASSERT_TRUE(mgr.isAlive(9050)) << "Child should be alive after loading DLL";
+
+    auto* pipe = mgr.getPipe(9050);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9050;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u) << "PREPARE should succeed with real DLL";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto* shm = mgr.getShm(9050);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 100;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "Child should init shared memory after PREPARE";
+
+    uint32_t totalSamples = hdr->blockSize * hdr->numChannels;
+
+    std::vector<float> input(totalSamples);
+    for (uint32_t i = 0; i < totalSamples; ++i)
+        input[i] = 0.5f * std::sin(2.0f * 3.14159265f * 440.0f
+                     * static_cast<float>(i) / 44100.0f);
+
+    ASSERT_TRUE(shm->writeInput(input.data(), totalSamples));
+
+    retries = 200;
+    uint32_t outAvail = 0;
+    while (retries-- > 0) {
+        uint32_t ow = hdr->outputWritePos.load(std::memory_order_acquire);
+        uint32_t or_ = hdr->outputReadPos.load(std::memory_order_relaxed);
+        outAvail = ow - or_;
+        if (outAvail >= totalSamples) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(outAvail, totalSamples) << "DLL plugin should produce output";
+
+    std::vector<float> output(totalSamples);
+    ASSERT_TRUE(shm->readOutput(output.data(), totalSamples));
+
+    for (uint32_t i = 0; i < totalSamples; ++i) {
+        EXPECT_NEAR(output[i], input[i], 0.0001f)
+            << "Sample " << i << " mismatch";
+    }
+
+    mgr.killPluginHost(9050);
+}
+
+TEST(PluginIsolation, DLLParameterEnumeration) {
+    auto pluginPath = findBuiltTestPlugin();
+    if (!pluginPath.exists())
+        GTEST_SKIP() << "PassthroughTest.vst3 not built";
+
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost(
+        pluginPath.getFullPathName().toStdString(), 9051);
+    ASSERT_TRUE(spawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    ASSERT_TRUE(mgr.isAlive(9051));
+
+    auto* pipe = mgr.getPipe(9051);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage msg{};
+    msg.type = MessageType::GET_PARAM_COUNT;
+    msg.slotId = 9051;
+    pipe->sendMsg(msg);
+
+    ProxyResponse resp{};
+    ASSERT_TRUE(pipe->receiveResp(resp));
+    EXPECT_EQ(resp.result, 1u);
+
+    uint32_t paramCount = 0;
+    if (resp.dataSize >= sizeof(uint32_t))
+        std::memcpy(&paramCount, resp.data, sizeof(uint32_t));
+
+    EXPECT_EQ(paramCount, 1u) << "JUCE's VST3 wrapper exposes a bypass parameter";
+
+    mgr.killPluginHost(9051);
+}
+
+TEST(PluginIsolation, DLLStateSaveRestore) {
+    auto pluginPath = findBuiltTestPlugin();
+    if (!pluginPath.exists())
+        GTEST_SKIP() << "PassthroughTest.vst3 not built";
+
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost(
+        pluginPath.getFullPathName().toStdString(), 9052);
+    ASSERT_TRUE(spawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    ASSERT_TRUE(mgr.isAlive(9052));
+
+    auto* pipe = mgr.getPipe(9052);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage getMsg{};
+    getMsg.type = MessageType::GET_STATE;
+    getMsg.slotId = 9052;
+    pipe->sendMsg(getMsg);
+
+    ProxyResponse getResp{};
+    ASSERT_TRUE(pipe->receiveResp(getResp));
+    EXPECT_EQ(getResp.result, 1u) << "GET_STATE should succeed";
+    EXPECT_GT(getResp.dataSize, 0u) << "PassthroughTest should return state bytes";
+
+    std::vector<uint8_t> savedState(getResp.data, getResp.data + getResp.dataSize);
+
+    ProxyMessage setMsg{};
+    setMsg.type = MessageType::SET_STATE;
+    setMsg.slotId = 9052;
+    setMsg.dataSize = static_cast<uint32_t>(savedState.size());
+    std::memcpy(setMsg.data, savedState.data(),
+                std::min(savedState.size(), sizeof(setMsg.data)));
+    pipe->sendMsg(setMsg);
+
+    ProxyResponse setResp{};
+    ASSERT_TRUE(pipe->receiveResp(setResp));
+    EXPECT_EQ(setResp.result, 1u) << "SET_STATE should succeed";
+
+    mgr.killPluginHost(9052);
+}
+
+TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
+    ProxyProcessManager mgr;
+
+    std::atomic<bool> crashDetected{false};
+    std::atomic<uint32_t> crashedSlot{0};
+    mgr.setCrashCallback([&](uint32_t slotId) {
+        crashDetected.store(true);
+        crashedSlot.store(slotId);
+    });
+
+    bool spawned = mgr.spawnPluginHost("__crash__", 9053);
+    ASSERT_TRUE(spawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(9053));
+
+    auto* pipe = mgr.getPipe(9053);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9053;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    pipe->receiveResp(prepareResp);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    auto* shm = mgr.getShm(9053);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 50;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    if (hdr->numChannels > 0) {
+        uint32_t totalSamples = hdr->blockSize * hdr->numChannels;
+        std::vector<float> audio(totalSamples, 0.5f);
+        shm->writeInput(audio.data(), totalSamples);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    EXPECT_FALSE(mgr.isAlive(9053)) << "Child should have crashed";
+
+    mgr.checkAllChildren();
+    EXPECT_TRUE(crashDetected.load()) << "Crash callback should have fired";
+    EXPECT_EQ(crashedSlot.load(), 9053u);
+
+    mgr.killPluginHost(9053);
+}
+
+TEST(PluginIsolation, DLLGracefulShutdown) {
+    auto pluginPath = findBuiltTestPlugin();
+    if (!pluginPath.exists())
+        GTEST_SKIP() << "PassthroughTest.vst3 not built";
+
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost(
+        pluginPath.getFullPathName().toStdString(), 9054);
+    ASSERT_TRUE(spawned);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    ASSERT_TRUE(mgr.isAlive(9054));
+
+    auto* pipe = mgr.getPipe(9054);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage shutdownMsg{};
+    shutdownMsg.type = MessageType::SHUTDOWN;
+    shutdownMsg.slotId = 9054;
+    pipe->sendMsg(shutdownMsg);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    EXPECT_FALSE(mgr.isAlive(9054)) << "Child should exit after SHUTDOWN";
+
+    mgr.killPluginHost(9054);
 }

@@ -2,6 +2,7 @@
 #include "proxy/ProxyRingBuffer.h"
 #include "engine/CLAPPluginFormat.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -61,7 +62,12 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override
     {
-        std::abort();
+        // std::abort() raises SIGABRT through the debug CRT, which waits for
+        // the JIT debugger instead of terminating — the child would stay
+        // "alive" and crash isolation could never be observed. _Exit kills the
+        // process immediately (no debug-break/WER), which the parent detects
+        // identically to a real crash via GetExitCodeProcess.
+        std::_Exit(3);
     }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
     bool hasEditor() const override { return false; }
