@@ -13,7 +13,10 @@ void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree, cons
         // Mute/solo changes affect effectiveMuted/effectiveSoloed which depend on
         // the parent chain — the delta path can't compute these, so we must fullSync
         // so the frontend receives the correct values from ReadModelImpl.
-        if (property == IDs::isMuted || property == IDs::isSoloed) {
+        // parentId/childIds change the folder hierarchy itself, which also
+        // invalidates the effective mute/solo cascade for all descendants.
+        if (property == IDs::isMuted || property == IDs::isSoloed
+            || property == IDs::parentId || property == IDs::childIds) {
             escalateToFullSync();
             return;
         }

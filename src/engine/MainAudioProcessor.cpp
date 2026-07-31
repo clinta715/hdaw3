@@ -169,7 +169,7 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
         {
             countInActive.store(false);
             metronome.setEnabled(wasMetronomeOn);
-            beginActualRecording();
+            recordStartPending.store(true);
         }
     }
 
@@ -192,10 +192,11 @@ void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mi
     if (graphLock.tryEnter())
     {
         graphRebuildPending.store(false, std::memory_order_release);
+        if (midiLock.tryEnter())
         {
-            const juce::ScopedLock sl(midiLock);
             midiMessages.addEvents(pendingMidi, 0, -1, 0);
             pendingMidi.clear();
+            midiLock.exit();
         }
         graph.processBlock(buffer, midiMessages);
         graphLock.exit();
@@ -506,6 +507,6 @@ HDAW::LevelMeter& MainAudioProcessor::getMasterMeter()
 
 void MainAudioProcessor::addExternalMidiMessage(const juce::MidiMessage& msg)
 {
-    const juce::ScopedLock sl(midiLock);
+    const juce::SpinLock::ScopedLockType sl(midiLock);
     pendingMidi.addEvent(msg, 0);
 }

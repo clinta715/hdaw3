@@ -45,6 +45,7 @@ public:
     void updateClipGainEnvelope(int clipId, const std::vector<HDAW::ClipSourceProcessor::GainPoint>& points);
 
     bool beginActualRecording();
+    bool consumeRecordStartPending() { return recordStartPending.exchange(false); }
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -100,13 +101,14 @@ private:
     int64_t recordingStartSample = 0;
     int64_t pendingRecordStartSample = -1;
     std::atomic<bool> countInActive{ false };
+    std::atomic<bool> recordStartPending{ false };
     bool countInEnabled = false;
     int countInBars = 1;
     bool wasMetronomeOn = false;
     HDAW::Metronome metronome;
     HDAW::ExportManager exportManager;
 
-    juce::CriticalSection midiLock;
+    juce::SpinLock midiLock;
     juce::MidiBuffer pendingMidi;
 
     juce::SpinLock graphLock;

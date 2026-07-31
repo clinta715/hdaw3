@@ -1092,6 +1092,12 @@ void AudioEngine::timerCallback()
         if (auto* proc = getMainProcessor())
             proc->stopRecording();
     }
+
+    if (auto* proc = getMainProcessor())
+    {
+        if (proc->consumeRecordStartPending())
+            proc->beginActualRecording();
+    }
 }
 
 void AudioEngine::rebuildTempoMap()

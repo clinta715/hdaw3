@@ -61,6 +61,22 @@ TrackSnapshot buildTrackSnapshotFromTree(const juce::ValueTree& trackTree)
     ts.parentId    = trackTree.getProperty(IDs::parentId, -1);
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     ts.clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
+
+    bool effMuted = ts.muted;
+    bool effSoloed = ts.soloed;
+    auto trackList = trackTree.getParent();
+    int current = ts.index;
+    while (true)
+    {
+        int parentIdx = trackList.getChild(current).getProperty(IDs::parentId, -1);
+        if (parentIdx < 0 || parentIdx >= trackList.getNumChildren()) break;
+        effMuted  = effMuted  || static_cast<bool>(trackList.getChild(parentIdx).getProperty(IDs::isMuted, false));
+        effSoloed = effSoloed || static_cast<bool>(trackList.getChild(parentIdx).getProperty(IDs::isSoloed, false));
+        current = parentIdx;
+    }
+    ts.effectiveMuted = effMuted;
+    ts.effectiveSoloed = effSoloed;
+
     return ts;
 }
 

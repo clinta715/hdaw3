@@ -56,7 +56,7 @@ int AudioEngineCommands::createGhostClip(int sourceClipId, double newStart, int 
             for (int i = 0; i < rootNoteList.getNumChildren(); ++i)
             {
                 auto noteCopy = rootNoteList.getChild(i).createCopy();
-                noteCopy.setProperty(IDs::noteID, ProjectModel::allocateClipID(), &um);
+                noteCopy.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), &um);
                 ghostNoteList.addChild(noteCopy, -1, &um);
             }
         }
@@ -139,7 +139,7 @@ std::vector<int> AudioEngineCommands::paintClips(const std::vector<int>& sourceC
                     for (int n = 0; n < rootNoteList.getNumChildren(); ++n)
                     {
                         auto noteCopy = rootNoteList.getChild(n).createCopy();
-                        noteCopy.setProperty(IDs::noteID, ProjectModel::allocateClipID(), &um);
+                        noteCopy.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), &um);
                         ghostNoteList.addChild(noteCopy, -1, &um);
                     }
                 }

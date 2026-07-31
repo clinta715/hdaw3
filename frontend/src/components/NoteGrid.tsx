@@ -129,7 +129,7 @@ export default function NoteGrid({
       const h = KEY_HEIGHT - 1;
       return { x, y, w, h, noteId: n.noteId, vel: n.velocity };
     });
-  }, [notes, dragState, resizeState]);
+  }, [notes, dragState, resizeState, pixelsPerBeat]);
 
   const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
     const { snapEnabled, snapDivision } = useUiStore.getState();
