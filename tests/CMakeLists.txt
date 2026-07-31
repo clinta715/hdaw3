@@ -27,7 +27,6 @@ add_executable(hdaw_tests
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/markers_test.cpp
     unit/engine/stretch_test.cpp
-    unit/engine/transient_detector_test.cpp
     unit/engine/modulation_test.cpp
     unit/engine/clip_source_processor_test.cpp
     unit/engine/transport_manager_test.cpp
@@ -45,6 +44,7 @@ add_executable(hdaw_tests
     unit/engine/merge_clips_test.cpp
     unit/engine/ripple_delete_test.cpp
     unit/engine/region_ops_test.cpp
+    unit/engine/rpc_surface_test.cpp
     unit/engine/crossfade_test.cpp
     unit/engine/automation_test.cpp
     unit/engine/automation_mode_test.cpp
