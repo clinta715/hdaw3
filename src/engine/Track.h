@@ -28,6 +28,15 @@ public:
     void setPan(float newPan);
     void setMuted(bool shouldMute) { isMuted.store(shouldMute); }
     bool getMuted() const { return isMuted.load(); }
+    float getVolume() const { return volumeGain.getTargetValue(); }
+    float getPan() const { return panPosition.getTargetValue(); }
+
+    void restoreMixerState(float volume, float pan, bool muted)
+    {
+        volumeGain.setCurrentAndTargetValue(volume);
+        panPosition.setCurrentAndTargetValue(pan);
+        isMuted.store(muted);
+    }
 
     void rebuildFXChain(const juce::ValueTree& fxChainTree);
     int getNumFXSlots() const { return static_cast<int>(fxChain.size()); }

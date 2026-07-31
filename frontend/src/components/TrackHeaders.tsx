@@ -31,7 +31,8 @@ export default function TrackHeaders() {
   const trackMeters = useMeterStore((s) => s.tracks);
   const selectClip = useUiStore((s) => s.selectClip);
 
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [expandedTracks, setExpandedTracks] = useState<Set<number>>(new Set());
+  const [editingMidiCh, setEditingMidiCh] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef(false);
@@ -216,13 +217,21 @@ export default function TrackHeaders() {
               S
             </button>
             <button
-              className={`th-btn th-expand${showAdvanced ? " th-expand--active" : ""}`}
-              onClick={(e) => { e.stopPropagation(); setShowAdvanced(!showAdvanced); }}
-              title={showAdvanced ? "Hide advanced" : "Show advanced"}
+              className={`th-btn th-expand${expandedTracks.has(track.index) ? " th-expand--active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedTracks((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(track.index)) next.delete(track.index);
+                  else next.add(track.index);
+                  return next;
+                });
+              }}
+              title={expandedTracks.has(track.index) ? "Hide advanced" : "Show advanced"}
             >
               ⋯
             </button>
-            {showAdvanced && (
+            {expandedTracks.has(track.index) && (
               <>
                 <button
                   className={`th-btn th-arm${track.armed ? " active" : ""}`}
@@ -241,26 +250,43 @@ export default function TrackHeaders() {
               </>
             )}
           </div>
-          {showAdvanced && (
+          {expandedTracks.has(track.index) && (
             <div className="th-values">
               <span className="th-vol">V:{Math.round(track.volume * 100)}%</span>
               <span className="th-pan">{formatPan(track.pan)}</span>
-              <span
-                className="th-midi-ch"
-                title="MIDI Channel (click to edit)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const ch = prompt("MIDI Channel (1-16):", String(track.midiChannel + 1));
-                  if (ch) {
-                    const num = parseInt(ch, 10);
+              {editingMidiCh === track.index ? (
+                <input
+                  type="number"
+                  min={1}
+                  max={16}
+                  defaultValue={track.midiChannel + 1}
+                  className="th-midi-ch-input"
+                  autoFocus
+                  onBlur={(e) => {
+                    const num = parseInt(e.target.value, 10);
                     if (num >= 1 && num <= 16) {
                       rpc.call("project.setTrackMidiChannel", { trackIndex: track.index, channel: num - 1 });
                     }
-                  }
-                }}
-              >
-                Ch{track.midiChannel + 1}
-              </span>
+                    setEditingMidiCh(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") setEditingMidiCh(null);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span
+                  className="th-midi-ch"
+                  title="MIDI Channel (click to edit)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingMidiCh(track.index);
+                  }}
+                >
+                  Ch{track.midiChannel + 1}
+                </span>
+              )}
             </div>
           )}
           <div className="th-meters">

@@ -456,7 +456,7 @@ export default function AutomationLaneCanvas({
     if (!contextMenu) return;
     const close = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('.alc-context-menu')) {
+      if (!target.closest('.clip-context-menu')) {
         setContextMenu(null);
       }
     };
@@ -487,7 +487,7 @@ export default function AutomationLaneCanvas({
       />
       {contextMenu && (
         <div
-          className="alc-context-menu"
+          className="clip-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
         >

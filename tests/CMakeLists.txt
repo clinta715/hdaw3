@@ -29,6 +29,7 @@ add_executable(hdaw_tests
     unit/engine/stretch_test.cpp
     unit/engine/modulation_test.cpp
     unit/engine/clip_source_processor_test.cpp
+    unit/engine/track_mixer_state_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
     unit/engine/midi_fx_test.cpp

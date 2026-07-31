@@ -531,12 +531,12 @@
   height: 0;
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-top: 10px solid #ef4444;
+  border-top: 10px solid var(--danger);
   cursor: pointer;
   z-index: 10;
   transform: translateX(-6px);
 }
 
 .tl-marker-pin:hover {
-  border-top-color: #f87171;
+  border-top-color: var(--accent-bright);
 }

@@ -34,8 +34,8 @@
 
 .ap-add-btn {
   padding: 3px 12px;
-  background: var(--accent, #4fc3f7);
-  color: #000;
+  background: var(--accent);
+  color: var(--bg-window);
   border: none;
   border-radius: 3px;
   font-size: 11px;
@@ -100,7 +100,7 @@
 }
 
 .ap-mode-btn--active {
-  background: var(--accent, #d97706);
-  color: #000;
-  border-color: var(--accent, #d97706);
+  background: var(--accent);
+  color: var(--bg-window);
+  border-color: var(--accent);
 }

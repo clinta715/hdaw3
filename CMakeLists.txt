@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.14.0 LANGUAGES CXX)
+project(HDAW VERSION 0.14.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -291,6 +291,9 @@ if(HDAW_PLUGIN_ISOLATION)
     target_link_libraries(hdaw_plugin_host PRIVATE
         HDAW_lib
         juce::juce_audio_processors
+        juce::juce_audio_utils
+        juce::juce_gui_basics
+        juce::juce_events
         juce::juce_core
     )
 endif()

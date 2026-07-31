@@ -157,13 +157,13 @@
 .ms-btn.ms-mute.active {
   background: var(--mute-color);
   border-color: var(--mute-color);
-  color: #1a1206;
+  color: #1c1408;
 }
 
 .ms-btn.ms-solo.active {
   background: var(--solo-color);
   border-color: var(--solo-color);
-  color: #06220f;
+  color: #052e16;
 }
 
 .ms-btn.ms-arm.active {

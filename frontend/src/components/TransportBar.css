@@ -49,10 +49,10 @@
   justify-content: center;
   gap: 1px;
   padding: 4px 14px;
-  background: #0d0d0f;
+  background: var(--bg-window);
   border: 1px solid var(--border);
   border-radius: 5px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
   flex-shrink: 0;
 }
 
@@ -91,7 +91,7 @@
 .tb-btn.active {
   background: var(--accent);
   border-color: var(--accent-bright);
-  color: #fff;
+  color: var(--bg-window);
 }
 
 .tb-btn.tb-play {

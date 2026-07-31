@@ -3,10 +3,13 @@
 #include "proxy/ProxyPipe.h"
 #include "proxy/ProxySharedMemory.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_basics/juce_gui_basics.h>
 #include <string>
 #include <atomic>
 #include <memory>
 #include <thread>
+#include <mutex>
+#include <deque>
 
 class PluginHost {
 public:
@@ -21,6 +24,11 @@ private:
     void audioLoop();
     bool loadPlugin();
     bool loadPluginByPath(const juce::String& path);
+
+    void openEditorOnGUIThread();
+    void closeEditorOnGUIThread();
+    void destroyEditorWindow();
+    void onEditorWindowClosed(bool wasParentInitiated);
 
     uint32_t slotId;
     std::string pipeName, shmName, pluginPath;
@@ -39,6 +47,21 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> plugin;
     juce::AudioPluginFormatManager formatManager;
 
+    // Editor window (owned, lives on GUI thread)
+    class EditorWindow;
+    std::unique_ptr<EditorWindow> editorWindow;
+    bool parentInitiatedClose = false;
+    std::mutex editorMutex;
+
+    // Pipe thread -> GUI thread message queue
+    struct GUIMessage {
+        enum Type { OpenEditor, CloseEditor } type;
+    };
+    std::mutex guiMutex;
+    std::deque<GUIMessage> guiQueue;
+    bool guiQueueReady = false;
+
+    // Threads
     std::thread controlThread;
     std::thread audioThread;
 };

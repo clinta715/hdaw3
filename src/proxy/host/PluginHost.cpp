@@ -2,6 +2,7 @@
 #include "proxy/ProxyRingBuffer.h"
 #include "engine/CLAPPluginFormat.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_events/juce_events.h>
 #include <cstdlib>
 #include <cstring>
 
@@ -20,8 +21,6 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
-        // Audio passes through unchanged — input IS the output buffer
-        // (JUCE processes in-place for matching I/O layouts)
         (void)buffer;
     }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -62,11 +61,6 @@ public:
     void releaseResources() override {}
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override
     {
-        // std::abort() raises SIGABRT through the debug CRT, which waits for
-        // the JIT debugger instead of terminating — the child would stay
-        // "alive" and crash isolation could never be observed. _Exit kills the
-        // process immediately (no debug-break/WER), which the parent detects
-        // identically to a real crash via GetExitCodeProcess.
         std::_Exit(3);
     }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
@@ -91,6 +85,55 @@ public:
 
 } // anonymous namespace
 
+// ---------------------------------------------------------------------------
+// EditorWindow — a DocumentWindow that hosts the plugin's native GUI.
+// Listens for close button and notifies PluginHost so EDITOR_CLOSED can be
+// sent back to the parent process.
+// ---------------------------------------------------------------------------
+class PluginHost::EditorWindow : public juce::DocumentWindow
+{
+public:
+    EditorWindow(PluginHost& h, juce::AudioProcessorEditor* editor)
+        : DocumentWindow("Plugin Editor",
+                         juce::Colours::darkgrey,
+                         DocumentWindow::closeButton |
+                         DocumentWindow::minimiseButton |
+                         DocumentWindow::maximiseButton),
+          host(h)
+    {
+        setContentOwned(editor, true);
+        setResizable(true, true);
+        setResizeLimits(100, 60, 4000, 3000);
+
+        auto border = getBorderThickness();
+        int titleH = getTitleBarHeight();
+        centreWithSize(editor->getWidth() + border.getLeftAndRight(),
+                       editor->getHeight() + titleH + border.getTopAndBottom());
+
+        setVisible(true);
+        setAlwaysOnTop(true);
+        toFront(true);
+    }
+
+    ~EditorWindow() override
+    {
+        // Detach content without deleting it (the plugin owns the editor)
+        setContentOwned(nullptr, false);
+    }
+
+    void closeButtonPressed() override
+    {
+        host.onEditorWindowClosed(false);
+    }
+
+private:
+    PluginHost& host;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditorWindow)
+};
+
+// ---------------------------------------------------------------------------
+// Construction / destruction
+// ---------------------------------------------------------------------------
 PluginHost::PluginHost(uint32_t id, const std::string& pipe,
                        const std::string& shm, const std::string& plugin)
     : slotId(id), pipeName(pipe), shmName(shm), pluginPath(plugin),
@@ -100,13 +143,30 @@ PluginHost::PluginHost(uint32_t id, const std::string& pipe,
     formatManager.addFormat(new CLAPPluginFormat());
 }
 
-PluginHost::~PluginHost() {
+PluginHost::~PluginHost()
+{
     running.store(false);
+
     if (controlThread.joinable()) controlThread.join();
     if (audioThread.joinable()) audioThread.join();
+
+    destroyEditorWindow();
+    plugin.reset();
 }
 
-int PluginHost::run() {
+// ---------------------------------------------------------------------------
+// Main entry point — runs on the main thread.
+//
+// Architecture:
+//   main thread   → JUCE message dispatch loop (GUI events, OS messages)
+//   controlThread → pipe receive loop (IPC with parent)
+//   audioThread   → shared-memory audio processing
+//
+// The pipe thread receives SHOW_EDITOR / CLOSE_EDITOR messages and queues
+// them to the GUI thread via MessageManager::callAsync().
+// ---------------------------------------------------------------------------
+int PluginHost::run()
+{
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     if (!pipe.connect()) return 1;
@@ -117,12 +177,29 @@ int PluginHost::run() {
     readyResp.result = 1;
     if (!pipe.sendResp(readyResp)) return 1;
 
-    controlThread = std::thread(&PluginHost::controlLoop, this);
-
     if (!loadPlugin()) return 1;
+
+    controlThread = std::thread(&PluginHost::controlLoop, this);
 
     audioThread = std::thread(&PluginHost::audioLoop, this);
 
+    {
+        std::lock_guard<std::mutex> lock(guiMutex);
+        guiQueueReady = true;
+    }
+
+    // Main thread: run JUCE's message dispatch loop.  This pumps the Win32
+    // message queue and runs all callbacks posted via MessageManager.
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(-1);
+
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// controlLoop — runs on a background thread, receives pipe messages.
+// ---------------------------------------------------------------------------
+void PluginHost::controlLoop()
+{
     while (running.load()) {
         proxy::ProxyMessage msg{};
         if (!pipe.receiveMsg(msg)) {
@@ -227,15 +304,26 @@ int PluginHost::run() {
                 break;
             }
 
-            case proxy::MessageType::SHOW_EDITOR:
+            case proxy::MessageType::SHOW_EDITOR: {
                 editorVisible.store(true);
-                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::SHOW_EDITOR; r.result = 1; pipe.sendResp(r); }
+                juce::MessageManager::callAsync([this] { openEditorOnGUIThread(); });
+                proxy::ProxyResponse r{};
+                r.type = proxy::MessageType::SHOW_EDITOR;
+                r.result = 1;
+                pipe.sendResp(r);
                 break;
+            }
 
-            case proxy::MessageType::CLOSE_EDITOR:
+            case proxy::MessageType::CLOSE_EDITOR: {
                 editorVisible.store(false);
-                { proxy::ProxyResponse r{}; r.type = proxy::MessageType::CLOSE_EDITOR; r.result = 1; pipe.sendResp(r); }
+                parentInitiatedClose = true;
+                juce::MessageManager::callAsync([this] { closeEditorOnGUIThread(); });
+                proxy::ProxyResponse r{};
+                r.type = proxy::MessageType::CLOSE_EDITOR;
+                r.result = 1;
+                pipe.sendResp(r);
                 break;
+            }
 
             case proxy::MessageType::HEARTBEAT: {
                 auto* hdr = shm.getHeader();
@@ -253,13 +341,15 @@ int PluginHost::run() {
         }
     }
 
-    return 0;
+    // Tell the GUI thread to shut down
+    juce::MessageManager::getInstance()->stopDispatchLoop();
 }
 
-void PluginHost::controlLoop() {
-}
-
-void PluginHost::audioLoop() {
+// ---------------------------------------------------------------------------
+// audioLoop — runs on a dedicated thread, reads/writes shared-memory rings.
+// ---------------------------------------------------------------------------
+void PluginHost::audioLoop()
+{
     auto* hdr = shm.getHeader();
     if (!hdr || !plugin) return;
 
@@ -307,6 +397,9 @@ void PluginHost::audioLoop() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Plugin loading
+// ---------------------------------------------------------------------------
 bool PluginHost::loadPlugin() {
     return loadPluginByPath(juce::String(pluginPath));
 }
@@ -343,4 +436,51 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
     }
 
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Editor window management — all called on the GUI (main) thread.
+// ---------------------------------------------------------------------------
+void PluginHost::openEditorOnGUIThread()
+{
+    std::lock_guard<std::mutex> lock(editorMutex);
+
+    if (editorWindow != nullptr || plugin == nullptr)
+        return;
+
+    auto* ed = plugin->createEditor();
+    if (ed == nullptr)
+        return;
+
+    editorWindow = std::make_unique<EditorWindow>(*this, ed);
+}
+
+void PluginHost::closeEditorOnGUIThread()
+{
+    destroyEditorWindow();
+}
+
+void PluginHost::destroyEditorWindow()
+{
+    std::lock_guard<std::mutex> lock(editorMutex);
+    editorWindow.reset();
+}
+
+// Called by EditorWindow::closeButtonPressed() on the GUI thread.
+void PluginHost::onEditorWindowClosed(bool wasParentInitiated)
+{
+    editorVisible.store(false);
+
+    {
+        std::lock_guard<std::mutex> lock(editorMutex);
+        editorWindow.reset();
+    }
+
+    if (!wasParentInitiated) {
+        // User clicked the close button — notify the parent process
+        proxy::ProxyResponse r{};
+        r.type = proxy::MessageType::EDITOR_CLOSED;
+        r.result = 1;
+        pipe.sendResp(r);
+    }
 }

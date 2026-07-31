@@ -85,6 +85,25 @@ These cost real debugging time — read before touching the relevant area:
    to the pieces (the original clip is removed), so across a slice, track clips
    by position/count, not by the original id.
 
+10. **A routing-graph rebuild must restore track state, and projection seams
+    need state-preservation tests — not just no-crash smoke tests.** The
+    `ValueTree` is the source of truth with **two projections**: the `ReadModel`
+    (frontend snapshot) and the audio graph (`RoutingManager`). Both are rebuilt
+    wholesale from the tree, but `RoutingManager::addTrack` restored every *clip*
+    property while the *track* mixer state (volume/pan/mute) was never restored —
+    a fresh `Track` starts at constructor defaults (unity / centre / unmuted). Live
+    mute/volume travel the SPSC bridge to the *current* processor, so they work
+    until any `rebuildRoutingGraph()` (clip edit, load, tempo change, take switch,
+    recording) recreates the processors and silently drops that state: muted tracks
+    became audible and tracks played at unity. This was a day-one bug that survived
+    because every test asserted the `ReadModel` (always correct — the property really
+    is written) and the only rebuild test
+    (`AudioGraphSurface.RebuildRoutingGraphDoesNotCrash`) checked merely that it
+    doesn't crash. **Rule:** when you add state to a track/clip processor, restore it
+    in the rebuild path (`addTrack` uses `Track::restoreMixerState`), and cover the
+    seam with a test that mutates state, rebuilds, and asserts the **live processor**
+    (`getMainProcessor()->getTrack(idx)`) — see `track_mixer_state_test.cpp`.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what

@@ -1,4 +1,5 @@
 #include "TrackFXSlot.h"
+#include "../proxy/PluginProxySlot.h"
 
 HDAW::TrackFXSlot::~TrackFXSlot()
 {
@@ -12,7 +13,32 @@ HDAW::TrackFXSlot::~TrackFXSlot()
 
 void HDAW::TrackFXSlot::showEditor()
 {
-    if (editorWindow != nullptr || pluginInstance == nullptr)
+    if (pluginInstance == nullptr)
+        return;
+
+    if (isolated)
+    {
+        if (remoteEditorOpen)
+            return;
+        auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
+        if (!proxySlot)
+            return;
+        auto* pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
+        if (!pipe)
+            return;
+
+        proxy::ProxyMessage msg{};
+        msg.type = proxy::MessageType::SHOW_EDITOR;
+        msg.slotId = proxySlot->getSlotId();
+        pipe->sendMsg(msg);
+
+        proxy::ProxyResponse resp{};
+        pipe->receiveResp(resp);
+        remoteEditorOpen = true;
+        return;
+    }
+
+    if (editorWindow != nullptr)
         return;
 
     auto* ed = pluginInstance->createEditor();
@@ -26,4 +52,33 @@ void HDAW::TrackFXSlot::showEditor()
     editorWindow->setContentOwned(ed, true);
     editorWindow->centreWithSize(ed->getWidth(), ed->getHeight());
     editorWindow->setVisible(true);
+}
+
+void HDAW::TrackFXSlot::closeEditor()
+{
+    if (isolated)
+    {
+        if (!remoteEditorOpen)
+            return;
+        auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
+        if (proxySlot)
+        {
+            auto* pipe = proxySlot->getProcessManager().getPipe(proxySlot->getSlotId());
+            if (pipe)
+            {
+                proxy::ProxyMessage msg{};
+                msg.type = proxy::MessageType::CLOSE_EDITOR;
+                msg.slotId = proxySlot->getSlotId();
+                pipe->sendMsg(msg);
+
+                proxy::ProxyResponse resp{};
+                pipe->receiveResp(resp);
+            }
+        }
+        remoteEditorOpen = false;
+        return;
+    }
+
+    HDAW_LOG("FXSlotCloseEditor", (juce::String("entry this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " editorWindow(before)=" + (editorWindow?"set":"null")).toStdString().c_str());
+    editorWindow = nullptr;
 }

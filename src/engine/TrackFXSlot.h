@@ -360,19 +360,9 @@ public:
     }
 
     void showEditor();
+    void closeEditor();
 
-    void closeEditor()
-    {
-        HDAW_LOG("FXSlotCloseEditor", (juce::String("entry this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " editorWindow(before)=" + (editorWindow?"set":"null")).toStdString().c_str());
-        // Direct assignment (was: juce::MessageManager::callAsync([this]() { editorWindow = nullptr; })).
-        // The async form captured a raw `this`; if the TrackFXSlot was destroyed
-        // before the message was delivered, the lambda ran on a dead object
-        // (use-after-free write). The close button is invoked on the message
-        // thread, so a direct assignment is safe and avoids the lifetime bug.
-        editorWindow = nullptr;
-    }
-
-    bool isEditorOpen() const { return editorWindow != nullptr; }
+    bool isEditorOpen() const { return isolated ? remoteEditorOpen : (editorWindow != nullptr); }
 
     std::vector<InternalParamDef> getInternalParamDefs() const
     {
@@ -444,6 +434,7 @@ private:
 
     bool isExternal = false;
     bool isolated = false;
+    bool remoteEditorOpen = false;
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     juce::String pluginIdentifier;

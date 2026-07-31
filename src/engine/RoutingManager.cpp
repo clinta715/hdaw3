@@ -123,6 +123,10 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     newTrack->setPluginManager(pluginManager);
     newTrack->setProjectContext(&projectModel, trackIndex);
     newTrack->prepareToPlay(sampleRate, blockSize);
+    float trackVol = trackTree.getProperty(IDs::volume, 1.0);
+    float trackPan = trackTree.getProperty(IDs::pan, 0.0);
+    bool trackMuted = trackTree.getProperty(IDs::isMuted, false);
+    newTrack->restoreMixerState(trackVol, trackPan, trackMuted);
     auto node = graph.addNode(std::move(newTrack));
     trackProcessors[trackIndex] = static_cast<HDAW::Track*>(node->getProcessor());
     trackNodes[trackIndex] = node;

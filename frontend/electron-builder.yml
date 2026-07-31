@@ -17,6 +17,7 @@ extraResources:
     filter:
       - "HDAW_headless.exe"
       - "hdaw_plugin_scanner.exe"
+      - "hdaw_plugin_host.exe"
       - "*.dll"
 
 fileAssociations:

@@ -12,7 +12,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border-subtle, #3a3a3e);
+  border-bottom: 1px solid var(--border);
 }
 
 .uh-title {
@@ -31,15 +31,15 @@
 .uh-btn {
   padding: 3px 10px;
   font-size: 12px;
-  border: 1px solid var(--border-subtle, #3a3a3e);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg-control, #333);
-  color: var(--text-primary, #e0e0e0);
+  background: var(--bg-widget);
+  color: var(--text-primary);
   cursor: pointer;
   transition: background 0.1s;
 }
 .uh-btn:hover:not(:disabled) {
-  background: var(--bg-control-hover, #444);
+  background: var(--bg-elevated);
 }
 .uh-btn:disabled {
   opacity: 0.4;
@@ -61,7 +61,7 @@
   transition: background 0.1s;
 }
 .uh-entry:hover {
-  background: var(--bg-hover, rgba(255,255,255,0.06));
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .uh-dot {
@@ -75,7 +75,7 @@
   background: var(--accent, #d97706);
 }
 .uh-entry--redo .uh-dot {
-  background: var(--text-secondary, #888);
+  background: var(--text-secondary);
   opacity: 0.5;
 }
 .uh-entry--current .uh-dot {
@@ -93,6 +93,6 @@
 .uh-empty {
   padding: 16px 10px;
   text-align: center;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   font-style: italic;
 }

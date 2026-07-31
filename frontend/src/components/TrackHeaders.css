@@ -215,8 +215,8 @@
 }
 
 .th-monitor {
-  background: #3a3a3e;
-  color: #aaa;
+  background: var(--bg-widget);
+  color: var(--text-muted);
 }
 
 .th-monitor.active {
@@ -226,13 +226,27 @@
 
 .th-midi-ch {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
   margin-left: 4px;
 }
 
 .th-midi-ch:hover {
-  color: #d97706;
+  color: var(--accent-bright);
+}
+
+.th-midi-ch-input {
+  width: 32px;
+  height: 16px;
+  font-size: 10px;
+  text-align: center;
+  background: var(--bg-input);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  color: var(--text-primary);
+  padding: 0;
+  outline: none;
+  margin-left: 2px;
 }
 
 .th-expand {
@@ -246,9 +260,9 @@
 }
 
 .th-expand--active {
-  background: rgba(200, 140, 60, 0.15);
-  border-color: rgba(200, 140, 60, 0.3);
-  color: var(--accent-bright, #e8a040);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--accent-bright);
 }
 
 .th-resize-handle {

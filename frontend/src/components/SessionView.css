@@ -90,7 +90,7 @@
   opacity: 1;
   border-color: var(--accent-bright);
   box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
-  animation: sv-pulse 1s ease-in-out infinite;
+  animation: sv-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes sv-pulse {
@@ -99,15 +99,21 @@
     box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
   }
   50% {
-    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sv-slot--playing {
+    animation: none;
   }
 }
 
 .sv-slot-name {
   font-size: 10px;
   font-weight: 600;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   pointer-events: none;
   text-align: center;
   padding: 2px;

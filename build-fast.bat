@@ -68,6 +68,8 @@ call :check_pkg
 goto :eof
 
 :package
+cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
+if !errorlevel! neq 0 exit /b !errorlevel!
 cd /d "%ROOT%frontend"
 call npm run build
 if !errorlevel! neq 0 exit /b !errorlevel!
