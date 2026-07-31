@@ -136,7 +136,7 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
       >
         <span className={`fb-arrow ${isExpanded ? "fb-arrow--expanded" : ""}`}>&#9654;</span>
         <span className="fb-folder-icon">&#128193;</span>
-        <span className="fb-tree-name">{isRoot ? entry.name : entry.name}</span>
+        <span className="fb-tree-name">{entry.name}</span>
       </div>
       {contextMenu && isRoot && (
         <>
@@ -200,14 +200,14 @@ export default function FileBrowser() {
   const selectedFile = useBrowserStore((s) => s.selectedFile);
   const autoPreview = useBrowserStore((s) => s.autoPreview);
   const setAutoPreview = useBrowserStore((s) => s.setAutoPreview);
-  const syncPreview = useBrowserStore((s) => s.syncPreview);
-  const setSyncPreview = useBrowserStore((s) => s.setSyncPreview);
+  const tempoMatch = useBrowserStore((s) => s.tempoMatch);
+  const setTempoMatch = useBrowserStore((s) => s.setTempoMatch);
+  const sourceBpm = useBrowserStore((s) => s.sourceBpm);
+  const setSourceBpm = useBrowserStore((s) => s.setSourceBpm);
   const bpm = useTransportStore((s) => s.transport.bpm);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
-  const [tempoMatch, setTempoMatch] = useState(true);
-  const [sourceBpm, setSourceBpm] = useState(120);
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -242,10 +242,8 @@ export default function FileBrowser() {
     try {
       await rpc.call("preview.load", { filePath });
       await rpc.call("preview.setVolume", { volume });
-      // When sync is enabled, always tempo-match so the preview plays at the
-      // project tempo — the SyncableAudioSource reads from the transport
-      // position when the DAW is playing, keeping the preview in sync.
-      if (syncPreview || tempoMatch) {
+      // When tempo match is enabled, time-stretch the preview to the project tempo.
+      if (tempoMatch) {
         await rpc.call("preview.setTempoMatch", { enabled: true, fileBpm: sourceBpm });
         await rpc.call("preview.setProjectBpm", { bpm });
       } else {
@@ -284,7 +282,7 @@ export default function FileBrowser() {
         setIsPlaying(false);
       }
     }, 500);
-  }, [volume, tempoMatch, syncPreview, sourceBpm, bpm, stopPreview]);
+  }, [volume, tempoMatch, sourceBpm, bpm, stopPreview]);
 
   const handlePreviewFile = useCallback(async (filePath: string, fileName: string) => {
     if (isPlaying && previewFile?.path === filePath) {
@@ -444,14 +442,6 @@ export default function FileBrowser() {
               onChange={(e) => setAutoPreview(e.target.checked)}
             />
             <span>Auto-play</span>
-          </label>
-          <label className="fb-tempo-match-label">
-            <input
-              type="checkbox"
-              checked={syncPreview}
-              onChange={(e) => setSyncPreview(e.target.checked)}
-            />
-            <span>Sync</span>
           </label>
           <label className="fb-tempo-match-label">
             <input

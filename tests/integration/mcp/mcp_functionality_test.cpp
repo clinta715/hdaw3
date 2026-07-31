@@ -657,6 +657,47 @@ TEST_F(GuiFuncTest, AutomationEnableDisable) {
     }
 }
 
+// add_automation_lane binds a lane to a target paramID (here a plugin FX param
+// via the compound 100 + slotIndex*100 + paramIndex id). list_automation_lanes
+// then reflects the name and paramID — the MCP parity surface for the UI's
+// lane picker.
+TEST_F(GuiFuncTest, AddAutomationLaneBindsParamID) {
+    auto r = call("add_automation_lane", {
+        {"trackId", 0}, {"laneName", "S0 Cutoff"}, {"paramID", 105}
+    });
+    EXPECT_FALSE(isError(r));
+
+    auto lanes = QJsonDocument::fromJson(
+        callText("list_automation_lanes", {{"trackId", 0}}).toString().toUtf8()).array();
+    bool found = false;
+    for (const auto& l : lanes) {
+        auto obj = l.toObject();
+        if (obj.value("name").toString() == "S0 Cutoff") {
+            found = true;
+            EXPECT_EQ(obj.value("paramID").toInt(), 105);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// remove_automation_lane resolves the lane by paramID (integer) — the same
+// int-or-string addressing findLane uses for add_automation_point.
+TEST_F(GuiFuncTest, RemoveAutomationLaneByParamID) {
+    call("add_automation_lane", {
+        {"trackId", 0}, {"laneName", "S0 Gain"}, {"paramID", 100}
+    });
+
+    auto r = call("remove_automation_lane", {{"trackId", 0}, {"lane", 100}});
+    EXPECT_FALSE(isError(r));
+
+    auto lanes = QJsonDocument::fromJson(
+        callText("list_automation_lanes", {{"trackId", 0}}).toString().toUtf8()).array();
+    for (const auto& l : lanes) {
+        EXPECT_NE(l.toObject().value("paramID").toInt(), 100);
+    }
+}
+
 // ============================================================================
 // SCALE
 // ============================================================================

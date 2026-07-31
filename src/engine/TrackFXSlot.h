@@ -221,7 +221,10 @@ public:
                 delay->prepare(spec);
                 float delaySec = (internalParamValues.size() > 0) ? internalParamValues[0] : 0.5f;
                 int delaySamps = juce::roundToInt(delaySec * spec.sampleRate);
-                delay->setDelay(std::max(1, delaySamps));
+                delaySamps = std::max(1, delaySamps);
+                delay->setDelay(delaySamps);
+                lastDelayTime = delaySec;
+                lastDelaySamps = delaySamps;
                 break;
             }
             case ActiveType::EQ:
@@ -301,8 +304,15 @@ public:
                     float fb = internalParamValues[1];
                     float wetMix = internalParamValues[2];
                     float dryMix = 1.0f - wetMix;
-                    int delaySamps = juce::roundToInt(internalParamValues[0] * sampleRate_);
-                    delaySamps = std::max(1, delaySamps);
+                    float delayTime = internalParamValues[0];
+                    // Only recompute delay samples when the parameter changes
+                    if (delayTime != lastDelayTime)
+                    {
+                        lastDelayTime = delayTime;
+                        lastDelaySamps = juce::roundToInt(delayTime * sampleRate_);
+                        lastDelaySamps = std::max(1, lastDelaySamps);
+                    }
+                    int delaySamps = lastDelaySamps;
                     auto& outputBlock = context.getOutputBlock();
                     auto numChannels = outputBlock.getNumChannels();
                     auto numSamples = outputBlock.getNumSamples();
@@ -451,6 +461,10 @@ private:
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
 
+    // Delay parameter cache — avoids recomputing delay samples per sample
+    float lastDelayTime = -1.0f;
+    int lastDelaySamps = 1;
+
     mutable std::vector<ParamInfo> cachedParams;
     std::atomic<int> numParams{ 0 };
     std::unique_ptr<std::atomic<float>[]> paramValues;
@@ -509,6 +523,8 @@ private:
                     int delaySamps = juce::roundToInt(value * sampleRate_);
                     delaySamps = std::max(1, delaySamps);
                     delay->setDelay(delaySamps);
+                    lastDelayTime = value;
+                    lastDelaySamps = delaySamps;
                 }
                 break;
             }

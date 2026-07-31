@@ -30,15 +30,15 @@ multiple times across phases.
 ---
 
 ## Phase 1 — Arrangement & timeline
-1. **Typed tracks** (audio/instrument/bus/folder/group) *(foundation — unlocks Phase 4)*
-2. Track folders / grouping
-3. Track colors, height, show/hide
-4. Ripple edit
-5. **Clip-launch / session view** *(epic — non-linear paradigm, could split to its own phase)*
+1. ~~**Typed tracks** (audio/instrument/bus/folder/group)~~ ✅ *(foundation — unlocks Phase 4)*
+2. ~~Track folders / grouping~~ ✅
+3. ~~Track colors, height, show/hide~~ ✅
+4. ~~Ripple edit~~ ✅
+5. ~~**Clip-launch / session view**~~ ✅ *(8 scenes × N tracks, scene buttons, clip slots, quantized launch)*
 
 ## Phase 2 — MIDI editing
 1. Finish CC controller lanes (complete the partial)
-2. Step sequencer / drum pattern editor
+2. ~~Step sequencer / drum pattern editor~~ ✅
 3. **MIDI effects rack** — arpeggiator, chord, scale, velocity, note-length (needs a MIDI FX chain)
 4. Input quantize while recording
 5. **Groove/swing engine** *(foundation — reused Phase 3 & 7)*
@@ -46,9 +46,9 @@ multiple times across phases.
 7. **MPE / note expression** *(epic — per-note pitch/pressure/slide)*
 
 ## Phase 3 — Audio recording & editing
-1. Auto crossfades between adjacent clips
-2. Comping / take lanes + flatten
-3. Punch in/out
+1. ~~Auto crossfades between adjacent clips~~ ✅
+2. ~~Comping / take lanes~~ ✅ (basic: multiple takes, switch via context menu)
+3. ~~Punch in/out~~ ✅ (uses loop region as boundaries)
 4. **Audio warp / elastic markers** *(epic — transient detection + warp engine; consumes groove engine)*
 5. Audio quantize to groove *(consumes groove engine)*
 6. Freeze / bounce-in-place *(foundation — reused Phase 4)*
@@ -62,20 +62,20 @@ multiple times across phases.
 5. Render MIDI+instrument to audio *(consumes bounce engine from Phase 3)*
 
 ## Phase 5 — FX & processing
-1. Modulation FX — chorus/flanger/phaser/tremolo *(quick juce_dsp wins)*
+1. ~~Modulation FX — chorus/flanger/phaser/tremolo~~ ✅ *(chorus/flanger/phaser done; tremolo remaining)*
 2. Distortion/saturation, filters, limiter/maximizer, tuner
 3. Spectrum analyzer / oscilloscope
-4. FX presets & preset browser
+4. ~~FX presets & preset browser~~ ✅ (plugin factory presets done; FX chain presets remaining)
 5. Per-slot wet/dry knob, oversampling
 
 ## Phase 6 — Automation
-1. Automation modes (Read/Write/Touch/Latch)
+1. ~~Automation modes (Read/Write/Touch/Latch)~~ ✅
 2. Bezier/curve automation shapes
 3. Clip-based automation
 4. Relative/trim automation
 
 ## Phase 7 — Tempo & time
-1. Time-signature track (multiple sig changes)
+1. ~~Time-signature track (multiple sig changes)~~ ✅
 2. Tempo detection/mapping from audio
 3. Swing / global groove quantize *(consumes groove engine)*
 
@@ -86,7 +86,7 @@ multiple times across phases.
 4. Multi-out instruments, CV/gate
 
 ## Phase 9 — Mixing
-1. Loudness metering (LUFS/RMS/true-peak) *(quick, high value)*
+1. ~~Loudness metering (LUFS/RMS/true-peak)~~ ✅ *(RMS + LUFS momentary done; true-peak remaining)*
 2. VCA / group faders
 3. Sidechain routing UI *(consumes Phase 8 engine)*
 4. Per-channel input trim & phase invert

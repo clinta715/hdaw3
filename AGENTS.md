@@ -22,7 +22,7 @@ pitfall, search the relevant file; for architecture start with
 | File | Contents |
 |------|----------|
 | [`docs/architecture.md`](docs/architecture.md) | Build, version management, key classes, GUI-engine decoupling, frontend architecture, timestretch, JUCE 9 migration, **beats-vs-seconds unit convention** |
-| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation (default ON), **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness** |
+| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation (default ON), **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness, latency evaluation, quality/fidelity evaluation** |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup** |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads, **vertical fader `direction: reverse` invalid** |
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest suite, TransportLoopback test seam, MCP server architecture, MCP tool safety, file browser audio preview |
@@ -58,7 +58,22 @@ These cost real debugging time — read before touching the relevant area:
    `ProjectModel::sliceClipAtTimes` directly — it does NOT rebuild — and do one
    `rebuildRoutingGraph()` at the end; the command-layer `sliceClipAtTimes`
    wrapper rebuilds per call, which defeats the coalescing.
-7. **The default project isn't empty — snapshot tests must scope to a track
+7. **Every audio engine change affects latency — evaluate it explicitly.**
+   Any modification to `processBlock`, plugin graph topology, bus layout,
+   buffer sizes, or signal-path length changes the overall input-to-output
+   latency. Before merging an engine change, measure the reported latency
+   (`getTotalLatency()`) before and after, and verify that plugin delay
+   compensation still aligns all tracks. A regression here causes audible
+   phase issues and MIDI timing drift. See `docs/realtime-safety.md`.
+8. **Every audio engine change affects quality and fidelity — evaluate it explicitly.**
+   Modifications to signal processing (sample rate conversion, timestretch,
+   mixing, FX chain, plugin hosting, buffer handling) can introduce artifacts:
+   clicks, pops, DC offset, aliasing, clipping, or degraded dynamic range.
+   Before merging, A/B test with critical listening on reference material and
+   verify no unintended signal degradation. Check for denormalized floats,
+   integer overflow in accumulators, and incorrect gain staging. See
+   `docs/realtime-safety.md`.
+9. **The default project isn't empty — snapshot tests must scope to a track
    they control.** `createDefaultProject()` ships track 1 ("Synth") with
    `Melody`/`Chords` clips; only track 0 ("Track 1") starts empty. Any
    project-wide op (ripple delete, region ops) processes those too, so

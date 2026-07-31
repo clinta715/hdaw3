@@ -8,6 +8,7 @@
 #include "../engine/PluginManager.h"
 #include "../engine/Track.h"
 #include "../engine/PhraseGenerator.h"
+#include "../engine/ArrangementGenerator.h"
 #include "../engine/ProjectSerializer.h"
 #include <QJsonArray>
 #include <QJsonObject>
@@ -207,7 +208,8 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
                   {"pan",    QJsonObject{{"type","number"}}},
                   {"mute",   QJsonObject{{"type","boolean"}}},
                   {"solo",   QJsonObject{{"type","boolean"}}},
-                  {"color",  QJsonObject{{"type","integer"}}}}, {"trackId"}),
+                  {"color",  QJsonObject{{"type","integer"}}},
+                  {"hidden", QJsonObject{{"type","boolean"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             int id = a.value("trackId").toInt();
@@ -220,6 +222,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             if (a.contains("mute"))   t.setProperty(IDs::isMuted, a.value("mute").toBool(), &um);
             if (a.contains("solo"))   t.setProperty(IDs::isSoloed, a.value("solo").toBool(), &um);
             if (a.contains("color"))  t.setProperty(IDs::color, a.value("color").toInt(), &um);
+            if (a.contains("hidden")) t.setProperty(IDs::isHidden, a.value("hidden").toBool(), &um);
             return McpToolResult::text("ok");
         }});
 
@@ -610,7 +613,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         {"Pad",        PhraseGenerator::Pad},
         {"Lead",       PhraseGenerator::Lead},
         {"RandomWalk", PhraseGenerator::RandomWalk},
-        {"Buildup",    PhraseGenerator::Buildup}
+        {"Buildup",    PhraseGenerator::Buildup},
+        {"Euclidean",  PhraseGenerator::Euclidean}
     };
 
     s.registerTool({"set_scale", "Set the project scale (root 0..11, mode 0..20).",
@@ -695,7 +699,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"style",       QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup"}}}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
                   {"length",      QJsonObject{{"type","number"}}},
                   {"density",     QJsonObject{{"type","integer"}}},
                   {"start",       QJsonObject{{"type","number"}}},
@@ -705,7 +709,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"minVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"maxVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"scaleRoot",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
-                  {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}}},
+                  {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
+                  {"seed",        QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","style","length","density"}),
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::PhraseParams p;
@@ -721,6 +726,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.maxVelocity = a.contains("maxVelocity") ? a.value("maxVelocity").toInt() : 110;
             p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : e->getProjectModel().getScaleRoot();
             p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
             auto notes = PhraseGenerator::generatePhrase(p);
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0),
@@ -742,7 +748,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"minVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"maxVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"scaleRoot",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
-                  {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}}},
+                  {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
+                  {"seed",        QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","rootPitch","chordType","length"}),
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::ChordParams p;
@@ -758,6 +765,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.maxVelocity = a.contains("maxVelocity") ? a.value("maxVelocity").toInt() : 110;
             p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : e->getProjectModel().getScaleRoot();
             p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
             auto notes = PhraseGenerator::generateChord(a.value("rootPitch").toInt(), p);
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0),
@@ -778,7 +786,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"minVelocity",      QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"maxVelocity",      QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"scaleRoot",        QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
-                  {"scaleMode",        QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}}},
+                  {"scaleMode",        QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
+                  {"seed",             QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","pattern","beatsPerChord"}),
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::ProgressionParams p;
@@ -794,12 +803,51 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.maxVelocity = a.contains("maxVelocity") ? a.value("maxVelocity").toInt() : 110;
             p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : e->getProjectModel().getScaleRoot();
             p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
             auto notes = PhraseGenerator::generateProgression(p);
             const auto& pats = PhraseGenerator::getProgressionPatterns();
             int patIdx = std::clamp(p.patternIndex, 0, (int)pats.size() - 1);
             double total = p.beatsPerChord * pats[patIdx].chords.size();
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0), total, notes);
+        }});
+
+    s.registerTool({"generate_arrangement", "Generate a multi-track arrangement (kick, hats, clap, bass) into new clips, one track per part. Deterministic for a given seed (0 = random).",
+        objSchema({{"bars",            QJsonObject{{"type","integer"},{"minimum",1}}},
+                  {"style",           QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"complexity",      QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},
+                  {"swingPercent",    QJsonObject{{"type","number"}}},
+                  {"seed",            QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"scaleRoot",       QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
+                  {"scaleMode",       QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
+                  {"enableKick",      QJsonObject{{"type","boolean"}}},
+                  {"enableClosedHat", QJsonObject{{"type","boolean"}}},
+                  {"enableOpenHat",   QJsonObject{{"type","boolean"}}},
+                  {"enableClap",      QJsonObject{{"type","boolean"}}},
+                  {"enableBass",      QJsonObject{{"type","boolean"}}},
+                  {"enableLead",      QJsonObject{{"type","boolean"}}},
+                  {"enableChords",    QJsonObject{{"type","boolean"}}}},
+                 {"bars"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::ArrangementParams p;
+            p.bars = a.value("bars").toInt(32);
+            p.style = a.value("style").toInt(0);
+            p.complexity = a.contains("complexity") ? a.value("complexity").toDouble() : 0.5;
+            p.swingPercent = a.contains("swingPercent") ? a.value("swingPercent").toDouble() : 50.0;
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
+            p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : e->getProjectModel().getScaleRoot();
+            p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
+            p.enableKick = a.contains("enableKick") ? a.value("enableKick").toBool() : true;
+            p.enableClosedHat = a.contains("enableClosedHat") ? a.value("enableClosedHat").toBool() : true;
+            p.enableOpenHat = a.contains("enableOpenHat") ? a.value("enableOpenHat").toBool() : true;
+            p.enableClap = a.contains("enableClap") ? a.value("enableClap").toBool() : true;
+            p.enableBass = a.contains("enableBass") ? a.value("enableBass").toBool() : true;
+            p.enableLead = a.contains("enableLead") ? a.value("enableLead").toBool() : false;
+            p.enableChords = a.contains("enableChords") ? a.value("enableChords").toBool() : false;
+            auto r = e->getProjectCommands().generateArrangement(p);
+            return McpToolResult::text(QString("tracks=%1 clips=%2 notes=%3 seed=%4")
+                .arg(r.trackIndices.size()).arg(r.clipIds.size()).arg(r.noteCount)
+                .arg(static_cast<qulonglong>(r.seed)));
         }});
 }
 

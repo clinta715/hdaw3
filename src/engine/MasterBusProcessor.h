@@ -18,6 +18,7 @@ public:
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
         scratchBuffer.setSize(2, samplesPerBlock);
+        meter.setComputeLufs(true);
         meter.prepare(sampleRate, samplesPerBlock);
     }
 

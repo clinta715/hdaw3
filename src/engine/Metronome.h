@@ -12,6 +12,21 @@ public:
     {
         sr = sampleRate;
         clickSamples = static_cast<int>(0.025 * sampleRate);
+
+        // Pre-render click waveforms: sine × exponential decay
+        // Two clicks: downbeat (1500 Hz) and beat (880 Hz)
+        clickBufferDownbeat.setSize(1, clickSamples);
+        clickBufferBeat.setSize(1, clickSamples);
+
+        for (int s = 0; s < clickSamples; ++s)
+        {
+            double t = static_cast<double>(s) / sr;
+            float env = static_cast<float>(std::exp(-t * 80.0));
+            clickBufferDownbeat.setSample(0, s,
+                env * static_cast<float>(std::sin(2.0 * 3.14159265358979 * 1500.0 * t)));
+            clickBufferBeat.setSample(0, s,
+                env * static_cast<float>(std::sin(2.0 * 3.14159265358979 * 880.0 * t)));
+        }
     }
 
     void setEnabled(bool e) { enabled.store(e); }
@@ -57,20 +72,21 @@ public:
 private:
     void renderClick(juce::AudioBuffer<float>& buffer, int offset, bool isDownbeat)
     {
-        const double freq = isDownbeat ? 1500.0 : 880.0;
         const float amp = isDownbeat ? 0.4f : 0.25f;
         const int numChannels = buffer.getNumChannels();
         const int bufferSize = buffer.getNumSamples();
 
-        for (int s = 0; s < clickSamples && (offset + s) < bufferSize; ++s)
-        {
-            const double t = static_cast<double>(s) / sr;
-            const float env = amp * static_cast<float>(std::exp(-t * 80.0));
-            const float sample = env * static_cast<float>(
-                std::sin(2.0 * 3.14159265358979 * freq * t));
+        const juce::AudioBuffer<float>& clickSource = isDownbeat ? clickBufferDownbeat : clickBufferBeat;
 
-            for (int ch = 0; ch < numChannels; ++ch)
-                buffer.addSample(ch, offset + s, sample);
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            const float* src = clickSource.getReadPointer(0);
+            float* dest = buffer.getWritePointer(ch, offset);
+            const int samplesAvailable = bufferSize - offset;
+            const int samplesToCopy = (std::min)(clickSamples, samplesAvailable);
+
+            for (int s = 0; s < samplesToCopy; ++s)
+                dest[s] += src[s] * amp;
         }
     }
 
@@ -78,6 +94,9 @@ private:
     int clickSamples = 1102;
     std::atomic<bool> enabled{ false };
     std::atomic<int> beatsPerBar{ 4 };
+
+    juce::AudioBuffer<float> clickBufferDownbeat;
+    juce::AudioBuffer<float> clickBufferBeat;
 };
 
 } // namespace HDAW

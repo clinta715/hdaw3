@@ -30,7 +30,19 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [lowNote, setLowNote] = useState(48);
   const [highNote, setHighNote] = useState(84);
   const [velocity, setVelocity] = useState(90);
+  const [seed, setSeed] = useState(0);
   const [trackIndex, setTrackIndex] = useState(selectedTrackIndex ?? 0);
+
+  // Arrangement params
+  const [bars, setBars] = useState(32);
+  const [complexity, setComplexity] = useState(0.5);
+  const [swing, setSwing] = useState(50);
+  const [enKick, setEnKick] = useState(true);
+  const [enHats, setEnHats] = useState(true);
+  const [enClap, setEnClap] = useState(true);
+  const [enBass, setEnBass] = useState(true);
+  const [enLead, setEnLead] = useState(false);
+  const [enChords, setEnChords] = useState(false);
 
   // Keep track index in sync with the current selection
   useEffect(() => {
@@ -94,6 +106,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
     else if (name === "Lead")     { setLengthBeats(4); setDensity(16); setLowNote(60); setHighNote(96); }
     else if (name === "RandomWalk") { setLengthBeats(4); setDensity(12); }
     else if (name === "Buildup")  { setLengthBeats(8); setDensity(32); }
+    else if (name === "Euclidean") { setLengthBeats(4); setDensity(5); }
     else                          { setLengthBeats(4); setDensity(8); }
   }, [styles]);
 
@@ -111,6 +124,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
         highNote,
         minVelocity: Math.max(0, velocity - 20),
         maxVelocity: Math.min(127, velocity + 10),
+        seed,
       };
 
       if (mode === 0) {
@@ -132,7 +146,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           arpeggioRate,
           durationBeats: chordDuration,
         }) as { clipId: number; noteCount: number };
-      } else {
+      } else if (mode === 2) {
         result = await rpc.call("composition.generateProgression", {
           ...shared,
           patternIndex,
@@ -142,6 +156,24 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           arpeggiate,
           arpeggioRate,
         }) as { clipId: number; noteCount: number };
+      } else if (mode === 3) {
+        const arr = await rpc.call("composition.generateArrangement", {
+          ...shared,
+          bars,
+          complexity,
+          swingPercent: swing,
+          enableKick: enKick,
+          enableClosedHat: enHats,
+          enableOpenHat: enHats,
+          enableClap: enClap,
+          enableBass: enBass,
+          enableLead: enLead,
+          enableChords: enChords,
+        }) as { trackIndices: number[]; clipIds: number[]; noteCount: number; seed: number };
+        setPreview(`Arrangement: ${arr.noteCount} notes across ${arr.clipIds.length} clips`);
+        useProjectStore.setState({ isDirty: true });
+        setTimeout(() => onClose(), 400);
+        return;
       }
 
       if (result) {
@@ -175,6 +207,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               <option value={0}>Phrase</option>
               <option value={1}>Single Chord</option>
               <option value={2}>Chord Progression</option>
+              <option value={3}>Arrangement</option>
             </select>
           </div>
 
@@ -234,6 +267,18 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               onChange={(e) => setVelocity(Number(e.target.value))}
             />
             <span className="pgd-value">{velocity}</span>
+          </div>
+
+          <div className="pgd-row">
+            <label className="pgd-label">Seed</label>
+            <input
+              className="pgd-input"
+              type="number"
+              min={0}
+              value={seed}
+              onChange={(e) => setSeed(Number(e.target.value))}
+            />
+            <span className="pgd-unit">{seed === 0 ? "random" : "fixed"}</span>
           </div>
 
           {/* Phrase page */}
@@ -353,6 +398,38 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
                 <label className="pgd-label">Note Length</label>
                 <input className="pgd-input" type="number" min={0.25} max={16} step={0.25} value={progDuration} onChange={(e) => setProgDuration(Number(e.target.value))} />
                 <span className="pgd-unit">beats</span>
+              </div>
+            </div>
+          )}
+
+          {/* Arrangement page */}
+          {mode === 3 && (
+            <div className="pgd-page">
+              <div className="pgd-row">
+                <label className="pgd-label">Bars</label>
+                <input className="pgd-input" type="number" min={4} max={256} value={bars} onChange={(e) => setBars(Number(e.target.value))} />
+                <span className="pgd-unit">bars</span>
+              </div>
+              <div className="pgd-row pgd-velocity-row">
+                <label className="pgd-label">Complexity</label>
+                <input className="pgd-slider" type="range" min={0} max={1} step={0.05} value={complexity} onChange={(e) => setComplexity(Number(e.target.value))} />
+                <span className="pgd-value">{complexity.toFixed(2)}</span>
+              </div>
+              <div className="pgd-row pgd-velocity-row">
+                <label className="pgd-label">Swing</label>
+                <input className="pgd-slider" type="range" min={0} max={100} value={swing} onChange={(e) => setSwing(Number(e.target.value))} />
+                <span className="pgd-value">{swing}%</span>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">Tracks</label>
+                <div className="pgd-inline-group">
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enKick} onChange={(e) => setEnKick(e.target.checked)} /> Kick</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enHats} onChange={(e) => setEnHats(e.target.checked)} /> Hats</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enClap} onChange={(e) => setEnClap(e.target.checked)} /> Clap</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enBass} onChange={(e) => setEnBass(e.target.checked)} /> Bass</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enLead} onChange={(e) => setEnLead(e.target.checked)} /> Lead</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enChords} onChange={(e) => setEnChords(e.target.checked)} /> Chords</label>
+                </div>
               </div>
             </div>
           )}

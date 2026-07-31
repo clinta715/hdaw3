@@ -107,6 +107,12 @@ export default function TrackHeaders() {
     input.click();
   };
 
+  const handleHideToggle = (idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const currentlyHidden = tracks[idx].isHidden ?? false;
+    rpc.call("project.setTrackHidden", { trackIndex: idx, hidden: !currentlyHidden }).catch(console.error);
+  };
+
   const handleHeightDrag = (idx: number, startY: number, startH: number) => {
     const onMove = (me: MouseEvent) => {
       const delta = me.clientY - startY;
@@ -147,7 +153,7 @@ export default function TrackHeaders() {
           return (
           <div
             key={track.index}
-            className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}`}
+            className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}${track.isHidden ? " th-row--hidden" : ""}`}
             style={{ height: layout.heights[idx], paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
             onClick={() => selectClip(null, track.index)}
             onContextMenu={(e) => {
@@ -181,6 +187,13 @@ export default function TrackHeaders() {
             onClick={(e) => handleColorChange(track.index, e)}
             title="Click to change track color"
           />
+          <button
+            className={`th-btn th-hide${track.isHidden ? " active" : ""}`}
+            onClick={(e) => handleHideToggle(track.index, e)}
+            title={track.isHidden ? "Show track" : "Hide track"}
+          >
+            {track.isHidden ? "\u25CB" : "\u25CF"}
+          </button>
           <div className="th-info">
             <div className="th-name">{track.name}</div>
             <div className="th-type" style={{ color: TRACK_TYPE_COLORS[track.trackType] ?? TRACK_TYPE_COLORS[0] }}>

@@ -15,6 +15,7 @@
 #include "../common/MidiService.h"
 #include "../common/SettingsKeys.h"
 #include "../engine/PhraseGenerator.h"
+#include "../engine/ArrangementGenerator.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
@@ -1153,7 +1154,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
     }
     if (m == "getStyleNames") {
         QJsonArray arr;
-        for (int i = 0; i <= static_cast<int>(PhraseGenerator::Buildup); ++i) {
+        for (int i = 0; i <= static_cast<int>(PhraseGenerator::Euclidean); ++i) {
             arr.append(QJsonObject{ { "index", i }, { "name", PhraseGenerator::styleName(static_cast<PhraseGenerator::Style>(i)) } });
         }
         return { false, arr };
@@ -1196,6 +1197,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         else if (styleStr == "Lead")       style = PhraseGenerator::Lead;
         else if (styleStr == "RandomWalk") style = PhraseGenerator::RandomWalk;
         else if (styleStr == "Buildup")    style = PhraseGenerator::Buildup;
+        else if (styleStr == "Euclidean")  style = PhraseGenerator::Euclidean;
 
         PhraseGenerator::PhraseParams pp;
         pp.style = style;
@@ -1208,6 +1210,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         pp.highNote = optInt(o, "highNote", 84, nullptr);
         pp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
         pp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+        pp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
 
         double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
         auto notes = PhraseGenerator::generatePhrase(pp);
@@ -1237,6 +1240,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         cp.highNote = optInt(o, "highNote", 84, nullptr);
         cp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
         cp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+        cp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
 
         double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
         auto notes = PhraseGenerator::generateChord(rootPitch, cp);
@@ -1265,6 +1269,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         prp.highNote = optInt(o, "highNote", 84, nullptr);
         prp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
         prp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
+        prp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
 
         const auto& patterns = PhraseGenerator::getProgressionPatterns();
         if (patternIndex < 0 || patternIndex >= static_cast<int>(patterns.size()))
@@ -1275,6 +1280,39 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         double clipDuration = prp.beatsPerChord * static_cast<double>(patterns[patternIndex].chords.size());
         std::string name = std::string("Progression: ") + patterns[patternIndex].name;
         return generateIntoClip(trackIndex, startBeat, clipDuration, name, notes);
+    }
+
+    if (m == "generateArrangement") {
+        HDAW::ArrangementParams ap;
+        ap.bars        = optInt(o, "bars", 32, nullptr);
+        ap.bpm         = optDouble(o, "bpm", engine.getTransportManager().getBPM(), nullptr);
+        ap.scaleRoot   = optInt(o, "scaleRoot", engine.getProjectModel().getScaleRoot(), nullptr);
+        ap.scaleMode   = optInt(o, "scaleMode", engine.getProjectModel().getScaleMode(), nullptr);
+        ap.seed        = optInt<uint64_t>(o, "seed", 0, nullptr);
+        ap.style       = optInt(o, "style", 0, nullptr);
+        ap.complexity  = optDouble(o, "complexity", 0.5, nullptr);
+        ap.swingPercent= optDouble(o, "swingPercent", 50.0, nullptr);
+        ap.enableKick      = optBool(o, "enableKick", true, nullptr);
+        ap.enableClosedHat = optBool(o, "enableClosedHat", true, nullptr);
+        ap.enableOpenHat   = optBool(o, "enableOpenHat", true, nullptr);
+        ap.enableClap      = optBool(o, "enableClap", true, nullptr);
+        ap.enableSnare     = optBool(o, "enableSnare", false, nullptr);
+        ap.enableBass      = optBool(o, "enableBass", true, nullptr);
+        ap.enableLead      = optBool(o, "enableLead", false, nullptr);
+        ap.enableChords    = optBool(o, "enableChords", false, nullptr);
+
+        auto result = c.generateArrangement(ap);
+
+        QJsonArray tracks, clips;
+        for (int t : result.trackIndices) tracks.append(t);
+        for (int ci : result.clipIds) clips.append(ci);
+        QJsonObject res{
+            { "trackIndices", tracks },
+            { "clipIds", clips },
+            { "noteCount", result.noteCount },
+            { "seed", static_cast<double>(result.seed) }
+        };
+        return { false, res };
     }
 
     return makeError(-32601, "unknown composition method: " + m);

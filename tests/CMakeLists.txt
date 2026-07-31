@@ -37,6 +37,9 @@ add_executable(hdaw_tests
     unit/engine/transient_detector_test.cpp
     unit/engine/region_clipboard_test.cpp
     unit/engine/bpm_detector_test.cpp
+    unit/engine/generative_test.cpp
+    unit/engine/phrase_generator_test.cpp
+    unit/engine/arrangement_generator_test.cpp
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
     unit/engine/merge_clips_test.cpp

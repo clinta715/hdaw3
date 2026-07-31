@@ -23,39 +23,51 @@ public:
         // EMA coefficient adjusted for per-block updates (time constant 0.3s)
         float blockRate = static_cast<float>(sampleRate / std::max(1, samplesPerBlock));
         rmsCoeff = 1.0f - std::exp(-1.0f / (blockRate * 0.3f));
-        prepareLufs(sampleRate);
+        if (computeLufs)
+            prepareLufs(sampleRate);
     }
+
+    void setComputeLufs(bool enabled) { computeLufs = enabled; }
+    bool isComputingLufs() const { return computeLufs; }
 
     void update(const juce::AudioBuffer<float>& buffer)
     {
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
 
-        if (numSamples > 0)
+        if (numSamples <= 0)
+            return;
+
+        // Fold peak detection into the RMS loop — one pass instead of
+        // a separate getMagnitude() scan + RMS loop.
+        float peakL = 0.0f, peakR = 0.0f;
+        float sumL = 0.0f, sumR = 0.0f;
+
+        for (int s = 0; s < numSamples; ++s)
         {
-            if (numChannels >= 1)
-                leftLevel.store(buffer.getMagnitude(0, 0, numSamples));
-            
-            if (numChannels >= 2)
-                rightLevel.store(buffer.getMagnitude(1, 0, numSamples));
-            else if (numChannels >= 1)
-                rightLevel.store(leftLevel.load());
+            float l = buffer.getSample(0, s);
+            float absL = std::abs(l);
+            if (absL > peakL) peakL = absL;
+            sumL += l * l;
+
+            if (numChannels > 1)
+            {
+                float r = buffer.getSample(1, s);
+                float absR = std::abs(r);
+                if (absR > peakR) peakR = absR;
+                sumR += r * r;
+            }
         }
 
+        leftLevel.store(peakL);
+        if (numChannels >= 2)
+            rightLevel.store(peakR);
+        else
+            rightLevel.store(peakL);
+
         // RMS: exponential moving average
-        if (rmsCoeff > 0.0f && numSamples > 0)
+        if (rmsCoeff > 0.0f)
         {
-            float sumL = 0.0f, sumR = 0.0f;
-            for (int s = 0; s < numSamples; ++s)
-            {
-                float l = buffer.getSample(0, s);
-                sumL += l * l;
-                if (numChannels > 1)
-                {
-                    float r = buffer.getSample(1, s);
-                    sumR += r * r;
-                }
-            }
             float rmsL_new = std::sqrt(sumL / numSamples);
             float rmsR_new = (numChannels > 1) ? std::sqrt(sumR / numSamples) : rmsL_new;
 
@@ -65,8 +77,8 @@ public:
             rmsRight.store(prevR + rmsCoeff * (rmsR_new - prevR), std::memory_order_relaxed);
         }
 
-        // LUFS momentary (K-weighted, 400ms window)
-        if (kwInitialized && numSamples > 0)
+        // LUFS momentary (K-weighted, 400ms window) — only on master bus
+        if (computeLufs && kwInitialized)
         {
             for (int s = 0; s < numSamples; ++s)
             {
@@ -106,6 +118,8 @@ private:
     std::atomic<float> rmsLeft;
     std::atomic<float> rmsRight;
     float rmsCoeff{0.0f};
+
+    bool computeLufs = false;
 
     // LUFS momentary (K-weighted, 400ms sliding window)
     struct KWeightFilter {

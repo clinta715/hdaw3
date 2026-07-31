@@ -4,24 +4,61 @@
 #include <cmath>
 #include <cstdlib>
 
-static std::mt19937& rng()
+namespace
 {
-    static std::mt19937 gen(std::random_device{}());
+// Per-call RNG context: each generate* installs a seeded SplitMix64 so output is
+// reproducible for a given seed. Thread-local + RAII save/restore makes it
+// thread-safe and reentrant (generateProgression nests generateChord calls).
+HDAW::SplitMix64*& rngSlot()
+{
+    thread_local HDAW::SplitMix64* slot = nullptr;
+    return slot;
+}
+
+HDAW::SplitMix64& legacyRng()
+{
+    static HDAW::SplitMix64 gen([] {
+        std::random_device d;
+        uint64_t s = (static_cast<uint64_t>(d()) << 32) ^ d();
+        return s ? s : static_cast<uint64_t>(0x9E3779B97F4A7C15ULL);
+    }());
     return gen;
+}
+
+HDAW::SplitMix64& current()
+{
+    auto* s = rngSlot();
+    return s ? *s : legacyRng();
+}
+
+struct ScopedRng
+{
+    HDAW::SplitMix64* prev;
+    explicit ScopedRng(HDAW::SplitMix64& r) : prev(rngSlot()) { rngSlot() = &r; }
+    ~ScopedRng() { rngSlot() = prev; }
+};
+}
+
+HDAW::SplitMix64 PhraseGenerator::makeRng(uint64_t seed)
+{
+    if (seed != 0)
+        return HDAW::SplitMix64(seed);
+    std::random_device dev;
+    uint64_t s = (static_cast<uint64_t>(dev()) << 32) ^ static_cast<uint64_t>(dev());
+    if (s == 0) s = 0x9E3779B97F4A7C15ULL;
+    return HDAW::SplitMix64(s);
 }
 
 int PhraseGenerator::randomInt(int min, int max)
 {
     if (min >= max) return min;
-    std::uniform_int_distribution<int> dist(min, max);
-    return dist(rng());
+    return current().nextInt(min, max);
 }
 
 double PhraseGenerator::randomDouble(double min, double max)
 {
     if (min >= max) return min;
-    std::uniform_real_distribution<double> dist(min, max);
-    return dist(rng());
+    return min + current().nextFloat() * (max - min);
 }
 
 // ── Scale modes ──
@@ -65,6 +102,7 @@ const char* PhraseGenerator::styleName(Style s)
         case Lead:      return "Lead";
         case RandomWalk: return "Random Walk";
         case Buildup:   return "Buildup";
+        case Euclidean: return "Euclidean";
         default:        return "Standard";
     }
 }
@@ -222,6 +260,9 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
                                      params.lowNote, params.highNote);
     if (pitches.empty())
         return {};
+
+    auto rng = makeRng(params.seed);
+    ScopedRng scope(rng);
 
     std::vector<GeneratedNote> result;
     int numNotes = (std::max)(1, params.density);
@@ -403,6 +444,31 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
         break;
     }
 
+    case Euclidean:
+    {
+        // Euclidean rhythm: k = density hits evenly spread over a 16th-note grid,
+        // pitches walked with Markov motion through the in-range scale tones.
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const int k = std::clamp(params.density, 1, totalSteps);
+        const auto onsets = HDAW::euclideanSteps(k, totalSteps);
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        int idx = static_cast<int>(pitches.size()) / 2;
+        for (size_t oi = 0; oi < onsets.size(); ++oi)
+        {
+            GeneratedNote n;
+            n.startBeat = onsets[oi] * beatPerStep;
+            n.noteNumber = pitches[std::clamp(idx, 0, static_cast<int>(pitches.size()) - 1)];
+            n.velocity = (oi == 0) ? params.maxVelocity
+                                   : randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = params.noteDuration > 0.0 ? params.noteDuration : beatPerStep * 0.9;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+            idx = HDAW::nextMarkovDegree(rng, idx, static_cast<int>(pitches.size()));
+        }
+        break;
+    }
+
     default: // Standard
     {
         double beatStep = params.lengthBeats / static_cast<double>(numNotes);
@@ -468,6 +534,9 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
 std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generateChord(
     int rootNote, const ChordParams& params)
 {
+    auto rng = makeRng(params.seed);
+    ScopedRng scope(rng);
+
     const auto& types = getChordTypes();
     const ChordType* ct = nullptr;
     for (const auto& t : types)
@@ -573,6 +642,9 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generateProgression
     auto roots = diatonicRoots(params.scaleRoot, params.scaleMode, 4);
     if (roots.size() < 7) return {};
 
+    auto rng = makeRng(params.seed);
+    ScopedRng scope(rng);
+
     std::vector<GeneratedNote> result;
     double beatPos = 0.0;
 
@@ -600,6 +672,7 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generateProgression
         cp.arpeggiate = params.arpeggiate;
         cp.arpeggioRate = params.arpeggioRate;
         cp.durationBeats = params.durationBeats;
+        cp.seed = rng.nextU64();
 
         auto notes = generateChord(root, cp);
 

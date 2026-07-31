@@ -50,7 +50,7 @@ export default function TimelineMinimal() {
   const rulerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const engagementRef = useRef<"none" | "clip" | "rubber">("none");
+  const engagementRef = useRef<"none" | "clip" | "rubber" | "zoom">("none");
 
   const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
 
@@ -110,6 +110,7 @@ export default function TimelineMinimal() {
     selectedClipIds,
     tracksRef,
     engagementRef,
+    setPps,
   });
 
   // --- Context menu ---

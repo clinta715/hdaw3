@@ -1,6 +1,7 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
+#include "ArrangementGenerator.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 
@@ -712,6 +713,50 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
 
         result.push_back(clipId);
     }
+    endTransaction();
+    return result;
+}
+
+ProjectCommands::ArrangementResult AudioEngineCommands::generateArrangement(const HDAW::ArrangementParams& params)
+{
+    ArrangementResult result;
+    auto arr = HDAW::generateArrangement(params);
+    result.seed = arr.resolvedSeed;
+    if (arr.parts.empty())
+        return result;
+
+    const double totalBeats = (std::max)(1, params.bars) * 4.0;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Generate arrangement");
+
+    for (const auto& part : arr.parts)
+    {
+        // Find an existing track with this name, else create one.
+        int trackIdx = -1;
+        for (int i = 0; i < trackList.getNumChildren(); ++i)
+        {
+            if (trackList.getChild(i).getProperty(IDs::name, "").toString().toStdString() == part.name)
+            {
+                trackIdx = i;
+                break;
+            }
+        }
+        if (trackIdx < 0)
+            trackIdx = addTrack(part.name, -1, -1, part.trackType);
+
+        int clipId = addMidiClip(trackIdx, 0.0, totalBeats, part.name);
+        if (clipId < 0)
+            continue;
+        for (const auto& n : part.notes)
+            addNote(clipId, n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
+
+        result.trackIndices.push_back(trackIdx);
+        result.clipIds.push_back(clipId);
+        result.noteCount += static_cast<int>(part.notes.size());
+    }
+
+    rebuildRoutingGraph();
     endTransaction();
     return result;
 }

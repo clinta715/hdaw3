@@ -3,6 +3,7 @@ import type { ClipSnapshot } from "../rpc/types";
 import type { RowLayout } from "../utils/rowLayout";
 import { useUiStore } from "../store/uiStore";
 import { computeRubberBandSelection } from "../utils/timelineConstants";
+import { MIN_PPS, MAX_PPS } from "./useTimelineZoom";
 
 const DRAG_THRESHOLD = 4;
 
@@ -11,7 +12,7 @@ interface UseTimelineRubberBandParams {
   pps: number;
   layout: RowLayout;
   selectedClipIds: Set<number>;
-  engagementRef: React.MutableRefObject<"none" | "clip" | "rubber">;
+  engagementRef: React.MutableRefObject<"none" | "clip" | "rubber" | "zoom">;
 }
 
 interface UseTimelineRubberBandReturn {
@@ -27,13 +28,16 @@ export function useTimelineRubberBand({
   selectedClipIds,
   tracksRef,
   engagementRef,
+  setPps,
 }: UseTimelineRubberBandParams & {
   tracksRef: React.RefObject<HTMLDivElement | null>;
+  setPps: React.Dispatch<React.SetStateAction<number>>;
 }): UseTimelineRubberBandReturn {
   const [rubberBand, setRubberBand] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const rubberBandRef = useRef(rubberBand);
   rubberBandRef.current = rubberBand;
   const rubberBandJustCompleted = useRef(false);
+  const zoomStartRef = useRef({ pps: 0, y: 0 });
 
   const handleRubberBandStart = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -61,9 +65,22 @@ export function useTimelineRubberBand({
         const dx = ev.clientX - startClientX;
         const dy = ev.clientY - startClientY;
         if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+        // Predominantly vertical drag → zoom mode
+        if (Math.abs(dy) > Math.abs(dx) * 2) {
+          activated = true;
+          engagementRef.current = "zoom";
+          zoomStartRef.current = { pps, y: startClientY };
+          return;
+        }
         activated = true;
         engagementRef.current = "rubber";
         setRubberBand({ x1, y1, x2: x1, y2: y1 });
+      }
+      if (engagementRef.current === "zoom") {
+        const dy = ev.clientY - zoomStartRef.current.y;
+        const factor = Math.pow(1.005, -dy);
+        setPps(Math.min(MAX_PPS, Math.max(MIN_PPS, zoomStartRef.current.pps * factor)));
+        return;
       }
       const r = el.getBoundingClientRect();
       const newX2 = ev.clientX - r.left + el.scrollLeft;
@@ -83,8 +100,9 @@ export function useTimelineRubberBand({
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      const wasZoom = engagementRef.current === "zoom";
       engagementRef.current = "none";
-      if (activated) {
+      if (activated && !wasZoom) {
         const rb = rubberBandRef.current;
         if (rb) {
           const selected = computeRubberBandSelection(rb.x1, rb.y1, rb.x2, rb.y2, clips, pps, layout);
@@ -97,7 +115,7 @@ export function useTimelineRubberBand({
 
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [clips, pps, tracksRef, engagementRef]);
+  }, [clips, pps, tracksRef, engagementRef, setPps]);
 
   return { handleRubberBandStart, rubberBand, rubberBandJustCompleted };
 }

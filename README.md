@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.13.0
+**Current version**: 0.14.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.13.0)
+## What works today (v0.14.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -150,9 +150,9 @@ pass `Debug` for breakpoint debugging.
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 38 tools cover project inspection, transport,
-tracks, clips, MIDI notes, composition (PhraseGenerator), FX,
-automation, undo, and audio export.
+can drive the DAW. 39 tools cover project inspection, transport,
+tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
+generation), FX, automation, undo, and audio export.
 
 ### Launching the stdio server (Claude Desktop, opencode, etc.)
 

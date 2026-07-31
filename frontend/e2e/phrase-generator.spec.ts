@@ -20,15 +20,16 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await expect(page.locator(".pgd-header h3")).toContainText("Phrase Generator");
   });
 
-  test("mode selector defaults to Phrase with three options", async ({ page }) => {
+  test("mode selector defaults to Phrase with four options", async ({ page }) => {
     await openDialog(page);
     const mode = page.locator(".pgd-mode-select");
     await expect(mode).toHaveValue("0");
     const options = mode.locator("option");
-    await expect(options).toHaveCount(3);
+    await expect(options).toHaveCount(4);
     await expect(options.nth(0)).toHaveText("Phrase");
     await expect(options.nth(1)).toHaveText("Single Chord");
     await expect(options.nth(2)).toHaveText("Chord Progression");
+    await expect(options.nth(3)).toHaveText("Arrangement");
   });
 
   test("phrase page shows style, length and density controls", async ({ page }) => {
@@ -144,5 +145,31 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await page.locator(".pgd-btn-generate").click();
     await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
     await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
+  });
+
+  test("switching to Arrangement shows arrangement controls", async ({ page }) => {
+    await openDialog(page);
+    await page.locator(".pgd-mode-select").selectOption("3");
+    const pg = page.locator(".pgd-page");
+    await expect(pg.locator(".pgd-label", { hasText: "Bars" })).toBeVisible();
+    await expect(pg.locator(".pgd-label", { hasText: "Complexity" })).toBeVisible();
+    await expect(pg.locator(".pgd-label", { hasText: "Swing" })).toBeVisible();
+    await expect(pg.locator(".pgd-label", { hasText: "Tracks" })).toBeVisible();
+    // Phrase-only controls are gone.
+    await expect(pg.locator(".pgd-label", { hasText: "Density" })).toHaveCount(0);
+  });
+
+  test("generate (arrangement mode) creates a track + clip per part", async ({ page }) => {
+    await openDialog(page);
+    await page.locator(".pgd-mode-select").selectOption("3");
+    // Fixed seed so the part set is deterministic (kick, closed/open hat, clap, bass).
+    await page.locator(".pgd-row", { hasText: "Seed" }).locator(".pgd-input").fill("12345");
+    const tracksBefore = await page.locator(".th-row").count();
+    const clipsBefore = await page.locator(".tl-clip").count();
+    await page.locator(".pgd-btn-generate").click();
+    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
+    // Default enables kick, closed+open hat, clap, bass -> 5 new tracks, each with a clip.
+    await expect(page.locator(".th-row")).toHaveCount(tracksBefore + 5, { timeout: 10000 });
+    await expect(page.locator(".tl-clip")).toHaveCount(clipsBefore + 5, { timeout: 10000 });
   });
 });

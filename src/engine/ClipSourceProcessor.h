@@ -289,9 +289,51 @@ public:
         int64_t fadeInSamples = static_cast<int64_t>(currentFadeIn * sr);
         int64_t fadeOutSamples = static_cast<int64_t>(currentFadeOut * sr);
 
+        // Block-level envelope snapshot: acquire the lock once, copy the
+        // point vector, and interpolate within the block using a walking
+        // segment index. This replaces the per-sample tryEnter() + binary
+        // search with a single lock acquisition per block.
+        bool hasEnvelopeSnapshot = false;
+        const GainPoint* envPoints = nullptr;
+        int envNumPoints = 0;
+        int envSegIdx = 0;
+        double envSegInvDt = 0.0;
+        std::vector<GainPoint> envSnapshot;
+
+        if (hasEnvelope.load(std::memory_order_acquire))
+        {
+            if (envelopeLock.tryEnter())
+            {
+                if (!gainEnvelopePoints.empty())
+                {
+                    envSnapshot = gainEnvelopePoints;
+                    envPoints = envSnapshot.data();
+                    envNumPoints = static_cast<int>(envSnapshot.size());
+                    hasEnvelopeSnapshot = true;
+
+                    // Find starting segment for the first sample in this block
+                    double firstTime = static_cast<double>(clipLocalSample) / sr;
+                    envSegIdx = 0;
+                    for (int i = 0; i < envNumPoints - 1; ++i)
+                    {
+                        if (envPoints[i + 1].time > firstTime)
+                            break;
+                        envSegIdx = i;
+                    }
+                    if (envSegIdx < envNumPoints - 1)
+                    {
+                        double segDt = envPoints[envSegIdx + 1].time - envPoints[envSegIdx].time;
+                        envSegInvDt = (segDt > 0.0) ? 1.0 / segDt : 0.0;
+                    }
+                }
+                envelopeLock.exit();
+            }
+        }
+
         for (int s = 0; s < numToRead; ++s)
         {
             int64_t localPos = clipLocalSample + s;
+            double clipLocalTime = static_cast<double>(localPos) / sr;
 
             float envelope = 1.0f;
 
@@ -310,16 +352,56 @@ public:
                 envelope *= (std::max)(0.0f, fadePos);
             }
 
-            // Gain envelope (per-clip automation)
-            double clipLocalTime = static_cast<double>(localPos) / sr;
-            double envGain = getGainAtTime(clipLocalTime);
+            // Gain envelope (per-clip automation) — interpolated from the
+            // block-level snapshot taken above (envSegIdx / envSegAlpha).
+            float envGain = 1.0f;
+            if (hasEnvelopeSnapshot && envNumPoints > 0)
+            {
+                if (envNumPoints == 1)
+                {
+                    envGain = static_cast<float>(envPoints[0].gain);
+                }
+                else
+                {
+                    // Advance segment index if we've crossed the next breakpoint
+                    while (envSegIdx < envNumPoints - 1
+                           && clipLocalTime > envPoints[envSegIdx + 1].time)
+                    {
+                        envSegIdx++;
+                        if (envSegIdx < envNumPoints - 1)
+                        {
+                            double segDt = envPoints[envSegIdx + 1].time - envPoints[envSegIdx].time;
+                            envSegInvDt = (segDt > 0.0) ? 1.0 / segDt : 0.0;
+                        }
+                    }
+
+                    if (envSegIdx >= envNumPoints - 1)
+                    {
+                        envGain = static_cast<float>(envPoints[envNumPoints - 1].gain);
+                    }
+                    else
+                    {
+                        double segDt = envPoints[envSegIdx + 1].time - envPoints[envSegIdx].time;
+                        if (segDt <= 0.0)
+                        {
+                            envGain = static_cast<float>(envPoints[envSegIdx].gain);
+                        }
+                        else
+                        {
+                            double alpha = (clipLocalTime - envPoints[envSegIdx].time) * envSegInvDt;
+                            envGain = static_cast<float>(envPoints[envSegIdx].gain
+                                      + alpha * (envPoints[envSegIdx + 1].gain - envPoints[envSegIdx].gain));
+                        }
+                    }
+                }
+            }
 
             float g = gainSmooth.getNextValue();
 
             for (int ch = 0; ch < numChannels; ++ch)
             {
                 float* channelData = buffer.getWritePointer(ch);
-                channelData[s] *= g * envelope * static_cast<float>(envGain);
+                channelData[s] *= g * envelope * envGain;
             }
         }
     }

@@ -10,7 +10,7 @@ const mockRpc = {
   call: vi.fn(),
 };
 
-const makeEngagementRef = () => ({ current: "none" as "none" | "clip" | "rubber" });
+const makeEngagementRef = () => ({ current: "none" as "none" | "clip" | "rubber" | "zoom" });
 
 const makeClip = (clipId: number, trackIndex: number, startBeat: number): ClipSnapshot => ({
   clipId,

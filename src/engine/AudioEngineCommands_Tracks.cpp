@@ -166,6 +166,15 @@ void AudioEngineCommands::setTrackCollapsed(int trackIndex, bool collapsed)
     track.setProperty(IDs::isCollapsed, collapsed, &project.getUndoManager());
 }
 
+void AudioEngineCommands::setTrackHidden(int trackIndex, bool hidden)
+{
+    auto& project = engine_.getProjectModel();
+    auto trackList = project.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto track = trackList.getChild(trackIndex);
+    track.setProperty(IDs::isHidden, hidden, &project.getUndoManager());
+}
+
 void AudioEngineCommands::moveTrackIntoFolder(int trackIndex, int folderIndex)
 {
     auto& project = engine_.getProjectModel();

@@ -162,7 +162,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] CLAP plugin hosting
 - [x] Plugin scanning with crash isolation
 - [x] Piano roll editor (notes, velocity, CC)
-- [x] Step sequencer
+- [x] Step sequencer (StepSequencer component, bottom-panel tab)
 - [x] Mixer with per-track volume/pan/mute/solo
 - [x] Automation points (basic model)
 - [x] Audio clip playback with waveform display
@@ -175,7 +175,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Audio file import (WAV, AIFF, MP3, FLAC, OGG)
 - [x] MIDI file import
 - [x] Export (WAV, AIFF, FLAC)
-- [x] MCP server (36 tools, 3 transports)
+- [x] MCP server (38 tools, 3 transports)
 - [x] Plugin editor windows
 - [x] Internal FX (EQ, compressor, reverb, delay)
 - [x] Per-track sends
@@ -183,11 +183,11 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Scale-aware piano roll
 - [x] Clip move/trim/fade in timeline
 - [x] Metronome with count-in/pre-roll
-- [x] Time signature changes
+- [x] Time signature changes (per-bar time signature via UI)
 - [x] Automation recording during playback
 - [x] MIDI hardware input
 - [x] Input monitoring per track
-- [x] Take management for audio clips
+- [x] Take management for audio clips (basic: multiple takes, switch via context menu)
 - [x] Plugin delay compensation (PDC)
 - [x] MIDI quantize, transpose, humanize
 - [x] Audio normalize and reverse
@@ -204,6 +204,17 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Marker track (named markers, click-to-seek, drag, rename, delete)
 - [x] MIDI channel routing (1-16, atomic for RT safety)
 - [x] FX slot drag-reorder (drag handle + custom MIME drop target)
+- [x] Plugin presets (factory presets via Presets button in FX chain)
+- [x] FX A/B comparison (A/B button on each plugin FX slot)
+- [x] Auto crossfades (CrossfadeEngine — adjacent + overlapping audio clips)
+- [x] Track folders / grouping (audio/instrument/folder trackType, collapse/expand, mute/solo cascade)
+- [x] Typed tracks (audio / instrument / folder via trackType property)
+- [x] Ripple edit (project.rippleDelete — auto-close gaps on delete)
+- [x] Insert silence (project.insertSilence — split + shift)
+- [x] Duplicate region (project.duplicateRegion — copy + insert)
+- [x] Undo history UI (History bottom-panel tab, click to jump)
+- [x] Time-signature track (per-bar time signature changes)
+- [x] Track show/hide (eye icon toggle in track header, hidden tracks excluded from timeline)
 - [x] Bugfix: TRACK volume/pan/mute ValueTree listener dead-code (AudioEngine)
 - [x] Bugfix: marker double-offset paint, click-to-seek, undo coalescing
 - [x] Bugfix: multi-clip paste relative offsets, duplicate clipboard clobber

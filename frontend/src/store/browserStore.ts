@@ -13,7 +13,8 @@ interface BrowserState {
   searchQuery: string;
   visible: boolean;
   autoPreview: boolean;
-  syncPreview: boolean;
+  tempoMatch: boolean;
+  sourceBpm: number;
   addFolder: (path: string) => void;
   removeFolder: (path: string) => void;
   addFavorite: (path: string, label?: string) => void;
@@ -24,7 +25,8 @@ interface BrowserState {
   setSearchQuery: (q: string) => void;
   toggleVisible: () => void;
   setAutoPreview: (v: boolean) => void;
-  setSyncPreview: (v: boolean) => void;
+  setTempoMatch: (v: boolean) => void;
+  setSourceBpm: (v: number) => void;
 }
 
 const STORAGE_KEY = "hdaw_browser_folders";
@@ -82,16 +84,37 @@ function saveAutoPreview(v: boolean) {
   localStorage.setItem("hdaw_browser_autopreview", String(v));
 }
 
-function loadSyncPreview(): boolean {
+function loadTempoMatch(): boolean {
   try {
-    return localStorage.getItem("hdaw_browser_syncpreview") !== "false";
+    // Migrate from old syncPreview key if present
+    const sync = localStorage.getItem("hdaw_browser_syncpreview");
+    if (sync !== null) {
+      localStorage.removeItem("hdaw_browser_syncpreview");
+      const v = sync !== "false";
+      localStorage.setItem("hdaw_browser_tempomatch", String(v));
+      return v;
+    }
+    return localStorage.getItem("hdaw_browser_tempomatch") !== "false";
   } catch {
     return true;
   }
 }
 
-function saveSyncPreview(v: boolean) {
-  localStorage.setItem("hdaw_browser_syncpreview", String(v));
+function saveTempoMatch(v: boolean) {
+  localStorage.setItem("hdaw_browser_tempomatch", String(v));
+}
+
+function loadSourceBpm(): number {
+  try {
+    const raw = localStorage.getItem("hdaw_browser_sourcebpm");
+    return raw ? parseFloat(raw) || 120 : 120;
+  } catch {
+    return 120;
+  }
+}
+
+function saveSourceBpm(v: number) {
+  localStorage.setItem("hdaw_browser_sourcebpm", String(v));
 }
 
 export const useBrowserStore = create<BrowserState>((set, get) => ({
@@ -102,7 +125,8 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   searchQuery: "",
   visible: false,
   autoPreview: loadAutoPreview(),
-  syncPreview: loadSyncPreview(),
+  tempoMatch: loadTempoMatch(),
+  sourceBpm: loadSourceBpm(),
 
   addFolder: (path) => {
     const { folders } = get();
@@ -162,5 +186,6 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   toggleVisible: () => set((s) => ({ visible: !s.visible })),
   setAutoPreview: (v) => { saveAutoPreview(v); set({ autoPreview: v }); },
-  setSyncPreview: (v) => { saveSyncPreview(v); set({ syncPreview: v }); },
+  setTempoMatch: (v) => { saveTempoMatch(v); set({ tempoMatch: v }); },
+  setSourceBpm: (v) => { saveSourceBpm(v); set({ sourceBpm: v }); },
 }));

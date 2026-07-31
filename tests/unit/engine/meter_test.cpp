@@ -58,6 +58,7 @@ TEST(LevelMeter, RmsIsLowerThanPeakForNonConstantSignal)
 TEST(LevelMeter, LufsReturnsValueAfterProcessing)
 {
     HDAW::LevelMeter meter;
+    meter.setComputeLufs(true);
     meter.prepare(44100.0, 512);
 
     juce::AudioBuffer<float> buf(2, 512);
@@ -91,6 +92,28 @@ TEST(LevelMeter, PrepareInitializesCorrectly)
     meter.prepare(48000.0, 512);
     EXPECT_FLOAT_EQ(meter.getLufsMomentary(), -70.0f);
     EXPECT_FLOAT_EQ(meter.getRmsLeft(), 0.0f);
+}
+
+TEST(LevelMeter, NonLufsMeterReturnsFloor)
+{
+    HDAW::LevelMeter meter;
+    meter.setComputeLufs(false);
+    meter.prepare(44100.0, 512);
+
+    juce::AudioBuffer<float> buf(2, 512);
+    for (int s = 0; s < 512; ++s) {
+        float val = 0.8f * std::sin(static_cast<float>(s) * 2.0f * 3.14159265f * 1000.0f / 44100.0f);
+        buf.setSample(0, s, val);
+        buf.setSample(1, s, val);
+    }
+    for (int i = 0; i < 500; ++i)
+        meter.update(buf);
+
+    // Without LUFS enabled, should remain at floor
+    EXPECT_FLOAT_EQ(meter.getLufsMomentary(), -70.0f);
+    // But peak and RMS should still work
+    EXPECT_NEAR(meter.getLeftLevel(), 0.8f, 0.01f);
+    EXPECT_NEAR(meter.getRmsLeft(), 0.566f, 0.05f);
 }
 
 TEST(LevelMeter, MonoChannelRmsMatchesLeft)

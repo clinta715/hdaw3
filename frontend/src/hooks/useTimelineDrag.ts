@@ -15,7 +15,7 @@ interface UseTimelineDragParams {
   tracksRef: React.RefObject<HTMLDivElement | null>;
   trackCount: number;
   rpc: RpcClient;
-  engagementRef: React.MutableRefObject<"none" | "clip" | "rubber">;
+  engagementRef: React.MutableRefObject<"none" | "clip" | "rubber" | "zoom">;
 }
 
 // The C++ backend (FrontendRouter.cpp) returns BARE integers for

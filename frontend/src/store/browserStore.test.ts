@@ -11,6 +11,9 @@ describe("browserStore", () => {
       selectedFile: null,
       searchQuery: "",
       visible: false,
+      autoPreview: false,
+      tempoMatch: true,
+      sourceBpm: 120,
     });
   });
 

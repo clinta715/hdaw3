@@ -166,7 +166,7 @@ TEST(StretchCommands, FitToLoopComputesRatio)
     auto snap = engine.getReadModel().getClip(clipId);
     EXPECT_EQ(snap.stretchMode, 2);          // ManualRatio
     EXPECT_NEAR(snap.stretchRatio, 2.0, 1e-6); // 4s loop / 2s source
-    EXPECT_NEAR(snap.durationBeats, 4.0, 1e-6);
+    EXPECT_NEAR(snap.durationBeats, 4.0 * 120.0 / 60.0, 1e-6); // 4s loop at 120 BPM = 8 beats
 }
 
 // --- Commands: tempo match math ---
@@ -195,5 +195,6 @@ TEST(StretchCommands, TempoMatchDerivesRatio)
     auto snap = engine.getReadModel().getClip(clipId);
     EXPECT_EQ(snap.stretchMode, 1);             // TempoMatch
     EXPECT_NEAR(snap.stretchRatio, 100.0 / 120.0, 1e-6);
-    EXPECT_NEAR(snap.durationBeats, 2.0 * 100.0 / 120.0, 1e-6);
+    // stretched length is sourceDur*ratio seconds; snapshot reports beats at 120 BPM
+    EXPECT_NEAR(snap.durationBeats, 2.0 * (100.0 / 120.0) * (120.0 / 60.0), 1e-6);
 }

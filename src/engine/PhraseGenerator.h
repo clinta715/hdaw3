@@ -1,8 +1,10 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <utility>
+#include "engine/Generative.h"
 
 class PhraseGenerator
 {
@@ -44,7 +46,8 @@ public:
         Pad,
         Lead,
         RandomWalk,
-        Buildup
+        Buildup,
+        Euclidean
     };
     static const char* styleName(Style s);
 
@@ -56,6 +59,7 @@ public:
         int highNote = 84;
         int minVelocity = 60;
         int maxVelocity = 110;
+        uint64_t seed = 0;   // 0 = non-deterministic (legacy); else reproducible
     };
 
     struct PhraseParams : BaseParams {
@@ -100,6 +104,7 @@ public:
     static const char* modeName(int scaleModeIndex);
 
 private:
+    static HDAW::SplitMix64 makeRng(uint64_t seed);
     static int randomInt(int min, int max);
     static double randomDouble(double min, double max);
     static std::vector<int> diatonicRoots(int scaleRoot, int scaleModeIndex, int octave = 4);

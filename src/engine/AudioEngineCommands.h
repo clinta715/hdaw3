@@ -69,6 +69,9 @@ public:
     void removeClips(const std::vector<int>& clipIds) override;
     std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) override;
 
+    // ProjectCommands — generative arrangement
+    ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) override;
+
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;
     void setClipStretchMode(int clipId, int mode) override;

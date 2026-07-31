@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+namespace HDAW { struct ArrangementParams; }
+
 class ProjectCommands
 {
 public:
@@ -231,6 +233,16 @@ public:
     // Scale
     virtual void setScaleRoot(int root) = 0;
     virtual void setScaleMode(int mode) = 0;
+
+    // Generative arrangement: create/find a track per part and place one MIDI
+    // clip per part, all in a single transaction + graph rebuild.
+    struct ArrangementResult {
+        std::vector<int> trackIndices;
+        std::vector<int> clipIds;
+        int noteCount = 0;
+        uint64_t seed = 0;
+    };
+    virtual ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) = 0;
 
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same
