@@ -9,7 +9,6 @@
 #include <cmath>
 #include <thread>
 #include <atomic>
-#include <iostream>
 
 using namespace proxy;
 
@@ -404,76 +403,6 @@ TEST(PluginIsolation, ProcessBlockWithSharedMemory) {
     // The buffer may be unchanged (no shared memory → early return)
     // or cleared (no output available → buffer.clear()).
     // Either way, it should not crash.
-    SUCCEED();
-}
-
-// ========================================================================
-// DIAGNOSTIC: trace JUCE VST3 loading failure point
-// ========================================================================
-
-TEST(PluginIsolation, DIAG_VST3LoadingTrace) {
-    juce::ScopedJuceInitialiser_GUI init;
-
-    auto pluginPath = juce::File(
-        "D:\\pdf\\roo projects\\hdaw3\\build\\tests\\test-plugin\\"
-        "HDAWTestPlugin_artefacts\\Debug\\VST3\\PassthroughTest.vst3");
-
-    if (!pluginPath.exists())
-        GTEST_SKIP() << "Test plugin not built";
-
-    juce::AudioPluginFormatManager fmtMgr;
-    fmtMgr.addFormat(new juce::VST3PluginFormat());
-
-    auto* vst3Fmt = fmtMgr.getFormats()[0];
-    std::cout << "[DIAG] fileMightContain: "
-              << vst3Fmt->fileMightContainThisPluginType(pluginPath.getFullPathName()) << std::endl;
-
-    // Step 1: findAllTypesForFile
-    juce::OwnedArray<juce::PluginDescription> types;
-    vst3Fmt->findAllTypesForFile(types, pluginPath.getFullPathName());
-    std::cout << "[DIAG] findAllTypesForFile found: " << types.size() << " types" << std::endl;
-    for (auto* t : types) {
-        std::cout << "[DIAG]   name=" << t->name.toRawUTF8()
-                  << " format=" << t->pluginFormatName.toRawUTF8()
-                  << " uid=" << t->createIdentifierString().toRawUTF8() << std::endl;
-    }
-
-    // Step 2: createPluginInstance via format manager (synchronous API)
-    if (types.size() > 0) {
-        juce::String error;
-        auto inst = fmtMgr.createPluginInstance(*types[0], 44100.0, 512, error);
-        std::cout << "[DIAG] createPluginInstance (from findAllTypes): "
-                  << (inst ? "OK" : "FAIL")
-                  << " error=" << error.toRawUTF8() << std::endl;
-    }
-
-    // Step 3: createPluginInstance with manual description
-    {
-        juce::PluginDescription desc;
-        desc.fileOrIdentifier = pluginPath.getFullPathName();
-        desc.pluginFormatName = "VST3";
-        juce::String error;
-        auto inst = fmtMgr.createPluginInstance(desc, 44100.0, 512, error);
-        std::cout << "[DIAG] createPluginInstance (manual desc): "
-                  << (inst ? "OK" : "FAIL")
-                  << " error=" << error.toRawUTF8() << std::endl;
-    }
-
-    // Step 4: try a third-party plugin
-    auto monoPath = juce::File("C:\\Program Files\\Common Files\\VST3\\Mono.vst3");
-    if (monoPath.exists()) {
-        juce::OwnedArray<juce::PluginDescription> monoTypes;
-        vst3Fmt->findAllTypesForFile(monoTypes, monoPath.getFullPathName());
-        std::cout << "[DIAG] Mono.vst3 findAllTypes: " << monoTypes.size() << " types" << std::endl;
-        if (monoTypes.size() > 0) {
-            juce::String error;
-            auto inst = fmtMgr.createPluginInstance(*monoTypes[0], 44100.0, 512, error);
-            std::cout << "[DIAG] Mono createPluginInstance: "
-                      << (inst ? "OK" : "FAIL")
-                      << " error=" << error.toRawUTF8() << std::endl;
-        }
-    }
-
     SUCCEED();
 }
 
