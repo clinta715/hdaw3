@@ -176,6 +176,11 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "moveTrackIntoFolder") { int i, f; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "folderIndex", f, nullptr)) return makeError(-32602, "trackIndex and folderIndex required"); c.moveTrackIntoFolder(i, f); return { false, QJsonValue::Null }; }
     if (m == "moveTrackOutOfFolder") { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.moveTrackOutOfFolder(i); return { false, QJsonValue::Null }; }
 
+    // --- Send operations ---
+    if (m == "setTrackSendLevel")    { int i, si; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireFloat(o, "level", v, nullptr)) return makeError(-32602, "trackIndex, sendIndex, level required"); c.setTrackSendLevel(i, si, v); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSendMode")     { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "isPreFader", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, isPreFader required"); c.setTrackSendMode(i, si, b); return { false, QJsonValue::Null }; }
+    if (m == "setTrackSendBypassed") { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, bypassed required"); c.setTrackSendBypassed(i, si, b); return { false, QJsonValue::Null }; }
+
     // Session commands
     if (m == "session.setClipScene") { int clipId, scene; if (!requireInt(o, "clipId", clipId, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "clipId and sceneIndex required"); c.setClipScene(clipId, scene); return { false, QJsonValue::Null }; }
     if (m == "session.createClip") { int track, scene; bool isMidi = true; if (!requireInt(o, "trackIndex", track, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "trackIndex and sceneIndex required"); if (o.contains("isMidi")) { bool b; requireBool(o, "isMidi", b, nullptr); isMidi = b; } return { false, c.createSessionClip(track, scene, isMidi) }; }
@@ -345,6 +350,38 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setNoteVelocity") { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "velocity", v, nullptr)) return makeError(-32602, "noteId and velocity required"); c.setNoteVelocity(i, v); return { false, QJsonValue::Null }; }
     if (m == "setNoteStart")    { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "startBeat", v, nullptr)) return makeError(-32602, "noteId and startBeat required"); c.setNoteStart(i, v); return { false, QJsonValue::Null }; }
     if (m == "setNoteDuration") { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "durationBeats", v, nullptr)) return makeError(-32602, "noteId and durationBeats required"); c.setNoteDuration(i, v); return { false, QJsonValue::Null }; }
+    if (m == "setNoteChance")      { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "chance", v, nullptr)) return makeError(-32602, "noteId and chance required"); c.setNoteChance(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNoteRepeatCount") { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "repeatCount", v, nullptr)) return makeError(-32602, "noteId and repeatCount required"); c.setNoteRepeatCount(i, v); return { false, QJsonValue::Null }; }
+    if (m == "setNoteRepeatRate")  { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "repeatRate", v, nullptr)) return makeError(-32602, "noteId and repeatRate required"); c.setNoteRepeatRate(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNoteRepeatCurve") { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "repeatCurve", v, nullptr)) return makeError(-32602, "noteId and repeatCurve required"); c.setNoteRepeatCurve(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNoteOccurrence")  { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "occurrence", v, nullptr)) return makeError(-32602, "noteId and occurrence required"); c.setNoteOccurrence(i, v); return { false, QJsonValue::Null }; }
+    if (m == "setNoteRecurrence")  { int i, v; if (!requireInt(o, "noteId", i, nullptr) || !requireInt(o, "recurrence", v, nullptr)) return makeError(-32602, "noteId and recurrence required"); c.setNoteRecurrence(i, v); return { false, QJsonValue::Null }; }
+    if (m == "setNoteGain")       { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "gain", v, nullptr)) return makeError(-32602, "noteId and gain required"); c.setNoteGain(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNotePan")        { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pan", v, nullptr)) return makeError(-32602, "noteId and pan required"); c.setNotePan(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNotePitchOffset"){ int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pitchOffset", v, nullptr)) return makeError(-32602, "noteId and pitchOffset required"); c.setNotePitchOffset(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNoteTimbre")     { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "timbre", v, nullptr)) return makeError(-32602, "noteId and timbre required"); c.setNoteTimbre(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNotePressure")   { int i; double v; if (!requireInt(o, "noteId", i, nullptr) || !requireDouble(o, "pressure", v, nullptr)) return makeError(-32602, "noteId and pressure required"); c.setNotePressure(i, static_cast<float>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNotesExpression"){
+        int noteId; double gain, pan, pitchOffset, timbre, pressure;
+        if (!requireInt(o, "noteId", noteId, nullptr)
+            || !requireDouble(o, "gain", gain, nullptr) || !requireDouble(o, "pan", pan, nullptr)
+            || !requireDouble(o, "pitchOffset", pitchOffset, nullptr) || !requireDouble(o, "timbre", timbre, nullptr)
+            || !requireDouble(o, "pressure", pressure, nullptr))
+            return makeError(-32602, "noteId, gain, pan, pitchOffset, timbre, pressure required");
+        c.setNotesExpression(noteId, static_cast<float>(gain), static_cast<float>(pan), static_cast<float>(pitchOffset), static_cast<float>(timbre), static_cast<float>(pressure));
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setClipSeed")        { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "seed", v, nullptr)) return makeError(-32602, "clipId and seed required"); c.setClipSeed(i, static_cast<uint64_t>(v)); return { false, QJsonValue::Null }; }
+    if (m == "setNotesOperator")   {
+        int clipId, noteId; double chance, repeatRate, repeatCurve; int repeatCount, occurrence, recurrence;
+        if (!requireInt(o, "clipId", clipId, nullptr) || !requireInt(o, "noteId", noteId, nullptr)
+            || !requireDouble(o, "chance", chance, nullptr) || !requireInt(o, "repeatCount", repeatCount, nullptr)
+            || !requireDouble(o, "repeatRate", repeatRate, nullptr) || !requireDouble(o, "repeatCurve", repeatCurve, nullptr)
+            || !requireInt(o, "occurrence", occurrence, nullptr) || !requireInt(o, "recurrence", recurrence, nullptr))
+            return makeError(-32602, "clipId, noteId, chance, repeatCount, repeatRate, repeatCurve, occurrence, recurrence required");
+        c.setNotesOperator(clipId, noteId, static_cast<float>(chance), repeatCount, static_cast<float>(repeatRate), static_cast<float>(repeatCurve), occurrence, recurrence);
+        return { false, QJsonValue::Null };
+    }
     if (m == "clearNotes")      { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.clearNotes(i); return { false, QJsonValue::Null }; }
     if (m == "addCcPoint")      { int clip, cc; double beat; int val; if (!requireInt(o, "clipId", clip, nullptr) || !requireInt(o, "controllerNumber", cc, nullptr) || !requireDouble(o, "beat", beat, nullptr) || !requireInt(o, "value", val, nullptr)) return makeError(-32602, "clipId, controllerNumber, beat, value required"); c.addCcPoint(clip, cc, beat, val); return { false, QJsonValue::Null }; }
     if (m == "setCcPoint")      { int id; double beat; int val; if (!requireInt(o, "ccId", id, nullptr) || !requireDouble(o, "beat", beat, nullptr) || !requireInt(o, "value", val, nullptr)) return makeError(-32602, "ccId, beat, value required"); c.setCcPoint(id, beat, val); return { false, QJsonValue::Null }; }
@@ -611,6 +648,11 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
     }
     if (m == "getTrackMeter")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getTrackMeter(i)) }; }
     if (m == "getMasterMeter")  { return { false, toJson(r.getMasterMeter()) }; }
+    if (m == "getTrackSends") {
+        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        QJsonArray arr; for (const auto& s : r.getTrackSends(i)) arr.append(toJson(s));
+        return { false, arr };
+    }
     if (m == "isDirty")         { return { false, r.isDirty() }; }
     return makeError(-32601, "unknown read method: " + m);
 }
@@ -1339,88 +1381,17 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
             int clipId = 0;
             if (!requireInt(o, "clipId", clipId, nullptr))
                 return makeError(-32602, "clipId required");
-
-            // Find the clip in the project model
-            auto& pm = engine.getProjectModel();
-            auto tl = pm.getTrackListTree();
-            juce::ValueTree clip;
-            for (int i = 0; i < tl.getNumChildren(); ++i) {
-                auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
-                for (int j = 0; j < cl.getNumChildren(); ++j) {
-                    if (static_cast<int>(cl.getChild(j).getProperty(IDs::clipID)) == clipId) {
-                        clip = cl.getChild(j);
-                        break;
-                    }
-                }
-                if (clip.isValid()) break;
-            }
-            if (!clip.isValid())
-                return makeError(-32602, "clip not found");
-
-            if (clip.getProperty(IDs::clipType).toString() != juce::String("audio"))
-                return makeError(-32602, "not an audio clip");
-
-            auto sourceFile = clip.getProperty(IDs::sourceFile).toString();
-            if (sourceFile.isEmpty())
-                return makeError(-32602, "no source file");
-
-            auto file = juce::File(sourceFile);
-            if (!file.existsAsFile())
-                return makeError(-32602, "source file missing");
-
-            auto& fmtMgr = engine.getProjectPool().getFormatManager();
-            std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
-            if (!reader)
-                return makeError(-32602, "cannot open audio file");
-
-            auto totalSamples = reader->lengthInSamples;
-            if (totalSamples <= 0)
-                return makeError(-32602, "empty audio");
-
-            int numChannels = static_cast<int>(reader->numChannels);
-            double sampleRate = reader->sampleRate;
             int numBins = optInt(o, "numBins", 1000, nullptr);
-            numBins = std::clamp(numBins, 100, 10000);
-            int64_t samplesPerBin = totalSamples / static_cast<int64_t>(numBins);
-            if (samplesPerBin < 1) samplesPerBin = 1;
 
-            juce::AudioBuffer<float> buffer(numChannels, static_cast<int>(samplesPerBin));
-            QJsonArray peaks;
+            auto peaks = engine.getWaveformPeaks(clipId, numBins);
+            if (!peaks.ok)
+                return makeError(peaks.errorCode, QString::fromStdString(peaks.error));
 
-            for (int i = 0; i < numBins; ++i) {
-                int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
-                int numToRead = static_cast<int>(
-                    (std::min)(samplesPerBin, totalSamples - startSample));
-                if (numToRead <= 0) {
-                    peaks.append(0.0);
-                    peaks.append(0.0);
-                    continue;
-                }
-                buffer.clear();
-                // A failed read leaves the cleared buffer full of zeros, which
-                // would otherwise be reported (and cached client-side) as a
-                // silent-but-valid waveform — a sticky blank waveform. Reading
-                // past the end returns true with zeros, so this only trips on a
-                // genuine I/O error (file busy/locked); surface it as an error
-                // so the client re-fetches instead of caching silent garbage.
-                if (!reader->read(&buffer, 0, numToRead, startSample, true, true))
-                    return makeError(-32602, "could not read audio data");
-
-                float minVal = 0.0f, maxVal = 0.0f;
-                for (int ch = 0; ch < numChannels; ++ch) {
-                    auto* data = buffer.getReadPointer(ch);
-                    for (int s = 0; s < numToRead; ++s) {
-                        if (data[s] < minVal) minVal = data[s];
-                        if (data[s] > maxVal) maxVal = data[s];
-                    }
-                }
-                peaks.append(static_cast<double>(minVal));
-                peaks.append(static_cast<double>(maxVal));
-            }
-
-            QJsonObject result{{"peaks", peaks},
-                               {"sampleRate", sampleRate},
-                               {"numSamples", static_cast<qint64>(totalSamples)}};
+            QJsonArray arr;
+            for (double v : peaks.peaks) arr.append(v);
+            QJsonObject result{{"peaks", arr},
+                               {"sampleRate", peaks.sampleRate},
+                               {"numSamples", static_cast<qint64>(peaks.numSamples)}};
             return { false, result };
         }
         return dispatchRead(engine.getReadModel(), m, params);

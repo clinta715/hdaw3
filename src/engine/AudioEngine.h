@@ -72,6 +72,20 @@ public:
     struct FxProgramListEntry { int index = 0; std::string name; };
     std::vector<FxProgramListEntry> getFxProgramList(int trackIndex, int slotIndex) const;
 
+    // Typed read: waveform peak pairs (min/max) for an audio clip, computed from
+    // the actual source file via the pool reader. Returns data; keeps the pool
+    // reach internal. `ok=false` carries an error message and RPC-style code.
+    struct WavePeaks
+    {
+        std::vector<double> peaks;
+        double sampleRate = 0;
+        int64_t numSamples = 0;
+        bool ok = false;
+        std::string error;
+        int errorCode = 0;
+    };
+    WavePeaks getWaveformPeaks(int clipId, int numBins);
+
     // MIDI CC automation recording. When armed, incoming CC messages during
     // playback are dispatched to the registered callback (on the main thread)
     // so the UI can record them into the current clip's CC list.

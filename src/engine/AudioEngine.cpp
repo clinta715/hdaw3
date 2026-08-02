@@ -3,6 +3,7 @@
 #include <QSettings>
 #include <cmath>
 #include "../common/SettingsKeys.h"
+#include <algorithm>
 
 namespace {
 // Resolve the track index owning a MODULATION or MODULATION_LIST subtree.
@@ -473,6 +474,118 @@ std::vector<AudioEngine::FxProgramListEntry> AudioEngine::getFxProgramList(int t
     result.reserve(num > 0 ? static_cast<size_t>(num) : 0);
     for (int i = 0; i < num; ++i)
         result.push_back({ i, slot->getProgramName(i).toStdString() });
+    return result;
+}
+
+AudioEngine::WavePeaks AudioEngine::getWaveformPeaks(int clipId, int numBins)
+{
+    WavePeaks result;
+
+    auto trackList = projectModel.getTrackListTree();
+    juce::ValueTree clip;
+    for (int i = 0; i < trackList.getNumChildren(); ++i)
+    {
+        auto list = trackList.getChild(i).getChildWithName(IDs::CLIP_LIST);
+        for (int j = 0; j < list.getNumChildren(); ++j)
+        {
+            if (static_cast<int>(list.getChild(j).getProperty(IDs::clipID)) == clipId)
+            {
+                clip = list.getChild(j);
+                break;
+            }
+        }
+        if (clip.isValid()) break;
+    }
+    if (!clip.isValid())
+    {
+        result.error = "clip not found";
+        result.errorCode = -32602;
+        return result;
+    }
+    if (clip.getProperty(IDs::clipType).toString() != juce::String("audio"))
+    {
+        result.error = "not an audio clip";
+        result.errorCode = -32602;
+        return result;
+    }
+    auto sourceFile = clip.getProperty(IDs::sourceFile).toString();
+    if (sourceFile.isEmpty())
+    {
+        result.error = "no source file";
+        result.errorCode = -32602;
+        return result;
+    }
+    auto file = juce::File(sourceFile);
+    if (!file.existsAsFile())
+    {
+        result.error = "source file missing";
+        result.errorCode = -32602;
+        return result;
+    }
+    std::unique_ptr<juce::AudioFormatReader> reader(projectPool.getFormatManager().createReaderFor(file));
+    if (!reader)
+    {
+        result.error = "cannot open audio file";
+        result.errorCode = -32602;
+        return result;
+    }
+    auto totalSamples = reader->lengthInSamples;
+    if (totalSamples <= 0)
+    {
+        result.error = "empty audio";
+        result.errorCode = -32602;
+        return result;
+    }
+
+    int numChannels = static_cast<int>(reader->numChannels);
+    result.sampleRate = reader->sampleRate;
+    result.numSamples = totalSamples;
+    numBins = std::clamp(numBins, 100, 10000);
+    int64_t samplesPerBin = totalSamples / static_cast<int64_t>(numBins);
+    if (samplesPerBin < 1) samplesPerBin = 1;
+
+    juce::AudioBuffer<float> buffer(numChannels, static_cast<int>(samplesPerBin));
+    result.peaks.reserve(static_cast<size_t>(numBins) * 2u);
+    for (int i = 0; i < numBins; ++i)
+    {
+        int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
+        int numToRead = static_cast<int>((std::min)(samplesPerBin, totalSamples - startSample));
+        if (numToRead <= 0)
+        {
+            result.peaks.push_back(0.0);
+            result.peaks.push_back(0.0);
+            continue;
+        }
+        buffer.clear();
+        // A failed read leaves the cleared buffer full of zeros, which would
+        // otherwise be reported (and cached client-side) as a silent-but-valid
+        // waveform — a sticky blank waveform. Reading past the end returns true
+        // with zeros, so this only trips on a genuine I/O error (file
+        // busy/locked); surface it as an error so the client re-fetches instead
+        // of caching silent garbage.
+        if (!reader->read(&buffer, 0, numToRead, startSample, true, true))
+        {
+            result.ok = false;
+            result.error = "could not read audio data";
+            result.errorCode = -32602;
+            result.peaks.clear();
+            return result;
+        }
+
+        float minVal = 0.0f, maxVal = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* data = buffer.getReadPointer(ch);
+            for (int s = 0; s < numToRead; ++s)
+            {
+                if (data[s] < minVal) minVal = data[s];
+                if (data[s] > maxVal) maxVal = data[s];
+            }
+        }
+        result.peaks.push_back(static_cast<double>(minVal));
+        result.peaks.push_back(static_cast<double>(maxVal));
+    }
+    result.ok = true;
     return result;
 }
 
