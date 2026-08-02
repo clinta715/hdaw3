@@ -119,7 +119,9 @@ TEST(ReadModel, TransportSnapshot)
     EXPECT_FALSE(transport.isPlaying);
     EXPECT_FALSE(transport.isLooping);
     EXPECT_DOUBLE_EQ(transport.loopStart, 0.0);
-    EXPECT_DOUBLE_EQ(transport.loopEnd, 8.0);
+    // loop region is stored seconds (default 8.0) and getTransport() converts to
+    // beats for the frontend: 8.0s * bpm/60 = 8.0 * 120/60 = 16.0 beats.
+    EXPECT_DOUBLE_EQ(transport.loopEnd, 16.0);
 }
 
 TEST(ReadModel, ScaleInfo)
