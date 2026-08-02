@@ -7,9 +7,8 @@
 
 namespace {
 
-// Region ops are project-wide; the default project ships track 1 ("Synth")
-// with Melody/Chords. Tests use the EMPTY track 0 and scope by trackIndex
-// (AGENTS.md lesson 7).
+// Region ops are project-wide; the default project ships all tracks empty.
+// Tests add their clips to track 0 and scope by trackIndex (AGENTS.md lesson 7).
 std::vector<ClipSnapshot> clipsOnTrack0(AudioEngine& engine)
 {
     std::vector<ClipSnapshot> out;

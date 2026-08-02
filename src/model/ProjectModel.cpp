@@ -372,8 +372,6 @@ void ProjectModel::createDefaultProject()
     track2.setProperty(IDs::midiChannel, 1, nullptr); // Default MIDI channel 1
     {
         juce::ValueTree clipList(IDs::CLIP_LIST);
-        clipList.addChild(createMidiClip("Melody", 0.0, 4.0, 120.0), -1, nullptr);
-        clipList.addChild(createMidiClip("Chords", 4.0, 4.0, 120.0), -1, nullptr);
         track2.addChild(clipList, -1, nullptr);
         track2.addChild(createFXChain(), -1, nullptr);
         track2.addChild(createTrackAutomationList(), -1, nullptr);

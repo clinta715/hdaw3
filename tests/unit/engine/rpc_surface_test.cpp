@@ -160,16 +160,16 @@ TEST(ProjectLifecycle, NewProjectResetsClipCount)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    // Default project has clips on track 1 (Synth)
+    // Default project has no clips (empty start)
     int defaultClips = static_cast<int>(engine.getReadModel().snapshot().clips.size());
 
     cmds.addMidiClip(0, 0.0, 4.0, "Extra");
     EXPECT_GT(static_cast<int>(engine.getReadModel().snapshot().clips.size()), defaultClips);
 
     cmds.newProject();
-    // After new project: default project has a few clips (Synth Melody/Chords)
+    // After new project: default project has no clips (empty start)
     auto snap = engine.getReadModel().snapshot();
-    EXPECT_FALSE(snap.clips.empty()); // default project has clips
+    EXPECT_TRUE(snap.clips.empty());
 }
 
 TEST(ProjectLifecycle, SaveAndLoadRoundTrip)

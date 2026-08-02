@@ -58,16 +58,23 @@ TEST(ReadModel, ClipSnapshot)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // The default project now ships empty; add a MIDI clip to verify the
+    // snapshot reflects clip fields.
+    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    model.getTrackListTree().getChild(0)
+        .getChildWithName(IDs::CLIP_LIST)
+        .addChild(clip, -1, nullptr);
+
     ReadModelImpl readModel(model);
     auto snap = readModel.snapshot();
     EXPECT_FALSE(snap.clips.empty());
 
     bool foundMidi = false;
-    for (const auto& clip : snap.clips) {
-        if (clip.isMidi) {
+    for (const auto& c : snap.clips) {
+        if (c.isMidi) {
             foundMidi = true;
-            EXPECT_FALSE(clip.name.empty());
-            EXPECT_GT(clip.durationBeats, 0.0);
+            EXPECT_FALSE(c.name.empty());
+            EXPECT_GT(c.durationBeats, 0.0);
         }
     }
     EXPECT_TRUE(foundMidi);
@@ -77,36 +84,42 @@ TEST(ReadModel, GetClipById)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // The default project now ships empty; add a clip and look it up by id.
+    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    model.getTrackListTree().getChild(0)
+        .getChildWithName(IDs::CLIP_LIST)
+        .addChild(clip, -1, nullptr);
+    int id = clip.getProperty(IDs::clipID);
+
     ReadModelImpl readModel(model);
     auto snap = readModel.snapshot();
     ASSERT_FALSE(snap.clips.empty());
-    int id = snap.clips[0].clipId;
-    auto clip = readModel.getClip(id);
-    EXPECT_EQ(clip.clipId, id);
+    auto found = readModel.getClip(id);
+    EXPECT_EQ(found.clipId, id);
 }
 
 TEST(ReadModel, GetNotesForMidiClip)
 {
     ProjectModel model;
     model.createDefaultProject();
-    ReadModelImpl readModel(model);
-    auto snap = readModel.snapshot();
-    ASSERT_FALSE(snap.clips.empty());
+    // The default project now ships empty; add a MIDI clip + note ourselves.
+    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    clip.getChildWithName(IDs::MIDI_NOTE_LIST)
+        .addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    model.getTrackListTree().getChild(0)
+        .getChildWithName(IDs::CLIP_LIST)
+        .addChild(clip, -1, nullptr);
+    int clipId = clip.getProperty(IDs::clipID);
 
-    for (const auto& clip : snap.clips) {
-        if (clip.isMidi) {
-            auto notes = readModel.getNotes(clip.clipId);
-            EXPECT_FALSE(notes.empty());
-            for (const auto& note : notes) {
-                EXPECT_GE(note.pitch, 0);
-                EXPECT_LE(note.pitch, 127);
-                EXPECT_GT(note.velocity, 0);
-                EXPECT_GE(note.durationBeats, 0.0);
-            }
-            return;
-        }
+    ReadModelImpl readModel(model);
+    auto notes = readModel.getNotes(clipId);
+    EXPECT_FALSE(notes.empty());
+    for (const auto& note : notes) {
+        EXPECT_GE(note.pitch, 0);
+        EXPECT_LE(note.pitch, 127);
+        EXPECT_GT(note.velocity, 0);
+        EXPECT_GE(note.durationBeats, 0.0);
     }
-    FAIL() << "No MIDI clip found in default project";
 }
 
 TEST(ReadModel, TransportSnapshot)
@@ -152,7 +165,7 @@ TEST(ReadModel, ClipCountPerTrack)
     EXPECT_EQ(t0.clipCount, 0);
 
     auto t1 = readModel.getTrack(1);
-    EXPECT_EQ(t1.clipCount, 2);
+    EXPECT_EQ(t1.clipCount, 0);
 }
 
 TEST(ReadModel, TempoPointsEmptyByDefault)

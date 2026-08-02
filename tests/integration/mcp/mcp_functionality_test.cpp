@@ -833,8 +833,8 @@ TEST_F(GuiFuncTest, UndoAllOperations) {
         EXPECT_FALSE(isError(r));
     }
 
-    // The default project's built-in clips remain after undoing the added clip
-    EXPECT_EQ(clipCount(), 2); // 2 default MIDI clips on the Synth track
+    // Default project ships empty; undoing the added clip leaves zero clips
+    EXPECT_EQ(clipCount(), 0);
 }
 
 // ============================================================================

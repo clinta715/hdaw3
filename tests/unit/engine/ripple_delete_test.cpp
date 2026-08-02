@@ -8,9 +8,9 @@
 namespace {
 
 // Ripple delete is a project-wide operation: it processes every track. The
-// default project ships track 1 ("Synth") with Melody/Chords clips, so tests
-// add their clips to the EMPTY track 0 and scope assertions to that track via
-// trackIndex. This both isolates the test and verifies the op is project-wide.
+// default project ships all tracks empty, so tests add their clips to track 0
+// and scope assertions to that track via trackIndex. This both isolates the
+// test and verifies the op is project-wide.
 
 std::vector<ClipSnapshot> clipsOnTrack0(AudioEngine& engine)
 {
