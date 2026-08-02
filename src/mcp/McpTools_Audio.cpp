@@ -5,8 +5,6 @@
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/MainAudioProcessor.h"
-#include "../engine/Track.h"
-#include "../engine/TrackFXSlot.h"
 #include "../engine/ProjectPool.h"
 #include <QJsonArray>
 #include <QJsonObject>
@@ -21,20 +19,20 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         [e](const QJsonObject& a) {
             int ti = a.value("trackId").toInt(-1);
-            auto* proc = e->getMainProcessor();
-            if (!proc) return McpToolResult::text("engine not ready", true);
-            auto* tr = proc->getTrack(ti);
-            if (!tr) return McpToolResult::text("track not found", true);
-            auto& chain = tr->getFXChain();
+            auto tl = e->getProjectModel().getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
             QJsonArray arr;
-            for (int i = 0; i < static_cast<int>(chain.size()); ++i) {
-                auto& s2 = chain[i]; if (!s2) continue;
-                QJsonObject o{{"slot", i},{"type", jstr(s2->getType())}};
-                if (s2->isPlugin()) {
-                    o["pluginId"] = jstr(s2->getPluginID());
-                    o["paramCount"] = static_cast<int>(s2->getAutomatableParams().size());
+            for (const auto& s2 : fxSlots) {
+                bool isPlugin = (s2.fxType == "plugin");
+                QJsonObject o{{"slot", s2.slotIndex},
+                              {"type", QString::fromStdString(s2.fxType)}};
+                if (isPlugin) {
+                    o["pluginId"] = QString::fromStdString(s2.pluginId);
+                    o["paramCount"] = s2.paramCount;
                 }
-                o["bypassed"] = s2->isBypassed();
+                o["bypassed"] = s2.bypassed;
                 arr.append(o);
             }
             return McpToolResult::text(QString::fromUtf8(
@@ -144,16 +142,19 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* rm = e->getMainProcessor()->getRoutingManager();
-            if (!rm) return McpToolResult::text("routing manager not ready", true);
-            auto* tr = rm->getTrackNode(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
+            int ti = a.value("trackId").toInt();
+            auto tl = e->getProjectModel().getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
             std::string type = a.value("fxType").toString().toStdString();
             if (type.empty() && a.contains("pluginId")) type = "plugin";
+            std::string pluginId;
+            if (a.contains("pluginId")) pluginId = a.value("pluginId").toString().toStdString();
             int pos = a.value("position").toInt(-1);
-            int idx = tr->addFXSlotAt(type, pos);
-            if (a.contains("pluginId"))
-                tr->setFXSlotPluginID(idx, a.value("pluginId").toString().toStdString());
+            auto fxChain = tl.getChild(ti).getChildWithName(IDs::FX_CHAIN);
+            int n = fxChain.isValid() ? fxChain.getNumChildren() : 0;
+            int idx = (pos < 0 || pos > n) ? n : pos;
+            e->getProjectCommands().addFxSlot(ti, type, pos, pluginId);
             return McpToolResult::text(QString("slot=%1").arg(idx));
         }});
 
@@ -163,12 +164,13 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"dryRun",    QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex"}),
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
-            auto* tr = e->getMainProcessor()->getTrack(ti);
-            if (!tr) return McpToolResult::text("track not found", true);
+            auto tl = e->getProjectModel().getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
             int s = a.value("slotIndex").toInt();
             if (a.value("dryRun").toBool(false))
                 return McpToolResult::text(QString("would remove FX slot %1 on track %2").arg(s).arg(ti));
-            tr->removeFXSlot(s);
+            e->getProjectCommands().removeFxSlot(ti, s);
             return McpToolResult::text("ok");
         }});
 
@@ -178,19 +180,17 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
                  {"trackId","slotIndex"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
-            auto& chain = tr->getFXChain();
+            int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
-            if (si < 0 || si >= (int)chain.size())
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
-            auto* slot = chain[si].get();
-            if (!slot->isPlugin())
+            if (fxSlots[si].fxType != "plugin")
                 return McpToolResult::text("slot is not a plugin", true);
-            int num = slot->getNumPrograms();
+            auto progs = e->getFxProgramList(ti, si);
             QJsonArray arr;
-            for (int i = 0; i < num; ++i)
-                arr.append(QJsonObject{{"index", i}, {"name", jstr(slot->getProgramName(i))}});
+            for (const auto& p : progs)
+                arr.append(QJsonObject{{"index", p.index}, {"name", QString::fromStdString(p.name)}});
             return McpToolResult::text(
                 QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
@@ -202,14 +202,15 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"programIndex", QJsonObject{{"type","integer"}}}},
                  {"trackId","slotIndex","programIndex"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
-            auto& chain = tr->getFXChain();
+            int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
-            if (si < 0 || si >= (int)chain.size())
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "plugin")
+                return McpToolResult::text("slot is not a plugin", true);
             int pi = a.value("programIndex").toInt();
-            chain[si]->setCurrentProgram(pi);
+            e->getPluginParamService().setCurrentProgram(ti, fxSlots[si].pluginId, pi);
             return McpToolResult::text("ok");
         }});
 
@@ -218,9 +219,9 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
-            tr->setFXBypassed(a.value("slotIndex").toInt(), a.value("bypassed").toBool());
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            e->getProjectCommands().setFxSlotBypassed(ti, si, a.value("bypassed").toBool());
             return McpToolResult::text("ok");
         }});
 
@@ -228,29 +229,22 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
-            auto& chain = tr->getFXChain();
+            int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
-            if (si < 0 || si >= (int)chain.size())
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
-            auto& slot = chain[si];
-            if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+            if (fxSlots[si].fxType != "plugin")
                 return McpToolResult::text("slot has no plugin", true);
-            auto& params = slot->getAutomatableParams();
-            auto* plugin = slot->getPluginInstance();
+            auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
             QJsonArray arr;
             for (const auto& pi : params) {
                 QJsonObject o;
                 o["index"] = pi.index;
-                o["name"] = jstr(pi.name);
+                o["name"] = QString::fromStdString(pi.name);
                 o["automatable"] = pi.automatable;
-                if (pi.index >= 0 && pi.index < plugin->getParameters().size()) {
-                    auto* p = plugin->getParameters()[pi.index];
-                    o["value"] = static_cast<double>(p->getValue());
-                    o["defaultValue"] = static_cast<double>(p->getDefaultValue());
-                    o["text"] = jstr(p->getText(p->getValue(), 128));
-                }
+                o["value"] = static_cast<double>(pi.value);
+                o["text"] = QString::fromStdString(pi.text);
                 arr.append(o);
             }
             return McpToolResult::text(QString::fromUtf8(
@@ -263,23 +257,20 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
         [e](const QJsonObject& a) -> McpToolResult {
-            auto* tr = e->getMainProcessor()->getTrack(a.value("trackId").toInt());
-            if (!tr) return McpToolResult::text("track not found", true);
-            auto& chain = tr->getFXChain();
+            int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
-            if (si < 0 || si >= (int)chain.size())
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
-            auto& slot = chain[si];
-            if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+            if (fxSlots[si].fxType != "plugin")
                 return McpToolResult::text("slot has no plugin", true);
             int pi = a.value("paramIndex").toInt();
-            auto& params = slot->getPluginInstance()->getParameters();
-            if (pi < 0 || pi >= params.size())
+            auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+            if (pi < 0 || pi >= static_cast<int>(params.size()))
                 return McpToolResult::text("param index out of range", true);
             float v = static_cast<float>(a.value("value").toDouble());
             v = std::clamp(v, 0.0f, 1.0f);
-            params[pi]->setValue(v);
-            slot->setAutomationParam(pi, v);
+            e->getPluginParamService().setParam(ti, fxSlots[si].pluginId, pi, v);
             return McpToolResult::text("ok");
         }});
 }
@@ -324,7 +315,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    // add_automation_lane / remove_automation_lane — the lane-authoring surface.
+    // add_automation_lane / remove_automation_lane â€” the lane-authoring surface.
     // paramID 0 leaves the lane unbound (legacy default); for FX-parameter
     // automation pass the compound id (100 + slotIndex*100 + paramIndex).
     // Mirrors project.addAutomationLane / project.removeAutomationLane so the
@@ -361,11 +352,70 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
         }});
 }
 
+static void registerSendTools(McpServer& s, AudioEngine* e)
+{
+    s.registerTool({"get_track_sends", "List all sends on a track.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt(-1);
+            if (!e->getMainProcessor()) return McpToolResult::text("engine not ready", true);
+            auto sends = e->getReadModel().getTrackSends(ti);
+            QJsonArray arr;
+            for (const auto& s : sends) {
+                arr.append(QJsonObject{
+                    {"sendIndex", s.sendIndex},
+                    {"level", static_cast<double>(s.level)},
+                    {"isPreFader", s.isPreFader},
+                    {"bypassed", s.bypassed},
+                });
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"set_track_send_level", "Set the level of a send.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"sendIndex", QJsonObject{{"type","integer"}}},
+                  {"level", QJsonObject{{"type","number"}}}}, {"trackId","sendIndex","level"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt(-1);
+            int si = a.value("sendIndex").toInt(-1);
+            float lv = static_cast<float>(a.value("level").toDouble());
+            e->getProjectCommands().setTrackSendLevel(ti, si, lv);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_track_send_mode", "Set send mode: pre or post fader.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"sendIndex", QJsonObject{{"type","integer"}}},
+                  {"isPreFader", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","isPreFader"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt(-1);
+            int si = a.value("sendIndex").toInt(-1);
+            bool pre = a.value("isPreFader").toBool();
+            e->getProjectCommands().setTrackSendMode(ti, si, pre);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_track_send_bypassed", "Bypass or unbypass a send.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                  {"sendIndex", QJsonObject{{"type","integer"}}},
+                  {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","bypassed"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt(-1);
+            int si = a.value("sendIndex").toInt(-1);
+            bool b = a.value("bypassed").toBool();
+            e->getProjectCommands().setTrackSendBypassed(ti, si, b);
+            return McpToolResult::text("ok");
+        }});
+}
+
 void registerAudioDomain(McpServer& s, AudioEngine* e)
 {
     registerAudioReadTools(s, e);
     registerFxTools(s, e);
     registerAutomationTools(s, e);
+    registerSendTools(s, e);
 }
 
 } // namespace mcp

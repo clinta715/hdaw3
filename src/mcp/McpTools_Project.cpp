@@ -10,6 +10,7 @@
 #include "../engine/PhraseGenerator.h"
 #include "../engine/ArrangementGenerator.h"
 #include "../engine/ProjectSerializer.h"
+#include "../engine/ProjectBackup.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -78,7 +79,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
             auto tl = e->getProjectModel().getTrackListTree();
             int wanted = a.value("trackId").toInt(-1);
             QJsonArray arr;
-            double bpm = e->getTransportManager().getBPM();
+            double bpm = e->getReadModel().getTransport().bpm;
             double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
             for (int i = 0; i < tl.getNumChildren(); ++i) {
                 if (wanted >= 0 && wanted != i) continue;
@@ -115,7 +116,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                 for (int j = 0; j < cl.getNumChildren(); ++j) {
                     auto c = cl.getChild(j);
                     if (static_cast<int>(c.getProperty(IDs::clipID)) != cid) continue;
-                    double bpm = e->getTransportManager().getBPM();
+                    double bpm = e->getReadModel().getTransport().bpm;
                     double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
                     QJsonObject out{
                         {"id", cid}, {"trackId", i},
@@ -177,11 +178,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, &um);
             t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
             m.getTrackListTree().addChild(t, -1, &um);
-            bool routingOk = false;
-            if (auto* rm = e->getMainProcessor()->getRoutingManager()) {
-                rm->addTrack(idx, t);
-                routingOk = rm->getTrackNode(idx) != nullptr;
-            }
+            bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
             return McpToolResult::text(
                 QString("trackId=%1 routed=%2").arg(idx).arg(routingOk ? "1" : "0"));
         }});
@@ -254,13 +251,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             int newIdx = e->getProjectCommands().duplicateTrack(id);
             if (newIdx < 0)
                 return McpToolResult::text("duplicate failed", true);
-            bool routingOk = false;
-            if (auto* rm = e->getMainProcessor()->getRoutingManager())
-            {
-                auto newTrack = tl.getChild(newIdx);
-                rm->addTrack(newIdx, newTrack);
-                routingOk = rm->getTrackNode(newIdx) != nullptr;
-            }
+            bool routingOk = newIdx >= 0 && newIdx < e->getProjectModel().getTrackListTree().getNumChildren();
             return McpToolResult::text(
                 QString("trackId=%1 routed=%2").arg(newIdx).arg(routingOk ? "1" : "0"));
         }});
@@ -299,12 +290,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             if (!fxType.empty())
                 m.addFxSlot(idx, fxType, -1, pluginId);
 
-            bool routingOk = false;
-            if (auto* rm = e->getMainProcessor()->getRoutingManager())
-            {
-                rm->addTrack(idx, t);
-                routingOk = rm->getTrackNode(idx) != nullptr;
-            }
+            bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
             return McpToolResult::text(
                 QString("trackId=%1 routed=%2 fxType=%3").arg(idx)
                     .arg(routingOk ? "1" : "0")
@@ -324,7 +310,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = a.value("trackId").toInt();
             auto tl = m.getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            double bpm = e->getTransportManager().getBPM();
+            double bpm = e->getReadModel().getTransport().bpm;
             double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
             double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
             auto c = ProjectModel::createMidiClipEmpty(
@@ -349,7 +335,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
             juce::File src(QString::fromUtf8(a.value("sourceFile").toString().toUtf8()).toStdString());
             if (!src.existsAsFile()) return McpToolResult::text("source file not found", true);
-            double bpm = e->getTransportManager().getBPM();
+            double bpm = e->getReadModel().getTransport().bpm;
             double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
             double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
             auto c = ProjectModel::createAudioClip(
@@ -385,7 +371,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             if (a.contains("start")) {
-                double bpm = e->getTransportManager().getBPM();
+                double bpm = e->getReadModel().getTransport().bpm;
                 double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
                 c.setProperty(IDs::startTime, startSec, &um);
             }
@@ -461,7 +447,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
-            double bpm = e->getTransportManager().getBPM();
+            double bpm = e->getReadModel().getTransport().bpm;
             double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
             if (a.contains("name"))     c.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
             if (a.contains("start"))    c.setProperty(IDs::startTime, a.value("start").toDouble() * factor, &um);
@@ -483,7 +469,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             int ti = -1; auto src = findClip(e, a.value("clipId").toInt(), &ti);
             if (!src.isValid()) return McpToolResult::text("clip not found", true);
             int nti = a.contains("trackId") ? a.value("trackId").toInt() : ti;
-            double bpm = e->getTransportManager().getBPM();
+            double bpm = e->getReadModel().getTransport().bpm;
             double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
             double ns = a.contains("start") ? a.value("start").toDouble() * factor
                                             : static_cast<double>(src.getProperty(IDs::startTime));
@@ -601,6 +587,138 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
             if (nl.isValid()) c.removeChild(nl, &e->getProjectModel().getUndoManager());
             return McpToolResult::text(QString("cleared %1 notes").arg(n));
         }});
+
+    s.registerTool({"set_note_chance", "Set a note's chance (probability) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"chance", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","chance"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::chance, a.value("chance").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_repeat_count", "Set a note's repeat count (repeats/ratchets) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"repeatCount", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"noteId","repeatCount"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::repeatCount, a.value("repeatCount").toInt(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_repeat_rate", "Set a note's repeat rate (beat fraction) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"repeatRate", QJsonObject{{"type","number"},{"minimum",0.0}}}}, {"noteId","repeatRate"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::repeatRate, a.value("repeatRate").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_repeat_curve", "Set a note's repeat curve (bunching, -1.0 to 1.0) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"repeatCurve", QJsonObject{{"type","number"},{"minimum",-1.0},{"maximum",1.0}}}}, {"noteId","repeatCurve"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::repeatCurve, a.value("repeatCurve").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_occurrence", "Set a note's occurrence (cycle-aware bitmask) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"occurrence", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"noteId","occurrence"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::occurrence, a.value("occurrence").toInt(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_recurrence", "Set a note's recurrence (previous-event dependency) operator.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"recurrence", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",2}}}}, {"noteId","recurrence"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::recurrence, a.value("recurrence").toInt(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_gain", "Set a note's per-note gain multiplier (0.0 to 2.0).",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"gain", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",2.0}}}}, {"noteId","gain"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::noteGain, a.value("gain").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_pan", "Set a note's per-note pan (-1.0 left to 1.0 right).",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"pan", QJsonObject{{"type","number"},{"minimum",-1.0},{"maximum",1.0}}}}, {"noteId","pan"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::notePan, a.value("pan").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_pitch_offset", "Set a note's per-note pitch offset in semitones.",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"pitchOffset", QJsonObject{{"type","number"}}}}, {"noteId","pitchOffset"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::notePitch, a.value("pitchOffset").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_timbre", "Set a note's per-note timbre (0.0 dark to 1.0 bright).",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"timbre", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","timbre"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::noteTimbre, a.value("timbre").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_pressure", "Set a note's per-note aftertouch pressure (0.0 to 1.0).",
+        objSchema({{"noteId", QJsonObject{{"type","integer"}}},
+                  {"pressure", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","pressure"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
+            if (!n.isValid()) return McpToolResult::text("note not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            n.setProperty(IDs::notePressure, a.value("pressure").toDouble(), &um);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_clip_seed", "Set the deterministic seed for a clip's operators.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                  {"seed", QJsonObject{{"type","integer"}}}}, {"clipId","seed"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            c.setProperty(IDs::seed, static_cast<int64_t>(a.value("seed").toDouble()), &um);
+            return McpToolResult::text("ok");
+        }});
 }
 
 static void registerCompositionTools(McpServer& s, AudioEngine* e)
@@ -683,7 +801,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         auto tl = m.getTrackListTree();
         if (trackId < 0 || trackId >= tl.getNumChildren())
             return McpToolResult::text("track not found", true);
-        double bpm = e->getTransportManager().getBPM();
+        double bpm = e->getReadModel().getTransport().bpm;
         double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
         double durSec = (bpm > 0) ? length * 60.0 / bpm : length;
         auto c = ProjectModel::createMidiClipEmpty("Generated", startSec, durSec);
@@ -859,6 +977,8 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             auto path = a.value("filePath").toString();
             juce::File f(juce::String(path.toUtf8().constData()));
             bool ok = HDAW::ProjectSerializer::save(e->getProjectModel(), f);
+            if (ok)
+                HDAW::backupProject(f);
             return McpToolResult::text(ok ? "saved" : "save failed", !ok);
         }});
 
