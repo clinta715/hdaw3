@@ -42,6 +42,9 @@ public:
     // for any track with more than one send.
     void addSend(int trackIndex, int sendIndex, const juce::ValueTree& sendTree);
     void removeSend(int trackIndex, int sendIndex);
+    void setSendLevel(int trackIndex, int sendIndex, float level);
+    void setSendMode(int trackIndex, int sendIndex, bool isPreFader);
+    void setSendBypassed(int trackIndex, int sendIndex, bool bypassed);
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);

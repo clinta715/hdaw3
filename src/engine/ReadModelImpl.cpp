@@ -35,6 +35,25 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
     cs.isGhost       = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
     cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
     cs.sceneIndex    = static_cast<int>(clipTree.getProperty(IDs::sceneIndex, -1));
+
+    // Populate gain envelope from GAIN_ENVELOPE child tree
+    auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (envTree.isValid())
+    {
+        cs.gainEnvelope.reserve(envTree.getNumChildren());
+        for (int i = 0; i < envTree.getNumChildren(); ++i)
+        {
+            auto pt = envTree.getChild(i);
+            if (pt.hasType(IDs::GAIN_ENVELOPE_POINT))
+            {
+                ClipSnapshot::GainEnvelopePoint p;
+                p.time = pt.getProperty(IDs::pointTime, 0.0);
+                p.gain = pt.getProperty(IDs::pointGain, 1.0);
+                cs.gainEnvelope.push_back(p);
+            }
+        }
+    }
+
     // CLIP -> CLIP_LIST -> TRACK -> position within TRACK_LIST
     auto track = clipTree.getParent().getParent();
     cs.trackIndex = track.getParent().indexOf(track);
@@ -248,6 +267,17 @@ std::vector<NoteSnapshot> ReadModelImpl::getNotes(int clipId) const
                     static_cast<double>(noteTree.getProperty(IDs::velocity, 0)) * 127.0 + 0.5);
                 ns.startBeat = noteTree.getProperty(IDs::startBeat, 0.0);
                 ns.durationBeats = noteTree.getProperty(IDs::durationBeats, 0.0);
+                ns.chance = static_cast<float>(noteTree.getProperty(IDs::chance, 1.0));
+                ns.repeatCount = noteTree.getProperty(IDs::repeatCount, 0);
+                ns.repeatRate = static_cast<float>(noteTree.getProperty(IDs::repeatRate, 0.25));
+                ns.repeatCurve = static_cast<float>(noteTree.getProperty(IDs::repeatCurve, 0.0));
+                ns.occurrence = noteTree.getProperty(IDs::occurrence, 0);
+                ns.recurrence = noteTree.getProperty(IDs::recurrence, 0);
+                ns.noteGain = static_cast<float>(noteTree.getProperty(IDs::noteGain, 1.0));
+                ns.notePan = static_cast<float>(noteTree.getProperty(IDs::notePan, 0.0));
+                ns.notePitch = static_cast<float>(noteTree.getProperty(IDs::notePitch, 0.0));
+                ns.noteTimbre = static_cast<float>(noteTree.getProperty(IDs::noteTimbre, 0.5));
+                ns.notePressure = static_cast<float>(noteTree.getProperty(IDs::notePressure, 0.0));
                 notes.push_back(ns);
             }
             return notes;
@@ -332,8 +362,12 @@ TransportSnapshot ReadModelImpl::getTransport() const
     if (transport.isValid()) {
         ts.isPlaying = transport.getProperty(IDs::isPlaying, false);
         ts.isLooping = transport.getProperty(IDs::isLooping, false);
-        ts.loopStart = transport.getProperty(IDs::loopStart, 0.0);
-        ts.loopEnd = transport.getProperty(IDs::loopEnd, 8.0);
+        // Tree stores loop region in seconds (engine consumers read seconds);
+        // the frontend expects beats. Convert seconds → beats.
+        double ls = transport.getProperty(IDs::loopStart, 0.0);
+        double le = transport.getProperty(IDs::loopEnd, 8.0);
+        ts.loopStart = (ts.bpm > 0) ? ls * ts.bpm / 60.0 : ls;
+        ts.loopEnd   = (ts.bpm > 0) ? le * ts.bpm / 60.0 : le;
         // Use the live TransportManager position (audio-thread atomic advanced
         // each processBlock) instead of the ValueTree position property, which
         // is only written on seek/stop and never updated during playback.
@@ -640,4 +674,26 @@ MeterSnapshot ReadModelImpl::getMasterMeter() const
 bool ReadModelImpl::isDirty() const
 {
     return model_.isDirty();
+}
+
+std::vector<SendSnapshot> ReadModelImpl::getTrackSends(int trackIndex) const
+{
+    std::vector<SendSnapshot> result;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return result;
+    auto sendList = trackList.getChild(trackIndex).getChildWithName(IDs::SEND_LIST);
+    if (!sendList.isValid())
+        return result;
+    for (int s = 0; s < sendList.getNumChildren(); ++s)
+    {
+        auto sendTree = sendList.getChild(s);
+        SendSnapshot snap;
+        snap.sendIndex = s;
+        snap.level = sendTree.getProperty(IDs::sendLevel, 0.0f);
+        snap.isPreFader = sendTree.getProperty(IDs::sendMode, "post").toString() == "pre";
+        snap.bypassed = sendTree.getProperty(IDs::bypassed, false);
+        result.push_back(snap);
+    }
+    return result;
 }

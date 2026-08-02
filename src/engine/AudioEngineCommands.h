@@ -35,6 +35,11 @@ public:
     void moveTrackIntoFolder(int trackIndex, int folderIndex) override;
     void moveTrackOutOfFolder(int trackIndex) override;
 
+    // Send operations
+    void setTrackSendLevel(int trackIndex, int sendIndex, float level) override;
+    void setTrackSendMode(int trackIndex, int sendIndex, bool isPreFader) override;
+    void setTrackSendBypassed(int trackIndex, int sendIndex, bool bypassed) override;
+
     // Session
     void setClipScene(int clipId, int sceneIndex) override;
     int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) override;
@@ -112,6 +117,20 @@ public:
     void setNoteVelocity(int noteId, int velocity) override;
     void setNoteStart(int noteId, double startBeat) override;
     void setNoteDuration(int noteId, double durationBeats) override;
+    void setNoteChance(int noteId, float chance) override;
+    void setNoteRepeatCount(int noteId, int repeatCount) override;
+    void setNoteRepeatRate(int noteId, float repeatRate) override;
+    void setNoteRepeatCurve(int noteId, float repeatCurve) override;
+    void setNoteOccurrence(int noteId, int occurrence) override;
+    void setNoteRecurrence(int noteId, int recurrence) override;
+    void setNoteGain(int noteId, float gain) override;
+    void setNotePan(int noteId, float pan) override;
+    void setNotePitchOffset(int noteId, float pitchOffset) override;
+    void setNoteTimbre(int noteId, float timbre) override;
+    void setNotePressure(int noteId, float pressure) override;
+    void setNotesExpression(int noteId, float gain, float pan, float pitchOffset, float timbre, float pressure) override;
+    void setClipSeed(int clipId, uint64_t seed) override;
+    void setNotesOperator(int clipId, int noteId, float chance, int repeatCount, float repeatRate, float repeatCurve, int occurrence, int recurrence) override;
     void clearNotes(int clipId) override;
     int mergeClips(const std::vector<int>& clipIds) override;
 

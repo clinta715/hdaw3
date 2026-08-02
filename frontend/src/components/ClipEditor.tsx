@@ -21,12 +21,17 @@ export default function ClipEditor() {
   const [quantStrength, setQuantStrength] = useState(100);
   const [velOffset, setVelOffset] = useState(0);
 
-  // Load notes for MIDI clips so clip-level MIDI ops work
+  // Load notes for MIDI clips so clip-level MIDI ops work.
+  // Reads notesByClip from getState() to avoid a re-render cascade:
+  // syncNotes creates a new Map → notesByClip changes → effect re-fires.
   useEffect(() => {
-    if (clip?.isMidi && clipId != null && !notesByClip.has(clipId)) {
-      useProjectStore.getState().syncNotes(rpc, clipId);
+    if (clip?.isMidi && clipId != null) {
+      const map = useProjectStore.getState().notesByClip;
+      if (!map.has(clipId)) {
+        useProjectStore.getState().syncNotes(rpc, clipId);
+      }
     }
-  }, [clip?.isMidi, clipId, notesByClip]);
+  }, [clip?.isMidi, clipId, rpc]);
 
   if (!clip) return null;
   const track = snapshot?.tracks.find((t) => t.index === clip.trackIndex);

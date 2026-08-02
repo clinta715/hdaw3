@@ -93,6 +93,36 @@ describe("WaveformCanvas peak caching", () => {
     expect(mockedCall.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 
+  it("renders with trimOverride without crashing", async () => {
+    mockedCall.mockResolvedValue(audiblePeaks);
+    const clip = mkClip(500);
+    const { container } = render(
+      <WaveformCanvas
+        clip={clip}
+        width={200}
+        height={40}
+        trimOverride={{ offset: 0.5, durationBeats: 2 }}
+      />
+    );
+    await flush();
+    expect(container.querySelector("canvas")).toBeTruthy();
+  });
+
+  it("renders with trimOverride at clip boundary", async () => {
+    mockedCall.mockResolvedValue(audiblePeaks);
+    const clip = mkClip(501);
+    const { container } = render(
+      <WaveformCanvas
+        clip={clip}
+        width={100}
+        height={40}
+        trimOverride={{ offset: 0, durationBeats: clip.durationBeats }}
+      />
+    );
+    await flush();
+    expect(container.querySelector("canvas")).toBeTruthy();
+  });
+
   it("renders with a custom track color without crashing", async () => {
     mockedCall.mockResolvedValue(audiblePeaks);
     const clip = mkClip(400);
@@ -101,5 +131,38 @@ describe("WaveformCanvas peak caching", () => {
     );
     await flush();
     expect(container.querySelector("canvas")).not.toBeNull();
+  });
+
+  it("renders looping clip without crashing (tiles waveform)", async () => {
+    mockedCall.mockResolvedValue(audiblePeaks);
+    const clip = mkClip(500);
+    clip.looping = true;
+    clip.durationBeats = 16; // 4x the source duration (4 beats)
+    clip.sourceDuration = 4;
+    clip.sourceBpm = 60; // 4 seconds = 4 beats at 60 BPM
+    const { container } = render(
+      <WaveformCanvas clip={clip} width={200} height={40} />
+    );
+    await flush();
+    expect(container.querySelector("canvas")).toBeTruthy();
+  });
+
+  it("renders looping clip with trimOverride without crashing", async () => {
+    mockedCall.mockResolvedValue(audiblePeaks);
+    const clip = mkClip(501);
+    clip.looping = true;
+    clip.durationBeats = 12;
+    clip.sourceDuration = 4;
+    clip.sourceBpm = 60;
+    const { container } = render(
+      <WaveformCanvas
+        clip={clip}
+        width={150}
+        height={40}
+        trimOverride={{ offset: 0, durationBeats: 8 }}
+      />
+    );
+    await flush();
+    expect(container.querySelector("canvas")).toBeTruthy();
   });
 });

@@ -2,6 +2,19 @@ import { create } from "zustand";
 import { RpcClient } from "../rpc/client";
 import { AutomationLaneSnapshot, AutomationPointSnapshot } from "../rpc/types";
 
+const HDAW_PINNED_LANE_KEY = "hdaw_pinned_lane_param_id";
+
+function loadPinnedLaneParamID(): number | null {
+  try {
+    const raw = localStorage.getItem(HDAW_PINNED_LANE_KEY);
+    if (raw != null) {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  } catch { /* storage unavailable */ }
+  return null;
+}
+
 interface AutomationState {
   lanes: AutomationLaneSnapshot[];
   pointsByLane: Map<string, AutomationPointSnapshot[]>;
@@ -9,6 +22,8 @@ interface AutomationState {
   loading: boolean;
   error: string | null;
   selectedPointTimes: Map<string, Set<number>>;
+  pinnedLaneParamID: number | null;
+  lastClickedParamID: number | null;
 
   fetchForTrack: (trackIndex: number, rpc: RpcClient) => Promise<void>;
   clear: () => void;
@@ -19,6 +34,8 @@ interface AutomationState {
   addPoint: (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => Promise<void>;
   removePoints: (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => Promise<void>;
   removeLane: (trackIndex: number, laneName: string, rpc: RpcClient) => Promise<void>;
+  setPinnedLaneParamID: (paramID: number | null) => void;
+  setLastClickedParamID: (paramID: number | null) => void;
 }
 
 export const useAutomationStore = create<AutomationState>((set, get) => ({
@@ -28,6 +45,8 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   loading: false,
   error: null,
   selectedPointTimes: new Map(),
+  pinnedLaneParamID: loadPinnedLaneParamID(),
+  lastClickedParamID: null,
 
   fetchForTrack: async (trackIndex: number, rpc: RpcClient) => {
     set({ loading: true, error: null, activeTrackIndex: trackIndex });
@@ -118,5 +137,20 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
   removeLane: async (trackIndex: number, laneName: string, rpc: RpcClient) => {
     await rpc.call("project.removeAutomationLane", { trackIndex, laneName });
     await get().fetchForTrack(trackIndex, rpc);
+  },
+
+  setPinnedLaneParamID: (paramID: number | null) => {
+    try {
+      if (paramID != null) {
+        localStorage.setItem(HDAW_PINNED_LANE_KEY, String(paramID));
+      } else {
+        localStorage.removeItem(HDAW_PINNED_LANE_KEY);
+      }
+    } catch { /* storage unavailable */ }
+    set({ pinnedLaneParamID: paramID });
+  },
+
+  setLastClickedParamID: (paramID: number | null) => {
+    set({ lastClickedParamID: paramID });
   },
 }));

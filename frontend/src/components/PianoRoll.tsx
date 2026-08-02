@@ -51,12 +51,17 @@ export default function PianoRoll() {
     ? midiClips.find((c) => c.clipId === selectedClipId)
     : midiClips[0];
 
-  // Auto-load notes when a new clip becomes active
+  // Auto-load notes when a new clip becomes active.
+  // Reads notesByClip from getState() to avoid a re-render cascade:
+  // syncNotes creates a new Map → notesByClip changes → effect re-fires.
   useEffect(() => {
-    if (activeClip && !notesByClip.has(activeClip.clipId)) {
-      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+    if (activeClip) {
+      const map = useProjectStore.getState().notesByClip;
+      if (!map.has(activeClip.clipId)) {
+        useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+      }
     }
-  }, [activeClip?.clipId, notesByClip]);
+  }, [activeClip?.clipId, rpc]);
 
   const notes = activeClip ? notesByClip.get(activeClip.clipId) ?? [] : [];
   const gridWidth = useMemo(() => {

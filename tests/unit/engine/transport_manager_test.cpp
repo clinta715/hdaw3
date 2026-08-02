@@ -133,3 +133,29 @@ TEST(TransportManager, LoopWrapDoesNotTriggerAutoStop)
     EXPECT_TRUE(tm.isPlayingNow());
     EXPECT_FALSE(tm.consumeAutoStopRequested());
 }
+
+TEST(TransportManager, ProjectEndSampleSurvivesRebuild)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+
+    // Simulate what prepareToPlay and rebuildRoutingGraph do:
+    // Set project end based on clip sources
+    tm.setProjectEndSample(44100); // 1 second of audio
+    tm.setPlaying(true);
+
+    // Advance past the end — auto-stop should fire
+    bool stopped = tm.advance(44101);
+    EXPECT_TRUE(stopped);
+    EXPECT_FALSE(tm.isPlayingNow());
+    EXPECT_EQ(tm.getCurrentSample(), 44100); // clamped to project end
+
+    // Reset and verify it still works after "rebuild" with new clip layout
+    tm.setCurrentSample(0);
+    tm.setProjectEndSample(88200); // 2 seconds after "rebuild"
+    tm.setPlaying(true);
+
+    stopped = tm.advance(88201);
+    EXPECT_TRUE(stopped);
+    EXPECT_FALSE(tm.isPlayingNow());
+}

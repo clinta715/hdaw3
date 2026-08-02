@@ -4,7 +4,7 @@ import { AutomationPointSnapshot } from "../rpc/types";
 import { useAutomationStore } from "../store/automationStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "./snapUtils";
+import { snap } from "./snapUtils";
 import { theme } from "../theme";
 import "./AutomationLaneCanvas.css";
 
@@ -259,9 +259,9 @@ export default function AutomationLaneCanvas({
   }, [points, size, viewStartBeat, viewEndBeat]);
 
   const commitMove = useCallback(async () => {
-    const { snapEnabled, snapDivision } = useUiStore.getState();
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
     const rawDeltaTime = dragCurrentTime - dragOrigTime;
-    const snappedDeltaTime = snapEnabled ? snapToGrid(rawDeltaTime, snapDivision) : rawDeltaTime;
+    const snappedDeltaTime = snap(rawDeltaTime, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
     const deltaValue = dragCurrentValue - dragOrigValue;
     if (Math.abs(snappedDeltaTime) < 0.001 && Math.abs(deltaValue) < 0.001) return;
 
@@ -311,8 +311,8 @@ export default function AutomationLaneCanvas({
 
   const addPointAt = useCallback(async (mx: number, my: number) => {
     const rawTime = beatFromX(mx, size.w, viewStartBeat, viewEndBeat);
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const t = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const t = snap(rawTime, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
     const v = valueFromY(my, size.h);
     await addPoint(trackIndex, laneName, t, v, rpc);
   }, [size, viewStartBeat, viewEndBeat, trackIndex, laneName, rpc, addPoint]);
@@ -320,6 +320,7 @@ export default function AutomationLaneCanvas({
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
     setContextMenu(null);
+    useUiStore.getState().setStatusHint("Click: add point · Drag: move · Alt+drag: shape curve · double-click: delete");
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     canvasBoundsRef.current = rect;
     const mx = e.clientX - rect.left;
@@ -389,6 +390,7 @@ export default function AutomationLaneCanvas({
     // Commit is handled by the single window-level mouseup listener (see the
     // isDragging effect below), which fires for releases inside AND outside
     // the canvas. This in-canvas handler just refreshes hover state.
+    useUiStore.getState().setStatusHint(null);
     if (isDragging) {
       const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -415,6 +417,7 @@ export default function AutomationLaneCanvas({
     };
 
     const handleWindowMouseUp = async () => {
+      useUiStore.getState().setStatusHint(null);
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
       setIsDragging(false);

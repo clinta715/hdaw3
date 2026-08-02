@@ -23,6 +23,7 @@ public:
 
     int getNumSources() const { return static_cast<int>(sources.size()); }
     LFOModulationSource* getSource(int index);
+    int getSourceParamID(int index) const;
 
 private:
     std::vector<std::unique_ptr<LFOModulationSource>> sources;
@@ -74,6 +75,13 @@ inline LFOModulationSource* ModulationManager::getSource(int index)
     if (index < 0 || index >= static_cast<int>(sources.size()))
         return nullptr;
     return sources[index].get();
+}
+
+inline int ModulationManager::getSourceParamID(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(sources.size()))
+        return -1;
+    return sources[index]->getTargetParamID();
 }
 
 } // namespace HDAW

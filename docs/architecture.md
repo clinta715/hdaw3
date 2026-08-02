@@ -283,6 +283,41 @@ in `src/engine/`, delegating to `PluginManager` (+ `MidiInputManager`).
 **Consumer pattern:** Same as command interfaces — callers use
 `pluginService->getPlugins()` instead of `engine.getPluginManager().getPlugins()`.
 
+### Automation model
+
+Automation is **track-based (primary)** — lanes live per-track under each TRACK's `AUTOMATION_LIST`, identified by `paramID`; clip-based / relative automation is a deferred future option. See [`docs/adr-automation-model.md`](adr-automation-model.md) for the decision and its beats-vs-seconds implication.
+
+### Parameter precedence (5-source model)
+
+A parameter's value at any sample is resolved from up to five control
+sources. When multiple sources target the same `paramID`, the
+**highest-precedence** source wins (the resolution is applied in the
+order below, and each subsequent source overwrites the previous).
+
+| Rank | Source | Description |
+|------|--------|-------------|
+| 1 | **Manual** | Direct user interaction — moving a knob/slider with the mouse or touch. |
+| 2 | **MIDI** | Incoming MIDI CC, Pitch Bend, or Channel Pressure messages. |
+| 3 | **Automation** | Track-based automation lanes (stored in `AUTOMATION_LIST` under each `TRACK`, resolved per-sample by `AutomationManager`). |
+| 4 | **Remote** | Macro mappings / track remote controls (future). |
+| 5 | **Modulator** | LFO / envelope / step sequencer modulation sources (stored in `MODULATION_LIST`, resolved per-sample by `ModulationManager`). Applied last — modulators are the lowest-precedence source. |
+
+**Modulated values are derived** — they are computed per-sample from the
+modulation sources and are never stored in the `ValueTree`. They must not
+be included in incremental deltas (see
+[`docs/valuetree-listener-contract.md`](valuetree-listener-contract.md)
+SS6 — delta-sync cannot compute derived state).
+
+The modulation per-sample path runs under `stateLock.tryEnter()` in
+`Track::processBlock` and is allocation-free, lock-free, and I/O-free
+(see [`docs/realtime-safety.md`](realtime-safety.md)).
+
+The modulator pass iterates all unique `paramID`s from the
+`ModulationManager` source list and calls `getModulation()` for each.
+Currently only paramID 1 (volume) and 2 (pan) are applied per-sample;
+device-parameter modulation (paramID > 2) advances the LFO phase but
+defers application until a per-block parameter interface is available.
+
 ### Automation Clipboard (`src/engine/AutomationClipboard.h`)
 
 | Type | Detail |

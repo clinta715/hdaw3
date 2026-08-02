@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useMeterStore } from "../store/meterStore";
 import { useUiStore } from "../store/uiStore";
+import { useAutomationStore } from "../store/automationStore";
 import { rpc } from "../rpc";
 import { colorStr } from "../theme";
 import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
@@ -77,6 +78,7 @@ export default function TrackHeaders() {
 
   const handleMute = (idx: number, muted: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
+    useAutomationStore.getState().setLastClickedParamID(3);
     rpc.call("project.setTrackMuted", { trackIndex: idx, muted: !muted }).catch(console.error);
   };
 

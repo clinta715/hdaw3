@@ -170,3 +170,58 @@ std::vector<ProjectModel::GainEnvelopePoint> AudioEngineCommands::getGainEnvelop
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     return ProjectModel::getGainEnvelopePoints(envelope);
 }
+
+// ─── Send operations ──────────────────────────────────────────────
+
+static juce::ValueTree findSendTree(const juce::ValueTree& trackTree, int sendIndex)
+{
+    auto sendList = trackTree.getChildWithName(IDs::SEND_LIST);
+    if (!sendList.isValid()) return {};
+    if (sendIndex < 0 || sendIndex >= sendList.getNumChildren()) return {};
+    return sendList.getChild(sendIndex);
+}
+
+void AudioEngineCommands::setTrackSendLevel(int trackIndex, int sendIndex, float level)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto sendTree = findSendTree(trackList.getChild(trackIndex), sendIndex);
+    if (!sendTree.isValid()) return;
+    sendTree.setProperty(IDs::sendLevel, static_cast<double>(level), &um);
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* rm = proc->getRoutingManager())
+            rm->setSendLevel(trackIndex, sendIndex, level);
+    }
+}
+
+void AudioEngineCommands::setTrackSendMode(int trackIndex, int sendIndex, bool isPreFader)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto sendTree = findSendTree(trackList.getChild(trackIndex), sendIndex);
+    if (!sendTree.isValid()) return;
+    sendTree.setProperty(IDs::sendMode, juce::String(isPreFader ? "pre" : "post"), &um);
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* rm = proc->getRoutingManager())
+            rm->setSendMode(trackIndex, sendIndex, isPreFader);
+    }
+}
+
+void AudioEngineCommands::setTrackSendBypassed(int trackIndex, int sendIndex, bool bypassed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    auto sendTree = findSendTree(trackList.getChild(trackIndex), sendIndex);
+    if (!sendTree.isValid()) return;
+    sendTree.setProperty(IDs::bypassed, bypassed, &um);
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* rm = proc->getRoutingManager())
+            rm->setSendBypassed(trackIndex, sendIndex, bypassed);
+    }
+}

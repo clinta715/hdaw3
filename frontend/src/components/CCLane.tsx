@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useState } from "react";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "./snapUtils";
+import { snap } from "./snapUtils";
 import { theme } from "../theme";
 import "./CCLane.css";
 
@@ -40,8 +40,8 @@ function beatValueAt(
 ): { beat: number; value: number } {
   const rect = el.getBoundingClientRect();
   const rawBeat = (clientX - rect.left + scrollX) / pixelsPerBeat;
-  const { snapEnabled, snapDivision } = useUiStore.getState();
-  const beat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
+  const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+  const beat = snap(rawBeat, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
   const value = Math.max(0, Math.min(127, Math.round(127 * (1 - (clientY - rect.top) / rect.height))));
   return { beat, value };
 }

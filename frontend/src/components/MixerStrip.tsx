@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { TrackSnapshot, MeterLevels } from "../rpc/types";
+import { useState, useEffect } from "react";
+import { TrackSnapshot, MeterLevels, SendSnapshot } from "../rpc/types";
 import { rpc } from "../rpc";
+import { useAutomationStore } from "../store/automationStore";
 import { colorStr } from "../theme";
 import "./MixerStrip.css";
 
@@ -13,6 +14,13 @@ interface Props {
 export default function MixerStrip({ track, meter, isMaster }: Props) {
   const [volume, setVolume] = useState(track.volume);
   const [pan, setPan] = useState(track.pan);
+  const [sends, setSends] = useState<SendSnapshot[]>([]);
+
+  useEffect(() => {
+    rpc.call("read.getTrackSends", { trackIndex: track.index })
+      .then((data: SendSnapshot[]) => setSends(data))
+      .catch(() => {});
+  }, [track.index]);
 
   const pctL = Math.min(100, Math.max(0, meter.l * 100));
   const pctR = Math.min(100, Math.max(0, meter.r * 100));
@@ -27,6 +35,27 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
   const commitPan = () => {
     if (pan !== track.pan)
       rpc.call("project.setTrackPan", { trackIndex: track.index, pan }).catch(console.error);
+  };
+
+  const setSendLevel = (si: number, level: number) => {
+    setSends((prev) => prev.map((s) => (s.sendIndex === si ? { ...s, level } : s)));
+    rpc.call("project.setTrackSendLevel", { trackIndex: track.index, sendIndex: si, level }).catch(console.error);
+  };
+
+  const toggleSendMode = (si: number) => {
+    const s = sends.find((x) => x.sendIndex === si);
+    if (!s) return;
+    const newMode = !s.isPreFader;
+    setSends((prev) => prev.map((x) => (x.sendIndex === si ? { ...x, isPreFader: newMode } : x)));
+    rpc.call("project.setTrackSendMode", { trackIndex: track.index, sendIndex: si, isPreFader: newMode }).catch(console.error);
+  };
+
+  const toggleSendBypass = (si: number) => {
+    const s = sends.find((x) => x.sendIndex === si);
+    if (!s) return;
+    const newBypass = !s.bypassed;
+    setSends((prev) => prev.map((x) => (x.sendIndex === si ? { ...x, bypassed: newBypass } : x)));
+    rpc.call("project.setTrackSendBypassed", { trackIndex: track.index, sendIndex: si, bypassed: newBypass }).catch(console.error);
   };
 
   return (
@@ -46,11 +75,12 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
           step={0.01}
           value={volume}
           onChange={(e) => setVolume(parseFloat(e.target.value))}
+          onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(1)}
           onMouseUp={commitVolume}
           onBlur={commitVolume}
         />
       </div>
-      <div className="ms-lufs">{lufsVal > -70 ? lufsVal.toFixed(1) : "-∞"}</div>
+      <div className="ms-lufs">{lufsVal > -70 ? lufsVal.toFixed(1) : "-"}</div>
       <div className="ms-readout">{Math.round(volume * 100)}%</div>
       <input
         type="range"
@@ -60,6 +90,7 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
         step={0.01}
         value={pan}
         onChange={(e) => setPan(parseFloat(e.target.value))}
+        onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(2)}
         onMouseUp={commitPan}
         onBlur={commitPan}
         title={`Pan ${formatPan(pan)}`}
@@ -90,6 +121,43 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
             }}
             title="Arm"
           >R</button>
+        </div>
+      )}
+      {!isMaster && sends.length > 0 && (
+        <div className="ms-sends">
+          {sends.map((s) => (
+            <div
+              key={s.sendIndex}
+              className={`ms-send-row${s.bypassed ? " ms-send-bypassed" : ""}`}
+              style={{ "--send-color": s.isPreFader ? "var(--send-pre-color)" : "var(--send-post-color)" } as React.CSSProperties}
+            >
+              <div className="ms-send-label">S{s.sendIndex + 1}</div>
+              <input
+                type="range"
+                className="ms-send-fader"
+                min={0}
+                max={2}
+                step={0.01}
+                value={s.level}
+                onChange={(e) => setSendLevel(s.sendIndex, parseFloat(e.target.value))}
+                title={`Send ${s.sendIndex + 1}: ${s.isPreFader ? "Pre" : "Post"}`}
+              />
+              <button
+                className="ms-send-mode-btn"
+                onClick={() => toggleSendMode(s.sendIndex)}
+                title={s.isPreFader ? "Pre-fader (click for Post)" : "Post-fader (click for Pre)"}
+              >
+                {s.isPreFader ? "P" : "O"}
+              </button>
+              <button
+                className={`ms-send-bypass-btn${s.bypassed ? " active" : ""}`}
+                onClick={() => toggleSendBypass(s.sendIndex)}
+                title={s.bypassed ? "Unbypass" : "Bypass"}
+              >
+                B
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

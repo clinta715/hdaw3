@@ -20,6 +20,7 @@ interface TimelineContextMenuProps {
   onDeleteClip: () => void;
   onDuplicateClip: () => void;
   onSplitClip: () => void;
+  onBrowseClip?: (trackIndex: number, beat: number) => void;
 }
 
 export function TimelineContextMenu({
@@ -34,6 +35,7 @@ export function TimelineContextMenu({
   onDeleteClip,
   onDuplicateClip,
   onSplitClip,
+  onBrowseClip,
 }: TimelineContextMenuProps) {
   const pasteClipboard = useCallback(async () => {
     const { clipClipboard } = useUiStore.getState();
@@ -312,6 +314,15 @@ export function TimelineContextMenu({
           }}>
             Add MIDI Clip
           </button>
+          {onBrowseClip && (
+            <button onMouseDown={(e) => {
+              e.stopPropagation();
+              onBrowseClip(emptyContextMenu.trackIndex, emptyContextMenu.beat);
+              onClose();
+            }}>
+              Browse for Clip...
+            </button>
+          )}
           <div className="ctx-separator" />
           {transport.loopEnd > transport.loopStart && (
             <button onMouseDown={(e) => {

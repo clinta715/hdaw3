@@ -7,6 +7,12 @@ import { AutomatableParamSnapshot } from "../rpc/types";
 import AutomationLaneCanvas from "./AutomationLaneCanvas";
 import "./AutomationPanel.css";
 
+const PARAM_NAMES: Record<number, string> = {
+  1: "Volume",
+  2: "Pan",
+  3: "Mute",
+};
+
 interface Props {
   rpc: RpcClient;
 }
@@ -15,11 +21,13 @@ export default function AutomationPanel({ rpc }: Props) {
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const [automatableParams, setAutomatableParams] = useState<AutomatableParamSnapshot[]>([]);
   const addLaneSelectRef = useRef<HTMLSelectElement>(null);
-  const { lanes, pointsByLane, activeTrackIndex, loading } = useAutomationStore(
-    useShallow((s) => ({ lanes: s.lanes, pointsByLane: s.pointsByLane, activeTrackIndex: s.activeTrackIndex, loading: s.loading }))
+  const { lanes, pointsByLane, activeTrackIndex, loading, pinnedLaneParamID } = useAutomationStore(
+    useShallow((s) => ({ lanes: s.lanes, pointsByLane: s.pointsByLane, activeTrackIndex: s.activeTrackIndex, loading: s.loading, pinnedLaneParamID: s.pinnedLaneParamID }))
   );
   const fetchForTrack = useAutomationStore((s) => s.fetchForTrack);
   const removeLane = useAutomationStore((s) => s.removeLane);
+  const setPinnedLaneParamID = useAutomationStore((s) => s.setPinnedLaneParamID);
+  const mountedRef = useRef(false);
 
   // Resolve trackIndex from selected clip
   const clipTrackIndex = selectedTrackIndex;
@@ -35,6 +43,40 @@ export default function AutomationPanel({ rpc }: Props) {
       .then((params) => setAutomatableParams(params as AutomatableParamSnapshot[]))
       .catch(() => {}); // ignore fetch errors for the param list
   }, [clipTrackIndex, rpc, fetchForTrack]);
+
+  // Joker effect: when unpinned, follow lastClickedParamID to switch primary lane.
+  // Reads lastClickedParamID/pinnedLaneParamID from getState() inside the
+  // effect so the dependency array is stable — avoids a re-render cascade
+  // where lanes→useShallow→re-render→effect re-fires.
+  const lastClickedRef = useRef<number | null>(null);
+  useEffect(() => {
+    const unsub = useAutomationStore.subscribe((state) => {
+      if (state.lastClickedParamID !== lastClickedRef.current) {
+        lastClickedRef.current = state.lastClickedParamID;
+        if (!mountedRef.current) return;
+        if (state.pinnedLaneParamID != null) return;
+        if (state.lastClickedParamID == null) return;
+        if (state.activeTrackIndex == null) return;
+        const paramID = state.lastClickedParamID;
+        const existingLane = state.lanes.find((l) => l.paramID === paramID);
+        if (existingLane) {
+          const reordered = [existingLane, ...state.lanes.filter((l) => l.laneIndex !== existingLane.laneIndex)];
+          useAutomationStore.setState({ lanes: reordered });
+        } else {
+          const laneName = PARAM_NAMES[paramID] ?? `Param ${paramID}`;
+          rpc.call("project.addAutomationLane", {
+            trackIndex: state.activeTrackIndex,
+            laneName,
+            paramID,
+          }).then(() => {
+            useAutomationStore.getState().fetchForTrack(state.activeTrackIndex!, rpc);
+          }).catch(() => {});
+        }
+      }
+    });
+    mountedRef.current = true;
+    return unsub;
+  }, [rpc]);
 
   const handleAddLane = async () => {
     if (activeTrackIndex === null) return;
@@ -70,6 +112,20 @@ export default function AutomationPanel({ rpc }: Props) {
       console.error("Remove lane failed:", err);
     }
   };
+
+  const handlePinToggle = () => {
+    if (pinnedLaneParamID != null) {
+      setPinnedLaneParamID(null);
+    } else {
+      const primaryLane = lanes[0];
+      if (primaryLane) {
+        setPinnedLaneParamID(primaryLane.paramID);
+      }
+    }
+  };
+
+  const isPinned = pinnedLaneParamID != null;
+  const primaryLane = lanes[0];
 
   // Params not yet bound to a lane — keyed by the compound paramID so the same
   // plugin param can't be added twice. (Previously this compared a set of
@@ -152,6 +208,15 @@ export default function AutomationPanel({ rpc }: Props) {
         >
           + Add Lane
         </button>
+        {primaryLane && (
+          <button
+            className={`ap-pin-btn${isPinned ? " ap-pin-btn--pinned" : ""}`}
+            onClick={handlePinToggle}
+            title={isPinned ? `Pinned to ${primaryLane.name} (click to unpin)` : "Pin primary lane"}
+          >
+            Pin
+          </button>
+        )}
         <span className="ap-track-label">Track {activeTrackIndex}</span>
       </div>
       <div className="ap-canvas-list">

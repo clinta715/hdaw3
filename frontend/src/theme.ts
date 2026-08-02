@@ -29,6 +29,12 @@ export const theme = {
   muteColor: "#fbbf24",
   soloColor: "#4ade80",
 
+  // Send pre/post color coding. Blue=pre-fader (signal before channel fader),
+  // yellow=post-fader (signal after channel fader). Deliberately far apart in
+  // hue so the routing point is unmistakable at a glance.
+  sendPreColor: "#4fc3f7",
+  sendPostColor: "#fbbf24",
+
   vuGreen: "#10b981",
   vuYellow: "#f59e0b",
   vuRed: "#ef4444",

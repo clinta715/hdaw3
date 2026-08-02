@@ -19,6 +19,10 @@ export default function TransportBar() {
   const snapDivision = useUiStore((s) => s.snapDivision);
   const setSnapEnabled = useUiStore((s) => s.setSnapEnabled);
   const setSnapDivision = useUiStore((s) => s.setSnapDivision);
+  const snapGridOffset = useUiStore((s) => s.snapGridOffset);
+  const snapToEvents = useUiStore((s) => s.snapToEvents);
+  const setSnapGridOffset = useUiStore((s) => s.setSnapGridOffset);
+  const setSnapToEvents = useUiStore((s) => s.setSnapToEvents);
   const isDirty = useProjectStore((s) => s.isDirty);
   const metronomeEnabled = useTransportExtrasStore((s) => s.metronomeEnabled);
   const countInEnabled = useTransportExtrasStore((s) => s.countInEnabled);
@@ -223,6 +227,16 @@ export default function TransportBar() {
           <option value={3}>1/16</option>
           <option value={4}>1/32</option>
         </select>
+        <button
+          className={`tb-snap-btn ${snapGridOffset ? "active" : ""}`}
+          onClick={() => setSnapGridOffset(!snapGridOffset)}
+          title="Preserve offset when moving"
+        >Off</button>
+        <button
+          className={`tb-snap-btn ${snapToEvents ? "active" : ""}`}
+          onClick={() => setSnapToEvents(!snapToEvents)}
+          title="Snap to clip & note edges"
+        >Evt</button>
       </div>
 
       <div className="tb-sep" />

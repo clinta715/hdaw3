@@ -40,6 +40,13 @@ export interface GainEnvelopePoint {
   gain: number;
 }
 
+export interface SendSnapshot {
+  sendIndex: number;
+  level: number;
+  isPreFader: boolean;
+  bypassed: boolean;
+}
+
 export interface ClipSnapshot {
   clipId: number;
   trackIndex: number;
@@ -70,6 +77,17 @@ export interface NoteSnapshot {
   velocity: number;
   startBeat: number;
   durationBeats: number;
+  chance: number;
+  repeatCount: number;
+  repeatRate: number;
+  repeatCurve: number;
+  occurrence: number;
+  recurrence: number;
+  noteGain: number;
+  notePan: number;
+  notePitch: number;
+  noteTimbre: number;
+  notePressure: number;
 }
 
 export interface ProjectSnapshot {

@@ -49,6 +49,19 @@ namespace IDs {
     DECLARE_ID(velocity)
     DECLARE_ID(startBeat)
     DECLARE_ID(durationBeats)
+    DECLARE_ID(chance)
+    DECLARE_ID(repeatCount)
+    DECLARE_ID(repeatRate)
+    DECLARE_ID(repeatCurve)
+    DECLARE_ID(occurrence)
+    DECLARE_ID(recurrence)
+
+    // Per-note expressions
+    DECLARE_ID(noteGain)
+    DECLARE_ID(notePan)
+    DECLARE_ID(notePitch)
+    DECLARE_ID(noteTimbre)
+    DECLARE_ID(notePressure)
 
     // CC lane
     DECLARE_ID(CC_LIST)
@@ -181,6 +194,7 @@ namespace IDs {
     // Ghost clips
     DECLARE_ID(ghostSourceId) // clipID of the source clip; -1 = not a ghost
     DECLARE_ID(isGhost)       // 0/1 bool: is this a ghost copy?
+    DECLARE_ID(seed)           // uint64 seed for deterministic operators
     #undef DECLARE_ID
 }
 

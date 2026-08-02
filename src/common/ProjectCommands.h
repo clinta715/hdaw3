@@ -30,6 +30,11 @@ public:
     virtual void moveTrackIntoFolder(int trackIndex, int folderIndex) = 0;
     virtual void moveTrackOutOfFolder(int trackIndex) = 0;
 
+    // Send operations
+    virtual void setTrackSendLevel(int trackIndex, int sendIndex, float level) = 0;
+    virtual void setTrackSendMode(int trackIndex, int sendIndex, bool isPreFader) = 0;
+    virtual void setTrackSendBypassed(int trackIndex, int sendIndex, bool bypassed) = 0;
+
     // Session
     virtual void setClipScene(int clipId, int sceneIndex) = 0;
     virtual int createSessionClip(int trackIndex, int sceneIndex, bool isMidi) = 0;
@@ -110,6 +115,20 @@ public:
     virtual void setNoteVelocity(int noteId, int velocity) = 0;
     virtual void setNoteStart(int noteId, double startBeat) = 0;
     virtual void setNoteDuration(int noteId, double durationBeats) = 0;
+    virtual void setNoteChance(int noteId, float chance) = 0;
+    virtual void setNoteRepeatCount(int noteId, int repeatCount) = 0;
+    virtual void setNoteRepeatRate(int noteId, float repeatRate) = 0;
+    virtual void setNoteRepeatCurve(int noteId, float repeatCurve) = 0;
+    virtual void setNoteOccurrence(int noteId, int occurrence) = 0;
+    virtual void setNoteRecurrence(int noteId, int recurrence) = 0;
+    virtual void setNoteGain(int noteId, float gain) = 0;
+    virtual void setNotePan(int noteId, float pan) = 0;
+    virtual void setNotePitchOffset(int noteId, float pitchOffset) = 0;
+    virtual void setNoteTimbre(int noteId, float timbre) = 0;
+    virtual void setNotePressure(int noteId, float pressure) = 0;
+    virtual void setNotesExpression(int noteId, float gain, float pan, float pitchOffset, float timbre, float pressure) = 0;
+    virtual void setClipSeed(int clipId, uint64_t seed) = 0;
+    virtual void setNotesOperator(int clipId, int noteId, float chance, int repeatCount, float repeatRate, float repeatCurve, int occurrence, int recurrence) = 0;
     virtual void clearNotes(int clipId) = 0;
     virtual int mergeClips(const std::vector<int>& clipIds) = 0;
 

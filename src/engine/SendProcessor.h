@@ -30,6 +30,13 @@ public:
 
     bool isPreFader() const { return preFader; }
 
+    void setBypassed(bool b)
+    {
+        bypassed.store(b, std::memory_order_relaxed);
+    }
+
+    bool isBypassed() const { return bypassed.load(std::memory_order_relaxed); }
+
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
         juce::ignoreUnused(sampleRate, samplesPerBlock);
@@ -39,6 +46,8 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
     {
+        if (bypassed.load(std::memory_order_relaxed))
+            return;
         buffer.applyGain(sendLevel.load(std::memory_order_relaxed));
     }
 
@@ -59,6 +68,7 @@ public:
 private:
     std::atomic<float> sendLevel{ 0.0f };
     std::atomic<bool> preFader{ false };
+    std::atomic<bool> bypassed{ false };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SendProcessor)
 };

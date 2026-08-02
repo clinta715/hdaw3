@@ -25,6 +25,7 @@
 
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
+#include "engine/ProjectBackup.h"
 #include "model/ProjectModel.h"
 
 #include <QDir>
@@ -128,6 +129,25 @@ TEST(TransportSurface, MetronomeEnabled)
 
     cmds.setMetronomeEnabled(false);
     EXPECT_FALSE(static_cast<bool>(transportTree.getProperty(IDs::metronomeEnabled)));
+}
+
+TEST(TransportSurface, LoopRegionBeatsSecondsConversion)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    // Set a known BPM so the beat↔second conversion is deterministic.
+    pc.setTempo(120.0);
+
+    // 4 beats at 120 BPM = 2.0 seconds; 8 beats = 4.0 seconds.
+    pc.setLoopStart(4.0);
+    pc.setLoopEnd(8.0);
+
+    auto t = engine.getReadModel().getTransport();
+    // Round trip: the backend stores seconds, getTransport returns beats.
+    EXPECT_DOUBLE_EQ(t.loopStart, 4.0);
+    EXPECT_DOUBLE_EQ(t.loopEnd, 8.0);
 }
 
 // ============================================================================
@@ -1362,4 +1382,85 @@ TEST(EdgeCases, NoteOperationsOnInvalidIdsDoNotCrash)
     cmds.setNoteStart(9999, 1.0);
     cmds.setNoteDuration(9999, 1.0);
     cmds.removeNote(9999);
+}
+
+// ============================================================================
+// PROJECT BACKUP
+// ============================================================================
+
+TEST(ProjectBackup, SaveCreatesTimestampedBackup)
+{
+    auto tmpDir = juce::File::createTempFile("hdaw_backup_test");
+    tmpDir.deleteFile();
+    tmpDir.createDirectory();
+    auto projectFile = tmpDir.getChildFile("test.hdaw");
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addMidiClip(0, 0.0, 4.0, "BackupTest");
+
+    bool saved = cmds.saveProject(projectFile.getFullPathName().toStdString());
+    ASSERT_TRUE(saved);
+
+    auto backupDir = tmpDir.getChildFile("auto-backups").getChildFile("test");
+    ASSERT_TRUE(backupDir.isDirectory());
+
+    auto files = backupDir.findChildFiles(juce::File::findFiles, false, "*.hdaw");
+    ASSERT_EQ(files.size(), 1);
+    EXPECT_TRUE(files[0].getFileName().contains("["));
+
+    tmpDir.deleteRecursively();
+}
+
+TEST(ProjectBackup, PrunesOldestBeyondCap)
+{
+    auto tmpDir = juce::File::createTempFile("hdaw_backup_test");
+    tmpDir.deleteFile();
+    tmpDir.createDirectory();
+    auto projectFile = tmpDir.getChildFile("test.hdaw");
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addMidiClip(0, 0.0, 4.0, "BackupTest");
+
+    const int maxBackups = 3;
+    const int totalSaves = 5;
+
+    for (int i = 0; i < totalSaves; ++i)
+    {
+        bool saved = cmds.saveProject(projectFile.getFullPathName().toStdString());
+        ASSERT_TRUE(saved);
+    }
+
+    auto backupDir = tmpDir.getChildFile("auto-backups").getChildFile("test");
+    ASSERT_TRUE(backupDir.isDirectory());
+
+    auto filesBefore = backupDir.findChildFiles(juce::File::findFiles, false, "*.hdaw");
+    ASSERT_EQ(filesBefore.size(), totalSaves);
+
+    HDAW::backupProject(projectFile, maxBackups);
+
+    auto files = backupDir.findChildFiles(juce::File::findFiles, false, "*.hdaw");
+    ASSERT_EQ(files.size(), maxBackups);
+
+    tmpDir.deleteRecursively();
+}
+
+TEST(ProjectBackup, DoesNotCrashOnMissingSourceFile)
+{
+    auto tmpDir = juce::File::createTempFile("hdaw_backup_test");
+    tmpDir.deleteFile();
+    tmpDir.createDirectory();
+    auto nonexistent = tmpDir.getChildFile("nonexistent.hdaw");
+
+    HDAW::backupProject(nonexistent);
+
+    auto backupDir = tmpDir.getChildFile("auto-backups");
+    EXPECT_FALSE(backupDir.exists());
+
+    tmpDir.deleteRecursively();
 }

@@ -176,3 +176,100 @@
   opacity: 0.6;
   border-style: dashed;
 }
+
+/* ── Send controls ──────────────────────────────────────────────── */
+
+.ms-sends {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--border-light);
+}
+
+.ms-send-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  transition: opacity 0.15s;
+}
+
+.ms-send-row.ms-send-bypassed {
+  opacity: 0.35;
+}
+
+.ms-send-label {
+  font-size: 7px;
+  color: var(--send-color, var(--text-muted));
+  width: 10px;
+  text-align: center;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.ms-send-fader {
+  flex: 1;
+  height: 10px;
+  accent-color: var(--send-color, var(--accent));
+  margin: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.ms-send-mode-btn {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--send-color, var(--border));
+  border-radius: 2px;
+  background: var(--bg-panel);
+  color: var(--send-color, var(--text-muted));
+  cursor: pointer;
+  font-size: 7px;
+  font-weight: 700;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.ms-send-mode-btn:hover {
+  background: var(--send-color, var(--bg-elevated));
+  color: var(--bg-panel);
+}
+
+.ms-send-bypass-btn {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 7px;
+  font-weight: 700;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.ms-send-bypass-btn:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+.ms-send-bypass-btn.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--text-primary);
+}

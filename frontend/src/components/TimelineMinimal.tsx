@@ -6,7 +6,7 @@ import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { WaveformCanvas } from "./WaveformCanvas";
 import { MidiThumbnailCanvas } from "./MidiThumbnailCanvas";
-import { snapToGrid } from "./snapUtils";
+import { snap } from "./snapUtils";
 import { useTimelineDrag } from "../hooks/useTimelineDrag";
 import { useTimelineTrim } from "../hooks/useTimelineTrim";
 import { useTimelineFade } from "../hooks/useTimelineFade";
@@ -19,6 +19,7 @@ import { buildRowLayout, rowAtY, rowAtYOrCount } from "../utils/rowLayout";
 import { getVisibleTracks } from "../utils/timelineUtils";
 import { colorStr } from "../theme";
 import { AddTrackMenu } from "./AddTrackMenu";
+import PopUpBrowser, { type ContentItem } from "./PopUpBrowser";
 import "./TimelineMinimal.css";
 
 export default function TimelineMinimal() {
@@ -118,6 +119,8 @@ export default function TimelineMinimal() {
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number; trackIndex: number } | null>(null);
   // Right-click in the dead space below the last track (outside .tl-tracks-inner).
   const [belowMenu, setBelowMenu] = useState<{ x: number; y: number } | null>(null);
+  // PopUpBrowser state for "Browse for Clip..." from context menu
+  const [browseClipTarget, setBrowseClipTarget] = useState<{ trackIndex: number; beat: number } | null>(null);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -243,8 +246,8 @@ export default function TimelineMinimal() {
         const trackIdx = rowAtYOrCount(layout, y);
         const elScroll = tracksRef.current?.scrollLeft ?? 0;
         const beatX = (e.clientX - rect.left + elScroll) / pps;
-        const { snapEnabled, snapDivision } = useUiStore.getState();
-        const startBeat = snapEnabled ? Math.round(beatX / snapDivision) * snapDivision : beatX;
+        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+        const startBeat = snap(beatX, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
 
         const ext = "." + fileName.split(".").pop()?.toLowerCase();
         const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
@@ -293,8 +296,8 @@ export default function TimelineMinimal() {
     const trackIdx = rowAtYOrCount(layout, y);
     const elScroll = tracksRef.current?.scrollLeft ?? 0;
     const beatX = (e.clientX - rect.left + elScroll) / pps;
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const startBeat = snapEnabled ? Math.round(beatX / snapDivision) * snapDivision : beatX;
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const startBeat = snap(beatX, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
     const currentTracks = useProjectStore.getState().snapshot?.tracks ?? [];
 
     for (const file of files) {
@@ -360,6 +363,35 @@ export default function TimelineMinimal() {
     setEmptyContextMenu(null);
     setBelowMenu(null);
   }, []);
+
+  const handleBrowseClip = useCallback((trackIndex: number, beat: number) => {
+    setBrowseClipTarget({ trackIndex, beat });
+  }, []);
+
+  const handleBrowseSelect = useCallback((item: ContentItem) => {
+    if (!browseClipTarget) return;
+    const { trackIndex, beat } = browseClipTarget;
+    const ext = "." + item.name.split(".").pop()?.toLowerCase();
+    const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
+    if (audioExts.includes(ext)) {
+      rpc.call("project.addAudioClip", {
+        trackIndex,
+        start: Math.max(0, beat),
+        duration: 4,
+        sourceFile: item.path,
+        name: item.name,
+      }).catch(() => {});
+    } else {
+      rpc.call("project.addMidiClip", {
+        trackIndex,
+        start: Math.max(0, beat),
+        duration: 4,
+        name: item.name,
+      }).catch(() => {});
+    }
+    useProjectStore.setState({ isDirty: true });
+    setBrowseClipTarget(null);
+  }, [browseClipTarget]);
 
   const handleDeleteClip = useCallback(() => {
     const { selectedClipIds } = useUiStore.getState();
@@ -750,10 +782,32 @@ export default function TimelineMinimal() {
                         onMouseDown={(e) => { if (!isTrimming) handleClipMouseDown(e, clip.clipId, idx, clip.startBeat); }}
                       >
                         {!clip.isMidi && (
-                          <WaveformCanvas clip={clip} width={Math.max(4, dispWidth)} height={layout.heights[idx] - 8} color={trackColor} />
+                          <WaveformCanvas
+                            clip={clip}
+                            width={Math.max(4, dispWidth)}
+                            height={layout.heights[idx] - 8}
+                            color={trackColor}
+                            trimOverride={isTrimming ? {
+                              offset: trimState.side === "left"
+                                ? clip.offset + (trimState.currentStartBeat - clip.startBeat)
+                                : clip.offset,
+                              durationBeats: trimState.currentDuration,
+                            } : undefined}
+                          />
                         )}
                         {clip.isMidi && !clip.isGhost && (
-                          <MidiThumbnailCanvas clip={clip} width={Math.max(4, dispWidth)} height={layout.heights[idx] - 8} color={trackColor} />
+                          <MidiThumbnailCanvas
+                            clip={clip}
+                            width={Math.max(4, dispWidth)}
+                            height={layout.heights[idx] - 8}
+                            color={trackColor}
+                            trimOverride={isTrimming ? {
+                              offset: trimState.side === "left"
+                                ? clip.offset + (trimState.currentStartBeat - clip.startBeat)
+                                : clip.offset,
+                              durationBeats: trimState.currentDuration,
+                            } : undefined}
+                          />
                         )}
                         {(clip.fadeIn > 0 || clip.fadeOut > 0 || (fadeDrag?.clipId === clip.clipId)) && (
                           <svg viewBox="0 0 100 48" preserveAspectRatio="none" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
@@ -766,10 +820,8 @@ export default function TimelineMinimal() {
                           </svg>
                         )}
                         <span className="tl-clip-name" style={{ position: "absolute", bottom: 2, left: 4 }}>{clip.name ?? `Clip ${clip.clipId}`}</span>
-                        <div className="fade-handle fade-handle-in" onMouseDown={(e) => handleFadeStart(e, clip, "in")} onClick={(e) => e.stopPropagation()} />
-                        <div className="fade-handle fade-handle-out" onMouseDown={(e) => handleFadeStart(e, clip, "out")} onClick={(e) => e.stopPropagation()} />
-                        <div className="clip-trim clip-trim-left" onMouseDown={(e) => handleTrimStart(e, clip, "left")} onClick={(e) => e.stopPropagation()} />
-                        <div className="clip-trim clip-trim-right" onMouseDown={(e) => handleTrimStart(e, clip, "right")} onClick={(e) => e.stopPropagation()} />
+                        <div className="clip-trim clip-trim-left" onMouseDown={(e) => { if (e.altKey) { handleFadeStart(e, clip, "in"); } else { handleTrimStart(e, clip, "left"); } }} onClick={(e) => e.stopPropagation()} />
+                        <div className="clip-trim clip-trim-right" onMouseDown={(e) => { if (e.altKey) { handleFadeStart(e, clip, "out"); } else { handleTrimStart(e, clip, "right"); } }} onClick={(e) => e.stopPropagation()} />
                         {clip.looping && (
                           <div
                             className="tl-loop-paint-handle"
@@ -866,7 +918,15 @@ export default function TimelineMinimal() {
         onDeleteClip={handleDeleteClip}
         onDuplicateClip={handleDuplicateClip}
         onSplitClip={handleSplitClip}
+        onBrowseClip={handleBrowseClip}
       />
+      {browseClipTarget && (
+        <PopUpBrowser
+          context="clip"
+          onSelect={handleBrowseSelect}
+          onClose={() => setBrowseClipTarget(null)}
+        />
+      )}
     </div>
   );
 }

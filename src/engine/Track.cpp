@@ -381,13 +381,35 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             if (auto pos = ph->getPosition())
                 bpm = pos->getBpm().orFallback(120.0);
 
-        // Modulation read path: modulationManager->getModulation() iterates
-        // the LFO `sources` vector and advances each LFO's phase per-sample.
-        // rebuildModulation (UI thread) mutates that vector under stateLock;
-        // we tryEnter() once per block and, on contention, skip modulation
-        // for the whole block (modGain/modPan stay 0.0). This matches the
-        // tryEnter()-or-skip pattern used for automation and the FX chain
-        // above, and avoids locking per-sample.
+        // Modulation read path: collect unique paramIDs from all sources
+        // (outside the per-sample loop — no allocation inside the sample
+        // loop). Each source targets a paramID; getModulation() sums all
+        // sources for that paramID and advances their LFO phases per-sample.
+        // rebuildModulation (UI thread) mutates the source vector under
+        // stateLock; we tryEnter() once per block and, on contention, skip
+        // modulation for the whole block (modGain/modPan stay 0.0). This
+        // matches the tryEnter()-or-skip pattern used for automation and
+        // the FX chain above, and avoids locking per-sample.
+        static constexpr int kMaxModParamIDs = 16;
+        int uniqueParamIDs[kMaxModParamIDs] = {};
+        int numUniqueParamIDs = 0;
+        if (modulationManager)
+        {
+            const int numSources = modulationManager->getNumSources();
+            for (int i = 0; i < numSources && numUniqueParamIDs < kMaxModParamIDs; ++i)
+            {
+                int pid = modulationManager->getSourceParamID(i);
+                if (pid <= 0) continue;
+                bool found = false;
+                for (int j = 0; j < numUniqueParamIDs; ++j)
+                {
+                    if (uniqueParamIDs[j] == pid) { found = true; break; }
+                }
+                if (!found)
+                    uniqueParamIDs[numUniqueParamIDs++] = pid;
+            }
+        }
+
         const bool modulationLocked = modulationManager && stateLock.tryEnter();
 
         for (int sample = 0; sample < numSamples; ++sample)
@@ -398,8 +420,19 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
             float modGain = 0.0f, modPan = 0.0f;
             if (modulationLocked)
             {
-                modGain = modulationManager->getModulation(1, bpm, getSampleRate());
-                modPan  = modulationManager->getModulation(2, bpm, getSampleRate());
+                for (int pidIdx = 0; pidIdx < numUniqueParamIDs; ++pidIdx)
+                {
+                    int pid = uniqueParamIDs[pidIdx];
+                    float modVal = modulationManager->getModulation(pid, bpm, getSampleRate());
+                    if (pid == 1)
+                        modGain = modVal;
+                    else if (pid == 2)
+                        modPan = modVal;
+                    // TODO: per-block modulation application for device params
+                    // (paramID > 2) — buffered value ready, target parameter
+                    // interface pending. The LFO phase still advances via
+                    // getModulation() above so the modulator stays in sync.
+                }
             }
 
             // Volume modulation is a depth-scaled MULTIPLIER, not an additive

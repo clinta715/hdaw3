@@ -47,11 +47,11 @@ export function clientXToBeat(
 }
 
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "../components/snapUtils";
+import { snap } from "../components/snapUtils";
 
 export function snapBeat(beat: number): number {
-  const { snapEnabled, snapDivision } = useUiStore.getState();
-  return snapEnabled ? snapToGrid(beat, snapDivision) : beat;
+  const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+  return snap(beat, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
 }
 
 import { useProjectStore } from "../store/projectStore";

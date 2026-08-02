@@ -126,6 +126,17 @@ inline QJsonObject toJson(const NoteSnapshot& n) {
         { "velocity",      n.velocity },
         { "startBeat",     n.startBeat },
         { "durationBeats", n.durationBeats },
+        { "chance",        static_cast<double>(n.chance) },
+        { "repeatCount",   n.repeatCount },
+        { "repeatRate",    static_cast<double>(n.repeatRate) },
+        { "repeatCurve",   static_cast<double>(n.repeatCurve) },
+        { "occurrence",    n.occurrence },
+        { "recurrence",    n.recurrence },
+        { "noteGain",      static_cast<double>(n.noteGain) },
+        { "notePan",       static_cast<double>(n.notePan) },
+        { "notePitch",     static_cast<double>(n.notePitch) },
+        { "noteTimbre",    static_cast<double>(n.noteTimbre) },
+        { "notePressure",  static_cast<double>(n.notePressure) },
     };
 }
 
@@ -240,6 +251,15 @@ inline QJsonObject toJson(const LfoSnapshot& l) {
         { "phaseOffset",  l.phaseOffset },
         { "targetParamID", l.targetParamID },
         { "enabled",      l.enabled },
+    };
+}
+
+inline QJsonObject toJson(const SendSnapshot& s) {
+    return QJsonObject{
+        { "sendIndex",  s.sendIndex },
+        { "level",      static_cast<double>(s.level) },
+        { "isPreFader", s.isPreFader },
+        { "bypassed",   s.bypassed },
     };
 }
 

@@ -4,7 +4,7 @@ import type { RpcClient } from "../rpc/client";
 import type { TrimState } from "../utils/timelineConstants";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "../components/snapUtils";
+import { snap } from "../components/snapUtils";
 
 interface UseTimelineTrimParams {
   clips: ClipSnapshot[];
@@ -39,6 +39,7 @@ export function useTimelineTrim({ clips, pps, rpc, tracksRef }: UseTimelineTrimP
         currentStartBeat: clip.startBeat,
         currentDuration: clip.durationBeats,
       });
+      useUiStore.getState().setStatusHint("Drag edge: trim · Alt+drag: fade · Shift: toggle snap");
 
       const onMove = (ev: globalThis.MouseEvent) => {
         const d = trimRef.current;
@@ -48,8 +49,8 @@ export function useTimelineTrim({ clips, pps, rpc, tracksRef }: UseTimelineTrimP
         const rect = el.getBoundingClientRect();
         const scroll = el.scrollLeft;
         const rawMouseBeat = (ev.clientX - rect.left + scroll) / pps;
-        const { snapEnabled, snapDivision } = useUiStore.getState();
-        const mouseBeat = snapEnabled ? snapToGrid(rawMouseBeat, snapDivision) : rawMouseBeat;
+        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+        const mouseBeat = snap(rawMouseBeat, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
 
         if (d.side === "left") {
           const maxStart = d.initialStartBeat + d.initialDuration - 0.5;
@@ -65,6 +66,7 @@ export function useTimelineTrim({ clips, pps, rpc, tracksRef }: UseTimelineTrimP
       const onUp = () => {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        useUiStore.getState().setStatusHint(null);
         const d = trimRef.current;
         if (!d) return;
 

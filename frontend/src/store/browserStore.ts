@@ -5,6 +5,8 @@ interface FavoriteFolder {
   label: string;
 }
 
+export type FileKindFilter = "all" | "devices" | "presets" | "samples" | "clips" | "midi";
+
 interface BrowserState {
   folders: string[];
   favorites: FavoriteFolder[];
@@ -15,6 +17,7 @@ interface BrowserState {
   autoPreview: boolean;
   tempoMatch: boolean;
   sourceBpm: number;
+  kindFilter: FileKindFilter;
   addFolder: (path: string) => void;
   removeFolder: (path: string) => void;
   addFavorite: (path: string, label?: string) => void;
@@ -27,6 +30,7 @@ interface BrowserState {
   setAutoPreview: (v: boolean) => void;
   setTempoMatch: (v: boolean) => void;
   setSourceBpm: (v: number) => void;
+  setKindFilter: (f: FileKindFilter) => void;
 }
 
 const STORAGE_KEY = "hdaw_browser_folders";
@@ -117,6 +121,22 @@ function saveSourceBpm(v: number) {
   localStorage.setItem("hdaw_browser_sourcebpm", String(v));
 }
 
+const KIND_FILTER_KEY = "hdaw_browser_kindfilter";
+
+function loadKindFilter(): FileKindFilter {
+  try {
+    const raw = localStorage.getItem(KIND_FILTER_KEY);
+    if (raw === "all" || raw === "devices" || raw === "presets" || raw === "samples" || raw === "clips" || raw === "midi") return raw;
+    return "all";
+  } catch {
+    return "all";
+  }
+}
+
+function saveKindFilter(v: FileKindFilter) {
+  localStorage.setItem(KIND_FILTER_KEY, v);
+}
+
 export const useBrowserStore = create<BrowserState>((set, get) => ({
   folders: loadFolders(),
   favorites: loadFavorites(),
@@ -127,6 +147,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   autoPreview: loadAutoPreview(),
   tempoMatch: loadTempoMatch(),
   sourceBpm: loadSourceBpm(),
+  kindFilter: loadKindFilter(),
 
   addFolder: (path) => {
     const { folders } = get();
@@ -188,4 +209,5 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   setAutoPreview: (v) => { saveAutoPreview(v); set({ autoPreview: v }); },
   setTempoMatch: (v) => { saveTempoMatch(v); set({ tempoMatch: v }); },
   setSourceBpm: (v) => { saveSourceBpm(v); set({ sourceBpm: v }); },
+  setKindFilter: (f) => { saveKindFilter(f); set({ kindFilter: f }); },
 }));

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useUiStore, MIN_BOTTOM_PANEL_H } from "../store/uiStore";
 import { ClipSnapshot } from "../rpc/types";
 
@@ -27,6 +27,9 @@ const makeClip = (clipId: number, trackIndex: number): ClipSnapshot => ({
 
 describe("uiStore", () => {
   beforeEach(() => {
+    localStorage.removeItem("hdaw_bottom_panel_h");
+    localStorage.removeItem("hdaw_view_mode");
+    localStorage.removeItem("hdaw_last_bottom_tab");
     useUiStore.setState({
       selectedClipIds: new Set(),
       lastSelectedClipId: null,
@@ -35,7 +38,11 @@ describe("uiStore", () => {
       activeBottomTab: "mixer",
       snapEnabled: true,
       snapDivision: 1,
+      snapGridOffset: false,
+      snapToEvents: false,
       showPhraseGenerator: false,
+      viewMode: "arrange",
+      statusHint: null,
     });
   });
 
@@ -113,5 +120,57 @@ describe("uiStore", () => {
 
   it("exposes a sane minimum for the bottom panel", () => {
     expect(MIN_BOTTOM_PANEL_H).toBeGreaterThanOrEqual(80);
+  });
+
+  it("setViewMode persists the mode", () => {
+    useUiStore.getState().setViewMode("session");
+    expect(useUiStore.getState().viewMode).toBe("session");
+    expect(localStorage.getItem("hdaw_view_mode")).toBe("session");
+  });
+
+  it("restores a valid stored view mode on init", async () => {
+    localStorage.setItem("hdaw_view_mode", "session");
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().viewMode).toBe("session");
+  });
+
+  it("falls back to arrange when stored view mode is invalid", async () => {
+    localStorage.setItem("hdaw_view_mode", "bogus");
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().viewMode).toBe("arrange");
+  });
+
+  it("selectBottomTab updates the tab and persists it", () => {
+    useUiStore.getState().selectBottomTab("automation");
+    expect(useUiStore.getState().activeBottomTab).toBe("automation");
+    expect(localStorage.getItem("hdaw_last_bottom_tab")).toBe("automation");
+  });
+
+  it("restores a valid stored bottom tab on init", async () => {
+    localStorage.setItem("hdaw_last_bottom_tab", "automation");
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().activeBottomTab).toBe("automation");
+  });
+
+  it("ignores an unknown tab in selectBottomTab", () => {
+    useUiStore.getState().selectBottomTab("not-a-real-tab");
+    expect(useUiStore.getState().activeBottomTab).toBe("mixer");
+    expect(localStorage.getItem("hdaw_last_bottom_tab")).toBeNull();
+  });
+
+  it("falls back to mixer when stored bottom tab is invalid", async () => {
+    localStorage.setItem("hdaw_last_bottom_tab", "bogus");
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().activeBottomTab).toBe("mixer");
+  });
+
+  it("setActiveBottomTab does not persist (auto-switch path)", () => {
+    useUiStore.getState().setActiveBottomTab("piano-roll");
+    expect(useUiStore.getState().activeBottomTab).toBe("piano-roll");
+    expect(localStorage.getItem("hdaw_last_bottom_tab")).toBeNull();
   });
 });

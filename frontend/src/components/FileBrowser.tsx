@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useBrowserStore } from "../store/browserStore";
+import { useBrowserStore, type FileKindFilter } from "../store/browserStore";
 import { useUiStore } from "../store/uiStore";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
@@ -32,6 +32,47 @@ function isSupported(name: string) {
   return ALL_EXTS.includes(ext);
 }
 
+const DEVICE_EXTS = [".vst3", ".clap", ".dll"];
+const PRESET_EXTS = [".fxp", ".fxb", ".vstpreset"];
+
+function fileKind(name: string): FileKindFilter | null {
+  if (isAudio(name)) return "samples";
+  if (isMidi(name)) return "midi";
+  const ext = "." + name.split(".").pop()?.toLowerCase();
+  if (DEVICE_EXTS.includes(ext)) return "devices";
+  if (PRESET_EXTS.includes(ext)) return "presets";
+  if (ext === ".clips") return "clips";
+  return null;
+}
+
+const KIND_CHIPS: { label: string; value: FileKindFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Samples", value: "samples" },
+  { label: "MIDI", value: "midi" },
+  { label: "Devices", value: "devices" },
+  { label: "Presets", value: "presets" },
+  { label: "Clips", value: "clips" },
+];
+
+function FilterChips() {
+  const kindFilter = useBrowserStore((s) => s.kindFilter);
+  const setKindFilter = useBrowserStore((s) => s.setKindFilter);
+
+  return (
+    <div className="fb-filter-chips">
+      {KIND_CHIPS.map((chip) => (
+        <button
+          key={chip.value}
+          className={`fb-chip${kindFilter === chip.value ? " fb-chip--active" : ""}`}
+          onClick={() => setKindFilter(kindFilter === chip.value ? "all" : chip.value)}
+        >
+          {chip.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function FileIcon({ name }: { name: string }) {
   if (isMidi(name)) return <span className="fb-icon fb-icon--midi">&#9835;</span>;
   if (isAudio(name)) return <span className="fb-icon fb-icon--audio">&#9834;</span>;
@@ -42,6 +83,7 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
   const expandedPaths = useBrowserStore((s) => s.expandedPaths);
   const toggleExpanded = useBrowserStore((s) => s.toggleExpanded);
   const searchQuery = useBrowserStore((s) => s.searchQuery);
+  const kindFilter = useBrowserStore((s) => s.kindFilter);
   const selectedFile = useBrowserStore((s) => s.selectedFile);
   const setSelectedFile = useBrowserStore((s) => s.setSelectedFile);
   const removeFolder = useBrowserStore((s) => s.removeFolder);
@@ -74,13 +116,18 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
   }, [isExpanded, loaded, loadChildren]);
 
   const filteredChildren = useMemo(() => {
-    if (!query) return children.filter((c) => c.isDir || isSupported(c.name));
+    if (!query && kindFilter === "all") return children.filter((c) => c.isDir || isSupported(c.name));
     return children.filter((c) => {
       if (c.isDir) return true;
       if (!isSupported(c.name)) return false;
-      return c.name.toLowerCase().includes(query);
+      if (query && !c.name.toLowerCase().includes(query)) return false;
+      if (kindFilter !== "all") {
+        const kind = fileKind(c.name);
+        if (kind !== kindFilter) return false;
+      }
+      return true;
     });
-  }, [children, query]);
+  }, [children, query, kindFilter]);
 
   const handleToggle = useCallback(() => {
     toggleExpanded(entry.path);
@@ -345,6 +392,7 @@ export default function FileBrowser() {
           className="fb-search-input"
         />
       </div>
+      <FilterChips />
       {favorites.length > 0 && (
         <div className="fb-favorites">
           <div className="fb-favorites-header">

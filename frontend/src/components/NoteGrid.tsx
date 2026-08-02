@@ -3,7 +3,7 @@ import { NoteSnapshot } from "../rpc/types";
 import { RpcClient } from "../rpc/client";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "./snapUtils";
+import { snap } from "./snapUtils";
 import { quantizeWithGroove } from "./grooveUtils";
 import "./NoteGrid.css";
 
@@ -132,13 +132,14 @@ export default function NoteGrid({
   }, [notes, dragState, resizeState, pixelsPerBeat]);
 
   const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
-    const { snapEnabled, snapDivision } = useUiStore.getState();
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const settings = { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents };
 
     setResizeState((prev) => {
       if (!prev) return null;
       const deltaX = e.clientX - prev.startX;
       const rawDuration = Math.max(0.03125, prev.initialDuration + deltaX / ppbRef.current);
-      const newDuration = snapEnabled ? Math.max(0.03125, snapToGrid(rawDuration, snapDivision)) : rawDuration;
+      const newDuration = Math.max(0.03125, snap(rawDuration, settings));
       return { ...prev, currentDuration: newDuration };
     });
 
@@ -151,7 +152,7 @@ export default function NoteGrid({
       const rawStart = Math.max(0,
         prev.startBeat + (e.clientX - prev.offsetX) / ppbRef.current
       );
-      const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
+      const newStart = snap(rawStart, settings, { originalStart: prev.startBeat });
       return { ...prev, currentPitch: newPitch, currentStart: newStart };
     });
   }, []);
@@ -187,14 +188,14 @@ export default function NoteGrid({
 
     try {
       if (drag && clipId != null) {
-        const { snapEnabled, snapDivision } = useUiStore.getState();
-        const snappedStart = snapEnabled ? snapToGrid(drag.currentStart, snapDivision) : drag.currentStart;
+        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+        const snappedStart = snap(drag.currentStart, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents }, { originalStart: drag.startBeat });
         await rpc.call("project.setNotePitch", { noteId: drag.noteId, pitch: drag.currentPitch });
         await rpc.call("project.setNoteStart", { noteId: drag.noteId, startBeat: snappedStart });
       }
       if (resize && clipId != null) {
-        const { snapEnabled, snapDivision } = useUiStore.getState();
-        const snappedDuration = snapEnabled ? Math.max(0.03125, snapToGrid(resize.currentDuration, snapDivision)) : resize.currentDuration;
+        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+        const snappedDuration = Math.max(0.03125, snap(resize.currentDuration, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents }));
         await rpc.call("project.setNoteDuration", { noteId: resize.noteId, durationBeats: snappedDuration });
       }
       if ((drag || resize) && clipId != null) {
@@ -203,6 +204,7 @@ export default function NoteGrid({
     } catch (err) {
       console.warn("note interaction failed", err);
     }
+    useUiStore.getState().setStatusHint(null);
     setDragState(null);
     setResizeState(null);
   }, [rpc, clipId]);
@@ -240,8 +242,8 @@ export default function NoteGrid({
     const y = e.clientY - rect.top + gridEl.scrollTop;
     const pitch = clamp(127 - Math.floor(y / KEY_HEIGHT), 0, 127);
     const rawBeat = x / ppbRef.current;
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const startBeat = snapEnabled ? snapToGrid(rawBeat, snapDivision) : rawBeat;
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const startBeat = snap(rawBeat, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
     
     // Optimistic: add note(s) to local store immediately
     const newNotes: NoteSnapshot[] = [{
@@ -681,6 +683,7 @@ export default function NoteGrid({
 
               const noteRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               const localX = e.clientX - noteRect.left;
+              useUiStore.getState().setStatusHint("Draw: click · Drag: move/resize note · Alt+drag: quick-draw row");
               if (localX > noteRect.width - 6) {
                 setResizeState({
                   noteId: note.noteId,

@@ -354,6 +354,7 @@ void RoutingManager::addSend(int trackIndex, int sendIndex, const juce::ValueTre
     auto sendProc = std::make_unique<SendProcessor>();
     sendProc->setSendLevel(sendLevel);
     sendProc->setSendMode(sendMode == "pre");
+    sendProc->setBypassed(sendTree.getProperty(IDs::bypassed, false));
 
     auto sendNode = graph.addNode(std::move(sendProc));
     sendConnections[{trackIndex, sendIndex}] = {
@@ -375,6 +376,27 @@ void RoutingManager::removeSend(int trackIndex, int sendIndex)
         graph.removeNode(it->second.node.get());
         sendConnections.erase(it);
     }
+}
+
+void RoutingManager::setSendLevel(int trackIndex, int sendIndex, float level)
+{
+    auto it = sendConnections.find({trackIndex, sendIndex});
+    if (it != sendConnections.end() && it->second.processor != nullptr)
+        it->second.processor->setSendLevel(level);
+}
+
+void RoutingManager::setSendMode(int trackIndex, int sendIndex, bool isPreFader)
+{
+    auto it = sendConnections.find({trackIndex, sendIndex});
+    if (it != sendConnections.end() && it->second.processor != nullptr)
+        it->second.processor->setSendMode(isPreFader);
+}
+
+void RoutingManager::setSendBypassed(int trackIndex, int sendIndex, bool bypassed)
+{
+    auto it = sendConnections.find({trackIndex, sendIndex});
+    if (it != sendConnections.end() && it->second.processor != nullptr)
+        it->second.processor->setBypassed(bypassed);
 }
 
 void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree)

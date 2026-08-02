@@ -34,6 +34,7 @@ public:
     std::vector<LfoSnapshot> getModulationLfos(int trackIndex) const override;
     MeterSnapshot getTrackMeter(int trackIndex) const override;
     MeterSnapshot getMasterMeter() const override;
+    std::vector<SendSnapshot> getTrackSends(int trackIndex) const override;
     bool isDirty() const override;
 
 private:

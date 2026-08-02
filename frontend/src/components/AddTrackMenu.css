@@ -52,3 +52,9 @@
   line-height: 1;
   flex-shrink: 0;
 }
+
+.add-track-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 8px;
+}

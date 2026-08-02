@@ -68,7 +68,11 @@ describe("StatusBar", () => {
       activeBottomTab: "mixer",
       snapEnabled: true,
       snapDivision: 1,
+      snapGridOffset: false,
+      snapToEvents: false,
       showPhraseGenerator: false,
+      viewMode: "arrange",
+      statusHint: null,
     });
   });
 
@@ -117,5 +121,45 @@ describe("StatusBar", () => {
     });
     rerender(<StatusBar />);
     expect(screen.getByText(/3 selected/)).toBeInTheDocument();
+  });
+
+  it("shows the arrange default hint with no selection", () => {
+    render(<StatusBar />);
+    expect(
+      screen.getByText("Arrange — drag in an empty lane to create · double-click to add a clip")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the track default hint when a track is selected", () => {
+    useUiStore.setState({ selectedTrackIndex: 0 });
+    render(<StatusBar />);
+    expect(
+      screen.getByText("Synth selected — M / S / Arm in the header")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the single-clip default hint when one clip is selected", () => {
+    useUiStore.setState({ selectedClipIds: new Set([1]) });
+    render(<StatusBar />);
+    expect(
+      screen.getByText("1 clip selected — double-click to edit · Delete to remove")
+    ).toBeInTheDocument();
+  });
+
+  it("shows the session default hint with no selection in session view", () => {
+    useUiStore.setState({ viewMode: "session" });
+    render(<StatusBar />);
+    expect(
+      screen.getByText("Session view — click a clip to launch · Tab toggles Arrange/Session")
+    ).toBeInTheDocument();
+  });
+
+  it("renders the transient statusHint instead of the default", () => {
+    useUiStore.setState({ statusHint: "Custom transient hint" });
+    render(<StatusBar />);
+    expect(screen.getByText("Custom transient hint")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Arrange — drag in an empty lane to create · double-click to add a clip")
+    ).not.toBeInTheDocument();
   });
 });

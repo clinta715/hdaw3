@@ -63,7 +63,12 @@ void AudioEngineCommands::setLoopStart(double beat)
     auto& um = engine_.getProjectModel().getUndoManager();
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
-        transport.setProperty(IDs::loopStart, beat, &um);
+    {
+        // Frontend sends beats; the tree stores seconds. Convert beats → seconds.
+        double bpm = engine_.getTransportManager().getBPM();
+        double sec = (bpm > 0) ? beat * 60.0 / bpm : beat;
+        transport.setProperty(IDs::loopStart, sec, &um);
+    }
 }
 
 void AudioEngineCommands::setLoopEnd(double beat)
@@ -71,7 +76,12 @@ void AudioEngineCommands::setLoopEnd(double beat)
     auto& um = engine_.getProjectModel().getUndoManager();
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
-        transport.setProperty(IDs::loopEnd, beat, &um);
+    {
+        // Frontend sends beats; the tree stores seconds. Convert beats → seconds.
+        double bpm = engine_.getTransportManager().getBPM();
+        double sec = (bpm > 0) ? beat * 60.0 / bpm : beat;
+        transport.setProperty(IDs::loopEnd, sec, &um);
+    }
 }
 
 void AudioEngineCommands::setLooping(bool looping)

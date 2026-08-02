@@ -331,3 +331,12 @@
   font-weight: 600;
   color: var(--accent, #d97706);
 }
+
+.fx-dropdown-browse {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.fx-dropdown-browse:hover {
+  color: var(--accent-bright);
+}

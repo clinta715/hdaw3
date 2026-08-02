@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useProjectStore } from "../store/projectStore";
 import { ProjectSnapshot } from "../rpc/types";
 import type { TreeDelta, ClipSnapshot, TrackSnapshot } from "../rpc/types";
+import type { RpcClient } from "../rpc/client";
 
 const mockSnapshot: ProjectSnapshot = {
   name: "Test Project",
@@ -265,5 +266,40 @@ describe("pending placeholders", () => {
     expect(clips.some((c) => c.clipId === 500)).toBe(true);
     expect(useProjectStore.getState().pendingTempIds.has(-1)).toBe(false);
     expect(useProjectStore.getState().pendingResolution.has(-1)).toBe(false);
+  });
+});
+
+function mockRpc(): RpcClient {
+  return { call: vi.fn(async () => []) } as unknown as RpcClient;
+}
+
+describe("syncNotes re-render behavior", () => {
+  beforeEach(() => {
+    useProjectStore.setState({
+      snapshot: structuredClone(mockSnapshot),
+      notesByClip: new Map(),
+      lastSync: 0,
+    });
+  });
+
+  it("syncNotes notifies subscribers exactly once per call", async () => {
+    let notifyCount = 0;
+    const unsub = useProjectStore.subscribe((s) => {
+      if (s.notesByClip.size > 0) notifyCount++;
+    });
+
+    // First syncNotes call — should notify subscribers once
+    await useProjectStore.getState().syncNotes(mockRpc(), 999);
+    expect(notifyCount).toBe(1);
+    notifyCount = 0;
+
+    // Second syncNotes for same clip — should notify subscribers once.
+    // syncNotes creates a new Map reference each time (by design —
+    // React subscribers using useShallow need a new object to detect changes),
+    // but it must not cause multiple notifications per call.
+    await useProjectStore.getState().syncNotes(mockRpc(), 999);
+    expect(notifyCount).toBe(1);
+
+    unsub();
   });
 });

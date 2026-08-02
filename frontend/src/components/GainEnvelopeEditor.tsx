@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { GainEnvelopePoint } from "../rpc/types";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "./snapUtils";
+import { snap } from "./snapUtils";
 import { theme } from "../theme";
 import "./GainEnvelopeEditor.css";
 
@@ -106,8 +106,8 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
       const x = clientX - rect.left;
       const y = clientY - rect.top;
       const rawTime = Math.max(0, Math.min(durationBeats, ((x - PAD) / plotW) * durationBeats));
-      const { snapEnabled, snapDivision } = useUiStore.getState();
-      const time = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
+      const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+      const time = snap(rawTime, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
       const gain = Math.max(0, Math.min(2, ((h - PAD - y) / plotH) * 2));
       return { time, gain };
     },
@@ -167,8 +167,8 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const rawTime = Math.max(0, Math.min(durationBeats, ((x - PAD) / plotW) * durationBeats));
-      const { snapEnabled, snapDivision } = useUiStore.getState();
-      const time = snapEnabled ? snapToGrid(rawTime, snapDivision) : rawTime;
+      const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+      const time = snap(rawTime, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
       const gain = Math.max(0, Math.min(2, ((h - PAD - y) / plotH) * 2));
       const newPts = ptsRef.current.map((p, i) => (i === drag.idx ? { time, gain } : p));
       ptsRef.current = newPts;

@@ -3,6 +3,24 @@ import { ClipSnapshot } from "../rpc/types";
 
 export const MIN_BOTTOM_PANEL_H = 120;
 const BOTTOM_PANEL_H_KEY = "hdaw_bottom_panel_h";
+const HDAW_VIEWMODE_KEY = "hdaw_view_mode";
+const HDAW_LAST_TAB_KEY = "hdaw_last_bottom_tab";
+
+export const BOTTOM_TAB_IDS = [
+  "mixer",
+  "piano-roll",
+  "automation",
+  "fx",
+  "midi-fx",
+  "audio-editor",
+  "modulation",
+  "step-seq",
+  "undo-history",
+  "inspector",
+] as const;
+export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
+export const DEFAULT_BOTTOM_TAB = "mixer";
+export const DEFAULT_VIEW_MODE = "arrange" as const;
 
 function loadBottomPanelHeight(): number {
   try {
@@ -17,6 +35,26 @@ function loadBottomPanelHeight(): number {
   return 200;
 }
 
+function loadViewMode(): "arrange" | "session" {
+  try {
+    const vm = localStorage.getItem(HDAW_VIEWMODE_KEY);
+    if (vm === "arrange" || vm === "session") return vm;
+  } catch {
+    /* storage unavailable (e.g. test env) — fall through to default */
+  }
+  return DEFAULT_VIEW_MODE;
+}
+
+function loadLastBottomTab(): string {
+  try {
+    const lt = localStorage.getItem(HDAW_LAST_TAB_KEY);
+    if (lt && (BOTTOM_TAB_IDS as readonly string[]).includes(lt)) return lt;
+  } catch {
+    /* storage unavailable (e.g. test env) — fall through to default */
+  }
+  return DEFAULT_BOTTOM_TAB;
+}
+
 interface UiState {
   selectedClipIds: Set<number>;
   lastSelectedClipId: number | null;
@@ -25,9 +63,12 @@ interface UiState {
   activeBottomTab: string;
   snapEnabled: boolean;
   snapDivision: number;
+  snapGridOffset: boolean;
+  snapToEvents: boolean;
   showPhraseGenerator: boolean;
   bottomPanelHeight: number;
   viewMode: "arrange" | "session";
+  statusHint: string | null;
 
   selectClip: (id: number | null, trackIndex?: number | null) => void;
   toggleClipSelection: (id: number) => void;
@@ -36,11 +77,15 @@ interface UiState {
   clearSelection: () => void;
   setClipboard: (clips: ClipSnapshot[]) => void;
   setActiveBottomTab: (tab: string) => void;
+  selectBottomTab: (tab: string) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSnapDivision: (division: number) => void;
+  setSnapGridOffset: (enabled: boolean) => void;
+  setSnapToEvents: (enabled: boolean) => void;
   setShowPhraseGenerator: (show: boolean) => void;
   setBottomPanelHeight: (h: number) => void;
   setViewMode: (mode: "arrange" | "session") => void;
+  setStatusHint: (h: string | null) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -48,12 +93,15 @@ export const useUiStore = create<UiState>((set, get) => ({
   lastSelectedClipId: null,
   selectedTrackIndex: null,
   clipClipboard: [],
-  activeBottomTab: "mixer",
+  activeBottomTab: loadLastBottomTab(),
   snapEnabled: true,
   snapDivision: 1,
+  snapGridOffset: false,
+  snapToEvents: false,
   showPhraseGenerator: false,
   bottomPanelHeight: loadBottomPanelHeight(),
-  viewMode: "arrange",
+  viewMode: loadViewMode(),
+  statusHint: null,
 
   selectClip: (id, trackIndex) => set({
     selectedClipIds: id != null ? new Set([id]) : new Set<number>(),
@@ -94,8 +142,20 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   setActiveBottomTab: (tab) => set({ activeBottomTab: tab }),
 
+  selectBottomTab: (tab) => {
+    if (!(BOTTOM_TAB_IDS as readonly string[]).includes(tab)) return;
+    try {
+      localStorage.setItem(HDAW_LAST_TAB_KEY, tab);
+    } catch {
+      /* storage unavailable — tab still applies for this session */
+    }
+    set({ activeBottomTab: tab });
+  },
+
   setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   setSnapDivision: (division) => set({ snapDivision: division }),
+  setSnapGridOffset: (enabled) => set({ snapGridOffset: enabled }),
+  setSnapToEvents: (enabled) => set({ snapToEvents: enabled }),
   setShowPhraseGenerator: (show) => set({ showPhraseGenerator: show }),
   setBottomPanelHeight: (h) => {
     try {
@@ -105,5 +165,13 @@ export const useUiStore = create<UiState>((set, get) => ({
     }
     set({ bottomPanelHeight: h });
   },
-  setViewMode: (mode) => set({ viewMode: mode }),
+  setViewMode: (mode) => {
+    try {
+      localStorage.setItem(HDAW_VIEWMODE_KEY, mode);
+    } catch {
+      /* storage unavailable — mode still applies for this session */
+    }
+    set({ viewMode: mode });
+  },
+  setStatusHint: (h) => set({ statusHint: h }),
 }));

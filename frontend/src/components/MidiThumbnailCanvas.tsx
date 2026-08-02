@@ -10,6 +10,8 @@ interface Props {
   height: number;
   /** Track color (#rrggbb) used to tint the note blocks. Defaults to cyan. */
   color?: string;
+  /** Override offset/duration during trim drag so thumbnail reflects the actual audible window. */
+  trimOverride?: { offset: number; durationBeats: number };
 }
 
 // Draws a mini piano-roll preview of a MIDI clip's notes, fitted to the
@@ -17,7 +19,7 @@ interface Props {
 // of collapsing to a single line. Mirrors the WaveformCanvas pattern:
 // data lives in the project store's notesByClip (fetched once via syncNotes),
 // and the canvas redraws when the notes reference for this clip changes.
-export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, color = "#38b2df" }) => {
+export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, color = "#38b2df", trimOverride }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   // Subscribe to just this clip's notes array — stable across other clips'
   // note edits (syncNotes builds a new Map but reuses other keys' refs).
@@ -49,12 +51,21 @@ export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, colo
 
     if (!notes || notes.length === 0) return;
 
-    const dur = clip.durationBeats > 0 ? clip.durationBeats : 1;
+    // Pre-compute adjusted notes: apply notePitch offset, noteGain and clip gain.
+    const adjustedNotes = notes.map(n => ({
+      pitch: n.pitch + Math.round(n.notePitch),
+      velocity: Math.min(127, Math.max(0, Math.round(n.velocity * n.noteGain * clip.gain))),
+      startBeat: n.startBeat,
+      durationBeats: n.durationBeats,
+    }));
+
+    const effectiveDuration = trimOverride ? trimOverride.durationBeats : clip.durationBeats;
+    const dur = effectiveDuration > 0 ? effectiveDuration : 1;
 
     // Fit the vertical axis to the clip's pitch range with padding.
     let minPitch = 127;
     let maxPitch = 0;
-    for (const n of notes) {
+    for (const n of adjustedNotes) {
       if (n.pitch < minPitch) minPitch = n.pitch;
       if (n.pitch > maxPitch) maxPitch = n.pitch;
     }
@@ -70,7 +81,7 @@ export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, colo
     const xFor = (beat: number) => (beat / dur) * width;
     const yFor = (pitch: number) => height * (1 - (pitch - lo) / span);
 
-    for (const n of notes) {
+    for (const n of adjustedNotes) {
       const x = xFor(n.startBeat);
       const noteW = Math.max(1, xFor(n.startBeat + n.durationBeats) - x);
       const y = yFor(n.pitch);
@@ -82,7 +93,7 @@ export const MidiThumbnailCanvas: React.FC<Props> = ({ clip, width, height, colo
       ctx.fillStyle = hexToRgba(color, alpha);
       ctx.fillRect(x, top, Math.min(noteW, width - x), rowH - 1);
     }
-  }, [notes, clip.durationBeats, width, height, color]);
+  }, [notes, clip.durationBeats, clip.gain, width, height, color, trimOverride]);
 
   return <canvas ref={canvasRef} style={{ width, height, display: "block" }} />;
 };

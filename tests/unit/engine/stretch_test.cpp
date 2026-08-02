@@ -141,8 +141,9 @@ TEST(StretchCommands, FitToLoopComputesRatio)
     auto& cmds = engine.getProjectCommands();
 
     // Set a 4-second loop region on the transport tree.
-    cmds.setLoopStart(1.0);
-    cmds.setLoopEnd(5.0);
+    // setLoopStart/End take beats; at 120 BPM, 2 beats = 1s and 10 beats = 5s.
+    cmds.setLoopStart(2.0);
+    cmds.setLoopEnd(10.0);
 
     // Create an audio clip on track 0 with a known sourceDuration.
     int trackIdx = 0;

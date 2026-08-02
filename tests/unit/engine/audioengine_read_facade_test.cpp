@@ -1,11 +1,15 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <vector>
+#include <cmath>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_audio_basics/juce_audio_basics.h>
 #include "engine/AudioEngine.h"
 #include "engine/MainAudioProcessor.h"
 #include "engine/Track.h"
 #include "engine/TrackFXSlot.h"
+#include "model/ProjectModel.h"
 
 namespace
 {
@@ -65,6 +69,31 @@ void addInternalSlot(HDAW::Track* tr)
     auto& chain = tr->getFXChain();
     chain.push_back(std::make_unique<HDAW::TrackFXSlot>(juce::String("eq")));
 }
+
+// Writes a temporary mono WAV filled with a 220 Hz sine at -6 dBFS and returns
+// its path. Caller is responsible for deleting the file.
+juce::File makeSineWav(double seconds, int sampleRate = 44100)
+{
+    auto tempDir = juce::File::getSpecialLocation(
+        juce::File::SpecialLocationType::tempDirectory);
+    auto f = tempDir.getNonexistentChildFile("hdaw_read_facade", ".wav", false);
+
+    juce::WavAudioFormat fmt;
+    std::unique_ptr<juce::FileOutputStream> fos(f.createOutputStream());
+    jassert(fos != nullptr);
+    std::unique_ptr<juce::AudioFormatWriter> w(
+        fmt.createWriterFor(fos.get(), sampleRate, 1, 16, {}, 0));
+    fos.release(); // writer owns it now
+
+    const int total = static_cast<int>(seconds * sampleRate);
+    juce::AudioBuffer<float> buf(1, total);
+    const double amp = 0.5;
+    for (int i = 0; i < total; ++i)
+        buf.setSample(0, i, static_cast<float>(amp * std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * i / sampleRate)));
+    w->writeFromAudioSampleBuffer(buf, 0, total);
+    w.reset();
+    return f;
+}
 } // namespace
 
 TEST(AudioEngineReadFacadeTest, GetFxProgramListIsTypedAndReturnsData)
@@ -97,4 +126,49 @@ TEST(AudioEngineReadFacadeTest, GetFxProgramListReturnsEmptyForNonPluginAndInval
     EXPECT_TRUE(engine.getFxProgramList(0, 0).empty());
     EXPECT_TRUE(engine.getFxProgramList(0, 9).empty());
     EXPECT_TRUE(engine.getFxProgramList(99, 0).empty());
+}
+
+TEST(AudioEngineReadFacadeTest, GetWaveformPeaksReturnsBinData)
+{
+    auto wav = makeSineWav(1.0, 44100);
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& pm = engine.getProjectModel();
+    auto clip = pm.createAudioClip("Wave", 0.0, 1.0, wav.getFullPathName());
+    int clipId = clip.getProperty(IDs::clipID);
+    auto clipList = pm.getTrackListTree().getChild(0).getChildWithName(IDs::CLIP_LIST);
+    clipList.addChild(clip, -1, nullptr);
+
+    const int numBins = 100;
+    auto peaks = engine.getWaveformPeaks(clipId, numBins);
+    wav.deleteFile();
+
+    ASSERT_TRUE(peaks.ok) << peaks.error;
+    EXPECT_EQ(peaks.peaks.size(), static_cast<size_t>(numBins) * 2u);
+    EXPECT_DOUBLE_EQ(peaks.sampleRate, 44100.0);
+    EXPECT_EQ(peaks.numSamples, 44100);
+    // A sine's first bin spans the rising edge, so max should exceed min.
+    EXPECT_GT(peaks.peaks[1], peaks.peaks[0]);
+}
+
+TEST(AudioEngineReadFacadeTest, GetWaveformPeaksRejectsMissingOrNonAudioClip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pm = engine.getProjectModel();
+
+    // Unknown clip id.
+    auto missing = engine.getWaveformPeaks(999999, 10);
+    EXPECT_FALSE(missing.ok);
+    EXPECT_EQ(missing.errorCode, -32602);
+
+    // A MIDI clip is not an audio clip.
+    auto midi = pm.createMidiClipEmpty("midi", 0, 1);
+    int midiId = midi.getProperty(IDs::clipID);
+    auto clipList = pm.getTrackListTree().getChild(0).getChildWithName(IDs::CLIP_LIST);
+    clipList.addChild(midi, -1, nullptr);
+    auto notAudio = engine.getWaveformPeaks(midiId, 10);
+    EXPECT_FALSE(notAudio.ok);
+    EXPECT_EQ(notAudio.errorCode, -32602);
 }

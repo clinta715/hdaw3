@@ -31,6 +31,44 @@ bool hasController(juce::MidiBuffer& midi, int controllerNumber, int value)
     return false;
 }
 
+bool hasNoteOn(juce::MidiBuffer& midi, int noteNumber)
+{
+    for (const auto& meta : midi)
+    {
+        const auto& msg = meta.getMessage();
+        if (msg.isNoteOn() && msg.getNoteNumber() == noteNumber)
+            return true;
+    }
+    return false;
+}
+
+bool hasNoteOff(juce::MidiBuffer& midi, int noteNumber)
+{
+    for (const auto& meta : midi)
+    {
+        const auto& msg = meta.getMessage();
+        if (msg.isNoteOff() && msg.getNoteNumber() == noteNumber)
+            return true;
+    }
+    return false;
+}
+
+juce::ValueTree makeNoteClip(int noteNumber, float velocity, double startBeat, double durationBeats)
+{
+    juce::ValueTree clip(IDs::CLIP);
+    clip.setProperty(IDs::clipType, "midi", nullptr);
+    auto noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+    juce::ValueTree n(IDs::MIDI_NOTE);
+    n.setProperty(IDs::noteNumber, noteNumber, nullptr);
+    n.setProperty(IDs::velocity, velocity, nullptr);
+    n.setProperty(IDs::startBeat, startBeat, nullptr);
+    n.setProperty(IDs::durationBeats, durationBeats, nullptr);
+    n.setProperty(IDs::chance, 1.0f, nullptr);
+    noteList.addChild(n, -1, nullptr);
+    clip.addChild(noteList, -1, nullptr);
+    return clip;
+}
+
 } // namespace
 
 TEST(MidiClipProcessor, CcPlaybackEmitsAtBeat)
@@ -81,4 +119,60 @@ TEST(MidiClipProcessor, CcPlaybackEmitsOnlyOnce)
     juce::MidiBuffer second;
     proc.processBlock(buffer, second);
     EXPECT_FALSE(hasController(second, 74, 90));
+}
+
+TEST(MidiClipProcessor, ClipSilentAtExactDurationBoundary)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    // 120 BPM → 2 beats/sec. 4 beats = 2 seconds.
+    proc.setClipTree(makeNoteClip(60, 100, 0.0, 4.0));
+    proc.setStartTime(1.0);
+    proc.setDuration(2.0);
+    proc.prepareToPlay(44100.0, 512);
+
+    juce::AudioBuffer<float> buffer(2, 512);
+
+    // Position transport at exactly the clip end (1.0 + 2.0 = 3.0 seconds)
+    tm.setCurrentSample(static_cast<int64_t>(3.0 * 44100.0));
+    tm.setPlaying(true);
+
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    EXPECT_EQ(midi.getNumEvents(), 0);
+}
+
+TEST(MidiClipProcessor, ActiveNotesGetNoteOffAtClipEnd)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    // Long note (10 beats = 5 seconds) that extends past the 2-second clip
+    proc.setClipTree(makeNoteClip(60, 100, 0.0, 10.0));
+    proc.setStartTime(0.0);
+    proc.setDuration(2.0);
+    proc.prepareToPlay(44100.0, 512);
+
+    juce::AudioBuffer<float> buffer(2, 512);
+
+    // Play within the clip to activate the note
+    tm.setCurrentSample(0);
+    tm.setPlaying(true);
+
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+    EXPECT_TRUE(hasNoteOn(midi, 60));
+
+    // Position past the clip end (2.5 > 2.0 duration)
+    midi.clear();
+    tm.setCurrentSample(static_cast<int64_t>(2.5 * 44100.0));
+    proc.processBlock(buffer, midi);
+
+    EXPECT_TRUE(hasNoteOff(midi, 60));
 }

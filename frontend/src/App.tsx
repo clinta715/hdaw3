@@ -17,6 +17,7 @@ import FXChain from "./components/FXChain";
 import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
 import UndoHistory from "./components/UndoHistory";
+import Inspector from "./components/Inspector";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
@@ -196,6 +197,7 @@ function App() {
     { id: "modulation", label: "Modulation", content: <SModulationPanel /> },
     { id: "step-seq", label: "Step Seq", content: <SStepSequencer /> },
     { id: "undo-history", label: "History", content: <UndoHistory /> },
+    { id: "inspector", label: "Inspector", content: <Inspector /> },
   ];
 
   return (
@@ -232,7 +234,7 @@ function App() {
           tabs={bottomTabs}
           defaultTab="mixer"
           activeTab={activeBottomTab}
-          onTabChange={setActiveBottomTab}
+          onTabChange={(t) => useUiStore.getState().selectBottomTab(t)}
         />
       </footer>
       <StatusBar />

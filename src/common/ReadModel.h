@@ -57,6 +57,17 @@ struct NoteSnapshot {
     int velocity = 0;
     double startBeat = 0.0;
     double durationBeats = 0.0;
+    float chance = 1.0f;
+    int repeatCount = 0;
+    float repeatRate = 0.25f;
+    float repeatCurve = 0.0f;
+    int occurrence = 0;
+    int recurrence = 0;
+    float noteGain = 1.0f;
+    float notePan = 0.0f;
+    float notePitch = 0.0f;
+    float noteTimbre = 0.5f;
+    float notePressure = 0.0f;
 };
 
 struct CcPointSnapshot {
@@ -166,6 +177,13 @@ struct InternalFxParamSnapshot {
     float defaultValue = 0.0f;
 };
 
+struct SendSnapshot {
+    int sendIndex = 0;
+    float level = 0.0f;
+    bool isPreFader = false;
+    bool bypassed = false;
+};
+
 class ReadModel {
 public:
     virtual ~ReadModel() = default;
@@ -194,5 +212,6 @@ public:
     virtual std::vector<LfoSnapshot> getModulationLfos(int trackIndex) const = 0;
     virtual MeterSnapshot getTrackMeter(int trackIndex) const = 0;
     virtual MeterSnapshot getMasterMeter() const = 0;
+    virtual std::vector<SendSnapshot> getTrackSends(int trackIndex) const = 0;
     virtual bool isDirty() const = 0;
 };

@@ -42,6 +42,19 @@ describe("MidiThumbnailCanvas", () => {
     expect(mockedCall).not.toHaveBeenCalled();
   });
 
+  it("renders with trimOverride without crashing", () => {
+    const clip = mkClip();
+    const { container } = render(
+      <MidiThumbnailCanvas
+        clip={clip}
+        width={200}
+        height={40}
+        trimOverride={{ offset: 0, durationBeats: 2 }}
+      />
+    );
+    expect(container.querySelector("canvas")).toBeTruthy();
+  });
+
   it("lazy-fetches notes once when they are absent", async () => {
     const clip = mkClip();
     useProjectStore.setState({ notesByClip: new Map() });

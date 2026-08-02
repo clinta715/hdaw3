@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useUiStore } from "../store/uiStore";
+import { useAutomationStore } from "../store/automationStore";
 import { rpc } from "../rpc";
 import { FxSlotSnapshot } from "../rpc/types";
+import PopUpBrowser, { type ContentItem } from "./PopUpBrowser";
 import "./FXChain.css";
 
 interface PluginInfo {
@@ -65,6 +67,7 @@ export default function FXChain() {
   const [presetSlot, setPresetSlot] = useState<number | null>(null);
   const [presets, setPresets] = useState<{index: number; name: string; current: boolean}[]>([]);
   const [abSlots, setAbSlots] = useState<Set<number>>(new Set());
+  const [browseOpen, setBrowseOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -346,13 +349,19 @@ export default function FXChain() {
       }).catch((e) => console.error("captureFxSnapshot failed", e));
       setAbSlots(prev => new Set(prev).add(slot.slotIndex));
     } else {
-      // Subsequent clicks: swap A ↔ B.
+      // Subsequent clicks: swap A <-> B.
       await rpc.call("audio.swapFxSnapshot", {
         trackIndex: selectedTrackIndex,
         slotIndex: slot.slotIndex,
       }).catch((e) => console.error("swapFxSnapshot failed", e));
     }
   }, [selectedTrackIndex, abSlots]);
+
+  const handleBrowseDevice = useCallback((item: ContentItem) => {
+    // Add the selected file as a plugin FX slot
+    addSlot("plugin", item.path);
+    setBrowseOpen(false);
+  }, [addSlot]);
 
   if (selectedTrackIndex == null) {
     return <div className="fx-chain"><div className="fx-empty">Select a track to edit FX</div></div>;
@@ -400,10 +409,25 @@ export default function FXChain() {
                   ))}
                 </div>
               )}
+              <div className="fx-dropdown-section">
+                <button
+                  className="fx-dropdown-item fx-dropdown-browse"
+                  onClick={() => { setBrowseOpen(true); setMenuOpen(false); }}
+                >
+                  Browse Devices...
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
+      {browseOpen && (
+        <PopUpBrowser
+          context="device"
+          onSelect={handleBrowseDevice}
+          onClose={() => setBrowseOpen(false)}
+        />
+      )}
       {slots.length === 0 && (
         <div className="fx-empty-slots">No FX slots. Click + Add FX to create one.</div>
       )}
@@ -514,6 +538,7 @@ export default function FXChain() {
                       min={0}
                       max={1000}
                       value={Math.round(param.value * 1000)}
+                      onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(100 + slot.slotIndex * 100 + param.paramIndex)}
                       onChange={(e) => {
                         const v = Number(e.target.value) / 1000;
                         setParam(slot, param.paramIndex, v);
@@ -544,6 +569,7 @@ export default function FXChain() {
                       min={0}
                       max={1000}
                       value={((param.value - param.minValue) / (param.maxValue - param.minValue)) * 1000}
+                      onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(100 + slot.slotIndex * 100 + param.paramIndex)}
                       onChange={(e) => {
                         const norm = Number(e.target.value) / 1000;
                         const realVal = param.minValue + norm * (param.maxValue - param.minValue);

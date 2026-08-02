@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { rpc } from "../rpc";
 import { TRACK_TYPE_COLORS, TRACK_TYPE_ICONS } from "../utils/trackTypes";
+import PopUpBrowser, { type ContentItem } from "./PopUpBrowser";
 import "./AddTrackMenu.css";
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 // silently typed — the two kinds are logically distinct and the user picks.
 export function AddTrackMenu({ label = "+", triggerClassName, title = "Add Track" }: Props) {
   const [open, setOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,6 +33,22 @@ export function AddTrackMenu({ label = "+", triggerClassName, title = "Add Track
     rpc.call("project.addTrack", { trackType }).catch(() => {});
     setOpen(false);
   };
+
+  const handleBrowseSelect = useCallback((item: ContentItem) => {
+    // Create an audio track and import the file
+    rpc.call("project.addTrack", { trackType: 0 }).then((newIdx) => {
+      const trackIndex = typeof newIdx === "number" ? newIdx : 0;
+      rpc.call("project.addAudioClip", {
+        trackIndex,
+        start: 0,
+        duration: 4,
+        sourceFile: item.path,
+        name: item.name,
+      }).catch(() => {});
+    }).catch(() => {});
+    setBrowseOpen(false);
+    setOpen(false);
+  }, []);
 
   return (
     <div className="add-track-menu" ref={ref}>
@@ -62,7 +80,19 @@ export function AddTrackMenu({ label = "+", triggerClassName, title = "Add Track
             </span>
             MIDI Track
           </button>
+          <div className="add-track-separator" />
+          <button type="button" className="add-track-opt" onClick={() => { setBrowseOpen(true); setOpen(false); }}>
+            <span className="add-track-chip" style={{ background: "var(--accent)" }}>&#128269;</span>
+            Browse...
+          </button>
         </div>
+      )}
+      {browseOpen && (
+        <PopUpBrowser
+          context="track"
+          onSelect={handleBrowseSelect}
+          onClose={() => setBrowseOpen(false)}
+        />
       )}
     </div>
   );

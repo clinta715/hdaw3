@@ -10,6 +10,8 @@ interface Props {
   /** Track color (#rrggbb) used to tint the waveform. Defaults to amber. */
   color?: string;
   onError?: (failed: boolean) => void;
+  /** Override offset/duration during trim drag so waveform reflects the actual audible window. */
+  trimOverride?: { offset: number; durationBeats: number };
 }
 
 // Cache key: clipId alone is too coarse. The peak data depends on the
@@ -33,7 +35,7 @@ function hasAudibleContent(peaks: WaveformPeaks): boolean {
 
 const peaksCache = new Map<string, WaveformPeaks>();
 
-export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, color = "#d99a4e", onError }) => {
+export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, color = "#d99a4e", onError, trimOverride }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const dpr = window.devicePixelRatio || 1;
   const key = cacheKey(clip);
@@ -126,32 +128,93 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, color = "
     if (peaks && peaks.peaks.length >= 2) {
       const totalPairs = peaks.peaks.length / 2;
 
-      // Slice peaks to the clip's audible range.  The peaks cover the entire
-      // source file but the clip may start at an offset and/or be shorter.
-      // For timestretched clips the offset is in source beats and the
-      // duration in timestretched beats, so convert to source beats via
-      // dividing by stretchRatio.
       const sourceDurationBeats = clip.sourceDuration * clip.sourceBpm / 60;
+      const effectiveOffset = trimOverride ? trimOverride.offset : clip.offset;
+      const effectiveDuration = trimOverride ? trimOverride.durationBeats : clip.durationBeats;
       const audibleSourceBeats = clip.stretchRatio > 0
-        ? clip.durationBeats / clip.stretchRatio
-        : clip.durationBeats;
-      let startFrac = sourceDurationBeats > 0 ? clip.offset / sourceDurationBeats : 0;
-      let endFrac = sourceDurationBeats > 0 ? (clip.offset + audibleSourceBeats) / sourceDurationBeats : 1;
-      startFrac = Math.max(0, Math.min(1, startFrac));
-      endFrac = Math.max(startFrac, Math.min(1, endFrac));
+        ? effectiveDuration / clip.stretchRatio
+        : effectiveDuration;
 
-      const startPair = Math.floor(startFrac * totalPairs);
-      const endPair = Math.max(startPair + 1, Math.ceil(endFrac * totalPairs));
-      const slicePairs = endPair - startPair;
+      const isTiling = clip.looping && sourceDurationBeats > 0 && effectiveDuration > sourceDurationBeats;
+      const repetitions = isTiling ? Math.ceil(effectiveDuration / sourceDurationBeats) : 1;
 
-      const step = Math.max(1, Math.floor(slicePairs / width));
+      let srcStartFrac = sourceDurationBeats > 0 ? effectiveOffset / sourceDurationBeats : 0;
+      let srcEndFrac = sourceDurationBeats > 0 ? (effectiveOffset + sourceDurationBeats) / sourceDurationBeats : 1;
+      srcStartFrac = Math.max(0, Math.min(1, srcStartFrac));
+      srcEndFrac = Math.max(srcStartFrac, Math.min(1, srcEndFrac));
+
+      const srcStartPair = Math.floor(srcStartFrac * totalPairs);
+      const srcEndPair = Math.max(srcStartPair + 1, Math.ceil(srcEndFrac * totalPairs));
+      const srcSlicePairs = srcEndPair - srcStartPair;
+
+      const step = Math.max(1, Math.floor(srcSlicePairs / (width / repetitions)));
+
       const drawn: { x: number; min: number; max: number }[] = [];
-      for (let i = startPair; i < endPair; i += step) {
-        const idx = i * 2;
-        const min = peaks.peaks[idx] ?? 0;
-        const max = peaks.peaks[idx + 1] ?? 0;
-        drawn.push({ x: ((i - startPair) / slicePairs) * width, min, max });
+
+      for (let rep = 0; rep < repetitions; rep++) {
+        const repXStart = (rep / repetitions) * width;
+        const repXEnd = ((rep + 1) / repetitions) * width;
+        const repWidth = repXEnd - repXStart;
+
+        for (let i = srcStartPair; i < srcEndPair; i += step) {
+          const idx = i * 2;
+          const min = peaks.peaks[idx] ?? 0;
+          const max = peaks.peaks[idx + 1] ?? 0;
+          const x = repXStart + ((i - srcStartPair) / srcSlicePairs) * repWidth;
+          drawn.push({ x, min, max });
+        }
       }
+
+      // Apply clip gain, fades, and gain envelope to each peak
+      const gainMult = clip.gain;
+      const sourceDurationSec = clip.sourceDuration;
+      const hasFadeIn = clip.fadeIn > 0;
+      const hasFadeOut = clip.fadeOut > 0 && sourceDurationSec > 0;
+      const fadeOutStart = hasFadeOut ? sourceDurationSec - clip.fadeOut : 0;
+      const env = clip.gainEnvelope;
+      const hasEnv = env.length > 0;
+      // Pre-compute segment search start index for monotonic advance
+      let envSeg = 0;
+
+      for (let di = 0; di < drawn.length; di++) {
+        const peakFrac = di / drawn.length;
+        const peakTimeSec = peakFrac * sourceDurationSec;
+
+        let fadeMult = 1.0;
+        if (hasFadeIn && peakTimeSec < clip.fadeIn) {
+          fadeMult = peakTimeSec / clip.fadeIn;
+        }
+        if (hasFadeOut && peakTimeSec > fadeOutStart) {
+          fadeMult = Math.min(fadeMult, Math.max(0, (sourceDurationSec - peakTimeSec) / clip.fadeOut));
+        }
+
+        let envMult = 1.0;
+        if (hasEnv) {
+          if (env.length === 1) {
+            envMult = env[0].gain;
+          } else if (peakTimeSec <= env[0].time) {
+            envMult = env[0].gain;
+          } else if (peakTimeSec >= env[env.length - 1].time) {
+            envMult = env[env.length - 1].gain;
+          } else {
+            // Advance segment index monotonically (peaks are time-sorted)
+            while (envSeg < env.length - 1 && peakTimeSec > env[envSeg + 1].time) {
+              envSeg++;
+            }
+            if (envSeg >= env.length - 1) envSeg = env.length - 2;
+            const segDur = env[envSeg + 1].time - env[envSeg].time;
+            const alpha = segDur > 0 ? (peakTimeSec - env[envSeg].time) / segDur : 0;
+            envMult = env[envSeg].gain + alpha * (env[envSeg + 1].gain - env[envSeg].gain);
+          }
+        }
+
+        const mult = gainMult * fadeMult * envMult;
+        drawn[di].min = Math.max(-1, Math.min(1, drawn[di].min * mult));
+        drawn[di].max = Math.max(-1, Math.min(1, drawn[di].max * mult));
+      }
+
+      drawn.sort((a, b) => a.x - b.x);
+
       if (drawn.length > 0 && drawn[drawn.length - 1].x < width - 1) {
         const last = drawn[drawn.length - 1];
         drawn.push({ x: width, min: last.min, max: last.max });
@@ -196,7 +259,7 @@ export const WaveformCanvas: React.FC<Props> = ({ clip, width, height, color = "
       ctx.lineTo(width, mid);
       ctx.stroke();
     }
-  }, [clip, width, height, dpr, peaks, color]);
+  }, [clip, width, height, dpr, peaks, color, trimOverride]);
 
   if (error) {
     return (

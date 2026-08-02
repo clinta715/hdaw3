@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "../engine/ProjectSerializer.h"
+#include "../engine/ProjectBackup.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include "../frontend/FrontendServer.h"
@@ -54,7 +55,11 @@ void AudioEngineCommands::newProject()
 
 bool AudioEngineCommands::saveProject(const std::string& filePath)
 {
-    return HDAW::ProjectSerializer::save(engine_.getProjectModel(), juce::File(filePath));
+    auto f = juce::File(filePath);
+    bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f);
+    if (ok)
+        HDAW::backupProject(f);
+    return ok;
 }
 
 bool AudioEngineCommands::loadProject(const std::string& filePath)

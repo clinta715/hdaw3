@@ -476,3 +476,119 @@ TEST(Modulation, PersistsAcrossSaveLoad)
 
     file.deleteFile();
 }
+
+// ── ModulationManager::getSourceParamID returns correct paramID ─────────
+TEST(ModulationManager, GetSourceParamID)
+{
+    ModulationManager mgr;
+
+    juce::ValueTree modList(juce::Identifier("MODULATION_LIST"));
+    auto src = juce::ValueTree(IDs::MODULATION);
+    src.setProperty("type", "lfo", nullptr);
+    src.setProperty(IDs::waveform, static_cast<int>(LfoWaveform::sine), nullptr);
+    src.setProperty(IDs::rate, 1.0, nullptr);
+    src.setProperty(IDs::rateSync, false, nullptr);
+    src.setProperty(IDs::depth, 0.5, nullptr);
+    src.setProperty(IDs::bipolar, true, nullptr);
+    src.setProperty(IDs::phaseOffset, 0.0, nullptr);
+    src.setProperty(IDs::targetParamID, 3, nullptr);
+    src.setProperty(IDs::enabled, true, nullptr);
+    modList.addChild(src, -1, nullptr);
+    mgr.rebuild(modList, kSr);
+
+    ASSERT_EQ(mgr.getNumSources(), 1);
+    EXPECT_EQ(mgr.getSourceParamID(0), 3);
+    EXPECT_EQ(mgr.getSourceParamID(-1), -1);
+    EXPECT_EQ(mgr.getSourceParamID(100), -1);
+}
+
+// ── ModulationManager: source targeting paramID 3 produces non-zero output ─
+TEST(ModulationManager, ModulationForParamID3)
+{
+    ModulationManager mgr;
+
+    // Build a source targeting paramID 3 (not 1=volume, 2=pan).
+    juce::ValueTree modList(juce::Identifier("MODULATION_LIST"));
+    {
+        auto src = juce::ValueTree(IDs::MODULATION);
+        src.setProperty("type", "lfo", nullptr);
+        src.setProperty(IDs::waveform, static_cast<int>(LfoWaveform::sine), nullptr);
+        src.setProperty(IDs::rate, 2.0, nullptr);
+        src.setProperty(IDs::rateSync, false, nullptr);
+        src.setProperty(IDs::depth, 0.8f, nullptr);
+        src.setProperty(IDs::bipolar, true, nullptr);
+        src.setProperty(IDs::phaseOffset, 0.0, nullptr);
+        src.setProperty(IDs::targetParamID, 3, nullptr);
+        src.setProperty(IDs::enabled, true, nullptr);
+        modList.addChild(src, -1, nullptr);
+    }
+    mgr.rebuild(modList, kSr);
+    ASSERT_EQ(mgr.getNumSources(), 1);
+    EXPECT_EQ(mgr.getSourceParamID(0), 3);
+
+    // The source should produce a non-zero modulation value for paramID 3
+    // after a few samples (the sine LFO advances).
+    float maxAbs = 0.0f;
+    for (int i = 0; i < static_cast<int>(kSr); ++i)
+        maxAbs = std::max(maxAbs, std::abs(mgr.getModulation(3, kBpm, kSr)));
+    EXPECT_GT(maxAbs, 0.1f); // depth=0.8, sine peaks at ±0.8
+
+    // paramID 1 and 2 should still get zero (no sources targeting them).
+    for (int i = 0; i < 100; ++i)
+    {
+        EXPECT_FLOAT_EQ(mgr.getModulation(1, kBpm, kSr), 0.0f);
+        EXPECT_FLOAT_EQ(mgr.getModulation(2, kBpm, kSr), 0.0f);
+    }
+}
+
+// ── ModulationManager: multiple sources on different paramIDs ───────────
+TEST(ModulationManager, MultipleSourcesDifferentParamIDs)
+{
+    ModulationManager mgr;
+
+    juce::ValueTree modList(juce::Identifier("MODULATION_LIST"));
+    {
+        auto src1 = juce::ValueTree(IDs::MODULATION);
+        src1.setProperty("type", "lfo", nullptr);
+        src1.setProperty(IDs::waveform, static_cast<int>(LfoWaveform::sine), nullptr);
+        src1.setProperty(IDs::rate, 1.0, nullptr);
+        src1.setProperty(IDs::rateSync, false, nullptr);
+        src1.setProperty(IDs::depth, 0.5, nullptr);
+        src1.setProperty(IDs::bipolar, true, nullptr);
+        src1.setProperty(IDs::phaseOffset, 0.0, nullptr);
+        src1.setProperty(IDs::targetParamID, 1, nullptr);
+        src1.setProperty(IDs::enabled, true, nullptr);
+        modList.addChild(src1, -1, nullptr);
+    }
+    {
+        auto src2 = juce::ValueTree(IDs::MODULATION);
+        src2.setProperty("type", "lfo", nullptr);
+        src2.setProperty(IDs::waveform, static_cast<int>(LfoWaveform::triangle), nullptr);
+        src2.setProperty(IDs::rate, 2.0, nullptr);
+        src2.setProperty(IDs::rateSync, false, nullptr);
+        src2.setProperty(IDs::depth, 0.6, nullptr);
+        src2.setProperty(IDs::bipolar, true, nullptr);
+        src2.setProperty(IDs::phaseOffset, 0.0, nullptr);
+        src2.setProperty(IDs::targetParamID, 3, nullptr);
+        src2.setProperty(IDs::enabled, true, nullptr);
+        modList.addChild(src2, -1, nullptr);
+    }
+    mgr.rebuild(modList, kSr);
+    ASSERT_EQ(mgr.getNumSources(), 2);
+    EXPECT_EQ(mgr.getSourceParamID(0), 1);
+    EXPECT_EQ(mgr.getSourceParamID(1), 3);
+
+    // Both paramID 1 and 3 should produce non-zero modulation.
+    float max1 = 0.0f, max3 = 0.0f;
+    for (int i = 0; i < static_cast<int>(kSr); ++i)
+    {
+        max1 = std::max(max1, std::abs(mgr.getModulation(1, kBpm, kSr)));
+        max3 = std::max(max3, std::abs(mgr.getModulation(3, kBpm, kSr)));
+    }
+    EXPECT_GT(max1, 0.1f);
+    EXPECT_GT(max3, 0.1f);
+
+    // paramID 2 should still get zero.
+    for (int i = 0; i < 100; ++i)
+        EXPECT_FLOAT_EQ(mgr.getModulation(2, kBpm, kSr), 0.0f);
+}

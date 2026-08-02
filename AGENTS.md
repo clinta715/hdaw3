@@ -1,5 +1,11 @@
 ﻿# AGENTS.md
 
+**MANDATORY:** Before ANY code change in this project, invoke the `hdaw-guard` skill:
+```
+skill: "hdaw-guard"
+```
+This skill enforces plan-first development, guards against the 9 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
+
 Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
@@ -372,6 +378,14 @@ audio in the project, independent of the arrangement:
   display is the one place a distinctive display treatment is welcome.
 - **13px system-ui base** for density; step up size/weight deliberately for
   emphasis.
+- **Thumbnails are playback contracts.** The waveform drawn in an audio clip's
+  thumbnail and the note data drawn in a MIDI clip's thumbnail must accurately
+  reflect what the engine will produce when the playhead crosses that clip. If
+  the engine applies timestretching, pitch shifting, gain envelopes, reverse,
+  fades, or any other transformation, the thumbnail must represent the
+  *transformed* result — not the raw source file. A thumbnail that shows the
+  original waveform while the engine plays a stretched version is a bug, not a
+  cosmetic issue.
 
 ### Motion & feedback
 

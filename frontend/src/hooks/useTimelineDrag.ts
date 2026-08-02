@@ -6,7 +6,7 @@ import type { RowLayout } from "../utils/rowLayout";
 import { rowAtY } from "../utils/rowLayout";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
-import { snapToGrid } from "../components/snapUtils";
+import { snap, collectClipEdges } from "../components/snapUtils";
 
 interface UseTimelineDragParams {
   clips: ClipSnapshot[];
@@ -114,6 +114,7 @@ export function useTimelineDrag({
           if (dx * dx + dy * dy < 16) return;
           engaged = true;
           engagementRef.current = "clip";
+          useUiStore.getState().setStatusHint("Drag: move · Ctrl+drag: duplicate · Alt+drag: stretch · Shift: toggle snap");
           updateDrag(pendingDrag);
         }
         handleMouseMoveRef.current(ev);
@@ -122,6 +123,7 @@ export function useTimelineDrag({
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         engagementRef.current = "none";
+        useUiStore.getState().setStatusHint(null);
         if (engaged) {
           handleMouseUpRef.current();
         }
@@ -185,8 +187,14 @@ export function useTimelineDrag({
     const relX = d.mouseX - cr.left;
     const relY = d.mouseY - cr.top;
     const rawStart = Math.max(0, (relX - d.offsetX) / pps);
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const newStart = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const edgeClips = useProjectStore.getState().snapshot?.clips ?? clips;
+    const edges = collectClipEdges(edgeClips, dragSelectedIdsRef.current, (c) => c.clipId);
+    const newStart = snap(
+      rawStart,
+      { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents },
+      { originalStart: d.startBeat, edges }
+    );
     const newTrackIndex = rowAtY(layout, relY);
     const deltaStart = newStart - d.startBeat;
     const deltaTrack = newTrackIndex - d.startTrackIndex;
@@ -292,8 +300,14 @@ export function useTimelineDrag({
     const relX = dragState.mouseX - cr.left;
     const relY = dragState.mouseY - cr.top;
     const rawStart = Math.max(0, (relX - dragState.offsetX) / pps);
-    const { snapEnabled, snapDivision } = useUiStore.getState();
-    const gs = snapEnabled ? snapToGrid(rawStart, snapDivision) : rawStart;
+    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+    const edgeClips = useProjectStore.getState().snapshot?.clips ?? clips;
+    const edges = collectClipEdges(edgeClips, dragSelectedIdsRef.current, (c) => c.clipId);
+    const gs = snap(
+      rawStart,
+      { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents },
+      { originalStart: dragState.startBeat, edges }
+    );
     const gi = rowAtY(layout, relY);
     const orig = clips.find((c) => c.clipId === dragState.clipId);
     if (!orig) return { dragPreviewStyle: null, dragPreviewClip: null, dragPreviewHeight: 0 };
