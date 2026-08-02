@@ -19,6 +19,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 class AudioEngine : private juce::ValueTree::Listener, private juce::AsyncUpdater, private juce::Timer
@@ -66,6 +67,10 @@ public:
     bool isTrackArmed(int trackIndex) const;
     void setTrackArmed(int trackIndex, bool armed);
     juce::String getTrackName(int trackIndex) const;
+
+    // Typed read: returns FX-slot program list as data (engine keeps graph reach internal).
+    struct FxProgramListEntry { int index = 0; std::string name; };
+    std::vector<FxProgramListEntry> getFxProgramList(int trackIndex, int slotIndex) const;
 
     // MIDI CC automation recording. When armed, incoming CC messages during
     // playback are dispatched to the registered callback (on the main thread)

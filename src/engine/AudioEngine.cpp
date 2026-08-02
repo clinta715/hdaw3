@@ -455,6 +455,27 @@ juce::String AudioEngine::getTrackName(int trackIndex) const
     return {};
 }
 
+std::vector<AudioEngine::FxProgramListEntry> AudioEngine::getFxProgramList(int trackIndex, int slotIndex) const
+{
+    std::vector<FxProgramListEntry> result;
+    if (mainProcessor == nullptr)
+        return result;
+    auto* track = mainProcessor->getTrack(trackIndex);
+    if (track == nullptr)
+        return result;
+    auto& chain = track->getFXChain();
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(chain.size()) || chain[slotIndex] == nullptr)
+        return result;
+    auto* slot = chain[slotIndex].get();
+    if (!slot->isPlugin())
+        return result;
+    int num = slot->getNumPrograms();
+    result.reserve(num > 0 ? static_cast<size_t>(num) : 0);
+    for (int i = 0; i < num; ++i)
+        result.push_back({ i, slot->getProgramName(i).toStdString() });
+    return result;
+}
+
 void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property)
 {
     if (treeWhosePropertyHasChanged.hasType(IDs::TRANSPORT))

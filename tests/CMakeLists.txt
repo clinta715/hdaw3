@@ -21,6 +21,7 @@ add_executable(hdaw_tests
     unit/proxy/ring_buffer_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
+    unit/engine/audioengine_read_facade_test.cpp
     unit/engine/track_fx_slot_debug_test.cpp
     unit/engine/track_fx_slot_show_editor_test.cpp
     unit/engine/isolated_scanner_test.cpp
@@ -32,6 +33,7 @@ add_executable(hdaw_tests
     unit/engine/track_mixer_state_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
+    unit/engine/operator_logic_test.cpp
     unit/engine/midi_fx_test.cpp
     unit/engine/modulation_fx_test.cpp
     unit/engine/transient_detector_test.cpp
@@ -52,6 +54,7 @@ add_executable(hdaw_tests
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp
     unit/engine/punch_test.cpp
+    unit/engine/send_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/model/project_model_test.cpp
