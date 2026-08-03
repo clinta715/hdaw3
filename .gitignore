@@ -98,4 +98,15 @@ err.txt
 # Code-graph analysis tool output (regenerable; was tracked, now ignored)
 graphify-out/
 
+# Nested independent repository (teknoir) — not a submodule; keep out of parent tree
+/teknoir/
+
+# Local agent/tool session state (plans/ and skills/ under .opencode/ are tracked)
+.opencode/goals/
+.zcode/
+
+# Build/test log scratch
+build_output*.txt
+test_output*.txt
+
 
