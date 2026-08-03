@@ -360,6 +360,42 @@ ignored during playback until a UI interaction forces a rebuild.
 `position=0.0` on the transport tree after loading, preventing a
 project saved while playing from auto-starting on the next load.
 
+### Project File Metadata (provenance + format version)
+
+Every `.hdaw` file carries five root-`ValueTree` properties, stamped by
+`createDefaultProject()` / `ProjectSerializer::save()` and serialized via
+the normal `toXmlString()` path (no XML envelope):
+
+| Property | Set when | Meaning |
+|----------|----------|---------|
+| `createdWithApp` | `createDefaultProject` (only if absent) | app version that first created the project — **provenance, never overwritten** |
+| `savedWithApp` | `save()` | app version that wrote this file |
+| `formatVersion` | `createDefaultProject` (= `1`) | schema version; the migration hook |
+| `createdAt` | `createDefaultProject` (only if absent) | ISO-8601 first-create timestamp |
+| `lastSavedAt` | `save()` | ISO-8601 last-save timestamp |
+
+**Provenance rule (load is read-only):** `load()` does *not* stamp the
+current app version or `formatVersion` onto the tree — that would destroy
+the "created with" history. `createdWithApp` / `createdAt` survive every
+save/load cycle unchanged; `savedWithApp` / `lastSavedAt` track the saving
+build. Legacy metadata-less files (pre-0.15.0) load cleanly and read back
+with defaults (`"unknown"` / `formatVersion=0`); their provenance is
+backfilled on the *next* save, not on load.
+
+**Migration hook:** `ProjectSerializer::load()` calls
+`migrateProjectTree()` after assembling the tree. It branches on
+`formatVersion` (default `0` for legacy). Today it is a logged no-op; the
+first real schema bump lands its migration step here, then bumps
+`formatVersion` in `createDefaultProject()`. `HDAW_VERSION` (from
+`common/Version.h`) is the source for the app-version strings — never
+hardcode them.
+
+**Read path:** the metadata surfaces in `ProjectSnapshot`
+(`createdWithApp` / `savedWithApp` / `formatVersion`), flows through the
+`toJson(ProjectSnapshot)` overload into the `read.snapshot` RPC, and is
+readable via the `project_info` MCP tool (parity). Covered by
+`tests/unit/engine/project_metadata_test.cpp`.
+
 ## React/Electron Frontend Architecture (v0.10.0+)
 
 The primary GUI is a **React 19 + TypeScript** SPA using **Zustand 5** for

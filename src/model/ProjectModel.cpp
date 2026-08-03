@@ -1,5 +1,6 @@
 #include "ProjectModel.h"
 #include "../engine/PluginManager.h"
+#include "common/Version.h"
 #include <atomic>
 #include <algorithm>
 #include <functional>
@@ -286,6 +287,12 @@ void ProjectModel::createDefaultProject()
 
     projectTree.setProperty(IDs::name, "New Project", &undoManager);
     projectTree.setProperty(IDs::tempo, 120.0, &undoManager);
+
+    // Stamp project-file metadata on first creation. createdWithApp / formatVersion
+    // / createdAt are provenance — never overwritten on load or save-if-present.
+    projectTree.setProperty(IDs::createdWithApp, juce::String(HDAW_VERSION), &undoManager);
+    projectTree.setProperty(IDs::formatVersion, 1, &undoManager);
+    projectTree.setProperty(IDs::createdAt, juce::Time::getCurrentTime().toISO8601(true), &undoManager);
 
     juce::ValueTree transport(IDs::TRANSPORT);
     transport.setProperty(IDs::position, 0.0, nullptr);

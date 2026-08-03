@@ -205,9 +205,12 @@ In priority order:
    test tones or samples that ship with the binary, so a fresh
    install shows a non-empty timeline.
 4. **Stable project file format** — current format is
-   `ValueTree` XML, which is portable but verbose and not
-   versioned. The goal is a `.hdaw` JSON-or-binary format with
-   schema versioning and forward compatibility.
+   `ValueTree` XML, which is portable but verbose. It now carries
+   provenance and schema metadata (`createdWithApp`, `savedWithApp`,
+   `formatVersion`, timestamps) with a load-time migration hook — see
+   `docs/architecture.md` § "Project File Metadata". Remaining: a
+   compact `.hdaw` JSON-or-binary container and forward-compatibility
+   migrations across `formatVersion` bumps.
 5. **Recording workflow polish** — armed tracks, take
    management, basic comping, and punch-in/out.
 6. **Test coverage** — the codebase has no automated tests. The

@@ -1002,6 +1002,21 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"project_info", "Return project file metadata (provenance, format version, timestamps).",
+        objSchema({}),
+        [e](const QJsonObject&) {
+            auto& tree = e->getProjectModel().getTree();
+            QJsonObject o{
+                { "createdWithApp", jstr(tree.getProperty(IDs::createdWithApp, "unknown").toString()) },
+                { "savedWithApp",   jstr(tree.getProperty(IDs::savedWithApp,   "unknown").toString()) },
+                { "formatVersion",  static_cast<int>(tree.getProperty(IDs::formatVersion, 0)) },
+                { "createdAt",      jstr(tree.getProperty(IDs::createdAt,      "").toString()) },
+                { "lastSavedAt",    jstr(tree.getProperty(IDs::lastSavedAt,    "").toString()) },
+            };
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(o).toJson(QJsonDocument::Compact)));
+        }});
+
     s.registerTool({"scan_plugins", "Scan for VST3/CLAP plugins (may take a minute).",
         objSchema({}),
         [e](const QJsonObject&) {

@@ -108,7 +108,7 @@ Last updated: 2026-07-30
 
 ## 12. Project & data
 - ✅ Save/load, full undo history
-- ❌ **Versioned/binary file format** (README goal #4)
+- 🟡 **Versioned file format** — provenance + `formatVersion` + migration hook landed (XML still, not binary); see `docs/architecture.md` § "Project File Metadata" (README goal #4)
 - ❌ **Collect/consolidate files** (gather all media into project folder)
 - ❌ **Project notes / metadata**
 

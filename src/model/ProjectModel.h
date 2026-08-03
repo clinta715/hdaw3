@@ -195,6 +195,13 @@ namespace IDs {
     DECLARE_ID(ghostSourceId) // clipID of the source clip; -1 = not a ghost
     DECLARE_ID(isGhost)       // 0/1 bool: is this a ghost copy?
     DECLARE_ID(seed)           // uint64 seed for deterministic operators
+
+    // Project file metadata (root ValueTree properties; serialized via toXmlString)
+    DECLARE_ID(createdWithApp) // app version that first created this project (provenance; never overwritten)
+    DECLARE_ID(savedWithApp)   // app version that last saved this file
+    DECLARE_ID(formatVersion)  // schema/format version int (migration hook)
+    DECLARE_ID(createdAt)      // ISO-8601 timestamp of first creation
+    DECLARE_ID(lastSavedAt)    // ISO-8601 timestamp of last save
     #undef DECLARE_ID
 }
 

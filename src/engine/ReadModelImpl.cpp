@@ -107,6 +107,11 @@ ProjectSnapshot ReadModelImpl::snapshot() const
     snap.scaleRoot = model_.getScaleRoot();
     snap.scaleMode = model_.getScaleMode();
 
+    // Project-file metadata (defaults surface when loading legacy metadata-less files).
+    snap.createdWithApp = model_.getTree().getProperty(IDs::createdWithApp, "unknown").toString().toStdString();
+    snap.savedWithApp = model_.getTree().getProperty(IDs::savedWithApp, "unknown").toString().toStdString();
+    snap.formatVersion = static_cast<int>(model_.getTree().getProperty(IDs::formatVersion, 0));
+
     auto trackList = model_.getTrackListTree();
     const int numTracks = trackList.getNumChildren();
     snap.tracks.reserve(numTracks);

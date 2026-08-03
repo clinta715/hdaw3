@@ -271,6 +271,9 @@ inline QJsonObject toJson(const ProjectSnapshot& s) {
         { "scaleMode", s.scaleMode },
         { "launchedScene", s.launchedScene },
         { "sceneCount",    s.sceneCount },
+        { "createdWithApp", QString::fromStdString(s.createdWithApp) },
+        { "savedWithApp",   QString::fromStdString(s.savedWithApp) },
+        { "formatVersion",  s.formatVersion },
     };
     QJsonArray tracks;
     for (const auto& t : s.tracks) tracks.append(toJson(t));
