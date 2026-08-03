@@ -18,6 +18,12 @@ public:
 
     bool isolationEnabled = true;  // default ON — load all plugins via PluginProxySlot
 
+    // Monotonic allocator for isolated-plugin proxy slot ids. Each proxy gets a
+    // unique id so its pipe/shm names never collide across rebuilds. Was
+    // previously derived from knownPlugins.size() (a constant), which made every
+    // proxy fight over the same pipe/shm names.
+    std::atomic<uint32_t> nextProxySlotId{ 1 };
+
     using ScanProgressCallback = std::function<void(const juce::String& fileName, int completed, int total)>;
 
     void scanAll(ScanProgressCallback progressCb = nullptr);

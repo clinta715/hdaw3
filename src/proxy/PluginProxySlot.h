@@ -9,6 +9,13 @@
 
 namespace proxy {
 
+// When true, PluginProxySlot::processBlock spin-waits for the child process
+// to produce output instead of clearing the buffer on empty output ring.
+// Set by ExportManager during offline render (the render loop runs at CPU
+// speed with no real-time pacing; the child needs time to process each block).
+inline std::atomic<bool> s_renderMode{ false };
+inline void setRenderMode(bool enabled) { s_renderMode.store(enabled, std::memory_order_relaxed); }
+
 class PluginProxySlot : public juce::AudioPluginInstance,
                          private juce::Timer {
 public:

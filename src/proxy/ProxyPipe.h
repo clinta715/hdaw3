@@ -22,6 +22,20 @@ public:
     bool isConnected() const { return connected; }
 
 private:
+    // Bounded READY wait. Heavy plugins (e.g. Vital) can take several seconds
+    // to initialise, so the default is generous.
+    static constexpr DWORD kReadyTimeoutMs = 8000;
+
+    // OVERLAPPED connect with a bounded wait. Returns true on success (client
+    // connected, or was already connected). On timeout/error: cancels the IO,
+    // leaves connected=false.
+    bool overlappedConnect(DWORD timeoutMs);
+    // OVERLAPPED read/write with a bounded wait. INFINITE preserves the prior
+    // blocking behavior for non-READY exchanges. Return true on completion with
+    // bytesTransferred filled; false on timeout/error (IO cancelled).
+    bool overlappedRead(void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesRead);
+    bool overlappedWrite(const void* buf, DWORD size, DWORD timeoutMs, DWORD& bytesWritten);
+
     std::string name;
     HANDLE hPipe = INVALID_HANDLE_VALUE;
     bool running = false;

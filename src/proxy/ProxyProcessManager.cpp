@@ -18,6 +18,14 @@ ProxyProcessManager::~ProxyProcessManager() {
 }
 
 bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_t slotId) {
+    // Defensively terminate + release any orphaned child/pipe/shm for this slot
+    // before creating new ones. killPluginHost takes the mutex internally, so we
+    // must NOT already hold it here. Returns false if none — harmless. This
+    // guards against a stale child from a previous spawn that was never reaped
+    // (e.g. an orphaned process still holding the pipe/shm names), which would
+    // otherwise make CreateNamedPipe/ShmRegion::create collide and fail.
+    killPluginHost(slotId);
+
     // Create pipe and shm outside the lock
     auto pipeName = makePipeName(slotId);
     auto shmNameStr = makeShmName(slotId);

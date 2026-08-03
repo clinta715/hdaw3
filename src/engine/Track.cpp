@@ -149,13 +149,18 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 
             juce::String error;
             bool wantIsolated = pluginManager && pluginManager->isolationEnabled;
+            double effectiveSr = (fxSpec.sampleRate > 0.0) ? fxSpec.sampleRate : getSampleRate();
+            int effectiveBs = (fxSpec.maximumBlockSize > 0) ? static_cast<int>(fxSpec.maximumBlockSize) : getBlockSize();
+            HDAW_LOG("FXRebuild", (juce::String("rebuildFXChain pluginID=") + pluginID + " fmt=" + pluginFormat + " isolated=" + (wantIsolated?"true":"false") + " pluginMgr=" + (pluginManager?"ok":"null") + " sr=" + juce::String(effectiveSr) + " getSr=" + juce::String(getSampleRate())).toStdString());
             auto plugin = pluginManager != nullptr
-                ? pluginManager->createPluginInstance(desc, error, getSampleRate(), getBlockSize(), wantIsolated)
+                ? pluginManager->createPluginInstance(desc, error, effectiveSr, effectiveBs, wantIsolated)
                 : nullptr;
+
+            HDAW_LOG("FXRebuild", (juce::String("createPluginInstance result: ") + (plugin ? "ok" : "NULL") + " error=" + error).toStdString());
 
             if (plugin != nullptr)
             {
-                auto slot = std::make_unique<TrackFXSlot>(std::move(plugin), pluginID);
+                auto slot = std::make_unique<TrackFXSlot>(std::move(plugin), pluginID, wantIsolated);
                 slot->setBypassed(slotTree.getProperty(IDs::bypassed));
 
                 juce::String stateStr = slotTree.getProperty(IDs::pluginState).toString();

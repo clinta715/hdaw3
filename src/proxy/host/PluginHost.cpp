@@ -383,7 +383,45 @@ void PluginHost::audioLoop()
             hdr->inputReadPos.store(r + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
 
             midiBuffer.clear();
+            proxy::MidiEvent* midiIn = shm.getMidiInRing();
+            if (midiIn) {
+                constexpr uint32_t midiCap = 256;
+                uint32_t mw = hdr->midiInWritePos.load(std::memory_order_relaxed);
+                uint32_t mr = hdr->midiInReadPos.load(std::memory_order_acquire);
+                uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
+                uint32_t toRead = (std::min)(avail, midiCap);
+                for (uint32_t i = 0; i < toRead; ++i) {
+                    const proxy::MidiEvent& evt = midiIn[(mr + i) & 0xFF];
+                    midiBuffer.addEvent(
+                        juce::MidiMessage(evt.data[0], evt.data[1], evt.data[2]),
+                        static_cast<int>(evt.sampleOffset));
+                }
+                hdr->midiInReadPos.store(mr + toRead, std::memory_order_release);
+            }
+
             plugin->processBlock(inputBuffer, midiBuffer);
+
+            proxy::MidiEvent* midiOut = shm.getMidiOutRing();
+            if (midiOut) {
+                constexpr uint32_t midiCap = 256;
+                uint32_t mw = hdr->midiOutWritePos.load(std::memory_order_relaxed);
+                uint32_t mr = hdr->midiOutReadPos.load(std::memory_order_acquire);
+                uint32_t space = midiCap - ((mw >= mr) ? (mw - mr) : 0);
+                uint32_t written = 0;
+                for (const auto metadata : midiBuffer) {
+                    if (written >= space) break;
+                    const auto msg = metadata.getMessage();
+                    proxy::MidiEvent& evt = midiOut[(mw + written) & 0xFF];
+                    evt.sampleOffset = static_cast<uint32_t>(metadata.samplePosition);
+                    const auto* bytes = msg.getRawData();
+                    evt.data[0] = bytes[0];
+                    evt.data[1] = bytes[1];
+                    evt.data[2] = bytes[2];
+                    evt._pad = 0;
+                    ++written;
+                }
+                hdr->midiOutWritePos.store(mw + written, std::memory_order_release);
+            }
 
             uint32_t ow = hdr->outputWritePos.load(std::memory_order_relaxed);
             for (int ch = 0; ch < preparedNumChannels; ++ch) {

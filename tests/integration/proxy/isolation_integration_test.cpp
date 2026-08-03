@@ -4,6 +4,7 @@
 #include "proxy/PluginProxySlot.h"
 #include "proxy/ProxySharedMemory.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "engine/PluginManager.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -647,3 +648,103 @@ TEST(PluginIsolation, DLLGracefulShutdown) {
 
     mgr.killPluginHost(9054);
 }
+
+// ========================================================================
+// Phase 1 isolation-plumbing reliability tests
+//
+// These cover the three root causes of FX slots silently collapsing to
+// "none" across graph rebuilds:
+//   (1) every proxy got the SAME slot id (derived from a constant) and thus
+//       collided on the pipe/shm names;
+//   (2) PluginProxySlot's dtor never killed its child process, orphaning it
+//       so the next spawn for that slot collided on the still-held pipe/shm;
+//   (3) spawnPluginHost never reaped a stale same-slot child before creating
+//       new pipe/shm.
+// ========================================================================
+
+// Fix (2): the proxy destructor must terminate the child and release the
+// slot's pipe + shared memory. Previously the dtor only called the empty
+// releaseResources(), orphaning the child.
+TEST(PluginIsolation, ProxyDestructorKillsChild) {
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9070;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slot));
+    ASSERT_TRUE(mgr.isAlive(slot));
+    EXPECT_NE(mgr.getPipe(slot), nullptr);
+    EXPECT_NE(mgr.getShm(slot), nullptr);
+
+    {
+        auto proxy = std::make_unique<PluginProxySlot>(mgr, slot, "DtorTest");
+        ASSERT_NE(proxy, nullptr);
+    } // ~PluginProxySlot() -> killPluginHost(slot)
+
+    EXPECT_FALSE(mgr.isAlive(slot)) << "child must be terminated by proxy dtor";
+    EXPECT_EQ(mgr.getPipe(slot), nullptr) << "pipe must be released by proxy dtor";
+    EXPECT_EQ(mgr.getShm(slot), nullptr) << "shm must be released by proxy dtor";
+}
+
+// Fix (2)+(3): a graph rebuild destroys a track's proxy and immediately
+// recreates one. Re-creating a proxy for a slot id that was just used must
+// succeed (not collide on the pipe/shm names) — exactly the path where the FX
+// slot used to collapse to "none". Repeated cycles must not accumulate live
+// children.
+TEST(PluginIsolation, RebuildReusesSameSlotWithoutCollision) {
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9071;
+
+    for (int i = 0; i < 5; ++i) {
+        // The previous iteration's proxy dtor already killed+released the
+        // slot; spawnPluginHost also defensively reaps any stale same-slot
+        // child before creating new pipe/shm.
+        ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", slot))
+            << "re-spawn at same slot failed on iteration " << i;
+        ASSERT_TRUE(mgr.isAlive(slot));
+        EXPECT_NE(mgr.getPipe(slot), nullptr);
+
+        {
+            auto proxy = std::make_unique<PluginProxySlot>(mgr, slot, "ReuseTest");
+            ASSERT_NE(proxy, nullptr);
+        } // dtor kills the child for this slot
+
+        // No child should remain between cycles (no leak).
+        EXPECT_FALSE(mgr.isAlive(slot));
+        EXPECT_EQ(mgr.getPipe(slot), nullptr);
+    }
+}
+
+#if HDAW_PLUGIN_ISOLATION
+// Fix (1): PluginManager must allocate a unique, monotonically-increasing
+// slot id per proxy instance (was knownPlugins.size() — a constant — so every
+// proxy collided on the same pipe/shm names). We verify two instances get
+// distinct slot ids via the description each proxy reports.
+TEST(PluginIsolation, UniqueSlotIdPerInstance) {
+    HDAW::PluginManager mgr;
+    EXPECT_TRUE(mgr.isolationEnabled);  // default ON
+
+    juce::PluginDescription desc;
+    desc.name = "UniqueSlot";
+    desc.fileOrIdentifier = "__passthrough__";
+    desc.pluginFormatName = "VST3";
+
+    juce::String err;
+    auto p1 = mgr.createPluginInstance(desc, err, 44100.0, 512, true);
+    ASSERT_NE(p1, nullptr) << "first isolated instance should spawn: "
+                           << err.toStdString();
+
+    auto p2 = mgr.createPluginInstance(desc, err, 44100.0, 512, true);
+    ASSERT_NE(p2, nullptr) << "second isolated instance should spawn: "
+                           << err.toStdString();
+
+    juce::PluginDescription d1, d2;
+    p1->fillInPluginDescription(d1);
+    p2->fillInPluginDescription(d2);
+
+    EXPECT_STRNE(d1.fileOrIdentifier.toStdString().c_str(),
+                 d2.fileOrIdentifier.toStdString().c_str())
+        << "slot ids must be unique across instances (was constant before fix): "
+        << d1.fileOrIdentifier << " vs " << d2.fileOrIdentifier;
+
+    // p1/p2 destruction exercises the dtor-kills-child path for their slots.
+}
+#endif

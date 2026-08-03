@@ -1,4 +1,6 @@
 #include "ExportManager.h"
+#include "../proxy/PluginProxySlot.h"
+#include "../common/DebugLog.h"
 
 namespace HDAW {
 
@@ -73,6 +75,15 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     juce::String message;
     juce::AudioProcessorGraph renderGraph;
 
+    proxy::setRenderMode(true);
+
+    // Disable plugin isolation for offline render. The render graph is a
+    // local, single-threaded context — crash isolation (out-of-process child)
+    // adds IPC latency that breaks the tight render loop, and the render
+    // doesn't need crash protection. Save and restore the original setting.
+    bool wasIsolationEnabled = pluginManager && pluginManager->isolationEnabled;
+    if (pluginManager) pluginManager->isolationEnabled = false;
+
     try
     {
         ProjectModel localModel;
@@ -91,12 +102,29 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
         renderGraph.setPlayHead(&renderPlayHead);
 
+        const int blockSize = 512;
+
+        // Propagate a stereo bus layout to the graph BEFORE rebuilding.
+        // The graph's audioOutputNode reads its input-channel count from
+        // the graph's own output bus; without this, the IO node reports
+        // 0 channels and every master→IO addConnection is silently
+        // rejected (no audio reaches the output buffer even though the
+        // master meter moves). Must run BEFORE rebuildFromValueTree so
+        // the IO node is created with the correct channel count.
+        {
+            juce::AudioProcessorGraph::BusesLayout renderLayout;
+            renderLayout.inputBuses.add(juce::AudioChannelSet::stereo());
+            renderLayout.outputBuses.add(juce::AudioChannelSet::stereo());
+            renderGraph.setBusesLayout(renderLayout);
+        }
+
         RoutingManager routingManager(renderGraph, localModel, *formatManager,
                                       renderTransport, pluginManager);
+        routingManager.setPlaybackInfo(sampleRate, blockSize);
         routingManager.rebuildFromValueTree();
 
-        const int blockSize = 512;
         renderGraph.prepareToPlay(sampleRate, blockSize);
+        routingManager.reconnectMasterToOutput();
 
         int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
         int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;
@@ -196,6 +224,8 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
 finish:
     renderGraph.releaseResources();
+    if (pluginManager) pluginManager->isolationEnabled = wasIsolationEnabled;
+    proxy::setRenderMode(false);
     active = false;
 
     if (onComplete)
