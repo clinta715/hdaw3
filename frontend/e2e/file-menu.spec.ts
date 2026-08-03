@@ -31,10 +31,10 @@ test.describe("File menu (user journeys)", () => {
   });
 
   test("New Project creates a fresh project", async ({ page }) => {
-    // Add a clip to dirty the state and wait for it to render
+    // The default project ships empty. Add a clip to dirty the state.
     await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 2, name: "E2E MIDI" });
-    // Default project has 2 MIDI clips; after adding one we expect 3
-    await expect(page.locator(".tl-clip")).toHaveCount(3, { timeout: 10000 });
+    // After adding one clip to an empty default project we expect 1 clip.
+    await expect(page.locator(".tl-clip")).toHaveCount(1, { timeout: 10000 });
     const before = await page.locator(".tl-clip").count();
 
     // Trigger new project via keyboard shortcut (Ctrl+N) which uses the same
@@ -42,9 +42,8 @@ test.describe("File menu (user journeys)", () => {
     page.on("dialog", (dialog) => dialog.accept());
     await page.keyboard.press("Control+n");
 
-    // Default project has 2 MIDI clips on Track 2 ("Melody" + "Chords").
-    // Our added clip should be gone, but the default clips remain.
-    await expect(page.locator(".tl-clip")).toHaveCount(2, { timeout: 10000 });
+    // New project resets to the empty default: our added clip is gone.
+    await expect(page.locator(".tl-clip")).toHaveCount(0, { timeout: 10000 });
     const after = await page.locator(".tl-clip").count();
     expect(after).toBeLessThan(before);
   });

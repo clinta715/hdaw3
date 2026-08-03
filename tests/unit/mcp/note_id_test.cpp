@@ -11,6 +11,15 @@ TEST(NoteID, AllocatesUniqueIDs) {
 TEST(NoteID, CreateMidiNoteAssignsID) {
     ProjectModel m;
     m.createDefaultProject();
+    // The default project now ships empty; add a MIDI clip with a note so the
+    // walk below has something to find.
+    auto clip = ProjectModel::createMidiClipEmpty("T", 0.0, 1.0);
+    clip.getChildWithName(IDs::MIDI_NOTE_LIST)
+        .addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    m.getTrackListTree().getChild(0)
+        .getChildWithName(IDs::CLIP_LIST)
+        .addChild(clip, -1, nullptr);
+
     auto trackList = m.getTrackListTree();
     int found = 0;
     for (int t = 0; t < trackList.getNumChildren(); ++t) {
@@ -29,13 +38,21 @@ TEST(NoteID, CreateMidiNoteAssignsID) {
 TEST(NoteID, ScanAndSyncAssignsMissing) {
     ProjectModel m;
     m.createDefaultProject();
-    // Track 1 is "Synth" (MIDI); track 0 is "Track 1" (audio) with an empty
-    // CLIP_LIST per the AGENTS.md "Default project should not reference
-    // non-existent sample files" rule.
-    auto nl = m.getTrackListTree().getChild(1).getChildWithName(IDs::CLIP_LIST)
-                  .getChild(0).getChildWithName(IDs::MIDI_NOTE_LIST);
-    nl.getChild(0).removeProperty(IDs::noteID, nullptr);
-    EXPECT_FALSE(nl.getChild(0).hasProperty(IDs::noteID));
+    // The default project now ships empty; add a MIDI clip with one note to
+    // track 0, then strip its noteID and verify scanAndSync restores it.
+    auto clip = ProjectModel::createMidiClipEmpty("T", 0.0, 1.0);
+    auto nl = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    nl.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    m.getTrackListTree().getChild(0)
+        .getChildWithName(IDs::CLIP_LIST)
+        .addChild(clip, -1, nullptr);
+
+    auto noteList = m.getTrackListTree().getChild(0)
+                        .getChildWithName(IDs::CLIP_LIST)
+                        .getChild(0)
+                        .getChildWithName(IDs::MIDI_NOTE_LIST);
+    noteList.getChild(0).removeProperty(IDs::noteID, nullptr);
+    EXPECT_FALSE(noteList.getChild(0).hasProperty(IDs::noteID));
     m.scanAndSyncNoteIDs();
-    EXPECT_TRUE(nl.getChild(0).hasProperty(IDs::noteID));
+    EXPECT_TRUE(noteList.getChild(0).hasProperty(IDs::noteID));
 }
