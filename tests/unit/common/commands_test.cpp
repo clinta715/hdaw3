@@ -48,6 +48,34 @@ TEST(Commands, TransportRewind)
     EXPECT_DOUBLE_EQ(t.currentTimeSeconds, 0.0);
 }
 
+TEST(Commands, PlayAfterAutoStopRestartsPlayback)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getTransportCommands();
+    auto& tm = engine.getTransportManager();
+
+    cmds.play();
+    ASSERT_TRUE(tm.isPlayingNow());
+
+    // Simulate the audio thread reaching the project end: auto-stop fires on
+    // the audio thread (isPlaying=false + flag) while the ValueTree still
+    // says playing — the engine's 50 ms timer hasn't synced it yet.
+    tm.setProjectEndSample(1000);
+    tm.setCurrentSample(999);
+    tm.advance(512); // crosses project end → auto-stop
+    ASSERT_FALSE(tm.isPlayingNow());
+    ASSERT_TRUE(engine.getReadModel().getTransport().isPlaying); // tree stale
+
+    // User presses Play inside that window — must start playback, not be
+    // swallowed by the no-op setProperty / stale auto-stop.
+    cmds.play();
+
+    EXPECT_TRUE(tm.isPlayingNow());
+    EXPECT_EQ(tm.getCurrentSample(), 0);
+    EXPECT_FALSE(tm.consumeAutoStopRequested());
+}
+
 TEST(Commands, ToggleLoop)
 {
     AudioEngine engine;

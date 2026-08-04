@@ -119,12 +119,28 @@ void AudioEngineCommands::play()
     auto transport = engine_.getProjectModel().getTransportTree();
     if (transport.isValid())
     {
+        auto& tm = engine_.getTransportManager();
+
+        // Absorb any pending auto-stop from a previous playback. Between the
+        // audio thread's auto-stop (isPlaying=false + flag) and the 50 ms
+        // timer that syncs the tree, the tree still says "playing"; a Play
+        // pressed in that window would make the setProperty(isPlaying, true)
+        // below a silent no-op (unchanged value), and the timer would then
+        // apply the stale auto-stop and kill the new playback. Apply the
+        // timer's effects here instead: position to zero, tree to stopped.
+        if (tm.consumeAutoStopRequested())
+        {
+            tm.setCurrentSample(0);
+            if (static_cast<bool>(transport.getProperty(IDs::isPlaying, false)))
+                transport.setProperty(IDs::isPlaying, false, &um);
+            transport.setProperty(IDs::position, 0.0, &um);
+        }
+
         // Standard DAW behavior: pressing Play when already playing restarts
         // from the beginning (like pressing Rewind + Play).
         bool alreadyPlaying = static_cast<bool>(transport.getProperty(IDs::isPlaying, false));
         if (alreadyPlaying)
         {
-            auto& tm = engine_.getTransportManager();
             tm.setCurrentSample(0);
             transport.setProperty(IDs::position, 0.0001, &um);
             transport.setProperty(IDs::position, 0.0, &um);

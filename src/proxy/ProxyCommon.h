@@ -74,7 +74,8 @@ struct ShmHeader {
 
     // Child-side watchdog: incremented once per processed audio block.
     // Parent compares against a saved snapshot; a stall for >staleThresholdMs
-    // is treated as a hang even if the process is still alive.
+    // is treated as a hang only when input is pending (inputWritePos !=
+    // inputReadPos) — an idle child with no input is healthy, not hung.
     std::atomic<uint64_t> audioFramesProduced{0};
     std::atomic<uint64_t> audioBlocksProcessed{0};
 };

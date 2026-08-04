@@ -191,6 +191,53 @@ from the live clip sources. Looping clips are excluded from the end
 the clip-source maps, which is fine on the audio thread for normal
 project sizes.
 
+**The auto-stop window race:** the audio thread sets
+`TransportManager::isPlaying=false` + `autoStopRequested` immediately,
+but the ValueTree still says `isPlaying=true` until the 50 ms timer
+syncs it. A Play pressed in that window used to be swallowed:
+`setProperty(isPlaying, true)` was a silent no-op (value unchanged —
+see pitfalls-juce.md), and the timer then applied the stale auto-stop.
+`play()` therefore **consumes the pending auto-stop first** (applying
+the timer's effects itself: sample 0, tree stopped) before setting
+`isPlaying=true`. Any new command that races the auto-stop flag must do
+the same.
+
+## Isolated plugins die silently if the stall detector kills idle children
+
+**Symptom (2026-08-04):** playback works for a few play/stop cycles,
+then produces no sound. The log shows `respawnIsolatedSlot ... path=`
+(empty) repeating after every stop, then `CrashRecovery: gave up`.
+
+**Root cause — two defects compounding:**
+
+1. **False-positive stall kill.** The stopped-transport early-out above
+   means `graph.processBlock` never runs while stopped, so
+   `PluginProxySlot::processBlock` never writes to the child's input
+   ring and the child's `audioBlocksProcessed` counter freezes. The
+   health monitor (`ProxyProcessManager::checkAllChildren`) treated any
+   frozen counter as a hang and killed the healthy child ~4 s into
+   every stop.
+2. **Respawn always failed.** `createPluginInstance` constructed the
+   `PluginProxySlot` without passing `desc.fileOrIdentifier`, so
+   `pluginPathForRecovery` was empty. The respawned child sent READY
+   (spawn "succeeded"), then exited with code 1 because it couldn't
+   load a plugin from an empty path. After 3 failed attempts
+   `CrashRecoveryManager` gives up permanently → dead slot → silence.
+
+**The fix / rules:**
+- `checkAllChildren` only treats a frozen block counter as a hang when
+  **input is pending** (`inputWritePos != inputReadPos`). An idle child
+  with an empty ring is healthy — reset the stall timer instead of
+  flagging it. (A genuinely hung child during playback leaves
+  unconsumed input in the ring, so real hangs are still detected.)
+- The proxy slot must always receive the plugin path
+  (`desc.fileOrIdentifier`) so crash recovery can respawn it.
+  `respawnIsolatedSlot` refuses to spawn with an empty path.
+- Regression tests: `ProxyHealth.IdleChildNotKilledByStallDetector`,
+  and `CrashRecovery.AutoRespawnAfterCrash` (which additionally waits
+  3 s idle after recovery to prove the respawned child stays alive —
+  this only passes when both fixes are in place).
+
 ## Codebase hardening (v0.3.x, 2026-06-30)
 
 The codebase hardening pass addressed 23 tasks across 6 phases:

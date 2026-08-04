@@ -55,6 +55,13 @@ TEST(CrashRecovery, AutoRespawnAfterCrash) {
         buffer2.clear();
         proxy->processBlock(buffer2, midi);
     }
+
+    for (int i = 0; i < 30; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (i % 10 == 5) pm.recovery().tick();
+    }
+    EXPECT_FALSE(proxy->isCrashed())
+        << "Respawned child died shortly after respawn (empty plugin path?)";
 }
 
 TEST(CrashRecovery, GivesUpAfterThreeFailures) {
@@ -73,6 +80,29 @@ TEST(CrashRecovery, GivesUpAfterThreeFailures) {
     }
 
     EXPECT_TRUE(gaveUp.load()) << "CrashRecovery should give up after 3 failed attempts";
+}
+
+TEST(ProxyHealth, IdleChildNotKilledByStallDetector) {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    proxy::ProxyProcessManager ppm;
+    uint32_t slotId = 7777;
+    ASSERT_TRUE(ppm.spawnPluginHost("__passthrough__", slotId));
+
+    std::atomic<bool> crashFired{false};
+    ppm.setSlotCrashCallback(slotId, [&](uint32_t) { crashFired.store(true); });
+
+    // Let the child idle (no blocks fed) for longer than the stall threshold.
+    // A healthy idle child — e.g. while the transport is stopped — must NOT
+    // be flagged as hung.
+    for (int i = 0; i < 6; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        ppm.checkAllChildren(100); // aggressive 100ms threshold
+    }
+    EXPECT_FALSE(crashFired.load())
+        << "Idle child with no pending input was falsely flagged as stalled";
+
+    ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
 }
 
 #endif

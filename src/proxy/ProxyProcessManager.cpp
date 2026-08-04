@@ -229,15 +229,27 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
             }
 
             uint64_t currentBlocks = 0;
-            if (info.shm && info.shm->getHeader())
-                currentBlocks = info.shm->getHeader()->audioBlocksProcessed.load(std::memory_order_relaxed);
+            bool inputPending = false;
+            if (info.shm && info.shm->getHeader()) {
+                auto* hdr = info.shm->getHeader();
+                currentBlocks = hdr->audioBlocksProcessed.load(std::memory_order_relaxed);
+                const uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
+                const uint32_t r = hdr->inputReadPos.load(std::memory_order_acquire);
+                inputPending = (w != r);
+            }
 
             auto nowMs = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now().time_since_epoch()).count());
 
             if (currentBlocks == info.lastBlocksSnapshot) {
-                if (info.lastSnapshotMs == 0) {
+                if (!inputPending) {
+                    // Idle, not hung: the parent isn't feeding blocks (e.g.
+                    // transport stopped → graph not processed → nothing written
+                    // to the input ring), so no progress is expected. Keep the
+                    // stall timer reset so a healthy idle child is never killed.
+                    info.lastSnapshotMs = nowMs;
+                } else if (info.lastSnapshotMs == 0) {
                     info.lastSnapshotMs = nowMs;
                 } else if (nowMs - info.lastSnapshotMs > staleThresholdMs) {
                     crashedSlots.push_back(id);

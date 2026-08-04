@@ -491,7 +491,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         }
 
         auto* proxy = new proxy::PluginProxySlot(
-            proxyProcessManager, slotId, desc.name);
+            proxyProcessManager, slotId, desc.name, desc.fileOrIdentifier);
 
         proxyProcessManager.setSlotCrashCallback(slotId,
             [proxy](uint32_t id) { proxy->onChildCrashed(); });
@@ -647,6 +647,11 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 {
 #if HDAW_PLUGIN_ISOLATION
     HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: oldSlot=") + juce::String((int)oldSlotId) + " path=" + pluginPath);
+
+    if (pluginPath.isEmpty()) {
+        HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: empty plugin path for slot ") + juce::String((int)oldSlotId) + ", refusing to spawn");
+        return false;
+    }
 
     auto it = liveProxySlots.find(oldSlotId);
     if (it == liveProxySlots.end() || it->second == nullptr) return false;
