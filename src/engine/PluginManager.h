@@ -2,27 +2,30 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_core/juce_core.h>
 #include "CLAPPluginFormat.h"
+#include "CrashRecoveryManager.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>
 #include <functional>
 #include <atomic>
 
+namespace proxy { class PluginProxySlot; }
+
 namespace HDAW {
 
-class PluginManager
+class PluginManager : private juce::Timer
 {
 public:
     PluginManager();
     ~PluginManager();
 
-    bool isolationEnabled = true;  // default ON — load all plugins via PluginProxySlot
+    bool isolationEnabled = true;
 
-    // Monotonic allocator for isolated-plugin proxy slot ids. Each proxy gets a
-    // unique id so its pipe/shm names never collide across rebuilds. Was
-    // previously derived from knownPlugins.size() (a constant), which made every
-    // proxy fight over the same pipe/shm names.
     std::atomic<uint32_t> nextProxySlotId{ 1 };
+
+    void setGraphLock(juce::SpinLock* lock) { graphLockPtr = lock; }
+
+    CrashRecoveryManager& recovery() { return *crashRecovery; }
 
     using ScanProgressCallback = std::function<void(const juce::String& fileName, int completed, int total)>;
 
@@ -62,13 +65,13 @@ public:
     void setScanCompleteCallback(ScanCallback cb) { scanCallback = cb; }
     ScanCallback getScanCompleteCallback() const { return scanCallback; }
 
-    // Enumerate all .vst3/.clap files under the given directories. Public so
-    // the frontend server can count plugin files for its directory-watcher
-    // change detection (see FrontendServer::onPluginDirDebounceExpired).
     juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
+
+    bool respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& pluginPath);
 
 private:
     void onScanFinished();
+    void timerCallback() override;
 
     juce::AudioPluginFormatManager formatManager;
     juce::KnownPluginList knownPluginList;
@@ -87,6 +90,12 @@ private:
     struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; juce::String name, manufacturer, category, format, file, id, error; };
     ScanResult scanPluginIsolated(const juce::String& pluginPath);
     int lastScanCrashCount = 0;
+
+    std::unique_ptr<CrashRecoveryManager> crashRecovery;
+    std::unordered_map<uint32_t, proxy::PluginProxySlot*> liveProxySlots;
+    juce::SpinLock* graphLockPtr = nullptr;
+    double lastSampleRate = 44100.0;
+    int lastBlockSize = 512;
 };
 
 } // namespace HDAW

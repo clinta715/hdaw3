@@ -22,7 +22,8 @@ class PluginProxySlot : public juce::AudioPluginInstance,
                          private juce::Timer {
 public:
     PluginProxySlot(ProxyProcessManager& mgr, uint32_t slotId,
-                    const juce::String& pluginName);
+                    const juce::String& pluginName,
+                    const juce::String& pluginPath = {});
     ~PluginProxySlot() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
@@ -60,6 +61,16 @@ public:
     void saveStateToTemp();
     bool restoreStateFromTemp();
 
+    static juce::MemoryBlock loadStateForOldSlotId(uint32_t oldSlotId);
+    static void clearStateForSlotId(uint32_t slotId);
+
+    using CrashNotifyFn = std::function<void(uint32_t, const juce::String&, const juce::String&)>;
+    void setCrashRecoveryNotifier(CrashNotifyFn fn) { crashRecoveryNotifier = std::move(fn); }
+
+    using RespawnRequestFn = std::function<void(uint32_t)>;
+    void setRespawnRequestFn(RespawnRequestFn fn) { respawnRequestFn = std::move(fn); }
+    void requestRespawn() { if (respawnRequestFn) respawnRequestFn(slotId); }
+
     using EditorClosedCallback = std::function<void()>;
     void setEditorClosedCallback(EditorClosedCallback cb) { editorClosedCb = std::move(cb); }
     void startEditorWatcher();
@@ -68,6 +79,7 @@ private:
     ProxyProcessManager& processManager;
     uint32_t slotId;
     juce::String pluginDisplayName;
+    juce::String pluginPathForRecovery;
 
     std::atomic<bool> crashed{false};
     std::atomic<bool> childAlive{true};
@@ -81,6 +93,9 @@ private:
 
     EditorClosedCallback editorClosedCb;
     std::thread editorWatcherThread;
+
+    CrashNotifyFn crashRecoveryNotifier;
+    RespawnRequestFn respawnRequestFn;
 
     void waitForEditorClosed();
 };

@@ -9,12 +9,14 @@
 namespace proxy {
 
 PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
-                                   const juce::String& name)
+                                    const juce::String& name,
+                                    const juce::String& pluginPath)
     : AudioPluginInstance(juce::AudioProcessor::BusesProperties()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       processManager(mgr),
       slotId(id),
-      pluginDisplayName(name)
+      pluginDisplayName(name),
+      pluginPathForRecovery(pluginPath)
 {
     auto* raw = processManager.getShm(slotId);
     if (raw)
@@ -273,13 +275,13 @@ void PluginProxySlot::onChildCrashed() {
     childAlive.store(false, std::memory_order_relaxed);
     saveStateToTemp();
 
-    // Show crash dialog on the message thread. Don't restart inline —
-    // killPluginHost would destroy shm while the audio thread holds a
-    // cached pointer. Restart is deferred to the next graph rebuild
-    // (~PluginProxySlot does full cleanup, then PluginManager creates
-    // a fresh proxy+child).
+    if (crashRecoveryNotifier)
+        crashRecoveryNotifier(slotId, pluginDisplayName, pluginPathForRecovery);
+
     juce::MessageManager::callAsync([this]() {
-        proxy::CrashDialog dialog(juce::String(pluginDisplayName).toRawUTF8());
+        proxy::CrashDialog dialog(
+            juce::String(pluginDisplayName).toRawUTF8(),
+            [this]() { requestRespawn(); });
         dialog.exec();
     });
 }
@@ -297,11 +299,8 @@ void PluginProxySlot::saveStateToTemp() {
 }
 
 bool PluginProxySlot::restartAfterCrash() {
-    // Inline restart is unsafe: killPluginHost would destroy shm while the
-    // audio thread holds a cached pointer. Restart happens on the next graph
-    // rebuild when ~PluginProxySlot() does full cleanup and PluginManager
-    // creates a fresh proxy+child.
-    return false;
+    requestRespawn();
+    return true;
 }
 
 void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRegion> newShm) {
@@ -351,6 +350,23 @@ void PluginProxySlot::startEditorWatcher() {
 void PluginProxySlot::timerCallback() {
     if (!crashed.load())
         saveStateToTemp();
+}
+
+juce::MemoryBlock PluginProxySlot::loadStateForOldSlotId(uint32_t oldSlotId) {
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" + juce::String((int)oldSlotId) + ".bin");
+    juce::MemoryBlock block;
+    if (file.existsAsFile()) {
+        juce::FileInputStream stream(file);
+        if (stream.openedOk())
+            stream.readIntoMemoryBlock(block);
+    }
+    return block;
+}
+
+void PluginProxySlot::clearStateForSlotId(uint32_t slotId) {
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    tempDir.getChildFile("hdaw_proxy_state_" + juce::String((int)slotId) + ".bin").deleteFile();
 }
 
 } // namespace proxy

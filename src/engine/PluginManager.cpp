@@ -33,10 +33,22 @@ PluginManager::PluginManager()
     blacklistFile = hdawDir.getChildFile("plugin_blacklist.xml");
 
     loadBlacklist();
+
+#if HDAW_PLUGIN_ISOLATION
+    crashRecovery = std::make_unique<CrashRecoveryManager>();
+    crashRecovery->setRespawnFn([this](uint32_t oldSlotId, const juce::String& pluginPath) -> bool {
+        return respawnIsolatedSlot(oldSlotId, pluginPath);
+    });
+    crashRecovery->setGiveUpFn([](uint32_t slotId, const juce::String& name) {
+        juce::Logger::writeToLog("CrashRecovery: gave up on slot " + juce::String((int)slotId));
+    });
+    startTimer(250);
+#endif
 }
 
 PluginManager::~PluginManager()
 {
+    stopTimer();
     saveCache();
 }
 
@@ -462,6 +474,9 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         return nullptr;
     }
 
+    lastSampleRate = sampleRate;
+    lastBlockSize = blockSize;
+
 #if HDAW_PLUGIN_ISOLATION
     if (isolated || isolationEnabled)
     {
@@ -477,12 +492,20 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
             return nullptr;
         }
 
-        // Wire per-slot crash callback so onChildCrashed() fires when
-        // the health monitor detects a dead/unresponsive child.
         proxyProcessManager.setSlotCrashCallback(slotId,
             [proxy](uint32_t id) { proxy->onChildCrashed(); });
 
-        // Start the health monitor on the first isolated plugin spawn.
+        proxy->setCrashRecoveryNotifier(
+            [this](uint32_t sid, const juce::String& name, const juce::String& path) {
+                if (crashRecovery) crashRecovery->onSlotCrashed(sid, name, path);
+            });
+        proxy->setRespawnRequestFn(
+            [this](uint32_t sid) {
+                if (crashRecovery) crashRecovery->requestRespawn(sid, true);
+            });
+
+        liveProxySlots[slotId] = proxy;
+
         proxyProcessManager.startHealthMonitor(2000);
 
         return std::unique_ptr<juce::AudioPluginInstance>(proxy);
@@ -610,6 +633,54 @@ void PluginManager::saveBlacklist()
             el->setAttribute("reason", it->second);
     }
     root.writeTo(blacklistFile, {});
+}
+
+void PluginManager::timerCallback()
+{
+#if HDAW_PLUGIN_ISOLATION
+    if (crashRecovery) crashRecovery->tick();
+#endif
+}
+
+bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& pluginPath)
+{
+#if HDAW_PLUGIN_ISOLATION
+    auto it = liveProxySlots.find(oldSlotId);
+    if (it == liveProxySlots.end() || it->second == nullptr) return false;
+
+    auto* proxy = it->second;
+
+    proxyProcessManager.killPluginHost(oldSlotId, proxy::KillMode::KillHard);
+
+    auto newSlotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
+
+    if (!proxyProcessManager.spawnPluginHost(pluginPath.toStdString(), newSlotId))
+        return false;
+
+    proxyProcessManager.setSlotCrashCallback(newSlotId,
+        [proxy](uint32_t) { proxy->onChildCrashed(); });
+
+    auto* rawShm = proxyProcessManager.getShm(newSlotId);
+    if (!rawShm) return false;
+
+    auto newShm = std::shared_ptr<proxy::ShmRegion>(rawShm, [](proxy::ShmRegion*){});
+    proxy->migrateToNewSlot(newSlotId, newShm);
+
+    auto stateBlock = proxy::PluginProxySlot::loadStateForOldSlotId(oldSlotId);
+    if (stateBlock.getSize() > 0)
+        proxy->setStateInformation(stateBlock.getData(), (int)stateBlock.getSize());
+
+    proxy->prepareToPlay(lastSampleRate, lastBlockSize);
+
+    liveProxySlots.erase(oldSlotId);
+    liveProxySlots[newSlotId] = proxy;
+
+    proxy::PluginProxySlot::clearStateForSlotId(oldSlotId);
+
+    return true;
+#else
+    return false;
+#endif
 }
 
 } // namespace HDAW

@@ -2,8 +2,8 @@
 
 namespace proxy {
 
-CrashDialog::CrashDialog(const QString& pluginName, QWidget* parent)
-    : QDialog(parent)
+CrashDialog::CrashDialog(const QString& pluginName, RestartFn onRestart, QWidget* parent)
+    : QDialog(parent), restartFn(std::move(onRestart))
 {
     setWindowTitle("Plugin Crashed");
     setMinimumWidth(350);
@@ -20,6 +20,7 @@ CrashDialog::CrashDialog(const QString& pluginName, QWidget* parent)
     auto* restartBtn = new QPushButton("Restart Plugin");
     connect(restartBtn, &QPushButton::clicked, this, [this]() {
         restartRequested = true;
+        if (restartFn) restartFn();
         accept();
     });
     layout->addWidget(restartBtn);
