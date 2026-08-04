@@ -8,6 +8,10 @@ interface DirEntry {
 
 declare global {
   interface Window {
+    HDAW_DEBUG_RENDERS?: boolean;
+    __HDAW_RENDER_COUNTS?: Map<string, number>;
+    __HDAW_GET_RENDER_COUNTS?: () => Record<string, number>;
+    __HDAW_RESET_RENDER_COUNTS?: () => void;
     hdaw?: {
       showOpenDialog: (options: any) => Promise<{ canceled: boolean; filePaths: string[] }>;
       showSaveDialog: (options: any) => Promise<{ canceled: boolean; filePath: string }>;
