@@ -76,6 +76,7 @@ float* ShmRegion::getOutputRing() const {
     if (!basePtr) return nullptr;
     auto* hdr = getHeader();
     uint32_t cap = hdr->capacity;
+    if (cap == 0) return nullptr;
     return reinterpret_cast<float*>(
         reinterpret_cast<uint8_t*>(getInputRing()) + cap * sizeof(float));
 }
@@ -84,12 +85,15 @@ MidiEvent* ShmRegion::getMidiInRing() const {
     if (!basePtr) return nullptr;
     auto* hdr = getHeader();
     uint32_t cap = hdr->capacity;
+    if (cap == 0) return nullptr;
     return reinterpret_cast<MidiEvent*>(
         reinterpret_cast<uint8_t*>(getOutputRing()) + cap * sizeof(float));
 }
 
 MidiEvent* ShmRegion::getMidiOutRing() const {
     if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
     return getMidiInRing() + 256;
 }
 
