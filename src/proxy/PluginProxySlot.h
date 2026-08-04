@@ -50,6 +50,7 @@ public:
     bool isCrashed() const { return crashed.load(); }
     void onChildCrashed();
     bool restartAfterCrash();
+    void migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRegion> newShm);
 
     ProxyProcessManager& getProcessManager() { return processManager; }
     uint32_t getSlotId() const { return slotId; }
@@ -64,7 +65,7 @@ private:
 
     std::atomic<bool> crashed{false};
     std::atomic<bool> childAlive{true};
-    ShmRegion* cachedShm = nullptr;  // lock-free access from audio thread
+    std::shared_ptr<ShmRegion> shmHandle;
 
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;

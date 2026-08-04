@@ -16,7 +16,9 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
       slotId(id),
       pluginDisplayName(name)
 {
-    cachedShm = processManager.getShm(slotId);
+    auto* raw = processManager.getShm(slotId);
+    if (raw)
+        shmHandle = std::shared_ptr<ShmRegion>(raw, [](ShmRegion*){});
     childAlive.store(processManager.isChildAlive(slotId), std::memory_order_relaxed);
     startTimer(5000);
 }
@@ -27,6 +29,7 @@ PluginProxySlot::~PluginProxySlot() {
     processManager.removeSlotCrashCallback(slotId);
     processManager.killPluginHost(slotId, true);
     releaseResources();
+    shmHandle.reset();
 }
 
 void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -83,7 +86,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     // Use cached pointer instead of getShm() (which takes a mutex — forbidden
     // on the audio thread). The pointer is valid for the proxy's lifetime:
     // killPluginHost(fullCleanup=false) keeps the ShmRegion alive in the map.
-    auto* shm = cachedShm;
+    auto shm = shmHandle;
     if (!shm || !shm->getHeader()) {
         if (cc < 3) HDAW_LOG("ProxyProc", "processBlock: shm null, returning");
         buffer.clear();
@@ -297,6 +300,13 @@ bool PluginProxySlot::restartAfterCrash() {
     // rebuild when ~PluginProxySlot() does full cleanup and PluginManager
     // creates a fresh proxy+child.
     return false;
+}
+
+void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRegion> newShm) {
+    slotId = newSlotId;
+    shmHandle = std::move(newShm);
+    crashed.store(false);
+    childAlive.store(true);
 }
 
 bool PluginProxySlot::restoreStateFromTemp() {
