@@ -73,12 +73,6 @@ void PluginProxySlot::releaseResources() {
 
 void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
                                     juce::MidiBuffer& midiMessages) {
-#ifdef HDAW_PROXY_DEBUG
-    static std::atomic<int> s_callCount{ 0 };
-    int cc = s_callCount.fetch_add(1, std::memory_order_relaxed);
-    if (cc < 3 || (cc % 500) == 0)
-        HDAW_LOG("ProxyProc", (juce::String("processBlock call=") + juce::String(cc) + " slot=" + juce::String((int)slotId) + " crashed=" + (crashed.load()?"1":"0") + " renderMode=" + (s_renderMode.load()?"1":"0") + " midi=" + juce::String(midiMessages.getNumEvents())).toStdString());
-#endif
 
     if (crashed.load()) return;
 

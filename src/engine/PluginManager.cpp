@@ -481,16 +481,16 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     if (isolated || isolationEnabled)
     {
         auto slotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
-        auto* proxy = new proxy::PluginProxySlot(
-            proxyProcessManager, slotId, desc.name);
 
         if (!proxyProcessManager.spawnPluginHost(
                 desc.fileOrIdentifier.toStdString(), slotId))
         {
-            delete proxy;
             errorMessage = "Failed to spawn isolated plugin process";
             return nullptr;
         }
+
+        auto* proxy = new proxy::PluginProxySlot(
+            proxyProcessManager, slotId, desc.name);
 
         proxyProcessManager.setSlotCrashCallback(slotId,
             [proxy](uint32_t id) { proxy->onChildCrashed(); });
