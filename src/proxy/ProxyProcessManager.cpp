@@ -126,25 +126,15 @@ bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
         }
     }
 
-    if (mode == KillMode::KillGraceful && pipe) {
-        ProxyMessage shutdown{};
-        shutdown.type = MessageType::SHUTDOWN;
-        shutdown.slotId = slotId;
-        pipe->sendMsgBounded(shutdown, 500);
-        if (handle != INVALID_HANDLE_VALUE) {
-            DWORD waitResult = WaitForSingleObject(handle, 2000);
-            if (waitResult != WAIT_OBJECT_0) {
-                TerminateProcess(handle, proxy::GRACEFUL_EXIT_CODE);
-                WaitForSingleObject(handle, 1000);
-            }
+    if (handle != INVALID_HANDLE_VALUE) {
+        if (mode == KillMode::KillGraceful) {
+            TerminateProcess(handle, proxy::GRACEFUL_EXIT_CODE);
+        } else {
+            TerminateProcess(handle, 0);
+            WaitForSingleObject(handle, 1000);
         }
-    } else if (handle != INVALID_HANDLE_VALUE) {
-        TerminateProcess(handle, 0);
-        WaitForSingleObject(handle, 1000);
-    }
-
-    if (handle != INVALID_HANDLE_VALUE)
         CloseHandle(handle);
+    }
 
     if (mode == KillMode::KillGraceful) {
         std::lock_guard<std::mutex> lock(mutex);
