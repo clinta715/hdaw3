@@ -273,13 +273,6 @@ void PluginProxySlot::onChildCrashed() {
 
     if (crashRecoveryNotifier)
         crashRecoveryNotifier(slotId, pluginDisplayName, pluginPathForRecovery);
-
-    juce::MessageManager::callAsync([this]() {
-        proxy::CrashDialog dialog(
-            juce::String(pluginDisplayName).toRawUTF8(),
-            [this]() { requestRespawn(); });
-        dialog.exec();
-    });
 }
 
 void PluginProxySlot::saveStateToTemp() {
