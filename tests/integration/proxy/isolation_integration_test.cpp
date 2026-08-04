@@ -748,3 +748,169 @@ TEST(PluginIsolation, UniqueSlotIdPerInstance) {
     // p1/p2 destruction exercises the dtor-kills-child path for their slots.
 }
 #endif
+
+// ========================================================================
+// Bug fix tests: cap==0 guard, per-slot callbacks, health monitor
+// ========================================================================
+
+TEST(PluginIsolation, ProcessBlockWithZeroCapacity) {
+    // Regression: if the child crashes before initializing shared memory,
+    // capacity stays at 0 and (cap - 1) wraps to 0xFFFFFFFF, causing OOB
+    // writes that crash the main process.
+    ProxyProcessManager mgr;
+
+    ShmRegion shm;
+    ASSERT_TRUE(shm.create("hdaw_test_zerocap", computeShmSize(2, 512)));
+    auto* hdr = shm.getHeader();
+    hdr->numChannels = 2;
+    hdr->blockSize = 512;
+    hdr->capacity = 0;  // Simulate child crash before init
+
+    PluginProxySlot slot(mgr, 9060, "ZeroCapTest");
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+
+    // Must not crash - should output silence and return early
+    slot.processBlock(buffer, midi);
+
+    for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < 512; ++s)
+            EXPECT_FLOAT_EQ(buffer.getSample(ch, s), 0.0f);
+}
+
+TEST(PluginIsolation, PerSlotCrashCallback) {
+    ProxyProcessManager mgr;
+
+    std::atomic<int> slotAFires{0};
+    std::atomic<int> slotBFires{0};
+
+    mgr.setSlotCrashCallback(9080, [&](uint32_t) {
+        slotAFires.fetch_add(1);
+    });
+    mgr.setSlotCrashCallback(9081, [&](uint32_t) {
+        slotBFires.fetch_add(1);
+    });
+
+    mgr.spawnPluginHost("C:\\nonexistent\\a.vst3", 9080);
+    mgr.spawnPluginHost("C:\\nonexistent\\b.vst3", 9081);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+    mgr.checkAllChildren();
+
+    EXPECT_GE(slotAFires.load(), 1) << "slot 9080 callback should fire";
+    EXPECT_GE(slotBFires.load(), 1) << "slot 9081 callback should fire";
+
+    mgr.killPluginHost(9080);
+    mgr.killPluginHost(9081);
+}
+
+TEST(PluginIsolation, RemoveSlotCrashCallback) {
+    ProxyProcessManager mgr;
+
+    std::atomic<int> fires{0};
+    mgr.setSlotCrashCallback(9090, [&](uint32_t) { fires.fetch_add(1); });
+
+    mgr.removeSlotCrashCallback(9090);
+
+    mgr.spawnPluginHost("C:\\nonexistent\\x.vst3", 9090);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+    mgr.checkAllChildren();
+
+    EXPECT_EQ(fires.load(), 0) << "removed callback should not fire";
+
+    mgr.killPluginHost(9090);
+}
+
+TEST(PluginIsolation, HealthMonitorDetectsDeadChild) {
+    // Simulate a child that crashes on its own (not killed by the host).
+    // The __crash__ plugin calls std::_Exit(3) in its first processBlock,
+    // so the child dies without killPluginHost being called.
+    ProxyProcessManager mgr;
+
+    std::atomic<bool> detected{false};
+    std::atomic<uint32_t> detectedSlot{0};
+
+    mgr.setSlotCrashCallback(9100, [&](uint32_t id) {
+        detected.store(true);
+        detectedSlot.store(id);
+    });
+
+    mgr.spawnPluginHost("__crash__", 9100);
+    ASSERT_TRUE(mgr.isAlive(9100));
+
+    // Send PREPARE so the child starts its audio loop
+    auto* pipe = mgr.getPipe(9100);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9100;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    pipe->receiveResp(prepareResp);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // Write audio to shared memory to trigger processBlock, which calls _Exit(3)
+    auto* shm = mgr.getShm(9100);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 50;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    if (hdr->numChannels > 0) {
+        uint32_t totalSamples = hdr->blockSize * hdr->numChannels;
+        std::vector<float> audio(totalSamples, 0.5f);
+        shm->writeInput(audio.data(), totalSamples);
+    }
+
+    // Start health monitor with short interval
+    mgr.startHealthMonitor(200);
+
+    // Wait for child to crash and health monitor to detect it
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+    while (!detected.load() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    EXPECT_TRUE(detected.load()) << "Health monitor should detect dead child";
+    EXPECT_EQ(detectedSlot.load(), 9100u);
+
+    mgr.stopHealthMonitor();
+    mgr.killPluginHost(9100);
+}
+
+TEST(PluginIsolation, BoundedPrepareToPlayDoesNotHang) {
+    ProxyProcessManager mgr;
+
+    mgr.spawnPluginHost("C:\\nonexistent\\hang.vst3", 9110);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+    PluginProxySlot slot(mgr, 9110, "HangTest");
+
+    auto start = std::chrono::steady_clock::now();
+
+    juce::AudioBuffer<float> buf(2, 512);
+    buf.clear();
+    juce::MidiBuffer midi;
+    slot.processBlock(buf, midi);
+
+    slot.prepareToPlay(44100.0, 512);
+
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+
+    EXPECT_LT(elapsedMs, 8000) << "prepareToPlay should not block for more than 8 seconds";
+
+    mgr.killPluginHost(9110);
+}

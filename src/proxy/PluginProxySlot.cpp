@@ -16,19 +16,16 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
       slotId(id),
       pluginDisplayName(name)
 {
+    cachedShm = processManager.getShm(slotId);
+    childAlive.store(processManager.isChildAlive(slotId), std::memory_order_relaxed);
     startTimer(5000);
 }
 
 PluginProxySlot::~PluginProxySlot() {
-    // Tear down the child process + release the pipe/shm for this slot.
-    // Runs on the message thread (proxies are destroyed during graph rebuild
-    // under MainAudioProcessor::graphLock, serialized with the audio callback,
-    // so this cannot overlap processBlock on this proxy). killPluginHost
-    // TerminateProcess'es the child, closes its handle, stops the pipe, and
-    // erases the child entry — freeing the named pipe/shm so a later spawn for
-    // any slot id (including a reused one) doesn't collide on a stale orphan.
-    // Returns false if there is no child for this slot, which is safe to ignore.
-    processManager.killPluginHost(slotId);
+    // Runs on the message thread after the current audio callback completes
+    // (graph rebuild serialized via graphLock). Full cleanup is safe here.
+    processManager.removeSlotCrashCallback(slotId);
+    processManager.killPluginHost(slotId, true);
     releaseResources();
 }
 
@@ -55,9 +52,13 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     std::memcpy(msg.data, &data, sizeof(data));
     msg.dataSize = sizeof(data);
 
-    pipe->sendMsg(msg);
+    // Use bounded IPC with a 5-second timeout. If the child is dead or hung,
+    // this prevents blocking the message thread (which holds graphLock) and
+    // avoids starving the audio callback.
+    static constexpr DWORD kPrepareTimeoutMs = 5000;
+    pipe->sendMsgBounded(msg, kPrepareTimeoutMs);
     ProxyResponse resp{};
-    pipe->receiveResp(resp);
+    pipe->receiveRespBounded(resp, kPrepareTimeoutMs);
 }
 
 void PluginProxySlot::releaseResources() {
@@ -72,14 +73,30 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
 
     if (crashed.load()) return;
 
-    auto* shm = processManager.getShm(slotId);
+    // Lock-free check: if the child has been terminated (e.g. by the crash
+    // handler), don't access the shm — it may be about to be destroyed.
+    if (!childAlive.load(std::memory_order_relaxed)) {
+        buffer.clear();
+        return;
+    }
+
+    // Use cached pointer instead of getShm() (which takes a mutex — forbidden
+    // on the audio thread). The pointer is valid for the proxy's lifetime:
+    // killPluginHost(fullCleanup=false) keeps the ShmRegion alive in the map.
+    auto* shm = cachedShm;
     if (!shm || !shm->getHeader()) {
         if (cc < 3) HDAW_LOG("ProxyProc", "processBlock: shm null, returning");
+        buffer.clear();
         return;
     }
 
     auto* hdr = shm->getHeader();
     uint32_t cap = hdr->capacity;
+    if (cap == 0) {
+        if (cc < 3) HDAW_LOG("ProxyProc", "processBlock: cap=0, returning silence");
+        buffer.clear();
+        return;
+    }
     int totalSamples = buffer.getNumChannels() * buffer.getNumSamples();
 
     uint32_t w = hdr->inputWritePos.load(std::memory_order_relaxed);
@@ -198,10 +215,12 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
     ProxyMessage msg{};
     msg.type = MessageType::GET_STATE;
     msg.slotId = slotId;
-    pipe->sendMsg(msg);
+
+    static constexpr DWORD kStateTimeoutMs = 3000;
+    if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return;
 
     ProxyResponse resp{};
-    if (pipe->receiveResp(resp) && resp.result == 1 && resp.dataSize > 0) {
+    if (pipe->receiveRespBounded(resp, kStateTimeoutMs) && resp.result == 1 && resp.dataSize > 0) {
         destData.append(resp.data, resp.dataSize);
     }
 }
@@ -218,10 +237,12 @@ void PluginProxySlot::setStateInformation(const void* data, int sizeInBytes) {
     auto maxData = sizeof(msg.data);
     if (copySize > maxData) copySize = maxData;
     std::memcpy(msg.data, data, copySize);
-    pipe->sendMsg(msg);
+
+    static constexpr DWORD kStateTimeoutMs = 3000;
+    pipe->sendMsgBounded(msg, kStateTimeoutMs);
 
     ProxyResponse resp{};
-    pipe->receiveResp(resp);
+    pipe->receiveRespBounded(resp, kStateTimeoutMs);
 }
 
 const juce::String PluginProxySlot::getName() const {
@@ -244,14 +265,17 @@ bool PluginProxySlot::hasEditor() const {
 
 void PluginProxySlot::onChildCrashed() {
     crashed.store(true);
+    childAlive.store(false, std::memory_order_relaxed);
     saveStateToTemp();
 
-    // Show crash dialog on the message thread
+    // Show crash dialog on the message thread. Don't restart inline —
+    // killPluginHost would destroy shm while the audio thread holds a
+    // cached pointer. Restart is deferred to the next graph rebuild
+    // (~PluginProxySlot does full cleanup, then PluginManager creates
+    // a fresh proxy+child).
     juce::MessageManager::callAsync([this]() {
         proxy::CrashDialog dialog(juce::String(pluginDisplayName).toRawUTF8());
-        if (dialog.exec() == QDialog::Accepted && dialog.shouldRestart()) {
-            restartAfterCrash();
-        }
+        dialog.exec();
     });
 }
 
@@ -268,14 +292,11 @@ void PluginProxySlot::saveStateToTemp() {
 }
 
 bool PluginProxySlot::restartAfterCrash() {
-    if (!crashed.load()) return true;
-
-    processManager.killPluginHost(slotId);
-
-    if (!restoreStateFromTemp()) return false;
-
-    crashed.store(false);
-    return true;
+    // Inline restart is unsafe: killPluginHost would destroy shm while the
+    // audio thread holds a cached pointer. Restart happens on the next graph
+    // rebuild when ~PluginProxySlot() does full cleanup and PluginManager
+    // creates a fresh proxy+child.
+    return false;
 }
 
 bool PluginProxySlot::restoreStateFromTemp() {

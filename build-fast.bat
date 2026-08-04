@@ -42,8 +42,7 @@ exit /b 1
 cmake --build "%BUILD_DIR%" --config %CONFIG% --target HDAW -- /m /v:minimal 2>&1
 if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] HDAW.exe up to date (config: %CONFIG%).
-call :check_pkg
-goto :eof
+goto :check_pkg
 
 :test
 cmake --build "%BUILD_DIR%" --config %CONFIG% --target hdaw_tests -- /m /v:minimal 2>&1
@@ -55,8 +54,7 @@ goto :eof
 cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
 if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] All targets up to date (config: %CONFIG%).
-call :check_pkg
-goto :eof
+goto :check_pkg
 
 :frontend
 cd /d "%ROOT%frontend"
@@ -64,8 +62,7 @@ call npm run build
 if !errorlevel! neq 0 exit /b !errorlevel!
 cd /d "%ROOT%"
 echo [build-fast] Frontend built (dist/ + dist-electron/).
-call :check_pkg
-goto :eof
+goto :check_pkg
 
 :package
 cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
@@ -77,8 +74,7 @@ call npm run package:dir
 if !errorlevel! neq 0 exit /b !errorlevel!
 cd /d "%ROOT%"
 echo [build-fast] Electron app repackaged: frontend\release\win-unpacked\HDAW.exe
-call :check_pkg
-goto :eof
+goto :check_pkg
 
 :check_pkg
 :: Warn loudly when the packaged Electron app's app.asar is older than the

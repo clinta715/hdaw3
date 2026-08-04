@@ -18,7 +18,9 @@ public:
     bool receive(ProxyMessage& msg);
     bool send(const ProxyResponse& resp);
     bool sendMsg(const ProxyMessage& msg);
+    bool sendMsgBounded(const ProxyMessage& msg, DWORD timeoutMs);
     bool receiveResp(ProxyResponse& resp);
+    bool receiveRespBounded(ProxyResponse& resp, DWORD timeoutMs);
     bool isConnected() const { return connected; }
 
 private:

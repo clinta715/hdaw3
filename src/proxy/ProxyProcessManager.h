@@ -9,6 +9,8 @@
 #include <mutex>
 #include <memory>
 #include <functional>
+#include <thread>
+#include <atomic>
 
 namespace proxy {
 
@@ -61,8 +63,9 @@ public:
     ProxyProcessManager& operator=(const ProxyProcessManager&) = delete;
 
     bool spawnPluginHost(const std::string& pluginPath, uint32_t slotId);
-    bool killPluginHost(uint32_t slotId);
+    bool killPluginHost(uint32_t slotId, bool fullCleanup = true);
     bool isAlive(uint32_t slotId);
+    bool isChildAlive(uint32_t slotId) const;
 
     const ChildInfo* getChildInfo(uint32_t slotId) const;
 
@@ -73,7 +76,12 @@ public:
     bool checkHealth(uint32_t slotId, uint32_t staleThresholdMs = 2000);
 
     void setCrashCallback(CrashCallback cb) { crashCallback = std::move(cb); }
+    void setSlotCrashCallback(uint32_t slotId, CrashCallback cb);
+    void removeSlotCrashCallback(uint32_t slotId);
     void checkAllChildren(uint32_t staleThresholdMs = 2000);
+
+    void startHealthMonitor(uint32_t intervalMs = 2000);
+    void stopHealthMonitor();
 
     static std::string getHostExePath();
 
@@ -84,6 +92,11 @@ private:
     std::unordered_map<uint32_t, ChildInfo> children;
     mutable std::mutex mutex;
     CrashCallback crashCallback;
+    std::unordered_map<uint32_t, CrashCallback> perSlotCrashCallbacks;
+
+    std::thread healthThread;
+    std::atomic<bool> healthMonitorRunning{false};
+    uint32_t healthMonitorIntervalMs = 2000;
 };
 
 } // namespace proxy

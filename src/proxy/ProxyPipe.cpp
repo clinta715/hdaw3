@@ -159,6 +159,12 @@ bool PipeServer::sendMsg(const ProxyMessage& msg) {
     return overlappedWrite(&msg, sizeof(ProxyMessage), INFINITE, bytesWritten);
 }
 
+bool PipeServer::sendMsgBounded(const ProxyMessage& msg, DWORD timeoutMs) {
+    if (hPipe == INVALID_HANDLE_VALUE || !connected) return false;
+    DWORD bytesWritten = 0;
+    return overlappedWrite(&msg, sizeof(ProxyMessage), timeoutMs, bytesWritten);
+}
+
 bool PipeServer::receiveResp(ProxyResponse& resp) {
     // Bounded READY wait: a hung child must not hang the engine forever.
     // Connect is normally near-instant (child connects right after spawn); the
@@ -174,6 +180,23 @@ bool PipeServer::receiveResp(ProxyResponse& resp) {
     }
     DWORD bytesRead = 0;
     if (!overlappedRead(&resp, sizeof(ProxyResponse), kReadyTimeoutMs, bytesRead)) {
+        connected = false;
+        return false;
+    }
+    return bytesRead >= sizeof(ProxyResponse) - sizeof(resp.data);
+}
+
+bool PipeServer::receiveRespBounded(ProxyResponse& resp, DWORD timeoutMs) {
+    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    if (!connected) {
+        if (!overlappedConnect(timeoutMs)) {
+            connected = false;
+            return false;
+        }
+        connected = true;
+    }
+    DWORD bytesRead = 0;
+    if (!overlappedRead(&resp, sizeof(ProxyResponse), timeoutMs, bytesRead)) {
         connected = false;
         return false;
     }

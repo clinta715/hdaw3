@@ -67,13 +67,13 @@ if "!FORCE_CLEAN!"=="0" (
 
 echo === [2/4] Building C++ engine (all targets, config: %CONFIG%) ===
 if "!FORCE_CLEAN!"=="1" goto :cpp_clean
-call cmake --build "%BUILD_DIR%" --config %CONFIG%
+call cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal
 if !errorlevel! neq 0 goto :fail_cpp
 goto :cpp_done
 
 :cpp_clean
 echo Forced clean rebuild ^(frontend dist newer than embedded SPA, or first build^)
-call cmake --build "%BUILD_DIR%" --config %CONFIG% --clean-first
+call cmake --build "%BUILD_DIR%" --config %CONFIG% --clean-first -- /m /v:minimal
 if !errorlevel! neq 0 goto :fail_cpp
 
 :cpp_done

@@ -7,6 +7,7 @@ namespace proxy {
 ProxyProcessManager::ProxyProcessManager() = default;
 
 ProxyProcessManager::~ProxyProcessManager() {
+    stopHealthMonitor();
     std::lock_guard<std::mutex> lock(mutex);
     for (auto& [id, info] : children) {
         if (info.processHandle != INVALID_HANDLE_VALUE) {
@@ -24,7 +25,10 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     // guards against a stale child from a previous spawn that was never reaped
     // (e.g. an orphaned process still holding the pipe/shm names), which would
     // otherwise make CreateNamedPipe/ShmRegion::create collide and fail.
-    killPluginHost(slotId);
+    // fullCleanup=true: the old pipe/shm names must be freed before new ones
+    // can be created with the same slot id. Safe because spawnPluginHost runs
+    // on the message thread during graph rebuild (audio callback completed).
+    killPluginHost(slotId, true);
 
     // Create pipe and shm outside the lock
     auto pipeName = makePipeName(slotId);
@@ -107,7 +111,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     return true;
 }
 
-bool ProxyProcessManager::killPluginHost(uint32_t slotId) {
+bool ProxyProcessManager::killPluginHost(uint32_t slotId, bool fullCleanup) {
     std::lock_guard<std::mutex> lock(mutex);
     auto it = children.find(slotId);
     if (it == children.end()) return false;
@@ -119,10 +123,20 @@ bool ProxyProcessManager::killPluginHost(uint32_t slotId) {
         CloseHandle(info.processHandle);
         info.processHandle = INVALID_HANDLE_VALUE;
     }
-    if (info.pipe) info.pipe->stop();
     info.alive.store(false);
-    children.erase(it);
+
+    if (fullCleanup) {
+        if (info.pipe) info.pipe->stop();
+        children.erase(it);
+    }
     return true;
+}
+
+bool ProxyProcessManager::isChildAlive(uint32_t slotId) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = children.find(slotId);
+    if (it == children.end()) return false;
+    return it->second.alive.load();
 }
 
 bool ProxyProcessManager::isAlive(uint32_t slotId) {
@@ -230,6 +244,9 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
 
     for (auto id : crashedSlots) {
         if (crashCallback) crashCallback(id);
+        auto it = perSlotCrashCallbacks.find(id);
+        if (it != perSlotCrashCallbacks.end())
+            it->second(id);
     }
 }
 
@@ -249,6 +266,35 @@ std::string ProxyProcessManager::makePipeName(uint32_t slotId) {
 
 std::string ProxyProcessManager::makeShmName(uint32_t slotId) {
     return "hdaw_plugin_shm_" + std::to_string(slotId);
+}
+
+void ProxyProcessManager::setSlotCrashCallback(uint32_t slotId, CrashCallback cb) {
+    std::lock_guard<std::mutex> lock(mutex);
+    perSlotCrashCallbacks[slotId] = std::move(cb);
+}
+
+void ProxyProcessManager::removeSlotCrashCallback(uint32_t slotId) {
+    std::lock_guard<std::mutex> lock(mutex);
+    perSlotCrashCallbacks.erase(slotId);
+}
+
+void ProxyProcessManager::startHealthMonitor(uint32_t intervalMs) {
+    if (healthMonitorRunning.load()) return;
+    healthMonitorIntervalMs = intervalMs;
+    healthMonitorRunning.store(true);
+    healthThread = std::thread([this]() {
+        while (healthMonitorRunning.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(healthMonitorIntervalMs));
+            if (healthMonitorRunning.load())
+                checkAllChildren(healthMonitorIntervalMs * 2);
+        }
+    });
+}
+
+void ProxyProcessManager::stopHealthMonitor() {
+    healthMonitorRunning.store(false);
+    if (healthThread.joinable())
+        healthThread.join();
 }
 
 } // namespace proxy

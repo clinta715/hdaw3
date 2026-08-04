@@ -477,6 +477,14 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
             return nullptr;
         }
 
+        // Wire per-slot crash callback so onChildCrashed() fires when
+        // the health monitor detects a dead/unresponsive child.
+        proxyProcessManager.setSlotCrashCallback(slotId,
+            [proxy](uint32_t id) { proxy->onChildCrashed(); });
+
+        // Start the health monitor on the first isolated plugin spawn.
+        proxyProcessManager.startHealthMonitor(2000);
+
         return std::unique_ptr<juce::AudioPluginInstance>(proxy);
     }
 #endif

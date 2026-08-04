@@ -9,6 +9,16 @@
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/msvc2022_64"
       }
+    },
+    {
+      "name": "ninja",
+      "displayName": "HDAW (Ninja, fastest incremental)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.11.1/msvc2022_64",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     }
   ],
   "buildPresets": [
@@ -29,6 +39,16 @@
       "displayName": "Release (max optimization, no symbols)",
       "configurePreset": "default",
       "configuration": "Release"
+    },
+    {
+      "name": "ninja-debug",
+      "displayName": "Ninja Debug",
+      "configurePreset": "ninja"
+    },
+    {
+      "name": "ninja-relwithdebinfo",
+      "displayName": "Ninja RelWithDebInfo",
+      "configurePreset": "ninja"
     }
   ]
 }
