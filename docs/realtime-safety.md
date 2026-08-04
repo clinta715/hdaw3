@@ -302,36 +302,68 @@ take down the DAW. Enabled by default; disable with `-DHDAW_PLUGIN_ISOLATION=OFF
 
 **Architecture:**
 - `hdaw_plugin_host.exe` — child process that loads and runs a
-  single plugin. Entry: `src/proxy/host/main.cpp`.
+  single plugin. Entry: `src/proxy/host/main.cpp`. Exits with
+  `GRACEFUL_EXIT_CODE` (`0xC0DE0001`) on SHUTDOWN so the parent
+  distinguishes graceful shutdown from crash.
 - `PluginHost` — loads plugin via JUCE `AudioPluginFormatManager`,
   runs control loop (pipe listener) and audio loop (shared-memory
-  ring buffer reader/writer).
+  ring buffer reader/writer). Increments `audioBlocksProcessed`
+  watchdog counter per block.
 - `ProxyProcessManager` — DAW-side process lifecycle. Spawns,
-  monitors, kills child processes. Heartbeat monitoring with
-  `checkAllChildren()`.
-- `PluginProxySlot` — `juce::AudioPluginInstance` wrapper. The rest
-  of the engine sees a normal plugin. `processBlock` writes to shared
-  memory ring, reads output ring.
+  monitors, kills child processes via `KillMode::KillGraceful`
+  (sends SHUTDOWN, waits 2s, sentinel TerminateProcess) or
+  `KillMode::KillHard` (immediate TerminateProcess). Crash detection
+  via exit code + `audioBlocksProcessed` stall watchdog.
+- `PluginProxySlot` — `juce::AudioPluginInstance` wrapper. Holds
+  `std::shared_ptr<ShmRegion>` (refcounted; graphLock provides
+  mutual exclusion with the audio thread). `migrateToNewSlot()`
+  swaps in a new child/shm for in-place respawn.
 - `ProxyEditor` — lightweight UI card (plugin name, bypass, open
-  editor, crash-restart button).
-- `CrashDialog` — Qt dialog shown on crash. Offers restart.
+  editor, crash-restart button). Bounded IO (2s timeout).
+- `CrashDialog` — Qt dialog shown on crash. Restart button calls
+  `CrashRecoveryManager::requestRespawn()`.
+- `CrashRecoveryManager` (`src/engine/CrashRecoveryManager.{h,cpp}`)
+  — auto-respawn loop. 500ms grace period, 3 retries with
+  exponential backoff (1s, 2s, 4s). Tick driven by
+  `PluginManager::timerCallback` (250ms). On respawn: kills old
+  child, spawns new, restores state from temp file, calls
+  `migrateToNewSlot`.
 
 **IPC Protocol:**
 - **Control pipe:** Named pipe (`\\.\pipe\hdaw_plugin_N`). Fixed
   256-byte `ProxyMessage`/`ProxyResponse` structs. No heap
-  allocation.
+  allocation. Bounded IO via `sendMsgBounded`/`receiveRespBounded`.
 - **Audio:** Shared-memory SPSC ring buffers. `ShmHeader` has
-  atomic read/write positions for input, output, MIDI rings.
-- **Health:** `childAlive`/`dawAlive` atomics in `ShmHeader`.
-  Heartbeat every 500ms. Stale threshold: 2s.
+  atomic read/write positions for input, output, MIDI rings, plus
+  `audioFramesProduced`/`audioBlocksProcessed` watchdog counters.
+  `SHM_MAGIC` = `0x48444158`.
+- **Health:** `childAlive` atomic in `ShmHeader`. `checkAllChildren`
+  runs every 2s, detects crashes via process exit code (non-sentinel
+  = crash) and `audioBlocksProcessed` stall (no progress for >2s
+  while process alive = hang).
+- **EDITOR_CLOSED:** Async message from child when user closes plugin
+  editor window. Relayed to `TrackFXSlot::remoteEditorOpen` via
+  `PluginProxySlot::setEditorClosedCallback`.
+
+**Recovery flow:**
+1. Child crashes/hangs → health monitor detects within 2s.
+2. `onChildCrashed()` sets `crashed=true`, saves state to temp file.
+3. `CrashRecoveryManager::onSlotCrashed()` registers the slot.
+4. Audio thread sees `crashed==true` → returns silence.
+5. After 500ms grace, `tick()` runs respawn: kill old child, spawn
+   new, restore state, `migrateToNewSlot()`.
+6. `crashed=false`, audio resumes.
+7. If respawn fails 3×: `giveUp()` logs and slot stays silent.
 
 **Shared types:** `src/proxy/ProxyCommon.h` — `MessageType`,
-`ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent`.
+`ProxyMessage`, `ProxyResponse`, `ShmHeader`, `MidiEvent`,
+`GRACEFUL_EXIT_CODE`.
 
 **Build flag:** `-DHDAW_PLUGIN_ISOLATION=OFF` to disable (default ON). Guards
-`ProxyProcessManager`, `PluginProxySlot`, `ProxyEditor`, and the
-`hdaw_plugin_host` target. Zero overhead when disabled.
+`ProxyProcessManager`, `PluginProxySlot`, `ProxyEditor`,
+`CrashRecoveryManager`, and the `hdaw_plugin_host` target.
 
 **Spec / plan:**
 - `docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
-- `docs/superpowers/plans/2026-06-30-plugin-process-isolation-plan.md`
+- `docs/superpowers/specs/2026-08-03-plugin-isolation-fixes-design.md`
+- `docs/superpowers/plans/2026-08-03-plugin-isolation-fixes.md`
