@@ -24,6 +24,8 @@ export default function ClipEditor() {
   // Load notes for MIDI clips so clip-level MIDI ops work.
   // Reads notesByClip from getState() to avoid a re-render cascade:
   // syncNotes creates a new Map → notesByClip changes → effect re-fires.
+  const snapEnabled = useUiStore((s) => s.snapEnabled);
+
   useEffect(() => {
     if (clip?.isMidi && clipId != null) {
       const map = useProjectStore.getState().notesByClip;
@@ -123,8 +125,6 @@ export default function ClipEditor() {
       console.warn("clip humanize failed", err);
     }
   };
-
-  const snapEnabled = useUiStore((s) => s.snapEnabled);
 
   return (
     <div className="clip-editor" key={clip.clipId}>

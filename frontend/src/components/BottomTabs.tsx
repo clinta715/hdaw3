@@ -1,4 +1,4 @@
-import { useState, useEffect, ReactNode } from "react";
+import React, { useState, useEffect, ReactNode } from "react";
 import "./BottomTabs.css";
 
 interface Tab {
@@ -14,7 +14,7 @@ interface Props {
   onTabChange?: (id: string) => void;
 }
 
-export default function BottomTabs({ tabs, defaultTab, activeTab, onTabChange }: Props) {
+export default React.memo(function BottomTabs({ tabs, defaultTab, activeTab, onTabChange }: Props) {
   const [internal, setInternal] = useState(defaultTab ?? tabs[0]?.id ?? "");
   const active = activeTab ?? internal;
 
@@ -47,4 +47,4 @@ export default function BottomTabs({ tabs, defaultTab, activeTab, onTabChange }:
       </div>
     </div>
   );
-}
+});

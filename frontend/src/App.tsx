@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { reportRpcError } from "./store/notifyStore";
 import { withHookSentinel } from "./dev/hookSentinel";
@@ -73,6 +73,10 @@ function App() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }, [setBottomPanelHeight]);
+
+  const handleTabChange = useCallback((t: string) => {
+    useUiStore.getState().selectBottomTab(t);
+  }, []);
 
   // Tab toggles between arrange and session view
   useEffect(() => {
@@ -187,7 +191,7 @@ function App() {
     }
   }, [selectedClipIds, activeBottomTab, setActiveBottomTab]);
 
-  const bottomTabs = [
+  const bottomTabs = useMemo(() => [
     { id: "mixer", label: "Mixer", content: <SMixer /> },
     { id: "piano-roll", label: "Piano Roll", content: <SPianoRoll /> },
     { id: "automation", label: "Automation", content: <SAutomationPanel rpc={rpc} /> },
@@ -198,7 +202,7 @@ function App() {
     { id: "step-seq", label: "Step Seq", content: <SStepSequencer /> },
     { id: "undo-history", label: "History", content: <UndoHistory /> },
     { id: "inspector", label: "Inspector", content: <Inspector /> },
-  ];
+  ], []);
 
   return (
     <div
@@ -234,7 +238,7 @@ function App() {
           tabs={bottomTabs}
           defaultTab="mixer"
           activeTab={activeBottomTab}
-          onTabChange={(t) => useUiStore.getState().selectBottomTab(t)}
+          onTabChange={handleTabChange}
         />
       </footer>
       <StatusBar />
