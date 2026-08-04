@@ -100,8 +100,6 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     info.pipe = std::move(pipeServer);
     info.shm = std::move(shmRegion);
     info.alive.store(true);
-    info.lastHeartbeat.store(static_cast<uint32_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count()));
 
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -211,32 +209,11 @@ bool ProxyProcessManager::sendHeartbeat(uint32_t slotId) {
     if (!pipe->sendMsg(msg)) return false;
 
     ProxyResponse resp{};
-    if (!pipe->receiveResp(resp)) return false;
-
-    std::lock_guard<std::mutex> lock(mutex);
-    auto it = children.find(slotId);
-    if (it != children.end()) {
-        it->second.lastHeartbeat.store(static_cast<uint32_t>(
-            std::chrono::steady_clock::now().time_since_epoch().count()));
-    }
-    return true;
+    return pipe->receiveResp(resp);
 }
 
-bool ProxyProcessManager::checkHealth(uint32_t slotId, uint32_t staleThresholdMs) {
-    std::lock_guard<std::mutex> lock(mutex);
-    auto it = children.find(slotId);
-    if (it == children.end()) return false;
-
-    auto& info = it->second;
-    if (!isAlive(slotId)) return false;
-
-    auto now = static_cast<uint32_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    auto last = info.lastHeartbeat.load();
-    auto elapsed = (now > last) ? (now - last) : 0;
-    auto elapsedMs = elapsed / 1000;
-
-    return elapsedMs < staleThresholdMs;
+bool ProxyProcessManager::checkHealth(uint32_t slotId, uint32_t /*staleThresholdMs*/) {
+    return isAlive(slotId);
 }
 
 void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
@@ -260,21 +237,10 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
                 crashedSlots.push_back(id);
                 continue;
             }
-
-            auto now = static_cast<uint32_t>(
-                std::chrono::steady_clock::now().time_since_epoch().count());
-            auto last = info.lastHeartbeat.load();
-            auto elapsed = (now > last) ? (now - last) : 0;
-            auto elapsedMs = elapsed / 1000;
-
-            if (elapsedMs > staleThresholdMs) {
-                crashedSlots.push_back(id);
-            }
         }
     }
 
     for (auto id : crashedSlots) {
-        if (crashCallback) crashCallback(id);
         auto it = perSlotCrashCallbacks.find(id);
         if (it != perSlotCrashCallbacks.end())
             it->second(id);

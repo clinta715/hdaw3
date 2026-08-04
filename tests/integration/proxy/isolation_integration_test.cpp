@@ -91,7 +91,7 @@ TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
     std::atomic<int> crashCount{0};
     std::atomic<uint32_t> crashedSlotId{0};
 
-    mgr.setCrashCallback([&](uint32_t slotId) {
+    mgr.setSlotCrashCallback(9004, [&](uint32_t slotId) {
         crashCount.fetch_add(1);
         crashedSlotId.store(slotId);
     });
@@ -298,7 +298,7 @@ TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
     ProxyProcessManager mgr;
 
     std::atomic<bool> crashDetected{false};
-    mgr.setCrashCallback([&](uint32_t) { crashDetected.store(true); });
+    mgr.setSlotCrashCallback(9015, [&](uint32_t) { crashDetected.store(true); });
 
     bool spawned = mgr.spawnPluginHost("__passthrough__", 9015);
     ASSERT_TRUE(spawned);
@@ -351,7 +351,7 @@ TEST(PluginIsolation, CrashDetectionViaSelfExit) {
     std::atomic<int> callbackCount{0};
     std::atomic<uint32_t> lastCrashedSlot{0};
 
-    mgr.setCrashCallback([&](uint32_t slotId) {
+    mgr.setSlotCrashCallback(9030, [&](uint32_t slotId) {
         callbackCount.fetch_add(1);
         lastCrashedSlot.store(slotId);
     });
@@ -567,7 +567,7 @@ TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
 
     std::atomic<bool> crashDetected{false};
     std::atomic<uint32_t> crashedSlot{0};
-    mgr.setCrashCallback([&](uint32_t slotId) {
+    mgr.setSlotCrashCallback(9053, [&](uint32_t slotId) {
         crashDetected.store(true);
         crashedSlot.store(slotId);
     });

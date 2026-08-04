@@ -21,7 +21,6 @@ struct ChildInfo {
     std::unique_ptr<PipeServer> pipe;
     std::unique_ptr<ShmRegion> shm;
     std::atomic<bool> alive{false};
-    std::atomic<uint32_t> lastHeartbeat{0};
 
     ChildInfo() = default;
     ChildInfo(ChildInfo&& o) noexcept
@@ -31,7 +30,6 @@ struct ChildInfo {
         , pipe(std::move(o.pipe))
         , shm(std::move(o.shm))
         , alive(o.alive.load())
-        , lastHeartbeat(o.lastHeartbeat.load())
     {
         o.processHandle = INVALID_HANDLE_VALUE;
     }
@@ -43,7 +41,6 @@ struct ChildInfo {
             pipe = std::move(o.pipe);
             shm = std::move(o.shm);
             alive.store(o.alive.load());
-            lastHeartbeat.store(o.lastHeartbeat.load());
             o.processHandle = INVALID_HANDLE_VALUE;
         }
         return *this;
@@ -80,7 +77,6 @@ public:
     bool sendHeartbeat(uint32_t slotId);
     bool checkHealth(uint32_t slotId, uint32_t staleThresholdMs = 2000);
 
-    void setCrashCallback(CrashCallback cb) { crashCallback = std::move(cb); }
     void setSlotCrashCallback(uint32_t slotId, CrashCallback cb);
     void removeSlotCrashCallback(uint32_t slotId);
     void checkAllChildren(uint32_t staleThresholdMs = 2000);
@@ -96,7 +92,6 @@ private:
 
     std::unordered_map<uint32_t, ChildInfo> children;
     mutable std::mutex mutex;
-    CrashCallback crashCallback;
     std::unordered_map<uint32_t, CrashCallback> perSlotCrashCallbacks;
 
     std::thread healthThread;
