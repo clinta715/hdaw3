@@ -28,7 +28,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     // fullCleanup=true: the old pipe/shm names must be freed before new ones
     // can be created with the same slot id. Safe because spawnPluginHost runs
     // on the message thread during graph rebuild (audio callback completed).
-    killPluginHost(slotId, true);
+    killPluginHost(slotId, KillMode::KillHard);
 
     // Create pipe and shm outside the lock
     auto pipeName = makePipeName(slotId);
@@ -111,23 +111,50 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     return true;
 }
 
-bool ProxyProcessManager::killPluginHost(uint32_t slotId, bool fullCleanup) {
-    std::lock_guard<std::mutex> lock(mutex);
-    auto it = children.find(slotId);
-    if (it == children.end()) return false;
-
-    auto& info = it->second;
-    if (info.processHandle != INVALID_HANDLE_VALUE) {
-        TerminateProcess(info.processHandle, 0);
-        WaitForSingleObject(info.processHandle, 1000);
-        CloseHandle(info.processHandle);
-        info.processHandle = INVALID_HANDLE_VALUE;
+bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
+    HANDLE handle = INVALID_HANDLE_VALUE;
+    PipeServer* pipe = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = children.find(slotId);
+        if (it == children.end()) return false;
+        auto& info = it->second;
+        handle = info.processHandle;
+        pipe = info.pipe.get();
+        info.alive.store(false);
+        if (mode == KillMode::KillHard) {
+            if (info.pipe) info.pipe->stop();
+            children.erase(it);
+        }
     }
-    info.alive.store(false);
 
-    if (fullCleanup) {
-        if (info.pipe) info.pipe->stop();
-        children.erase(it);
+    if (mode == KillMode::KillGraceful && pipe) {
+        ProxyMessage shutdown{};
+        shutdown.type = MessageType::SHUTDOWN;
+        shutdown.slotId = slotId;
+        pipe->sendMsgBounded(shutdown, 500);
+        if (handle != INVALID_HANDLE_VALUE) {
+            DWORD waitResult = WaitForSingleObject(handle, 2000);
+            if (waitResult != WAIT_OBJECT_0) {
+                TerminateProcess(handle, proxy::GRACEFUL_EXIT_CODE);
+                WaitForSingleObject(handle, 1000);
+            }
+        }
+    } else if (handle != INVALID_HANDLE_VALUE) {
+        TerminateProcess(handle, 0);
+        WaitForSingleObject(handle, 1000);
+    }
+
+    if (handle != INVALID_HANDLE_VALUE)
+        CloseHandle(handle);
+
+    if (mode == KillMode::KillGraceful) {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = children.find(slotId);
+        if (it != children.end()) {
+            if (it->second.pipe) it->second.pipe->stop();
+            children.erase(it);
+        }
     }
     return true;
 }
@@ -222,6 +249,10 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
             DWORD exitCode = 0;
             if (!GetExitCodeProcess(info.processHandle, &exitCode)) {
                 crashedSlots.push_back(id);
+                continue;
+            }
+            if (exitCode == proxy::GRACEFUL_EXIT_CODE) {
+                info.alive.store(false);
                 continue;
             }
             if (exitCode != STILL_ACTIVE) {

@@ -54,6 +54,11 @@ struct ChildInfo {
 
 using CrashCallback = std::function<void(uint32_t slotId)>;
 
+enum class KillMode {
+    KillGraceful,
+    KillHard
+};
+
 class ProxyProcessManager {
 public:
     ProxyProcessManager();
@@ -63,7 +68,7 @@ public:
     ProxyProcessManager& operator=(const ProxyProcessManager&) = delete;
 
     bool spawnPluginHost(const std::string& pluginPath, uint32_t slotId);
-    bool killPluginHost(uint32_t slotId, bool fullCleanup = true);
+    bool killPluginHost(uint32_t slotId, KillMode mode);
     bool isAlive(uint32_t slotId);
     bool isChildAlive(uint32_t slotId) const;
 

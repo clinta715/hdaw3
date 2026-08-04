@@ -53,7 +53,7 @@ TEST(PluginIsolation, SpawnWithBadPluginExits) {
     // The child should now be dead
     EXPECT_FALSE(mgr.isAlive(9001));
 
-    mgr.killPluginHost(9001);
+    mgr.killPluginHost(9001, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, SpawnAndShutdownCleanExit) {
@@ -67,7 +67,7 @@ TEST(PluginIsolation, SpawnAndShutdownCleanExit) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     // killPluginHost should handle the already-dead process without crashing
-    mgr.killPluginHost(9002);
+    mgr.killPluginHost(9002, KillMode::KillHard);
     SUCCEED();
 }
 
@@ -78,7 +78,7 @@ TEST(PluginIsolation, KillReportsNotAlive) {
     ASSERT_TRUE(spawned);
 
     // Kill the child
-    bool killed = mgr.killPluginHost(9003);
+    bool killed = mgr.killPluginHost(9003, KillMode::KillHard);
     EXPECT_TRUE(killed);
 
     // isAlive should return false
@@ -108,7 +108,7 @@ TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
     EXPECT_GE(crashCount.load(), 1);
     EXPECT_EQ(crashedSlotId.load(), 9004u);
 
-    mgr.killPluginHost(9004);
+    mgr.killPluginHost(9004, KillMode::KillHard);
 }
 
 // ========================================================================
@@ -291,7 +291,7 @@ TEST(PluginIsolation, AudioRoundTripWithPassthrough) {
             << "Sample " << i << " mismatch (passthrough should be identical)";
     }
 
-    mgr.killPluginHost(9014);
+    mgr.killPluginHost(9014, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
@@ -306,7 +306,7 @@ TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     ASSERT_TRUE(mgr.isAlive(9015));
 
-    mgr.killPluginHost(9015);
+    mgr.killPluginHost(9015, KillMode::KillHard);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     EXPECT_FALSE(mgr.isAlive(9015));
 
@@ -316,7 +316,7 @@ TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     EXPECT_TRUE(mgr.isAlive(9016));
 
-    mgr.killPluginHost(9016);
+    mgr.killPluginHost(9016, KillMode::KillHard);
 }
 
 // ========================================================================
@@ -338,8 +338,8 @@ TEST(PluginIsolation, MultipleChildrenSpawnIndependently) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
 
     // Clean up
-    mgr.killPluginHost(9020);
-    mgr.killPluginHost(9021);
+    mgr.killPluginHost(9020, KillMode::KillHard);
+    mgr.killPluginHost(9021, KillMode::KillHard);
     SUCCEED();
 }
 
@@ -368,7 +368,7 @@ TEST(PluginIsolation, CrashDetectionViaSelfExit) {
     EXPECT_GE(callbackCount.load(), 1);
     EXPECT_EQ(lastCrashedSlot.load(), 9030u);
 
-    mgr.killPluginHost(9030);
+    mgr.killPluginHost(9030, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, ProcessBlockWithSharedMemory) {
@@ -480,7 +480,7 @@ TEST(PluginIsolation, DLLLoadAndAudioRoundTrip) {
             << "Sample " << i << " mismatch";
     }
 
-    mgr.killPluginHost(9050);
+    mgr.killPluginHost(9050, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, DLLParameterEnumeration) {
@@ -515,7 +515,7 @@ TEST(PluginIsolation, DLLParameterEnumeration) {
 
     EXPECT_EQ(paramCount, 1u) << "JUCE's VST3 wrapper exposes a bypass parameter";
 
-    mgr.killPluginHost(9051);
+    mgr.killPluginHost(9051, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, DLLStateSaveRestore) {
@@ -559,7 +559,7 @@ TEST(PluginIsolation, DLLStateSaveRestore) {
     ASSERT_TRUE(pipe->receiveResp(setResp));
     EXPECT_EQ(setResp.result, 1u) << "SET_STATE should succeed";
 
-    mgr.killPluginHost(9052);
+    mgr.killPluginHost(9052, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
@@ -617,7 +617,7 @@ TEST(PluginIsolation, CrashIsolationDuringProcessBlock) {
     EXPECT_TRUE(crashDetected.load()) << "Crash callback should have fired";
     EXPECT_EQ(crashedSlot.load(), 9053u);
 
-    mgr.killPluginHost(9053);
+    mgr.killPluginHost(9053, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, DLLGracefulShutdown) {
@@ -646,7 +646,7 @@ TEST(PluginIsolation, DLLGracefulShutdown) {
 
     EXPECT_FALSE(mgr.isAlive(9054)) << "Child should exit after SHUTDOWN";
 
-    mgr.killPluginHost(9054);
+    mgr.killPluginHost(9054, KillMode::KillHard);
 }
 
 // ========================================================================
@@ -803,8 +803,8 @@ TEST(PluginIsolation, PerSlotCrashCallback) {
     EXPECT_GE(slotAFires.load(), 1) << "slot 9080 callback should fire";
     EXPECT_GE(slotBFires.load(), 1) << "slot 9081 callback should fire";
 
-    mgr.killPluginHost(9080);
-    mgr.killPluginHost(9081);
+    mgr.killPluginHost(9080, KillMode::KillHard);
+    mgr.killPluginHost(9081, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, RemoveSlotCrashCallback) {
@@ -822,7 +822,7 @@ TEST(PluginIsolation, RemoveSlotCrashCallback) {
 
     EXPECT_EQ(fires.load(), 0) << "removed callback should not fire";
 
-    mgr.killPluginHost(9090);
+    mgr.killPluginHost(9090, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, HealthMonitorDetectsDeadChild) {
@@ -887,7 +887,7 @@ TEST(PluginIsolation, HealthMonitorDetectsDeadChild) {
     EXPECT_EQ(detectedSlot.load(), 9100u);
 
     mgr.stopHealthMonitor();
-    mgr.killPluginHost(9100);
+    mgr.killPluginHost(9100, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, BoundedPrepareToPlayDoesNotHang) {
@@ -912,5 +912,54 @@ TEST(PluginIsolation, BoundedPrepareToPlayDoesNotHang) {
 
     EXPECT_LT(elapsedMs, 8000) << "prepareToPlay should not block for more than 8 seconds";
 
-    mgr.killPluginHost(9110);
+    mgr.killPluginHost(9110, KillMode::KillHard);
 }
+
+#if HDAW_PLUGIN_ISOLATION
+TEST(PluginIsolation, GracefulShutdownDoesNotFireCrashCallback) {
+    ProxyProcessManager mgr;
+
+    std::atomic<int> crashFires{0};
+    mgr.setSlotCrashCallback(9120, [&](uint32_t) { crashFires.fetch_add(1); });
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", 9120));
+
+    mgr.startHealthMonitor(100);
+
+    ASSERT_TRUE(mgr.killPluginHost(9120, KillMode::KillGraceful));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    mgr.checkAllChildren();
+
+    EXPECT_EQ(crashFires.load(), 0);
+
+    mgr.stopHealthMonitor();
+}
+
+TEST(PluginIsolation, HardKillFiresCrashCallback) {
+    ProxyProcessManager mgr;
+
+    std::atomic<int> crashFires{0};
+    mgr.setSlotCrashCallback(9121, [&](uint32_t) { crashFires.fetch_add(1); });
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", 9121));
+
+    mgr.startHealthMonitor(100);
+
+    // Simulate an external crash: get the child handle and kill it directly
+    // (NOT via killPluginHost, which erases the entry before checkAllChildren
+    // can observe it). The child exits with code 0 (not the graceful sentinel),
+    // so checkAllChildren should treat it as a crash.
+    auto* info = mgr.getChildInfo(9121);
+    ASSERT_NE(info, nullptr);
+    ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
+    TerminateProcess(info->processHandle, 0);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    mgr.checkAllChildren();
+
+    EXPECT_GE(crashFires.load(), 1);
+
+    mgr.stopHealthMonitor();
+}
+#endif

@@ -6,6 +6,8 @@ namespace proxy {
 
 constexpr uint32_t SHM_MAGIC = 0x48444158; // "HDAW" + 1 (bumped 2026-08-03 for audioFramesProduced)
 
+constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC0DE0001;
+
 enum class MessageType : uint32_t {
     READY = 0,
     PREPARE,

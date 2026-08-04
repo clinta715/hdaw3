@@ -192,7 +192,7 @@ int PluginHost::run()
     // message queue and runs all callbacks posted via MessageManager.
     juce::MessageManager::getInstance()->runDispatchLoopUntil(-1);
 
-    return 0;
+    std::_Exit(proxy::GRACEFUL_EXIT_CODE);
 }
 
 // ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ PluginProxySlot::~PluginProxySlot() {
     // Runs on the message thread after the current audio callback completes
     // (graph rebuild serialized via graphLock). Full cleanup is safe here.
     processManager.removeSlotCrashCallback(slotId);
-    processManager.killPluginHost(slotId, true);
+    processManager.killPluginHost(slotId, KillMode::KillGraceful);
     releaseResources();
     shmHandle.reset();
 }
