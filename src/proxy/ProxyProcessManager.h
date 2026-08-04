@@ -21,6 +21,8 @@ struct ChildInfo {
     std::unique_ptr<PipeServer> pipe;
     std::unique_ptr<ShmRegion> shm;
     std::atomic<bool> alive{false};
+    uint64_t lastBlocksSnapshot{0};
+    uint64_t lastSnapshotMs{0};
 
     ChildInfo() = default;
     ChildInfo(ChildInfo&& o) noexcept
@@ -30,6 +32,8 @@ struct ChildInfo {
         , pipe(std::move(o.pipe))
         , shm(std::move(o.shm))
         , alive(o.alive.load())
+        , lastBlocksSnapshot(o.lastBlocksSnapshot)
+        , lastSnapshotMs(o.lastSnapshotMs)
     {
         o.processHandle = INVALID_HANDLE_VALUE;
     }
@@ -41,6 +45,8 @@ struct ChildInfo {
             pipe = std::move(o.pipe);
             shm = std::move(o.shm);
             alive.store(o.alive.load());
+            lastBlocksSnapshot = o.lastBlocksSnapshot;
+            lastSnapshotMs = o.lastSnapshotMs;
             o.processHandle = INVALID_HANDLE_VALUE;
         }
         return *this;

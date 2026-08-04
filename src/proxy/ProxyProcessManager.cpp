@@ -237,6 +237,26 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
                 crashedSlots.push_back(id);
                 continue;
             }
+
+            uint64_t currentBlocks = 0;
+            if (info.shm && info.shm->getHeader())
+                currentBlocks = info.shm->getHeader()->audioBlocksProcessed.load(std::memory_order_relaxed);
+
+            auto nowMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());
+
+            if (currentBlocks == info.lastBlocksSnapshot) {
+                if (info.lastSnapshotMs == 0) {
+                    info.lastSnapshotMs = nowMs;
+                } else if (nowMs - info.lastSnapshotMs > staleThresholdMs) {
+                    crashedSlots.push_back(id);
+                    continue;
+                }
+            } else {
+                info.lastBlocksSnapshot = currentBlocks;
+                info.lastSnapshotMs = nowMs;
+            }
         }
     }
 
