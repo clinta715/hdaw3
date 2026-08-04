@@ -11,6 +11,16 @@ HDAW::TrackFXSlot::~TrackFXSlot()
          " slotType=" + slotType.toStdString()).toStdString().c_str());
 }
 
+void HDAW::TrackFXSlot::wireEditorClosedCallback()
+{
+    auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
+    if (proxySlot) {
+        proxySlot->setEditorClosedCallback([this]() {
+            remoteEditorOpen.store(false);
+        });
+    }
+}
+
 void HDAW::TrackFXSlot::showEditor()
 {
     if (pluginInstance == nullptr)
@@ -18,7 +28,7 @@ void HDAW::TrackFXSlot::showEditor()
 
     if (isolated)
     {
-        if (remoteEditorOpen)
+        if (remoteEditorOpen.load())
             return;
         auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
         if (!proxySlot)
@@ -34,7 +44,7 @@ void HDAW::TrackFXSlot::showEditor()
 
         proxy::ProxyResponse resp{};
         pipe->receiveResp(resp);
-        remoteEditorOpen = true;
+        remoteEditorOpen.store(true);
         return;
     }
 
@@ -58,7 +68,7 @@ void HDAW::TrackFXSlot::closeEditor()
 {
     if (isolated)
     {
-        if (!remoteEditorOpen)
+        if (!remoteEditorOpen.load())
             return;
         auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
         if (proxySlot)
@@ -75,7 +85,7 @@ void HDAW::TrackFXSlot::closeEditor()
                 pipe->receiveResp(resp);
             }
         }
-        remoteEditorOpen = false;
+        remoteEditorOpen.store(false);
         return;
     }
 

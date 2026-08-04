@@ -118,6 +118,8 @@ public:
         HDAW_LOG("FXSlotCtor", (juce::String("ctor2 this=") + juce::String::toHexString((juce::pointer_sized_int)this) + " pluginID=" + pluginID.toStdString() + " isolated=" + (isIsolated?"true":"false") + " pluginInstance=" + (pluginInstance?"ok":"null")).toStdString().c_str());
         activeType = ActiveType::Plugin;
         rebuildParamCache();
+        if (isolated)
+            wireEditorClosedCallback();
     }
 
     ~TrackFXSlot();
@@ -374,7 +376,7 @@ public:
     void showEditor();
     void closeEditor();
 
-    bool isEditorOpen() const { return isolated ? remoteEditorOpen : (editorWindow != nullptr); }
+    bool isEditorOpen() const { return isolated ? remoteEditorOpen.load() : (editorWindow != nullptr); }
 
     std::vector<InternalParamDef> getInternalParamDefs() const
     {
@@ -446,7 +448,7 @@ private:
 
     bool isExternal = false;
     bool isolated = false;
-    bool remoteEditorOpen = false;
+    std::atomic<bool> remoteEditorOpen{false};
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     juce::String pluginIdentifier;
@@ -472,6 +474,8 @@ private:
     std::atomic<int> numParams{ 0 };
     std::unique_ptr<std::atomic<float>[]> paramValues;
     std::unique_ptr<std::atomic<bool>[]> paramDirty;
+
+    void wireEditorClosedCallback();
 
     void applyInternalParamToDsp(int paramIndex, float value)
     {

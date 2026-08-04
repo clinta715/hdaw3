@@ -69,7 +69,10 @@ void ProxyEditor::onOpenEditorClicked() {
     proxy::ProxyResponse resp{};
     if (!pipe->receiveRespBounded(resp, kShowEditorTimeoutMs)) {
         openEditorButton.setEnabled(false);
+        return;
     }
+
+    slot.startEditorWatcher();
 }
 
 void ProxyEditor::onCrashRestart() {

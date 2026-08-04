@@ -27,6 +27,8 @@ PluginProxySlot::~PluginProxySlot() {
     // Runs on the message thread after the current audio callback completes
     // (graph rebuild serialized via graphLock). Full cleanup is safe here.
     processManager.removeSlotCrashCallback(slotId);
+    if (editorWatcherThread.joinable())
+        editorWatcherThread.detach();
     processManager.killPluginHost(slotId, KillMode::KillGraceful);
     releaseResources();
     shmHandle.reset();
@@ -325,6 +327,25 @@ bool PluginProxySlot::restoreStateFromTemp() {
         return true;
     }
     return false;
+}
+
+void PluginProxySlot::waitForEditorClosed() {
+    auto* pipe = processManager.getPipe(slotId);
+    if (!pipe) return;
+    proxy::ProxyResponse resp{};
+    while (childAlive.load(std::memory_order_relaxed)) {
+        if (pipe->receiveRespBounded(resp, 500)) {
+            if (resp.type == proxy::MessageType::EDITOR_CLOSED) {
+                if (editorClosedCb) editorClosedCb();
+                return;
+            }
+        }
+    }
+}
+
+void PluginProxySlot::startEditorWatcher() {
+    if (editorWatcherThread.joinable()) return;
+    editorWatcherThread = std::thread([this]{ waitForEditorClosed(); });
 }
 
 void PluginProxySlot::timerCallback() {

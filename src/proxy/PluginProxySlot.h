@@ -5,7 +5,9 @@
 #include "ProxySharedMemory.h"
 #include "ProxyProcessManager.h"
 #include <atomic>
+#include <functional>
 #include <memory>
+#include <thread>
 
 namespace proxy {
 
@@ -58,6 +60,10 @@ public:
     void saveStateToTemp();
     bool restoreStateFromTemp();
 
+    using EditorClosedCallback = std::function<void()>;
+    void setEditorClosedCallback(EditorClosedCallback cb) { editorClosedCb = std::move(cb); }
+    void startEditorWatcher();
+
 private:
     ProxyProcessManager& processManager;
     uint32_t slotId;
@@ -72,6 +78,11 @@ private:
     int numChannels = 2;
 
     void timerCallback() override;
+
+    EditorClosedCallback editorClosedCb;
+    std::thread editorWatcherThread;
+
+    void waitForEditorClosed();
 };
 
 } // namespace proxy
