@@ -69,10 +69,12 @@ void PluginProxySlot::releaseResources() {
 
 void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
                                     juce::MidiBuffer& midiMessages) {
+#ifdef HDAW_PROXY_DEBUG
     static std::atomic<int> s_callCount{ 0 };
     int cc = s_callCount.fetch_add(1, std::memory_order_relaxed);
     if (cc < 3 || (cc % 500) == 0)
         HDAW_LOG("ProxyProc", (juce::String("processBlock call=") + juce::String(cc) + " slot=" + juce::String((int)slotId) + " crashed=" + (crashed.load()?"1":"0") + " renderMode=" + (s_renderMode.load()?"1":"0") + " midi=" + juce::String(midiMessages.getNumEvents())).toStdString());
+#endif
 
     if (crashed.load()) return;
 
@@ -88,7 +90,6 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     // killPluginHost(fullCleanup=false) keeps the ShmRegion alive in the map.
     auto shm = shmHandle;
     if (!shm || !shm->getHeader()) {
-        if (cc < 3) HDAW_LOG("ProxyProc", "processBlock: shm null, returning");
         buffer.clear();
         return;
     }
@@ -96,7 +97,6 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     auto* hdr = shm->getHeader();
     uint32_t cap = hdr->capacity;
     if (cap == 0) {
-        if (cc < 3) HDAW_LOG("ProxyProc", "processBlock: cap=0, returning silence");
         buffer.clear();
         return;
     }

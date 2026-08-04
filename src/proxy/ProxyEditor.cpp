@@ -51,15 +51,25 @@ void ProxyEditor::resized() {
 
 void ProxyEditor::onOpenEditorClicked() {
     auto* pipe = slot.getProcessManager().getPipe(slot.getSlotId());
-    if (!pipe) return;
+    if (!pipe) {
+        openEditorButton.setEnabled(false);
+        return;
+    }
 
     proxy::ProxyMessage msg{};
     msg.type = proxy::MessageType::SHOW_EDITOR;
     msg.slotId = slot.getSlotId();
-    pipe->sendMsg(msg);
+
+    static constexpr DWORD kShowEditorTimeoutMs = 2000;
+    if (!pipe->sendMsgBounded(msg, kShowEditorTimeoutMs)) {
+        openEditorButton.setEnabled(false);
+        return;
+    }
 
     proxy::ProxyResponse resp{};
-    pipe->receiveResp(resp);
+    if (!pipe->receiveRespBounded(resp, kShowEditorTimeoutMs)) {
+        openEditorButton.setEnabled(false);
+    }
 }
 
 void ProxyEditor::onCrashRestart() {

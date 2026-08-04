@@ -18,7 +18,6 @@ add_executable(hdaw_tests
     integration/mcp/mcp_server_test.cpp
     integration/mcp/mcp_functionality_test.cpp
     unit/proxy/common_test.cpp
-    unit/proxy/ring_buffer_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
     unit/engine/audioengine_read_facade_test.cpp

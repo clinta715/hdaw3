@@ -77,12 +77,16 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
     proxy::setRenderMode(true);
 
-    // Disable plugin isolation for offline render. The render graph is a
-    // local, single-threaded context — crash isolation (out-of-process child)
-    // adds IPC latency that breaks the tight render loop, and the render
-    // doesn't need crash protection. Save and restore the original setting.
-    bool wasIsolationEnabled = pluginManager && pluginManager->isolationEnabled;
-    if (pluginManager) pluginManager->isolationEnabled = false;
+    struct IsolationToggleGuard {
+        HDAW::PluginManager* pm;
+        bool wasEnabled;
+        IsolationToggleGuard(HDAW::PluginManager* p) : pm(p), wasEnabled(p && p->isolationEnabled) {
+            if (pm) pm->isolationEnabled = false;
+        }
+        ~IsolationToggleGuard() {
+            if (pm) pm->isolationEnabled = wasEnabled;
+        }
+    } isolationGuard{pluginManager};
 
     try
     {
@@ -224,7 +228,6 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
 finish:
     renderGraph.releaseResources();
-    if (pluginManager) pluginManager->isolationEnabled = wasIsolationEnabled;
     proxy::setRenderMode(false);
     active = false;
 

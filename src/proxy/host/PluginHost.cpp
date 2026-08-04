@@ -1,5 +1,4 @@
 #include "PluginHost.h"
-#include "proxy/ProxyRingBuffer.h"
 #include "engine/CLAPPluginFormat.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
@@ -401,6 +400,9 @@ void PluginHost::audioLoop()
 
             plugin->processBlock(inputBuffer, midiBuffer);
 
+            hdr->audioFramesProduced.fetch_add(preparedBlockSize, std::memory_order_relaxed);
+            hdr->audioBlocksProcessed.fetch_add(1, std::memory_order_relaxed);
+
             proxy::MidiEvent* midiOut = shm.getMidiOutRing();
             if (midiOut) {
                 constexpr uint32_t midiCap = 256;
@@ -430,7 +432,11 @@ void PluginHost::audioLoop()
             }
             hdr->outputWritePos.store(ow + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
         } else {
-            std::this_thread::yield();
+            static thread_local int spinCount = 0;
+            if ((++spinCount & 63) == 0)
+                Sleep(0);
+            else
+                std::this_thread::yield();
         }
     }
 }
