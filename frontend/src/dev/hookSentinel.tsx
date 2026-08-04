@@ -75,3 +75,70 @@ export function withHookSentinel<P extends object>(
   SentinelWrapper.displayName = `withHookSentinel(${componentName})`;
   return SentinelWrapper;
 }
+
+// Module-level render counter map. Keys are component names, values are render counts.
+// Exposed on window so the dev console can inspect counts:
+//   window.__HDAW_GET_RENDER_COUNTS()       → Record<name, count>
+//   window.__HDAW_RESET_RENDER_COUNTS()     → clears the map
+const renderCounts = new Map<string, number>();
+
+function getRenderCounts(): Record<string, number> {
+  const obj: Record<string, number> = {};
+  renderCounts.forEach((v, k) => { obj[k] = v; });
+  return obj;
+}
+
+function resetRenderCounts(): void {
+  renderCounts.clear();
+}
+
+if (typeof window !== "undefined") {
+  const w = window as any;
+  w.__HDAW_RENDER_COUNTS = renderCounts;
+  w.__HDAW_GET_RENDER_COUNTS = getRenderCounts;
+  w.__HDAW_RESET_RENDER_COUNTS = resetRenderCounts;
+}
+
+/**
+ * Wrap a component to count its renders. Counter is always maintained; the
+ * `console.warn` every 10 renders is gated on `window.HDAW_DEBUG_RENDERS`.
+ *
+ * Use directly when you only want a counter:
+ *
+ *   const Countered = withRenderCount(MyComponent, "MyComponent");
+ *
+ * Compose with `withHookSentinel` to get error #300 detection AND counting.
+ * Sentinel is OUTER so it catches errors thrown from inside the counter:
+ *
+ *   const Instrumented = withHookSentinel(
+ *     withRenderCount(MyComponent, "MyComponent"),
+ *     "MyComponent"
+ *   );
+ *
+ * IMPORTANT: this HOC must NOT call any React hooks. It is designed to be
+ * composable with `withHookSentinel` without breaking the hook-count invariant
+ * that React error #300 guards against.
+ */
+export function withRenderCount<P extends object>(
+  WrappedComponent: ComponentType<P>,
+  componentName: string,
+): ComponentType<P> {
+  const RenderCounter: ComponentType<P> = (props) => {
+    const count = (renderCounts.get(componentName) ?? 0) + 1;
+    renderCounts.set(componentName, count);
+
+    if ((window as any).HDAW_DEBUG_RENDERS) {
+      if (count > 1 && count % 10 === 0) {
+        console.warn(
+          `[RenderCount] "${componentName}" has rendered ${count} times. ` +
+          `Call window.__HDAW_GET_RENDER_COUNTS() to see all counts.`
+        );
+      }
+    }
+
+    return <WrappedComponent {...props} />;
+  };
+
+  RenderCounter.displayName = `withRenderCount(${componentName})`;
+  return RenderCounter;
+}
