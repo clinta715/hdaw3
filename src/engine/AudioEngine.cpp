@@ -52,6 +52,7 @@ void AudioEngine::initialize()
     mainProcessor->setProjectModel(&projectModel);
     mainProcessor->setFormatManager(projectPool.getFormatManager());
     mainProcessor->setPluginManager(&pluginManager);
+    pluginManager.setGraphLock(&mainProcessor->getGraphLock());
     mainProcessor->setStretchCache(&stretchCache);
 
     // When a background stretch render completes, swap the stretched buffer

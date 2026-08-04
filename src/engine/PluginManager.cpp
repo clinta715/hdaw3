@@ -664,7 +664,15 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     if (!rawShm) return false;
 
     auto newShm = std::shared_ptr<proxy::ShmRegion>(rawShm, [](proxy::ShmRegion*){});
+
+    // Acquire graphLock to synchronize with the audio thread. The audio
+    // callback does tryEnter(graphLock) in MainAudioProcessor::processBlock;
+    // if it fails, it skips graph processing (returns silence). This ensures
+    // migrateToNewSlot's shared_ptr assignment doesn't race with the audio
+    // thread reading shmHandle.
+    if (graphLockPtr) graphLockPtr->enter();
     proxy->migrateToNewSlot(newSlotId, newShm);
+    if (graphLockPtr) graphLockPtr->exit();
 
     auto stateBlock = proxy::PluginProxySlot::loadStateForOldSlotId(oldSlotId);
     if (stateBlock.getSize() > 0)

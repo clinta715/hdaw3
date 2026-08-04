@@ -26,6 +26,7 @@ public:
     void setFormatManager(juce::AudioFormatManager& fm) { formatManager = &fm; }
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager = pm; }
     void setStretchCache(HDAW::StretchCache* sc) { stretchCache = sc; }
+    juce::SpinLock& getGraphLock() { return graphLock; }
 
     // Track Management (delegated to RoutingManager)
     HDAW::Track* getTrack(int index) const;
