@@ -683,4 +683,13 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 #endif
 }
 
+void PluginManager::killProxyForTesting(uint32_t slotId)
+{
+#if HDAW_PLUGIN_ISOLATION
+    auto* info = proxyProcessManager.getChildInfo(slotId);
+    if (info && info->processHandle != INVALID_HANDLE_VALUE)
+        TerminateProcess(info->processHandle, 0);
+#endif
+}
+
 } // namespace HDAW

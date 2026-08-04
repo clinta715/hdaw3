@@ -69,6 +69,8 @@ public:
 
     bool respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& pluginPath);
 
+    void killProxyForTesting(uint32_t slotId);
+
 private:
     void onScanFinished();
     void timerCallback() override;

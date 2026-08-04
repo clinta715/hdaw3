@@ -20,6 +20,7 @@ add_executable(hdaw_tests
     unit/proxy/common_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
+    unit/proxy/crash_recovery_test.cpp
     unit/engine/audioengine_read_facade_test.cpp
     unit/engine/track_fx_slot_debug_test.cpp
     unit/engine/track_fx_slot_show_editor_test.cpp
