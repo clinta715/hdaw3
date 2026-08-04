@@ -253,9 +253,9 @@ void PluginHost::controlLoop()
                 if (plugin) {
                     juce::MemoryBlock block;
                     plugin->getStateInformation(block);
-                    resp.dataSize = static_cast<uint32_t>(block.getSize());
-                    std::memcpy(resp.data, block.getData(),
-                                std::min(static_cast<size_t>(resp.dataSize), sizeof(resp.data)));
+                    resp.dataSize = static_cast<uint32_t>(
+                        std::min(block.getSize(), sizeof(resp.data)));
+                    std::memcpy(resp.data, block.getData(), resp.dataSize);
                     resp.result = 1;
                 } else {
                     resp.result = 0;

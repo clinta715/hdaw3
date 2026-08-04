@@ -222,7 +222,9 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
 
     ProxyResponse resp{};
     if (pipe->receiveRespBounded(resp, kStateTimeoutMs) && resp.result == 1 && resp.dataSize > 0) {
-        destData.append(resp.data, resp.dataSize);
+        auto copySize = static_cast<size_t>(resp.dataSize);
+        if (copySize > sizeof(resp.data)) copySize = sizeof(resp.data);
+        destData.append(resp.data, copySize);
     }
 }
 

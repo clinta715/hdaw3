@@ -1,4 +1,5 @@
 #include "PluginManager.h"
+#include "../common/DebugLog.h"
 #include <stdexcept>
 
 #if HDAW_PLUGIN_ISOLATION
@@ -645,6 +646,8 @@ void PluginManager::timerCallback()
 bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& pluginPath)
 {
 #if HDAW_PLUGIN_ISOLATION
+    HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: oldSlot=") + juce::String((int)oldSlotId) + " path=" + pluginPath);
+
     auto it = liveProxySlots.find(oldSlotId);
     if (it == liveProxySlots.end() || it->second == nullptr) return false;
 
