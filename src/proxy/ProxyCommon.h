@@ -4,7 +4,7 @@
 
 namespace proxy {
 
-constexpr uint32_t SHM_MAGIC = 0x48444157; // "HDAW"
+constexpr uint32_t SHM_MAGIC = 0x48444158; // "HDAW" + 1 (bumped 2026-08-03 for audioFramesProduced)
 
 enum class MessageType : uint32_t {
     READY = 0,
@@ -69,6 +69,12 @@ struct ShmHeader {
 
     std::atomic<uint32_t> childAlive{0};
     std::atomic<uint32_t> dawAlive{0};
+
+    // Child-side watchdog: incremented once per processed audio block.
+    // Parent compares against a saved snapshot; a stall for >staleThresholdMs
+    // is treated as a hang even if the process is still alive.
+    std::atomic<uint64_t> audioFramesProduced{0};
+    std::atomic<uint64_t> audioBlocksProcessed{0};
 };
 
 struct MidiEvent {
