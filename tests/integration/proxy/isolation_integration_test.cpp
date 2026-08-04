@@ -294,6 +294,72 @@ TEST(PluginIsolation, AudioRoundTripWithPassthrough) {
     mgr.killPluginHost(9014, KillMode::KillHard);
 }
 
+TEST(PluginIsolation, ResizesScratchBuffersToPreparedBlockSize) {
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9130;
+    ASSERT_TRUE(mgr.spawnPluginHost("__blocksize__", slot));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slot));
+
+    auto* pipe = mgr.getPipe(slot);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slot;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 441, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    auto* shm = mgr.getShm(slot);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 100;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "Child didn't initialize shared memory header";
+
+    // Confirm the child saw the prepared block size.
+    EXPECT_EQ(hdr->blockSize, 441u) << "header blockSize should reflect PREPARE";
+
+    const uint32_t blockSize = 441;
+    const uint32_t numChannels = 2;
+    const uint32_t totalSamples = blockSize * numChannels;
+    std::vector<float> input(totalSamples, 1.0f);
+    ASSERT_TRUE(shm->writeInput(input.data(), totalSamples));
+
+    retries = 200;
+    uint32_t outAvail = 0;
+    while (retries-- > 0) {
+        uint32_t ow = hdr->outputWritePos.load(std::memory_order_acquire);
+        uint32_t or_ = hdr->outputReadPos.load(std::memory_order_relaxed);
+        outAvail = ow - or_;
+        if (outAvail >= totalSamples) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(outAvail, totalSamples) << "Child didn't produce output in time";
+
+    std::vector<float> output(totalSamples);
+    ASSERT_TRUE(shm->readOutput(output.data(), totalSamples));
+
+    // The probe fills every sample with the width passed to processBlock.
+    // It MUST be the prepared 441, not the stale default 512.
+    EXPECT_FLOAT_EQ(output[0], 441.0f)
+        << "processBlock received " << output[0] << " samples/block; expected 441. "
+           "audioLoop scratch buffers were not resized to the PREPARE block size.";
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+}
+
 TEST(PluginIsolation, CrashAndRestartWithPassthrough) {
     ProxyProcessManager mgr;
 

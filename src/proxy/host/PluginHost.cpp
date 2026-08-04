@@ -82,6 +82,43 @@ public:
     }
 };
 
+class BlockSizeProbeProcessor : public juce::AudioPluginInstance
+{
+public:
+    BlockSizeProbeProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    const juce::String getName() const override { return "BlockSizeProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            for (int s = 0; s < buffer.getNumSamples(); ++s)
+                buffer.setSample(ch, s, static_cast<float>(buffer.getNumSamples()));
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "BlockSizeProbe";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__blocksize__";
+    }
+};
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -367,6 +404,20 @@ void PluginHost::audioLoop()
     juce::MidiBuffer midiBuffer;
 
     while (running.load()) {
+        // The PREPARE message can arrive after this thread started (when
+        // preparedBlockSize was still the constructor default). Ensure the
+        // scratch buffers match the prepared width so processBlock runs on the
+        // same block size the transport and plugin->prepareToPlay use. Without
+        // this, a synth configured for 441-sample blocks gets a 512-sample
+        // buffer — pitch-up + stale tail + wrong MIDI offsets (audible squeak).
+        if (inputBuffer.getNumSamples() != preparedBlockSize) {
+            inputBuffer.setSize(preparedNumChannels, preparedBlockSize);
+            outputBuffer.setSize(preparedNumChannels, preparedBlockSize);
+            // Keep the shared-memory header in sync with the width the child
+            // actually processes (it is informational to the parent; the ring
+            // math uses hdr->capacity, not hdr->blockSize).
+            hdr->blockSize = static_cast<uint32_t>(preparedBlockSize);
+        }
         uint32_t cap = hdr->capacity;
         uint32_t r = hdr->inputReadPos.load(std::memory_order_relaxed);
         uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
@@ -457,6 +508,12 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__crash__") {
         plugin = std::make_unique<CrashingProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__blocksize__") {
+        plugin = std::make_unique<BlockSizeProbeProcessor>();
         pluginLoaded.store(true);
         return true;
     }
