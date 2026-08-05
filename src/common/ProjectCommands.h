@@ -87,9 +87,10 @@ public:
     // paste it at endBeat, shifting every clip that starts at or after endBeat
     // rightward by (endBeat - startBeat). Beats at this boundary.
     virtual void duplicateRegion(double startBeat, double endBeat) = 0;
-    // Batch add: add multiple MIDI clips in one transaction (for clipboard paste).
+    // Batch add: add multiple clips in one transaction (for clipboard paste).
+    // When sourceFiles[i] is non-empty, creates an audio clip; otherwise MIDI.
     // Returns the new clip IDs.
-    virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) = 0;
+    virtual std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names, const std::vector<std::string>& sourceFiles = {}) = 0;
 
     // Audio clip timestretch. Stretch is resolved at graph-build time and
     // rendered off-thread via StretchCache; it is NOT RT-parametric (no
@@ -147,6 +148,8 @@ public:
     virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                 float value) = 0;
     virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
+    // Restart a crashed isolated plugin FX slot via the crash-recovery manager.
+    virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;
 
     // Automation
     virtual void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
@@ -218,6 +221,11 @@ public:
     virtual void sliceClipAtTimes(int clipId, const std::vector<double>& times) = 0;
     virtual void sliceClipAtTransients(int clipId) = 0;
     virtual void sliceClipAtPlayhead(int clipId) = 0;
+    // Batch slice: slice multiple clips at the playhead in one transaction.
+    // Only one rebuildRoutingGraph() call at the end.
+    virtual void sliceClipsAtPlayhead(const std::vector<int>& clipIds) = 0;
+    // Batch slice: slice multiple clips at their detected transients in one transaction.
+    virtual void sliceClipsAtTransients(const std::vector<int>& clipIds) = 0;
 
     // Region cut/copy/paste (audio clip editor)
     virtual int copyAudioClipRegion(int clipId, double regionStart, double regionEnd) = 0;

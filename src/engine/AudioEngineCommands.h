@@ -72,7 +72,7 @@ public:
     std::vector<int> duplicateClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) override;
     void moveClips(const std::vector<int>& clipIds, const std::vector<double>& newStarts, const std::vector<int>& newTrackIndices) override;
     void removeClips(const std::vector<int>& clipIds) override;
-    std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names) override;
+    std::vector<int> addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names, const std::vector<std::string>& sourceFiles = {}) override;
 
     // ProjectCommands — generative arrangement
     ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) override;
@@ -88,6 +88,8 @@ public:
     void sliceClipAtTimes(int clipId, const std::vector<double>& times) override;
     void sliceClipAtTransients(int clipId) override;
     void sliceClipAtPlayhead(int clipId) override;
+    void sliceClipsAtPlayhead(const std::vector<int>& clipIds) override;
+    void sliceClipsAtTransients(const std::vector<int>& clipIds) override;
 
     // ProjectCommands — Region cut/copy/paste
     int copyAudioClipRegion(int clipId, double regionStart, double regionEnd) override;
@@ -147,6 +149,7 @@ public:
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                         float value) override;
     void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
+    void respawnFxSlot(int trackIndex, int slotIndex) override;
 
     // ProjectCommands — Automation
     void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;

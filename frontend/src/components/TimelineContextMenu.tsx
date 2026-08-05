@@ -43,16 +43,12 @@ export function TimelineContextMenu({
     const tr = useTransportStore.getState().transport;
     const playheadBeats = tr.currentTimeSeconds * (tr.bpm / 60);
     const minStart = Math.min(...clipClipboard.map((c) => c.startBeat));
-    await rpc.call("project.beginTransaction", { name: "paste clips" });
-    for (const clip of clipClipboard) {
-      const newStart = playheadBeats + (clip.startBeat - minStart);
-      if (clip.isMidi) {
-        await rpc.call("project.addMidiClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, name: clip.name }).catch(() => {});
-      } else {
-        await rpc.call("project.addAudioClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, sourceFile: clip.sourceFile, name: clip.name }).catch(() => {});
-      }
-    }
-    await rpc.call("project.endTransaction");
+    const starts = clipClipboard.map(c => playheadBeats + (c.startBeat - minStart));
+    const durations = clipClipboard.map(c => c.durationBeats);
+    const names = clipClipboard.map(c => c.name);
+    const sourceFiles = clipClipboard.map(c => c.isMidi ? "" : (c.sourceFile ?? ""));
+    const trackIndex = clipClipboard[0]?.trackIndex ?? 0;
+    await rpc.call("project.addClips", { trackIndex, starts, durations, names, sourceFiles });
     // Reconciled by the debounced notify.treeChanged push.
     useProjectStore.setState({ isDirty: true });
   }, []);
@@ -172,11 +168,7 @@ export function TimelineContextMenu({
                 useUiStore.getState().setClipboard(copied.length > 0 ? copied : [contextMenu.clip!]);
                 onClose();
                 (async () => {
-                  await rpc.call("project.beginTransaction", { name: "cut clips" });
-                  for (const id of ids) {
-                    await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
-                  }
-                  await rpc.call("project.endTransaction");
+                  await rpc.call("project.removeClips", { clipIds: ids });
                   useUiStore.getState().clearSelection();
                   // Reconciled by the notify.treeChanged push.
                   useProjectStore.setState({ isDirty: true });
@@ -188,9 +180,7 @@ export function TimelineContextMenu({
               <button onMouseDown={(e) => {
                 e.stopPropagation();
                 const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
-                for (const clipId of ids) {
-                  rpc.call("project.sliceClipAtPlayhead", { clipId });
-                }
+                rpc.call("project.sliceClipsAtPlayhead", { clipIds: ids }).catch(() => {});
                 onClose();
               }}>
                 Slice at Playhead
@@ -198,9 +188,7 @@ export function TimelineContextMenu({
               <button onMouseDown={(e) => {
                 e.stopPropagation();
                 const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
-                for (const clipId of ids) {
-                  rpc.call("project.sliceClipAtTransients", { clipId });
-                }
+                rpc.call("project.sliceClipsAtTransients", { clipIds: ids }).catch(() => {});
                 onClose();
               }}>
                 Slice at Transients

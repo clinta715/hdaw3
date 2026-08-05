@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.14.0
+**Current version**: 0.15.1
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.14.0)
+## What works today (v0.15.1)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -287,6 +287,38 @@ AGENTS.md                        — pitfalls and conventions
 DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 implementation_plan.md           — current development roadmap
 ```
+
+## Changelog
+
+### v0.15.1 — Batch operation crash fix
+
+Fixed UI crashes when deleting, cutting, pasting, or splitting many clips at
+once. The root cause was N individual RPC calls in a sequential loop; each
+call could trigger a full routing-graph rebuild, and with large selections
+the rebuilds would cascade and stall the UI.
+
+**Frontend changes:**
+- Delete and Cut now use the batch `project.removeClips` RPC (one call, not N).
+- Paste now uses the batch `project.addClips` RPC with audio clip support
+  (new `sourceFiles` parameter). One call for the entire clipboard.
+- Split and Slice at Playhead/Transients now use batch
+  `project.sliceClipsAtPlayhead` / `project.sliceClipsAtTransients` RPCs.
+- Added `window.onunhandledrejection` handler — surfaces silent promise
+  failures to console and toast notifications.
+- Timeline wrapped in a granular `ErrorBoundary` — a render crash in the
+  timeline no longer kills the entire app.
+
+**Engine changes:**
+- `addClips` extended with optional `sourceFiles` array — creates audio
+  clips when a source file is provided, MIDI clips otherwise.
+- New `sliceClipsAtPlayhead(clipIds)` — slices multiple clips at the
+  playhead in one transaction with a single `rebuildRoutingGraph()` call.
+- New `sliceClipsAtTransients(clipIds)` — same for transient-based slicing.
+
+### v0.15.0
+
+Plugin isolation: each plugin runs in a separate child process with
+crash recovery, automatic respawn, and state survival across restarts.
 
 ## Conventions for contributors
 

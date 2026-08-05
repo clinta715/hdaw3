@@ -1,5 +1,11 @@
 import React from "react";
 
+interface Props {
+  children: React.ReactNode;
+  /** When provided, render this instead of the full diagnostic on error. */
+  fallback?: React.ReactNode;
+}
+
 interface State {
   error: Error | null;
 }
@@ -9,7 +15,7 @@ interface State {
 // with no boundary present, produces a blank/black window — the symptom we
 // were chasing). This is diagnostic: it surfaces the root cause of a crash
 // rather than masking it. Clicking Reload re-mounts the app.
-export class ErrorBoundary extends React.Component<{ children: React.ReactNode }, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
@@ -29,6 +35,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
 
   render() {
     if (this.state.error) {
+      if (this.props.fallback) return this.props.fallback;
       const { error } = this.state;
       return (
         <div style={{

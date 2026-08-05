@@ -181,11 +181,8 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setTrackSendMode")     { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "isPreFader", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, isPreFader required"); c.setTrackSendMode(i, si, b); return { false, QJsonValue::Null }; }
     if (m == "setTrackSendBypassed") { int i, si; bool b;  if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "sendIndex", si, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, sendIndex, bypassed required"); c.setTrackSendBypassed(i, si, b); return { false, QJsonValue::Null }; }
 
-    // Session commands
-    if (m == "session.setClipScene") { int clipId, scene; if (!requireInt(o, "clipId", clipId, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "clipId and sceneIndex required"); c.setClipScene(clipId, scene); return { false, QJsonValue::Null }; }
-    if (m == "session.createClip") { int track, scene; bool isMidi = true; if (!requireInt(o, "trackIndex", track, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "trackIndex and sceneIndex required"); if (o.contains("isMidi")) { bool b; requireBool(o, "isMidi", b, nullptr); isMidi = b; } return { false, c.createSessionClip(track, scene, isMidi) }; }
-    if (m == "session.launchScene") { int si; if (!requireInt(o, "sceneIndex", si, nullptr)) return makeError(-32602, "sceneIndex required"); c.launchScene(si); return { false, QJsonValue::Null }; }
-    if (m == "session.stopAll") { c.stopAllSessionClips(); return { false, QJsonValue::Null }; }
+    // Session methods live in dispatchSession below; they are dispatched via
+    // the method::Session namespace branch in dispatch().
 
     // --- Clips ---
     if (m == "addAudioClip") {
@@ -315,9 +312,16 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         for (const auto& e : startsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "starts element not a number"); starts.push_back(e.toDouble()); }
         for (const auto& e : durationsArr.toArray()) { if (!e.isDouble()) return makeError(-32602, "durations element not a number"); durations.push_back(e.toDouble()); }
         for (const auto& e : namesArr.toArray()) { if (!e.isString()) return makeError(-32602, "names element not a string"); names.push_back(e.toString().toStdString()); }
+        auto sourceFilesArr = o.value("sourceFiles");
+        std::vector<std::string> sourceFiles;
+        if (sourceFilesArr.isArray()) {
+            for (const auto& e : sourceFilesArr.toArray()) {
+                sourceFiles.push_back(e.isString() ? e.toString().toStdString() : std::string());
+            }
+        }
         if (starts.size() != durations.size() || starts.size() != names.size())
             return makeError(-32602, "array lengths must match");
-        auto newIds = c.addClips(trackIndex, starts, durations, names);
+        auto newIds = c.addClips(trackIndex, starts, durations, names, sourceFiles);
         QJsonArray arr;
         for (int id : newIds) arr.append(id);
         return { false, arr };
@@ -441,6 +445,13 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
             return makeError(-32602, "trackIndex, slotIndex, fxType, pluginID, pluginFormat, pluginPath required");
         c.setFxSlotPlugin(i, s, fxType, pluginID, fmt, path); return { false, QJsonValue::Null };
     }
+    if (m == "respawnPlugin") {
+        int i, s;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        c.respawnFxSlot(i, s);
+        return { false, QJsonValue::Null };
+    }
 
     // --- Automation ---
     if (m == "addAutomationLane")       { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); c.addAutomationLane(i, lane, paramID); return { false, QJsonValue::Null }; }
@@ -504,6 +515,28 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "sliceClipAtTimes")     { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); DispatchResult e; auto times = toDoubleVector(o.value("times"), &e); if (e.isError) return e; c.sliceClipAtTimes(i, times); return { false, QJsonValue::Null }; }
     if (m == "sliceClipAtTransients"){ int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.sliceClipAtTransients(i); return { false, QJsonValue::Null }; }
     if (m == "sliceClipAtPlayhead")  { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.sliceClipAtPlayhead(i); return { false, QJsonValue::Null }; }
+    if (m == "sliceClipsAtPlayhead") {
+        auto idsArr = o.value("clipIds");
+        if (!idsArr.isArray()) return makeError(-32602, "clipIds array required");
+        std::vector<int> ids;
+        for (const auto& e : idsArr.toArray()) {
+            if (!e.isDouble()) return makeError(-32602, "clipIds element not a number");
+            ids.push_back(static_cast<int>(e.toDouble()));
+        }
+        c.sliceClipsAtPlayhead(ids);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "sliceClipsAtTransients") {
+        auto idsArr = o.value("clipIds");
+        if (!idsArr.isArray()) return makeError(-32602, "clipIds array required");
+        std::vector<int> ids;
+        for (const auto& e : idsArr.toArray()) {
+            if (!e.isDouble()) return makeError(-32602, "clipIds element not a number");
+            ids.push_back(static_cast<int>(e.toDouble()));
+        }
+        c.sliceClipsAtTransients(ids);
+        return { false, QJsonValue::Null };
+    }
 
     // --- Region cut/copy/paste ---
     if (m == "copyAudioClipRegion") { int i; double s, e; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "regionStart", s, nullptr) || !requireDouble(o, "regionEnd", e, nullptr)) return makeError(-32602, "clipId, regionStart, regionEnd required"); return { false, c.copyAudioClipRegion(i, s, e) }; }
@@ -546,6 +579,15 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     }
 
     return makeError(-32601, "unknown project method: " + m);
+}
+
+DispatchResult dispatchSession(ProjectCommands& c, const QString& m, const QJsonValue& params) {
+    const auto o = paramsObject(params);
+    if (m == "setClipScene") { int clipId, scene; if (!requireInt(o, "clipId", clipId, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "clipId and sceneIndex required"); c.setClipScene(clipId, scene); return { false, QJsonValue::Null }; }
+    if (m == "createClip") { int track, scene; bool isMidi = true; if (!requireInt(o, "trackIndex", track, nullptr) || !requireInt(o, "sceneIndex", scene, nullptr)) return makeError(-32602, "trackIndex and sceneIndex required"); if (o.contains("isMidi")) { bool b; requireBool(o, "isMidi", b, nullptr); isMidi = b; } return { false, c.createSessionClip(track, scene, isMidi) }; }
+    if (m == "launchScene") { int si; if (!requireInt(o, "sceneIndex", si, nullptr)) return makeError(-32602, "sceneIndex required"); c.launchScene(si); return { false, QJsonValue::Null }; }
+    if (m == "stopAll") { c.stopAllSessionClips(); return { false, QJsonValue::Null }; }
+    return makeError(-32601, "unknown session method: " + m);
 }
 
 DispatchResult dispatchTransport(TransportCommands& c, const QString& m, const QJsonValue& params) {
@@ -1403,6 +1445,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::Export)      return dispatchExport(engine, m, params, server);
     else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
     else if (ns == method::Composition) return dispatchComposition(engine, m, params);
+    else if (ns == method::Session)     return dispatchSession(engine.getProjectCommands(), m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

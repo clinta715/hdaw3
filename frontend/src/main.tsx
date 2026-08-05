@@ -7,11 +7,25 @@ import { useProjectStore } from "./store/projectStore";
 import { useAutomationStore } from "./store/automationStore";
 import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
+import { useUiStore } from "./store/uiStore";
 import { TransportSnapshot, MetersPayload, TreeDelta } from "./rpc/types";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import StartupDialog from "./components/StartupDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
+
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[HDAW] Unhandled promise rejection:", event.reason);
+  try {
+    const { useNotifyStore } = require("./store/notifyStore");
+    useNotifyStore.getState().push({
+      level: "error",
+      message: `Unhandled error: ${event.reason instanceof Error ? event.reason.message : String(event.reason)}`,
+    });
+  } catch {
+    // notifyStore may not be initialized yet — console log is sufficient
+  }
+});
 
 injectTheme();
 
@@ -27,6 +41,20 @@ function setupSubscriptions() {
 
   cleanups.push(rpc.onNotification("notify.meters", (_, params) => {
     useMeterStore.getState().update(params as MetersPayload);
+  }));
+
+  cleanups.push(rpc.onNotification("notify.pluginCrashed", (_method, params) => {
+    const p = params as { trackIndex?: number; pluginName?: string; pluginId?: string } | undefined;
+    if (p && typeof p.trackIndex === "number" && p.pluginId) {
+      useUiStore.getState().setSlotCrashed(p.trackIndex, p.pluginId, p.pluginName ?? p.pluginId);
+    }
+  }));
+
+  cleanups.push(rpc.onNotification("notify.pluginRecovered", (_method, params) => {
+    const p = params as { trackIndex?: number; pluginId?: string } | undefined;
+    if (p && typeof p.trackIndex === "number" && p.pluginId) {
+      useUiStore.getState().clearSlotCrashed(p.trackIndex, p.pluginId);
+    }
   }));
 
   cleanups.push(rpc.onNotification("notify.loadProgress", (_method, params) => {

@@ -179,16 +179,13 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
 
         if (newStartSec <= otherStart && newEnd >= otherEnd)
         {
-            // Case 1: Incoming clip fully covers the existing clip.
-            // NON-DESTRUCTIVE: leave the existing clip in place. Previously this
-            // removed the covered clip, which was silent data loss — clips kept
-            // vanishing during normal move/duplicate arrange edits, eventually
-            // cascading into the renderer black screen. The two clips now
-            // coexist/overlap (both audible, summed), matching the default move
-            // behavior in most DAWs. Partial overlaps still trim/split (Cases 2–4),
-            // which preserve the existing clip's content. If strict overwrite
-            // semantics are ever wanted, gate them behind an explicit edit mode
-            // rather than the default move/duplicate path.
+            // Case 1: Incoming clip fully covers the existing clip → remove it.
+            // Overwrite rule: a fully-shadowed clip is discarded so parts never
+            // overlap. Undo-safe: the caller wraps batch ops in a transaction and
+            // removeChild records on the undo manager, so it is restorable. The
+            // `overlapping` vector was collected before any mutation, so removing
+            // here is safe.
+            clipList.removeChild(info.clip, &um);
         }
         else if (newStartSec <= otherStart && newEnd > otherStart && newEnd < otherEnd)
         {
@@ -675,7 +672,7 @@ void AudioEngineCommands::duplicateRegion(double startBeat, double endBeat)
     endTransaction();
 }
 
-std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names)
+std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector<double>& starts, const std::vector<double>& durations, const std::vector<std::string>& names, const std::vector<std::string>& sourceFiles)
 {
     std::vector<int> result;
     if (starts.size() != durations.size() || starts.size() != names.size())
@@ -703,8 +700,19 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
     {
         double startSec = starts[i] * factor;
         double durSec = durations[i] * factor;
-        auto clip = ProjectModel::createMidiClipEmpty(
-            juce::String(names[i]), startSec, durSec);
+
+        juce::ValueTree clip;
+        if (i < sourceFiles.size() && !sourceFiles[i].empty())
+        {
+            clip = ProjectModel::createAudioClip(
+                juce::String(names[i]), startSec, durSec, juce::String(sourceFiles[i]));
+        }
+        else
+        {
+            clip = ProjectModel::createMidiClipEmpty(
+                juce::String(names[i]), startSec, durSec);
+        }
+
         int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
         clipList.addChild(clip, -1, &um);
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { reportRpcError } from "./store/notifyStore";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { withHookSentinel } from "./dev/hookSentinel";
 import "./App.css";
 import TransportBar from "./components/TransportBar";
@@ -216,7 +217,9 @@ function App() {
         <TrackHeaders />
       </aside>
       <main className="timeline">
-        {viewMode === "session" ? <SessionView /> : <TimelineMinimal />}
+        <ErrorBoundary fallback={<div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#e8a040", fontFamily: "system-ui, sans-serif", fontSize: 13, background: "#1e1e1e" }}>Timeline failed to render. Select a clip or reload.</div>}>
+          {viewMode === "session" ? <SessionView /> : <TimelineMinimal />}
+        </ErrorBoundary>
       </main>
       {browserVisible && (
         <aside className="file-browser">

@@ -399,11 +399,7 @@ export default function TimelineMinimal() {
     if (ids.length === 0) return;
     (async () => {
       try {
-        await rpc.call("project.beginTransaction", { name: "delete clips" });
-        for (const id of ids) {
-          await rpc.call("project.removeClip", { clipId: id });
-        }
-        await rpc.call("project.endTransaction");
+        await rpc.call("project.removeClips", { clipIds: ids });
         useUiStore.getState().clearSelection();
         // Reconciled by the debounced notify.treeChanged push.
         useProjectStore.setState({ isDirty: true });
@@ -462,12 +458,7 @@ export default function TimelineMinimal() {
     const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
     if (ids.length === 0) return;
     (async () => {
-      await rpc.call("project.beginTransaction", { name: "split clips" });
-      for (const id of ids) {
-        await rpc.call("project.sliceClipAtPlayhead", { clipId: id }).catch(() => {});
-      }
-      await rpc.call("project.endTransaction");
-      // Reconciled by the debounced notify.treeChanged push.
+      await rpc.call("project.sliceClipsAtPlayhead", { clipIds: ids }).catch(() => {});
       useProjectStore.setState({ isDirty: true });
     })();
   }, [contextMenu]);
@@ -478,16 +469,12 @@ export default function TimelineMinimal() {
     const tr = useTransportStore.getState().transport;
     const playheadBeats = tr.currentTimeSeconds * (tr.bpm / 60);
     const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
-    await rpc.call("project.beginTransaction", { name: "paste clips" });
-    for (const clip of clipClipboard) {
-      const newStart = playheadBeats + (clip.startBeat - minStart);
-      if (clip.isMidi) {
-        await rpc.call("project.addMidiClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, name: clip.name }).catch(() => {});
-      } else {
-        await rpc.call("project.addAudioClip", { trackIndex: clip.trackIndex, start: newStart, duration: clip.durationBeats, sourceFile: clip.sourceFile, name: clip.name }).catch(() => {});
-      }
-    }
-    await rpc.call("project.endTransaction");
+    const starts = clipClipboard.map(c => playheadBeats + (c.startBeat - minStart));
+    const durations = clipClipboard.map(c => c.durationBeats);
+    const names = clipClipboard.map(c => c.name);
+    const sourceFiles = clipClipboard.map(c => c.isMidi ? "" : (c.sourceFile ?? ""));
+    const trackIndex = clipClipboard[0]?.trackIndex ?? 0;
+    await rpc.call("project.addClips", { trackIndex, starts, durations, names, sourceFiles });
     // Reconciled by the debounced notify.treeChanged push.
     useProjectStore.setState({ isDirty: true });
   }, []);
@@ -511,11 +498,7 @@ export default function TimelineMinimal() {
         if (selectedClipIds.size > 0) {
           (async () => {
             try {
-              await rpc.call("project.beginTransaction", { name: "delete clips" });
-              for (const id of selectedClipIds) {
-                await rpc.call("project.removeClip", { clipId: id });
-              }
-              await rpc.call("project.endTransaction");
+              await rpc.call("project.removeClips", { clipIds: [...selectedClipIds] });
               useUiStore.getState().clearSelection();
               // Reconciled by the debounced notify.treeChanged push.
               useProjectStore.setState({ isDirty: true });
@@ -563,11 +546,7 @@ export default function TimelineMinimal() {
             const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
             useUiStore.getState().setClipboard(copied);
             (async () => {
-              await rpc.call("project.beginTransaction", { name: "cut clips" });
-              for (const id of selectedClipIds) {
-                await rpc.call("project.removeClip", { clipId: id }).catch(() => {});
-              }
-              await rpc.call("project.endTransaction");
+              await rpc.call("project.removeClips", { clipIds: [...selectedClipIds] });
               useUiStore.getState().clearSelection();
               // Reconciled by the debounced notify.treeChanged push.
               useProjectStore.setState({ isDirty: true });

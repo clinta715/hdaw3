@@ -101,6 +101,78 @@ void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
         proc->rebuildRoutingGraph();
 }
 
+void AudioEngineCommands::sliceClipsAtPlayhead(const std::vector<int>& clipIds)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    double playhead = engine_.getTransportManager().getCurrentPositionSeconds();
+
+    um.beginNewTransaction();
+    for (int clipId : clipIds)
+    {
+        int trackIdx = -1;
+        auto clip = findClipById(clipId, trackIdx);
+        if (!clip.isValid()) continue;
+
+        double clipStart = static_cast<double>(clip.getProperty(IDs::startTime));
+        double clipEnd = clipStart + static_cast<double>(clip.getProperty(IDs::duration));
+
+        if (playhead <= clipStart || playhead >= clipEnd) continue;
+
+        ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
+    }
+
+    // Single rebuild at the end
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+}
+
+void AudioEngineCommands::sliceClipsAtTransients(const std::vector<int>& clipIds)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+
+    um.beginNewTransaction();
+    for (int clipId : clipIds)
+    {
+        int trackIdx = -1;
+        auto clip = findClipById(clipId, trackIdx);
+        if (!clip.isValid()) continue;
+
+        juce::String sourceFile = clip.getProperty(IDs::sourceFile);
+        if (sourceFile.isEmpty()) continue;
+
+        auto* pool = &engine_.getProjectPool();
+        auto* fm = &pool->getFormatManager();
+        auto reader = std::unique_ptr<juce::AudioFormatReader>(fm->createReaderFor(juce::File(sourceFile)));
+        if (!reader) continue;
+
+        juce::AudioBuffer<float> buffer(reader->numChannels, static_cast<int>(reader->lengthInSamples));
+        reader->read(&buffer, 0, static_cast<int>(reader->lengthInSamples), 0, true, true);
+
+        HDAW::TransientDetector detector;
+        auto result = detector.detect(buffer, reader->sampleRate);
+        if (result.transientTimes.empty()) continue;
+
+        double clipStart = clip.getProperty(IDs::startTime);
+        double clipDur = clip.getProperty(IDs::duration);
+        double clipOffset = clip.getProperty(IDs::offset);
+        double clipEnd = clipStart + clipDur;
+
+        std::vector<double> timelineTimes;
+        for (double ft : result.transientTimes) {
+            double t = clipStart + (ft - clipOffset);
+            if (t > clipStart && t < clipEnd)
+                timelineTimes.push_back(t);
+        }
+        if (timelineTimes.empty()) continue;
+
+        ProjectModel::sliceClipAtTimes(clip, timelineTimes, &um);
+    }
+
+    // Single rebuild at the end
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildRoutingGraph();
+}
+
 // ─── ProjectCommands — Region cut/copy/paste ──────────────────
 
 int AudioEngineCommands::copyAudioClipRegion(int clipId, double regionStart, double regionEnd)
