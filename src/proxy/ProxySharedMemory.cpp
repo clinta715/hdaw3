@@ -97,6 +97,35 @@ MidiEvent* ShmRegion::getMidiOutRing() const {
     return getMidiInRing() + 256;
 }
 
+uint8_t* ShmRegion::getSysexInBuffer() const {
+    if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
+    return reinterpret_cast<uint8_t*>(getMidiOutRing() + 256);
+}
+
+uint8_t* ShmRegion::getSysexOutBuffer() const {
+    if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
+    return getSysexInBuffer() + SYSEX_BUFFER_SIZE;
+}
+
+std::atomic<uint64_t>* ShmRegion::getParamSetRing() const {
+    if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
+    return reinterpret_cast<std::atomic<uint64_t>*>(
+        getSysexOutBuffer() + SYSEX_BUFFER_SIZE);
+}
+
+std::atomic<uint64_t>* ShmRegion::getParamNotifyRing() const {
+    if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
+    return getParamSetRing() + PARAM_RING_SIZE;
+}
+
 bool ShmRegion::writeInput(const float* data, uint32_t count) {
     auto* hdr = getHeader();
     if (!hdr) return false;

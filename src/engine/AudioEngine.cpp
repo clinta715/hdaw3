@@ -899,8 +899,9 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     {
         if (!mainProcessor) return;
         // Forward param_N property changes to the live TrackFXSlot for
-        // internal (non-plugin) FX. Plugin param changes go through the
-        // SPSC bridge — they are not handled here.
+        // internal (non-plugin) FX. Isolated-plugin plugin params cross the
+        // proxy shm param bridge (staging -> paramSet ring -> child audio
+        // loop), NOT this listener — only internal-FX params are handled here.
         juce::String propStr = property.toString();
         if (!propStr.startsWith("param_"))
             return;

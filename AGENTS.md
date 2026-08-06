@@ -79,14 +79,18 @@ These cost real debugging time — read before touching the relevant area:
    verify no unintended signal degradation. Check for denormalized floats,
    integer overflow in accumulators, and incorrect gain staging. See
    `docs/realtime-safety.md`.
-9. **The default project isn't empty — snapshot tests must scope to a track
-   they control.** `createDefaultProject()` ships track 1 ("Synth") with
-   `Melody`/`Chords` clips; only track 0 ("Track 1") starts empty. Any
-   project-wide op (ripple delete, region ops) processes those too, so
-   `getReadModel().snapshot().clips` contains them — a count assertion that
-   assumes "only the clips I added" will be off. Scope assertions to a track
-   you control (filter by `trackIndex`); `merge_clips_test` dodges this by
-   asserting on specific ids, `clip_slicing_test` by reading the raw
+9. **The default project is empty of clips but DOES ship three tracks — count
+   assertions must scope to a track they control, and never hard-code an
+   absolute clip count.** `createDefaultProject()` (`ProjectModel.cpp`) creates
+   "Track 1" (audio), "Synth" (MIDI), and "Vocals" (audio) — all three with
+   **empty** `CLIP_LIST`s; there are NO seed `Melody`/`Chords` clips. (Earlier
+   versions of the default project shipped seed clips; hardcoded `.tl-clip`
+   baselines in E2E silently broke when the contract changed — prefer reading
+   the live count or filtering by `trackIndex` over a literal `toBe(2)`.) A
+   project-wide op (ripple delete, region ops) that touches a track you added
+   content to will still see those clips, so scope count assertions to the
+   track/chips you control (filter by `trackIndex`); `merge_clips_test` dodges
+   this by asserting on specific ids, `clip_slicing_test` by reading the raw
    `ValueTree`. Corollary: `ProjectModel::sliceClipAtTimes` **reassigns ids**
    to the pieces (the original clip is removed), so across a slice, track clips
    by position/count, not by the original id.

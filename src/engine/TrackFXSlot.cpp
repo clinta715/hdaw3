@@ -1,6 +1,12 @@
 #include "TrackFXSlot.h"
 #include "../proxy/PluginProxySlot.h"
 
+int HDAW::TrackFXSlot::proxySlotId() const
+{
+    auto* p = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());
+    return p ? static_cast<int>(p->getSlotId()) : -1;
+}
+
 HDAW::TrackFXSlot::~TrackFXSlot()
 {
     HDAW_LOG("FXSlotDtor",

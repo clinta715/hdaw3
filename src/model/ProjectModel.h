@@ -118,6 +118,30 @@ namespace IDs {
     DECLARE_ID(scaleType)
     DECLARE_ID(lengthFactor)
 
+    // Transpose
+    DECLARE_ID(semitones)
+    // Key Filter
+    DECLARE_ID(keyFilterRoot)
+    DECLARE_ID(keyFilterScale)
+    // Multi-Note
+    DECLARE_ID(multiNoteIntervals)
+    // Velocity Curve
+    // (curveType already declared under Automation — reused here)
+    DECLARE_ID(curveAmount)
+    // Note Chance
+    DECLARE_ID(noteChance)
+    // MIDI Delay
+    DECLARE_ID(delayBeats)
+    DECLARE_ID(delayFeedback)
+    DECLARE_ID(delayMix)
+    // Humanize
+    DECLARE_ID(humanizeTiming)
+    DECLARE_ID(humanizeVelocity)
+    DECLARE_ID(humanizePitch)
+    // Strum
+    DECLARE_ID(strumTime)
+    DECLARE_ID(strumDirection)
+
     // Automation
     DECLARE_ID(AUTOMATION_LIST)
     DECLARE_ID(AUTOMATION)

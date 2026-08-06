@@ -75,6 +75,14 @@
   cursor: ew-resize;
 }
 
+.ng-marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  pointer-events: none;
+  z-index: 50;
+}
+
 .ng-creating-cursor {
   cursor: crosshair;
 }

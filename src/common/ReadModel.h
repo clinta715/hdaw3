@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <map>
+#include <variant>
 
 struct TrackSnapshot {
     int index = 0;
@@ -118,6 +120,7 @@ struct MidiFxSlotSnapshot {
     int slotIndex = 0;
     std::string fxType;
     bool bypassed = false;
+    std::map<std::string, std::variant<double, std::string>> params;
 };
 
 struct AutomationLaneSnapshot {

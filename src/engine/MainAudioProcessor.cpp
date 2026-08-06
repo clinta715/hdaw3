@@ -472,7 +472,7 @@ void MainAudioProcessor::rebuildAutomationCache(int trackIndex)
     }
 }
 
-void MainAudioProcessor::rebuildRoutingGraph()
+void MainAudioProcessor::rebuildRoutingGraph(bool loading)
 {
     if (routingManager != nullptr && projectModel != nullptr)
     {
@@ -482,6 +482,7 @@ void MainAudioProcessor::rebuildRoutingGraph()
         graph.setBusesLayout(getBusesLayout());
         routingManager = std::make_unique<HDAW::RoutingManager>(
             graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
+        routingManager->loadingPhase = loading;
         routingManager->rebuildFromValueTree();
         graph.setPlayHead(internalPlayHead.get());
         if (getSampleRate() > 0)

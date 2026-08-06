@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 ReadModelImpl::ReadModelImpl(ProjectModel& model)
     : model_(model) {}
@@ -441,6 +442,19 @@ std::vector<MidiFxSlotSnapshot> ReadModelImpl::getMidiFxSlots(int trackIndex) co
         s.slotIndex = i;
         s.fxType = slot.getProperty(IDs::fxType, "").toString().toStdString();
         s.bypassed = slot.getProperty(IDs::bypassed, false);
+        static const std::set<juce::String> reserved = { "fxType", "bypassed" };
+        for (int p = 0; p < slot.getNumProperties(); ++p)
+        {
+            auto name = slot.getPropertyName(p).toString();
+            if (reserved.count(name) == 0)
+            {
+                auto val = slot.getProperty(slot.getPropertyName(p));
+                if (val.isDouble() || val.isInt() || val.isInt64())
+                    s.params[name.toStdString()] = static_cast<double>(val);
+                else if (val.isString())
+                    s.params[name.toStdString()] = val.toString().toStdString();
+            }
+        }
         result.push_back(s);
     }
     return result;

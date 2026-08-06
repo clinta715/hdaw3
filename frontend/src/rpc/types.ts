@@ -142,6 +142,7 @@ export interface MidiFxSlotSnapshot {
   slotIndex: number;
   fxType: string;
   bypassed: boolean;
+  params: Record<string, number | string>;
 }
 
 export interface AutomatableParamSnapshot {

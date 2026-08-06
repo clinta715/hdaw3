@@ -36,6 +36,7 @@ namespace method {
     inline constexpr const char* Export     = "export";
     inline constexpr const char* Preview    = "preview";
     inline constexpr const char* Composition = "composition";
+    inline constexpr const char* Session    = "session";
 } // namespace method
 
 // Server-initiated push notifications (no client id, no response expected).
@@ -47,6 +48,8 @@ namespace notify {
     inline constexpr const char* ExportProgress = "notify.exportProgress";
     inline constexpr const char* LoadProgress   = "notify.loadProgress";
     inline constexpr const char* SessionState   = "notify.sessionStateChanged";
+    inline constexpr const char* PluginCrashed  = "notify.pluginCrashed";
+    inline constexpr const char* PluginRecovered = "notify.pluginRecovered";
 } // namespace notify
 
 // Normalized dispatch outcome. Mirrors mcp::McpServer::DispatchResult so the
@@ -175,11 +178,21 @@ inline QJsonObject toJson(const FxSlotSnapshot& f) {
 }
 
 inline QJsonObject toJson(const MidiFxSlotSnapshot& f) {
-    return QJsonObject{
+    QJsonObject obj{
         { "slotIndex", f.slotIndex },
         { "fxType",    QString::fromStdString(f.fxType) },
         { "bypassed",  f.bypassed },
     };
+    QJsonObject params;
+    for (auto& [k, v] : f.params)
+    {
+        if (std::holds_alternative<double>(v))
+            params[QString::fromStdString(k)] = std::get<double>(v);
+        else if (std::holds_alternative<std::string>(v))
+            params[QString::fromStdString(k)] = QString::fromStdString(std::get<std::string>(v));
+    }
+    obj["params"] = params;
+    return obj;
 }
 
 inline QJsonObject toJson(const AutomationLaneSnapshot& l) {

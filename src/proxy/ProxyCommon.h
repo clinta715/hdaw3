@@ -4,9 +4,13 @@
 
 namespace proxy {
 
-constexpr uint32_t SHM_MAGIC = 0x48444158; // "HDAW" + 1 (bumped 2026-08-03 for audioFramesProduced)
+constexpr uint32_t SHM_MAGIC = 0x4844415A; // bumped 2026-08-05 for param set/notify SPSC rings (was "HDAW"+2)
+
+constexpr uint32_t PARAM_RING_SIZE = 256;
 
 constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC0DE0001;
+
+constexpr uint32_t SYSEX_BUFFER_SIZE = 128 * 1024;
 
 enum class MessageType : uint32_t {
     READY = 0,
@@ -34,6 +38,16 @@ enum class MessageType : uint32_t {
     PARAM_CHANGED,
 
     HEARTBEAT,
+    STATE_CHUNK,
+
+    GET_PROGRAM_COUNT,
+    GET_PROGRAM_COUNT_RESULT,
+    GET_PROGRAM_NAME,
+    GET_PROGRAM_NAME_RESULT,
+    SET_PROGRAM,
+    SET_PROGRAM_RESULT,
+    GET_CURRENT_PROGRAM,
+    GET_CURRENT_PROGRAM_RESULT,
 };
 
 struct alignas(256) ProxyMessage {
@@ -78,12 +92,30 @@ struct ShmHeader {
     // inputReadPos) — an idle child with no input is healthy, not hung.
     std::atomic<uint64_t> audioFramesProduced{0};
     std::atomic<uint64_t> audioBlocksProcessed{0};
+
+    // One in-flight SysEx per direction. Writer sets after publishing the
+    // event, reader clears after copying the bytes out.
+    std::atomic<uint32_t> sysexInBusy{0};
+    std::atomic<uint32_t> sysexOutBusy{0};
+
+    // Parent->child param set ring (parent audio thread = single writer).
+    // Child->parent param notify ring (child AudioProcessorListener = single
+    // writer). Both ring bodies are arrays of std::atomic<uint64_t> laid out
+    // after the SysEx buffers in the shm region; only the position atomics
+    // live here. Each entry is packed (uint32_t(paramIndex) << 32) | bits-of-float.
+    std::atomic<uint32_t> paramSetWritePos{0};
+    std::atomic<uint32_t> paramSetReadPos{0};
+    std::atomic<uint32_t> paramNotifyWritePos{0};
+    std::atomic<uint32_t> paramNotifyReadPos{0};
 };
 
 struct MidiEvent {
     uint32_t sampleOffset;
     uint8_t  data[3];
-    uint8_t  _pad;
+    // Bit 7 set: SysEx reference (sysexLen valid, bytes live in the
+    // direction's SysEx buffer). Else low bits = inline byte count (1-3).
+    uint8_t  flags;
+    uint32_t sysexLen;
 };
 
 inline uint32_t computeShmSize(uint32_t numChannels, uint32_t blockSize) {
@@ -96,7 +128,9 @@ inline uint32_t computeShmSize(uint32_t numChannels, uint32_t blockSize) {
     uint32_t midiInRing  = 256 * sizeof(MidiEvent);
     uint32_t midiOutRing = 256 * sizeof(MidiEvent);
 
-    return headerSize + inputRing + outputRing + midiInRing + midiOutRing;
+    return headerSize + inputRing + outputRing + midiInRing + midiOutRing
+         + 2 * SYSEX_BUFFER_SIZE
+         + 2 * PARAM_RING_SIZE * sizeof(std::atomic<uint64_t>);
 }
 
 } // namespace proxy

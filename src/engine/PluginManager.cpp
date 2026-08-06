@@ -1,6 +1,10 @@
 #include "PluginManager.h"
 #include "../common/DebugLog.h"
+#include "../frontend/FrontendServer.h"
+#include "../frontend/FrontendRpc.h"
 #include <stdexcept>
+#include <QJsonObject>
+#include <QString>
 
 #if HDAW_PLUGIN_ISOLATION
 #include "proxy/PluginProxySlot.h"
@@ -499,6 +503,14 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         proxy->setCrashRecoveryNotifier(
             [this](uint32_t sid, const juce::String& name, const juce::String& path) {
                 if (crashRecovery) crashRecovery->onSlotCrashed(sid, name, path);
+                if (auto* srv = frontend::FrontendServer::instance()) {
+                    QJsonObject payload{
+                        { "trackIndex", slotTrackIndex(sid) },
+                        { "pluginName", QString::fromUtf8(name.toRawUTF8()) },
+                        { "pluginId",   QString::fromUtf8(path.toRawUTF8()) },
+                    };
+                    srv->broadcastNotificationFromAnyThread(frontend::notify::PluginCrashed, payload);
+                }
             });
         proxy->setRespawnRequestFn(
             [this](uint32_t sid) {
@@ -691,6 +703,15 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     liveProxySlots.erase(oldSlotId);
     liveProxySlots[newSlotId] = proxy;
 
+    registerSlotTrackIndex(newSlotId, slotTrackIndex(oldSlotId));
+    if (auto* srv = frontend::FrontendServer::instance()) {
+        QJsonObject payload{
+            { "trackIndex", slotTrackIndex(newSlotId) },
+            { "pluginId",   QString::fromUtf8(pluginPath.toRawUTF8()) },
+        };
+        srv->broadcastNotificationFromAnyThread(frontend::notify::PluginRecovered, payload);
+    }
+
     proxy::PluginProxySlot::clearStateForSlotId(oldSlotId);
 
     return true;
@@ -706,6 +727,19 @@ void PluginManager::killProxyForTesting(uint32_t slotId)
     if (info && info->processHandle != INVALID_HANDLE_VALUE)
         TerminateProcess(info->processHandle, 0);
 #endif
+}
+
+void PluginManager::registerSlotTrackIndex(uint32_t slotId, int trackIndex)
+{
+    std::lock_guard<std::mutex> lock(slotTrackMutex_);
+    slotTrackIndex_[slotId] = trackIndex;
+}
+
+int PluginManager::slotTrackIndex(uint32_t slotId) const
+{
+    std::lock_guard<std::mutex> lock(slotTrackMutex_);
+    auto it = slotTrackIndex_.find(slotId);
+    return it != slotTrackIndex_.end() ? it->second : -1;
 }
 
 } // namespace HDAW

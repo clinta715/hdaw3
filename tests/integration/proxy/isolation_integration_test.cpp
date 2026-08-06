@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <thread>
 #include <atomic>
 
@@ -611,15 +612,40 @@ TEST(PluginIsolation, DLLStateSaveRestore) {
     EXPECT_EQ(getResp.result, 1u) << "GET_STATE should succeed";
     EXPECT_GT(getResp.dataSize, 0u) << "PassthroughTest should return state bytes";
 
-    std::vector<uint8_t> savedState(getResp.data, getResp.data + getResp.dataSize);
+    // dataSize is the TOTAL state size; bytes beyond the first chunk arrive
+    // as STATE_CHUNK responses.
+    const uint32_t stateTotal = getResp.dataSize;
+    std::vector<uint8_t> savedState(
+        getResp.data,
+        getResp.data + std::min<uint32_t>(stateTotal,
+                                          static_cast<uint32_t>(sizeof(getResp.data))));
+    while (savedState.size() < stateTotal) {
+        ProxyResponse chunk{};
+        ASSERT_TRUE(pipe->receiveResp(chunk));
+        ASSERT_EQ(chunk.type, MessageType::STATE_CHUNK);
+        const uint32_t take = std::min<uint32_t>(
+            chunk.dataSize, static_cast<uint32_t>(sizeof(chunk.data)));
+        savedState.insert(savedState.end(), chunk.data, chunk.data + take);
+    }
+    ASSERT_EQ(savedState.size(), stateTotal);
 
     ProxyMessage setMsg{};
     setMsg.type = MessageType::SET_STATE;
     setMsg.slotId = 9052;
     setMsg.dataSize = static_cast<uint32_t>(savedState.size());
-    std::memcpy(setMsg.data, savedState.data(),
-                std::min(savedState.size(), sizeof(setMsg.data)));
+    const size_t setFirst = std::min(savedState.size(), sizeof(setMsg.data));
+    std::memcpy(setMsg.data, savedState.data(), setFirst);
     pipe->sendMsg(setMsg);
+    for (size_t offset = setFirst; offset < savedState.size();) {
+        ProxyMessage chunk{};
+        chunk.type = MessageType::STATE_CHUNK;
+        chunk.slotId = 9052;
+        const size_t take = std::min(savedState.size() - offset, sizeof(chunk.data));
+        chunk.dataSize = static_cast<uint32_t>(take);
+        std::memcpy(chunk.data, savedState.data() + offset, take);
+        pipe->sendMsg(chunk);
+        offset += take;
+    }
 
     ProxyResponse setResp{};
     ASSERT_TRUE(pipe->receiveResp(setResp));
@@ -1029,3 +1055,283 @@ TEST(PluginIsolation, HardKillFiresCrashCallback) {
     mgr.stopHealthMonitor();
 }
 #endif
+
+// ========================================================================
+// Chunked state transfer (state > 244-byte message payload)
+// ========================================================================
+
+TEST(PluginIsolation, LargeStateRoundTripThroughProxy) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9140;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    constexpr size_t kStateSize = 100000;
+    juce::MemoryBlock in(kStateSize);
+    auto* inBytes = static_cast<uint8_t*>(in.getData());
+    for (size_t i = 0; i < kStateSize; ++i)
+        inBytes[i] = static_cast<uint8_t>((i * 7 + 13) & 0xFF);
+
+    slot.setStateInformation(in.getData(), static_cast<int>(in.getSize()));
+
+    juce::MemoryBlock out;
+    slot.getStateInformation(out);
+
+    ASSERT_EQ(out.getSize(), kStateSize);
+    EXPECT_EQ(std::memcmp(out.getData(), in.getData(), kStateSize), 0)
+        << "state must round-trip the proxy byte-exact";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+TEST(PluginIsolation, SmallStateRoundTripThroughProxy) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9141;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    constexpr size_t kStateSize = 100;
+    juce::MemoryBlock in(kStateSize);
+    auto* inBytes = static_cast<uint8_t*>(in.getData());
+    for (size_t i = 0; i < kStateSize; ++i)
+        inBytes[i] = static_cast<uint8_t>((i * 7 + 13) & 0xFF);
+
+    slot.setStateInformation(in.getData(), static_cast<int>(in.getSize()));
+
+    juce::MemoryBlock out;
+    slot.getStateInformation(out);
+
+    ASSERT_EQ(out.getSize(), kStateSize);
+    EXPECT_EQ(std::memcmp(out.getData(), in.getData(), kStateSize), 0)
+        << "small (non-chunked) state must round-trip byte-exact";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
+// MIDI fidelity through the proxy (SysEx lane + short-message size)
+// ========================================================================
+
+TEST(PluginIsolation, MidiRoundTripThroughProxy) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9150;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__midiecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slotId;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    PluginProxySlot slot(mgr, slotId, "MidiEcho");
+
+    // Patterned SysEx >244 bytes (proves the SysEx lane, not the inline path).
+    constexpr int kSysexLen = 2000;
+    std::vector<uint8_t> sysexBytes(kSysexLen);
+    sysexBytes[0] = 0xF0;
+    for (int i = 1; i < kSysexLen - 1; ++i)
+        sysexBytes[i] = static_cast<uint8_t>((i * 7 + 3) & 0x7F);
+    sysexBytes[kSysexLen - 1] = 0xF7;
+
+    juce::MidiMessage sysexMsg(sysexBytes.data(), kSysexLen);
+    ASSERT_TRUE(sysexMsg.isSysEx());
+    ASSERT_EQ(sysexMsg.getRawDataSize(), kSysexLen);
+
+    // 2-byte program change (proves size fidelity — the old code mangled it
+    // to 3 bytes with a garbage third byte).
+    juce::MidiMessage programChange(0xC0, 0x55);
+    ASSERT_EQ(programChange.getRawDataSize(), 2);
+
+    juce::MidiMessage noteOn(0x90, 60, 100);
+    ASSERT_EQ(noteOn.getRawDataSize(), 3);
+
+    bool gotSysex = false, gotProgramChange = false, gotNoteOn = false;
+    std::vector<uint8_t> echoedSysex;
+
+    for (int iter = 0; iter < 200 && !(gotSysex && gotProgramChange && gotNoteOn); ++iter) {
+        juce::AudioBuffer<float> audio(2, 512);
+        audio.clear();
+        juce::MidiBuffer midi;
+        if (iter == 0) {
+            midi.addEvent(sysexMsg, 0);
+            midi.addEvent(programChange, 0);
+            midi.addEvent(noteOn, 10);
+        }
+        slot.processBlock(audio, midi);
+
+        // Iteration 0's buffer also carries the input events we injected, so
+        // an echo there is the SECOND copy of each; later iterations run on
+        // empty buffers, where a single event is the echo.
+        const int echoCount = (iter == 0) ? 2 : 1;
+        int sysexSeen = 0, pcSeen = 0, noteOnSeen = 0;
+        for (const auto metadata : midi) {
+            const auto msg = metadata.getMessage();
+            const uint8_t* bytes = msg.getRawData();
+            if (msg.isSysEx()) {
+                if (++sysexSeen >= echoCount && !gotSysex) {
+                    gotSysex = true;
+                    echoedSysex.assign(bytes, bytes + msg.getRawDataSize());
+                }
+            } else if (msg.getRawDataSize() == 2 && bytes[0] == 0xC0 && bytes[1] == 0x55) {
+                if (++pcSeen >= echoCount) gotProgramChange = true;
+            } else if (msg.getRawDataSize() == 3 && bytes[0] == 0x90
+                       && bytes[1] == 60 && bytes[2] == 100) {
+                if (++noteOnSeen >= echoCount) gotNoteOn = true;
+            }
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    ASSERT_TRUE(gotSysex) << "SysEx did not round-trip through the proxy";
+    ASSERT_TRUE(gotProgramChange) << "program change did not round-trip through the proxy";
+    ASSERT_TRUE(gotNoteOn) << "note-on did not round-trip through the proxy";
+
+    ASSERT_EQ(static_cast<int>(echoedSysex.size()), kSysexLen);
+    EXPECT_EQ(echoedSysex.front(), 0xF0);
+    EXPECT_EQ(echoedSysex.back(), 0xF7);
+    EXPECT_EQ(std::memcmp(echoedSysex.data(), sysexBytes.data(), kSysexLen), 0)
+        << "SysEx must round-trip the proxy byte-exact";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+// ========================================================================
+// Parameter & program bridge through the proxy
+// ========================================================================
+
+TEST(PluginIsolation, ParamBridgeThroughProxy) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9151;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slotId;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    auto& params = slot.getParameters();
+    ASSERT_EQ(params.size(), 3);
+    EXPECT_EQ(params[0]->getName(64), "Echo A");
+    EXPECT_EQ(params[1]->getName(64), "Echo B");
+    EXPECT_EQ(params[2]->getName(64), "Echo C");
+    EXPECT_TRUE(params[0]->isAutomatable());
+    EXPECT_NEAR(params[0]->getDefaultValue(), 0.25f, 1e-5f);
+    EXPECT_NEAR(params[0]->getValue(), 0.25f, 1e-5f);
+    EXPECT_NEAR(params[1]->getDefaultValue(), 0.5f, 1e-5f);
+    EXPECT_NEAR(params[2]->getDefaultValue(), 0.75f, 1e-5f);
+
+    // Listener capturing param-index/value notifications delivered on the
+    // message thread via slot.drainParamNotifications().
+    struct CapturingListener : public juce::AudioProcessorListener {
+        std::atomic<int> lastIndex{ -1 };
+        std::atomic<float> lastValue{ 0.f };
+        std::atomic<bool> got{ false };
+        void audioProcessorParameterChanged(juce::AudioProcessor*, int idx, float v) override {
+            lastIndex.store(idx);
+            lastValue.store(v);
+            got.store(true);
+        }
+        void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails&) override {}
+    } listener;
+    slot.addListener(&listener);
+
+    params[0]->setValueNotifyingHost(0.42f);
+
+    bool observed = false;
+    for (int iter = 0; iter < 200 && !observed; ++iter) {
+        juce::AudioBuffer<float> audio(2, 512);
+        audio.clear();
+        juce::MidiBuffer midi;
+        slot.processBlock(audio, midi);
+        slot.drainParamNotifications();
+        if (listener.got.load() && listener.lastIndex.load() == 0
+            && std::abs(listener.lastValue.load() - 0.42f) < 1e-4f) {
+            observed = true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    slot.removeListener(&listener);
+
+    EXPECT_TRUE(observed) << "param change did not round-trip through the proxy";
+    EXPECT_NEAR(params[0]->getValue(), 0.42f, 1e-4f);
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+TEST(PluginIsolation, ProgramBridgeThroughProxy) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9152;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slotId;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    EXPECT_EQ(slot.getNumPrograms(), 2);
+    EXPECT_EQ(slot.getProgramName(0), "Init");
+    EXPECT_EQ(slot.getProgramName(1), "Test Preset");
+    EXPECT_EQ(slot.getCurrentProgram(), 0);
+    slot.setCurrentProgram(1);
+    EXPECT_EQ(slot.getCurrentProgram(), 1);
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}

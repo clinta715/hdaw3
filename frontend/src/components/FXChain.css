@@ -340,3 +340,43 @@
 .fx-dropdown-browse:hover {
   color: var(--accent-bright);
 }
+
+.fx-slot--crashed {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-widget));
+}
+
+.fx-slot-crash {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 6px;
+  border-top: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg-panel));
+  border-radius: 0 0 3px 3px;
+}
+
+.fx-slot-crash-msg {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.fx-slot-crash-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.fx-slot-crash-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-slot-crash,
+  .fx-slot-crash-btn {
+    transition: none;
+  }
+}

@@ -225,6 +225,19 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
+        objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
+                  {"slotIndex",  QJsonObject{{"type","integer"}}}}, {"trackIndex","slotIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackIndex").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto tl = e->getProjectModel().getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
+            e->getProjectCommands().respawnFxSlot(ti, si);
+            return McpToolResult::text("ok");
+        }});
+
     s.registerTool({"list_fx_params", "List all automatable parameters of a plugin FX slot.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
@@ -410,10 +423,72 @@ static void registerSendTools(McpServer& s, AudioEngine* e)
         }});
 }
 
+static void registerMidiFxTools(McpServer& s, AudioEngine* e)
+{
+    s.registerTool({"add_midi_fx",
+        "Add a MIDI FX slot to a track.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"fxType", QJsonObject{{"type","string"},
+                       {"enum", QJsonArray{"arpeggiator","velocity","chord","scale","notelength",
+                                           "transpose","keyfilter","multinote","velocitycurve",
+                                           "notechance","mididelay","humanize","strum"}}}},
+                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId","fxType"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            auto tl = e->getProjectModel().getTrackListTree();
+            if (ti < 0 || ti >= tl.getNumChildren())
+                return McpToolResult::text("track not found", true);
+            std::string type = a.value("fxType").toString().toStdString();
+            int pos = a.value("position").toInt(-1);
+            e->getProjectCommands().addMidiFxSlot(ti, type, pos);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"remove_midi_fx",
+        "Remove a MIDI FX slot from a track.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            e->getProjectCommands().removeMidiFxSlot(ti, si);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_midi_fx_bypass",
+        "Bypass or unbypass a MIDI FX slot.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}},
+                   {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            bool b = a.value("bypassed").toBool();
+            e->getProjectCommands().setMidiFxSlotBypassed(ti, si, b);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_midi_fx_param",
+        "Set a parameter on a MIDI FX slot.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}},
+                   {"paramName", QJsonObject{{"type","string"}}},
+                   {"value", QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramName","value"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            std::string pn = a.value("paramName").toString().toStdString();
+            double v = a.value("value").toDouble();
+            e->getProjectCommands().setMidiFxSlotParam(ti, si, pn, v);
+            return McpToolResult::text("ok");
+        }});
+}
+
 void registerAudioDomain(McpServer& s, AudioEngine* e)
 {
     registerAudioReadTools(s, e);
     registerFxTools(s, e);
+    registerMidiFxTools(s, e);
     registerAutomationTools(s, e);
     registerSendTools(s, e);
 }

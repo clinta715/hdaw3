@@ -6,6 +6,7 @@ import { useUiStore } from "../store/uiStore";
 import { snap } from "./snapUtils";
 import { quantizeWithGroove } from "./grooveUtils";
 import "./NoteGrid.css";
+import { useAutoScroll } from "../hooks/useAutoScroll";
 
 interface Props {
   notes: NoteSnapshot[];
@@ -23,13 +24,15 @@ interface Props {
 }
 
 interface NoteDragState {
-  noteId: number;
-  startPitch: number;
-  startBeat: number;
+  members: Array<{ noteId: number; startPitch: number; startBeat: number }>;
+  anchorIndex: number;
   offsetX: number;
   offsetY: number;
-  currentPitch: number;
-  currentStart: number;
+  minPitch: number;
+  maxPitch: number;
+  minBeat: number;
+  pitchDelta: number;
+  beatDelta: number;
 }
 
 interface NoteResizeState {
@@ -45,8 +48,18 @@ interface ContextMenuState {
   noteId: number | null;
 }
 
+interface MarqueeState {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  additive: boolean;
+  baseSelection: Set<number>;
+}
+
 const KEY_HEIGHT = 8;
 const TOTAL_KEY_AREA = 128 * KEY_HEIGHT;
+const DRAG_THRESHOLD = 4;
 
 function clamp(val: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, val));
@@ -89,16 +102,47 @@ export default function NoteGrid({
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
+  const [marquee, setMarquee] = useState<MarqueeState | null>(null);
+  const marqueeJustCompleted = useRef(false);
+
   const gridRef = useRef<HTMLDivElement>(null);
+  const autoScroll = useAutoScroll(gridRef);
   const lastClickedNoteRef = useRef<number | null>(null);
   const ppbRef = useRef(pixelsPerBeat);
   ppbRef.current = pixelsPerBeat;
+
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
+  const selectedRef = useRef(selectedNoteIds);
+  selectedRef.current = selectedNoteIds;
 
   const noteMap = useMemo(() => {
     const m = new Map<number, NoteSnapshot>();
     for (const n of notes) m.set(n.noteId, n);
     return m;
   }, [notes]);
+
+  // Intersection test must match note rendering geometry exactly. Reads via refs
+  // so the window-level marquee handlers never touch stale closure props.
+  const intersectNotes = useCallback(
+    (mx0: number, my0: number, mx1: number, my1: number): number[] => {
+      const hits: number[] = [];
+      for (const n of notesRef.current) {
+        const nx = n.startBeat * ppbRef.current;
+        const ny = (127 - n.pitch) * KEY_HEIGHT;
+        const nw = Math.max(2, n.durationBeats * ppbRef.current);
+        const nh = KEY_HEIGHT - 1;
+        if (nx < mx1 && nx + nw > mx0 && ny < my1 && ny + nh > my0) hits.push(n.noteId);
+      }
+      return hits;
+    },
+    []
+  );
+
+  const dragMemberMap = useMemo(
+    () => (dragState ? new Map(dragState.members.map((m) => [m.noteId, m])) : null),
+    [dragState]
+  );
 
   const rects = useMemo(() => {
     if (!notes.length) return [];
@@ -112,9 +156,10 @@ export default function NoteGrid({
       let x: number, y: number;
       let w: number;
 
-      if (dragState && dragState.noteId === n.noteId) {
-        x = dragState.currentStart * pixelsPerBeat;
-        y = (127 - dragState.currentPitch) * KEY_HEIGHT;
+      const dragMember = dragMemberMap?.get(n.noteId);
+      if (dragMember && dragState) {
+        x = (dragMember.startBeat + dragState.beatDelta) * pixelsPerBeat;
+        y = (127 - (dragMember.startPitch + dragState.pitchDelta)) * KEY_HEIGHT;
         w = Math.max(2, n.durationBeats * pixelsPerBeat);
       } else if (resizeState && resizeState.noteId === n.noteId) {
         x = n.startBeat * pixelsPerBeat;
@@ -129,9 +174,10 @@ export default function NoteGrid({
       const h = KEY_HEIGHT - 1;
       return { x, y, w, h, noteId: n.noteId, vel: n.velocity };
     });
-  }, [notes, dragState, resizeState, pixelsPerBeat]);
+  }, [notes, dragState, resizeState, pixelsPerBeat, dragMemberMap]);
 
   const handleMouseMove = useCallback((e: globalThis.MouseEvent) => {
+    autoScroll.update(e.clientX, e.clientY);
     const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
     const settings = { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents };
 
@@ -145,36 +191,45 @@ export default function NoteGrid({
 
     setDragState((prev) => {
       if (!prev) return null;
-      const newPitch = clamp(
-        prev.startPitch - Math.round((e.clientY - prev.offsetY) / KEY_HEIGHT),
-        0, 127
+      const pitchDelta = clamp(
+        -Math.round((e.clientY - prev.offsetY) / KEY_HEIGHT),
+        -prev.minPitch,
+        127 - prev.maxPitch
       );
-      const rawStart = Math.max(0,
-        prev.startBeat + (e.clientX - prev.offsetX) / ppbRef.current
-      );
-      const newStart = snap(rawStart, settings, { originalStart: prev.startBeat });
-      return { ...prev, currentPitch: newPitch, currentStart: newStart };
+      const anchor = prev.members[prev.anchorIndex];
+      const rawStart = Math.max(0, anchor.startBeat + (e.clientX - prev.offsetX) / ppbRef.current);
+      const snappedAnchorStart = snap(rawStart, settings, { originalStart: anchor.startBeat });
+      let beatDelta = snappedAnchorStart - anchor.startBeat;
+      if (prev.minBeat + beatDelta < 0) beatDelta = -prev.minBeat;
+      return { ...prev, pitchDelta, beatDelta };
     });
   }, []);
 
   const handleMouseUp = useCallback(async () => {
+    autoScroll.stop();
     const drag = dragRef.current;
     const resize = resizeRef.current;
 
     // Optimistic local update: write the committed pitch/start/duration into
     // the notesByClip store BEFORE clearing the drag/resize preview, so the
-    // note doesn't snap back to its pre-gesture position for the round-trip
+    // notes don't snap back to their pre-gesture positions for the round-trip
     // until syncNotes returns.
     if ((drag || resize) && clipId != null) {
       useProjectStore.setState((s) => {
         const arr = s.notesByClip.get(clipId);
         if (!arr) return {};
+        const memberMap = drag ? new Map(drag.members.map((m) => [m.noteId, m])) : null;
         return {
           notesByClip: new Map(s.notesByClip).set(
             clipId,
             arr.map((n) => {
-              if (drag && n.noteId === drag.noteId) {
-                return { ...n, pitch: drag.currentPitch, startBeat: drag.currentStart };
+              const member = memberMap?.get(n.noteId);
+              if (member) {
+                return {
+                  ...n,
+                  pitch: clamp(member.startPitch + drag!.pitchDelta, 0, 127),
+                  startBeat: Math.max(0, member.startBeat + drag!.beatDelta),
+                };
               }
               if (resize && n.noteId === resize.noteId) {
                 return { ...n, durationBeats: resize.currentDuration };
@@ -188,10 +243,18 @@ export default function NoteGrid({
 
     try {
       if (drag && clipId != null) {
-        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
-        const snappedStart = snap(drag.currentStart, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents }, { originalStart: drag.startBeat });
-        await rpc.call("project.setNotePitch", { noteId: drag.noteId, pitch: drag.currentPitch });
-        await rpc.call("project.setNoteStart", { noteId: drag.noteId, startBeat: snappedStart });
+        if (drag.pitchDelta !== 0 || drag.beatDelta !== 0) {
+          if (drag.members.length > 1) {
+            await rpc.call("project.beginTransaction", { name: "move notes" });
+          }
+          for (const m of drag.members) {
+            await rpc.call("project.setNotePitch", { noteId: m.noteId, pitch: clamp(m.startPitch + drag.pitchDelta, 0, 127) });
+            await rpc.call("project.setNoteStart", { noteId: m.noteId, startBeat: Math.max(0, m.startBeat + drag.beatDelta) });
+          }
+          if (drag.members.length > 1) {
+            await rpc.call("project.endTransaction");
+          }
+        }
       }
       if (resize && clipId != null) {
         const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
@@ -230,6 +293,65 @@ export default function NoteGrid({
       };
     }
   }, [dragState, resizeState, handleMouseMove, handleMouseUp]);
+
+  // Marquee (rubber-band) selection on empty grid mousedown. Window-level
+  // listeners are added at mousedown and removed at mouseup (self-managed, like
+  // useTimelineRubberBand) — the grid's own onMouseMove/Up/Leave handlers are
+  // for note drag/resize only.
+  const handleMarqueeStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      // Prevent native text selection during the marquee drag. preventDefault
+      // also suppresses focus, so restore it for the grid's onKeyDown shortcuts.
+      e.preventDefault();
+      gridRef.current?.focus();
+      marqueeJustCompleted.current = false;
+      const el = gridRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const x1 = e.clientX - rect.left + el.scrollLeft;
+      const y1 = e.clientY - rect.top + el.scrollTop;
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+      const additive = e.shiftKey;
+      const baseSelection = new Set(selectedRef.current);
+      let activated = false;
+
+      const onMove = (ev: globalThis.MouseEvent) => {
+        if (!activated) {
+          const dx = ev.clientX - startClientX;
+          const dy = ev.clientY - startClientY;
+          if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+          activated = true;
+          setMarquee({ x1, y1, x2: x1, y2: y1, additive, baseSelection });
+        }
+        const r = el.getBoundingClientRect();
+        const x2 = ev.clientX - r.left + el.scrollLeft;
+        const y2 = ev.clientY - r.top + el.scrollTop;
+        setMarquee((prev) => (prev ? { ...prev, x2, y2 } : prev));
+        const mx0 = Math.min(x1, x2);
+        const my0 = Math.min(y1, y2);
+        const mx1 = Math.max(x1, x2);
+        const my1 = Math.max(y1, y2);
+        const ids = additive ? new Set(baseSelection) : new Set<number>();
+        for (const id of intersectNotes(mx0, my0, mx1, my1)) ids.add(id);
+        setSelectedNoteIds(ids);
+      };
+
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        if (activated) {
+          marqueeJustCompleted.current = true;
+          setMarquee(null);
+        }
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [setSelectedNoteIds, intersectNotes]
+  );
 
   const handleDoubleClick = useCallback(async (e: React.MouseEvent) => {
     if (clipId == null) return;
@@ -564,8 +686,36 @@ export default function NoteGrid({
     [onZoom]
   );
 
+  // Throttled plain-wheel scroll: reduce default browser scroll speed.
+  // React's onWheel is passive in modern browsers, so we use a native
+  // addEventListener with { passive: false } to get preventDefault().
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const SCROLL_LINES = 3; // ~3 key rows per wheel notch
+    const PIXELS_PER_LINE = KEY_HEIGHT; // 8px per key row
+    let lastTime = 0;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return; // let Ctrl+wheel zoom pass through
+      const now = performance.now();
+      if (now - lastTime < 16) return; // ~60fps throttle
+      lastTime = now;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? SCROLL_LINES * PIXELS_PER_LINE : -SCROLL_LINES * PIXELS_PER_LINE;
+      el.scrollTop += delta;
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
   const handleGridClick = useCallback(
     (e: React.MouseEvent) => {
+      // A marquee just finished: the click event that follows a real drag must
+      // not wipe the freshly selected notes.
+      if (marqueeJustCompleted.current) {
+        marqueeJustCompleted.current = false;
+        return;
+      }
       if (!(e.target as HTMLElement).closest(".ng-note")) {
         setSelectedNoteIds(new Set());
         lastClickedNoteRef.current = null;
@@ -615,6 +765,7 @@ export default function NoteGrid({
       style={{ "--ng-px-per-beat": `${pixelsPerBeat}px` } as React.CSSProperties}
       onDoubleClick={handleDoubleClick}
       onClick={handleGridClick}
+      onMouseDown={handleMarqueeStart}
       onContextMenu={handleContextMenu}
       onScroll={handleScroll}
       onWheel={handleWheel}
@@ -626,7 +777,7 @@ export default function NoteGrid({
         <div className="ng-empty">No notes</div>
       )}
       {rects.map((r) => {
-        const isDragging = dragState?.noteId === r.noteId;
+        const isDragging = dragMemberMap?.has(r.noteId) ?? false;
         const isResizing = resizeState?.noteId === r.noteId;
         const isSelected = selectedNoteIds.has(r.noteId);
         const note = noteMap.get(r.noteId);
@@ -659,8 +810,8 @@ export default function NoteGrid({
                 return;
               }
 
-              if (e.shiftKey && lastClickedNoteRef.current != null) {
-                const lastNote = noteMap.get(lastClickedNoteRef.current);
+              if (e.shiftKey) {
+                const lastNote = lastClickedNoteRef.current != null ? noteMap.get(lastClickedNoteRef.current) : null;
                 if (lastNote && lastNote.pitch === note.pitch) {
                   const minBeat = Math.min(lastNote.startBeat, note.startBeat);
                   const maxBeat = Math.max(lastNote.startBeat, note.startBeat);
@@ -674,6 +825,10 @@ export default function NoteGrid({
                   lastClickedNoteRef.current = note.noteId;
                   return;
                 }
+                // Shift + different pitch (or no last-clicked): add to selection.
+                setSelectedNoteIds((prev) => new Set(prev).add(note.noteId));
+                lastClickedNoteRef.current = note.noteId;
+                return;
               }
 
               if (!selectedNoteIds.has(note.noteId)) {
@@ -692,20 +847,47 @@ export default function NoteGrid({
                   currentDuration: note.durationBeats,
                 });
               } else {
+                const memberIds = selectedNoteIds.has(note.noteId)
+                  ? Array.from(selectedNoteIds)
+                  : [note.noteId];
+                const members = memberIds
+                  .map((id) => {
+                    const n = noteMap.get(id);
+                    return n ? { noteId: id, startPitch: n.pitch, startBeat: n.startBeat } : null;
+                  })
+                  .filter((m): m is { noteId: number; startPitch: number; startBeat: number } => m != null);
+                const anchorIndex = Math.max(0, members.findIndex((m) => m.noteId === note.noteId));
+                const minPitch = Math.min(...members.map((m) => m.startPitch));
+                const maxPitch = Math.max(...members.map((m) => m.startPitch));
+                const minBeat = Math.min(...members.map((m) => m.startBeat));
                 setDragState({
-                  noteId: note.noteId,
-                  startPitch: note.pitch,
-                  startBeat: note.startBeat,
+                  members,
+                  anchorIndex,
                   offsetX: e.clientX,
                   offsetY: e.clientY,
-                  currentPitch: note.pitch,
-                  currentStart: note.startBeat,
+                  minPitch,
+                  maxPitch,
+                  minBeat,
+                  pitchDelta: 0,
+                  beatDelta: 0,
                 });
               }
             }}
           />
         );
       })}
+
+      {marquee && (
+        <div
+          className="ng-marquee"
+          style={{
+            left: Math.min(marquee.x1, marquee.x2),
+            top: Math.min(marquee.y1, marquee.y2),
+            width: Math.abs(marquee.x2 - marquee.x1),
+            height: Math.abs(marquee.y2 - marquee.y1),
+          }}
+        />
+      )}
 
       {contextMenu && (
         <div

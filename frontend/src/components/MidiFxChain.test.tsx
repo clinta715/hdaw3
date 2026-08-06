@@ -30,8 +30,8 @@ async function waitForCall(method: string, n = 1) {
 
 const EMPTY: MidiFxSlotSnapshot[] = [];
 const TWO_SLOTS: MidiFxSlotSnapshot[] = [
-  { slotIndex: 0, fxType: "arpeggiator", bypassed: false },
-  { slotIndex: 1, fxType: "velocity", bypassed: true },
+  { slotIndex: 0, fxType: "arpeggiator", bypassed: false, params: {} },
+  { slotIndex: 1, fxType: "velocity", bypassed: true, params: {} },
 ];
 
 describe("MidiFxChain", () => {
@@ -70,6 +70,26 @@ describe("MidiFxChain", () => {
     expect(screen.getByText("Note Length")).toBeInTheDocument();
     // Initial read of slots for the selected track.
     expect(mockedCall).toHaveBeenCalledWith("read.getMidiFxSlots", { trackIndex: 2 });
+  });
+
+  it("dropdown has 13 MIDI FX options (5 original + 8 new modulators)", async () => {
+    useUiStore.setState({ selectedTrackIndex: 2 });
+    mockedCall.mockResolvedValue(EMPTY);
+    render(<MidiFxChain />);
+    await flushRead();
+
+    const select = screen.getByRole("combobox");
+    const options = select.querySelectorAll("option");
+    // 13 FX types + 1 placeholder ("+ Add MIDI FX…") = 14
+    expect(options).toHaveLength(14);
+    expect(screen.getByText("Transpose")).toBeInTheDocument();
+    expect(screen.getByText("Key Filter")).toBeInTheDocument();
+    expect(screen.getByText("Multi-Note")).toBeInTheDocument();
+    expect(screen.getByText("Velocity Curve")).toBeInTheDocument();
+    expect(screen.getByText("Note Chance")).toBeInTheDocument();
+    expect(screen.getByText("MIDI Delay")).toBeInTheDocument();
+    expect(screen.getByText("Humanize")).toBeInTheDocument();
+    expect(screen.getByText("Strum")).toBeInTheDocument();
   });
 
   it("renders a row per slot with index, type label, and bypassed class on bypassed rows", async () => {

@@ -93,6 +93,32 @@ Sample E2E tests (`e2e/app.spec.ts`):
 - BPM and sample rate display
 - Play/stop buttons visible
 
+#### Plugin-isolation E2E needs a warm plugin cache
+
+`e2e/plugin-isolation.spec.ts` exercises the isolated plugin-host crash /
+auto-recovery path and therefore needs at least one **scanned external
+plugin** (internal FX run in-process and never spawn a host). Two gotchas:
+
+- **The default-mode engine does not auto-scan.** `HDAW.exe` (the mode the
+  Playwright `webServer` launches) only calls `PluginManager::loadCache()`
+  at startup (`src/main.cpp`); the background scan runs only in `--headless`
+  mode or when triggered via the `plugin.scanAll` RPC. So with an empty
+  cache, `plugin.getPlugins` returns `[]` forever and the test skips.
+- **Warm the cache once** by running the scan: `build\Debug\HDAW.exe --headless`
+  (set `HDAW_NO_BROWSER=1`) and wait for `%APPDATA%\HDAW\plugin_cache.xml`
+  to gain `<PLUGIN ...>` entries, then stop it. Subsequent engine starts load
+  the cache and the test runs. On a machine with no plugins / empty cache the
+  test skips gracefully.
+
+Also note the recovery semantics the test asserts: crash auto-respawn is driven
+by `PluginManager::timerCallback()` (a 250 ms timer calling
+`CrashRecoveryManager::tick()`), with a 500 ms grace then respawn. So after the
+host is killed the crash banner (`.fx-slot-crash`, rendered only inside the
+FX Chain panel) appears and then clears **by itself** once the slot respawns —
+the test asserts banner-shown → host-respawned → banner-cleared, not a manual
+Restart click. (`PluginManager::tick()` is dead code; the live path is the
+timer callback.)
+
 ## MCP server (v0.3.x)
 
 A new `src/mcp/` module exposes HDAW as an **MCP** (Model Context

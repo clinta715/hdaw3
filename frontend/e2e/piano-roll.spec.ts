@@ -4,9 +4,9 @@ import { startApp, rpcCall } from "./helpers";
 test.describe("Piano Roll (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
-    // Create a MIDI clip to work with
+    // Create an empty MIDI clip to work with (default project ships empty tracks)
     await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 0, duration: 4, name: "E2E MIDI" });
-    // Select it so the piano roll shows notes
+    // Select it so the piano roll opens on it
     await page.locator(".tl-clip").first().click();
     // Switch to piano roll tab
     await page.locator(".bt-tab", { hasText: "Piano Roll" }).click();
@@ -15,7 +15,9 @@ test.describe("Piano Roll (user journeys)", () => {
   test("piano roll tab shows note grid with notes", async ({ page }) => {
     const grid = page.locator(".note-grid");
     await expect(grid).toBeVisible({ timeout: 5000 });
-    // Default MIDI clip has notes — check for note rectangles
+    // Draw a note: double-clicking the grid creates one through the UI (optimistic
+    // store update), so it renders regardless of async note-fetch timing.
+    await grid.dblclick();
     const notes = page.locator(".ng-note");
     await expect(notes.first()).toBeVisible({ timeout: 5000 });
   });
@@ -69,5 +71,73 @@ test.describe("Piano Roll (user journeys)", () => {
   test("CC lane is present", async ({ page }) => {
     const ccLane = page.locator(".cc-lane, [class*='cc-lane']");
     await expect(ccLane.first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test("marquee selection selects multiple notes", async ({ page }) => {
+    const grid = page.locator(".note-grid");
+    await expect(grid).toBeVisible({ timeout: 5000 });
+    const box = await grid.boundingBox();
+    if (!box) return;
+    // Create two notes (grid-relative positions).
+    await grid.dblclick({ position: { x: 60, y: 50 } });
+    await grid.dblclick({ position: { x: 140, y: 50 } });
+    const notes = page.locator(".ng-note");
+    await expect(notes).toHaveCount(2, { timeout: 5000 });
+    // Rubber-band around both notes.
+    await page.mouse.move(box.x + 40, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 180, box.y + 60, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator(".ng-note--selected")).toHaveCount(2, { timeout: 5000 });
+  });
+
+  test("marquee drag moves all selected notes", async ({ page }) => {
+    const grid = page.locator(".note-grid");
+    await expect(grid).toBeVisible({ timeout: 5000 });
+    const box = await grid.boundingBox();
+    if (!box) return;
+    await grid.dblclick({ position: { x: 60, y: 50 } });
+    await grid.dblclick({ position: { x: 140, y: 50 } });
+    const notes = page.locator(".ng-note");
+    await expect(notes).toHaveCount(2, { timeout: 5000 });
+    // Marquee-select both.
+    await page.mouse.move(box.x + 40, box.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 180, box.y + 60, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator(".ng-note--selected")).toHaveCount(2, { timeout: 5000 });
+
+    const leftsBefore = await notes.evaluateAll((els) => els.map((e) => parseFloat(e.style.left)));
+    const firstBox = await notes.first().boundingBox();
+    if (!firstBox) return;
+    // Drag the first (shared) note one beat right.
+    await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + firstBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(firstBox.x + firstBox.width / 2 + 80, firstBox.y + firstBox.height / 2, { steps: 5 });
+    await page.mouse.up();
+    // Tree deltas are debounced (~16 ms) and the commit is async, so poll.
+    await expect(async () => {
+      const leftsAfter = await notes.evaluateAll((els) => els.map((e) => parseFloat(e.style.left)));
+      expect(leftsAfter[0]).toBeGreaterThan(leftsBefore[0] + 40);
+      expect(leftsAfter[1]).toBeGreaterThan(leftsBefore[1] + 40);
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("clicking empty grid clears note selection", async ({ page }) => {
+    const grid = page.locator(".note-grid");
+    await expect(grid).toBeVisible({ timeout: 5000 });
+    const box = await grid.boundingBox();
+    if (!box) return;
+    await grid.dblclick({ position: { x: 60, y: 50 } });
+    const notes = page.locator(".ng-note");
+    await expect(notes).toHaveCount(1, { timeout: 5000 });
+    await notes.first().click();
+    await expect(notes.first()).toHaveClass(/selected/, { timeout: 2000 });
+    // Click far from the note (bottom-right of the grid, clamped to stay inside
+    // the box for viewport-size determinism).
+    const cx = Math.min(300, box.width - 20);
+    const cy = Math.min(200, box.height - 20);
+    await grid.click({ position: { x: cx, y: cy } });
+    await expect(page.locator(".ng-note--selected")).toHaveCount(0, { timeout: 2000 });
   });
 });

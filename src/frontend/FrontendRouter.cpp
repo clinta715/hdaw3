@@ -435,6 +435,14 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     }
     if (m == "removeMidiFxSlot")    { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeMidiFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setMidiFxSlotBypassed") { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setMidiFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
+    if (m == "setMidiFxSlotParam") {
+        int i, s; std::string paramName; double v;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)
+            || !requireString(o, "paramName", paramName, nullptr) || !requireDouble(o, "value", v, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, paramName, value required");
+        c.setMidiFxSlotParam(i, s, paramName, v);
+        return { false, QJsonValue::Null };
+    }
     if (m == "removeFxSlot")        { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotBypassed")   { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotParam")      { int i, s, p; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }

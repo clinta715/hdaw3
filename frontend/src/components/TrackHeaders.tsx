@@ -144,7 +144,14 @@ export default function TrackHeaders() {
       <div className="th-ruler-row" style={{ height: RULER_HEIGHT }}>
         <span className="th-title">Tracks</span>
       </div>
-      <div className="th-scroll" ref={scrollRef}>
+      <div className="th-scroll" ref={scrollRef}
+        onContextMenu={(e) => {
+          if ((e.target as HTMLElement).closest(".th-row")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setHeaderMenu({ x: e.clientX, y: e.clientY, trackIndex: -1 });
+        }}
+      >
         {tracks.length === 0 && (
           <div className="th-empty">
             <span>No tracks loaded</span>
@@ -308,7 +315,8 @@ export default function TrackHeaders() {
       })}
       </div>
       {headerMenu && (() => {
-        const menuTrack = tracks.find((t) => t.index === headerMenu.trackIndex);
+        const isEmptyArea = headerMenu.trackIndex === -1;
+        const menuTrack = isEmptyArea ? null : tracks.find((t) => t.index === headerMenu.trackIndex);
         const menuType = menuTrack?.trackType ?? 0;
         return (
         <div
@@ -330,42 +338,46 @@ export default function TrackHeaders() {
           }}>
             Add MIDI Track
           </button>
-          <button onMouseDown={(e) => {
-            e.stopPropagation();
-            rpc.call("project.duplicateTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
-            setHeaderMenu(null);
-          }}>
-            Duplicate Track
-          </button>
-          <div className="ctx-separator" />
-          <button
-            className={menuType === 0 ? "ctx-checked" : ""}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 0 }).catch(() => {});
-              setHeaderMenu(null);
-            }}
-          >
-            {menuType === 0 ? "✓ " : ""}Set Type: Audio
-          </button>
-          <button
-            className={menuType === 1 ? "ctx-checked" : ""}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 1 }).catch(() => {});
-              setHeaderMenu(null);
-            }}
-          >
-            {menuType === 1 ? "✓ " : ""}Set Type: MIDI
-          </button>
-          <div className="ctx-separator" />
-          <button className="ctx-danger" onMouseDown={(e) => {
-            e.stopPropagation();
-            rpc.call("project.removeTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
-            setHeaderMenu(null);
-          }}>
-            Delete Track
-          </button>
+          {!isEmptyArea && (
+            <>
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
+                rpc.call("project.duplicateTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                setHeaderMenu(null);
+              }}>
+                Duplicate Track
+              </button>
+              <div className="ctx-separator" />
+              <button
+                className={menuType === 0 ? "ctx-checked" : ""}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 0 }).catch(() => {});
+                  setHeaderMenu(null);
+                }}
+              >
+                {menuType === 0 ? "✓ " : ""}Set Type: Audio
+              </button>
+              <button
+                className={menuType === 1 ? "ctx-checked" : ""}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.setTrackType", { trackIndex: headerMenu.trackIndex, trackType: 1 }).catch(() => {});
+                  setHeaderMenu(null);
+                }}
+              >
+                {menuType === 1 ? "✓ " : ""}Set Type: MIDI
+              </button>
+              <div className="ctx-separator" />
+              <button className="ctx-danger" onMouseDown={(e) => {
+                e.stopPropagation();
+                rpc.call("project.removeTrack", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                setHeaderMenu(null);
+              }}>
+                Delete Track
+              </button>
+            </>
+          )}
         </div>
         );
       })()}

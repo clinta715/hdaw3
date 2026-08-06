@@ -2,6 +2,22 @@
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 
+namespace {
+
+// The audio engine tracks the active scene in SessionManager's atomic (reads on the
+// audio thread), while the frontend learns it from the SESSION_STATE ValueTree property
+// via the read.snapshot field `launchedScene` (ReadModelImpl.cpp). Both must stay in
+// sync, so every session launch/stop that touches the atomic also writes the property
+// (with a null undo manager — scene-launch is transient play state, not editable content).
+void setSessionLaunchedScene(AudioEngine& engine, int sceneIndex)
+{
+    auto sessionState = engine.getProjectModel().getTree().getChildWithName(IDs::SESSION_STATE);
+    if (sessionState.isValid())
+        sessionState.setProperty(IDs::launchedScene, sceneIndex, nullptr);
+}
+
+} // namespace
+
 void AudioEngineCommands::setClipScene(int clipId, int sceneIndex)
 {
     auto& model = engine_.getProjectModel();
@@ -44,9 +60,11 @@ int AudioEngineCommands::createSessionClip(int trackIndex, int sceneIndex, bool 
 void AudioEngineCommands::launchScene(int sceneIndex)
 {
     engine_.getSessionManager().launchScene(sceneIndex);
+    setSessionLaunchedScene(engine_, sceneIndex);
 }
 
 void AudioEngineCommands::stopAllSessionClips()
 {
     engine_.getSessionManager().stopAll();
+    setSessionLaunchedScene(engine_, -1);
 }

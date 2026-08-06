@@ -180,10 +180,12 @@ test.describe("Clip editing (user journeys)", () => {
 
   test("undo and redo restore and re-apply clip changes", async ({ page }) => {
     await startApp(page);
+    // The default project ships three empty tracks (no seed clips), so the
+    // baseline .tl-clip count is 0.
     await expect
       .poll(() => page.locator(".tl-clip").count(), { timeout: 10000 })
-      .toBe(2);
-    const countBefore = 2;
+      .toBe(0);
+    const countBefore = 0;
 
     // Add a clip, then undo it — the clip should disappear.
     const clipId = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "Undo" });
@@ -231,10 +233,12 @@ test.describe("Clip editing (user journeys)", () => {
 
   test("Delete key removes the selected clip", async ({ page }) => {
     await startApp(page);
+    // The default project ships three empty tracks (no seed clips), so the
+    // baseline .tl-clip count is 0.
     await expect
       .poll(() => page.locator(".tl-clip").count(), { timeout: 10000 })
-      .toBe(2);
-    const countBefore = 2;
+      .toBe(0);
+    const countBefore = 0;
 
     const clipId = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "Del" });
     await expect.poll(() => page.locator(".tl-clip").count(), { timeout: 5000 }).toBe(countBefore + 1);
@@ -249,10 +253,12 @@ test.describe("Clip editing (user journeys)", () => {
 
   test("Ctrl+D duplicates the selected clip via keyboard", async ({ page }) => {
     await startApp(page);
+    // The default project ships three empty tracks (no seed clips), so the
+    // baseline .tl-clip count is 0.
     await expect
       .poll(() => page.locator(".tl-clip").count(), { timeout: 10000 })
-      .toBe(2);
-    const countBefore = 2;
+      .toBe(0);
+    const countBefore = 0;
 
     const clipId = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "Dup" });
     await expect.poll(() => page.locator(".tl-clip").count(), { timeout: 5000 }).toBe(countBefore + 1);
@@ -274,10 +280,12 @@ test.describe("Clip editing (user journeys)", () => {
 
   test("Ctrl+C / Ctrl+V copy-paste creates a new clip", async ({ page }) => {
     await startApp(page);
+    // The default project ships three empty tracks (no seed clips), so the
+    // baseline .tl-clip count is 0.
     await expect
       .poll(() => page.locator(".tl-clip").count(), { timeout: 10000 })
-      .toBe(2);
-    const countBefore = 2;
+      .toBe(0);
+    const countBefore = 0;
 
     const clipId = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "Copy" });
     await expect.poll(() => page.locator(".tl-clip").count(), { timeout: 5000 }).toBe(countBefore + 1);
@@ -336,10 +344,12 @@ test.describe("Clip editing (user journeys)", () => {
 
   test("Ctrl+M merges selected MIDI clips into one", async ({ page }) => {
     await startApp(page);
+    // The default project ships three empty tracks (no seed clips), so the
+    // baseline .tl-clip count is 0.
     await expect
       .poll(() => page.locator(".tl-clip").count(), { timeout: 10000 })
-      .toBe(2);
-    const countBefore = 2;
+      .toBe(0);
+    const countBefore = 0;
 
     // Create two MIDI clips on the same track.
     const c1 = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "M1" });

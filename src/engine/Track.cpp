@@ -80,6 +80,7 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
     juce::SpinLock::ScopedLockType lock(stateLock);
 
     // Save plugin state from existing slots before clearing
+    std::vector<char> matched(static_cast<size_t>(fxChainTree.getNumChildren()), 0);
     for (const auto& slot : fxChain)
     {
         if (slot && slot->isPlugin() && slot->getPluginInstance())
@@ -93,10 +94,15 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             {
                 for (int i = 0; i < fxChainTree.getNumChildren(); ++i)
                 {
+                    if (matched[static_cast<size_t>(i)])
+                        continue;
                     auto child = fxChainTree.getChild(i);
                     if (child.getProperty(IDs::pluginID).toString() == slot->getPluginID())
                     {
-                        child.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+                        matched[static_cast<size_t>(i)] = 1;
+                        // empty state (dead plugin process) would clobber the last-good saved state
+                        if (state.getSize() > 0)
+                            child.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                         break;
                     }
                 }
@@ -174,6 +180,11 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
 
                 if (fxSpec.sampleRate > 0)
                     slot->prepare(fxSpec);
+
+                if (wantIsolated && pluginManager) {
+                    int sid = slot->proxySlotId();
+                    if (sid >= 0) pluginManager->registerSlotTrackIndex(static_cast<uint32_t>(sid), trackIndex);
+                }
 
                 fxChain.push_back(std::move(slot));
             }
@@ -260,6 +271,68 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
             auto nl = std::make_unique<NoteLengthScaler>();
             nl->factor = static_cast<double>(slotTree.getProperty(IDs::lengthFactor, 1.0));
             effect = std::move(nl);
+        }
+        else if (type == "transpose")
+        {
+            auto t = std::make_unique<Transpose>();
+            t->semitones = static_cast<int>(slotTree.getProperty(IDs::semitones, 0));
+            effect = std::move(t);
+        }
+        else if (type == "keyfilter")
+        {
+            auto kf = std::make_unique<KeyFilter>();
+            kf->root = static_cast<int>(slotTree.getProperty(IDs::keyFilterRoot, 0));
+            kf->scaleType = static_cast<int>(slotTree.getProperty(IDs::keyFilterScale, 0));
+            effect = std::move(kf);
+        }
+        else if (type == "multinote")
+        {
+            auto mn = std::make_unique<MultiNote>();
+            juce::String intervalStr = slotTree.getProperty(IDs::multiNoteIntervals, "0,7,12").toString();
+            mn->intervals.clear();
+            for (auto& tok : juce::StringArray::fromTokens(intervalStr, ",", ""))
+            {
+                int val = tok.trim().getIntValue();
+                mn->intervals.push_back(val);
+            }
+            if (mn->intervals.empty()) mn->intervals = { 0, 7, 12 };
+            effect = std::move(mn);
+        }
+        else if (type == "velocitycurve")
+        {
+            auto vc = std::make_unique<VelocityCurve>();
+            vc->curveType = static_cast<int>(slotTree.getProperty(IDs::curveType, 0));
+            vc->curveAmount = static_cast<double>(slotTree.getProperty(IDs::curveAmount, 0.5));
+            effect = std::move(vc);
+        }
+        else if (type == "notechance")
+        {
+            auto nc = std::make_unique<NoteChance>();
+            nc->noteChance = static_cast<double>(slotTree.getProperty(IDs::noteChance, 1.0));
+            effect = std::move(nc);
+        }
+        else if (type == "mididelay")
+        {
+            auto md = std::make_unique<MidiDelay>();
+            md->delayBeats = static_cast<double>(slotTree.getProperty(IDs::delayBeats, 0.25));
+            md->feedback = static_cast<double>(slotTree.getProperty(IDs::delayFeedback, 0.0));
+            md->mix = static_cast<double>(slotTree.getProperty(IDs::delayMix, 0.5));
+            effect = std::move(md);
+        }
+        else if (type == "humanize")
+        {
+            auto h = std::make_unique<Humanize>();
+            h->humanizeTiming = static_cast<double>(slotTree.getProperty(IDs::humanizeTiming, 0.0));
+            h->humanizeVelocity = static_cast<double>(slotTree.getProperty(IDs::humanizeVelocity, 0.0));
+            h->humanizePitch = static_cast<double>(slotTree.getProperty(IDs::humanizePitch, 0.0));
+            effect = std::move(h);
+        }
+        else if (type == "strum")
+        {
+            auto st = std::make_unique<Strum>();
+            st->strumTime = static_cast<double>(slotTree.getProperty(IDs::strumTime, 0.02));
+            st->strumDirection = static_cast<int>(slotTree.getProperty(IDs::strumDirection, 0));
+            effect = std::move(st);
         }
         if (effect)
         {

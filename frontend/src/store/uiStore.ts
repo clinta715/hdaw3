@@ -69,6 +69,7 @@ interface UiState {
   bottomPanelHeight: number;
   viewMode: "arrange" | "session";
   statusHint: string | null;
+  crashedFxSlots: Record<string, { pluginName: string }>;
 
   selectClip: (id: number | null, trackIndex?: number | null) => void;
   toggleClipSelection: (id: number) => void;
@@ -86,6 +87,8 @@ interface UiState {
   setBottomPanelHeight: (h: number) => void;
   setViewMode: (mode: "arrange" | "session") => void;
   setStatusHint: (h: string | null) => void;
+  setSlotCrashed: (trackIndex: number, pluginId: string, pluginName: string) => void;
+  clearSlotCrashed: (trackIndex: number, pluginId: string) => void;
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
@@ -102,6 +105,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   bottomPanelHeight: loadBottomPanelHeight(),
   viewMode: loadViewMode(),
   statusHint: null,
+  crashedFxSlots: {},
 
   selectClip: (id, trackIndex) => set({
     selectedClipIds: id != null ? new Set([id]) : new Set<number>(),
@@ -174,4 +178,19 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ viewMode: mode });
   },
   setStatusHint: (h) => set({ statusHint: h }),
+
+  setSlotCrashed: (trackIndex, pluginId, pluginName) => set((state) => ({
+    crashedFxSlots: {
+      ...state.crashedFxSlots,
+      [`${trackIndex}:${pluginId}`]: { pluginName },
+    },
+  })),
+
+  clearSlotCrashed: (trackIndex, pluginId) => set((state) => {
+    const key = `${trackIndex}:${pluginId}`;
+    if (!(key in state.crashedFxSlots)) return state;
+    const next = { ...state.crashedFxSlots };
+    delete next[key];
+    return { crashedFxSlots: next };
+  }),
 }));

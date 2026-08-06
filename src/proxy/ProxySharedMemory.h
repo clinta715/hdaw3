@@ -22,6 +22,10 @@ public:
     float* getOutputRing() const;
     MidiEvent* getMidiInRing() const;
     MidiEvent* getMidiOutRing() const;
+    uint8_t* getSysexInBuffer() const;
+    uint8_t* getSysexOutBuffer() const;
+    std::atomic<uint64_t>* getParamSetRing() const;
+    std::atomic<uint64_t>* getParamNotifyRing() const;
 
     bool writeInput(const float* data, uint32_t count);
     bool readInput(float* data, uint32_t count);

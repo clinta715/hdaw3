@@ -55,6 +55,7 @@ const INTERNAL_FX = [
 
 export default function FXChain() {
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
+  const crashedFxSlots = useUiStore((s) => s.crashedFxSlots);
   const [slots, setSlots] = useState<FxSlotSnapshot[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -363,6 +364,18 @@ export default function FXChain() {
     setBrowseOpen(false);
   }, [addSlot]);
 
+  const restartSlot = useCallback(async (slotIndex: number, pluginId: string) => {
+    const trackIndex = useUiStore.getState().selectedTrackIndex;
+    if (trackIndex == null) return;
+    try {
+      await rpc.call("project.respawnPlugin", { trackIndex, slotIndex });
+    } catch (e) {
+      console.error("respawnPlugin failed", e);
+    }
+    // Read fresh state after the await — never a stale closure (pitfall: Gate 5).
+    useUiStore.getState().clearSlotCrashed(trackIndex, pluginId);
+  }, []);
+
   if (selectedTrackIndex == null) {
     return <div className="fx-chain"><div className="fx-empty">Select a track to edit FX</div></div>;
   }
@@ -431,11 +444,17 @@ export default function FXChain() {
       {slots.length === 0 && (
         <div className="fx-empty-slots">No FX slots. Click + Add FX to create one.</div>
       )}
-      {slots.map((slot) => (
+      {slots.map((slot) => {
+        const crashed = selectedTrackIndex != null && slot.pluginId
+          ? crashedFxSlots[`${selectedTrackIndex}:${slot.pluginId}`]
+          : undefined;
+        return (
         <div
           key={slot.slotIndex}
-          className={`fx-slot${slot.bypassed ? " fx-slot--bypassed" : ""}${dragSlot === slot.slotIndex ? " fx-slot--dragging" : ""}`}
+          className={`fx-slot${slot.bypassed ? " fx-slot--bypassed" : ""}${dragSlot === slot.slotIndex ? " fx-slot--dragging" : ""}${crashed ? " fx-slot--crashed" : ""}`}
           draggable
+          data-track-index={selectedTrackIndex}
+          data-slot-index={slot.slotIndex}
           onDragStart={(e) => handleDragStart(e, slot.slotIndex)}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(e, slot.slotIndex)}
@@ -592,8 +611,21 @@ export default function FXChain() {
               </div>
             )
           )}
+          {crashed && (
+            <div className="fx-slot-crash">
+              <span className="fx-slot-crash-msg">Plugin crashed — Restart?</span>
+              <button
+                className="fx-btn fx-slot-crash-btn"
+                onClick={() => restartSlot(slot.slotIndex, slot.pluginId)}
+                title="Restart Plugin"
+              >
+                Restart
+              </button>
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

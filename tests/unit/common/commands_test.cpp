@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
+#include "engine/RoutingManager.h"
+#include "engine/MidiClipProcessor.h"
 
 TEST(Commands, AddRemoveTrack)
 {
@@ -314,29 +316,119 @@ TEST(Commands, DuplicateClipToInvalidReturnsNegative)
 }
 
 // Regression: moving (or duplicating) a clip to a position that FULLY COVERS
-// another clip must NOT delete the covered clip. Previously moveClipWithOverlap
-// Case 1 removed it — silent data loss that made clips vanish during normal
-// arrange edits and cascaded into the renderer black screen.
-TEST(Commands, MoveFullyCoveringDoesNotDeleteCoveredClip)
+// another clip removes the covered clip. The overwrite rule is that a fully
+// shadowed clip is discarded so parts never overlap — the replacement clip wins.
+// Partial overlaps (trim/split) are handled by the neighbouring cases and are
+// untouched here.
+TEST(Commands, MoveFullyCoveringReplacesCoveredClip)
 {
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
     int origId = cmds.addMidiClip(0, 0.0, 4.0, "Orig");   // [0, 4]
     EXPECT_GT(origId, 0);
+    // Give Orig a real note so we can distinguish its data from nothing.
+    cmds.addNote(origId, 60, 100, 0.0, 1.0);
     int otherId = cmds.addMidiClip(0, 20.0, 8.0, "Other"); // elsewhere
     EXPECT_GT(otherId, 0);
 
     // Move the 8-beat clip to start 0 → it fully covers Orig ([0,8] ⊇ [0,4]).
     cmds.moveClipWithOverlap(otherId, 0, 0.0);
 
-    auto orig = engine.getReadModel().getClip(origId);
-    EXPECT_EQ(orig.clipId, origId) << "fully-covered clip was deleted (data loss)";
-    EXPECT_DOUBLE_EQ(orig.startBeat, 0.0);
-    EXPECT_DOUBLE_EQ(orig.durationBeats, 4.0);
+    // Orig must be gone — no clip with origId remains in the snapshot.
+    bool origGone = true;
+    for (const auto& clip : engine.getReadModel().snapshot().clips)
+    {
+        if (clip.clipId == origId) { origGone = false; break; }
+    }
+    EXPECT_TRUE(origGone) << "fully-covered clip was NOT removed (overwrite rule)";
 
+    // Other wins: placed at [0, 8], still present.
     auto other = engine.getReadModel().getClip(otherId);
-    EXPECT_DOUBLE_EQ(other.startBeat, 0.0); // incoming clip is still placed
+    EXPECT_DOUBLE_EQ(other.startBeat, 0.0);
+    EXPECT_DOUBLE_EQ(other.durationBeats, 8.0);
+}
+
+// Regression: the user's workaround (move a replacement overlay away, delete the
+// covered original, move it back) must keep the surviving MIDI clip wired into
+// the audio graph with its notes intact — this is the "no silence" contract.
+TEST(Commands, OverlayMoveBackKeepsReplacementAudible)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Add a second track to move the replacement away and back. Capture the
+    // returned index; the default project already ships track 0 and 1, so the
+    // new track appends rather than landing at a fixed index.
+    int awayTrack = cmds.addTrack("T2");
+    ASSERT_GE(awayTrack, 0);
+
+    // Track 0: place A with a note.
+    int aId = cmds.addMidiClip(0, 0.0, 4.0, "A");          // [0, 4]
+    ASSERT_GT(aId, 0);
+    cmds.addNote(aId, 60, 100, 0.0, 1.0);
+
+    // Simulate placing a replacement clip B at the SAME span, then moving it
+    // into place → Case 1 fires and removes A.
+    int bId = cmds.addMidiClip(0, 0.0, 4.0, "B");          // [0, 4] same span
+    ASSERT_GT(bId, 0);
+    cmds.addNote(bId, 62, 100, 0.0, 1.0);
+    cmds.moveClipWithOverlap(bId, 0, 0.0);
+
+    bool aGone = true;
+    for (const auto& clip : engine.getReadModel().snapshot().clips)
+    {
+        if (clip.clipId == aId) { aGone = false; break; }
+    }
+    EXPECT_TRUE(aGone) << "A (covered) should have been removed by Case 1";
+    ASSERT_GT(engine.getReadModel().getClip(bId).clipId, 0) << "B must survive";
+
+    // Mirror the user's workaround: move B to the other track, delete the
+    // (now-already-gone) original A as a no-op, move B back to track 0.
+    cmds.moveClipWithOverlap(bId, awayTrack, 0.0);
+    cmds.removeClip(aId);
+    cmds.moveClipWithOverlap(bId, 0, 0.0);
+
+    // No message-loop in the gtest, so the coalesced async rebuild never runs
+    // on its own — run it explicitly to mirror the production message loop.
+    engine.getMainProcessor()->rebuildRoutingGraph();
+
+    // B must be wired into the live routing graph with its note intact.
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    bool bWired = false;
+    HDAW::MidiClipProcessor* bProc = nullptr;
+    for (const auto& kv : rm->getMidiClipSources())
+    {
+        if (static_cast<int>(kv.second->getClipTree().getProperty(IDs::clipID, -1)) == bId)
+        {
+            bWired = true;
+            bProc = kv.second;
+            break;
+        }
+    }
+    ASSERT_TRUE(bWired) << "replacement clip B missing from the routing graph";
+    auto noteList = bProc->getClipTree().getChildWithName(IDs::MIDI_NOTE_LIST);
+    ASSERT_TRUE(noteList.isValid());
+    EXPECT_GT(noteList.getNumChildren(), 0) << "B's note did not survive the move";
+
+    // Only B remains on track 0 at [0,4] — no overlap left behind.
+    int track0Clips = 0;
+    int track0bId = -1;
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clipList0 = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
+    for (int c = 0; c < clipList0.getNumChildren(); ++c)
+    {
+        ++track0Clips;
+        int cid = static_cast<int>(clipList0.getChild(c).getProperty(IDs::clipID, -1));
+        if (cid == bId) track0bId = cid;
+    }
+    EXPECT_EQ(track0Clips, 1) << "track 0 should hold exactly the replacement clip";
+    EXPECT_EQ(track0bId, bId);
+    auto bFinal = engine.getReadModel().getClip(bId);
+    EXPECT_DOUBLE_EQ(bFinal.startBeat, 0.0);
+    EXPECT_DOUBLE_EQ(bFinal.durationBeats, 4.0);
 }
 
 TEST(Commands, ReorderFxSlots)
@@ -610,6 +702,18 @@ TEST(Commands, AddMidiFxSlot)
     ASSERT_TRUE(chain.isValid());
     ASSERT_EQ(chain.getNumChildren(), 1);
     EXPECT_EQ(chain.getChild(0).getProperty(IDs::fxType).toString(), juce::String("arpeggiator"));
+}
+
+TEST(Commands, SetMidiFxSlotParam)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addMidiFxSlot(0, "transpose");
+    cmds.setMidiFxSlotParam(0, 0, "semitones", 7.0);
+    auto slot = engine.getProjectModel().getTrackListTree()
+        .getChild(0).getChildWithName(IDs::MIDI_FX_CHAIN).getChild(0);
+    EXPECT_EQ(static_cast<int>(slot.getProperty(IDs::semitones)), 7);
 }
 
 TEST(Commands, MidiNoteRecording)

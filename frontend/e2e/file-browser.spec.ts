@@ -60,9 +60,9 @@ test.describe("File browser (user journeys)", () => {
   test("source BPM input is visible and editable", async ({ page }) => {
     await page.locator(".browser-toggle-btn").click();
     await expect(page.locator("aside.file-browser")).toBeVisible({ timeout: 5000 });
-    const bpmLabel = page.locator(".fb-tempo-match-label", { hasText: "BPM" });
+    const bpmLabel = page.locator(".fb-source-bpm label", { hasText: "BPM" });
     await expect(bpmLabel).toBeVisible({ timeout: 5000 });
-    const bpmInput = bpmLabel.locator("input[type='number']");
+    const bpmInput = page.locator(".fb-bpm-input");
     await expect(bpmInput).toBeVisible();
     // Default is 120
     await expect(bpmInput).toHaveValue("120");

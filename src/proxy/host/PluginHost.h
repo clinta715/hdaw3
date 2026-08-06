@@ -10,6 +10,7 @@
 #include <thread>
 #include <mutex>
 #include <deque>
+#include <vector>
 
 class PluginHost {
 public:
@@ -47,6 +48,10 @@ private:
     std::unique_ptr<juce::AudioPluginInstance> plugin;
     juce::AudioPluginFormatManager formatManager;
 
+    // SET_STATE chunk accumulation (controlLoop thread only)
+    uint32_t pendingStateTotal = 0;
+    std::vector<uint8_t> pendingState;
+
     // Editor window (owned, lives on GUI thread)
     class EditorWindow;
     std::unique_ptr<EditorWindow> editorWindow;
@@ -64,4 +69,9 @@ private:
     // Threads
     std::thread controlThread;
     std::thread audioThread;
+
+    // Child-side AudioProcessorListener registered on the hosted plugin;
+    // forwards parameter changes to the parent via the paramNotify shm ring.
+    class ParamForwarder;
+    std::unique_ptr<ParamForwarder> paramForwarder;
 };

@@ -109,17 +109,7 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
     auto* proc = engine_.getMainProcessor();
     HDAW_LOG("DIAG", "loadProject: calling rebuildRoutingGraph after load, trackCount=" + std::to_string(engine_.getProjectModel().getTrackListTree().getNumChildren()));
 
-    if (proc) {
-        auto* routingMgr = proc->getRoutingManager();
-        if (routingMgr) routingMgr->loadingPhase = true;
-    }
-
-    if (proc) proc->rebuildRoutingGraph();
-
-    if (proc) {
-        auto* routingMgr = proc->getRoutingManager();
-        if (routingMgr) routingMgr->loadingPhase = false;
-    }
+    if (proc) proc->rebuildRoutingGraph(true);
 
     sendProgress("Done", 1.0f);
     loading = false;
@@ -133,10 +123,10 @@ void AudioEngineCommands::setScaleMode(int mode) { engine_.getProjectModel().set
 
 // ─── AudioGraphCommands ───────────────────────────────────────────
 
-void AudioEngineCommands::rebuildRoutingGraph()
+void AudioEngineCommands::rebuildRoutingGraph(bool loading)
 {
     if (auto* proc = engine_.getMainProcessor())
-        proc->rebuildRoutingGraph();
+        proc->rebuildRoutingGraph(loading);
 }
 
 void AudioEngineCommands::rebuildTrackFX(int trackIndex)

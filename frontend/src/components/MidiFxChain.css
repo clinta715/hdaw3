@@ -79,3 +79,41 @@
 .mfx-btn:hover {
   color: var(--text-muted);
 }
+
+.mfx-param {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.mfx-param-label {
+  min-width: 40px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.mfx-param-slider {
+  flex: 1;
+  min-width: 50px;
+  height: 4px;
+  accent-color: var(--accent);
+}
+
+.mfx-param-value {
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.mfx-param-input {
+  width: 80px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 1px 4px;
+  font-size: 11px;
+}

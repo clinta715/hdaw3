@@ -18,8 +18,49 @@ namespace proxy {
 inline std::atomic<bool> s_renderMode{ false };
 inline void setRenderMode(bool enabled) { s_renderMode.store(enabled, std::memory_order_relaxed); }
 
+// AudioProcessorParameter backed by the isolated-plugin param bridge. Reads a
+// parent-local atomic cache for getValue; setValue updates the cache and marks
+// a staging slot dirty so processBlock can flush it into the shm paramSet ring
+// (lock-free — invoked from the audio thread by TrackFXSlot::applyAutomation).
+// AudioPluginInstance requires parameters to be HostedAudioProcessorParameter
+// subclasses, so we derive from that and implement getParameterID().
+class ProxiedParameter : public juce::HostedAudioProcessorParameter
+{
+public:
+    ProxiedParameter(uint32_t idx, const juce::String& name,
+                     float defaultValue, bool automatable, class PluginProxySlot& owner)
+        : HostedAudioProcessorParameter(), index(idx), nameStr(name),
+          defaultValue_(defaultValue), automatable_(automatable), ownerSlot(owner)
+    {
+        cache.store(defaultValue, std::memory_order_relaxed);
+    }
+
+    juce::String getParameterID() const override { return "proxy_param_" + juce::String(index); }
+    float getValue() const override;
+    void setValue(float newValue) override;
+    float getDefaultValue() const override { return defaultValue_; }
+    juce::String getName(int maxLen) const override;
+    juce::String getLabel() const override { return {}; }
+    int getNumSteps() const override { return 101; }
+    bool isAutomatable() const override { return automatable_; }
+    juce::String getText(float, int) const override { return {}; }
+    float getValueForText(const juce::String&) const override { return 0.f; }
+
+    void setCache(float v) noexcept { cache.store(v, std::memory_order_relaxed); }
+    float loadCache() const noexcept { return cache.load(std::memory_order_relaxed); }
+    uint32_t paramIndex() const noexcept { return index; }
+
+private:
+    uint32_t index;
+    juce::String nameStr;
+    float defaultValue_;
+    bool automatable_;
+    std::atomic<float> cache{ 0.f };
+    class PluginProxySlot& ownerSlot;
+};
+
 class PluginProxySlot : public juce::AudioPluginInstance,
-                         private juce::Timer {
+                        private juce::Timer {
 public:
     PluginProxySlot(ProxyProcessManager& mgr, uint32_t slotId,
                     const juce::String& pluginName,
@@ -40,10 +81,10 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
+    int getNumPrograms() override { return numProgramsCached_; }
+    int getCurrentProgram() override;
+    void setCurrentProgram(int) override;
+    const juce::String getProgramName(int) override;
     void changeProgramName(int, const juce::String&) override {}
 
     bool acceptsMidi() const override { return true; }
@@ -57,6 +98,15 @@ public:
 
     ProxyProcessManager& getProcessManager() { return processManager; }
     uint32_t getSlotId() const { return slotId; }
+
+    // Message-thread hook for the parent to forward staged param values into
+    // the shm paramSet ring on the next audio block.
+    void stageParam(uint32_t index, float value);
+
+    // Pull pending child->parent param notifications off the local atomic
+    // queue and forward them to this AudioProcessor's listeners via the
+    // matching ProxiedParameter::sendValueChangedMessageToListeners.
+    void drainParamNotifications();
 
     void saveStateToTemp();
     bool restoreStateFromTemp();
@@ -89,6 +139,7 @@ private:
     int currentBlockSize = 512;
     int numChannels = 2;
 
+    void fetchParamMetadata();
     void timerCallback() override;
 
     EditorClosedCallback editorClosedCb;
@@ -98,6 +149,25 @@ private:
     RespawnRequestFn respawnRequestFn;
 
     void waitForEditorClosed();
+
+    // Param bridge state. stagedParams_/paramDirty_ are written by stageParam
+    // (any thread) and flushed by processBlock (single audio-thread writer).
+    // Built once during construction (null pipe ⇒ empty). Atomics are not
+    // copy/movable, so use a plain dynamic array via unique_ptr.
+    std::unique_ptr<std::atomic<float>[]> stagedParams_;
+    std::unique_ptr<std::atomic<uint32_t>[]> paramDirty_;
+    uint32_t paramCacheSize_ = 0;
+    int numProgramsCached_ = 1;
+
+    // Parent-local bounded SPSC queue bridging child param notifications from
+    // the paramNotify shm ring (consumed by processBlock on the audio thread)
+    // to drainParamNotifications (message thread), which forwards them to
+    // AudioProcessorListener callbacks.
+    static constexpr uint32_t kNotifyQueueCap = 1024;
+    struct NotifyEntry { int index; float value; };
+    NotifyEntry notifyQueue_[kNotifyQueueCap];
+    std::atomic<uint32_t> notifyQWrite{0};
+    std::atomic<uint32_t> notifyQRead{0};
 };
 
 } // namespace proxy

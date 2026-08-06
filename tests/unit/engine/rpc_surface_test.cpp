@@ -841,6 +841,22 @@ TEST(FxSurface, RemoveMidiFxSlot)
     EXPECT_EQ(static_cast<int>(engine.getReadModel().getMidiFxSlots(0).size()), 1);
 }
 
+TEST(FxSurface, MidiFxSlotParams)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addMidiFxSlot(0, "transpose");
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto chain = trackList.getChild(0).getChildWithName(IDs::MIDI_FX_CHAIN);
+    ASSERT_TRUE(chain.isValid());
+    ASSERT_EQ(chain.getNumChildren(), 1);
+    auto slot = chain.getChild(0);
+    EXPECT_EQ(static_cast<int>(slot.getProperty(IDs::semitones)), 0);
+    cmds.setMidiFxSlotParam(0, 0, "semitones", 5.0);
+    EXPECT_EQ(static_cast<int>(slot.getProperty(IDs::semitones)), 5);
+}
+
 // ============================================================================
 // AUTOMATION: POINTS, MODE, ENABLE/DISABLE, REMOVE LANE
 // ============================================================================
@@ -1179,8 +1195,11 @@ TEST(SessionSurface, LaunchSceneUpdatesLaunchedScene)
 
     cmds.launchScene(3);
 
-    // launchScene sets the SessionManager atomic, not the ValueTree snapshot field
+    // launchScene drives the SessionManager atomic (audio side) AND writes the
+    // SESSION_STATE ValueTree property that feeds the frontend read.snapshot
+    // `launchedScene` field. Both must reflect the active scene.
     EXPECT_EQ(engine.getSessionManager().getLaunchedScene(), 3);
+    EXPECT_EQ(engine.getReadModel().snapshot().launchedScene, 3);
 }
 
 TEST(SessionSurface, StopAllSessionClips)

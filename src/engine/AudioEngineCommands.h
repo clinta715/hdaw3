@@ -144,6 +144,8 @@ public:
     void addMidiFxSlot(int trackIndex, const std::string& type, int position) override;
     void removeMidiFxSlot(int trackIndex, int slotIndex) override;
     void setMidiFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
+    void setMidiFxSlotParam(int trackIndex, int slotIndex,
+                            const std::string& paramName, double value) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
@@ -241,7 +243,7 @@ public:
     bool isPunchEnabled() const override;
 
     // AudioGraphCommands
-    void rebuildRoutingGraph() override;
+    void rebuildRoutingGraph(bool loading = false) override;
     void rebuildTrackFX(int trackIndex) override;
     void rebuildAutomationCache(int trackIndex) override;
     void rebuildModulation(int trackIndex) override;

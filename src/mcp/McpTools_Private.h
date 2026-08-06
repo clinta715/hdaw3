@@ -20,6 +20,7 @@ juce::ValueTree findLane(AudioEngine* e, int trackId, const QJsonValue& ref);
 void registerProjectDomain(McpServer& s, AudioEngine* e);
 void registerTransportDomain(McpServer& s, AudioEngine* e);
 void registerAudioDomain(McpServer& s, AudioEngine* e);
+void registerMidiFxTools(McpServer& s, AudioEngine* e);
 void registerSessionDomain(McpServer& s, AudioEngine* e);
 
 } // namespace mcp

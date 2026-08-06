@@ -77,12 +77,16 @@ public:
     {
         juce::ignoreUnused(sampleRate, samplesPerBlock);
         std::fill(activeNotes.begin(), activeNotes.end(), false);
+        std::fill(noteActive.begin(), noteActive.end(), false);
+        std::fill(pitchOwner.begin(), pitchOwner.end(), -1);
         // midiChannel is set externally via setMidiChannel; default is 1.
     }
 
     void releaseResources() override
     {
         std::fill(activeNotes.begin(), activeNotes.end(), false);
+        std::fill(noteActive.begin(), noteActive.end(), false);
+        std::fill(pitchOwner.begin(), pitchOwner.end(), -1);
     }
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override
@@ -102,6 +106,8 @@ public:
                 midiMessages.addEvent(juce::MidiMessage::noteOff(midiChannel.load(), note, 0.0f), 0);
             }
             std::fill(activeNotes.begin(), activeNotes.end(), false);
+            std::fill(noteActive.begin(), noteActive.end(), false);
+            std::fill(pitchOwner.begin(), pitchOwner.end(), -1);
             std::fill(previousNotePlayed.begin(), previousNotePlayed.end(), false);
             return;
         }
@@ -130,6 +136,8 @@ public:
                                        juce::jmin(numSamples - 1, 0));
             }
             std::fill(activeNotes.begin(), activeNotes.end(), false);
+            std::fill(noteActive.begin(), noteActive.end(), false);
+            std::fill(pitchOwner.begin(), pitchOwner.end(), -1);
             return;
         }
 
@@ -139,6 +147,16 @@ public:
         double clipDurationBeats = transportManager.secondsToPpq(durSec);
         int loopCount = (clipDurationBeats > 0.0) ? static_cast<int>(currentBeat / clipDurationBeats) : 0;
         uint64_t seed = clipSeed.load(std::memory_order_relaxed);
+
+        // Snapshot recurrence decisions before any writes to previousNotePlayed,
+        // so same-pitch notes don't contaminate each other within this block.
+        std::array<bool, MAX_NOTES> recurrenceDecision{};
+        for (int j = 0; j < count; ++j)
+        {
+            const NoteData& nd = noteCaches[idx][j];
+            if (nd.recurrence != 0)
+                recurrenceDecision[j] = recurrenceCheck(nd.recurrence, previousNotePlayed[nd.noteNumber]);
+        }
 
 for (int i = 0; i < count; ++i)
         {
@@ -154,14 +172,19 @@ for (int i = 0; i < count; ++i)
                 if (note.occurrence != 0)
                     shouldPlay = shouldPlay && occurrenceCheck(note.occurrence, loopCount, 8);
                 if (note.recurrence != 0)
-                    shouldPlay = shouldPlay && recurrenceCheck(note.recurrence, previousNotePlayed[note.noteNumber]);
+                    shouldPlay = shouldPlay && recurrenceDecision[i];
 
                 if (!shouldPlay)
                 {
-                    if (activeNotes[adjustedNoteNumber])
+                    if (noteActive[i])
                     {
                         midiMessages.addEvent(juce::MidiMessage::noteOff(channel, adjustedNoteNumber, 0.0f), 0);
-                        activeNotes[adjustedNoteNumber] = false;
+                        noteActive[i] = false;
+                        if (pitchOwner[adjustedNoteNumber] == i)
+                        {
+                            activeNotes[adjustedNoteNumber] = false;
+                            pitchOwner[adjustedNoteNumber] = -1;
+                        }
                     }
                     previousNotePlayed[note.noteNumber] = false;
                     continue;
@@ -202,19 +225,21 @@ for (int i = 0; i < count; ++i)
                     }
                     if (inRepeat)
                     {
-                        if (!activeNotes[adjustedNoteNumber])
+                        if (!noteActive[i])
                         {
                             float adjustedVelocity = note.velocity * gain.load() * note.noteGain;
                             adjustedVelocity = (std::max)(0.0f, (std::min)(1.0f, adjustedVelocity));
                             uint8_t velByte = static_cast<uint8_t>(adjustedVelocity * 127.0f);
                             midiMessages.addEvent(juce::MidiMessage::noteOn(channel, adjustedNoteNumber, velByte), 0);
+                            noteActive[i] = true;
                             activeNotes[adjustedNoteNumber] = true;
+                            pitchOwner[adjustedNoteNumber] = i;
 
-if (note.notePan != 0.0f) {
-                int panCC = 64 + static_cast<int>(note.notePan * 64.0f);
-                panCC = juce::jlimit(0, 127, panCC);
-                midiMessages.addEvent(juce::MidiMessage::controllerEvent(channel, 10, panCC), 0);
-            }
+                            if (note.notePan != 0.0f) {
+                                int panCC = 64 + static_cast<int>(note.notePan * 64.0f);
+                                panCC = juce::jlimit(0, 127, panCC);
+                                midiMessages.addEvent(juce::MidiMessage::controllerEvent(channel, 10, panCC), 0);
+                            }
                             if (note.noteTimbre != 0.5f) {
                                 int timbreCC = static_cast<int>(note.noteTimbre * 127.0f);
                                 timbreCC = juce::jlimit(0, 127, timbreCC);
@@ -229,23 +254,30 @@ if (note.notePan != 0.0f) {
                     }
                     else
                     {
-                        if (activeNotes[adjustedNoteNumber])
+                        if (noteActive[i])
                         {
                             midiMessages.addEvent(juce::MidiMessage::noteOff(channel, adjustedNoteNumber, 0.0f), 0);
-                            activeNotes[adjustedNoteNumber] = false;
+                            noteActive[i] = false;
+                            if (pitchOwner[adjustedNoteNumber] == i)
+                            {
+                                activeNotes[adjustedNoteNumber] = false;
+                                pitchOwner[adjustedNoteNumber] = -1;
+                            }
                         }
                     }
                     previousNotePlayed[note.noteNumber] = true;
                     continue;
                 }
 
-                if (!activeNotes[adjustedNoteNumber])
+                if (!noteActive[i])
                 {
                     float adjustedVelocity = note.velocity * gain.load() * note.noteGain;
                     adjustedVelocity = (std::max)(0.0f, (std::min)(1.0f, adjustedVelocity));
                     uint8_t velByte = static_cast<uint8_t>(adjustedVelocity * 127.0f);
                     midiMessages.addEvent(juce::MidiMessage::noteOn(channel, adjustedNoteNumber, velByte), 0);
+                    noteActive[i] = true;
                     activeNotes[adjustedNoteNumber] = true;
+                    pitchOwner[adjustedNoteNumber] = i;
 
                     if (note.notePan != 0.0f) {
                         int panCC = 64 + static_cast<int>(note.notePan * 64.0f);
@@ -265,10 +297,15 @@ if (note.notePan != 0.0f) {
                 }
                 previousNotePlayed[note.noteNumber] = true;
             }
-            else if (activeNotes[adjustedNoteNumber])
+            else if (noteActive[i])
             {
                 midiMessages.addEvent(juce::MidiMessage::noteOff(channel, adjustedNoteNumber, 0.0f), 0);
-                activeNotes[adjustedNoteNumber] = false;
+                noteActive[i] = false;
+                if (pitchOwner[adjustedNoteNumber] == i)
+                {
+                    activeNotes[adjustedNoteNumber] = false;
+                    pitchOwner[adjustedNoteNumber] = -1;
+                }
             }
         }
 
@@ -396,6 +433,8 @@ private:
     std::atomic<int> midiChannel{ 1 }; // 1-16 = specific MIDI channel
     uint8_t lastCcByte = 255;
     std::array<bool, 128> activeNotes{};
+    std::array<bool, MAX_NOTES> noteActive{};
+    std::array<int, 128> pitchOwner{ -1 };
     std::array<bool, 128> previousNotePlayed{};
     std::atomic<uint64_t> clipSeed{0};
 

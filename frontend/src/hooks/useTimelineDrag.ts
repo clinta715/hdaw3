@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useMemo } from "react";
+import { useAutoScroll } from "./useAutoScroll";
 import type { ClipSnapshot } from "../rpc/types";
 import type { RpcClient } from "../rpc/client";
 import type { DragState } from "../utils/timelineConstants";
@@ -61,6 +62,7 @@ export function useTimelineDrag({
   rpc,
   engagementRef,
 }: UseTimelineDragParams): UseTimelineDragReturn {
+  const autoScroll = useAutoScroll(tracksRef);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
 
@@ -117,6 +119,7 @@ export function useTimelineDrag({
           useUiStore.getState().setStatusHint("Drag: move · Ctrl+drag: duplicate · Alt+drag: stretch · Shift: toggle snap");
           updateDrag(pendingDrag);
         }
+        autoScroll.update(ev.clientX, ev.clientY);
         handleMouseMoveRef.current(ev);
       };
       const onUp = () => {
@@ -124,6 +127,7 @@ export function useTimelineDrag({
         window.removeEventListener("mouseup", onUp);
         engagementRef.current = "none";
         useUiStore.getState().setStatusHint(null);
+        autoScroll.stop();
         if (engaged) {
           handleMouseUpRef.current();
         }

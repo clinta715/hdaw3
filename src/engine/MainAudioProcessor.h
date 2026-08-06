@@ -41,7 +41,7 @@ public:
     void rebuildMidiTrackFX(int trackIndex);
     void rebuildModulation(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
-    void rebuildRoutingGraph();
+    void rebuildRoutingGraph(bool loading = false);
     void rebuildAutomationCache(int trackIndex);
     void updateClipGainEnvelope(int clipId, const std::vector<HDAW::ClipSourceProcessor::GainPoint>& points);
 

@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include <atomic>
+#include <mutex>
 
 namespace proxy { class PluginProxySlot; }
 
@@ -71,6 +72,9 @@ public:
 
     void killProxyForTesting(uint32_t slotId);
 
+    void registerSlotTrackIndex(uint32_t slotId, int trackIndex);
+    int  slotTrackIndex(uint32_t slotId) const;   // returns -1 if unknown
+
 private:
     void onScanFinished();
     void timerCallback() override;
@@ -95,6 +99,8 @@ private:
 
     std::unique_ptr<CrashRecoveryManager> crashRecovery;
     std::unordered_map<uint32_t, proxy::PluginProxySlot*> liveProxySlots;
+    mutable std::mutex slotTrackMutex_;
+    std::unordered_map<uint32_t, int> slotTrackIndex_;  // proxy slotId -> owning track index
     juce::SpinLock* graphLockPtr = nullptr;
     double lastSampleRate = 44100.0;
     int lastBlockSize = 512;

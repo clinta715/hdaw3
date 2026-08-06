@@ -134,6 +134,10 @@ public:
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
+    // Returns the isolated plugin's proxy slot id, or -1 if this slot is not an
+    // isolated/external-proxy plugin.
+    int proxySlotId() const;
+
     struct ParamInfo {
         juce::String name;
         int index;

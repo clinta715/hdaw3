@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
 #include "../engine/PluginManager.h"
+#include "../proxy/PluginProxySlot.h"
 
 // ─── ProjectCommands — FX operations ──────────────────────────────
 
@@ -130,6 +131,45 @@ void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type,
     {
         slot.setProperty(IDs::lengthFactor, 1.0, &um);
     }
+    else if (type == "transpose")
+    {
+        slot.setProperty(IDs::semitones, 0, &um);
+    }
+    else if (type == "keyfilter")
+    {
+        slot.setProperty(IDs::keyFilterRoot, 0, &um);
+        slot.setProperty(IDs::keyFilterScale, 0, &um);
+    }
+    else if (type == "multinote")
+    {
+        slot.setProperty(IDs::multiNoteIntervals, juce::String("0,7,12"), &um);
+    }
+    else if (type == "velocitycurve")
+    {
+        slot.setProperty(IDs::curveType, 0, &um);
+        slot.setProperty(IDs::curveAmount, 0.5, &um);
+    }
+    else if (type == "notechance")
+    {
+        slot.setProperty(IDs::noteChance, 1.0, &um);
+    }
+    else if (type == "mididelay")
+    {
+        slot.setProperty(IDs::delayBeats, 0.25, &um);
+        slot.setProperty(IDs::delayFeedback, 0.0, &um);
+        slot.setProperty(IDs::delayMix, 0.5, &um);
+    }
+    else if (type == "humanize")
+    {
+        slot.setProperty(IDs::humanizeTiming, 0.0, &um);
+        slot.setProperty(IDs::humanizeVelocity, 0.0, &um);
+        slot.setProperty(IDs::humanizePitch, 0.0, &um);
+    }
+    else if (type == "strum")
+    {
+        slot.setProperty(IDs::strumTime, 0.02, &um);
+        slot.setProperty(IDs::strumDirection, 0, &um);
+    }
 
     int n = chain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
@@ -155,6 +195,17 @@ void AudioEngineCommands::setMidiFxSlotBypassed(int trackIndex, int slotIndex, b
     auto slot = findMidiFxSlot(trackIndex, slotIndex);
     if (slot.isValid())
         slot.setProperty(IDs::bypassed, bypassed, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildMidiTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setMidiFxSlotParam(int trackIndex, int slotIndex,
+                                              const std::string& paramName, double value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findMidiFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+    slot.setProperty(juce::Identifier(paramName), value, &um);
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildMidiTrackFX(trackIndex);
 }
@@ -230,11 +281,34 @@ void AudioEngineCommands::setFxSlotPlugin(int trackIndex, int slotIndex,
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (!slot.isValid()) return;
 
+    const bool pluginChanged = slot.getProperty(IDs::pluginID).toString() != juce::String(pluginID);
+
     slot.setProperty(IDs::fxType, juce::String(fxType), &um);
     slot.setProperty(IDs::pluginID, juce::String(pluginID), &um);
     slot.setProperty(IDs::pluginFormat, juce::String(pluginFormat), &um);
     slot.setProperty(IDs::pluginPath, juce::String(pluginPath), &um);
 
+    if (pluginChanged)
+    {
+        slot.removeProperty(IDs::pluginState, &um);
+        slot.removeProperty(juce::Identifier("pluginStateB"), &um);
+    }
+
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::respawnFxSlot(int trackIndex, int slotIndex)
+{
+    auto* proc = engine_.getMainProcessor();
+    if (!proc) return;
+    auto* track = proc->getTrack(trackIndex);
+    if (!track) return;
+    auto& chain = track->getFXChain();
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(chain.size())) return;
+    auto* slot = chain[static_cast<size_t>(slotIndex)].get();
+    if (!slot) return;
+    auto* proxy = dynamic_cast<proxy::PluginProxySlot*>(slot->getPluginInstance());
+    if (!proxy) return;
+    engine_.getPluginManager().recovery().requestRespawn(proxy->getSlotId(), true);
 }
