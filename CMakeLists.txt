@@ -300,6 +300,13 @@ if(HDAW_PLUGIN_ISOLATION)
         src/proxy/host/PluginHost.cpp
     )
     target_include_directories(hdaw_plugin_host PRIVATE src)
+    if(MSVC)
+        # /EHa: convert SEH faults raised inside plugin processBlock into C++
+        # exceptions so the audioLoop try/catch (SIL CRASH containment) really
+        # fires. Without it the crash lands in the process-wide handler
+        # (Rip+1 resume loop / WER termination) instead of being swallowed.
+        target_compile_options(hdaw_plugin_host PRIVATE /EHa)
+    endif()
     target_link_libraries(hdaw_plugin_host PRIVATE
         HDAW_lib
         juce::juce_audio_processors
