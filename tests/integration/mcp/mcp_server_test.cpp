@@ -542,30 +542,32 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// TEMPORARY DIAGNOSTIC TEST — answers "is isolated-CLAP export silence
-// specific to Xenia/Altitude or universal?"
+// Stress-test of the crash-recovery / slot-migration path during export.
 //
-// Runs the exact same pipeline as ExportAudioWithClapPluginDoesNotHang
-// (add_track_with_fx → generate_phrase → export_audio → WAV peak scan)
-// against MANY installed CLAP instruments, one fresh project each.
+// STATUS: the respawn->migrate shm use-after-free it originally targeted IS
+// CLOSED for the LIVE audio path: `PluginManager::respawnIsolatedSlot` now
+// holds graphLock across `killPluginHost` (the free) AND `migrateToNewSlot`
+// (the shmHandle swap), and `MainAudioProcessor::processBlock` tryEnters that
+// same lock, so the live audio thread can no longer read the freed region.
+// See `CrashRecovery.RespawnDuringActiveProcessing` for the regression gate.
 //
-// All results are also written to %TEMP%\hdaw_debug.log under the "DiagMatrix"
-// tag so they correlate with the child-side tags (CLAPHost / ClapDiag /
-// plugin_host) produced by hdaw_plugin_host.exe.
-//
-// NOTE: this test is intentionally fail-on-silence (EXPECT_GT per plugin) so
-// the gtest failure summary doubles as the discovery table. It is meant to be
-// REMOVED once the export-silence root cause is identified. It does not modify
-// any production code.
+// This test stays DISABLED, however, because the EXPORT path it exercises has
+// TWO further, separate issues that crash/fail it and are out of scope for the
+// respawn-UAF fix:
+//   1. Proxy-lifetime UAF: ExportManager::renderThreadFunc tears down its own
+//      renderGraph (destroying the proxy), but PluginProxySlot's destructor
+//      does NOT erase itself from PluginManager::liveProxySlots. A CrashRecovery
+//      respawn already enqueued for that slot then dereferences the destroyed
+//      proxy -> 0xC0000005. (Observed: Odin2 exports, then its child crashes,
+//      respawn fires post-teardown on the dangling slot entry.)
+//   2. The export render thread (renderGraph.processBlock) does not take
+//      graphLock, so the shm free+swap can still race it for an in-flight
+//      export. (Not the crash here, but a latent gap.)
+//   3. Some CLAP instruments (e.g. Odin2) still render silence on isolated
+//      export (peak=0), which would fail the per-plugin EXPECT_GT regardless.
+// Re-enable once the export-path proxy deregistration + render-thread locking
+// are addressed (and the export-silence issue for affected plugins is fixed).
 // ────────────────────────────────────────────────────────────────────────────
-// DISABLED: this stress-test exercises the crash-recovery / slot-migration
-// path (`PluginManager::respawnIsolatedSlot` → `PluginProxySlot::migrateToNewSlot`),
-// which has a latent use-after-free on the dangling `shmHandle` after
-// `killPluginHost` frees the underlying `ShmRegion`. Before the message
-// pump was added the CrashRecovery timer never fired, so the bug was masked;
-// the pump now drives `TimerThread`, exposing it. The single-plugin export
-// path (see `ExportAudioWithClapPluginDoesNotHang`) does not trigger respawn,
-// so it stays green; re-enable once the migrateToNewSlot UAF is fixed.
 TEST(McpServer, DISABLED_DiagnosticClapExportMatrix) {
     AudioEngine engine;
     engine.initialize();

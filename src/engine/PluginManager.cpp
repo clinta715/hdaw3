@@ -733,8 +733,10 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 
     auto* proxy = it->second;
 
-    proxyProcessManager.killPluginHost(oldSlotId, proxy::KillMode::KillHard);
-
+    // 1. Spawn the NEW host first, OUTSIDE the lock. Process creation is slow;
+    //    holding graphLock across spawn would starve the audio callback. The
+    //    capacity==0 guard in PluginProxySlot::processBlock safely returns
+    //    silence until PREPARE lands on the new region, so this gap is benign.
     auto newSlotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
 
     if (!proxyProcessManager.spawnPluginHost(pluginPath.toStdString(), newSlotId))
@@ -744,18 +746,34 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
         [proxy](uint32_t) { proxy->onChildCrashed(); });
 
     auto* rawShm = proxyProcessManager.getShm(newSlotId);
-    if (!rawShm) return false;
+    if (!rawShm) {
+        // Don't leak the just-spawned child on shm-attach failure.
+        proxyProcessManager.killPluginHost(newSlotId, proxy::KillMode::KillHard);
+        return false;
+    }
 
     auto newShm = std::shared_ptr<proxy::ShmRegion>(rawShm, [](proxy::ShmRegion*){});
 
-    // Acquire graphLock to synchronize with the audio thread. The audio
-    // callback does tryEnter(graphLock) in MainAudioProcessor::processBlock;
-    // if it fails, it skips graph processing (returns silence). This ensures
-    // migrateToNewSlot's shared_ptr assignment doesn't race with the audio
-    // thread reading shmHandle.
+    // 2. Under graphLock: kill the old host (which FREES the old ShmRegion via
+    //    the child-map erase) and migrate (swap shmHandle to the new region)
+    //    as one atomic step invisible to the audio thread. The audio callback
+    //    does tryEnter(graphLock) in MainAudioProcessor::processBlock; on
+    //    failure it skips graph processing (returns silence), so it can never
+    //    read the freed old shmHandle in the window between kill and migrate.
+    //    This is the core fix: previously the lock was taken only around
+    //    migrateToNewSlot, leaving the kill (the actual free) racing the audio
+    //    thread's shmHandle dereference -> use-after-free. KillHard is an
+    //    immediate TerminateProcess; in the crash-recovery path the child is
+    //    already dead so the internal wait returns instantly, keeping this
+    //    critical section sub-millisecond (no allocation / IPC under the lock).
     if (graphLockPtr) graphLockPtr->enter();
+    proxyProcessManager.killPluginHost(oldSlotId, proxy::KillMode::KillHard);
     proxy->migrateToNewSlot(newSlotId, newShm);
     if (graphLockPtr) graphLockPtr->exit();
+
+    // 3. State restore + prepareToPlay use bounded IPC (up to ~5s) and must
+    //    NOT hold graphLock (that would starve the audio thread). The
+    //    capacity==0 guard above keeps processBlock silent until PREPARE lands.
 
     auto stateBlock = proxy::PluginProxySlot::loadStateForOldSlotId(oldSlotId);
     if (stateBlock.getSize() > 0)
