@@ -10,7 +10,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.13.1** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.15.1** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -28,11 +28,12 @@ pitfall, search the relevant file; for architecture start with
 | File | Contents |
 |------|----------|
 | [`docs/architecture.md`](docs/architecture.md) | Build, version management, key classes, GUI-engine decoupling, frontend architecture, timestretch, JUCE 9 migration, **beats-vs-seconds unit convention** |
-| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation (default ON), **transport-stopped early-out (audio buzz), auto-stop / projectEndSample staleness, latency evaluation, quality/fidelity evaluation** |
+| [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation (default ON), **transport-stopped early-out (audio buzz) + idle-child stall-detector false-positives, auto-stop / projectEndSample staleness + play() re-entry race, message pump for headless/test processes, AudioProcessorGraph thread-safety / pump-park, DSP-state listener races, latency evaluation, quality/fidelity evaluation** |
 | [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup** |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads, **vertical fader `direction: reverse` invalid** |
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest suite, TransportLoopback test seam, MCP server architecture, MCP tool safety, file browser audio preview |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
+| [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
 
 ## Lessons learned
 
@@ -113,6 +114,66 @@ These cost real debugging time — read before touching the relevant area:
     in the rebuild path (`addTrack` uses `Track::restoreMixerState`), and cover the
     seam with a test that mutates state, rebuilds, and asserts the **live processor**
     (`getMainProcessor()->getTrack(idx)`) — see `track_mixer_state_test.cpp`.
+
+11. **Every non-GUI process (headless, tests, offline render) MUST start a JUCE
+    message pump before any JUCE construction.** JUCE 8's `AudioProcessorGraph`
+    bakes its render sequence asynchronously on the message thread; without a
+    pump, `processBlock` takes its `audio.clear()` fallback and every export
+    renders **silence**. Worse, the first `MessageManager::getInstance()` caller
+    (often the export render thread) wins `messageThreadId` + the hidden window;
+    when that thread exits it orphans the queue, and `AudioEngine::shutdown()`'s
+    `MessageManagerLock` then waits on an undeliverable `BlockingMessage` →
+    **hang forever**. `MessagePumpThread` is started as the first statement of
+    `main`/`main_headless`/`test_main`. See `docs/postmortem-silent-clap-export.md`.
+
+12. **`AudioProcessorGraph` is not thread-safe; every graph mutation from a
+    non-message thread must park the pump — and a `MessageManagerLock` taken ON
+    the message thread self-deadlocks.** The graph's internal `LockingAsyncUpdater`
+    dispatches on the pump thread and iterates the **live node list**, concurrent
+    with HDAW's own `graph.clear()` + rebuild on the command/MCP/test thread →
+    use-after-free of freed nodes. `MainAudioProcessor::rebuildRoutingGraph` is the
+    reference: it parks the pump via `MessageManagerLock` for the duration,
+    guarded by `!isThisTheMessageThread()` (taking the lock on the message thread
+    itself waits for its own dispatch → deadlock). Any new non-message-thread
+    graph mutation must follow this pattern. See `docs/postmortem-silent-clap-export.md` §6.
+
+13. **Every DSP-state write from a listener/command must hold `stateLock` — it
+    was only safe before the pump because everything ran on one thread.** The
+    `valueTreePropertyChanged` FX-slot `param_N` listener wrote `*eq->state`
+    while the pump's `Track::prepareToPlay`→`TrackFXSlot::prepare` **recreated
+    (and freed)** the EQ DSP under `stateLock` → write-after-free. Fix: the
+    stateLock-guarded `Track::setFxSlotInternalParam`. **General rule:** any
+    listener or command that touches a processor's DSP objects or vectors (EQ,
+    filters, FX chain, automation, modulation) is now a candidate race — guard
+    iteration with the `prepareToPlay` `stateLock.tryEnter()` idiom and writes
+    with a dedicated lock. See `docs/realtime-safety.md`,
+    `docs/valuetree-listener-contract.md`.
+
+14. **Cross-process (isolated-plugin) boundaries silently truncate and race —
+    assume fixed-size messages lose data and any cross-thread handle swap races
+    the audio thread.** The 256-byte proxy pipe message truncated plugin state to
+    244 bytes on every FX rebuild (→ "preset corrupted", persisted into saves);
+    `getStateInformation` reading `resp.dataSize` bytes out of a 244-byte buffer
+    hung the message thread. Fixes: chunked `STATE_CHUNK` transfer + bounds-check
+    `dataSize` on both sides. `migrateToNewSlot` swaps a `shared_ptr` the audio
+    thread reads concurrently → must hold `graphLock`. Scratch buffers allocated
+    at a constructor default (512) before `PREPARE` set the real block size (441)
+    → ~1.16× **pitch-up** — resize on `PREPARE`. Crash-recovery respawn must
+    carry `desc.fileOrIdentifier` or the child exits code 1. See
+    `docs/realtime-safety.md`, `docs/postmortem-silent-clap-export.md`.
+
+15. **The auto-stop flag and the stale-`.obj` build trap both make "the source
+    says X" unreliable.** The audio thread sets `isPlaying=false` +
+    `autoStopRequested` immediately, but the ValueTree lags ~50 ms (timer sync);
+    a Play pressed in that window was a silent no-op (lesson 2: `setProperty`
+    unchanged) then killed by the stale auto-stop — `play()` now consumes the
+    pending auto-stop first. Separately: MSBuild skipped recompiling
+    `test_main.cpp` because the source was older than its `.obj`, so the linked
+    test binary's `main()` never called the pump while the source said it did.
+    After editing entry points (`*_main.cpp`) or when a fix "doesn't take,"
+    verify the **binary** contains the change (`.obj` timestamps / a breakpoint
+    probe), not the source. See `docs/realtime-safety.md`,
+    `docs/postmortem-silent-clap-export.md` §4.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
