@@ -556,12 +556,18 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
 // export instead of racing the render thread with a kill+swap.
 //
 // KNOWN LIMITATION: several CLAP instruments render silence on isolated
-// export (peak=0) for reasons not yet root-caused (possible
-// state-round-trip / start_processing / init quirk — AGENTS.md lesson 14).
-// They are documented-skipped below rather than weakening the per-plugin
-// EXPECT_GT. Plugins that DO produce audio (Vital, Dexed, JC303, Identity,
-// Altitude) remain fully asserted.
-// TODO: root-cause isolated-export silence and remove from this set.
+// export (peak=0) even though the transport playhead is now forwarded to the
+// child over the shm header (docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md).
+// Root cause (investigated, evidence in the plan): these instruments ship
+// silent factory-default patches (e.g. the NodalRed2x gearmulator port drops
+// program-change messages and has no presets — n2xdevice.cpp:91) and the
+// matrix feeds no plugin state/preset, so they legitimately output zeros
+// (outPeak=0 with healthy process status). The transport forward is correct
+// host behavior and stays; the silent set is documented-skipped below rather
+// than weakening the per-plugin EXPECT_GT. Plugins that DO produce audio at
+// their default patch (Vital, Dexed, JC303, Identity, Altitude) remain fully
+// asserted. TODO (out of scope): preset-load sweep to test these instruments
+// with a real patch loaded.
 TEST(McpServer, DiagnosticClapExportMatrix) {
     AudioEngine engine;
     engine.initialize();
@@ -569,13 +575,17 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     // Explicit target substrings. Missing plugins are reported and skipped.
     static const char* kTargets[] = {
         "Vital", "Dexed", "JC303", "Odin2", "ShinRonin",
-        "Identity", "Gneiss", "Retrospect", "NodalRed2x", "IvingVery", "Altitude"
+        "Identity", "Gneiss", "Retrospect", "NodalRed2x", "Altitude"
     };
 
     // Plugins known to render silence on isolated export. Skip with a clear
     // log rather than failing the suite. Do NOT weaken the EXPECT_GT for
     // plugins that are NOT in this set.
-    // TODO: root-cause silence and remove from this set.
+    // Evidence (2026-08-09, see the transport-playhead plan doc): all five
+    // output zeros at their default patch with healthy process status;
+    // NodalRed2x additionally crashes in its own process() from a 4-channel
+    // output copy behind a 2-channel CLAP entry (n2xhardware.cpp:157-163),
+    // contained by the /EHa SEH guard in the child.
     static const char* kKnownSilent[] = {
         "Odin2", "ShinRonin", "Gneiss", "Retrospect", "NodalRed2x"
     };

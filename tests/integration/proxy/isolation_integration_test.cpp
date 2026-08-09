@@ -475,6 +475,125 @@ TEST(PluginIsolation, ProcessBlockWithSharedMemory) {
 }
 
 // ========================================================================
+// Transport playhead handoff (parent PluginProxySlot → child PluginHost)
+// ========================================================================
+
+namespace {
+// Local playhead mimicking InternalPlayHead's field set, so the test observes
+// exactly what PluginProxySlot::processBlock packs (production code path).
+struct TestPlayHead : public juce::AudioPlayHead {
+    bool playing = false;
+    double bpm = 120.0;
+    double seconds = 0.0;
+    double ppq = 0.0;
+    double sampleRate = 44100.0;
+
+    juce::Optional<PositionInfo> getPosition() const override {
+        PositionInfo info;
+        info.setTimeSignature(juce::AudioPlayHead::TimeSignature{4, 4});
+        info.setIsPlaying(playing);
+        info.setTimeInSeconds(seconds);
+        info.setTimeInSamples(static_cast<int64_t>(seconds * sampleRate));
+        info.setBpm(bpm);
+        info.setPpqPosition(ppq);
+        return info;
+    }
+};
+
+// Must match TransportProbeProcessor::ProbePayload in PluginHost.cpp.
+struct ProbePayload {
+    uint32_t isPlaying;
+    float bpm;
+    double seconds;
+    double ppq;
+};
+
+// Pushes one block through the slot and decodes the transport-probe payload
+// the child echoes in channel 0 of its output.
+bool pushBlockAndReadProbe(PluginProxySlot& slot, ShmRegion* shm,
+                           ProbePayload& out) {
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    slot.processBlock(buffer, midi);
+
+    auto* hdr = shm->getHeader();
+    uint32_t totalSamples = hdr->blockSize * hdr->numChannels;
+    int retries = 200;
+    while (retries-- > 0) {
+        uint32_t ow = hdr->outputWritePos.load(std::memory_order_acquire);
+        uint32_t or_ = hdr->outputReadPos.load(std::memory_order_relaxed);
+        if (ow - or_ >= totalSamples) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (retries < 0) return false;
+    std::vector<float> output(totalSamples, 0.0f);
+    if (!shm->readOutput(output.data(), totalSamples)) return false;
+    std::memcpy(&out, output.data(), sizeof(ProbePayload));
+    return true;
+}
+} // namespace
+
+TEST(PluginIsolation, TransportClockHandoff) {
+    // Full production pipeline: PluginProxySlot::processBlock packs the
+    // playhead into the shm header, the isolated child snapshots it into its
+    // ChildPlayHead, and the hosted TransportProbeProcessor echoes what
+    // getPlayHead() reported back through the audio ring.
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("__transportprobe__", 9061);
+    ASSERT_TRUE(spawned) << "child host should start with the transport probe";
+
+    for (int i = 0; i < 100 && !mgr.isAlive(9061); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(9061)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(9061);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    // Constructing the slot binds its shmHandle from the manager's registry.
+    PluginProxySlot slot(mgr, 9061, "TestPlugin");
+    slot.prepareToPlay(44100.0, 512);
+
+    TestPlayHead ph;
+    slot.setPlayHead(&ph);
+
+    // Wait for the child to announce its initialized header (PREPARE handled).
+    int retries = 100;
+    while ((hdr->numChannels == 0 || hdr->capacity == 0) && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "child should init shm after PREPARE";
+
+    // Phase 1 — transport stopped: the probe must report isPlaying=0 with the
+    // forwarded (default) tempo — not a missing playhead.
+    ProbePayload p1{};
+    ASSERT_TRUE(pushBlockAndReadProbe(slot, shm, p1))
+        << "child should process the block and echo the probe payload";
+    EXPECT_EQ(p1.isPlaying, 0u);
+    EXPECT_FLOAT_EQ(p1.bpm, 120.0f);
+    EXPECT_DOUBLE_EQ(p1.seconds, 0.0);
+    EXPECT_DOUBLE_EQ(p1.ppq, 0.0);
+
+    // Phase 2 — transport playing with distinctive state: all fields must
+    // arrive bit-exact (IEEE patterns travel the shm header unmodified).
+    ph.playing = true;
+    ph.bpm = 137.5;
+    ph.seconds = 3.25;
+    ph.ppq = 6.5;
+    ProbePayload p2{};
+    ASSERT_TRUE(pushBlockAndReadProbe(slot, shm, p2))
+        << "child should process the block and echo the probe payload";
+    EXPECT_EQ(p2.isPlaying, 1u);
+    EXPECT_FLOAT_EQ(p2.bpm, 137.5f);
+    EXPECT_DOUBLE_EQ(p2.seconds, 3.25);
+    EXPECT_DOUBLE_EQ(p2.ppq, 6.5);
+
+    mgr.killPluginHost(9061, KillMode::KillHard);
+}
+
+// ========================================================================
 // DLL loading tests (real VST3 plugin via child process)
 // ========================================================================
 
