@@ -188,13 +188,16 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                 if (stateStr.isNotEmpty())
                 {
                     juce::MemoryBlock state;
-                    if (state.fromBase64Encoding(stateStr))
+                    const bool decOk = state.fromBase64Encoding(stateStr);
+                    if (decOk)
                         slot->getPluginInstance()->setStateInformation(state.getData(),
                             static_cast<int>(state.getSize()));
                 }
 
                 if (fxSpec.sampleRate > 0)
+                {
                     slot->prepare(fxSpec);
+                }
 
                 if (wantIsolated && pluginManager) {
                     int sid = slot->proxySlotId();
@@ -383,6 +386,22 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
     if (auto* ph = getPlayHead())
     {
         auto pos = ph->getPosition();
+        // Forward the transport playhead to hosted plugin instances: the
+        // graph sets it on THIS Track node (AudioProcessorGraph::NodeOp
+        // does processor.setPlayHead per block), but TrackFXSlot is not a
+        // graph node, so the plugins inside it never receive a playhead and
+        // CLAP transport clock events never fire. Mirror the graph's
+        // per-block setPlayHead pattern — cheap pointer assignment, and the
+        // playhead behind it always reads live transport state.
+        // Diagnostic knob: HDAW_NO_PLAYHEAD_FORWARD=1 disables forwarding
+        // (reproduces the pre-forward condition for comparison).
+        static const bool noForward = juce::SystemStats::getEnvironmentVariable("HDAW_NO_PLAYHEAD_FORWARD", "") == "1";
+        if (pos && !noForward)
+        {
+            for (const auto& slot : fxChain)
+                if (slot)
+                    slot->forwardPlayHead(ph);
+        }
         if (pos && pos->getIsPlaying())
         {
             double timeSec = pos->getTimeInSeconds().orFallback(0.0);

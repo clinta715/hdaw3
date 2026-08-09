@@ -285,6 +285,18 @@ public:
         }
     }
 
+    void forwardPlayHead(juce::AudioPlayHead* ph)
+    {
+        // TrackFXSlot is not an AudioProcessorGraph node, so the graph's
+        // per-block setPlayHead (NodeOp::process) never reaches the hosted
+        // plugin instance. Track::processBlock forwards its own playhead
+        // here so both in-process CLAP instances and isolated PluginProxySlot
+        // children can feed the plugin transport clock. Pointer assignment
+        // only — safe on the audio thread (mirrors the graph's own pattern).
+        if (isExternal && pluginInstance)
+            pluginInstance->setPlayHead(ph);
+    }
+
     void process(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
     {
         if (bypassed.load(std::memory_order_relaxed)) return;

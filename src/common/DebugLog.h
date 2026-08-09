@@ -6,6 +6,13 @@
 #include <chrono>
 #include <ctime>
 #include <string>
+#include <vector>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace DebugLog {
     inline std::ofstream& logFile() {
@@ -41,13 +48,49 @@ namespace DebugLog {
         return m;
     }
 
+    inline int currentPid() {
+#ifdef _WIN32
+        return static_cast<int>(::GetCurrentProcessId());
+#else
+        return 0;
+#endif
+    }
+
     inline std::string toLogString(const char* s) { return s ? s : ""; }
     inline std::string toLogString(const std::string& s) { return s; }
 
     template<typename T>
     auto toLogString(const T& s) -> decltype(s.toStdString()) { return s.toStdString(); }
 
+    inline bool tagAllowed(const std::string& tag) {
+        static std::vector<std::string> allowed = [] {
+            std::vector<std::string> v;
+            if (const char* envVar = std::getenv("HDAW_LOG_TAGS"))
+            {
+                std::string s(envVar);
+                size_t pos = 0;
+                while (pos < s.size())
+                {
+                    size_t comma = s.find(',', pos);
+                    if (comma == std::string::npos)
+                    {
+                        v.push_back(s.substr(pos));
+                        break;
+                    }
+                    v.push_back(s.substr(pos, comma - pos));
+                    pos = comma + 1;
+                }
+            }
+            return v;
+        }();
+        if (allowed.empty()) return true;
+        for (const auto& a : allowed)
+            if (tag.compare(0, a.size(), a) == 0) return true;
+        return false;
+    }
+
     inline void log(const std::string& tag, const std::string& message) {
+        if (!tagAllowed(tag)) return;
         std::lock_guard<std::mutex> locker(logMutex());
         std::ofstream& f = logFile();
         if (f.is_open()) {

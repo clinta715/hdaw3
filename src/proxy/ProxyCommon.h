@@ -4,7 +4,7 @@
 
 namespace proxy {
 
-constexpr uint32_t SHM_MAGIC = 0x4844415A; // bumped 2026-08-05 for param set/notify SPSC rings (was "HDAW"+2)
+constexpr uint32_t SHM_MAGIC = 0x4844415B; // bumped 2026-08-09 for transport playhead forwarding (was "HDAZ" for param set/notify SPSC rings)
 
 constexpr uint32_t PARAM_RING_SIZE = 256;
 
@@ -107,6 +107,25 @@ struct ShmHeader {
     std::atomic<uint32_t> paramSetReadPos{0};
     std::atomic<uint32_t> paramNotifyWritePos{0};
     std::atomic<uint32_t> paramNotifyReadPos{0};
+
+    // ── Transport clock snapshot (playhead forward). ────────────────────────
+    // The parent (PluginProxySlot::processBlock, live audio thread AND export)
+    // reads its AudioPlayHead each block and packs the transport state below;
+    // the child (hdaw_plugin_host) snapshots it into its own AudioPlayHead.
+    // transportRevision is the "new data" signal: the parent release-stores an
+    // incremented revision AFTER writing every field, the child acquire-loads
+    // it and only copies the fields when the value changed. An unchanged
+    // revision means "no new info" — the child keeps its last snapshot (which
+    // starts out as a stopped-transport default). Wraps naturally at 2^32;
+    // unused wrap is fine over a session. Parent is the single writer, child
+    // the single reader — no locks, plain bit-pattern values (no pointers).
+    std::atomic<uint32_t> transportRevision{0};
+    uint32_t transportPlaying;     // 1 = transport running, 0 = stopped
+    uint32_t transportTempoBits;   // IEEE 754 single-precision bits (BPM)
+    uint64_t transportSecondsBits; // IEEE 754 double bits (time in seconds)
+    uint64_t transportPpqBits;     // IEEE 754 double bits (PPQ position)
+    uint32_t transportTsigNum;     // time-signature numerator (default 4)
+    uint32_t transportTsigDenom;   // time-signature denominator (default 4)
 };
 
 struct MidiEvent {

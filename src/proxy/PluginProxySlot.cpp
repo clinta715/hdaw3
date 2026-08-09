@@ -343,6 +343,37 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         buffer.clear();
         return;
     }
+
+    // Transport clock forward: snapshot the engine playhead into the shm
+    // header (lock-free, allocation-free — audio thread + export render).
+    // Fields are written first, revision release-stored last so the child
+    // sees a consistent snapshot. No playhead / no position → revision
+    // unchanged → child interprets it as "no new info" and keeps its last
+    // snapshot (a stopped-transport default if never populated).
+    if (auto* ph = getPlayHead())
+    {
+        if (auto pos = ph->getPosition())
+        {
+            const float tempo = pos->getBpm().orFallback(120.0);
+            const double seconds = pos->getTimeInSeconds().orFallback(0.0);
+            const double ppq = pos->getPpqPosition().orFallback(0.0);
+            uint32_t tempoBits = 0;
+            uint64_t secondsBits = 0, ppqBits = 0;
+            std::memcpy(&tempoBits, &tempo, sizeof(tempo));
+            std::memcpy(&secondsBits, &seconds, sizeof(seconds));
+            std::memcpy(&ppqBits, &ppq, sizeof(ppq));
+            hdr->transportPlaying = pos->getIsPlaying() ? 1u : 0u;
+            hdr->transportTempoBits = tempoBits;
+            hdr->transportSecondsBits = secondsBits;
+            hdr->transportPpqBits = ppqBits;
+            hdr->transportTsigNum = 4;
+            hdr->transportTsigDenom = 4;
+            hdr->transportRevision.store(
+                hdr->transportRevision.load(std::memory_order_relaxed) + 1,
+                std::memory_order_release);
+        }
+    }
+
     int totalSamples = buffer.getNumChannels() * buffer.getNumSamples();
 
     uint32_t w = hdr->inputWritePos.load(std::memory_order_relaxed);

@@ -29,6 +29,14 @@ namespace HDAW {
 
 PluginManager::PluginManager()
 {
+    // HDAW_NO_PLUGIN_ISOLATION=1 forces in-process CLAP loading (diagnostic knob).
+    const auto* noIsolation = std::getenv("HDAW_NO_PLUGIN_ISOLATION");
+    if (noIsolation != nullptr && noIsolation[0] != '\0' && noIsolation[0] != '0')
+    {
+        isolationEnabled = false;
+        HDAW_LOG("PluginMgr", "HDAW_NO_PLUGIN_ISOLATION set - CLAP plugins run IN-PROCESS (isolation disabled)");
+    }
+
     formatManager.addFormat(new juce::VST3PluginFormat());
     formatManager.addFormat(new CLAPPluginFormat());
 

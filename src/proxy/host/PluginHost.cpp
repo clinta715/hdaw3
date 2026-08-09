@@ -45,22 +45,26 @@ static LONG WINAPI processBlockSehFilter(EXCEPTION_POINTERS* ep)
 
 // Write a minidump of the current process. Used by the watchdog to capture
 // the state of a hanging processBlock.
-static void writeMinidump(const char* reason)
+static void writeMinidump(const char* reason, EXCEPTION_POINTERS* eps = nullptr)
 {
     wchar_t dumpPath[MAX_PATH]{};
     GetTempPathW(MAX_PATH, dumpPath);
-    wcscat_s(dumpPath, L"hdaw_plugin_host_hang.dmp");
+    wcscat_s(dumpPath, L"hdaw_plugin_host_");
+    wchar_t reasonW[64]{};
+    MultiByteToWideChar(CP_UTF8, 0, reason, -1, reasonW, 64);
+    wcscat_s(dumpPath, reasonW);
+    wcscat_s(dumpPath, L".dmp");
 
     HANDLE hFile = CreateFileW(dumpPath, GENERIC_WRITE, 0, nullptr,
                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE) return;
 
     MINIDUMP_EXCEPTION_INFORMATION mei{};
-    EXCEPTION_POINTERS* ep = nullptr;
-    // Capture current exception context (if any)
     mei.ThreadId = GetCurrentThreadId();
     mei.ClientPointers = FALSE;
-    mei.ExceptionPointers = ep;
+    mei.ExceptionPointers = eps;
+    if (eps == nullptr)
+        mei.ThreadId = 0;
 
     MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
                       hFile, MiniDumpWithFullMemory, &mei, nullptr, nullptr);
@@ -326,6 +330,68 @@ public:
     }
 };
 
+// Diagnostic processor for the transport-playhead handoff test: echoes the
+// playhead snapshot it received through the audio output as a raw bit-packed
+// payload (channel 0). The parent-side test decodes it and asserts the
+// ChildPlayHead fields match what it packed. Zero payload = stopped-default
+// playhead (no transport forwarded yet).
+class TransportProbeProcessor : public juce::AudioPluginInstance
+{
+public:
+    TransportProbeProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    struct ProbePayload {
+        uint32_t isPlaying;
+        float bpm;
+        double seconds;
+        double ppq;
+    };
+
+    const juce::String getName() const override { return "TransportProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        buffer.clear();
+        ProbePayload p{};
+        if (auto* ph = getPlayHead())
+        {
+            if (auto pos = ph->getPosition())
+            {
+                p.isPlaying = pos->getIsPlaying() ? 1u : 0u;
+                p.bpm = pos->getBpm().orFallback(120.0f);
+                p.seconds = pos->getTimeInSeconds().orFallback(0.0);
+                p.ppq = pos->getPpqPosition().orFallback(0.0);
+            }
+        }
+        const size_t bytes = sizeof(ProbePayload);
+        static_assert(bytes <= 64, "payload must fit well inside a block");
+        if (buffer.getNumSamples() >= static_cast<int>(bytes / sizeof(float)))
+            std::memcpy(buffer.getWritePointer(0), &p, bytes);
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "TransportProbe";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__transportprobe__";
+    }
+};
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -459,13 +525,50 @@ int PluginHost::run()
     juce::ScopedJuceInitialiser_GUI juceInit;
 
 #if JUCE_WINDOWS
+    // Diagnostic knob: HDAW_NO_CHILD_SEH=1 disables the crash-swallowing
+    // guards so real faults terminate the child (WER LocalDumps) instead of
+    // continuing.
+    static const bool noChildSeh =
+        juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
+    if (noChildSeh)
+    {
+        SetUnhandledExceptionFilter(nullptr);
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    }
+    else
+    {
     // Install a process-wide unhandled exception filter so crashes on ANY
     // thread (including CLAP plugin background threads) don't kill the child
     // process. The SEH translator (sehProcessBlockCrashTranslator) only
     // protects the audio thread; this catches everything else.
     SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ep) -> LONG {
+        auto* er = ep->ExceptionRecord;
+        auto* ctx = ep->ContextRecord;
+        juce::String where = "?";
+        HMODULE mod = nullptr;
+        if (er->ExceptionAddress != nullptr)
+        {
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               static_cast<LPCWSTR>(er->ExceptionAddress), &mod);
+            wchar_t modPath[MAX_PATH]{};
+            if (mod != nullptr && GetModuleFileNameW(mod, modPath, MAX_PATH) > 0)
+                where = juce::String(juce::CharPointer_UTF16(modPath));
+        }
+        juce::String bytes;
+        if (er->ExceptionAddress != nullptr)
+            for (int bi = 0; bi < 12; ++bi)
+                bytes += juce::String::toHexString(*reinterpret_cast<const uint8_t*>(
+                    static_cast<const uint8_t*>(er->ExceptionAddress) + bi)) + " ";
         HDAW_LOG("plugin_host", "Unhandled exception, continuing (code=0x"
-            + juce::String::toHexString(ep->ExceptionRecord->ExceptionCode) + ")");
+            + juce::String::toHexString(er->ExceptionCode)
+            + " rip=" + juce::String::toHexString((juce::int64)ctx->Rip)
+            + " rcx=" + juce::String::toHexString((juce::int64)ctx->Rcx)
+            + " rdx=" + juce::String::toHexString((juce::int64)ctx->Rdx)
+            + " r8=" + juce::String::toHexString((juce::int64)ctx->R8)
+            + " r9=" + juce::String::toHexString((juce::int64)ctx->R9)
+            + " r15=" + juce::String::toHexString((juce::int64)ctx->R15)
+            + " mod=" + where
+            + " bytes=" + bytes + ")");
         // Skip the faulting instruction to avoid infinite loop.
         // Move IP forward by instruction size (approximate — good enough
         // for crash recovery). The thread state is corrupted but the
@@ -477,6 +580,7 @@ int PluginHost::run()
     // Suppress CRT abort dialog — if a C++ exception from a crashing
     // thread reaches std::terminate, just exit silently.
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    }
 #endif
 
     if (!pipe.connect()) return 1;
@@ -493,12 +597,19 @@ int PluginHost::run()
 
     audioThread = std::thread(&PluginHost::audioLoop, this);
 
+    // Diagnostic knob: HDAW_NO_CHILD_WORKERS=1 disables the message-pump and
+    // watchdog threads so the audio thread (and JUCE construction) are the
+    // only activity in the child process.
+    static const bool noChildWorkers =
+        juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_WORKERS", "") == "1";
+
     // Dedicated message-pump thread: continuously dispatches JUCE messages
     // so CLAP on_main_thread callbacks fire even when the audio thread is
     // blocked inside plugin->processBlock(). Without this, the main thread's
     // runDispatchLoopUntil(-1) may not dispatch AsyncUpdate fast enough
     // because the audio thread consumes all CPU in the export context.
-    messagePumpThread = std::thread([this]() {
+    if (!noChildWorkers)
+        messagePumpThread = std::thread([this]() {
         while (running.load()) {
             juce::MessageManager::getInstance()->runDispatchLoopUntil(0);
             Sleep(1);
@@ -508,7 +619,8 @@ int PluginHost::run()
     // Watchdog thread: monitors the audio thread for hanging processBlock.
     // If processBlockActive stays true for >1 second, writes a minidump
     // to %TEMP%\hdaw_plugin_host_hang.dmp for offline analysis.
-    watchdogThread = std::thread([this]() {
+    if (!noChildWorkers)
+        watchdogThread = std::thread([this]() {
         int hangMs = 0;
         while (running.load()) {
             Sleep(250);
@@ -562,29 +674,6 @@ void PluginHost::controlLoop()
                 break;
 
             case proxy::MessageType::PREPARE: {
-                // TEMP ClapProbe: diagnostic only — remove after Phase 2
-                // investigation (answers: does PREPARE reach the child?).
-                {
-                    static std::atomic<int> prepareProbeCount{0};
-                    int ppc = prepareProbeCount.fetch_add(1, std::memory_order_relaxed);
-                    if (ppc < 2) {
-                        struct PrepareDataProbe {
-                            double sampleRate;
-                            int32_t blockSize;
-                            int32_t numChannels;
-                        };
-                        PrepareDataProbe pd{};
-                        if (msg.dataSize >= 16)
-                            std::memcpy(&pd, msg.data, sizeof(pd));
-                        HDAW_LOG("ClapProbe",
-                            (juce::String("controlLoop PREPARE received sr=")
-                             + juce::String(pd.sampleRate)
-                             + " bs=" + juce::String(pd.blockSize)
-                             + " ch=" + juce::String(pd.numChannels)
-                             + " pluginNull=" + juce::String(plugin == nullptr ? 1 : 0))
-                                .toStdString());
-                    }
-                }
                 if (msg.dataSize >= 16) {
                     struct PrepareData {
                         double sampleRate;
@@ -1020,19 +1109,6 @@ void PluginHost::audioLoop()
                 uint32_t mr = hdr->midiInReadPos.load(std::memory_order_acquire);
 uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                 uint32_t toRead = (std::min)(avail, midiCap);
-                // TEMP ClapProbe: diagnostic only — remove after Phase 2
-                // investigation (answers: does MIDI ever reach the child?).
-                if (toRead > 0)
-                {
-                    static std::atomic<int> midiProbeCount{0};
-                    int mpc = midiProbeCount.fetch_add(1, std::memory_order_relaxed);
-                    if (mpc < 8)
-                    {
-                        HDAW_LOG("ClapProbe",
-                            (juce::String("audioLoop midiConsumed count=")
-                             + juce::String(static_cast<int>(toRead))).toStdString());
-                    }
-                }
                 const uint8_t* sysexBuf = shm.getSysexInBuffer();
                 for (uint32_t i = 0; i < toRead; ++i) {
                     const proxy::MidiEvent& evt = midiIn[(mr + i) & 0xFF];
@@ -1065,6 +1141,11 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // plugins (Vital, Dexed, JE8086) crash or hang when processBlock
             // is called faster than real-time because their internal timers
             // and on_main_thread callbacks assume real-time pacing.
+            // Diagnostic knob: HDAW_NO_CHILD_PACING=1 disables the pacing
+            // sleep.
+            static thread_local const bool noChildPacing =
+                juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_PACING", "") == "1";
+            if (!noChildPacing)
             {
                 static thread_local uint64_t lastPaceTimeNs = 0;
                 if (lastPaceTimeNs == 0) {
@@ -1088,25 +1169,48 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                 }
             }
 
+            // Transport snapshot: acquire-load the revision the parent
+            // release-stores AFTER packing every field; on change, copy the
+            // plain fields into ChildPlayHead (bit patterns are restored via
+            // memcpy). An unchanged revision means "no new info" — keep the
+            // previous snapshot (stopped-transport default until the first
+            // one arrives). After this, only this audio thread touches the
+            // ChildPlayHead members (plugin->processBlock runs here too).
+            const uint32_t rev = hdr->transportRevision.load(std::memory_order_acquire);
+            if (rev != lastTransportRevision)
+            {
+                childPlayHead.setSampleRate(preparedSampleRate);
+                childPlayHead.snapshotFrom(hdr);
+                lastTransportRevision = rev;
+            }
+
             // SEH guard: catch crashes in the plugin's processBlock and
             // output silence instead of killing the child process.
+            // Diagnostic knob: HDAW_NO_CHILD_SEH=1 disables this guard.
+            static thread_local const bool noChildSeh =
+                juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
 #if JUCE_WINDOWS
+            if (noChildSeh)
+            {
+                plugin->processBlock(inputBuffer, midiBuffer);
+            }
+            else
             {
                 static thread_local int crashCount = 0;
                 static thread_local int blockNum = 0;
                 auto oldTranslator = _set_se_translator(sehProcessBlockCrashTranslator);
                 processBlockActive.store(true, std::memory_order_release);
-                if (blockNum < 3) OutputDebugStringA(("plugin_host: pre-processBlock #" + std::to_string(blockNum) + "\n").c_str());
                 try
                 {
                     plugin->processBlock(inputBuffer, midiBuffer);
                     crashCount = 0;
-                    if (blockNum < 3) OutputDebugStringA(("plugin_host: post-processBlock #" + std::to_string(blockNum) + "\n").c_str());
                 }
                 catch (const std::runtime_error&)
                 {
                     ++crashCount;
-                    OutputDebugStringA(("plugin_host: CRASH in processBlock count=" + std::to_string(crashCount) + "\n").c_str());
+                    if (crashCount < 5 || (crashCount % 25) == 0)
+                        HDAW_LOG("SIL", "CRASH count=" + juce::String(crashCount)
+                                  + " block=" + juce::String(blockNum));
                     inputBuffer.clear();
                 }
                 processBlockActive.store(false, std::memory_order_release);
@@ -1219,6 +1323,15 @@ bool PluginHost::loadPlugin() {
     if (plugin) {
         paramForwarder = std::make_unique<ParamForwarder>(*this);
         plugin->addListener(paramForwarder.get());
+        // Supply the transport playhead BEFORE the audio loop starts so
+        // clock-reliant CLAP instruments (ShinRonin, Odin2, Gneiss, ...)
+        // receive the parent's transport from their first processBlock.
+        // Diagnostic knob: HDAW_NO_CHILD_PLAYHEAD=1 removes the playhead —
+        // reproduces the pre-forward condition inside the child process.
+        static const bool noChildPlayhead =
+            juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_PLAYHEAD", "") == "1";
+        if (!noChildPlayhead)
+            plugin->setPlayHead(&childPlayHead);
     }
     return true;
 }
@@ -1250,6 +1363,12 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__midiecho__") {
         plugin = std::make_unique<MidiEchoProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__transportprobe__") {
+        plugin = std::make_unique<TransportProbeProcessor>();
         pluginLoaded.store(true);
         return true;
     }
