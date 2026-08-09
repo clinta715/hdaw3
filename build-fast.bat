@@ -22,6 +22,10 @@ REM resource that AUTORCC won't re-embed on an incremental build either — use
 REM frontend\build.bat for a guaranteed-fresh browser build. See AGENTS.md
 REM "How frontend changes reach the running app".
 
+REM MSVC C++20/23 deprecation warnings (C4996/C5054/C5055 from JUCE/Qt headers)
+REM are suppressed in CMakeLists.txt (if(MSVC) block, add_compile_options).
+REM Changing CMakeLists.txt auto-reconfigures on the next cmake --build.
+
 set "ROOT=%~dp0"
 set BUILD_DIR=%ROOT%build
 set CONFIG=RelWithDebInfo

@@ -30,6 +30,8 @@ setlocal enabledelayedexpansion
 :: time"). Keeping heavy work at the top level avoids that class of bug.
 ::
 :: Run from anywhere; it cd's to its own location (frontend/).
+:: MSVC C++20/23 deprecation warnings (C4996/C5054/C5055) are suppressed in the
+:: root CMakeLists.txt (if(MSVC) block, add_compile_options). No flag needed here.
 :: ─────────────────────────────────────────────────────────────────────────────
 
 cd /d "%~dp0"

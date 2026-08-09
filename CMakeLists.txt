@@ -221,6 +221,14 @@ if(MSVC)
     target_compile_options(HDAW_lib PRIVATE /MP)
     target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa /MP)
 
+    # Suppress C++20/C++23 std-library deprecation warnings (C4996
+    # "…deprecated in C++20/C++23", enum-arithmetic C5054/C5055) emitted from
+    # JUCE/Qt headers on the newest MSVC toolset (the project compiles as
+    # C++20; these are stdlib deprecations, not actionable here). /wd4996 also
+    # hides C-RT deprecations (strcpy etc.) — re-enable by removing this block
+    # if those matter.
+    add_compile_options(/wd4996 /wd5054 /wd5055)
+
     # AVX2 for DSP-heavy code (peak calculation, waveform rendering, audio
     # processing). Every desktop CPU from ~2013+ supports it. Disable with
     # -DHDAW_ENABLE_AVX2=OFF if targeting older hardware.
