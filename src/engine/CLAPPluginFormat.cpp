@@ -1,6 +1,8 @@
 #include "CLAPPluginFormat.h"
 #include "CLAPPluginInstance.h"
+#include "../common/DebugLog.h"
 #include <juce_core/juce_core.h>
+#include <stdexcept>
 
 #if JUCE_WINDOWS
 #include <windows.h>
@@ -222,6 +224,21 @@ juce::FileSearchPath CLAPPluginFormat::getDefaultLocationsToSearch()
     return paths;
 }
 
+std::unique_ptr<juce::AudioPluginInstance> CLAPPluginFormat::createInstanceFromDescription(
+    const juce::PluginDescription& desc, double initialSampleRate,
+    int initialBufferSize, juce::String& errorMessage)
+{
+    std::unique_ptr<juce::AudioPluginInstance> instance;
+    juce::String error;
+    createPluginInstance(desc, initialSampleRate, initialBufferSize,
+        [&](std::unique_ptr<juce::AudioPluginInstance> p, const juce::String& e) {
+            instance = std::move(p);
+            error = e;
+        });
+    errorMessage = error;
+    return instance;
+}
+
 void CLAPPluginFormat::createPluginInstance(
     const juce::PluginDescription& desc,
     double sampleRate, int blockSize,
@@ -269,7 +286,26 @@ void CLAPPluginFormat::createPluginInstance(
         return;
     }
 
-    if (!plugin->init(plugin))
+    // SEH guard around init() — CLAP plugins can crash during
+    // initialization, especially when called from a non-main thread
+    // (e.g. during export).
+    bool initOk = false;
+#if JUCE_WINDOWS
+    auto oldTranslator = _set_se_translator([](unsigned int, struct _EXCEPTION_POINTERS*) {
+        throw std::runtime_error("CLAP plugin crashed during init");
+    });
+    try {
+        initOk = plugin->init(plugin);
+    } catch (const std::runtime_error&) {
+        HDAW_LOG("CLAPPluginFormat", "Plugin crashed during init, continuing");
+        initOk = false;
+    }
+    _set_se_translator(oldTranslator);
+#else
+    initOk = plugin->init(plugin);
+#endif
+
+    if (!initOk)
     {
         plugin->destroy(plugin);
         callback(nullptr, "CLAP plugin init failed");

@@ -40,6 +40,10 @@ public:
 
     juce::FileSearchPath getDefaultLocationsToSearch() override;
 
+    std::unique_ptr<juce::AudioPluginInstance> createInstanceFromDescription(
+        const juce::PluginDescription& desc, double initialSampleRate,
+        int initialBufferSize, juce::String& errorMessage) override;
+
 protected:
     void createPluginInstance(const juce::PluginDescription& desc,
                               double sampleRate, int blockSize,

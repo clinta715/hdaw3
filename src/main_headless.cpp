@@ -19,6 +19,7 @@
 #include "frontend/FrontendServer.h"
 #include "frontend/FrontendRpc.h"
 #include "common/DebugLog.h"
+#include "common/MessagePumpThread.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>
@@ -55,6 +56,14 @@ static const char* parseValue(int argc, char** argv, const char* name)
 
 int main(int argc, char *argv[])
 {
+    // MUST be the process' first JUCE use: the pump thread owns the
+    // MessageManager queue so AudioProcessorGraph render sequences and
+    // AsyncUpdaters can bake (exports render on a worker thread; without a
+    // pump, Pimpl::processBlock clears audio -> silent WAV). This process runs
+    // a Qt app.exec() loop; nothing else pumps the JUCE queue.
+    if (!HDAW::MessagePumpThread::start())
+        HDAW_LOG("main_headless", "Warning: JUCE message pump failed to start");
+
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
 
     HDAW_JuceLogger juceLogger;

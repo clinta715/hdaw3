@@ -313,7 +313,8 @@ void PluginProxySlot::drainParamNotifications() {
 void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
                                     juce::MidiBuffer& midiMessages) {
 
-    if (crashed.load()) return;
+    if (crashed.load())
+        return;
 
     // Lock-free check: if the child has been terminated (e.g. by the crash
     // handler), don't access the shm — it may be about to be destroyed.
@@ -343,11 +344,12 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     uint32_t r = hdr->inputReadPos.load(std::memory_order_acquire);
     if (static_cast<uint32_t>(totalSamples) > cap - (w - r)) {
         // In render mode, spin-wait for the child to consume input.
-        if (s_renderMode.load(std::memory_order_relaxed)) {
+        if (isRenderMode()) {
             constexpr int kMaxSpinMs = 200;
             auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kMaxSpinMs);
             while (static_cast<uint32_t>(totalSamples) > cap - (w - r)) {
                 if (crashed.load()) return;
+                if (isRenderCancelRequested()) return;
                 if (std::chrono::steady_clock::now() >= deadline) return;
                 std::this_thread::yield();
                 w = hdr->inputWritePos.load(std::memory_order_relaxed);
@@ -501,11 +503,12 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     // In render mode, spin-wait for the child process to produce output.
     // The render loop runs at CPU speed with no real-time pacing, so the
     // child (separate OS process) needs explicit time to process each block.
-    if (s_renderMode.load(std::memory_order_relaxed) && available < static_cast<uint32_t>(totalSamples)) {
+    if (isRenderMode() && available < static_cast<uint32_t>(totalSamples)) {
         constexpr int kMaxSpinMs = 200;
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kMaxSpinMs);
         while (available < static_cast<uint32_t>(totalSamples)) {
             if (crashed.load()) break;
+            if (isRenderCancelRequested()) break;
             if (std::chrono::steady_clock::now() >= deadline) break;
             std::this_thread::yield();
             ow = hdr->outputWritePos.load(std::memory_order_relaxed);

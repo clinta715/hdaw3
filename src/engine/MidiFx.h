@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <span>
 
 namespace HDAW {
 
@@ -24,6 +25,17 @@ public:
                          double sampleRate, int numSamples) = 0;
     virtual void reset() {}
 };
+
+struct MidiFxParamDef {
+    int index;
+    const char* name;
+    float defaultValue;
+    float minValue;
+    float maxValue;
+};
+
+std::span<const MidiFxParamDef> getMidiFxParamDefs(const juce::String& type);
+int getMidiFxParamCount(const juce::String& type);
 
 // Arpeggiator: collects incoming (held) notes and replays them as a
 // tempo-synced pattern. rate = step length in beats; pattern 0=up, 1=down,
@@ -794,12 +806,13 @@ public:
     }
 };
 
-// A slot wraps a MidiEffect with a bypass flag, mirroring TrackFXSlot.
+// A slot wraps a MidiEffect with a bypass flag and parameter cache,
+// mirroring TrackFXSlot's automation interface.
 class MidiFxSlot
 {
 public:
-    MidiFxSlot(std::unique_ptr<MidiEffect> effect, juce::String type)
-        : effect_(std::move(effect)), slotType_(std::move(type)) {}
+    MidiFxSlot(std::unique_ptr<MidiEffect> effect, juce::String type);
+    ~MidiFxSlot() = default;
 
     void process(juce::MidiBuffer& buffer,
                  const juce::AudioPlayHead::PositionInfo* position,
@@ -815,10 +828,33 @@ public:
     MidiEffect* getEffect() const { return effect_.get(); }
     void reset() { if (effect_) effect_->reset(); }
 
+    struct ParamInfo {
+        juce::String name;
+        int index;
+        float defaultValue;
+        float minValue;
+        float maxValue;
+    };
+
+    void setAutomationParam(int paramIndex, float normalizedValue);
+    float getAutomationParam(int paramIndex) const;
+    void applyAutomation();
+    const std::vector<ParamInfo>& getAutomatableParams() const { return cachedParamInfo_; }
+
+    void loadParamsFromTree(const juce::ValueTree& slotTree);
+
 private:
+    void initParamCache();
+    void applyToEffect(int paramIndex, float denormalizedValue);
+
     std::unique_ptr<MidiEffect> effect_;
     juce::String slotType_;
     std::atomic<bool> bypassed_{ false };
+
+    int numParams_ = 0;
+    std::unique_ptr<std::atomic<float>[]> paramValues_;
+    std::unique_ptr<std::atomic<bool>[]> paramDirty_;
+    std::vector<ParamInfo> cachedParamInfo_;
 };
 
 } // namespace HDAW

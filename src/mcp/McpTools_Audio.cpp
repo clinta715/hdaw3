@@ -175,7 +175,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"list_plugin_presets",
-        "List all preset/program names of a plugin FX slot.",
+        "List all preset/program names of a plugin FX slot. Uses the preset cache when available (populated during plugin scanning); falls back to querying the live plugin instance.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
                  {"trackId","slotIndex"}),
@@ -187,6 +187,24 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text("slot not found", true);
             if (fxSlots[si].fxType != "plugin")
                 return McpToolResult::text("slot is not a plugin", true);
+
+            // Try cache first (by pluginId)
+            auto* presetInfo = e->getPluginManager().getPresetInfo(juce::String(fxSlots[si].pluginId));
+            if (presetInfo && presetInfo->numPrograms > 1)
+            {
+                QJsonArray arr;
+                for (int i = 0; i < presetInfo->numPrograms; ++i)
+                {
+                    juce::String name = i < presetInfo->programNames.size()
+                        ? presetInfo->programNames[i]
+                        : juce::String("Preset ") + juce::String(i);
+                    arr.append(QJsonObject{{"index", i}, {"name", QString::fromStdString(name.toStdString())}});
+                }
+                return McpToolResult::text(
+                    QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+            }
+
+            // Fallback: live query from instantiated plugin
             auto progs = e->getFxProgramList(ti, si);
             QJsonArray arr;
             for (const auto& p : progs)
@@ -480,6 +498,33 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
             std::string pn = a.value("paramName").toString().toStdString();
             double v = a.value("value").toDouble();
             e->getProjectCommands().setMidiFxSlotParam(ti, si, pn, v);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_midi_fx_param_normalized",
+        "Set a MIDI FX parameter by normalized value (0..1) for real-time modulation. "
+        "Bypasses the ValueTree — use set_midi_fx_param for persistent changes.",
+        objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                   {"slotIndex",   QJsonObject{{"type","integer"}}},
+                   {"paramIndex",  QJsonObject{{"type","integer"}}},
+                   {"value",       QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}},
+                  {"trackId","slotIndex","paramIndex","value"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int trackId = a.value("trackId").toInt();
+            int slotIndex = a.value("slotIndex").toInt();
+            int paramIndex = a.value("paramIndex").toInt();
+            float value = static_cast<float>(a.value("value").toDouble());
+
+            auto* proc = e->getMainProcessor();
+            if (!proc) return McpToolResult::text("No audio processor", true);
+            auto* track = proc->getTrack(trackId);
+            if (!track) return McpToolResult::text("Track not found", true);
+
+            auto& chain = track->getMidiFxChain();
+            if (slotIndex < 0 || slotIndex >= static_cast<int>(chain.size()) || !chain[slotIndex])
+                return McpToolResult::text("MIDI FX slot not found", true);
+
+            chain[slotIndex]->setAutomationParam(paramIndex, value);
             return McpToolResult::text("ok");
         }});
 }

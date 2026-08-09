@@ -375,10 +375,49 @@ void AudioEngine::finalizeMidiRecClips()
 
 void AudioEngine::shutdown()
 {
-    projectModel.getTree().removeListener(this);
-    cancelPendingUpdate(); // no deferred rebuild fires after teardown
-    deviceManager.removeAudioCallback(&processorPlayer);
-    processorPlayer.setProcessor(nullptr);
+    // Stop the auto-stop/punch-out poll timer FIRST. Without this, a
+    // CallTimersMessage already queued by TimerThread can be dispatched on the
+    // message pump thread after the AudioEngine (and its MainAudioProcessor /
+    // AudioRecorder) is destroyed, dereferencing a dangling `this`.
+    stopTimer();
+
+    // Synchronize with the message pump thread and tear down every JUCE
+    // message-dependent resource while the pump is parked. AudioEngine is
+    // destroyed on the test/host thread while a separate MessagePumpThread
+    // drains the JUCE message queue; AsyncUpdater / Timer / AudioProcessorGraph
+    // callbacks can reference `this` (or mainProcessor / the graph) and must
+    // not be mid-flight when those objects are destroyed:
+    //
+    //  - cancelPendingUpdate() shuts the engine's own AsyncUpdater gate so a
+    //    queued AsyncUpdaterMessage will skip owner.handleAsyncUpdate().
+    //  - mainProcessor.reset() destroys the AudioProcessorGraph (and every
+    //    Track / plugin proxy / editor) WHILE the pump is blocked inside the
+    //    BlockingMessage of the MessageManagerLock. Any queued
+    //    AudioProcessorGraph rebuild message is then skipped by
+    //    LockingAsyncUpdater::Impl::clear() (deliver=false), and
+    //    AudioEngine::handleAsyncUpdate() no-ops on the null mainProcessor.
+    //  - pluginManager.stopCrashMonitor() stops the crash-recovery Timer so
+    //    its queued CallTimersMessage cannot respawn a proxy slot against
+    //    proxies destroyed along with mainProcessor.
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
+    {
+        juce::MessageManagerLock mml(static_cast<juce::Thread*>(nullptr));
+        cancelPendingUpdate(); // no deferred rebuild fires after teardown
+        projectModel.getTree().removeListener(this);
+        deviceManager.removeAudioCallback(&processorPlayer);
+        processorPlayer.setProcessor(nullptr);
+        pluginManager.stopCrashMonitor();
+        mainProcessor.reset(); // destroys the graph under the pump-park
+    }
+    else
+    {
+        cancelPendingUpdate();
+        projectModel.getTree().removeListener(this);
+        deviceManager.removeAudioCallback(&processorPlayer);
+        processorPlayer.setProcessor(nullptr);
+        pluginManager.stopCrashMonitor();
+        mainProcessor.reset();
+    }
 }
 
 float AudioEngine::getTrackVolume(int trackIndex) const
@@ -949,11 +988,8 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
 
         auto* track = mainProcessor->getTrack(trackIdx);
         if (track == nullptr) return;
-        auto& chain = track->getFXChain();
-        if (slotIdx >= static_cast<int>(chain.size()) || chain[slotIdx] == nullptr)
-            return;
 
-        chain[slotIdx]->setInternalParam(paramIndex, value);
+        track->setFxSlotInternalParam(slotIdx, paramIndex, value);
     }
 }
 

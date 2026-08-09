@@ -476,6 +476,21 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
 {
     if (routingManager != nullptr && projectModel != nullptr)
     {
+        // The JUCE message pump thread (MessagePumpThread) concurrently
+        // dispatches AudioProcessorGraph's internal async rebuild messages
+        // (Pimpl::handleAsyncUpdate iterates the live node list). A rebuild
+        // here clears + re-adds every node on the calling thread; if that
+        // thread is not the message thread, park the pump for the duration
+        // so a queued graph-internal message cannot iterate nodes that this
+        // rebuild frees mid-flight (access violation). On the message thread
+        // (engine handleAsyncUpdate dispatched by the pump) dispatch and
+        // mutation are already serialized, and MessageManagerLock would
+        // self-deadlock, so skip it.
+        std::optional<juce::MessageManagerLock> pumpPark;
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+            mm != nullptr && !mm->isThisTheMessageThread())
+            pumpPark.emplace();
+
         graphRebuildPending.store(true, std::memory_order_release);
         graphLock.enter();
         graph.clear();

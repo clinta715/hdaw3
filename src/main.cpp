@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "common/DebugLog.h"
+#include "common/MessagePumpThread.h"
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
@@ -65,6 +66,14 @@ static const char* parseValue(int argc, char** argv, const char* name)
 
 int main(int argc, char *argv[])
 {
+    // MUST be the process' first JUCE use: the pump thread owns the
+    // MessageManager queue so AudioProcessorGraph render sequences and
+    // AsyncUpdaters can bake (exports render on a worker thread; without a
+    // pump, Pimpl::processBlock clears audio -> silent WAV). All three modes
+    // below use a Qt app.exec() loop; none pumps the JUCE queue otherwise.
+    if (!HDAW::MessagePumpThread::start())
+        HDAW_LOG("main", "Warning: JUCE message pump failed to start");
+
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
 
     HDAW_JuceLogger juceLogger;

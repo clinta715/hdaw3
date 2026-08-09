@@ -69,6 +69,13 @@ private:
     // Threads
     std::thread controlThread;
     std::thread audioThread;
+    std::thread messagePumpThread;
+    std::thread watchdogThread;
+
+    // Watchdog: set by audio thread before processBlock, cleared after.
+    // If set for >5s, the watchdog writes a minidump.
+    std::atomic<bool> processBlockActive{false};
+    std::atomic<bool> dumpWritten{false};
 
     // Child-side AudioProcessorListener registered on the hosted plugin;
     // forwards parameter changes to the parent via the paramNotify shm ring.

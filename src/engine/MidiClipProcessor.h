@@ -7,6 +7,7 @@
 #include <cmath>
 #include "TransportManager.h"
 #include "../model/ProjectModel.h"
+#include "../common/DebugLog.h"
 #include "OperatorLogic.h"
 
 namespace HDAW {
@@ -75,6 +76,7 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
+        HDAW_LOG("MidiClipEntry", "prepareToPlay sr=" + juce::String(sampleRate) + " spb=" + juce::String(samplesPerBlock));
         juce::ignoreUnused(sampleRate, samplesPerBlock);
         std::fill(activeNotes.begin(), activeNotes.end(), false);
         std::fill(noteActive.begin(), noteActive.end(), false);
@@ -92,6 +94,10 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override
     {
         const int numSamples = buffer.getNumSamples();
+
+        if (procEntryCount < 5)
+            HDAW_LOG("MidiClipEntry", "call=" + juce::String(procEntryCount) + " bufS=" + juce::String(numSamples));
+        ++procEntryCount;
 
         buffer.clear();
 
@@ -147,6 +153,17 @@ public:
         double clipDurationBeats = transportManager.secondsToPpq(durSec);
         int loopCount = (clipDurationBeats > 0.0) ? static_cast<int>(currentBeat / clipDurationBeats) : 0;
         uint64_t seed = clipSeed.load(std::memory_order_relaxed);
+
+        if (diagCount < 5)
+        {
+            HDAW_LOG("MidiClipDiag", "call=" + juce::String(diagCount)
+                + " noteCount=" + juce::String(count)
+                + " clipLocalSec=" + juce::String(clipLocalSec, 4)
+                + " durSec=" + juce::String(durSec, 4)
+                + " currentBeat=" + juce::String(currentBeat, 4)
+                + " transportSample=" + juce::String(transportSample));
+        }
+        ++diagCount;
 
         // Snapshot recurrence decisions before any writes to previousNotePlayed,
         // so same-pitch notes don't contaminate each other within this block.
@@ -421,6 +438,9 @@ private:
         ccCount.store(count, std::memory_order_release);
         activeCcCacheIndex.store(inactiveIdx, std::memory_order_release);
     }
+
+    int procEntryCount = 0;
+    int diagCount = 0;
 
     HDAW::TransportManager& transportManager;
     juce::ValueTree clipTree;

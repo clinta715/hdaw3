@@ -291,19 +291,7 @@ public:
 
         if (isExternal && pluginInstance)
         {
-            static std::atomic<int> s_procCount{ 0 };
-            int pc = s_procCount.fetch_add(1, std::memory_order_relaxed);
-            if (pc < 3 || (pc % 500) == 0)
-                HDAW_LOG("SlotProc", (juce::String("FXSlot::process call=") + juce::String(pc) + " midi=" + juce::String(midiMessages.getNumEvents()) + " bufCh=" + juce::String(buffer.getNumChannels()) + " bufS=" + juce::String(buffer.getNumSamples()) + " bypassed=0 isExt=1").toStdString());
-
             pluginInstance->processBlock(buffer, midiMessages);
-
-            if (pc < 3 || (pc % 500) == 0) {
-                float peak = 0.f;
-                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                    peak = std::max(peak, buffer.getMagnitude(ch, 0, buffer.getNumSamples()));
-                HDAW_LOG("SlotProc", (juce::String("FXSlot::process after plugin peak=") + juce::String(peak, 6)).toStdString());
-            }
             return;
         }
 

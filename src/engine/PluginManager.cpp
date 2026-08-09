@@ -36,8 +36,10 @@ PluginManager::PluginManager()
     auto hdawDir = appData.getChildFile("HDAW");
     cacheFile = hdawDir.getChildFile("plugin_cache.xml");
     blacklistFile = hdawDir.getChildFile("plugin_blacklist.xml");
+    presetCacheFile = hdawDir.getChildFile("preset_cache.xml");
 
     loadBlacklist();
+    loadCache();
 
 #if HDAW_PLUGIN_ISOLATION
     crashRecovery = std::make_unique<CrashRecoveryManager>();
@@ -71,6 +73,7 @@ void PluginManager::loadCache()
                 knownPlugins.push_back(desc);
         }
     }
+    loadPresetCache();
 }
 
 juce::StringArray PluginManager::getVst3Dirs()
@@ -204,6 +207,17 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                 desc.uniqueId = scanResult.uid;
                 desc.isInstrument = scanResult.isInstrument;
                 knownPluginList.addType(desc);
+
+                if (scanResult.numPrograms > 1)
+                {
+                    PluginPresetInfo info;
+                    info.numPrograms = scanResult.numPrograms;
+                    info.programNames = scanResult.programNames;
+                    auto id = desc.createIdentifierString();
+                    presetCache[id] = info;
+                    juce::Logger::writeToLog("PluginManager: cached " + juce::String(scanResult.numPrograms)
+                                             + " presets for " + scanResult.name);
+                }
 
                 juce::Logger::writeToLog("PluginManager: found (isolated) - "
                                          + (scanResult.name.isNotEmpty() ? scanResult.name : path));
@@ -370,6 +384,7 @@ void PluginManager::onScanFinished()
         knownPlugins.push_back(desc);
 
     saveCache();
+    savePresetCache();
     scanning.store(false);
 
     if (scanCallback)
@@ -458,6 +473,9 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
             result.id = obj->getProperty("id").toString();
             result.uid = obj->hasProperty("uid") ? static_cast<int>(obj->getProperty("uid")) : 0;
             result.isInstrument = obj->hasProperty("isInstrument") && static_cast<bool>(obj->getProperty("isInstrument"));
+            result.numPrograms = obj->hasProperty("numPrograms") ? static_cast<int>(obj->getProperty("numPrograms")) : 0;
+            if (obj->hasProperty("programNames"))
+                result.programNames = juce::StringArray::fromTokens(obj->getProperty("programNames").toString(), "\x01", "");
             result.error = obj->getProperty("error").toString();
         }
     }
@@ -487,15 +505,17 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     {
         auto slotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
 
+        auto resolvedDesc = resolveIdentifierToPath(desc, knownPluginList);
+
         if (!proxyProcessManager.spawnPluginHost(
-                desc.fileOrIdentifier.toStdString(), slotId))
+                resolvedDesc.fileOrIdentifier.toStdString(), slotId))
         {
             errorMessage = "Failed to spawn isolated plugin process";
             return nullptr;
         }
 
         auto* proxy = new proxy::PluginProxySlot(
-            proxyProcessManager, slotId, desc.name, desc.fileOrIdentifier);
+            proxyProcessManager, slotId, desc.name, resolvedDesc.fileOrIdentifier);
 
         proxyProcessManager.setSlotCrashCallback(slotId,
             [proxy](uint32_t id) { proxy->onChildCrashed(); });
@@ -525,6 +545,15 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     }
 #endif
 
+    // The AudioPluginFormatManager's findFormatForDescription only matches a
+    // format when desc.fileOrIdentifier ends with that format's file extension
+    // (e.g. CLAPPluginFormat::fileMightContainThisPluginType requires ".clap").
+    // Track::rebuildFXChain passes the plugin *identifier string* (e.g.
+    // "CLAP-Vital-aaca468a-0") here, which matches no format. Resolve it back to
+    // the real plugin file path recorded during the scan so the in-process
+    // (non-isolated) render path can load the plugin.
+    auto resolvedDesc = resolveIdentifierToPath(desc, knownPluginList);
+
     bool crashed = false;
     std::unique_ptr<juce::AudioPluginInstance> result;
 
@@ -532,7 +561,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     auto oldTranslator = _set_se_translator(sehPluginCrashTranslator);
     try
     {
-        result = formatManager.createPluginInstance(desc, sampleRate, blockSize, errorMessage);
+        result = formatManager.createPluginInstance(resolvedDesc, sampleRate, blockSize, errorMessage);
     }
     catch (const std::runtime_error&)
     {
@@ -541,7 +570,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     }
     _set_se_translator(oldTranslator);
 #else
-    result = formatManager.createPluginInstance(desc, sampleRate, blockSize, errorMessage);
+    result = formatManager.createPluginInstance(resolvedDesc, sampleRate, blockSize, errorMessage);
 #endif
 
     if (crashed)
@@ -553,6 +582,40 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
     }
 
     return result;
+}
+
+juce::PluginDescription PluginManager::resolveIdentifierToPath(
+    const juce::PluginDescription& desc,
+    const juce::KnownPluginList& knownList)
+{
+    auto resolved = desc;
+    auto lower = resolved.fileOrIdentifier.toLowerCase();
+    if (!lower.endsWith(".clap") && !lower.endsWith(".vst3"))
+    {
+        for (const auto& kd : knownList.getTypes())
+        {
+            if (kd.matchesIdentifierString(resolved.fileOrIdentifier))
+            {
+                resolved.fileOrIdentifier = kd.fileOrIdentifier;
+                if (resolved.name.isEmpty())
+                    resolved.name = kd.name;
+                return resolved;
+            }
+        }
+
+        // Fallback: match by format+name when the identifier hash doesn't
+        // match (e.g. the plugin was rescanned or the path changed).
+        for (const auto& kd : knownList.getTypes())
+        {
+            if (kd.pluginFormatName == resolved.pluginFormatName
+                && kd.name == resolved.name)
+            {
+                resolved.fileOrIdentifier = kd.fileOrIdentifier;
+                return resolved;
+            }
+        }
+    }
+    return resolved;
 }
 
 bool PluginManager::isBlacklisted(const juce::String& pluginID) const
@@ -740,6 +803,49 @@ int PluginManager::slotTrackIndex(uint32_t slotId) const
     std::lock_guard<std::mutex> lock(slotTrackMutex_);
     auto it = slotTrackIndex_.find(slotId);
     return it != slotTrackIndex_.end() ? it->second : -1;
+}
+
+void PluginManager::loadPresetCache()
+{
+    if (!presetCacheFile.existsAsFile()) return;
+    auto xml = juce::XmlDocument::parse(presetCacheFile);
+    if (!xml) return;
+    for (int i = 0; i < xml->getNumChildElements(); ++i)
+    {
+        auto* child = xml->getChildElement(i);
+        if (child && child->getTagName() == "PLUGIN")
+        {
+            PluginPresetInfo info;
+            info.numPrograms = child->getIntAttribute("numPrograms", 0);
+            auto namesStr = child->getStringAttribute("programNames", {});
+            if (namesStr.isNotEmpty())
+                info.programNames = juce::StringArray::fromTokens(namesStr, "\x01", {});
+            auto id = child->getStringAttribute("id", {});
+            if (id.isNotEmpty())
+                presetCache[id] = info;
+        }
+    }
+}
+
+void PluginManager::savePresetCache()
+{
+    presetCacheFile.getParentDirectory().createDirectory();
+    juce::XmlElement root("PRESET_CACHE");
+    for (const auto& [id, info] : presetCache)
+    {
+        auto* child = root.createNewChildElement("PLUGIN");
+        child->setAttribute("id", id);
+        child->setAttribute("numPrograms", info.numPrograms);
+        if (!info.programNames.isEmpty())
+            child->setAttribute("programNames", info.programNames.joinIntoString("\x01"));
+    }
+    root.writeTo(presetCacheFile, {});
+}
+
+const PluginPresetInfo* PluginManager::getPresetInfo(const juce::String& pluginId) const
+{
+    auto it = presetCache.find(pluginId);
+    return it != presetCache.end() ? &it->second : nullptr;
 }
 
 } // namespace HDAW

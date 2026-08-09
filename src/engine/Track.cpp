@@ -1,4 +1,5 @@
 #include "Track.h"
+#include "../common/DebugLog.h"
 #include <cmath>
 
 namespace HDAW {
@@ -20,6 +21,18 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
     volumeGain.reset(sampleRate, 0.05);
     panPosition.reset(sampleRate, 0.05);
 
+    // Guard the fxChain / automationManagers / modulationManager iteration
+    // with stateLock. prepareToPlay runs on the message thread inside the
+    // graph's async applySettings (Pimpl::handleAsyncUpdate) AND on the audio
+    // thread at device start, while the command thread can be concurrently
+    // clearing those same vectors in rebuildFXChain / setAutomationTrees /
+    // rebuildModulation (which hold stateLock). An unlocked iteration there
+    // races the vector clear -> use-after-free / heap corruption. Follow the
+    // processBlock pattern: tryEnter() and skip the re-prepare if the lock is
+    // contended (the rebuild that holds the lock prepares the chain itself).
+    if (!stateLock.tryEnter())
+        return;
+
     fxSpec.sampleRate = sampleRate;
     fxSpec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
     fxSpec.numChannels = 2;
@@ -38,6 +51,7 @@ void Track::prepareToPlay(double sampleRate, int samplesPerBlock)
         modulationManager->prepare(sampleRate);
 
     updateLatency();
+    stateLock.exit();
 }
 
 void Track::updateLatency()
@@ -70,9 +84,10 @@ void Track::setAutomationTrees(const juce::ValueTree& automationList)
 
 void Track::releaseResources()
 {
-    for (const auto& slot : fxChain)
-        if (slot)
-            slot->reset();
+    // CLAP spec requires reset() on the audio thread. Defer to the
+    // next processBlock() call instead of calling here (which may be
+    // on the message thread during graph rebuild).
+    pendingReset.store(true, std::memory_order_release);
 }
 
 void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
@@ -338,6 +353,7 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
         {
             auto slot = std::make_unique<MidiFxSlot>(std::move(effect), type);
             slot->setBypassed(static_cast<bool>(slotTree.getProperty(IDs::bypassed, false)));
+            slot->loadParamsFromTree(slotTree);
             midiFxChain.push_back(std::move(slot));
         }
     }
@@ -345,6 +361,23 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
 
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    static std::atomic<int> trackPBCount{0};
+    int tc = trackPBCount.fetch_add(1, std::memory_order_relaxed);
+    if (tc < 5 || (tc % 500) == 0)
+        HDAW_LOG("TrackPB", "call=" + juce::String(tc)
+            + " bufCh=" + juce::String(buffer.getNumChannels())
+            + " bufS=" + juce::String(buffer.getNumSamples())
+            + " midi=" + juce::String(midiMessages.getNumEvents()));
+
+    // Service deferred reset from releaseResources(). CLAP spec requires
+    // reset() on the audio thread — this is the audio thread.
+    if (pendingReset.exchange(false, std::memory_order_acquire))
+    {
+        for (const auto& slot : fxChain)
+            if (slot)
+                slot->reset();
+    }
+
     // Run automation loop BEFORE mute check so mute automation can both
     // silence and un-silence the track.
     if (auto* ph = getPlayHead())
@@ -369,6 +402,13 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                             currentVal = panPosition.getCurrentValue() * 0.5f + 0.5f;
                         else if (pid == 3)
                             currentVal = isMuted.load() ? 1.0f : 0.0f;
+                        else if (pid >= 200)
+                        {
+                            int si = (pid - 200) / 100;
+                            int pi = (pid - 200) % 100;
+                            if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
+                                currentVal = midiFxChain[si]->getAutomationParam(pi);
+                        }
                         else if (pid >= 100)
                         {
                             int si = (pid - 100) / 100;
@@ -389,6 +429,13 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                                 panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
                             else if (pid == 3)
                                 isMuted.store(value >= 0.5f);
+                            else if (pid >= 200)
+                            {
+                                int si = (pid - 200) / 100;
+                                int pi = (pid - 200) % 100;
+                                if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
+                                    midiFxChain[si]->setAutomationParam(pi, static_cast<float>(value));
+                            }
                             else if (pid >= 100)
                             {
                                 int si = (pid - 100) / 100;
@@ -429,9 +476,14 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 }
             }
             for (const auto& slot : midiFxChain)
+            {
                 if (slot)
+                {
+                    slot->applyAutomation();
                     slot->process(midiMessages, hasPos ? &midiPos : nullptr,
                                   fxSpec.sampleRate, buffer.getNumSamples());
+                }
+            }
         }
         for (const auto& slot : fxChain)
         {
@@ -506,10 +558,28 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                         modGain = modVal;
                     else if (pid == 2)
                         modPan = modVal;
-                    // TODO: per-block modulation application for device params
-                    // (paramID > 2) — buffered value ready, target parameter
-                    // interface pending. The LFO phase still advances via
-                    // getModulation() above so the modulator stays in sync.
+                    else if (pid >= 200)
+                    {
+                        int si = (pid - 200) / 100;
+                        int pi = (pid - 200) % 100;
+                        if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
+                        {
+                            float base = midiFxChain[si]->getAutomationParam(pi);
+                            midiFxChain[si]->setAutomationParam(pi,
+                                juce::jlimit(0.0f, 1.0f, base + modVal));
+                        }
+                    }
+                    else if (pid >= 100)
+                    {
+                        int si = (pid - 100) / 100;
+                        int pi = (pid - 100) % 100;
+                        if (si < static_cast<int>(fxChain.size()) && fxChain[si])
+                        {
+                            float base = fxChain[si]->getAutomationParam(pi);
+                            fxChain[si]->setAutomationParam(pi,
+                                juce::jlimit(0.0f, 1.0f, base + modVal));
+                        }
+                    }
                 }
             }
 
@@ -665,6 +735,15 @@ void Track::setFXBypassed(int slotIndex, bool bypassed)
     if (!fxChainTree.isValid()) return;
     if (slotIndex < 0 || slotIndex >= fxChainTree.getNumChildren()) return;
     fxChainTree.getChild(slotIndex).setProperty(IDs::bypassed, bypassed, nullptr);
+}
+
+void Track::setFxSlotInternalParam(int slotIndex, int paramIndex, float value)
+{
+    const juce::SpinLock::ScopedLockType lock(stateLock);
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size()))
+        return;
+    if (fxChain[static_cast<size_t>(slotIndex)])
+        fxChain[static_cast<size_t>(slotIndex)]->setInternalParam(paramIndex, value);
 }
 
 void Track::setVolume(float newVolume)

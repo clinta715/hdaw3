@@ -26,6 +26,8 @@ add_executable(hdaw_tests
     unit/engine/track_fx_slot_show_editor_test.cpp
     unit/engine/isolated_scanner_test.cpp
     unit/engine/plugin_state_save_load_test.cpp
+    unit/engine/plugin_identifier_resolution_test.cpp
+    unit/engine/preset_cache_test.cpp
     unit/engine/markers_test.cpp
     unit/engine/stretch_test.cpp
     unit/engine/modulation_test.cpp
@@ -35,6 +37,7 @@ add_executable(hdaw_tests
     unit/engine/midi_clip_processor_test.cpp
     unit/engine/operator_logic_test.cpp
     unit/engine/midi_fx_test.cpp
+    unit/engine/midi_fx_automation_test.cpp
     unit/engine/modulation_fx_test.cpp
     unit/engine/transient_detector_test.cpp
     unit/engine/region_clipboard_test.cpp
@@ -58,6 +61,7 @@ add_executable(hdaw_tests
     unit/engine/send_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
+    unit/common/message_pump_test.cpp
     unit/model/project_model_test.cpp
     unit/model/clip_slicing_test.cpp
     unit/frontend/frontend_server_test.cpp

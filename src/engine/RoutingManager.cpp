@@ -92,6 +92,12 @@ void RoutingManager::rebuildFromValueTree()
         if (isFolderTrack(trackTree)) continue; // Folders are visual-only, no audio routing
         addTrack(t, trackTree);
     }
+
+    HDAW_LOG("RoutingDiag", "rebuildFromValueTree: tracks=" + juce::String(static_cast<int>(trackNodes.size()))
+        + " midiClips=" + juce::String(static_cast<int>(midiClipNodes.size()))
+        + " audioClips=" + juce::String(static_cast<int>(audioClipNodes.size()))
+        + " buses=" + juce::String(static_cast<int>(busNodes.size()))
+        + " sends=" + juce::String(static_cast<int>(sendConnections.size())));
 }
 
 void RoutingManager::reconnectMasterToOutput()
@@ -567,8 +573,22 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             // Connect MIDI clip output → track MIDI input.
             // JUCE's AudioProcessorGraph requires explicit MIDI connections
             // just like audio connections — MIDI does NOT flow automatically.
-            graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+            bool midiConn = graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
                                   { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+
+            // Also connect stereo audio so JUCE's graph includes this node in
+            // its processing order. Without an audio path to the output, the
+            // graph skips the node entirely and processBlock is never called.
+            // The audio buffer is silence (cleared in processBlock) — this is
+            // just a topology requirement.
+            bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
+            bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+
+            HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
+                + " a0=" + juce::String(a0 ? 1 : 0)
+                + " a1=" + juce::String(a1 ? 1 : 0)
+                + " clipOuts=" + juce::String(node->getProcessor()->getTotalNumOutputChannels())
+                + " trackIns=" + juce::String(trackIt->second->getProcessor()->getTotalNumInputChannels()));
         }
     }
 }

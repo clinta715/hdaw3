@@ -12,7 +12,7 @@ McpServer::~McpServer() { stop(); }
 void McpServer::registerTool(McpToolDef def) { tools_.insert(def.name, std::move(def)); }
 void McpServer::setTransport(Transport* t) { transport_ = t; }
 void McpServer::start() { if (transport_) transport_->start(this); }
-void McpServer::stop()  { if (transport_) transport_->stop(); }
+void McpServer::stop()  { if (transport_) { transport_->stop(); transport_ = nullptr; } }
 void McpServer::setCancelFlag(bool c) { cancelFlag_.store(c, std::memory_order_relaxed); }
 
 void McpServer::notifyFromBackground(const QString& jsonLine) {

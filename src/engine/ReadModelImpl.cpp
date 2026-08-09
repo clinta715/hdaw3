@@ -628,6 +628,27 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
             result.push_back(aps);
         }
     }
+
+    // Walk the live MIDI FX chain.
+    auto& midiFxChain = track->getMidiFxChain();
+    for (int si = 0; si < static_cast<int>(midiFxChain.size()); ++si)
+    {
+        auto& slot = midiFxChain[si];
+        if (!slot || slot->isBypassed())
+            continue;
+
+        const auto& params = slot->getAutomatableParams();
+        for (const auto& p : params)
+        {
+            AutomatableParamSnapshot aps;
+            aps.slotIndex = si;
+            aps.paramIndex = 200 + si * 100 + p.index;
+            aps.name = slot->getType().toStdString() + "." + p.name.toStdString();
+            aps.automatable = true;
+            result.push_back(aps);
+        }
+    }
+
     return result;
 }
 

@@ -1,5 +1,7 @@
 #include "CLAPPluginInstance.h"
 #include "CLAPPluginEditor.h"
+#include "../proxy/PluginProxySlot.h"
+#include "../common/DebugLog.h"
 #include <juce_core/juce_core.h>
 #include <clap/helpers/host.hxx>
 
@@ -15,7 +17,13 @@ CLAPHost::CLAPHost(CLAPPluginInstance* inst)
 
 bool CLAPHost::threadCheckIsMainThread() const noexcept
 {
-    return juce::MessageManager::getInstance()->isThisTheMessageThread();
+    // Accept both the JUCE message thread (normal live path) and the
+    // export render thread (offline render path). CLAP spec defines the
+    // "main thread" as the thread that called entry->init(); during
+    // offline render the module is loaded on the render worker thread,
+    // so CLAP plugins must treat that thread as main.
+    return juce::MessageManager::getInstance()->isThisTheMessageThread()
+        || proxy::isRenderThread();
 }
 
 bool CLAPHost::threadCheckIsAudioThread() const noexcept
@@ -33,11 +41,19 @@ void CLAPHost::requestProcess() noexcept
 
 void CLAPHost::requestCallback() noexcept
 {
+    static std::atomic<int> reqCount{0};
+    int rc = reqCount.fetch_add(1, std::memory_order_relaxed);
+    if (rc < 5 || (rc % 100) == 0)
+        HDAW_LOG("CLAPHost", "requestCallback count=" + juce::String(rc));
     triggerAsyncUpdate();
 }
 
 void CLAPHost::handleAsyncUpdate()
 {
+    static std::atomic<int> cbCount{0};
+    int cc = cbCount.fetch_add(1, std::memory_order_relaxed);
+    if (cc < 5 || (cc % 100) == 0)
+        HDAW_LOG("CLAPHost", "on_main_thread callback count=" + juce::String(cc));
     if (instance != nullptr)
     {
         auto* p = const_cast<clap_plugin_t*>(instance->getClapPlugin());
@@ -457,14 +473,44 @@ void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
     if (plugin == nullptr)
         return;
 
+    // TEMP ClapProbe: diagnostic only — remove after Phase 2
+    // investigation (answers: is prepareToPlay invoked at all in child?).
+    {
+        static std::atomic<int> prepareProbe1Count{0};
+        int p1c = prepareProbe1Count.fetch_add(1, std::memory_order_relaxed);
+        if (p1c < 2)
+        {
+            HDAW_LOG("ClapProbe",
+                (juce::String("prepareToPlay sr=") + juce::String(sampleRate)
+                 + " spb=" + juce::String(samplesPerBlock)
+                 + " wasActivated=" + juce::String(activated ? 1 : 0))
+                    .toStdString());
+        }
+    }
+
     if (!activated)
     {
-        plugin->activate(plugin, sampleRate, 1,
-                         static_cast<uint32_t>((std::max)(samplesPerBlock, 1)));
+        auto actOk = plugin->activate(plugin, sampleRate, 1,
+                                      static_cast<uint32_t>((std::max)(samplesPerBlock, 1)));
         activated = true;
 
-        plugin->start_processing(plugin);
+        auto procOk = plugin->start_processing(plugin);
         processing = true;
+
+        // TEMP ClapProbe: diagnostic only — remove after Phase 2
+        // investigation (answers: did CLAP activate/start_processing fail?).
+        {
+            static std::atomic<int> prepareProbe2Count{0};
+            int p2c = prepareProbe2Count.fetch_add(1, std::memory_order_relaxed);
+            if (p2c < 2)
+            {
+                HDAW_LOG("ClapProbe",
+                    (juce::String("prepareToPlay activate=")
+                     + juce::String(actOk ? 1 : 0)
+                     + " startProcessing=" + juce::String(procOk ? 1 : 0))
+                        .toStdString());
+            }
+        }
     }
 }
 
@@ -569,6 +615,24 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
+    // TEMP ClapProbe: diagnostic only — remove after Phase 2
+    // investigation (answers: is processBlock called before the early-out?).
+    {
+        static std::atomic<int> enterProbeCount{0};
+        int epc = enterProbeCount.fetch_add(1, std::memory_order_relaxed);
+        if (epc < 6)
+        {
+            HDAW_LOG("ClapProbe",
+                (juce::String("processBlock enter pluginNull=")
+                 + juce::String(plugin == nullptr ? 1 : 0)
+                 + " activated=" + juce::String(activated ? 1 : 0)
+                 + " processing=" + juce::String(processing ? 1 : 0)
+                 + " bufCh=" + juce::String(buffer.getNumChannels())
+                 + " bufS=" + juce::String(buffer.getNumSamples()))
+                    .toStdString());
+        }
+    }
+
     if (plugin == nullptr || !activated || !processing)
     {
         buffer.clear();
@@ -670,7 +734,26 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
     outEvents.clear();
     process.out_events = outEvents.getInterface();
 
+    static std::atomic<int> diagCount{0};
+    int dc = diagCount.fetch_add(1, std::memory_order_relaxed);
+    if (dc < 5)
+    {
+        HDAW_LOG("ClapDiag", "call=" + juce::String(dc)
+            + " activated=" + juce::String(activated ? 1 : 0)
+            + " processing=" + juce::String(processing ? 1 : 0)
+            + " midiEvents=" + juce::String(midiMessages.getNumEvents())
+            + " bufCh=" + juce::String(buffer.getNumChannels())
+            + " bufS=" + juce::String(buffer.getNumSamples())
+            + " numIn=" + juce::String(numInputs)
+            + " numOut=" + juce::String(numOutputs));
+    }
+
     auto status = plugin->process(plugin, &process);
+
+    if (dc < 5)
+    {
+        HDAW_LOG("ClapDiag", "process status=" + juce::String(static_cast<int>(status)));
+    }
 
     // Output events → MIDI
     midiMessages.clear();

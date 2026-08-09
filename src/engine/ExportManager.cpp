@@ -1,6 +1,5 @@
 #include "ExportManager.h"
 #include "../proxy/PluginProxySlot.h"
-#include "../common/DebugLog.h"
 
 namespace HDAW {
 
@@ -41,6 +40,7 @@ bool ExportManager::startExport(const juce::ValueTree& projectTree,
 void ExportManager::cancel()
 {
     cancelFlag = true;
+    proxy::setRenderCancelRequested(true);
 }
 
 double ExportManager::calculateProjectDuration(ProjectModel& model)
@@ -76,17 +76,11 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     juce::AudioProcessorGraph renderGraph;
 
     proxy::setRenderMode(true);
+    proxy::setRenderCancelRequested(false);
 
-    struct IsolationToggleGuard {
-        HDAW::PluginManager* pm;
-        bool wasEnabled;
-        IsolationToggleGuard(HDAW::PluginManager* p) : pm(p), wasEnabled(p && p->isolationEnabled) {
-            if (pm) pm->isolationEnabled = false;
-        }
-        ~IsolationToggleGuard() {
-            if (pm) pm->isolationEnabled = wasEnabled;
-        }
-    } isolationGuard{pluginManager};
+    // NOTE: Plugin isolation stays enabled. The export uses the full
+    // AudioProcessorGraph pipeline (graph.processBlock) so CLAP instruments
+    // run in isolated child processes just like live playback.
 
     try
     {
@@ -127,8 +121,25 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
         routingManager.setPlaybackInfo(sampleRate, blockSize);
         routingManager.rebuildFromValueTree();
 
-        renderGraph.prepareToPlay(sampleRate, blockSize);
+        // Complete the topology BEFORE prepareToPlay. The master→IO
+        // connections are already legal at this point: setBusesLayout ran
+        // before rebuildFromValueTree, so the audioOutputNode picked up its
+        // 2 input channels synchronously at addNode time. (The live graph in
+        // MainAudioProcessor must reconnect AFTER prepareToPlay because its
+        // bus layout arrives via device negotiation — that does not apply
+        // here.) Ordering it this way makes prepareToPlay the final topology
+        // change, so the single async render-sequence bake it triggers
+        // contains the complete graph.
         routingManager.reconnectMasterToOutput();
+
+        renderGraph.prepareToPlay(sampleRate, blockSize);
+
+        // Offline render: wait for the async render-sequence bake (delivered
+        // on the JUCE message pump thread) instead of racing it. Without
+        // this, processBlock hits the audio.clear() fallback for every block
+        // processed before the bake lands — the race that intermittently
+        // produced fully-silent exports.
+        renderGraph.setNonRealtime(true);
 
         int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
         int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;
@@ -166,11 +177,17 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
             while (samplesRendered < totalSamples && !cancelFlag.load())
             {
-                int numThisBlock = static_cast<int>((std::min)(static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
+                int numThisBlock = static_cast<int>((std::min)(
+                    static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
+
                 buffer.clear();
                 midiBuffer.clear();
 
+                // Drive the full AudioProcessorGraph pipeline.
+                // This calls processBlock on all nodes in topological order:
+                // MidiClipProcessor → Track (with CLAP instruments) → MasterBus → AudioOutput.
                 renderGraph.processBlock(buffer, midiBuffer);
+
                 renderTransport.advance(numThisBlock);
 
                 if (!writer->writeFromAudioSampleBuffer(buffer, 0, numThisBlock))
@@ -228,7 +245,9 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
 finish:
     renderGraph.releaseResources();
+    proxy::setRenderCancelRequested(false);
     proxy::setRenderMode(false);
+
     active = false;
 
     if (onComplete)

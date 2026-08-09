@@ -13,10 +13,23 @@ namespace proxy {
 
 // When true, PluginProxySlot::processBlock spin-waits for the child process
 // to produce output instead of clearing the buffer on empty output ring.
-// Set by ExportManager during offline render (the render loop runs at CPU
-// speed with no real-time pacing; the child needs time to process each block).
-inline std::atomic<bool> s_renderMode{ false };
-inline void setRenderMode(bool enabled) { s_renderMode.store(enabled, std::memory_order_relaxed); }
+// Thread-local: only the export render thread should be affected; the live
+// audio callback must not spin-wait.
+inline thread_local bool tls_renderMode{ false };
+inline thread_local std::thread::id tls_renderThreadId{};
+inline void setRenderMode(bool enabled) {
+    tls_renderMode = enabled;
+    tls_renderThreadId = enabled ? std::this_thread::get_id() : std::thread::id{};
+}
+inline bool isRenderMode() { return tls_renderMode; }
+inline bool isRenderThread() { return tls_renderMode && std::this_thread::get_id() == tls_renderThreadId; }
+
+// Cancel flag for interrupting spin-waits during export. Set by
+// ExportManager::cancel() so the spin-waits can bail out immediately
+// instead of waiting for the 200ms deadline.
+inline std::atomic<bool> s_renderCancelRequested{ false };
+inline void setRenderCancelRequested(bool v) { s_renderCancelRequested.store(v, std::memory_order_relaxed); }
+inline bool isRenderCancelRequested() { return s_renderCancelRequested.load(std::memory_order_relaxed); }
 
 // AudioProcessorParameter backed by the isolated-plugin param bridge. Reads a
 // parent-local atomic cache for getValue; setValue updates the cache and marks

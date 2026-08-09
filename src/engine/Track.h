@@ -45,6 +45,7 @@ public:
 
     void rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree);
     int getNumMidiFxSlots() const { return static_cast<int>(midiFxChain.size()); }
+    const std::vector<std::unique_ptr<MidiFxSlot>>& getMidiFxChain() const { return midiFxChain; }
 
     // FX chain mutation (used by the MCP server's add_fx/remove_fx/set_fx_bypass tools).
     // The in-memory chain and the track's FX_CHAIN ValueTree stay in sync.
@@ -55,6 +56,12 @@ public:
     void setFXSlotPluginID(int slotIndex, const std::string& pluginID);
     void removeFXSlot(int slotIndex);
     void setFXBypassed(int slotIndex, bool bypassed);
+
+    // Internal (non-plugin) FX param setter. Must hold stateLock: the pump
+    // thread's graph bake (Track::prepareToPlay → TrackFXSlot::prepare)
+    // recreates the slot's DSP objects under stateLock, so a concurrent
+    // setInternalParam would write into the object being destroyed.
+    void setFxSlotInternalParam(int slotIndex, int paramIndex, float value);
 
     void setAutomationTrees(const juce::ValueTree& automationList);
     AutomationManager& getAutomation(int index) { return *automationManagers[index]; }
@@ -98,6 +105,7 @@ private:
     juce::LinearSmoothedValue<float> volumeGain;
     juce::LinearSmoothedValue<float> panPosition;
     std::atomic<bool> isMuted{ false };
+    std::atomic<bool> pendingReset{ false };
 
     juce::SpinLock stateLock;
     std::vector<std::unique_ptr<TrackFXSlot>> fxChain;

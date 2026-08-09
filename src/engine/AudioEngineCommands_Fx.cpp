@@ -203,11 +203,33 @@ void AudioEngineCommands::setMidiFxSlotParam(int trackIndex, int slotIndex,
                                               const std::string& paramName, double value)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
-    auto slot = findMidiFxSlot(trackIndex, slotIndex);
-    if (!slot.isValid()) return;
-    slot.setProperty(juce::Identifier(paramName), value, &um);
+    auto slotTree = findMidiFxSlot(trackIndex, slotIndex);
+    if (!slotTree.isValid()) return;
+    slotTree.setProperty(juce::Identifier(paramName), value, &um);
+
     if (auto* proc = engine_.getMainProcessor())
-        proc->rebuildMidiTrackFX(trackIndex);
+    {
+        if (auto* track = proc->getTrack(trackIndex))
+        {
+            auto& chain = track->getMidiFxChain();
+            if (slotIndex >= 0 && slotIndex < static_cast<int>(chain.size()) && chain[slotIndex])
+            {
+                auto defs = HDAW::getMidiFxParamDefs(chain[slotIndex]->getType());
+                for (const auto& def : defs)
+                {
+                    if (paramName == def.name)
+                    {
+                        float normalized = (def.maxValue != def.minValue)
+                            ? static_cast<float>((value - def.minValue) / (def.maxValue - def.minValue))
+                            : 0.0f;
+                        normalized = juce::jlimit(0.0f, 1.0f, normalized);
+                        chain[slotIndex]->setAutomationParam(def.index, normalized);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 juce::ValueTree AudioEngineCommands::findMidiFxSlot(int trackIndex, int slotIndex) const

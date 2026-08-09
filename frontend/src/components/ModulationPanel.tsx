@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
+import type { AutomatableParamSnapshot } from "../rpc/types";
 import "./ModulationPanel.css";
 
 interface Lfo {
@@ -17,12 +18,24 @@ interface Lfo {
   enabled: boolean;
 }
 
+interface TargetOption {
+  paramIndex: number;
+  label: string;
+}
+
 const WAVEFORMS = ["Sine", "Triangle", "Saw", "Square", "Random"];
+
+const BUILTIN_TARGETS: TargetOption[] = [
+  { paramIndex: 1, label: "Volume" },
+  { paramIndex: 2, label: "Pan" },
+  { paramIndex: 3, label: "Mute" },
+];
 
 export default function ModulationPanel() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const [lfos, setLfos] = useState<Lfo[]>([]);
+  const [targetOptions, setTargetOptions] = useState<TargetOption[]>(BUILTIN_TARGETS);
 
   const fetchLfos = useCallback(async () => {
     if (selectedTrackIndex == null) { setLfos([]); return; }
@@ -32,7 +45,19 @@ export default function ModulationPanel() {
     } catch { /* keep current state on transient errors */ }
   }, [selectedTrackIndex]);
 
-  useEffect(() => { fetchLfos(); }, [fetchLfos]);
+  const fetchTargets = useCallback(async () => {
+    if (selectedTrackIndex == null) { setTargetOptions(BUILTIN_TARGETS); return; }
+    try {
+      const params = await rpc.call("read.getAutomatableParams", { trackIndex: selectedTrackIndex }) as AutomatableParamSnapshot[];
+      const fxTargets: TargetOption[] = params.map((p) => ({
+        paramIndex: p.paramIndex,
+        label: p.name,
+      }));
+      setTargetOptions([...BUILTIN_TARGETS, ...fxTargets]);
+    } catch { setTargetOptions(BUILTIN_TARGETS); }
+  }, [selectedTrackIndex]);
+
+  useEffect(() => { fetchLfos(); fetchTargets(); }, [fetchLfos, fetchTargets]);
 
   const handleAddLfo = () => {
     if (selectedTrackIndex == null) return;
@@ -76,6 +101,17 @@ export default function ModulationPanel() {
             <button className="mod-remove-btn" onClick={() => handleRemoveLfo(lfo.index)}>×</button>
           </div>
           <div className="mod-lfo-controls">
+            <label>
+              Target
+              <select
+                value={lfo.targetParamID}
+                onChange={(e) => handleSetParam(lfo.index, "targetParamID", Number(e.target.value))}
+              >
+                {targetOptions.map((t) => (
+                  <option key={t.paramIndex} value={t.paramIndex}>{t.label}</option>
+                ))}
+              </select>
+            </label>
             <label>
               Wave
               <select

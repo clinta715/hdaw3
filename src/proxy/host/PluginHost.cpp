@@ -5,6 +5,12 @@
 #include <juce_events/juce_events.h>
 #include <cstdlib>
 #include <cstring>
+#if JUCE_WINDOWS
+#include <windows.h>
+#include <stdexcept>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+#endif
 
 namespace {
 
@@ -15,6 +21,55 @@ void logSysexDrop(const char* reason) {
     if ((count.fetch_add(1, std::memory_order_relaxed) & 0xFFu) == 0)
         HDAW_LOG("plugin_host", reason);
 }
+
+#if JUCE_WINDOWS
+// SEH-to-C++ exception translator for plugin processBlock crashes.
+// Must NOT return — throws a C++ exception instead.
+void __cdecl sehProcessBlockCrashTranslator(unsigned int, struct _EXCEPTION_POINTERS*)
+{
+    throw std::runtime_error("Plugin crashed during processBlock");
+}
+
+// Raw SEH wrapper around plugin->processBlock(). This catches ALL structured
+// exceptions (access violations, stack overflows, divide-by-zero, etc.) that
+// the _set_se_translator approach might miss when the crash originates in a
+// plugin DLL's own exception handling or a background thread.
+// MUST be a separate function — MSVC forbids __try/__except in functions
+// that have C++ objects with destructors.
+static LONG WINAPI processBlockSehFilter(EXCEPTION_POINTERS* ep)
+{
+    HDAW_LOG("plugin_host", "SEH exception in processBlock code=0x"
+        + juce::String::toHexString(ep->ExceptionRecord->ExceptionCode));
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+// Write a minidump of the current process. Used by the watchdog to capture
+// the state of a hanging processBlock.
+static void writeMinidump(const char* reason)
+{
+    wchar_t dumpPath[MAX_PATH]{};
+    GetTempPathW(MAX_PATH, dumpPath);
+    wcscat_s(dumpPath, L"hdaw_plugin_host_hang.dmp");
+
+    HANDLE hFile = CreateFileW(dumpPath, GENERIC_WRITE, 0, nullptr,
+                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hFile == INVALID_HANDLE_VALUE) return;
+
+    MINIDUMP_EXCEPTION_INFORMATION mei{};
+    EXCEPTION_POINTERS* ep = nullptr;
+    // Capture current exception context (if any)
+    mei.ThreadId = GetCurrentThreadId();
+    mei.ClientPointers = FALSE;
+    mei.ExceptionPointers = ep;
+
+    MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
+                      hFile, MiniDumpWithFullMemory, &mei, nullptr, nullptr);
+    CloseHandle(hFile);
+
+    HDAW_LOG("plugin_host", juce::String("Wrote minidump: ") + reason
+        + " path=" + juce::String(juce::CharPointer_UTF16(dumpPath)));
+}
+#endif
 
 // Internal test processors derive from AudioPluginInstance; JUCE 8 makes
 // AudioProcessor::addParameter private in that subclass, requiring parameters
@@ -380,6 +435,7 @@ PluginHost::~PluginHost()
 
     if (controlThread.joinable()) controlThread.join();
     if (audioThread.joinable()) audioThread.join();
+    if (messagePumpThread.joinable()) messagePumpThread.join();
 
     destroyEditorWindow();
     if (plugin && paramForwarder)
@@ -402,6 +458,27 @@ int PluginHost::run()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
+#if JUCE_WINDOWS
+    // Install a process-wide unhandled exception filter so crashes on ANY
+    // thread (including CLAP plugin background threads) don't kill the child
+    // process. The SEH translator (sehProcessBlockCrashTranslator) only
+    // protects the audio thread; this catches everything else.
+    SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ep) -> LONG {
+        HDAW_LOG("plugin_host", "Unhandled exception, continuing (code=0x"
+            + juce::String::toHexString(ep->ExceptionRecord->ExceptionCode) + ")");
+        // Skip the faulting instruction to avoid infinite loop.
+        // Move IP forward by instruction size (approximate — good enough
+        // for crash recovery). The thread state is corrupted but the
+        // audio thread continues producing silence.
+        ep->ContextRecord->Rip += 1;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    });
+
+    // Suppress CRT abort dialog — if a C++ exception from a crashing
+    // thread reaches std::terminate, just exit silently.
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
+
     if (!pipe.connect()) return 1;
     if (!shm.open(shmName)) return 1;
 
@@ -415,6 +492,37 @@ int PluginHost::run()
     controlThread = std::thread(&PluginHost::controlLoop, this);
 
     audioThread = std::thread(&PluginHost::audioLoop, this);
+
+    // Dedicated message-pump thread: continuously dispatches JUCE messages
+    // so CLAP on_main_thread callbacks fire even when the audio thread is
+    // blocked inside plugin->processBlock(). Without this, the main thread's
+    // runDispatchLoopUntil(-1) may not dispatch AsyncUpdate fast enough
+    // because the audio thread consumes all CPU in the export context.
+    messagePumpThread = std::thread([this]() {
+        while (running.load()) {
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(0);
+            Sleep(1);
+        }
+    });
+
+    // Watchdog thread: monitors the audio thread for hanging processBlock.
+    // If processBlockActive stays true for >1 second, writes a minidump
+    // to %TEMP%\hdaw_plugin_host_hang.dmp for offline analysis.
+    watchdogThread = std::thread([this]() {
+        int hangMs = 0;
+        while (running.load()) {
+            Sleep(250);
+            if (processBlockActive.load(std::memory_order_acquire) && !dumpWritten.load()) {
+                hangMs += 250;
+                if (hangMs >= 1000) {
+                    dumpWritten.store(true);
+                    writeMinidump("processBlock hung for 1s");
+                }
+            } else {
+                hangMs = 0;
+            }
+        }
+    });
 
     {
         std::lock_guard<std::mutex> lock(guiMutex);
@@ -454,6 +562,29 @@ void PluginHost::controlLoop()
                 break;
 
             case proxy::MessageType::PREPARE: {
+                // TEMP ClapProbe: diagnostic only — remove after Phase 2
+                // investigation (answers: does PREPARE reach the child?).
+                {
+                    static std::atomic<int> prepareProbeCount{0};
+                    int ppc = prepareProbeCount.fetch_add(1, std::memory_order_relaxed);
+                    if (ppc < 2) {
+                        struct PrepareDataProbe {
+                            double sampleRate;
+                            int32_t blockSize;
+                            int32_t numChannels;
+                        };
+                        PrepareDataProbe pd{};
+                        if (msg.dataSize >= 16)
+                            std::memcpy(&pd, msg.data, sizeof(pd));
+                        HDAW_LOG("ClapProbe",
+                            (juce::String("controlLoop PREPARE received sr=")
+                             + juce::String(pd.sampleRate)
+                             + " bs=" + juce::String(pd.blockSize)
+                             + " ch=" + juce::String(pd.numChannels)
+                             + " pluginNull=" + juce::String(plugin == nullptr ? 1 : 0))
+                                .toStdString());
+                    }
+                }
                 if (msg.dataSize >= 16) {
                     struct PrepareData {
                         double sampleRate;
@@ -857,6 +988,21 @@ void PluginHost::audioLoop()
         uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
 
         if (w - r >= static_cast<uint32_t>(preparedBlockSize * preparedNumChannels)) {
+            // TEMP ClapProbe: diagnostic only — remove after Phase 2
+            // investigation (answers: does input audio flow reach the child?).
+            {
+                static std::atomic<int> openProbeCount{0};
+                int opc = openProbeCount.fetch_add(1, std::memory_order_relaxed);
+                if (opc < 5)
+                {
+                    HDAW_LOG("ClapProbe",
+                        (juce::String("audioLoop gate OPEN w-r=")
+                         + juce::String(static_cast<int>(w - r))
+                         + " bs=" + juce::String(preparedBlockSize)
+                         + " ch=" + juce::String(preparedNumChannels))
+                            .toStdString());
+                }
+            }
             float* inRing = shm.getInputRing();
             float* outRing = shm.getOutputRing();
 
@@ -872,8 +1018,21 @@ void PluginHost::audioLoop()
                 constexpr uint32_t midiCap = 256;
                 uint32_t mw = hdr->midiInWritePos.load(std::memory_order_relaxed);
                 uint32_t mr = hdr->midiInReadPos.load(std::memory_order_acquire);
-                uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
+uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                 uint32_t toRead = (std::min)(avail, midiCap);
+                // TEMP ClapProbe: diagnostic only — remove after Phase 2
+                // investigation (answers: does MIDI ever reach the child?).
+                if (toRead > 0)
+                {
+                    static std::atomic<int> midiProbeCount{0};
+                    int mpc = midiProbeCount.fetch_add(1, std::memory_order_relaxed);
+                    if (mpc < 8)
+                    {
+                        HDAW_LOG("ClapProbe",
+                            (juce::String("audioLoop midiConsumed count=")
+                             + juce::String(static_cast<int>(toRead))).toStdString());
+                    }
+                }
                 const uint8_t* sysexBuf = shm.getSysexInBuffer();
                 for (uint32_t i = 0; i < toRead; ++i) {
                     const proxy::MidiEvent& evt = midiIn[(mr + i) & 0xFF];
@@ -900,7 +1059,63 @@ void PluginHost::audioLoop()
                 hdr->midiInReadPos.store(mr + toRead, std::memory_order_release);
             }
 
+            // Pace the audio loop at approximately real-time speed so CLAP
+            // plugins receive blocks at a rate similar to live playback.
+            // During export the parent writes blocks at CPU speed; some CLAP
+            // plugins (Vital, Dexed, JE8086) crash or hang when processBlock
+            // is called faster than real-time because their internal timers
+            // and on_main_thread callbacks assume real-time pacing.
+            {
+                static thread_local uint64_t lastPaceTimeNs = 0;
+                if (lastPaceTimeNs == 0) {
+                    lastPaceTimeNs = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                } else {
+                    double blockDurationNs = static_cast<double>(preparedBlockSize) / preparedSampleRate * 1e9;
+                    uint64_t nowNs = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                    uint64_t elapsedNs = nowNs - lastPaceTimeNs;
+                    if (elapsedNs < static_cast<uint64_t>(blockDurationNs)) {
+                        uint64_t sleepNs = static_cast<uint64_t>(blockDurationNs) - elapsedNs;
+                        if (sleepNs > 1000000) // only sleep if > 1ms
+                            Sleep(static_cast<DWORD>(sleepNs / 1000000));
+                    }
+                    lastPaceTimeNs = static_cast<uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch()).count());
+                }
+            }
+
+            // SEH guard: catch crashes in the plugin's processBlock and
+            // output silence instead of killing the child process.
+#if JUCE_WINDOWS
+            {
+                static thread_local int crashCount = 0;
+                static thread_local int blockNum = 0;
+                auto oldTranslator = _set_se_translator(sehProcessBlockCrashTranslator);
+                processBlockActive.store(true, std::memory_order_release);
+                if (blockNum < 3) OutputDebugStringA(("plugin_host: pre-processBlock #" + std::to_string(blockNum) + "\n").c_str());
+                try
+                {
+                    plugin->processBlock(inputBuffer, midiBuffer);
+                    crashCount = 0;
+                    if (blockNum < 3) OutputDebugStringA(("plugin_host: post-processBlock #" + std::to_string(blockNum) + "\n").c_str());
+                }
+                catch (const std::runtime_error&)
+                {
+                    ++crashCount;
+                    OutputDebugStringA(("plugin_host: CRASH in processBlock count=" + std::to_string(crashCount) + "\n").c_str());
+                    inputBuffer.clear();
+                }
+                processBlockActive.store(false, std::memory_order_release);
+                _set_se_translator(oldTranslator);
+                ++blockNum;
+            }
+#else
             plugin->processBlock(inputBuffer, midiBuffer);
+#endif
 
             hdr->audioFramesProduced.fetch_add(preparedBlockSize, std::memory_order_relaxed);
             hdr->audioBlocksProcessed.fetch_add(1, std::memory_order_relaxed);
@@ -957,7 +1172,23 @@ void PluginHost::audioLoop()
                     outRing[(ow + ch * preparedBlockSize + s) & (cap - 1)] = inputBuffer.getSample(ch, s);
             }
             hdr->outputWritePos.store(ow + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
+
+            // Yield to give the main thread time to pump CLAP on_main_thread
+            // callbacks. During export the audio loop runs at CPU speed and
+            // the main thread (which dispatches request_callback via
+            // AsyncUpdate → on_main_thread) can starve without this.
+            Sleep(0);
         } else {
+            // TEMP ClapProbe: diagnostic only — remove after Phase 2
+            // investigation (answers: is the child starved of input frames?).
+            static std::atomic<int> spinProbeCount{0};
+            int spc = spinProbeCount.fetch_add(1, std::memory_order_relaxed);
+            if (spc < 5 || (spc % 1024) == 0)
+            {
+                HDAW_LOG("ClapProbe",
+                    (juce::String("audioLoop gate SPIN w-r=")
+                     + juce::String(static_cast<int>(w - r))).toStdString());
+            }
             static thread_local int spinCount = 0;
             if ((++spinCount & 63) == 0)
                 Sleep(0);
@@ -971,7 +1202,20 @@ void PluginHost::audioLoop()
 // Plugin loading
 // ---------------------------------------------------------------------------
 bool PluginHost::loadPlugin() {
-    if (!loadPluginByPath(juce::String(pluginPath))) return false;
+    bool loadedRealPlugin = loadPluginByPath(juce::String(pluginPath));
+    // TEMP ClapProbe: diagnostic only — remove after Phase 2 investigation.
+    HDAW_LOG("ClapProbe", (juce::String("loadPlugin final plugin=")
+        + juce::String(loadedRealPlugin ? "yes" : "no")).toStdString());
+    if (!loadedRealPlugin) {
+        // Plugin failed to load (crashed during init, etc.).
+        // Use a passthrough processor instead so the child stays alive
+        // and the parent's proxy can still communicate. The child will
+        // output silence (passthrough copies input to output, which is
+        // zeroed by the parent).
+        HDAW_LOG("plugin_host", "Plugin failed to load, using passthrough");
+        plugin = std::make_unique<PassthroughProcessor>();
+        pluginLoaded.store(true);
+    }
     if (plugin) {
         paramForwarder = std::make_unique<ParamForwarder>(*this);
         plugin->addListener(paramForwarder.get());
@@ -1013,13 +1257,37 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
     juce::String error;
 
     for (auto* fmt : formatManager.getFormats()) {
-        if (!fmt->fileMightContainThisPluginType(path))
+        bool mightContain = fmt->fileMightContainThisPluginType(path);
+        juce::OwnedArray<juce::PluginDescription> types;
+        int typeCount = 0;
+        if (mightContain)
+        {
+            fmt->findAllTypesForFile(types, path);
+            typeCount = types.size();
+        }
+
+        // TEMP ClapProbe: diagnostic only — remove after Phase 2
+        // investigation (answers: what path+format reach the child?).
+        {
+            static std::atomic<int> lpProbeCount{0};
+            int lpc = lpProbeCount.fetch_add(1, std::memory_order_relaxed);
+            if (lpc < 4)
+            {
+                HDAW_LOG("ClapProbe",
+                    (juce::String("loadPluginByPath path=") + path
+                     + " format=" + fmt->getName()
+                     + " mightContain=" + juce::String(mightContain ? 1 : 0)
+                     + " types=" + juce::String(typeCount))
+                        .toStdString());
+            }
+        }
+
+        if (!mightContain)
             continue;
 
-        juce::OwnedArray<juce::PluginDescription> types;
-        fmt->findAllTypesForFile(types, path);
-
         for (auto* desc : types) {
+            // SEH guard around plugin instantiation — CLAP plugins can
+            // crash during init() on background threads.
             plugin = formatManager.createPluginInstance(*desc, 44100.0, 512, error);
             if (plugin) {
                 pluginLoaded.store(true);

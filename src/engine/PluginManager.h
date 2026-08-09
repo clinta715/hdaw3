@@ -14,11 +14,22 @@ namespace proxy { class PluginProxySlot; }
 
 namespace HDAW {
 
+struct PluginPresetInfo {
+    int numPrograms = 0;
+    juce::StringArray programNames;
+};
+
 class PluginManager : private juce::Timer
 {
 public:
     PluginManager();
     ~PluginManager();
+
+    // Stops the crash-recovery Timer. Called during AudioEngine teardown while
+    // the message pump thread is parked, so a queued CallTimersMessage cannot
+    // respawn a proxy slot after the proxies (owned by the track graph) are
+    // destroyed.
+    void stopCrashMonitor() { stopTimer(); }
 
     bool isolationEnabled = true;
 
@@ -49,8 +60,23 @@ public:
         double sampleRate = 44100.0, int blockSize = 512,
         bool isolated = false);
 
+    // Resolves a plugin identifier string (e.g. "CLAP-Vital-aaca468a-0") to a
+    // real plugin file path by looking it up in the known plugin list. Used by
+    // createPluginInstance in the non-isolated (in-process) branch, which JUCE's
+    // AudioPluginFormatManager requires to be a path ending in the format's
+    // extension. Returns a copy of desc with fileOrIdentifier/name patched; if no
+    // match is found (or the identifier is already a path), desc is returned
+    // unchanged.
+    static juce::PluginDescription resolveIdentifierToPath(
+        const juce::PluginDescription& desc,
+        const juce::KnownPluginList& knownList);
+
     void loadCache();
     void saveCache();
+
+    void loadPresetCache();
+    void savePresetCache();
+    const PluginPresetInfo* getPresetInfo(const juce::String& pluginId) const;
 
     // Blacklist
     bool isBlacklisted(const juce::String& pluginID) const;
@@ -91,9 +117,13 @@ private:
     std::unordered_map<juce::String, juce::String> blacklistReasons;
     juce::File blacklistFile;
 
+    // Preset cache
+    std::unordered_map<juce::String, PluginPresetInfo> presetCache;
+    juce::File presetCacheFile;
+
     // Isolated scanning
     juce::File scannerExePath;
-    struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; juce::String name, manufacturer, category, format, file, id, error; };
+    struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; int numPrograms = 0; juce::StringArray programNames; juce::String name, manufacturer, category, format, file, id, error; };
     ScanResult scanPluginIsolated(const juce::String& pluginPath);
     int lastScanCrashCount = 0;
 

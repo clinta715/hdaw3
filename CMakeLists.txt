@@ -106,6 +106,7 @@ add_library(HDAW_lib STATIC
     src/engine/RoutingManager.cpp
     src/engine/Track.cpp
     src/engine/TrackFXSlot.cpp
+    src/engine/MidiFx.cpp
     src/engine/ReadModelImpl.cpp
     src/engine/PluginServiceImpl.cpp
     src/engine/PluginParamServiceImpl.cpp
@@ -117,6 +118,7 @@ add_library(HDAW_lib STATIC
 src/engine/StretchRenderer.cpp
     src/engine/StretchCache.cpp
     src/engine/TransientDetector.cpp
+    src/common/MessagePumpThread.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

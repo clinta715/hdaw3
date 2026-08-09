@@ -1028,14 +1028,23 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
     s.registerTool({"list_plugins", "List all scanned plugins.",
         objSchema({}),
         [e](const QJsonObject&) {
+            auto& pm = e->getPluginManager();
             QJsonArray arr;
-            for (const auto& pd : e->getPluginManager().getPlugins()) {
+            for (const auto& pd : pm.getPlugins()) {
                 QJsonObject o;
                 o["name"] = jstr(pd.name);
                 o["manufacturer"] = jstr(pd.manufacturerName);
                 o["format"] = jstr(pd.pluginFormatName);
                 o["category"] = jstr(pd.category);
                 o["id"] = jstr(pd.createIdentifierString());
+                auto* presetInfo = pm.getPresetInfo(pd.createIdentifierString());
+                if (presetInfo && presetInfo->numPrograms > 1) {
+                    o["hasPresets"] = true;
+                    o["presetCount"] = presetInfo->numPrograms;
+                } else {
+                    o["hasPresets"] = false;
+                    o["presetCount"] = 0;
+                }
                 arr.append(o);
             }
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{{"plugins", arr}}).toJson(QJsonDocument::Compact)));
