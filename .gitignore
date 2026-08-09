@@ -109,4 +109,17 @@ graphify-out/
 build_output*.txt
 test_output*.txt
 
+# Root-level repro/export artifacts (WAV/MP3 renders, driver scripts, test
+# projects, diagnostics from the silent-export investigation). Root-scoped so
+# intentional fixtures under tests/ or other subdirs are never hidden.
+/*.wav
+/*.mp3
+/*.hdaw
+/*.hdp
+/*.js
+/*.mjs
+/headless_err.txt
+/.tmp_probe/
+/auto-backups/
+
 
