@@ -47,7 +47,21 @@ void CrashRecoveryManager::requestRespawn(uint32_t slotId, bool immediate) {
     it->second.pendingRespawn.store(true);
 }
 
+void CrashRecoveryManager::cancel(uint32_t slotId) {
+    std::lock_guard<std::mutex> lock(mutex);
+    entries.erase(slotId);
+}
+
 void CrashRecoveryManager::attemptRespawn(RecoveryEntry& entry) {
+    // Suppression gate: during offline export, respawn is disabled so a
+    // crashed plugin fails the export instead of respawning into a
+    // half-rendered file (and racing the export render thread's
+    // processBlock via kill+swap). The entry stays pending and is either
+    // retried after export restores the flag or canceled by the proxy
+    // destruction callback when export tears down.
+    if (!respawnEnabled.load(std::memory_order_relaxed))
+        return;
+
     entry.attemptCount++;
     entry.pendingRespawn.store(false);
 

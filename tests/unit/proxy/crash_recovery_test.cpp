@@ -224,4 +224,99 @@ TEST(ProxyHealth, IdleChildNotKilledByStallDetector) {
     ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
 }
 
+// Regression gate for the export-path proxy-lifetime UAF. The fix:
+// ~PluginProxySlot fires a destruction callback that erases the slot from
+// PluginManager::liveProxySlots and cancels its CrashRecovery entry. Without
+// this, destroying an export-path proxy leaves a dangling liveProxySlots
+// entry, and a pending respawn then dereferences the freed proxy -> 0xC0000005.
+//
+// This test: creates an isolated proxy via PluginManager, then releases it
+// (simulating export renderGraph teardown), then attempts a respawn. The
+// respawn must return false (map entry gone) and must not crash.
+TEST(CrashRecovery, DestroyedProxyIsDeregistered) {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    HDAW::PluginManager pm;
+
+    juce::PluginDescription desc;
+    desc.name = "Passthrough";
+    desc.fileOrIdentifier = "__passthrough__";
+
+    juce::String error;
+    auto instance = pm.createPluginInstance(desc, error, 44100.0, 512, true);
+    ASSERT_NE(instance, nullptr) << error.toStdString();
+
+    auto* proxy = dynamic_cast<proxy::PluginProxySlot*>(instance.get());
+    ASSERT_NE(proxy, nullptr);
+    uint32_t slotId = proxy->getSlotId();
+
+    // Enqueue a crash-recovery entry so we can verify it gets canceled on
+    // destruction.
+    pm.recovery().onSlotCrashed(slotId, "TestPlugin", "__passthrough__");
+
+    // Destroy the proxy (simulates renderGraph teardown at export end).
+    // ~PluginProxySlot fires the destruction callback -> erases from
+    // liveProxySlots + cancels the recovery entry.
+    instance.reset();
+    proxy = nullptr;
+
+    // Respawn must return false: the slot is gone from liveProxySlots.
+    // Without the fix, this would find a dangling pointer and dereference it.
+    bool ok = pm.respawnIsolatedSlot(slotId, "__passthrough__");
+    EXPECT_FALSE(ok) << "respawnIsolatedSlot should return false after the "
+                        "proxy was destroyed and deregistered";
+
+    // Also exercise the Timer-driven path: tick() → attemptRespawn →
+    // respawnFn(slotId, path). The entry was canceled by the destruction
+    // callback, so tick() must find nothing for this slot and not crash.
+    pm.recovery().tick();
+
+    // No crash reaching here proves the dangling-entry UAF is closed.
+}
+
+// Regression gate for respawn suppression during export. CrashRecoveryManager
+// must NOT attempt respawn while respawnEnabled is false (export duration).
+// The entry stays pending and is cancelable by the destruction callback.
+TEST(CrashRecovery, RespawnSuppressedWhenDisabled) {
+    HDAW::CrashRecoveryManager crm;
+
+    int respawnCalls = 0;
+    crm.setRespawnFn([&](uint32_t, const juce::String&) {
+        ++respawnCalls;
+        return true;
+    });
+
+    crm.onSlotCrashed(8888, "Suppressed", "/fake/path");
+
+    // Suppress and tick multiple times — respawn must NOT fire.
+    crm.respawnEnabled.store(false, std::memory_order_relaxed);
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        crm.tick();
+    }
+    EXPECT_EQ(respawnCalls, 0)
+        << "respawn must not fire while respawnEnabled is false";
+
+    // Re-enable and tick — respawn should now proceed.
+    crm.respawnEnabled.store(true, std::memory_order_relaxed);
+    bool recovered = false;
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        crm.tick();
+        if (respawnCalls > 0) { recovered = true; break; }
+    }
+    EXPECT_TRUE(recovered) << "respawn should fire after re-enabling";
+
+    // Cancel must remove a pending entry so tick never fires respawnFn for it.
+    crm.onSlotCrashed(7777, "Canceled", "/fake/path");
+    crm.cancel(7777);
+    int before = respawnCalls;
+    for (int i = 0; i < 10; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        crm.tick();
+    }
+    EXPECT_EQ(respawnCalls, before)
+        << "cancel() must prevent any respawn attempt for that slot";
+}
+
 #endif

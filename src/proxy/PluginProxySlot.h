@@ -134,6 +134,15 @@ public:
     void setRespawnRequestFn(RespawnRequestFn fn) { respawnRequestFn = std::move(fn); }
     void requestRespawn() { if (respawnRequestFn) respawnRequestFn(slotId); }
 
+    // Destruction notifier — fired at the END of ~PluginProxySlot (after all
+    // shm/process cleanup). The PluginManager uses it to erase this slot from
+    // liveProxySlots and cancel any pending CrashRecovery entry, so a respawn
+    // scheduled for a now-destroyed proxy can never dereference a freed
+    // pointer. Null-guarded: the proxy can be destroyed during shutdown
+    // without a callback set.
+    using SlotDestroyedFn = std::function<void(uint32_t)>;
+    void setSlotDestroyedFn(SlotDestroyedFn fn) { slotDestroyedFn = std::move(fn); }
+
     using EditorClosedCallback = std::function<void()>;
     void setEditorClosedCallback(EditorClosedCallback cb) { editorClosedCb = std::move(cb); }
     void startEditorWatcher();
@@ -160,6 +169,7 @@ private:
 
     CrashNotifyFn crashRecoveryNotifier;
     RespawnRequestFn respawnRequestFn;
+    SlotDestroyedFn slotDestroyedFn;
 
     void waitForEditorClosed();
 

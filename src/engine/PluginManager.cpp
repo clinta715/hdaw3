@@ -537,7 +537,25 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
                 if (crashRecovery) crashRecovery->requestRespawn(sid, true);
             });
 
-        liveProxySlots[slotId] = proxy;
+        // Deregistration callback: fired from ~PluginProxySlot after all
+        // shm/process cleanup. Erases the raw pointer from liveProxySlots and
+        // cancels any pending CrashRecovery entry so a stale respawn can never
+        // dereference the freed proxy. The erase and cancel are in separate
+        // lock scopes to avoid nesting liveProxySlotsMutex_ with
+        // CrashRecoveryManager::mutex (lock-ordering safety).
+        proxy->setSlotDestroyedFn(
+            [this](uint32_t sid) {
+                {
+                    std::lock_guard<std::mutex> lk(liveProxySlotsMutex_);
+                    liveProxySlots.erase(sid);
+                }
+                if (crashRecovery) crashRecovery->cancel(sid);
+            });
+
+        {
+            std::lock_guard<std::mutex> lk(liveProxySlotsMutex_);
+            liveProxySlots[slotId] = proxy;
+        }
 
         proxyProcessManager.startHealthMonitor(2000);
 
@@ -728,10 +746,21 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
         return false;
     }
 
-    auto it = liveProxySlots.find(oldSlotId);
-    if (it == liveProxySlots.end() || it->second == nullptr) return false;
-
-    auto* proxy = it->second;
+    // Guarded map lookup — extract the raw pointer and release the lock
+    // immediately. The pointer stays valid for the entire respawn because the
+    // proxy is owned by the audio graph (not by this map); only a graph
+    // teardown destroys it, and respawn runs on the message thread between
+    // graph rebuilds. liveProxySlotsMutex_ is never nested with graphLock
+    // (lesson 12): the graphLock block below touches only the process/shm,
+    // not the map.
+    proxy::PluginProxySlot* proxy = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(liveProxySlotsMutex_);
+        auto it = liveProxySlots.find(oldSlotId);
+        if (it != liveProxySlots.end())
+            proxy = it->second;
+    }
+    if (proxy == nullptr) return false;
 
     // 1. Spawn the NEW host first, OUTSIDE the lock. Process creation is slow;
     //    holding graphLock across spawn would starve the audio callback. The
@@ -781,8 +810,11 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 
     proxy->prepareToPlay(lastSampleRate, lastBlockSize);
 
-    liveProxySlots.erase(oldSlotId);
-    liveProxySlots[newSlotId] = proxy;
+    {
+        std::lock_guard<std::mutex> lk(liveProxySlotsMutex_);
+        liveProxySlots.erase(oldSlotId);
+        liveProxySlots[newSlotId] = proxy;
+    }
 
     registerSlotTrackIndex(newSlotId, slotTrackIndex(oldSlotId));
     if (auto* srv = frontend::FrontendServer::instance()) {

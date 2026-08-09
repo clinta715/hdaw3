@@ -128,7 +128,15 @@ private:
     int lastScanCrashCount = 0;
 
     std::unique_ptr<CrashRecoveryManager> crashRecovery;
+    // Raw-pointer observer registry of currently-alive proxy slots. The proxy
+    // is OWNED by the audio graph (unique_ptr in AudioProcessorGraph), not by
+    // this map. Guarded by liveProxySlotsMutex_ because the map is mutated
+    // from two threads: the message thread (live rebuild, respawn) and the
+    // export render thread (proxy destruction at renderGraph teardown). This
+    // mutex is SEPARATE from graphLock (which belongs to the audio thread);
+    // the two are never nested (AGENTS.md lesson 12).
     std::unordered_map<uint32_t, proxy::PluginProxySlot*> liveProxySlots;
+    std::mutex liveProxySlotsMutex_;
     mutable std::mutex slotTrackMutex_;
     std::unordered_map<uint32_t, int> slotTrackIndex_;  // proxy slotId -> owning track index
     juce::SpinLock* graphLockPtr = nullptr;

@@ -50,6 +50,11 @@ PluginProxySlot::~PluginProxySlot() {
     processManager.killPluginHost(slotId, KillMode::KillGraceful);
     releaseResources();
     shmHandle.reset();
+    // Notify the registry LAST, after all shm/process resources are released,
+    // so the caller (PluginManager) can safely erase this slot and cancel any
+    // pending respawn — a respawn that would otherwise dereference `this`
+    // after destruction completes.
+    if (slotDestroyedFn) slotDestroyedFn(slotId);
 }
 
 void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {

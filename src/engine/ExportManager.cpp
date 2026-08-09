@@ -1,4 +1,5 @@
 #include "ExportManager.h"
+#include "PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
 
 namespace HDAW {
@@ -73,10 +74,45 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 {
     bool success = false;
     juce::String message;
-    juce::AudioProcessorGraph renderGraph;
 
     proxy::setRenderMode(true);
     proxy::setRenderCancelRequested(false);
+
+    // Suppress crash-recovery respawn for the ENTIRE export duration,
+    // including teardown. A crashed plugin during offline export should
+    // fail the export, not respawn into a half-rendered file; and with
+    // respawn suppressed there is no kill+swap to race the export
+    // render thread's processBlock.
+    //
+    // This RAII guard is declared BEFORE `renderGraph` so C++ reverse
+    // destruction order guarantees its destructor runs AFTER renderGraph's
+    // — i.e. AFTER every ~PluginProxySlot has fired its destruction
+    // callback (erasing from liveProxySlots + cancel()ing the recovery
+    // entry). By the time respawnEnabled is restored to true, all of
+    // export's proxies are gone and their entries canceled, so a Timer
+    // tick can never dereference a freed export proxy. This is the
+    // essential ordering the plan specifies ("restore after proxies are
+    // destroyed + cancel fired").
+    //
+    // NOTE: the callers (McpExportTool, FrontendRouter) drive the ENGINE's
+    // member ExportManager, whose ~ExportManager only runs at engine
+    // teardown — so a pure join-based restore would leave respawnEnabled
+    // false between exports, suppressing live crash recovery. The RAII
+    // guard closes that gap: it fires the instant this render thread
+    // finishes unwinding.
+    HDAW::CrashRecoveryManager* recoveryMgr =
+        pluginManager ? &pluginManager->recovery() : nullptr;
+    struct RespawnSuppressionGuard {
+        HDAW::CrashRecoveryManager* crm;
+        explicit RespawnSuppressionGuard(HDAW::CrashRecoveryManager* c) : crm(c) {
+            if (crm) crm->respawnEnabled.store(false, std::memory_order_relaxed);
+        }
+        ~RespawnSuppressionGuard() {
+            if (crm) crm->respawnEnabled.store(true, std::memory_order_relaxed);
+        }
+    } respawnGate(recoveryMgr);
+
+    juce::AudioProcessorGraph renderGraph;
 
     // NOTE: Plugin isolation stays enabled. The export uses the full
     // AudioProcessorGraph pipeline (graph.processBlock) so CLAP instruments
