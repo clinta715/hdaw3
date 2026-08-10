@@ -12,6 +12,7 @@
 #include <mutex>
 #include <deque>
 #include <vector>
+#include <functional>
 
 // Child-side AudioPlayHead fed from the parent's transport snapshot over the
 // shared-memory header (see ShmHeader's transport* fields). The parent packs
@@ -74,6 +75,13 @@ private:
     void audioLoop();
     bool loadPlugin();
     bool loadPluginByPath(const juce::String& path);
+
+    // Runs fn on the child's message thread and waits (bounded). CLAP
+    // lifecycle calls (activate/prepareToPlay/set/getState) must run on the
+    // thread the host reports as main; the control loop is a pipe thread, and
+    // thread-checking plugins (Odin2) std::terminate otherwise. Returns false
+    // on timeout.
+    bool runLifecycleOnMessageThread(const std::function<void()>& fn, int timeoutMs);
 
     void openEditorOnGUIThread();
     void closeEditorOnGUIThread();

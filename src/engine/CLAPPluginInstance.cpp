@@ -447,21 +447,25 @@ void CLAPPluginInstance::buildBuses()
         clap_audio_port_info_t info;
         if (audioPortsExt->get(plugin, i, true, &info))
         {
+            // Main input port only — sidechain/aux inputs must not be summed
+            // into the main mix width.
             if (info.flags & CLAP_AUDIO_PORT_IS_MAIN)
                 numInputs = static_cast<int>(info.channel_count);
         }
     }
 
+    // Sum ALL output ports: multi-port CLAP plugins (e.g. the gearmulator
+    // Nord-2x port with "Out AB" + "Out CD") write to every declared port.
+    // Reading only the main port starves the plugin of channels and its
+    // output copy then writes past the host buffer. Single-main-port
+    // plugins (the common case) sum to their one port's width.
     numOutputs = 0;
     uint32_t outCount = audioPortsExt->count(plugin, false);
     for (uint32_t i = 0; i < outCount; ++i)
     {
         clap_audio_port_info_t info;
         if (audioPortsExt->get(plugin, i, false, &info))
-        {
-            if (info.flags & CLAP_AUDIO_PORT_IS_MAIN)
-                numOutputs = static_cast<int>(info.channel_count);
-        }
+            numOutputs += static_cast<int>(info.channel_count);
     }
 
     if (numInputs == 0) numInputs = 2;
@@ -479,8 +483,10 @@ void CLAPPluginInstance::prepareToPlay(double sampleRate, int samplesPerBlock)
                          static_cast<uint32_t>((std::max)(samplesPerBlock, 1)));
         activated = true;
 
-        plugin->start_processing(plugin);
-        processing = true;
+        // start_processing() is intentionally NOT called here: the CLAP
+        // spec requires it to be called on the audio thread (the thread
+        // that calls process). Strict plugins (Odin2) abort if it is
+        // called on the message thread — defer to the first processBlock.
     }
 }
 
@@ -585,11 +591,20 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    if (plugin == nullptr || !activated || !processing)
+    if (plugin == nullptr || !activated)
     {
         buffer.clear();
         midiMessages.clear();
         return;
+    }
+
+    if (!processing)
+    {
+        // start_processing() must be called on the audio thread (the thread
+        // that calls process). Deferred here from prepareToPlay — strict
+        // plugins (Odin2) abort if called on the message thread.
+        plugin->start_processing(plugin);
+        processing = true;
     }
 
     uint32_t frames = static_cast<uint32_t>(buffer.getNumSamples());

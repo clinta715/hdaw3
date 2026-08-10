@@ -64,6 +64,20 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     auto* pipe = processManager.getPipe(slotId);
     if (!pipe) return;
 
+    // The child wrote the hosted plugin's channel layout into the shm header
+    // at load. Use it for the PREPARE width so multi-port plugins (4-out
+    // Nord-2x port) get their full channel count in the child.
+    if (shmHandle)
+    {
+        if (auto* hdr = shmHandle->getHeader())
+        {
+            reportedNumInputs = static_cast<int>(hdr->pluginNumInputChannels);
+            reportedNumOutputs = static_cast<int>(hdr->pluginNumOutputChannels);
+            if (reportedNumOutputs > 0 && reportedNumOutputs > numChannels)
+                numChannels = reportedNumOutputs;
+        }
+    }
+
     ProxyMessage msg{};
     msg.type = MessageType::PREPARE;
     msg.slotId = slotId;
@@ -647,6 +661,16 @@ void PluginProxySlot::fillInPluginDescription(juce::PluginDescription& desc) con
     desc.name = pluginDisplayName;
     desc.pluginFormatName = "Isolated";
     desc.fileOrIdentifier = "isolated_" + juce::String(static_cast<int>(slotId));
+    desc.numInputChannels = getReportedNumInputChannels();
+    desc.numOutputChannels = getReportedNumOutputChannels();
+}
+
+int PluginProxySlot::getReportedNumInputChannels() const {
+    return reportedNumInputs > 0 ? reportedNumInputs : 2;
+}
+
+int PluginProxySlot::getReportedNumOutputChannels() const {
+    return reportedNumOutputs > 0 ? reportedNumOutputs : 2;
 }
 
 juce::AudioProcessorEditor* PluginProxySlot::createEditor() {

@@ -8,7 +8,7 @@
 
 **Evidence update (this session):** NodalRed2x is **NOT** a transport-clock case — an unhandled SEH dump shows it **hard-crashes inside its own `process()`** (`NodalRed2x+0x72cc96` ← child stack: `PluginHost::audioLoop` → `CLAPPluginInstance::processBlock+0x2902` → `NodalRed2x` frames → `UnhandledExceptionFilter`), with **no playhead present**. The isolation containment converted the crash into silent output (parent `buffer.clear()` fallback). NodalRed2x remains in `kKnownSilent` permanently with this dump as evidence. During the Task-6 sweep, record whether NodalRed2x's crash *changes* once a playhead IS forwarded (transport-sensitive vs unconditional) — a one-run observation, not a fix.
 
-## RESOLVED — full investigation outcome (2026-08-09)
+## RESOLVED — full investigation outcome (2026-08-09; updated 2026-08-10)
 
 **Sweep evidence (this session, WIP + `/EHa` child):**
 | Probe | ShinRonin | Gneiss | Retrospect | NodalRed2x |
@@ -24,7 +24,7 @@
 4. **Containment fix verified**: `/EHa` on `hdaw_plugin_host` ⇒ the `SIL CRASH` catch fires; NodalRed2x degrades to silent-survive (hung=0) instead of a dump storm.
 5. **Transport forward itself works end-to-end** (parent pack → shm fields → `ChildPlayHead` snapshot → `__transportprobe__` round-trip test in `isolation_integration_test.cpp`).
 
-**DISPOSITION:** the transport forward ships (correct host behavior, needed by clock-reliant instruments, proven by the probe test); all five stay in `kKnownSilent` **permanently** with this evidence (H2 default-patch silence; transport-event AVs contained). Follow-up (out of scope): preset-load sweep to test whether these instruments sound once a real patch is loaded.
+**DISPOSITION (updated 2026-08-10):** the transport forward ships (correct host behavior, needed by clock-reliant instruments, proven by the probe test). **NodalRed2x was recovered by multi-port CLAP support** (4 output channels summed in `buildBuses`) and **Odin2 by the CLAP lifecycle thread-contract fix** (`docs/plans/2026-08-10-clap-lifecycle-thread-contract.md` — child lifecycle calls now run on the message thread; export teardown destroys the render graph before render mode clears). Both are removed from `kKnownSilent` and fully asserted. ShinRonin/Gneiss/Retrospect remain in `kKnownSilent` with a healthy child pipeline (act=1, proc=1, MIDI + transport delivered, `process()` returns CONTINUE, output peak 0.0) — genuinely silent factory defaults. Follow-up (out of scope): preset-load sweep to test these instruments once a real patch is loaded.
 
 ## SOURCE-LEVEL ROOT CAUSE — NodalRed2x (gearmulator 2.2.9, `source/nord/n2x`)
 

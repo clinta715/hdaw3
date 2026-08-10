@@ -1,5 +1,6 @@
 #include "PluginHost.h"
 #include "engine/CLAPPluginFormat.h"
+#include "engine/CLAPPluginInstance.h"
 #include "common/DebugLog.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
@@ -690,6 +691,31 @@ int PluginHost::run()
     std::_Exit(proxy::GRACEFUL_EXIT_CODE);
 }
 
+// Runs fn on the child's message thread and waits (bounded). CLAP
+// lifecycle calls (activate/prepareToPlay/set/getState) must run on the
+// thread the host reports as main; the control loop is a pipe thread, and
+// thread-checking plugins (Odin2) std::terminate otherwise. Returns false
+// on timeout.
+bool PluginHost::runLifecycleOnMessageThread(const std::function<void()>& fn, int timeoutMs)
+{
+    std::atomic<bool> done{false};
+    std::exception_ptr ep;
+    juce::MessageManager::callAsync([&]() {
+        try { fn(); }
+        catch (...) { ep = std::current_exception(); }
+        done.store(true, std::memory_order_release);
+    });
+    const auto deadline = juce::Time::getMillisecondCounter() + static_cast<uint32_t>(timeoutMs);
+    while (!done.load(std::memory_order_acquire))
+    {
+        if (juce::Time::getMillisecondCounter() >= deadline)
+            return false;
+        Sleep(1);
+    }
+    if (ep) std::rethrow_exception(ep);
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // controlLoop — runs on a background thread, receives pipe messages.
 // ---------------------------------------------------------------------------
@@ -728,13 +754,38 @@ void PluginHost::controlLoop()
                     preparedBlockSize = data.blockSize;
                     preparedNumChannels = data.numChannels;
 
+                    // Grow the ring capacity to fit the prepared width
+                    // (multi-channel plugins / large device block sizes),
+                    // clamped to the spawn-sized mapping (kMaxShm*).
+                    if (auto* hdr = shm.getHeader())
+                    {
+                        uint32_t cap = 1;
+                        while (cap < static_cast<uint32_t>(preparedBlockSize * preparedNumChannels))
+                            cap <<= 1;
+                        if (cap > proxy::kMaxShmCapacitySamples)
+                            cap = proxy::kMaxShmCapacitySamples;
+                        hdr->capacity = cap;
+                    }
+
                     if (plugin) {
-                        // Control-thread containment: a plugin throwing from
-                        // activate()/prepareToPlay() (e.g. Odin2) must not
-                        // escape to std::terminate and abort the child. Mark
-                        // the plugin failed — the audio loop outputs silence.
+                        // The control thread is a pipe thread, not the CLAP
+                        // main thread. thread-checking plugins (Odin2) query
+                        // is_main_thread during activate()/prepareToPlay() and
+                        // std::terminate if the host answers false — so
+                        // lifecycle calls are marshaled to the message thread
+                        // (which runs the CLAP main-thread contract). The
+                        // try/catch remains as a second line of defense: a
+                        // plugin throwing from activate()/prepareToPlay() must
+                        // not escape to std::terminate and abort the child.
+                        // Mark the plugin failed — the audio loop outputs
+                        // silence.
                         try {
-                            plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
+                            if (!runLifecycleOnMessageThread([this]() {
+                                    plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
+                                }, 3000))
+                            {
+                                HDAW_LOG("plugin_host", "prepareToPlay marshal timed out");
+                            }
                             pluginLoaded.store(true);
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "prepareToPlay threw: " + juce::String(e.what()));
@@ -760,7 +811,12 @@ void PluginHost::controlLoop()
                 if (total <= sizeof(msg.data)) {
                     if (plugin && total > 0) {
                         try {
-                            plugin->setStateInformation(msg.data, static_cast<int>(total));
+                            if (!runLifecycleOnMessageThread([this, data = msg.data, total]() {
+                                    plugin->setStateInformation(data, static_cast<int>(total));
+                                }, 3000))
+                            {
+                                HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
+                            }
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
                             pluginFailed.store(true);
@@ -794,8 +850,13 @@ void PluginHost::controlLoop()
                     uint32_t result = 0;
                     if (plugin) {
                         try {
-                            plugin->setStateInformation(pendingState.data(),
-                                                        static_cast<int>(pendingState.size()));
+                            if (!runLifecycleOnMessageThread([this]() {
+                                    plugin->setStateInformation(pendingState.data(),
+                                                                static_cast<int>(pendingState.size()));
+                                }, 3000))
+                            {
+                                HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
+                            }
                             result = 1;
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
@@ -821,7 +882,16 @@ void PluginHost::controlLoop()
                 if (plugin) {
                     juce::MemoryBlock block;
                     try {
-                        plugin->getStateInformation(block);
+                        // block is captured by reference and the control
+                        // thread waits for the marshal to complete before
+                        // touching it, so the message-thread lambda never
+                        // races the local.
+                        if (!runLifecycleOnMessageThread([&block, this]() {
+                                plugin->getStateInformation(block);
+                            }, 3000))
+                        {
+                            HDAW_LOG("plugin_host", "getStateInformation marshal timed out");
+                        }
                     } catch (const std::exception& e) {
                         HDAW_LOG("plugin_host", "getStateInformation threw: " + juce::String(e.what()));
                         pluginFailed.store(true);
@@ -1142,7 +1212,8 @@ void PluginHost::audioLoop()
         // same block size the transport and plugin->prepareToPlay use. Without
         // this, a synth configured for 441-sample blocks gets a 512-sample
         // buffer — pitch-up + stale tail + wrong MIDI offsets (audible squeak).
-        if (inputBuffer.getNumSamples() != preparedBlockSize) {
+        if (inputBuffer.getNumSamples() != preparedBlockSize
+            || inputBuffer.getNumChannels() != preparedNumChannels) {
             inputBuffer.setSize(preparedNumChannels, preparedBlockSize);
             outputBuffer.setSize(preparedNumChannels, preparedBlockSize);
             // Keep the shared-memory header in sync with the width the child
@@ -1355,16 +1426,6 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // AsyncUpdate → on_main_thread) can starve without this.
             Sleep(0);
         } else {
-            // TEMP ClapProbe: diagnostic only — remove after Phase 2
-            // investigation (answers: is the child starved of input frames?).
-            static std::atomic<int> spinProbeCount{0};
-            int spc = spinProbeCount.fetch_add(1, std::memory_order_relaxed);
-            if (spc < 5 || (spc % 1024) == 0)
-            {
-                HDAW_LOG("ClapProbe",
-                    (juce::String("audioLoop gate SPIN w-r=")
-                     + juce::String(static_cast<int>(w - r))).toStdString());
-            }
             static thread_local int spinCount = 0;
             if ((++spinCount & 63) == 0)
                 Sleep(0);
@@ -1379,9 +1440,6 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
 // ---------------------------------------------------------------------------
 bool PluginHost::loadPlugin() {
     bool loadedRealPlugin = loadPluginByPath(juce::String(pluginPath));
-    // TEMP ClapProbe: diagnostic only — remove after Phase 2 investigation.
-    HDAW_LOG("ClapProbe", (juce::String("loadPlugin final plugin=")
-        + juce::String(loadedRealPlugin ? "yes" : "no")).toStdString());
     if (!loadedRealPlugin) {
         // Plugin failed to load (crashed during init, etc.).
         // Use a passthrough processor instead so the child stays alive
@@ -1395,6 +1453,21 @@ bool PluginHost::loadPlugin() {
     if (plugin) {
         paramForwarder = std::make_unique<ParamForwarder>(*this);
         plugin->addListener(paramForwarder.get());
+        // Report the hosted plugin's summed channel layout to the parent
+        // (multi-port CLAP plugins need their full width in the child).
+        if (auto* hdr = shm.getHeader())
+        {
+            if (auto* clap = dynamic_cast<CLAPPluginInstance*>(plugin.get()))
+            {
+                hdr->pluginNumInputChannels = static_cast<uint32_t>(clap->getNumInputChannels());
+                hdr->pluginNumOutputChannels = static_cast<uint32_t>(clap->getNumOutputChannels());
+            }
+            else
+            {
+                hdr->pluginNumInputChannels = static_cast<uint32_t>(plugin->getTotalNumInputChannels());
+                hdr->pluginNumOutputChannels = static_cast<uint32_t>(plugin->getTotalNumOutputChannels());
+            }
+        }
         // Supply the transport playhead BEFORE the audio loop starts so
         // clock-reliant CLAP instruments (ShinRonin, Odin2, Gneiss, ...)
         // receive the parent's transport from their first processBlock.
@@ -1461,22 +1534,6 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
         {
             fmt->findAllTypesForFile(types, path);
             typeCount = types.size();
-        }
-
-        // TEMP ClapProbe: diagnostic only — remove after Phase 2
-        // investigation (answers: what path+format reach the child?).
-        {
-            static std::atomic<int> lpProbeCount{0};
-            int lpc = lpProbeCount.fetch_add(1, std::memory_order_relaxed);
-            if (lpc < 4)
-            {
-                HDAW_LOG("ClapProbe",
-                    (juce::String("loadPluginByPath path=") + path
-                     + " format=" + fmt->getName()
-                     + " mightContain=" + juce::String(mightContain ? 1 : 0)
-                     + " types=" + juce::String(typeCount))
-                        .toStdString());
-            }
         }
 
         if (!mightContain)

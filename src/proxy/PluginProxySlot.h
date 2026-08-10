@@ -86,6 +86,21 @@ public:
                       juce::MidiBuffer& midiMessages) override;
     void reset() override;
 
+    // Reported channel layout of the hosted plugin (written by the child into
+    // the shm header after load). Drives the PREPARE width and the proxy's
+    // reported bus layout so multi-port plugins get their full channel count.
+    // Reported channel layout of the hosted plugin (written by the child into
+    // the shm header after load). Drives the PREPARE width so multi-port
+    // plugins get their full channel count in the child. NOT an override —
+    // juce::AudioProcessor::getTotalNum*Channels() is non-virtual in JUCE 8.
+    int getReportedNumInputChannels() const;
+    int getReportedNumOutputChannels() const;
+
+    // The width the child must process (from the hosted plugin's summed
+    // channel count). Set by the engine before prepareToPlay; sent to the
+    // child in the PREPARE message.
+    void setNumChannels(int channels) { numChannels = channels; }
+
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
@@ -160,6 +175,8 @@ private:
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;
     int numChannels = 2;
+    int reportedNumInputs = 0;
+    int reportedNumOutputs = 0;
 
     void fetchParamMetadata();
     void timerCallback() override;

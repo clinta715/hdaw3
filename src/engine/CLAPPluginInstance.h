@@ -213,6 +213,12 @@ public:
     const clap_plugin_t* getClapPlugin() const { return plugin; }
     CLAPHost& getHost() const { return *host; }
 
+    // Summed channel counts across all (main) audio ports — the width the
+    // plugin actually writes (multi-port plugins like the gearmulator
+    // Nord-2x port need 4, not the 2 of their main port alone).
+    int getNumInputChannels() const { return numInputs; }
+    int getNumOutputChannels() const { return numOutputs; }
+
     void flushParameter(clap_id paramId, double value);
     void addCLAPParameter(std::unique_ptr<CLAPParameter> param);
 

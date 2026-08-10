@@ -112,156 +112,166 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
         }
     } respawnGate(recoveryMgr);
 
-    juce::AudioProcessorGraph renderGraph;
-
     // NOTE: Plugin isolation stays enabled. The export uses the full
     // AudioProcessorGraph pipeline (graph.processBlock) so CLAP instruments
     // run in isolated child processes just like live playback.
 
-    try
+    // Scope the entire render pipeline so the render graph — including the
+    // baked render sequence whose Node::Ptr references keep every Track (and
+    // its CLAP instances) alive — is destroyed BEFORE render mode is cleared.
+    // ~CLAPPluginInstance → deactivate() must run on the host's reported main
+    // thread (the render thread while render mode is set); thread-checking
+    // plugins (Odin2) std::terminate otherwise. AudioProcessorGraph::clear()
+    // alone is insufficient: a rebuild of the render sequence only happens on
+    // the JUCE message thread, so the sequence's node references outlive the
+    // graph's own nodes map and die in ~AudioProcessorGraph.
     {
-        ProjectModel localModel;
-        localModel.getTree().copyPropertiesFrom(treeCopy, nullptr);
-        localModel.getTree().removeAllChildren(nullptr);
-        for (int i = 0; i < treeCopy.getNumChildren(); ++i)
-            localModel.getTree().addChild(treeCopy.getChild(i).createCopy(), -1, nullptr);
+        juce::AudioProcessorGraph renderGraph;
 
-        TransportManager renderTransport;
-        renderTransport.setSampleRate(sampleRate);
-        renderTransport.setBPM(localModel.getTree().getProperty(IDs::tempo, 120.0));
-        renderTransport.setPlaying(true);
-        renderTransport.setCurrentSample(static_cast<int64_t>(startTime * sampleRate));
-
-        InternalPlayHead renderPlayHead(renderTransport);
-
-        renderGraph.setPlayHead(&renderPlayHead);
-
-        const int blockSize = 512;
-
-        // Propagate a stereo bus layout to the graph BEFORE rebuilding.
-        // The graph's audioOutputNode reads its input-channel count from
-        // the graph's own output bus; without this, the IO node reports
-        // 0 channels and every master→IO addConnection is silently
-        // rejected (no audio reaches the output buffer even though the
-        // master meter moves). Must run BEFORE rebuildFromValueTree so
-        // the IO node is created with the correct channel count.
+        try
         {
-            juce::AudioProcessorGraph::BusesLayout renderLayout;
-            renderLayout.inputBuses.add(juce::AudioChannelSet::stereo());
-            renderLayout.outputBuses.add(juce::AudioChannelSet::stereo());
-            renderGraph.setBusesLayout(renderLayout);
-        }
-
-        RoutingManager routingManager(renderGraph, localModel, *formatManager,
-                                      renderTransport, pluginManager);
-        routingManager.setPlaybackInfo(sampleRate, blockSize);
-        routingManager.rebuildFromValueTree();
-
-        // Complete the topology BEFORE prepareToPlay. The master→IO
-        // connections are already legal at this point: setBusesLayout ran
-        // before rebuildFromValueTree, so the audioOutputNode picked up its
-        // 2 input channels synchronously at addNode time. (The live graph in
-        // MainAudioProcessor must reconnect AFTER prepareToPlay because its
-        // bus layout arrives via device negotiation — that does not apply
-        // here.) Ordering it this way makes prepareToPlay the final topology
-        // change, so the single async render-sequence bake it triggers
-        // contains the complete graph.
-        routingManager.reconnectMasterToOutput();
-
-        renderGraph.prepareToPlay(sampleRate, blockSize);
-
-        // Offline render: wait for the async render-sequence bake (delivered
-        // on the JUCE message pump thread) instead of racing it. Without
-        // this, processBlock hits the audio.clear() fallback for every block
-        // processed before the bake lands — the race that intermittently
-        // produced fully-silent exports.
-        renderGraph.setNonRealtime(true);
-
-        int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
-        int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;
-        int64_t blocksDone = 0;
-
-        // Select format
-        std::unique_ptr<juce::AudioFormat> audioFormat;
-        switch (format)
-        {
-            case WAV:  audioFormat = std::make_unique<juce::WavAudioFormat>();  break;
-            case AIFF: audioFormat = std::make_unique<juce::AiffAudioFormat>(); break;
-            case FLAC: audioFormat = std::make_unique<juce::FlacAudioFormat>(); break;
-        }
-
-        auto* outStream = outputPath.createOutputStream().release();
-
-        if (outStream == nullptr)
-        {
-            message = "Could not create output file.";
-            goto finish;
-        }
-
-        {
-            auto* writer = audioFormat->createWriterFor(outStream, sampleRate, 2, bitDepth, {}, 0);
-            if (writer == nullptr)
+            ProjectModel localModel;
+            localModel.getTree().copyPropertiesFrom(treeCopy, nullptr);
+            localModel.getTree().removeAllChildren(nullptr);
+            for (int i = 0; i < treeCopy.getNumChildren(); ++i)
+                localModel.getTree().addChild(treeCopy.getChild(i).createCopy(), -1, nullptr);
+    
+            TransportManager renderTransport;
+            renderTransport.setSampleRate(sampleRate);
+            renderTransport.setBPM(localModel.getTree().getProperty(IDs::tempo, 120.0));
+            renderTransport.setPlaying(true);
+            renderTransport.setCurrentSample(static_cast<int64_t>(startTime * sampleRate));
+    
+            InternalPlayHead renderPlayHead(renderTransport);
+    
+            renderGraph.setPlayHead(&renderPlayHead);
+    
+            const int blockSize = 512;
+    
+            // Propagate a stereo bus layout to the graph BEFORE rebuilding.
+            // The graph's audioOutputNode reads its input-channel count from
+            // the graph's own output bus; without this, the IO node reports
+            // 0 channels and every master→IO addConnection is silently
+            // rejected (no audio reaches the output buffer even though the
+            // master meter moves). Must run BEFORE rebuildFromValueTree so
+            // the IO node is created with the correct channel count.
             {
-                delete outStream;
-                message = "Could not create audio writer.";
+                juce::AudioProcessorGraph::BusesLayout renderLayout;
+                renderLayout.inputBuses.add(juce::AudioChannelSet::stereo());
+                renderLayout.outputBuses.add(juce::AudioChannelSet::stereo());
+                renderGraph.setBusesLayout(renderLayout);
+            }
+    
+            RoutingManager routingManager(renderGraph, localModel, *formatManager,
+                                          renderTransport, pluginManager);
+            routingManager.setPlaybackInfo(sampleRate, blockSize);
+            routingManager.rebuildFromValueTree();
+    
+            // Complete the topology BEFORE prepareToPlay. The master→IO
+            // connections are already legal at this point: setBusesLayout ran
+            // before rebuildFromValueTree, so the audioOutputNode picked up its
+            // 2 input channels synchronously at addNode time. (The live graph in
+            // MainAudioProcessor must reconnect AFTER prepareToPlay because its
+            // bus layout arrives via device negotiation — that does not apply
+            // here.) Ordering it this way makes prepareToPlay the final topology
+            // change, so the single async render-sequence bake it triggers
+            // contains the complete graph.
+            routingManager.reconnectMasterToOutput();
+    
+            renderGraph.prepareToPlay(sampleRate, blockSize);
+    
+            // Offline render: wait for the async render-sequence bake (delivered
+            // on the JUCE message pump thread) instead of racing it. Without
+            // this, processBlock hits the audio.clear() fallback for every block
+            // processed before the bake lands — the race that intermittently
+            // produced fully-silent exports.
+            renderGraph.setNonRealtime(true);
+    
+            int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
+            int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;
+            int64_t blocksDone = 0;
+    
+            // Select format
+            std::unique_ptr<juce::AudioFormat> audioFormat;
+            switch (format)
+            {
+                case WAV:  audioFormat = std::make_unique<juce::WavAudioFormat>();  break;
+                case AIFF: audioFormat = std::make_unique<juce::AiffAudioFormat>(); break;
+                case FLAC: audioFormat = std::make_unique<juce::FlacAudioFormat>(); break;
+            }
+    
+            auto* outStream = outputPath.createOutputStream().release();
+    
+            if (outStream == nullptr)
+            {
+                message = "Could not create output file.";
                 goto finish;
             }
-
-            juce::AudioBuffer<float> buffer(2, blockSize);
-            juce::MidiBuffer midiBuffer;
-            int64_t samplesRendered = 0;
-
-            while (samplesRendered < totalSamples && !cancelFlag.load())
+    
             {
-                int numThisBlock = static_cast<int>((std::min)(
-                    static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
-
-                buffer.clear();
-                midiBuffer.clear();
-
-                // Drive the full AudioProcessorGraph pipeline.
-                // This calls processBlock on all nodes in topological order:
-                // MidiClipProcessor → Track (with CLAP instruments) → MasterBus → AudioOutput.
-                renderGraph.processBlock(buffer, midiBuffer);
-
-                renderTransport.advance(numThisBlock);
-
-                if (!writer->writeFromAudioSampleBuffer(buffer, 0, numThisBlock))
+                auto* writer = audioFormat->createWriterFor(outStream, sampleRate, 2, bitDepth, {}, 0);
+                if (writer == nullptr)
                 {
-                    success = false;
-                    message = "Disk write failed during export.";
-                    delete writer;
                     delete outStream;
+                    message = "Could not create audio writer.";
                     goto finish;
                 }
-
-                samplesRendered += numThisBlock;
-                ++blocksDone;
-                if (onProgress)
+    
+                juce::AudioBuffer<float> buffer(2, blockSize);
+                juce::MidiBuffer midiBuffer;
+                int64_t samplesRendered = 0;
+    
+                while (samplesRendered < totalSamples && !cancelFlag.load())
                 {
-                    float prog = static_cast<float>(blocksDone) / static_cast<float>(totalBlocks);
-                    onProgress(prog);
+                    int numThisBlock = static_cast<int>((std::min)(
+                        static_cast<int64_t>(blockSize), totalSamples - samplesRendered));
+    
+                    buffer.clear();
+                    midiBuffer.clear();
+    
+                    // Drive the full AudioProcessorGraph pipeline.
+                    // This calls processBlock on all nodes in topological order:
+                    // MidiClipProcessor → Track (with CLAP instruments) → MasterBus → AudioOutput.
+                    renderGraph.processBlock(buffer, midiBuffer);
+    
+                    renderTransport.advance(numThisBlock);
+    
+                    if (!writer->writeFromAudioSampleBuffer(buffer, 0, numThisBlock))
+                    {
+                        success = false;
+                        message = "Disk write failed during export.";
+                        delete writer;
+                        delete outStream;
+                        goto finish;
+                    }
+    
+                    samplesRendered += numThisBlock;
+                    ++blocksDone;
+                    if (onProgress)
+                    {
+                        float prog = static_cast<float>(blocksDone) / static_cast<float>(totalBlocks);
+                        onProgress(prog);
+                    }
+                }
+    
+                delete writer;
+                // NOTE: do NOT also `delete outStream` here. The AudioFormatWriter
+                // takes ownership of the output stream in its constructor and deletes
+                // it in its destructor. A second `delete outStream` is undefined
+                // behaviour and causes a hang in debug builds (MSVC debug heap walks
+                // the freed block and stalls). The previous code was incorrect.
+    
+                if (cancelFlag.load())
+                {
+                    outputPath.deleteFile();
+                    message = "Export cancelled.";
+                }
+                else
+                {
+                    message = "Export complete.";
+                    success = true;
                 }
             }
-
-            delete writer;
-            // NOTE: do NOT also `delete outStream` here. The AudioFormatWriter
-            // takes ownership of the output stream in its constructor and deletes
-            // it in its destructor. A second `delete outStream` is undefined
-            // behaviour and causes a hang in debug builds (MSVC debug heap walks
-            // the freed block and stalls). The previous code was incorrect.
-
-            if (cancelFlag.load())
-            {
-                outputPath.deleteFile();
-                message = "Export cancelled.";
-            }
-            else
-            {
-                message = "Export complete.";
-                success = true;
-            }
-        }
     }
     catch (const std::exception& e)
     {
@@ -280,7 +290,17 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     }
 
 finish:
-    renderGraph.releaseResources();
+        renderGraph.releaseResources();
+        // Destroy the render graph's nodes BEFORE clearing render mode:
+        // node destruction runs ~CLAPPluginInstance → deactivate(), which
+        // thread-checking plugins (Odin2) require to happen on the host's
+        // reported main thread (the render thread while render mode is
+        // set). The render sequence's node references are dropped in
+        // ~AudioProcessorGraph, which the scope close below runs before
+        // render mode is cleared.
+        renderGraph.clear();
+    }
+
     proxy::setRenderCancelRequested(false);
     proxy::setRenderMode(false);
 

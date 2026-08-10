@@ -581,18 +581,26 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     // Plugins known to render silence on isolated export. Skip with a clear
     // log rather than failing the suite. Do NOT weaken the EXPECT_GT for
     // plugins that are NOT in this set.
-    // Evidence (2026-08-09, see the transport-playhead plan doc): all five
-    // output zeros at their default patch with healthy process status;
-    // NodalRed2x additionally crashes in its own process() from a 4-channel
-    // output copy behind a 2-channel CLAP entry (n2xhardware.cpp:157-163),
-    // contained by the /EHa SEH guard in the child.
+    // Evidence (2026-08-10, thread-contract fix session): Odin2 was recovered
+    // by fixing the CLAP host lifecycle thread contract (child lifecycle calls
+    // now marshal to the message thread; export teardown destroys the render
+    // graph before render mode clears) — it now renders and is fully asserted.
+    // NodalRed2x was recovered earlier via multi-port CLAP support (4 output
+    // channels). ShinRonin/Gneiss/Retrospect remain silent with a HEALTHY
+    // child pipeline (act=1 proc=1, MIDI + transport delivered, process()
+    // returns CLAP_PROCESS_CONTINUE, output peak 0.000000) — their factory
+    // default patches are genuinely silent; a preset-load sweep would be the
+    // follow-up to test them with a real patch.
     static const char* kKnownSilent[] = {
-        "Odin2", "ShinRonin", "Gneiss", "Retrospect", "NodalRed2x"
+        "ShinRonin", "Gneiss", "Retrospect"
     };
     auto isKnownSilent = [](const juce::String& name) {
         for (const char* s : kKnownSilent)
+        {
+            if (s == nullptr) break;
             if (name.containsIgnoreCase(juce::String(s)))
                 return true;
+        }
         return false;
     };
 

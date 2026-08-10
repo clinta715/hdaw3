@@ -39,7 +39,11 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     if (!pipeServer->start()) return false;
 
     auto shmRegion = std::make_unique<ShmRegion>();
-    uint32_t shmSize = computeShmSize(2, 512);
+    // Size the mapping for the worst-case config (see kMaxShm* in
+    // ProxyCommon.h) — the child grows hdr->capacity at PREPARE for
+    // multi-channel plugins / large device block sizes, and both sides
+    // index the rings with hdr->capacity, so the mapping must cover it.
+    uint32_t shmSize = computeShmSize(kMaxShmChannels, kMaxShmBlockSize);
     if (!shmRegion->create(shmNameStr, shmSize)) {
         pipeServer->stop();
         return false;

@@ -126,6 +126,13 @@ struct ShmHeader {
     uint64_t transportPpqBits;     // IEEE 754 double bits (PPQ position)
     uint32_t transportTsigNum;     // time-signature numerator (default 4)
     uint32_t transportTsigDenom;   // time-signature denominator (default 4)
+
+    // The hosted plugin's summed channel layout, written ONCE by the child
+    // right after load (0 = not yet known). The parent proxy uses these to
+    // size PREPARE and its reported bus width, so multi-port plugins (e.g.
+    // the 4-out Nord-2x port) get their full channel count in the child.
+    uint32_t pluginNumInputChannels;
+    uint32_t pluginNumOutputChannels;
 };
 
 struct MidiEvent {
@@ -151,5 +158,14 @@ inline uint32_t computeShmSize(uint32_t numChannels, uint32_t blockSize) {
          + 2 * SYSEX_BUFFER_SIZE
          + 2 * PARAM_RING_SIZE * sizeof(std::atomic<uint64_t>);
 }
+
+// The shared-memory mapping is created ONCE at spawn for the worst-case
+// audio config (multi-channel plugins like the 4-out Nord-2x port × the
+// largest device block size), so both parent and child can safely let
+// hdr->capacity float up to this at PREPARE. Indexing past the mapping
+// would be a cross-process OOB write.
+constexpr uint32_t kMaxShmChannels = 8;
+constexpr uint32_t kMaxShmBlockSize = 4096;
+constexpr uint32_t kMaxShmCapacitySamples = 32768; // pow2 >= 8 * 4096
 
 } // namespace proxy

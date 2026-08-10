@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 #include "../common/DebugLog.h"
+#include "CLAPPluginInstance.h"
+#include "../proxy/PluginProxySlot.h"
 
 namespace HDAW {
 
@@ -199,7 +201,25 @@ public:
 
         if (isExternal && pluginInstance)
         {
+            // Prepare first: for isolated slots this round-trips PREPARE to
+            // the child, which is when the proxy refreshes its reported
+            // channel layout from the shm header — so the width read below
+            // reflects the hosted plugin's real (possibly multi-port) count.
             pluginInstance->prepareToPlay(spec.sampleRate, spec.maximumBlockSize);
+            // Multi-channel plugins (e.g. 4-output CLAP instruments) need a
+            // workspace wider than the track's stereo bus: process them in
+            // their own width, then downmix channels 0-1 into the track.
+            int outCh = pluginInstance->getTotalNumOutputChannels();
+            if (auto* clap = dynamic_cast<CLAPPluginInstance*>(pluginInstance.get()))
+                outCh = clap->getNumOutputChannels();
+            else if (auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get()))
+                outCh = proxySlot->getReportedNumOutputChannels();
+            pluginWorkspaceChannels = (outCh > spec.numChannels) ? outCh : 0;
+            if (pluginWorkspaceChannels > 0)
+                pluginWorkspace.setSize(pluginWorkspaceChannels, spec.maximumBlockSize);
+            if (auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get()))
+                proxySlot->setNumChannels(
+                    pluginWorkspaceChannels > 0 ? pluginWorkspaceChannels : spec.numChannels);
             rebuildParamCache();
             return;
         }
@@ -303,6 +323,16 @@ public:
 
         if (isExternal && pluginInstance)
         {
+            if (pluginWorkspaceChannels > 0)
+            {
+                pluginWorkspace.clear();
+                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                    pluginWorkspace.copyFrom(ch, 0, buffer, ch, 0, buffer.getNumSamples());
+                pluginInstance->processBlock(pluginWorkspace, midiMessages);
+                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                    buffer.copyFrom(ch, 0, pluginWorkspace, ch, 0, buffer.getNumSamples());
+                return;
+            }
             pluginInstance->processBlock(buffer, midiMessages);
             return;
         }
@@ -478,6 +508,12 @@ private:
     std::atomic<int> numParams{ 0 };
     std::unique_ptr<std::atomic<float>[]> paramValues;
     std::unique_ptr<std::atomic<bool>[]> paramDirty;
+
+    // Wide-plugin workspace: plugins with more output channels than the
+    // track's stereo bus (e.g. 4-channel CLAP instruments) are processed in
+    // this buffer, then channels 0-1 are mixed back into the track buffer.
+    juce::AudioBuffer<float> pluginWorkspace;
+    int pluginWorkspaceChannels = 0;
 
     void wireEditorClosedCallback();
 

@@ -175,20 +175,31 @@ These cost real debugging time — read before touching the relevant area:
     probe), not the source. See `docs/realtime-safety.md`,
     `docs/postmortem-silent-clap-export.md` §4.
 
-16. **The isolated child's crash guards cover only the audio thread; a plugin
-    throwing from a control-thread lifecycle call (activate/prepareToPlay,
-    set/getState) escapes to `std::terminate` and aborts the child.** Odin2
-    fail-fasts this way (an exception inside its `activate()`; the matrix
-    comment "Odin2 fail-fasts the process in-process" is the same bug in the
-    non-isolated path, whose guard only wraps instantiation). The `PluginHost`
-    control loop now catches `std::exception`/`...` around those calls and sets
-    `pluginFailed`, so the audio loop outputs silence and the child survives —
-    covered by `PluginIsolation.ControlThreadPluginExceptionContained`
-    (`__throwprepare__` sentinel). Note the residual: an exception that hits a
-    `noexcept` boundary **inside** the plugin cannot be caught by the host —
-    the child still aborts (Odin2 did not reproduce under the guard; it stays
-    `kKnownSilent` either way). Rule: any new control-thread plugin call in
-    `PluginHost::controlLoop` must be wrapped the same way. See
+16. **CLAP lifecycle calls must run on the host's reported "main thread" —
+    the child's pipe/control thread is NOT it, and thread-checking plugins
+    (Odin2) `std::terminate` the child if you call them there.** The earlier
+    "Odin2 fail-fasts via `noexcept` activate" theory was wrong: Odin2's
+    wrapper queries `clap_host_thread_check` during `activate()`/`deactivate()`/
+    state calls and aborts when the host answers "not main thread".
+    `CLAPHost::threadCheckIsMainThread()` accepts the JUCE message thread OR
+    the export render thread (`proxy::isRenderThread()`). Two violations
+    existed: (a) the isolated child's `PluginHost::controlLoop` (a pipe
+    thread) called `prepareToPlay`/`setStateInformation`/`getStateInformation`
+    directly → the child died silently at PREPARE, contained as silence;
+    (b) in-process export teardown cleared render mode BEFORE the render
+    graph destructor ran `deactivate()` on the worker thread → `abort()`
+    (c0000409). Fixes: `PluginHost::runLifecycleOnMessageThread` marshals all
+    four child lifecycle calls to the message thread (bounded wait, then the
+    existing try/catch + `pluginFailed`); `ExportManager::renderThreadFunc`
+    scopes the render graph so its destructor runs while render mode is still
+    set. The control-thread try/catch remains as a second line of defense
+    (`PluginIsolation.ControlThreadPluginExceptionContained`,
+    `__throwprepare__` sentinel). **Rule:** any new control-thread plugin call
+    in `PluginHost::controlLoop` must be marshaled via
+    `runLifecycleOnMessageThread` AND wrapped the same way; any new
+    main-thread-only CLAP call on a render/pipe thread must pass
+    `threadCheckIsMainThread()`. This recovered Odin2 (isolated export
+    `peak≈0.5`, removed from `kKnownSilent`). See
     `docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md`.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
