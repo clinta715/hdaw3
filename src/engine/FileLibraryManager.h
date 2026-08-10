@@ -105,7 +105,7 @@ private:
     std::unordered_set<juce::String> loadedLibraries;
     juce::File registryFile;
     juce::File librariesDir;
-    std::atomic<bool> scanning{false};
+    std::atomic<int> scanningCount{0};
     ScanProgressCallback progressCallback;
     ScanCompleteCallback completeCallback;
     juce::ThreadPool threadPool{2};

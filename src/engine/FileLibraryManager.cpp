@@ -27,9 +27,15 @@ FileLibraryManager::~FileLibraryManager() {
 }
 
 void FileLibraryManager::initialize() {
-    std::lock_guard<std::mutex> lock(mutex);
-    for (const auto& lib : libraries) {
-        if (lib.autoScan) scanLibrary(lib.id);
+    juce::StringArray autoScanIds;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& lib : libraries) {
+            if (lib.autoScan) autoScanIds.add(lib.id);
+        }
+    }
+    for (const auto& id : autoScanIds) {
+        scanLibrary(id);
     }
 }
 
@@ -93,7 +99,7 @@ void FileLibraryManager::setAutoScan(const juce::String& id, bool enabled) {
 }
 
 bool FileLibraryManager::isScanning() const {
-    return scanning.load();
+    return scanningCount.load() > 0;
 }
 
 void FileLibraryManager::setScanProgressCallback(ScanProgressCallback cb) {
@@ -157,6 +163,8 @@ void FileLibraryManager::saveRegistry() {
 void FileLibraryManager::scanLibrary(const juce::String& id) {
     juce::File scanDir;
     juce::String type;
+    ScanProgressCallback progressCb;
+    ScanCompleteCallback completeCb;
     {
         std::lock_guard<std::mutex> lock(mutex);
         for (const auto& lib : libraries) {
@@ -166,11 +174,17 @@ void FileLibraryManager::scanLibrary(const juce::String& id) {
                 break;
             }
         }
+        progressCb = progressCallback;
+        completeCb = completeCallback;
     }
-    if (!scanDir.isDirectory()) return;
+    if (!scanDir.isDirectory()) {
+        if (completeCb)
+            completeCb(id, false);
+        return;
+    }
 
-    scanning.store(true);
-    threadPool.addJob([this, id, scanDir, type]() {
+    scanningCount.fetch_add(1);
+    threadPool.addJob([this, id, scanDir, type, progressCb, completeCb]() {
         {
             std::lock_guard<std::mutex> lock(mutex);
             entries[id].clear();
@@ -193,10 +207,10 @@ void FileLibraryManager::scanLibrary(const juce::String& id) {
         }
         saveLibraryEntries(id);
         saveRegistry();
-        scanning.store(false);
+        scanningCount.fetch_sub(1);
 
-        if (completeCallback)
-            completeCallback(id, true);
+        if (completeCb)
+            completeCb(id, true);
     });
 }
 
@@ -292,6 +306,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
 }
 
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
+    std::vector<LibraryEntry> newEntries;
     juce::DirectoryIterator iter(dir, true, "*.mid;*.midi");
     while (iter.next()) {
         auto file = iter.getFile();
@@ -310,9 +325,11 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         entry.size = file.getSize();
         entry.modified = file.getLastModificationTime().toISO8601(true);
 
-        std::lock_guard<std::mutex> lock(mutex);
-        entries[id].push_back(std::move(entry));
+        newEntries.push_back(std::move(entry));
     }
+
+    std::lock_guard<std::mutex> lock(mutex);
+    entries[id] = std::move(newEntries);
 }
 
 LibraryEntry FileLibraryManager::extractMidiMetadata(const juce::File& file) {

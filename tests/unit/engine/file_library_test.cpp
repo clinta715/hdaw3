@@ -79,8 +79,8 @@ TEST_F(FileLibraryTest, ExtractMidiMetadata) {
     auto id = mgr.addLibrary("Test MIDI", midiDir.getFullPathName(), "midi");
     mgr.scanLibrary(id);
 
-    // Wait for scan to complete (it runs on a thread pool)
-    juce::Thread::sleep(500);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
 
     auto results = mgr.search("");
     ASSERT_EQ(results.size(), 1);
