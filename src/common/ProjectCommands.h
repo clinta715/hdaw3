@@ -47,6 +47,7 @@ public:
                              const std::string& sourceFile, const std::string& name) = 0;
     virtual int addMidiClip(int trackIndex, double start, double duration,
                             const std::string& name) = 0;
+    virtual std::vector<int> importMidiFile(const std::string& filePath, int trackIndex = -1) = 0;
     virtual void removeClip(int clipId) = 0;
     virtual void moveClip(int clipId, int newTrackIndex, double newStart) = 0;
     virtual void moveClipWithOverlap(int clipId, int newTrackIndex, double newStart) = 0;

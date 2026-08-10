@@ -51,6 +51,7 @@ public:
                      const std::string& sourceFile, const std::string& name) override;
     int addMidiClip(int trackIndex, double start, double duration,
                     const std::string& name) override;
+    std::vector<int> importMidiFile(const std::string& filePath, int trackIndex = -1) override;
     void removeClip(int clipId) override;
     void moveClip(int clipId, int newTrackIndex, double newStart) override;
     void moveClipWithOverlap(int clipId, int newTrackIndex, double newStart) override;

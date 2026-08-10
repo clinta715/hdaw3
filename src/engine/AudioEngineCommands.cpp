@@ -2,6 +2,7 @@
 #include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
+#include "MidiImport.h"
 #include "../engine/ProjectSerializer.h"
 #include "../model/ProjectModel.h"
 #include <juce_core/juce_core.h>
@@ -224,4 +225,9 @@ void AudioEngineCommands::setTrackSendBypassed(int trackIndex, int sendIndex, bo
         if (auto* rm = proc->getRoutingManager())
             rm->setSendBypassed(trackIndex, sendIndex, bypassed);
     }
+}
+
+std::vector<int> AudioEngineCommands::importMidiFile(const std::string& filePath, int trackIndex)
+{
+    return HDAW::importMidiFile(engine_, QString::fromStdString(filePath), trackIndex);
 }

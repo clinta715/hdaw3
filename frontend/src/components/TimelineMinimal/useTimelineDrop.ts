@@ -51,11 +51,9 @@ export function useTimelineDrop(opts: UseTimelineDropOpts) {
                 name: fileName,
               });
             } else if (midiExts.includes(ext)) {
-              await rpc.call("project.addMidiClip", {
+              await rpc.call("project.importMidiFile", {
+                filePath,
                 trackIndex: targetTrack,
-                start: Math.max(0, startBeat),
-                duration: 4,
-                name: fileName,
               });
             }
           };
@@ -120,11 +118,9 @@ export function useTimelineDrop(opts: UseTimelineDropOpts) {
               name: file.name,
             });
           } else {
-            await rpc.call("project.addMidiClip", {
+            await rpc.call("project.importMidiFile", {
+              filePath: (file as any).path ?? file.name,
               trackIndex: targetTrack,
-              start: Math.max(0, startBeat),
-              duration: 4,
-              name: file.name,
             });
           }
         };

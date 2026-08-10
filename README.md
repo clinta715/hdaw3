@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.15.1
+**Current version**: 0.17.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.15.1)
+## What works today (v0.17.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -127,7 +127,12 @@ pass `Debug` for breakpoint debugging.
 - **Missing source file indicator**: clips with missing .wav files
   show a red "FILE MISSING" label in the timeline and a clear error
   message in the audio editor.
-- MIDI file import (`.mid`, `.midi`) into per-track MIDI clips.
+- **MIDI file import** (`.mid`, `.midi`): File → Import MIDI
+  (Ctrl+Shift+M) or drag-drop a MIDI file onto the timeline.
+  Parses tempo, note pitches, velocities, and durations from all
+  tracks in the file. Each MIDI track becomes a new HDAW track with
+  a clip containing the imported notes. Alternatively, import into
+  an existing track via the Import Dialog track selector.
 - Audio export to WAV (Export dialog).
 - Pitch-preserving audio clip timestretch via SoundTouch (Manual
   Ratio, Fit to Loop, Tempo Match modes). BPM-aware: matches
@@ -289,6 +294,30 @@ implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog
+
+### v0.17.0 — MIDI file import
+
+Full MIDI file import with note data. Previously, importing a `.mid` file
+created an empty MIDI clip; now the file is parsed and all notes (pitch,
+velocity, duration) are imported.
+
+**Engine changes:**
+- New `importMidiFile` RPC (`project.importMidiFile`) — parses MIDI files
+  using JUCE's `MidiFile`, extracts tempo, and creates clips with notes.
+- Two import modes: `trackIdx == -1` (default) creates a new HDAW track
+  per MIDI track in the file; `trackIdx >= 0` places all MIDI tracks as
+  clips on the specified track.
+- Returns `{ clipIds, trackCount }` for frontend reconciliation.
+
+**Frontend changes:**
+- Import Dialog (File → Import MIDI / Ctrl+Shift+M) now calls
+  `project.importMidiFile` instead of `project.addMidiClip`.
+- Timeline drag-drop of `.mid`/`.midi` files now imports with notes
+  intact (previously created empty clips).
+
+**Tests:**
+- 3 new gtests: import into existing track, import creating new tracks,
+  nonexistent file error handling.
 
 ### v0.16.1 — Structural refactor: oversized file decomposition
 

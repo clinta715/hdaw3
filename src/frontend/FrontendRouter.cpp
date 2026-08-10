@@ -33,7 +33,20 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     const QString ns = method.left(dot);
     const QString m  = method.mid(dot + 1);
 
-    if      (ns == method::Project)     return dispatchProject(engine.getProjectCommands(), m, params);
+    if (ns == method::Project) {
+        if (m == "importMidiFile") {
+            const auto o = paramsObject(params);
+            std::string filePath;
+            if (!requireString(o, "filePath", filePath, nullptr))
+                return makeError(-32602, "filePath required");
+            int trackIndex = optInt(o, "trackIndex", -1, nullptr);
+            auto clipIds = engine.getProjectCommands().importMidiFile(filePath, trackIndex);
+            QJsonArray arr;
+            for (int id : clipIds) arr.append(id);
+            return { false, QJsonObject{ { "clipIds", arr }, { "trackCount", static_cast<int>(clipIds.size()) } } };
+        }
+        return dispatchProject(engine.getProjectCommands(), m, params);
+    }
     else if (ns == method::Transport)   return dispatchTransport(engine.getTransportCommands(), m, params);
     else if (ns == method::AudioGraph)  return dispatchAudioGraph(engine.getAudioGraphCommands(), m, params);
     else if (ns == method::Read) {

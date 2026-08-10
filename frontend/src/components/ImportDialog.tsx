@@ -41,13 +41,11 @@ export default function ImportDialog({ mode, onClose, onImport }: ImportDialogPr
       };
       await rpc.call("project.addAudioClip", params).catch(() => {});
     } else {
-      const params: Record<string, unknown> = {
-        trackIndex: trackChoice === "new" ? 0 : parseInt(trackChoice, 10),
-        start: startBeat,
-        duration: 4,
-        name: fileName,
-      };
-      await rpc.call("project.addMidiClip", params).catch(() => {});
+      const trackIndex = trackChoice === "new" ? -1 : parseInt(trackChoice, 10);
+      await rpc.call("project.importMidiFile", {
+        filePath: filePath.trim(),
+        trackIndex,
+      }).catch(() => {});
     }
     onImport();
     onClose();

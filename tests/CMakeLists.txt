@@ -50,6 +50,7 @@ add_executable(hdaw_tests
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
     unit/engine/merge_clips_test.cpp
+    unit/engine/midi_import_test.cpp
     unit/engine/ripple_delete_test.cpp
     unit/engine/region_ops_test.cpp
     unit/engine/rpc_surface_test.cpp
