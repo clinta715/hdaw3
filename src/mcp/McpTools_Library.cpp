@@ -153,6 +153,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                   {"id","enabled"}),
         [lib](const QJsonObject& a) -> McpToolResult {
             QString id = a.value("id").toString();
+            if (id.isEmpty())
+                return McpToolResult::text("id is required", true);
             bool enabled = a.value("enabled").toBool();
             lib->setAutoScan(juce::String(id.toUtf8().constData()), enabled);
             return McpToolResult::text("ok");
