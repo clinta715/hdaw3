@@ -56,6 +56,7 @@ using ScanCompleteCallback = std::function<void(const juce::String& libraryId, b
 class FileLibraryManager {
 public:
     FileLibraryManager();
+    explicit FileLibraryManager(const juce::File& baseDir); // for testing
     ~FileLibraryManager();
 
     void initialize(); // Load registry, auto-scan if needed

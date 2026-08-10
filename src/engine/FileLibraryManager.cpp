@@ -1,8 +1,6 @@
 // src/engine/FileLibraryManager.cpp
 #include "FileLibraryManager.h"
 #include <juce_core/juce_core.h>
-#include <fstream>
-#include <sstream>
 
 namespace HDAW {
 
@@ -16,11 +14,19 @@ FileLibraryManager::FileLibraryManager() {
     loadRegistry();
 }
 
+FileLibraryManager::FileLibraryManager(const juce::File& baseDir) {
+    librariesDir = baseDir.getChildFile("libraries");
+    librariesDir.createDirectory();
+    registryFile = librariesDir.getChildFile("registry.json");
+    loadRegistry();
+}
+
 FileLibraryManager::~FileLibraryManager() {
     threadPool.removeAllJobs(true, 1000);
 }
 
 void FileLibraryManager::initialize() {
+    std::lock_guard<std::mutex> lock(mutex);
     for (const auto& lib : libraries) {
         if (lib.autoScan) scanLibrary(lib.id);
     }
@@ -73,11 +79,13 @@ void FileLibraryManager::removeLibrary(const juce::String& id) {
 }
 
 void FileLibraryManager::setAutoScan(const juce::String& id, bool enabled) {
-    std::lock_guard<std::mutex> lock(mutex);
-    for (auto& lib : libraries) {
-        if (lib.id == id) {
-            lib.autoScan = enabled;
-            break;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& lib : libraries) {
+            if (lib.id == id) {
+                lib.autoScan = enabled;
+                break;
+            }
         }
     }
     saveRegistry();
@@ -96,6 +104,7 @@ void FileLibraryManager::setScanCompleteCallback(ScanCompleteCallback cb) {
 }
 
 void FileLibraryManager::loadRegistry() {
+    std::lock_guard<std::mutex> lock(mutex);
     if (!registryFile.existsAsFile()) return;
     auto content = registryFile.loadFileAsString();
     if (content.isEmpty()) return;
@@ -125,6 +134,7 @@ void FileLibraryManager::loadRegistry() {
 }
 
 void FileLibraryManager::saveRegistry() {
+    std::lock_guard<std::mutex> lock(mutex);
     juce::DynamicObject::Ptr root = new juce::DynamicObject();
     juce::Array<juce::var> libs;
     for (const auto& lib : libraries) {

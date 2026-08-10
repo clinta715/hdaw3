@@ -16,7 +16,7 @@ protected:
 };
 
 TEST_F(FileLibraryTest, AddLibraryPersistsToRegistry) {
-    HDAW::FileLibraryManager mgr;
+    HDAW::FileLibraryManager mgr(tempDir);
     auto id = mgr.addLibrary("Test MIDI", "/some/path", "midi");
     EXPECT_FALSE(id.isEmpty());
     auto info = mgr.getLibraryInfo(id);
@@ -27,7 +27,7 @@ TEST_F(FileLibraryTest, AddLibraryPersistsToRegistry) {
 }
 
 TEST_F(FileLibraryTest, RemoveLibraryDeletesFromRegistry) {
-    HDAW::FileLibraryManager mgr;
+    HDAW::FileLibraryManager mgr(tempDir);
     auto id = mgr.addLibrary("To Remove", "/tmp/test", "audio");
     mgr.removeLibrary(id);
     auto ids = mgr.getLibraryIds();
@@ -35,9 +35,21 @@ TEST_F(FileLibraryTest, RemoveLibraryDeletesFromRegistry) {
 }
 
 TEST_F(FileLibraryTest, SetAutoScanTogglesFlag) {
-    HDAW::FileLibraryManager mgr;
+    HDAW::FileLibraryManager mgr(tempDir);
     auto id = mgr.addLibrary("Auto", "/tmp/test", "midi");
     mgr.setAutoScan(id, true);
     auto info = mgr.getLibraryInfo(id);
     EXPECT_TRUE(info.autoScan);
+}
+
+TEST_F(FileLibraryTest, RegistryPersistenceRoundTrip) {
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        mgr.addLibrary("Persist Test", "/tmp/test", "midi");
+    }
+    HDAW::FileLibraryManager mgr2(tempDir);
+    auto ids = mgr2.getLibraryIds();
+    ASSERT_EQ(ids.size(), 1);
+    auto info = mgr2.getLibraryInfo(ids[0]);
+    EXPECT_EQ(info.name, "Persist Test");
 }
