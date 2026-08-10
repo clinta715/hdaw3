@@ -2,6 +2,10 @@
 #include "FileLibraryManager.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
+#include <array>
+#include <cmath>
 
 namespace HDAW {
 
@@ -306,19 +310,26 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
 }
 
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
+    juce::String type;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& lib : libraries)
+            if (lib.id == id) { type = lib.type; break; }
+    }
+
+    const juce::String wildcard = (type == "audio")
+        ? juce::String("*.wav;*.aiff;*.aif;*.mp3;*.flac;*.ogg")
+        : juce::String("*.mid;*.midi");
+
     std::vector<LibraryEntry> newEntries;
-    juce::DirectoryIterator iter(dir, true, "*.mid;*.midi");
+    juce::DirectoryIterator iter(dir, true, wildcard);
     while (iter.next()) {
         auto file = iter.getFile();
         if (file.isDirectory()) continue;
 
-        LibraryEntry entry;
-        if (file.getFileExtension().equalsIgnoreCase(".mid") ||
-            file.getFileExtension().equalsIgnoreCase(".midi")) {
-            entry = extractMidiMetadata(file);
-        } else {
-            continue;
-        }
+        LibraryEntry entry = (type == "audio")
+            ? extractAudioMetadata(file)
+            : extractMidiMetadata(file);
 
         entry.name = file.getFileName();
         entry.path = file.getFullPathName();
@@ -458,7 +469,64 @@ juce::String FileLibraryManager::detectKey(const std::vector<int>& noteCounts) c
     return bestKey;
 }
 
-LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File&) { return {}; }
+LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
+    LibraryEntry entry;
+    entry.format = file.getFileExtension().toLowerCase()
+                       .fromFirstOccurrenceOf(".", false, false);
+
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+    if (!reader) return entry;
+
+    entry.durationSeconds = (double)reader->lengthInSamples / reader->sampleRate;
+    entry.sampleRate = reader->sampleRate;
+    entry.channels = (int)reader->numChannels;
+
+    auto bpmStr = reader->metadataValues.getValue(
+        "bam:Tempo", reader->metadataValues.getValue("ixml:BPM", juce::String()));
+    if (bpmStr.isNotEmpty())
+        entry.bpm = bpmStr.getDoubleValue();
+
+    // Best-effort key detection via chromagram. Runs on the scan threadpool,
+    // not the audio thread, so heap allocation / FFT work are fine here.
+    int blockSize = juce::jmin((int)reader->lengthInSamples, 44100 * 10);
+    if (blockSize >= 2048) {
+        try {
+            juce::AudioBuffer<float> buf((int)reader->numChannels, blockSize);
+            reader->read(&buf, 0, blockSize, 0, true, true);
+
+            std::vector<int> pitchClassCounts(12, 0);
+            juce::dsp::FFT fft(11); // 2^11 = 2048-point
+            for (int start = 0; start + 2048 <= blockSize; start += 1024) {
+                std::array<float, 4096> freqData{};
+                for (int i = 0; i < 2048; ++i) {
+                    float sample = 0.0f;
+                    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                        sample += buf.getSample(ch, start + i);
+                    sample /= (float)buf.getNumChannels();
+                    float hann = 0.5f * (1.0f - std::cos(2.0f * 3.14159265f * (float)i / 2048.0f));
+                    freqData[i] = sample * hann;
+                }
+                fft.performRealOnlyForwardTransform(freqData.data());
+                for (int bin = 1; bin < 1024; ++bin) {
+                    float freq = (float)bin * (float)reader->sampleRate / 2048.0f;
+                    if (freq < 50.0f || freq > 5000.0f) continue;
+                    float mag = std::sqrt(freqData[bin * 2] * freqData[bin * 2]
+                                          + freqData[bin * 2 + 1] * freqData[bin * 2 + 1]);
+                    float midi = 69.0f + 12.0f * std::log2(freq / 440.0f);
+                    int pc = ((int)std::round(midi) % 12 + 12) % 12;
+                    pitchClassCounts[pc] += (int)mag;
+                }
+            }
+            entry.key = detectKey(pitchClassCounts);
+        } catch (...) {
+            // best-effort key detection — never crash the scan
+        }
+    }
+
+    return entry;
+}
 
 std::vector<LibraryEntry> FileLibraryManager::search(const juce::String& query,
     const juce::String& typeFilter, const juce::String& libraryIdFilter,

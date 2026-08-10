@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "engine/FileLibraryManager.h"
 
 class FileLibraryTest : public ::testing::Test {
@@ -88,4 +89,40 @@ TEST_F(FileLibraryTest, ExtractMidiMetadata) {
     EXPECT_EQ(results[0].tracks, 1);
     EXPECT_EQ(results[0].notes, 2);
     EXPECT_GT(results[0].durationSeconds, 0.0);
+}
+
+TEST_F(FileLibraryTest, ExtractAudioMetadata) {
+    auto audioDir = tempDir.getChildFile("audio");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("test.wav");
+
+    // Write 1 second of silence at 44100 Hz, mono, 16-bit.
+    auto outStream = wavFile.createOutputStream();
+    ASSERT_NE(outStream, nullptr);
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+    ASSERT_NE(writer, nullptr);
+    outStream.release(); // writer takes ownership
+    juce::AudioBuffer<float> buffer(1, 44100);
+    buffer.clear();
+    writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+    writer.reset();
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Test Audio", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+
+    // Async scan runs on a threadpool — poll, don't sleep a fixed duration.
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "test.wav");
+    EXPECT_GT(results[0].durationSeconds, 0.9);
+    EXPECT_EQ(results[0].sampleRate, 44100.0);
+    EXPECT_EQ(results[0].channels, 1);
+    EXPECT_EQ(results[0].format, "wav");
 }
