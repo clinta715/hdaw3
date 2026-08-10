@@ -134,6 +134,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Transport.cpp
     src/mcp/McpTools_Audio.cpp
     src/mcp/McpTools_Session.cpp
+    src/mcp/McpTools_Library.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp

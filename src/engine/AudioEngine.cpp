@@ -81,6 +81,9 @@ void AudioEngine::initialize()
     transportManager.setBPM(projectModel.getTree().getProperty(IDs::tempo));
     rebuildTempoMap();
 
+    // Initialize the file library (loads registry, kicks off auto-scans).
+    fileLibraryManager.initialize();
+
     // Sync loop state from ValueTree to TransportManager atomics.
     // The listener only fires on property changes, so we must push the
     // initial values here during setup to ensure advance() has valid

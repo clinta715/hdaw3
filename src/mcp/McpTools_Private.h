@@ -22,5 +22,6 @@ void registerTransportDomain(McpServer& s, AudioEngine* e);
 void registerAudioDomain(McpServer& s, AudioEngine* e);
 void registerMidiFxTools(McpServer& s, AudioEngine* e);
 void registerSessionDomain(McpServer& s, AudioEngine* e);
+void registerLibraryDomain(McpServer& s, AudioEngine* e);
 
 } // namespace mcp

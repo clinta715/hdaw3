@@ -10,6 +10,7 @@
 #include "StretchCache.h"
 #include "SessionManager.h"
 #include "AudioPreviewPlayer.h"
+#include "FileLibraryManager.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
 #include "PluginServiceImpl.h"
@@ -42,6 +43,7 @@ public:
     HDAW::StretchCache& getStretchCache() { return stretchCache; }
     HDAW::AudioPreviewPlayer& getPreviewPlayer() { return *previewPlayer; }
     HDAW::SessionManager& getSessionManager() { return sessionManager; }
+    HDAW::FileLibraryManager& getFileLibraryManager() { return fileLibraryManager; }
 
     // Command interfaces (returning references for polymorphic use)
     ProjectCommands& getProjectCommands();
@@ -134,6 +136,7 @@ private:
     HDAW::MidiInputManager midiInputManager;
     HDAW::StretchCache stretchCache;
     HDAW::SessionManager sessionManager;
+    HDAW::FileLibraryManager fileLibraryManager;
     std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
 
     std::atomic<bool> midiCcRecordArmed{ false };
