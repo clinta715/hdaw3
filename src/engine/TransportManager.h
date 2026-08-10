@@ -45,6 +45,10 @@ public:
     void setPunchEnabled(bool enabled) { punchEnabled.store(enabled); }
     bool isPunchEnabled() const { return punchEnabled.load(); }
 
+    void setArrangerEnabled(bool v) { arrangerEnabled.store(v); }
+    void setArrangerChainPosition(int v) { arrangerChainPosition.store(v); }
+    void setArrangerRepeatIndex(int v) { arrangerRepeatIndex.store(v); }
+
     // Auto-stop flag: set by the audio thread in advance() when position
     // exceeds project end. The message thread must observe this and fire
     // the proper stop command (ValueTree update + UI notification).
@@ -160,6 +164,11 @@ private:
     std::atomic<double> sampleRate { 44100.0 };
     std::atomic<double> bpm { 120.0 };
     std::shared_ptr<const std::vector<TempoPoint>> tempoMap;
+
+    // Arranger mode
+    std::atomic<bool> arrangerEnabled { false };
+    std::atomic<int> arrangerChainPosition { 0 };
+    std::atomic<int> arrangerRepeatIndex { 0 };
 };
 
 /**

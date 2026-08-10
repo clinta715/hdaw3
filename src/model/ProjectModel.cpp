@@ -302,6 +302,9 @@ void ProjectModel::createDefaultProject()
     transport.setProperty(IDs::isLooping, false, nullptr);
     transport.setProperty(IDs::timeSigNumerator, 4, nullptr);
     transport.setProperty(IDs::timeSigDenominator, 4, nullptr);
+    transport.setProperty(IDs::arrangerEnabled, false, nullptr);
+    transport.setProperty(IDs::arrangerChainPosition, 0, nullptr);
+    transport.setProperty(IDs::arrangerRepeatIndex, 0, nullptr);
     projectTree.addChild(transport, -1, nullptr);
 
     juce::ValueTree trackList(IDs::TRACK_LIST);

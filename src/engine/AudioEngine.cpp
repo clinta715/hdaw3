@@ -668,6 +668,12 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             int num = treeWhosePropertyHasChanged.getProperty(IDs::timeSigNumerator);
             mainProcessor->getMetronome().setBeatsPerBar(num > 0 ? num : 4);
         }
+        else if (property == IDs::arrangerEnabled)
+            transportManager.setArrangerEnabled(static_cast<bool>(treeWhosePropertyHasChanged.getProperty(IDs::arrangerEnabled)));
+        else if (property == IDs::arrangerChainPosition)
+            transportManager.setArrangerChainPosition(static_cast<int>(treeWhosePropertyHasChanged.getProperty(IDs::arrangerChainPosition)));
+        else if (property == IDs::arrangerRepeatIndex)
+            transportManager.setArrangerRepeatIndex(static_cast<int>(treeWhosePropertyHasChanged.getProperty(IDs::arrangerRepeatIndex)));
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::PROJECT))
     {
@@ -1007,6 +1013,9 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
         transportManager.setLoopEndSample(static_cast<int64_t>(
             static_cast<double>(childWhichHasBeenAdded.getProperty(IDs::loopEnd)) * sr));
         transportManager.setPlaying(childWhichHasBeenAdded.getProperty(IDs::isPlaying));
+        transportManager.setArrangerEnabled(static_cast<bool>(childWhichHasBeenAdded.getProperty(IDs::arrangerEnabled)));
+        transportManager.setArrangerChainPosition(static_cast<int>(childWhichHasBeenAdded.getProperty(IDs::arrangerChainPosition)));
+        transportManager.setArrangerRepeatIndex(static_cast<int>(childWhichHasBeenAdded.getProperty(IDs::arrangerRepeatIndex)));
     }
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();

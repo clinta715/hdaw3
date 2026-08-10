@@ -98,6 +98,11 @@ namespace IDs {
     DECLARE_ID(isActive)
     DECLARE_ID(CHAIN_ENTRY)
 
+    // Arranger transport state
+    DECLARE_ID(arrangerEnabled)
+    DECLARE_ID(arrangerChainPosition)
+    DECLARE_ID(arrangerRepeatIndex)
+
     // Routing
     DECLARE_ID(ROUTING_GRAPH)
     DECLARE_ID(BUS_LIST)
