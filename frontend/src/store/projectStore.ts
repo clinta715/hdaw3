@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { RpcClient } from "../rpc/client";
 import { ProjectSnapshot, TrackSnapshot, ClipSnapshot, NoteSnapshot, TreeDelta } from "../rpc/types";
+import { useArrangerStore } from "./arrangerStore";
 
 interface ProjectState {
   snapshot: ProjectSnapshot | null;
@@ -53,6 +54,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // Sync markers after project snapshot loads
     const { useMarkerStore } = await import("./markerStore");
     useMarkerStore.getState().syncMarkers(rpc);
+    useArrangerStore.getState().syncArranger(rpc);
   },
 
   syncDirtyFlag: async (rpc: RpcClient) => {
