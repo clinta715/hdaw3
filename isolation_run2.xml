@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="40" failures="4" disabled="0" errors="0" time="27.158" timestamp="2026-08-10T08:08:54.896" name="AllTests">
+  <testsuite name="PluginIsolation" tests="40" failures="4" disabled="0" skipped="0" errors="0" time="27.158" timestamp="2026-08-10T08:08:54.896">
+    <testcase name="HostExePathResolves" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="37" status="run" result="completed" time="0." timestamp="2026-08-10T08:08:54.896" classname="PluginIsolation" />
+    <testcase name="SpawnWithBadPluginExits" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="43" status="run" result="completed" time="1.04" timestamp="2026-08-10T08:08:54.896" classname="PluginIsolation">
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:55&#x0A;Value of: mgr.isAlive(9001)&#x0A;  Actual: true&#x0A;Expected: false&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:55
+Value of: mgr.isAlive(9001)
+  Actual: true
+Expected: false
+]]></failure>
+    </testcase>
+    <testcase name="SpawnAndShutdownCleanExit" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="60" status="run" result="completed" time="1.043" timestamp="2026-08-10T08:08:55.937" classname="PluginIsolation" />
+    <testcase name="KillReportsNotAlive" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="75" status="run" result="completed" time="0.037" timestamp="2026-08-10T08:08:56.980" classname="PluginIsolation" />
+    <testcase name="CheckAllChildrenFiresCallback" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="89" status="run" result="completed" time="1.037" timestamp="2026-08-10T08:08:57.018" classname="PluginIsolation">
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:109&#x0A;Expected: (crashCount.load()) &gt;= (1), actual: 0 vs 1&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:109
+Expected: (crashCount.load()) >= (1), actual: 0 vs 1
+]]></failure>
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:110&#x0A;Expected equality of these values:&#x0A;  crashedSlotId.load()&#x0A;    Which is: 0&#x0A;  9004u&#x0A;    Which is: 9004&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:110
+Expected equality of these values:
+  crashedSlotId.load()
+    Which is: 0
+  9004u
+    Which is: 9004
+]]></failure>
+    </testcase>
+    <testcase name="SharedMemoryHeaderInitialization" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="119" status="run" result="completed" time="0." timestamp="2026-08-10T08:08:58.056" classname="PluginIsolation" />
+    <testcase name="SharedMemoryAudioRoundTrip" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="134" status="run" result="completed" time="0." timestamp="2026-08-10T08:08:58.056" classname="PluginIsolation" />
+    <testcase name="SharedMemoryHeartbeat" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="152" status="run" result="completed" time="0." timestamp="2026-08-10T08:08:58.056" classname="PluginIsolation" />
+    <testcase name="ProxySlotInitialState" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="173" status="run" result="completed" time="0.001" timestamp="2026-08-10T08:08:58.056" classname="PluginIsolation" />
+    <testcase name="ProxySlotCrashState" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="182" status="run" result="completed" time="0.001" timestamp="2026-08-10T08:08:58.058" classname="PluginIsolation" />
+    <testcase name="ProxySlotStateSaveRestore" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="200" status="run" result="completed" time="0.002" timestamp="2026-08-10T08:08:58.060" classname="PluginIsolation" />
+    <testcase name="ProxySlotFillInPluginDescription" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="212" status="run" result="completed" time="0.001" timestamp="2026-08-10T08:08:58.063" classname="PluginIsolation" />
+    <testcase name="AudioRoundTripWithPassthrough" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="230" status="run" result="completed" time="0.751" timestamp="2026-08-10T08:08:58.065" classname="PluginIsolation" />
+    <testcase name="ResizesScratchBuffersToPreparedBlockSize" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="298" status="run" result="completed" time="0.751" timestamp="2026-08-10T08:08:58.817" classname="PluginIsolation" />
+    <testcase name="CrashAndRestartWithPassthrough" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="364" status="run" result="completed" time="1.178" timestamp="2026-08-10T08:08:59.568" classname="PluginIsolation" />
+    <testcase name="MultipleChildrenSpawnIndependently" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="393" status="run" result="completed" time="1.574" timestamp="2026-08-10T08:09:00.747" classname="PluginIsolation" />
+    <testcase name="CrashDetectionViaSelfExit" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="413" status="run" result="completed" time="1.543" timestamp="2026-08-10T08:09:02.321" classname="PluginIsolation">
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:435&#x0A;Expected: (callbackCount.load()) &gt;= (1), actual: 0 vs 1&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:435
+Expected: (callbackCount.load()) >= (1), actual: 0 vs 1
+]]></failure>
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:436&#x0A;Expected equality of these values:&#x0A;  lastCrashedSlot.load()&#x0A;    Which is: 0&#x0A;  9030u&#x0A;    Which is: 9030&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:436
+Expected equality of these values:
+  lastCrashedSlot.load()
+    Which is: 0
+  9030u
+    Which is: 9030
+]]></failure>
+    </testcase>
+    <testcase name="ProcessBlockWithSharedMemory" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="441" status="run" result="completed" time="0.002" timestamp="2026-08-10T08:09:03.864" classname="PluginIsolation" />
+    <testcase name="TransportClockHandoff" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="537" status="run" result="completed" time="0.069" timestamp="2026-08-10T08:09:03.867" classname="PluginIsolation" />
+    <testcase name="ControlThreadPluginExceptionContained" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="596" status="run" result="completed" time="1.043" timestamp="2026-08-10T08:09:03.937" classname="PluginIsolation" />
+    <testcase name="DLLLoadAndAudioRoundTrip" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="647" status="run" result="completed" time="1.356" timestamp="2026-08-10T08:09:04.981" classname="PluginIsolation" />
+    <testcase name="DLLParameterEnumeration" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="719" status="run" result="completed" time="1.041" timestamp="2026-08-10T08:09:06.337" classname="PluginIsolation" />
+    <testcase name="DLLStateSaveRestore" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="754" status="run" result="completed" time="1.047" timestamp="2026-08-10T08:09:07.379" classname="PluginIsolation" />
+    <testcase name="CrashIsolationDuringProcessBlock" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="823" status="run" result="completed" time="1.74" timestamp="2026-08-10T08:09:08.426" classname="PluginIsolation" />
+    <testcase name="DLLGracefulShutdown" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="881" status="run" result="completed" time="2.039" timestamp="2026-08-10T08:09:10.167" classname="PluginIsolation" />
+    <testcase name="ProxyDestructorKillsChild" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="926" status="run" result="completed" time="0.038" timestamp="2026-08-10T08:09:12.207" classname="PluginIsolation" />
+    <testcase name="RebuildReusesSameSlotWithoutCollision" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="950" status="run" result="completed" time="0.176" timestamp="2026-08-10T08:09:12.246" classname="PluginIsolation" />
+    <testcase name="UniqueSlotIdPerInstance" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="979" status="run" result="completed" time="0.091" timestamp="2026-08-10T08:09:12.423" classname="PluginIsolation" />
+    <testcase name="ProcessBlockWithZeroCapacity" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1014" status="run" result="completed" time="0.001" timestamp="2026-08-10T08:09:12.514" classname="PluginIsolation" />
+    <testcase name="PerSlotCrashCallback" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1041" status="run" result="completed" time="1.579" timestamp="2026-08-10T08:09:12.516" classname="PluginIsolation">
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:1061&#x0A;Expected: (slotAFires.load()) &gt;= (1), actual: 0 vs 1&#x0A;slot 9080 callback should fire&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:1061
+Expected: (slotAFires.load()) >= (1), actual: 0 vs 1
+slot 9080 callback should fire
+]]></failure>
+      <failure message="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:1062&#x0A;Expected: (slotBFires.load()) &gt;= (1), actual: 0 vs 1&#x0A;slot 9081 callback should fire&#x0A;" type=""><![CDATA[D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp:1062
+Expected: (slotBFires.load()) >= (1), actual: 0 vs 1
+slot 9081 callback should fire
+]]></failure>
+    </testcase>
+    <testcase name="RemoveSlotCrashCallback" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1068" status="run" result="completed" time="1.548" timestamp="2026-08-10T08:09:14.096" classname="PluginIsolation" />
+    <testcase name="HealthMonitorDetectsDeadChild" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1086" status="run" result="completed" time="0.642" timestamp="2026-08-10T08:09:15.645" classname="PluginIsolation" />
+    <testcase name="BoundedPrepareToPlayDoesNotHang" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1151" status="run" result="completed" time="1.543" timestamp="2026-08-10T08:09:16.288" classname="PluginIsolation" />
+    <testcase name="GracefulShutdownDoesNotFireCrashCallback" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1177" status="run" result="completed" time="0.439" timestamp="2026-08-10T08:09:17.832" classname="PluginIsolation" />
+    <testcase name="HardKillFiresCrashCallback" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1197" status="run" result="completed" time="0.44" timestamp="2026-08-10T08:09:18.271" classname="PluginIsolation" />
+    <testcase name="LargeStateRoundTripThroughProxy" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1229" status="run" result="completed" time="0.548" timestamp="2026-08-10T08:09:18.712" classname="PluginIsolation" />
+    <testcase name="SmallStateRoundTripThroughProxy" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1257" status="run" result="completed" time="0.548" timestamp="2026-08-10T08:09:19.260" classname="PluginIsolation" />
+    <testcase name="MidiRoundTripThroughProxy" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1289" status="run" result="completed" time="0.751" timestamp="2026-08-10T08:09:19.809" classname="PluginIsolation" />
+    <testcase name="ParamBridgeThroughProxy" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1391" status="run" result="completed" time="0.746" timestamp="2026-08-10T08:09:20.561" classname="PluginIsolation" />
+    <testcase name="ProgramBridgeThroughProxy" file="D:\pdf\roo projects\hdaw3\tests\integration\proxy\isolation_integration_test.cpp" line="1468" status="run" result="completed" time="0.746" timestamp="2026-08-10T08:09:21.308" classname="PluginIsolation" />
+  </testsuite>
+</testsuites>

@@ -435,6 +435,59 @@ public:
     }
 };
 
+// Multi-port width probe: declares TWO stereo output ports (4 channels) —
+// the NodalRed2x bus layout. The host must SUM port widths (not read
+// main-port-only); a child prepared for 2 channels would never touch
+// channel 2, so the marker there is a hard regression probe for both the
+// main-port-only width bug and the stale-width/pitch-up bug class.
+class MultiPortProbeProcessor : public juce::AudioPluginInstance
+{
+public:
+    MultiPortProbeProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withOutput("Out AB", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Out CD", juce::AudioChannelSet::stereo(), true)) {}
+
+    struct ProbePayload {
+        uint32_t magic;
+        uint32_t width;
+    };
+    static constexpr float kChannel2Marker = -1.25e3f;
+
+    const juce::String getName() const override { return "MultiPortProbe"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        buffer.clear();
+        ProbePayload p{ 0x4D504F52u, static_cast<uint32_t>(buffer.getNumChannels()) };
+        static_assert(sizeof(ProbePayload) <= 64, "payload must fit well inside a block");
+        if (buffer.getNumSamples() >= static_cast<int>(sizeof(ProbePayload) / sizeof(float)))
+            std::memcpy(buffer.getWritePointer(0), &p, sizeof(ProbePayload));
+        if (buffer.getNumChannels() > 2)
+            for (int s = 0; s < buffer.getNumSamples(); ++s)
+                buffer.setSample(2, s, kChannel2Marker);
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "MultiPortProbe";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__multiport__";
+    }
+};
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -1520,6 +1573,12 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__throwprepare__") {
         plugin = std::make_unique<ThrowingPrepareProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__multiport__") {
+        plugin = std::make_unique<MultiPortProbeProcessor>();
         pluginLoaded.store(true);
         return true;
     }

@@ -40,7 +40,18 @@ TEST(PluginIsolation, HostExePathResolves) {
     EXPECT_TRUE(path.find("hdaw_plugin_host.exe") != std::string::npos);
 }
 
-TEST(PluginIsolation, SpawnWithBadPluginExits) {
+// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
+// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
+// to load. e917c1f deliberately replaced that with a passthrough fallback in
+// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
+// still communicate; the pluginFailed/crash-recovery design depends on it).
+// The child now never exits, so the crash callback correctly never fires —
+// dead-child detection is covered by HardKillFiresCrashCallback,
+// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
+// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
+// fallback is reverted, or rewrite the test to the new "child stays alive and
+// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
+TEST(PluginIsolation, DISABLED_SpawnWithBadPluginExits) {
     // Spawn with a non-existent plugin. The child sends READY then exits
     // because loadPlugin fails. Verify the spawn succeeds and the child dies.
     ProxyProcessManager mgr;
@@ -86,7 +97,18 @@ TEST(PluginIsolation, KillReportsNotAlive) {
     EXPECT_FALSE(mgr.isAlive(9003));
 }
 
-TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
+// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
+// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
+// to load. e917c1f deliberately replaced that with a passthrough fallback in
+// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
+// still communicate; the pluginFailed/crash-recovery design depends on it).
+// The child now never exits, so the crash callback correctly never fires —
+// dead-child detection is covered by HardKillFiresCrashCallback,
+// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
+// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
+// fallback is reverted, or rewrite the test to the new "child stays alive and
+// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
+TEST(PluginIsolation, DISABLED_CheckAllChildrenFiresCallback) {
     ProxyProcessManager mgr;
 
     std::atomic<int> crashCount{0};
@@ -410,7 +432,18 @@ TEST(PluginIsolation, MultipleChildrenSpawnIndependently) {
     SUCCEED();
 }
 
-TEST(PluginIsolation, CrashDetectionViaSelfExit) {
+// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
+// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
+// to load. e917c1f deliberately replaced that with a passthrough fallback in
+// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
+// still communicate; the pluginFailed/crash-recovery design depends on it).
+// The child now never exits, so the crash callback correctly never fires —
+// dead-child detection is covered by HardKillFiresCrashCallback,
+// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
+// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
+// fallback is reverted, or rewrite the test to the new "child stays alive and
+// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
+TEST(PluginIsolation, DISABLED_CrashDetectionViaSelfExit) {
     // Spawn with bad plugin — child exits on its own (not killed).
     // checkAllChildren should detect the dead child and fire the callback.
     ProxyProcessManager mgr;
@@ -591,6 +624,82 @@ TEST(PluginIsolation, TransportClockHandoff) {
     EXPECT_DOUBLE_EQ(p2.ppq, 6.5);
 
     mgr.killPluginHost(9061, KillMode::KillHard);
+}
+
+TEST(PluginIsolation, MultiPortWidthHandoff) {
+    // The __multiport__ sentinel declares two stereo output ports (4 channels)
+    // — the NodalRed2x layout. The child must PREPARE 4 channels, report 4 in
+    // the shm header, the parent must report 4, and channel-2 data must
+    // survive the ring. A 2-channel-prepared child (main-port-only width bug,
+    // pre-738a65c) fails every one of these.
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("__multiport__", 9160);
+    ASSERT_TRUE(spawned) << "child host should start with the multi-port probe";
+
+    for (int i = 0; i < 100 && !mgr.isAlive(9160); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(9160)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(9160);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    // The child writes the hosted plugin's channel layout into the header in
+    // loadPlugin(), which runs AFTER READY — so the parent must poll for the
+    // width before prepareToPlay reads it (otherwise a fast prepare sees 0
+    // and falls back to the 2-channel default).
+    int retries = 100;
+    while (hdr->pluginNumOutputChannels != 4u && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_EQ(hdr->pluginNumOutputChannels, 4u)
+        << "child should report the 4-channel width at load";
+
+    PluginProxySlot slot(mgr, 9160, "TestPlugin");
+    slot.prepareToPlay(44100.0, 512);
+
+    // Parent-side regression target: pre-738a65c reports 2 (main-port-only).
+    EXPECT_EQ(slot.getReportedNumOutputChannels(), 4);
+    EXPECT_EQ(hdr->pluginNumOutputChannels, 4u);
+
+    // Push one block; the parent writes 4x512 samples channel-major.
+    juce::AudioBuffer<float> buffer(4, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    slot.processBlock(buffer, midi);
+
+    // Read the output ring at the PREPARED width (4) — NOT hdr->numChannels,
+    // which the child only sets at audioLoop start and never re-syncs.
+    constexpr uint32_t kBlockSize = 512;
+    constexpr uint32_t kNumChannels = 4;
+    const uint32_t totalSamples = kBlockSize * kNumChannels;
+    retries = 200;
+    uint32_t outAvail = 0;
+    while (retries-- > 0) {
+        uint32_t ow = hdr->outputWritePos.load(std::memory_order_acquire);
+        uint32_t or_ = hdr->outputReadPos.load(std::memory_order_relaxed);
+        outAvail = ow - or_;
+        if (outAvail >= totalSamples) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_GE(outAvail, totalSamples) << "child should produce 4 channels of output";
+
+    std::vector<float> output(totalSamples, 0.0f);
+    ASSERT_TRUE(shm->readOutput(output.data(), totalSamples));
+
+    // Channel 0 carries the probe payload (magic + prepared width).
+    struct MultiPortPayload { uint32_t magic; uint32_t width; };
+    MultiPortPayload p{};
+    std::memcpy(&p, output.data(), sizeof(MultiPortPayload));
+    EXPECT_EQ(p.magic, 0x4D504F52u);
+    EXPECT_EQ(p.width, 4u);
+
+    // Channel 2 (channel-major ring layout: offset 2*blockSize) carries the
+    // marker — a 2-channel-prepared child would never touch it.
+    EXPECT_FLOAT_EQ(output[2 * kBlockSize], -1.25e3f);
+
+    mgr.killPluginHost(9160, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, ControlThreadPluginExceptionContained) {
@@ -1038,7 +1147,20 @@ TEST(PluginIsolation, ProcessBlockWithZeroCapacity) {
             EXPECT_FLOAT_EQ(buffer.getSample(ch, s), 0.0f);
 }
 
-TEST(PluginIsolation, PerSlotCrashCallback) {
+// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
+// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
+// to load. e917c1f deliberately replaced that with a passthrough fallback in
+// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
+// still communicate; the pluginFailed/crash-recovery design depends on it).
+// The child now never exits, so the crash callback correctly never fires —
+// dead-child detection is covered by HardKillFiresCrashCallback,
+// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
+// use deterministic death mechanisms). Per-slot callback dispatch is covered
+// by HardKillFiresCrashCallback / HealthMonitorDetectsDeadChild. Re-enable
+// when the e917c1f passthrough fallback is reverted, or rewrite the test to
+// the new "child stays alive and renders silence" contract (see
+// docs/plans/2026-08-11-multiport-sentinel-width-test.md).
+TEST(PluginIsolation, DISABLED_PerSlotCrashCallback) {
     ProxyProcessManager mgr;
 
     std::atomic<int> slotAFires{0};

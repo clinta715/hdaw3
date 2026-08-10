@@ -59,6 +59,42 @@ For each consistently-failing test, read the test body and the production code i
 
 ---
 
+## Findings (2026-08-11) — failing set recorded, all four = 3d (superseded contract)
+
+**Discovery (Task 1):** `PluginIsolation.*` run 3× (2026-08-11, HEAD `a5871dd`, clean
+tree) — identical 4 failures every run (not flaky), logs kept:
+`isolation_run1/2/3.xml` in the repo root.
+
+| Test | Line | Failure mode | Category |
+|------|------|--------------|----------|
+| `SpawnWithBadPluginExits` | :43 | `isAlive(9001)` still true after 1 s | **3d superseded** |
+| `CheckAllChildrenFiresCallback` | :89 | crash callback never fires | **3d superseded** |
+| `CrashDetectionViaSelfExit` | :413 | crash callback never fires | **3d superseded** |
+| `PerSlotCrashCallback` | :1041 | neither slot callback fires | **3d superseded** |
+
+**Root cause (Task 2):** single production contract change, deliberate, in `e917c1f`
+(process-wide message pump, 2026-08-08): `PluginHost::loadPlugin()`
+(`src/proxy/host/PluginHost.cpp:1441`) changed from
+`if (!loadPluginByPath(...)) return false;` (→ child `run()` returns 1 → process
+exits) to a **passthrough fallback** that keeps the child alive on load failure ("so
+the child stays alive and the parent's proxy can still communicate. The child will
+output silence"). All 4 tests spawn `C:\nonexistent\*.vst3` and assert the
+pre-e917c1f contract: child exits → `checkAllChildren()` fires the crash callback.
+Post-e917c1f the child never exits, so the callbacks correctly never fire. **Not a
+production bug** — the fallback is required by the crash-recovery / pluginFailed
+design (lesson 16 family). The passing siblings prove the detection machinery is
+intact: `HardKillFiresCrashCallback` (TerminateProcess → fires),
+`CrashIsolationDuringProcessBlock` + `HealthMonitorDetectsDeadChild` (`__crash__`
+self-exit → fires). `RemoveSlotCrashCallback` passes trivially (no dead child, and
+its callback was removed).
+
+**Remediation (Task 3d):** `DISABLED_` all 4 with a comment block (reason:
+spawn-bad-plugin-to-die pattern tests a deliberately-removed contract; crash-callback
+coverage retained by the three passing tests above). Re-enable condition per test:
+revert the e917c1f passthrough fallback, or rewrite the test to the new
+"child stays alive + renders silence" contract (see
+`docs/plans/2026-08-11-multiport-sentinel-width-test.md` for the sentinel pattern).
+
 ## Success Gates (all must pass to declare done)
 
 - [ ] The exact failing set is recorded (test names + failure modes) in this plan or a linked note.
