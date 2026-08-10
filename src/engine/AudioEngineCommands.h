@@ -223,6 +223,28 @@ public:
     void setMarkerName(int index, const std::string& name) override;
     void setMarkerTime(int index, double time) override;
 
+    // ProjectCommands — Arranger Regions
+    std::string addArrangerRegion(const std::string& name, double startTime, double duration, int color) override;
+    void removeArrangerRegion(const std::string& regionID) override;
+    void setArrangerRegionName(const std::string& regionID, const std::string& name) override;
+    void setArrangerRegionBounds(const std::string& regionID, double startTime, double duration) override;
+    void setArrangerRegionColor(const std::string& regionID, int color) override;
+
+    // ProjectCommands — Arranger Chains
+    std::string addArrangerChain(const std::string& name) override;
+    void removeArrangerChain(const std::string& chainID) override;
+    void setArrangerChainName(const std::string& chainID, const std::string& name) override;
+    void setArrangerChainActive(const std::string& chainID) override;
+
+    // ProjectCommands — Chain Entries
+    int addChainEntry(const std::string& chainID, const std::string& regionID, int repeatCount) override;
+    void removeChainEntry(const std::string& chainID, int entryIndex) override;
+    void reorderChainEntry(const std::string& chainID, int fromIndex, int toIndex) override;
+    void setChainEntryRepeat(const std::string& chainID, int entryIndex, int repeatCount) override;
+
+    // ProjectCommands — Flatten
+    void flattenArranger() override;
+
     // ProjectCommands — Project persistence
     void newProject() override;
     bool saveProject(const std::string& filePath) override;

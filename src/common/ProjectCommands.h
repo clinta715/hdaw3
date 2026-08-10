@@ -190,6 +190,28 @@ public:
     virtual void setMarkerName(int index, const std::string& name) = 0;
     virtual void setMarkerTime(int index, double time) = 0;
 
+    // Arranger Regions
+    virtual std::string addArrangerRegion(const std::string& name, double startTime, double duration, int color = 0xFFd97706) = 0;
+    virtual void removeArrangerRegion(const std::string& regionID) = 0;
+    virtual void setArrangerRegionName(const std::string& regionID, const std::string& name) = 0;
+    virtual void setArrangerRegionBounds(const std::string& regionID, double startTime, double duration) = 0;
+    virtual void setArrangerRegionColor(const std::string& regionID, int color) = 0;
+
+    // Arranger Chains
+    virtual std::string addArrangerChain(const std::string& name) = 0;
+    virtual void removeArrangerChain(const std::string& chainID) = 0;
+    virtual void setArrangerChainName(const std::string& chainID, const std::string& name) = 0;
+    virtual void setArrangerChainActive(const std::string& chainID) = 0;
+
+    // Chain Entries
+    virtual int addChainEntry(const std::string& chainID, const std::string& regionID, int repeatCount = 1) = 0;
+    virtual void removeChainEntry(const std::string& chainID, int entryIndex) = 0;
+    virtual void reorderChainEntry(const std::string& chainID, int fromIndex, int toIndex) = 0;
+    virtual void setChainEntryRepeat(const std::string& chainID, int entryIndex, int repeatCount) = 0;
+
+    // Flatten
+    virtual void flattenArranger() = 0;
+
     // Track operations — advanced
     virtual int duplicateTrack(int trackIndex) = 0;
 
