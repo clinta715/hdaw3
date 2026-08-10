@@ -339,6 +339,38 @@ QString makeTempWavPath(const char* tag) {
     return path;
 }
 
+QString writeSineWav(const char* tag) {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (dir.isEmpty()) dir = QDir::tempPath();
+    dir = QDir::fromNativeSeparators(dir);
+    QString path = QString("%1/hdaw_fx_input_%2_%3.wav")
+                       .arg(dir)
+                       .arg(tag)
+                       .arg(QCoreApplication::applicationPid());
+    QFile::remove(path);
+
+    constexpr int sampleRate = 44100;
+    constexpr int numChannels = 2;
+    constexpr int numSeconds = 8;
+    constexpr double amplitude = 0.5;
+    constexpr double freqHz = 440.0;
+
+    juce::AudioBuffer<float> buf(numChannels, sampleRate * numSeconds);
+    for (int ch = 0; ch < numChannels; ++ch)
+        for (int s = 0; s < buf.getNumSamples(); ++s)
+            buf.setSample(ch, s, static_cast<float>(
+                amplitude * std::sin(2.0 * juce::MathConstants<double>::pi * freqHz * s / sampleRate)));
+
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(juce::File(path.toStdString())),
+                            sampleRate, numChannels, 16, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
+    writer->flush();
+    return path;
+}
+
 QString textOf(const QJsonObject& r) {
     return r.value("result").toObject()
             .value("content").toArray().at(0).toObject()
@@ -581,19 +613,20 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     // Plugins known to render silence on isolated export. Skip with a clear
     // log rather than failing the suite. Do NOT weaken the EXPECT_GT for
     // plugins that are NOT in this set.
-    // Evidence (2026-08-10, thread-contract fix session): Odin2 was recovered
-    // by fixing the CLAP host lifecycle thread contract (child lifecycle calls
-    // now marshal to the message thread; export teardown destroys the render
-    // graph before render mode clears) — it now renders and is fully asserted.
-    // NodalRed2x was recovered earlier via multi-port CLAP support (4 output
-    // channels). ShinRonin/Gneiss/Retrospect remain silent with a HEALTHY
-    // child pipeline (act=1 proc=1, MIDI + transport delivered, process()
-    // returns CLAP_PROCESS_CONTINUE, output peak 0.000000) — their factory
-    // default patches are genuinely silent; a preset-load sweep would be the
-    // follow-up to test them with a real patch.
-    static const char* kKnownSilent[] = {
-        "ShinRonin", "Gneiss", "Retrospect"
-    };
+    //
+    // 2026-08-10 (fx-audio-input sweep): EMPTY. The last three entries
+    // (ShinRonin, Gneiss, Retrospect) were misdiagnosed: they are EFFECT
+    // plugins, and the matrix fed them a MIDI phrase with no audio input, so
+    // they rendered silence by design. The sweep now classifies per plugin
+    // (cached numInputChannels is 0 for all CLAPs, so the explicit name
+    // fallback marks the three known FX) and feeds effect plugins a 440 Hz
+    // sine clip (add_audio_clip, 16 beats @ 120 bpm = 8 s) on isolated
+    // export; all three now render and are fully asserted below:
+    //   ShinRonin peak=0.298889  Gneiss peak>0.01 (varies per run,
+    //   observed 0.07-0.25)  Retrospect peak=0.300385
+    // See docs/plans/2026-08-10-fx-audio-input-sweep-kknownsilent.md. Keep
+    // this mechanism for future documented skips.
+    static const char* kKnownSilent[] = { nullptr };
     auto isKnownSilent = [](const juce::String& name) {
         for (const char* s : kKnownSilent)
         {
@@ -699,11 +732,43 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                 r.addOk = true;
                 int trackId = m.captured(1).toInt();
 
-                // 3) Generate a Lead phrase, 4 bars (length=16 beats), on it.
-                QString genArgs = QString(R"({"trackId":%1,"style":"Lead","length":16,"density":20})")
-                                      .arg(trackId);
-                QString genText = run(baseId + 3, "generate_phrase", genArgs);
-                r.phaseNote += "gen=" + genText.toStdString() + "; ";
+                // 3) Effect plugins (numInputChannels > 0) get a 440 Hz sine
+                // clip as audio input; instruments get the MIDI phrase.
+                bool isEffect = pd.numInputChannels > 0
+                    || pd.name.containsIgnoreCase("ShinRonin")
+                    || pd.name.containsIgnoreCase("Gneiss")
+                    || pd.name.containsIgnoreCase("Retrospect");
+                HDAW_LOG("DiagMatrix",
+                         juce::String("classify plugin=") + juce::String(r.name)
+                         + " inCh=" + juce::String(static_cast<int>(pd.numInputChannels))
+                         + " outCh=" + juce::String(static_cast<int>(pd.numOutputChannels))
+                         + " isEffect=" + juce::String(isEffect ? "true" : "false"));
+
+                QString fxWavPath;
+                if (isEffect)
+                {
+                    fxWavPath = writeSineWav(("fx" + std::to_string(pi)).c_str());
+                    if (fxWavPath.isEmpty())
+                    {
+                        r.phaseNote += "sine-wav-write-failed; ";
+                    }
+                    else
+                    {
+                        QString clipArgs = QString(R"({"trackId":%1,"start":0,"length":16,"sourceFile":"%2"})")
+                                              .arg(trackId)
+                                              .arg(fxWavPath);
+                        QString clipText = run(baseId + 3, "add_audio_clip", clipArgs);
+                        r.phaseNote += "clip=" + clipText.toStdString() + "; ";
+                    }
+                }
+                else
+                {
+                    // Generate a Lead phrase, 4 bars (length=16 beats), on it.
+                    QString genArgs = QString(R"({"trackId":%1,"style":"Lead","length":16,"density":20})")
+                                          .arg(trackId);
+                    QString genText = run(baseId + 3, "generate_phrase", genArgs);
+                    r.phaseNote += "gen=" + genText.toStdString() + "; ";
+                }
 
                 // 4) Export to a unique temp WAV (same params as the existing test).
                 QString path = makeTempWavPath(("dx" + std::to_string(pi)).c_str());
@@ -742,6 +807,8 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                 {
                     r.phaseNote += "wav-missing; ";
                 }
+                if (!fxWavPath.isEmpty())
+                    QFile::remove(fxWavPath);
             }
             else
             {
