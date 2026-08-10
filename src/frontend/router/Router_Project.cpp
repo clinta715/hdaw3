@@ -358,6 +358,105 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setMarkerName")  { int i; std::string s; if (!requireInt(o, "index", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "index and name required"); c.setMarkerName(i, s); return { false, QJsonValue::Null }; }
     if (m == "setMarkerTime")  { int i; double t; if (!requireInt(o, "index", i, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "index and time required"); c.setMarkerTime(i, t); return { false, QJsonValue::Null }; }
 
+    // --- Arranger Regions ---
+    if (m == "addArrangerRegion") {
+        std::string name; double start, dur;
+        if (!requireString(o, "name", name, nullptr) || !requireDouble(o, "startTime", start, nullptr) || !requireDouble(o, "duration", dur, nullptr))
+            return makeError(-32602, "name, startTime, duration required");
+        int color = optInt<int>(o, "color", 0xFFd97706, nullptr);
+        return { false, QString::fromStdString(c.addArrangerRegion(name, start, dur, color)) };
+    }
+    if (m == "removeArrangerRegion") {
+        std::string rid;
+        if (!requireString(o, "regionID", rid, nullptr))
+            return makeError(-32602, "regionID required");
+        c.removeArrangerRegion(rid);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setArrangerRegionName") {
+        std::string rid, name;
+        if (!requireString(o, "regionID", rid, nullptr) || !requireString(o, "name", name, nullptr))
+            return makeError(-32602, "regionID and name required");
+        c.setArrangerRegionName(rid, name);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setArrangerRegionBounds") {
+        std::string rid; double start, dur;
+        if (!requireString(o, "regionID", rid, nullptr) || !requireDouble(o, "startTime", start, nullptr) || !requireDouble(o, "duration", dur, nullptr))
+            return makeError(-32602, "regionID, startTime, duration required");
+        c.setArrangerRegionBounds(rid, start, dur);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setArrangerRegionColor") {
+        std::string rid; int color;
+        if (!requireString(o, "regionID", rid, nullptr) || !requireInt(o, "color", color, nullptr))
+            return makeError(-32602, "regionID and color required");
+        c.setArrangerRegionColor(rid, color);
+        return { false, QJsonValue::Null };
+    }
+    // --- Arranger Chains ---
+    if (m == "addArrangerChain") {
+        std::string name;
+        if (!requireString(o, "name", name, nullptr))
+            return makeError(-32602, "name required");
+        return { false, QString::fromStdString(c.addArrangerChain(name)) };
+    }
+    if (m == "removeArrangerChain") {
+        std::string cid;
+        if (!requireString(o, "chainID", cid, nullptr))
+            return makeError(-32602, "chainID required");
+        c.removeArrangerChain(cid);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setArrangerChainName") {
+        std::string cid, name;
+        if (!requireString(o, "chainID", cid, nullptr) || !requireString(o, "name", name, nullptr))
+            return makeError(-32602, "chainID and name required");
+        c.setArrangerChainName(cid, name);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setArrangerChainActive") {
+        std::string cid;
+        if (!requireString(o, "chainID", cid, nullptr))
+            return makeError(-32602, "chainID required");
+        c.setArrangerChainActive(cid);
+        return { false, QJsonValue::Null };
+    }
+    // --- Chain Entries ---
+    if (m == "addChainEntry") {
+        std::string cid, rid;
+        if (!requireString(o, "chainID", cid, nullptr) || !requireString(o, "regionID", rid, nullptr))
+            return makeError(-32602, "chainID and regionID required");
+        int repeat = optInt<int>(o, "repeatCount", 1, nullptr);
+        return { false, c.addChainEntry(cid, rid, repeat) };
+    }
+    if (m == "removeChainEntry") {
+        std::string cid; int idx;
+        if (!requireString(o, "chainID", cid, nullptr) || !requireInt(o, "entryIndex", idx, nullptr))
+            return makeError(-32602, "chainID and entryIndex required");
+        c.removeChainEntry(cid, idx);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "reorderChainEntry") {
+        std::string cid; int from, to;
+        if (!requireString(o, "chainID", cid, nullptr) || !requireInt(o, "fromIndex", from, nullptr) || !requireInt(o, "toIndex", to, nullptr))
+            return makeError(-32602, "chainID, fromIndex, toIndex required");
+        c.reorderChainEntry(cid, from, to);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setChainEntryRepeat") {
+        std::string cid; int idx, repeat;
+        if (!requireString(o, "chainID", cid, nullptr) || !requireInt(o, "entryIndex", idx, nullptr) || !requireInt(o, "repeatCount", repeat, nullptr))
+            return makeError(-32602, "chainID, entryIndex, repeatCount required");
+        c.setChainEntryRepeat(cid, idx, repeat);
+        return { false, QJsonValue::Null };
+    }
+    // --- Flatten ---
+    if (m == "flattenArranger") {
+        c.flattenArranger();
+        return { false, QJsonValue::Null };
+    }
+
     // --- Gain envelope ---
     if (m == "addGainEnvelopePoint")    { int i; double t, g; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireDouble(o, "gain", g, nullptr)) return makeError(-32602, "clipId, time, gain required"); c.addGainEnvelopePoint(i, t, g); return { false, QJsonValue::Null }; }
     if (m == "moveGainEnvelopePoint")   { int i, idx; double t, g; if (!requireInt(o, "clipId", i, nullptr) || !requireInt(o, "pointIndex", idx, nullptr) || !requireDouble(o, "time", t, nullptr) || !requireDouble(o, "gain", g, nullptr)) return makeError(-32602, "clipId, pointIndex, time, gain required"); c.moveGainEnvelopePoint(i, idx, t, g); return { false, QJsonValue::Null }; }

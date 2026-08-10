@@ -583,6 +583,55 @@ std::vector<MarkerSnapshot> ReadModelImpl::getMarkers() const
     return result;
 }
 
+std::vector<ArrangerRegionSnapshot> ReadModelImpl::getArrangerRegions() const
+{
+    std::vector<ArrangerRegionSnapshot> result;
+    auto arrangerList = model_.getTree().getChildWithName(IDs::ARRANGER_LIST);
+    if (!arrangerList.isValid())
+        return result;
+
+    for (int i = 0; i < arrangerList.getNumChildren(); ++i)
+    {
+        auto region = arrangerList.getChild(i);
+        ArrangerRegionSnapshot rs;
+        rs.regionID = region.getProperty(IDs::regionID, "").toString().toStdString();
+        rs.name = region.getProperty(IDs::regionName, "").toString().toStdString();
+        rs.startTime = static_cast<double>(region.getProperty(IDs::startTime, 0.0));
+        rs.duration = static_cast<double>(region.getProperty(IDs::duration, 0.0));
+        rs.color = static_cast<int>(region.getProperty(IDs::color, 0));
+        result.push_back(rs);
+    }
+    return result;
+}
+
+std::vector<ArrangerChainSnapshot> ReadModelImpl::getArrangerChains() const
+{
+    std::vector<ArrangerChainSnapshot> result;
+    auto chainList = model_.getTree().getChildWithName(IDs::ARRANGER_CHAIN_LIST);
+    if (!chainList.isValid())
+        return result;
+
+    for (int i = 0; i < chainList.getNumChildren(); ++i)
+    {
+        auto chain = chainList.getChild(i);
+        ArrangerChainSnapshot cs;
+        cs.chainID = chain.getProperty(IDs::chainID, "").toString().toStdString();
+        cs.name = chain.getProperty(IDs::chainName, "").toString().toStdString();
+        cs.isActive = static_cast<bool>(chain.getProperty(IDs::isActive, false));
+
+        for (int e = 0; e < chain.getNumChildren(); ++e)
+        {
+            auto entry = chain.getChild(e);
+            ChainEntrySnapshot es;
+            es.regionID = entry.getProperty(IDs::regionID, "").toString().toStdString();
+            es.repeatCount = static_cast<int>(entry.getProperty(IDs::repeatCount, 1));
+            cs.entries.push_back(es);
+        }
+        result.push_back(cs);
+    }
+    return result;
+}
+
 std::vector<TempoPointSnapshot> ReadModelImpl::getTempoPoints() const
 {
     std::vector<TempoPointSnapshot> result;

@@ -143,6 +143,26 @@ struct MarkerSnapshot {
     int color = 0;
 };
 
+struct ArrangerRegionSnapshot {
+    std::string regionID;
+    std::string name;
+    double startTime = 0.0;
+    double duration = 0.0;
+    int color = 0;
+};
+
+struct ChainEntrySnapshot {
+    std::string regionID;
+    int repeatCount = 1;
+};
+
+struct ArrangerChainSnapshot {
+    std::string chainID;
+    std::string name;
+    bool isActive = false;
+    std::vector<ChainEntrySnapshot> entries;
+};
+
 struct TempoPointSnapshot {
     double timeSeconds = 0.0;
     double bpm = 120.0;
@@ -215,6 +235,8 @@ public:
     virtual std::vector<AutomationPointSnapshot> getAutomationPoints(int trackIndex,
         const std::string& laneName) const = 0;
     virtual std::vector<MarkerSnapshot> getMarkers() const = 0;
+    virtual std::vector<ArrangerRegionSnapshot> getArrangerRegions() const = 0;
+    virtual std::vector<ArrangerChainSnapshot> getArrangerChains() const = 0;
     virtual std::vector<TempoPointSnapshot> getTempoPoints() const = 0;
     virtual std::vector<AutomatableParamSnapshot> getAutomatableParams(int trackIndex) const = 0;
     virtual std::vector<LfoSnapshot> getModulationLfos(int trackIndex) const = 0;

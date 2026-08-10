@@ -218,6 +218,35 @@ inline QJsonObject toJson(const MarkerSnapshot& m) {
     };
 }
 
+inline QJsonObject toJson(const ArrangerRegionSnapshot& r) {
+    return QJsonObject{
+        { "regionID",  QString::fromStdString(r.regionID) },
+        { "name",      QString::fromStdString(r.name) },
+        { "startTime", r.startTime },
+        { "duration",  r.duration },
+        { "color",     r.color },
+    };
+}
+
+inline QJsonObject toJson(const ChainEntrySnapshot& e) {
+    return QJsonObject{
+        { "regionID",    QString::fromStdString(e.regionID) },
+        { "repeatCount", e.repeatCount },
+    };
+}
+
+inline QJsonObject toJson(const ArrangerChainSnapshot& c) {
+    QJsonArray entries;
+    for (const auto& e : c.entries)
+        entries.append(toJson(e));
+    return QJsonObject{
+        { "chainID",  QString::fromStdString(c.chainID) },
+        { "name",     QString::fromStdString(c.name) },
+        { "isActive", c.isActive },
+        { "entries",  entries },
+    };
+}
+
 inline QJsonObject toJson(const TempoPointSnapshot& t) {
     return QJsonObject{ { "timeSeconds", t.timeSeconds }, { "bpm", t.bpm } };
 }

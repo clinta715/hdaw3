@@ -61,6 +61,18 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
         QJsonArray arr; for (const auto& mk : r.getMarkers()) arr.append(toJson(mk));
         return { false, arr };
     }
+    if (m == "getArrangerRegions") {
+        QJsonArray arr;
+        for (const auto& rs : r.getArrangerRegions())
+            arr.append(toJson(rs));
+        return { false, arr };
+    }
+    if (m == "getArrangerChains") {
+        QJsonArray arr;
+        for (const auto& cs : r.getArrangerChains())
+            arr.append(toJson(cs));
+        return { false, arr };
+    }
     if (m == "getTempoPoints") {
         QJsonArray arr; for (const auto& t : r.getTempoPoints()) arr.append(toJson(t));
         return { false, arr };
