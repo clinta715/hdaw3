@@ -1,0 +1,64 @@
+.tl-arranger-lane {
+  position: relative;
+  height: 32px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.tl-arranger-lane-empty {
+  height: 0;
+  overflow: hidden;
+}
+
+.tl-arranger-region {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  cursor: pointer;
+  user-select: none;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: border-color 0.1s;
+}
+
+.tl-arranger-region:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.tl-arranger-region.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tl-arranger-region-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.tl-arranger-region-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.tl-arranger-region-handle-left {
+  left: 0;
+}
+
+.tl-arranger-region-handle-right {
+  right: 0;
+}

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useCallback, useEffect } from "react";
+import { useMemo, useRef, useCallback, useEffect, useState } from "react";
 import { useProjectStore } from "../../store/projectStore";
 import { useTransportStore } from "../../store/transportStore";
 import { useMarkerStore } from "../../store/markerStore";
@@ -23,6 +23,7 @@ import { getVisibleTracks } from "../../utils/timelineUtils";
 import { colorStr } from "../../theme";
 import { AddTrackMenu } from "../AddTrackMenu";
 import PopUpBrowser from "../PopUpBrowser";
+import { ArrangerLane } from "../ArrangerLane";
 import "../TimelineMinimal.css";
 
 export default function TimelineMinimal() {
@@ -52,9 +53,11 @@ export default function TimelineMinimal() {
   }, [tracks]);
 
   const rulerRef = useRef<HTMLDivElement>(null);
+  const arrangerLaneRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const engagementRef = useRef<"none" | "clip" | "rubber" | "zoom">("none");
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
 
@@ -169,8 +172,11 @@ export default function TimelineMinimal() {
 
   // --- Scroll sync ---
   const onTracksScroll = useCallback(() => {
-    if (rulerRef.current && tracksRef.current) {
-      rulerRef.current.scrollLeft = tracksRef.current.scrollLeft;
+    if (tracksRef.current) {
+      const sl = tracksRef.current.scrollLeft;
+      if (rulerRef.current) rulerRef.current.scrollLeft = sl;
+      if (arrangerLaneRef.current) arrangerLaneRef.current.scrollLeft = sl;
+      setScrollLeft(sl);
     }
   }, []);
 
@@ -279,6 +285,11 @@ export default function TimelineMinimal() {
               />
             ))}
           </div>
+        </div>
+
+        {/* Arranger Lane */}
+        <div ref={arrangerLaneRef} style={{ overflow: "hidden" }}>
+          <ArrangerLane pps={pps} scrollLeft={scrollLeft} />
         </div>
 
         {/* Tracks area */}
