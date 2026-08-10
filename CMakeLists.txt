@@ -122,6 +122,7 @@ add_library(HDAW_lib STATIC
 src/engine/StretchRenderer.cpp
     src/engine/StretchCache.cpp
     src/engine/TransientDetector.cpp
+    src/engine/FileLibraryManager.cpp
     src/common/MessagePumpThread.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
@@ -233,7 +234,7 @@ endif()
 
 # Enable modern C++ features for MSVC; /MP enables parallel compilation
 if(MSVC)
-    target_compile_options(HDAW_lib PRIVATE /MP)
+    target_compile_options(HDAW_lib PRIVATE /MP /FS)
     target_compile_options(HDAW PRIVATE /W4 /permissive- /EHa /MP)
 
     # Suppress C++20/C++23 std-library deprecation warnings (C4996
