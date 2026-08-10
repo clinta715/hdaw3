@@ -231,7 +231,14 @@ void FileLibraryManager::scanAll() {
 }
 
 void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
-    if (loadedLibraries.count(id) > 0) return;
+    // Fast-path check under lock — avoids data race on loadedLibraries
+    // (concurrent scans erase from this set under the same mutex).
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (loadedLibraries.count(id) > 0) return;
+    }
+
+    // File I/O + JSON parse OUTSIDE the lock (don't block search/getEntry/scan).
     auto entryFile = librariesDir.getChildFile(id + ".json");
     if (!entryFile.existsAsFile()) return;
 
@@ -246,7 +253,9 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
     auto* arr = items.getArray();
     if (!arr) return;
 
+    // Commit under lock — re-check in case another thread loaded it while we did I/O.
     std::lock_guard<std::mutex> lock(mutex);
+    if (loadedLibraries.count(id) > 0) return;
     auto& vec = entries[id];
     vec.clear();
 

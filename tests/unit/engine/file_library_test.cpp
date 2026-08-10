@@ -274,3 +274,39 @@ TEST_F(FileLibraryTest, SearchPaginates) {
     auto page4 = mgr.search("", {}, {}, -1, -1, -1, -1, {}, 10, 2);
     EXPECT_TRUE(page4.empty());
 }
+
+TEST_F(FileLibraryTest, SearchLazyLoadsFromDiskAcrossInstances) {
+    auto midiDir = tempDir.getChildFile("lazy_load");
+    midiDir.createDirectory();
+
+    // Create one MIDI file
+    {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream stream(midiDir.getChildFile("persisted.mid"));
+        file.writeTo(stream);
+        stream.flush();
+    }
+
+    // Instance 1: add + scan (writes <id>.json to disk)
+    juce::String id;
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        id = mgr.addLibrary("LazyLoad", midiDir.getFullPathName(), "midi");
+        mgr.scanLibrary(id);
+        for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+            juce::Thread::sleep(100);
+        ASSERT_EQ(mgr.search("").size(), 1u);  // in-memory, post-scan
+    } // mgr destroyed — entries flushed to disk via saveLibraryEntries
+
+    // Instance 2: NEW manager on same tempDir — NO scan.
+    // search() must lazy-load via loadLibraryEntries.
+    HDAW::FileLibraryManager mgr2(tempDir);
+    auto results = mgr2.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "persisted.mid");
+}
