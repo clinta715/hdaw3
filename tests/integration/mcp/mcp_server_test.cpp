@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QFile>
 #include <QTimer>
+#include <QThread>
 #include <QUrl>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -50,6 +51,37 @@ QJsonObject parseResponse(const QByteArray& buf) {
         if (trimmed.isEmpty()) continue;
         QJsonObject obj = QJsonDocument::fromJson(trimmed).object();
         if (obj.contains("id")) return obj;
+    }
+    return {};
+}
+
+// Poll the loopback until a notifications/exportComplete line appears in the
+// accumulated outgoing buffer (timeout in ms). Returns {} on timeout.
+// processEvents is required: exportComplete is delivered to the main thread
+// via a queued invokeMethod (notifyFromBackground), and test_main runs no
+// event loop. The budget is real elapsed time — waitForOutgoing returns
+// immediately while the buffer is non-empty (response + progress lines).
+QJsonObject waitExportComplete(mcp::TransportLoopback& tp, int msec) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(msec);
+    while (std::chrono::steady_clock::now() < deadline) {
+        int remaining = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count());
+        QByteArray out;
+        if (tp.waitForOutgoing(std::min(250, remaining), &out)) {
+            int start = 0;
+            while (start < out.size()) {
+                int nl = out.indexOf('\n', start);
+                QByteArray line = (nl >= 0) ? out.mid(start, nl - start) : out.mid(start);
+                start = (nl >= 0) ? nl + 1 : out.size();
+                QByteArray trimmed = line.trimmed();
+                if (trimmed.contains("notifications/exportComplete")) {
+                    QJsonObject obj = QJsonDocument::fromJson(trimmed).object();
+                    return obj.value("params").toObject();
+                }
+            }
+        }
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        QThread::msleep(10);  // avoid hot spin; buffer accumulates
     }
     return {};
 }
@@ -454,11 +486,65 @@ TEST(McpServer, ExportAudioRendersDefaultProject) {
     if (r.value("result").toObject().value("isError").toBool(false)) {
         FAIL() << "export failed: " << text.toStdString();
     }
-    EXPECT_TRUE(text.contains("exported to")) << "got: [" << text.toStdString() << "]";
+    EXPECT_TRUE(text.contains("export started")) << "got: [" << text.toStdString() << "]";
+
+    auto complete = waitExportComplete(tp, 30000);
+    ASSERT_FALSE(complete.isEmpty());
+    EXPECT_TRUE(complete.value("success").toBool());
+
+    // Exactly one completion notification per export.
+    QByteArray buf;
+    if (tp.waitForOutgoing(100, &buf)) {
+        int count = 0, pos = 0;
+        while ((pos = buf.indexOf("notifications/exportComplete", pos)) >= 0) {
+            ++count;
+            pos += 1;
+        }
+        EXPECT_EQ(count, 1);
+    }
+
     EXPECT_TRUE(QFile::exists(path));
     EXPECT_GT(QFile(path).size(), 0);
 
     // The MCP cancel flag must be cleared after a successful run.
+    EXPECT_FALSE(s.isCancelRequested());
+
+    QFile::remove(path);
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, ExportAudioCancelsMidRender) {
+    AudioEngine engine;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    QString path = makeTempWavPath("cancel-mid");
+
+    // An 8-second render is long enough that the cancel notification sent
+    // right after the (immediate) response is picked up mid-render.
+    QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":8.0,"sampleRate":44100.0,"bitDepth":16})")
+                       .arg(path);
+    QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
+                      .arg(args);
+    tp.pumpIncoming(req.toUtf8());
+    QByteArray out;
+    ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseResponse(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    QString text = textOf(r);
+    EXPECT_TRUE(text.contains("export started")) << "got: [" << text.toStdString() << "]";
+
+    // JSON-RPC notification (no id) — dispatchRequest routes it to setCancelFlag.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","method":"notifications/cancelled"})"));
+
+    auto complete = waitExportComplete(tp, 30000);
+    ASSERT_FALSE(complete.isEmpty());
+    EXPECT_FALSE(complete.value("success").toBool());
+    EXPECT_TRUE(complete.value("message").toString()
+                    .contains("cancel", Qt::CaseInsensitive))
+        << "got: [" << complete.value("message").toString().toStdString() << "]";
+    EXPECT_FALSE(QFile::exists(path));  // partial file deleted on cancel
     EXPECT_FALSE(s.isCancelRequested());
 
     QFile::remove(path);
@@ -540,7 +626,10 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         if (r.value("result").toObject().value("isError").toBool(false)) {
             FAIL() << "Export failed: " << text.toStdString();
         }
-        EXPECT_TRUE(text.contains("exported to")) << "got: [" << text.toStdString() << "]";
+        EXPECT_TRUE(text.contains("export started")) << "got: [" << text.toStdString() << "]";
+        auto complete = waitExportComplete(tp, 30000);
+        ASSERT_FALSE(complete.isEmpty());
+        EXPECT_TRUE(complete.value("success").toBool());
     }
 
     EXPECT_TRUE(QFile::exists(path));
@@ -776,7 +865,12 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                                       .arg(path);
                 QString expText = run(baseId + 4, "export_audio", expArgs);
                 r.phaseNote += "export=" + expText.toStdString() + "; ";
-                r.exportOk = expText.contains("exported to");
+                r.exportOk = expText.contains("export started");
+                auto complete = waitExportComplete(tp, 60000);
+                r.exportOk = r.exportOk && !complete.isEmpty() && complete.value("success").toBool();
+                r.phaseNote += "complete=" + (complete.isEmpty() ? std::string("TIMEOUT")
+                                    : (complete.value("success").toBool() ? std::string("ok")
+                                      : complete.value("message").toString().toStdString())) + "; ";
 
                 // 5) Decode and peak-scan the WAV.
                 if (QFile::exists(path))
@@ -833,7 +927,18 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
 
         {
             std::unique_lock<std::mutex> lk(cvMutex);
-            if (!cv.wait_for(lk, perPluginTimeout, [&]() { return row.done; }))
+            // Pump Qt events on the main thread while the worker runs: the
+            // exportComplete notification reaches the loopback via a queued
+            // invokeMethod (notifyFromBackground) that only executes when the
+            // main thread processes events (test_main runs no event loop).
+            const auto deadline = std::chrono::steady_clock::now() + perPluginTimeout;
+            bool done = false;
+            while (!done && std::chrono::steady_clock::now() < deadline) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                done = cv.wait_for(lk, std::chrono::milliseconds(100),
+                                   [&]() { return row.done; });
+            }
+            if (!done)
             {
                 row.hung = true;
                 row.phaseNote += "HUNG-after-timeout; ";

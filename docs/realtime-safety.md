@@ -337,10 +337,11 @@ live in the "Hardening lessons learned" section above.
     non-`127.0.0.1` binding).
   - `resources/*` and `prompts/*` (the v1 surface is
     tools-only).
-  - `export_audio` worker-thread + per-block cancellation
-    (the v1 implementation is synchronous on the main thread
-    with a cancel-watcher thread; full async is a v1
-    follow-up).
+  - `export_audio` async handler + per-block cancellation
+    (DONE 2026-08-10: the handler returns immediately with
+    "export started: <path>"; completion is delivered via a
+    `notifications/exportComplete` notification; per-block
+    cancellation is checked engine-side on every render block).
 
 ## Plugin Process Isolation (v0.4 candidate)
 

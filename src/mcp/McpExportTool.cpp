@@ -10,9 +10,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
-#include <atomic>
-#include <future>
-#include <thread>
+#include <QPointer>
 #include <QMetaObject>
 
 namespace mcp {
@@ -29,7 +27,7 @@ void registerExportTool(McpServer& s) {
     if (!e) return;
 
     s.registerTool({"export_audio",
-        "Render the project to an audio file (wav/aiff/flac). The render runs on the ExportManager's internal worker thread; the tool handler blocks until completion but does no heavy CPU itself. Cooperative cancellation: a notifications/cancelled received before the export starts skips it entirely; a notifications/cancelled received while the export is running will be picked up at the next progress tick (the render thread checks the cancel flag via the onProgress callback and aborts the render). Progress is reported via notifications/progress (0.0, 0.25, 0.5, 0.75, 1.0).",
+        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cooperative cancellation: a notifications/cancelled received before the export starts skips it entirely; a notifications/cancelled received while the export is running is picked up by the render thread at the next progress tick (the per-block onProgress callback checks the cancel flag) and aborts the render, deleting the partial file.",
         objSchema({{"outputPath", QJsonObject{{"type","string"}}},
                   {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav","aiff","flac"}}}},
                   {"start",      QJsonObject{{"type","number"}}},
@@ -78,8 +76,9 @@ void registerExportTool(McpServer& s) {
             auto& formatManager = e->getProjectPool().getFormatManager();
             auto* pluginManager = &e->getPluginManager();
 
-            auto* serverPtr = &s;
+            QPointer<McpServer> serverPtr(&s);
             em.onProgress = [serverPtr, &em](float prog) {
+                if (serverPtr.isNull()) return;
                 if (serverPtr->isCancelRequested()) {
                     em.cancel();
                 }
@@ -93,28 +92,23 @@ void registerExportTool(McpServer& s) {
                     Qt::QueuedConnection, Q_ARG(QString, line));
             };
 
-            auto donePromise = std::make_shared<std::promise<std::pair<bool, QString>>>();
-            auto doneFuture = donePromise->get_future();
-            em.onComplete = [donePromise](bool success, const juce::String& message) {
-                donePromise->set_value({success, QString::fromUtf8(message.toRawUTF8())});
-            };
-
-            std::atomic<bool> stopWatcher{false};
-            std::thread cancelWatcher;
-            cancelWatcher = std::thread([serverPtr, &em, &stopWatcher]() {
-                while (!stopWatcher.load(std::memory_order_relaxed)) {
-                    if (serverPtr->isCancelRequested()) {
-                        em.cancel();
-                        break;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            em.onComplete = [serverPtr, &em, path](bool success, const juce::String& message) {
+                if (!serverPtr.isNull()) {
+                    QJsonObject params{{"success", success},
+                                       {"message", QString::fromUtf8(message.toRawUTF8())},
+                                       {"outputPath", path}};
+                    McpNotification n{"notifications/exportComplete", params};
+                    QMetaObject::invokeMethod(serverPtr, "notifyFromBackground",
+                        Qt::QueuedConnection, Q_ARG(QString, serializeNotification(n)));
                 }
-            });
+                em.onProgress = nullptr;
+                em.onComplete = nullptr;
+                if (!serverPtr.isNull())
+                    serverPtr->resetCancelFlag();
+            };
 
             if (!em.startExport(projectCopy, formatManager, pluginManager, outFile,
                                 sampleRate, startTime, duration, fmt, bitDepth)) {
-                stopWatcher.store(true);
-                if (cancelWatcher.joinable()) cancelWatcher.join();
                 em.onProgress = nullptr;
                 em.onComplete = nullptr;
                 return McpToolResult::text("failed to start export", true);
@@ -126,33 +120,7 @@ void registerExportTool(McpServer& s) {
                 s.notifyFromBackground(serializeNotification(n));
             }
 
-            auto [success, message] = doneFuture.get();
-
-            stopWatcher.store(true);
-            if (cancelWatcher.joinable()) cancelWatcher.join();
-
-            {
-                QJsonObject params{
-                    {"progress", success ? 1.0 : 0.0},
-                    {"message", message}
-                };
-                McpNotification n{"notifications/progress", params};
-                s.notifyFromBackground(serializeNotification(n));
-            }
-
-            em.onProgress = nullptr;
-            em.onComplete = nullptr;
-
-            s.resetCancelFlag();
-
-            if (!success) {
-                QString reply = message.contains("cancel", Qt::CaseInsensitive)
-                    ? QString("export cancelled: %1").arg(message)
-                    : QString("export failed: %1").arg(message);
-                return McpToolResult::text(reply, true);
-            }
-            return McpToolResult::text(QString("exported to %1 (%2)")
-                .arg(path).arg(message));
+            return McpToolResult::text(QString("export started: %1").arg(path));
         }});
 }
 
