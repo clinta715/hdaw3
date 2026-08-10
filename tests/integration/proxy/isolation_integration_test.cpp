@@ -593,6 +593,53 @@ TEST(PluginIsolation, TransportClockHandoff) {
     mgr.killPluginHost(9061, KillMode::KillHard);
 }
 
+TEST(PluginIsolation, ControlThreadPluginExceptionContained) {
+    // A plugin throwing a C++ exception from prepareToPlay (control-thread
+    // lifecycle call — the exact path where Odin2 aborts the child via
+    // std::terminate) must NOT kill the child: the control loop catches it,
+    // marks the plugin failed, and the audio loop keeps running on silence.
+    ProxyProcessManager mgr;
+
+    bool spawned = mgr.spawnPluginHost("__throwprepare__", 9070);
+    ASSERT_TRUE(spawned) << "child host should start with the throwing-prepare probe";
+
+    for (int i = 0; i < 100 && !mgr.isAlive(9070); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(9070)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(9070);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    // Sends PREPARE → the child's plugin->prepareToPlay throws → the control
+    // loop must catch it and reply instead of aborting the process.
+    PluginProxySlot slot(mgr, 9070, "TestPlugin");
+    slot.prepareToPlay(44100.0, 512);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_TRUE(mgr.isAlive(9070))
+        << "child must survive a throwing prepareToPlay (was aborting pre-fix)";
+
+    // The audio loop must still run and output silence for the failed plugin.
+    uint32_t blocksBefore =
+        hdr->audioBlocksProcessed.load(std::memory_order_relaxed);
+    juce::AudioBuffer<float> buffer(2, 512);
+    for (int s = 0; s < 512; ++s)
+    {
+        buffer.setSample(0, s, 0.5f);
+        buffer.setSample(1, s, -0.5f);
+    }
+    juce::MidiBuffer midi;
+    slot.processBlock(buffer, midi);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    EXPECT_GT(hdr->audioBlocksProcessed.load(std::memory_order_relaxed), blocksBefore)
+        << "audio loop should keep running after the plugin failed";
+    EXPECT_TRUE(mgr.isAlive(9070)) << "child should still be alive after processing";
+
+    mgr.killPluginHost(9070, KillMode::KillHard);
+}
+
 // ========================================================================
 // DLL loading tests (real VST3 plugin via child process)
 // ========================================================================

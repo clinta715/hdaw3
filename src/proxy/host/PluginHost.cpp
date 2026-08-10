@@ -330,6 +330,48 @@ public:
     }
 };
 
+// Diagnostic processor for the control-thread containment test: throws a C++
+// exception from prepareToPlay (the control-thread lifecycle call, exactly
+// where Odin2 aborts the child). The child must catch it, mark the plugin
+// failed, and keep the process alive outputting silence.
+class ThrowingPrepareProcessor : public juce::AudioPluginInstance
+{
+public:
+    ThrowingPrepareProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    const juce::String getName() const override { return "ThrowingPrepare"; }
+    void prepareToPlay(double, int) override
+    {
+        throw std::runtime_error("sentinel: prepareToPlay throws on purpose");
+    }
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        buffer.clear();
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "ThrowingPrepare";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__throwprepare__";
+    }
+};
+
 // Diagnostic processor for the transport-playhead handoff test: echoes the
 // playhead snapshot it received through the audio output as a raw bit-packed
 // payload (channel 0). The parent-side test decodes it and asserts the
@@ -687,13 +729,25 @@ void PluginHost::controlLoop()
                     preparedNumChannels = data.numChannels;
 
                     if (plugin) {
-                        plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
-                        pluginLoaded.store(true);
+                        // Control-thread containment: a plugin throwing from
+                        // activate()/prepareToPlay() (e.g. Odin2) must not
+                        // escape to std::terminate and abort the child. Mark
+                        // the plugin failed — the audio loop outputs silence.
+                        try {
+                            plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
+                            pluginLoaded.store(true);
+                        } catch (const std::exception& e) {
+                            HDAW_LOG("plugin_host", "prepareToPlay threw: " + juce::String(e.what()));
+                            pluginFailed.store(true);
+                        } catch (...) {
+                            HDAW_LOG("plugin_host", "prepareToPlay threw (unknown exception)");
+                            pluginFailed.store(true);
+                        }
                     }
                 }
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::PREPARE_RESULT;
-                r.result = 1;
+                r.result = pluginFailed.load() ? 0 : 1;
                 pipe.sendResp(r);
                 break;
             }
@@ -705,7 +759,15 @@ void PluginHost::controlLoop()
                 const uint32_t total = msg.dataSize;
                 if (total <= sizeof(msg.data)) {
                     if (plugin && total > 0) {
-                        plugin->setStateInformation(msg.data, static_cast<int>(total));
+                        try {
+                            plugin->setStateInformation(msg.data, static_cast<int>(total));
+                        } catch (const std::exception& e) {
+                            HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
+                            pluginFailed.store(true);
+                        } catch (...) {
+                            HDAW_LOG("plugin_host", "setStateInformation threw (unknown exception)");
+                            pluginFailed.store(true);
+                        }
                     }
                     proxy::ProxyResponse resp{};
                     resp.type = proxy::MessageType::SET_STATE;
@@ -731,9 +793,17 @@ void PluginHost::controlLoop()
                 if (pendingState.size() == pendingStateTotal) {
                     uint32_t result = 0;
                     if (plugin) {
-                        plugin->setStateInformation(pendingState.data(),
-                                                    static_cast<int>(pendingState.size()));
-                        result = 1;
+                        try {
+                            plugin->setStateInformation(pendingState.data(),
+                                                        static_cast<int>(pendingState.size()));
+                            result = 1;
+                        } catch (const std::exception& e) {
+                            HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
+                            pluginFailed.store(true);
+                        } catch (...) {
+                            HDAW_LOG("plugin_host", "setStateInformation threw (unknown exception)");
+                            pluginFailed.store(true);
+                        }
                     }
                     pendingStateTotal = 0;
                     pendingState.clear();
@@ -750,7 +820,15 @@ void PluginHost::controlLoop()
                 resp.type = proxy::MessageType::GET_STATE_RESULT;
                 if (plugin) {
                     juce::MemoryBlock block;
-                    plugin->getStateInformation(block);
+                    try {
+                        plugin->getStateInformation(block);
+                    } catch (const std::exception& e) {
+                        HDAW_LOG("plugin_host", "getStateInformation threw: " + juce::String(e.what()));
+                        pluginFailed.store(true);
+                    } catch (...) {
+                        HDAW_LOG("plugin_host", "getStateInformation threw (unknown exception)");
+                        pluginFailed.store(true);
+                    }
                     const size_t total = block.getSize();
                     resp.result = 1;
                     resp.dataSize = static_cast<uint32_t>(total);
@@ -1077,21 +1155,6 @@ void PluginHost::audioLoop()
         uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
 
         if (w - r >= static_cast<uint32_t>(preparedBlockSize * preparedNumChannels)) {
-            // TEMP ClapProbe: diagnostic only — remove after Phase 2
-            // investigation (answers: does input audio flow reach the child?).
-            {
-                static std::atomic<int> openProbeCount{0};
-                int opc = openProbeCount.fetch_add(1, std::memory_order_relaxed);
-                if (opc < 5)
-                {
-                    HDAW_LOG("ClapProbe",
-                        (juce::String("audioLoop gate OPEN w-r=")
-                         + juce::String(static_cast<int>(w - r))
-                         + " bs=" + juce::String(preparedBlockSize)
-                         + " ch=" + juce::String(preparedNumChannels))
-                            .toStdString());
-                }
-            }
             float* inRing = shm.getInputRing();
             float* outRing = shm.getOutputRing();
 
@@ -1187,6 +1250,14 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // SEH guard: catch crashes in the plugin's processBlock and
             // output silence instead of killing the child process.
             // Diagnostic knob: HDAW_NO_CHILD_SEH=1 disables this guard.
+            if (pluginFailed.load(std::memory_order_relaxed))
+            {
+                // A control-thread plugin call failed (threw) — never touch
+                // the plugin again; output silence.
+                inputBuffer.clear();
+            }
+            else
+            {
             static thread_local const bool noChildSeh =
                 juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
 #if JUCE_WINDOWS
@@ -1220,6 +1291,7 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
 #else
             plugin->processBlock(inputBuffer, midiBuffer);
 #endif
+            }
 
             hdr->audioFramesProduced.fetch_add(preparedBlockSize, std::memory_order_relaxed);
             hdr->audioBlocksProcessed.fetch_add(1, std::memory_order_relaxed);
@@ -1369,6 +1441,12 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__transportprobe__") {
         plugin = std::make_unique<TransportProbeProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__throwprepare__") {
+        plugin = std::make_unique<ThrowingPrepareProcessor>();
         pluginLoaded.store(true);
         return true;
     }

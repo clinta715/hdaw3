@@ -175,6 +175,22 @@ These cost real debugging time — read before touching the relevant area:
     probe), not the source. See `docs/realtime-safety.md`,
     `docs/postmortem-silent-clap-export.md` §4.
 
+16. **The isolated child's crash guards cover only the audio thread; a plugin
+    throwing from a control-thread lifecycle call (activate/prepareToPlay,
+    set/getState) escapes to `std::terminate` and aborts the child.** Odin2
+    fail-fasts this way (an exception inside its `activate()`; the matrix
+    comment "Odin2 fail-fasts the process in-process" is the same bug in the
+    non-isolated path, whose guard only wraps instantiation). The `PluginHost`
+    control loop now catches `std::exception`/`...` around those calls and sets
+    `pluginFailed`, so the audio loop outputs silence and the child survives —
+    covered by `PluginIsolation.ControlThreadPluginExceptionContained`
+    (`__throwprepare__` sentinel). Note the residual: an exception that hits a
+    `noexcept` boundary **inside** the plugin cannot be caught by the host —
+    the child still aborts (Odin2 did not reproduce under the guard; it stays
+    `kKnownSilent` either way). Rule: any new control-thread plugin call in
+    `PluginHost::controlLoop` must be wrapped the same way. See
+    `docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md`.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what

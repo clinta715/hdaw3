@@ -89,6 +89,11 @@ private:
     std::atomic<bool> running{true};
     std::atomic<bool> pluginLoaded{false};
     std::atomic<bool> editorVisible{false};
+    // Set when a control-thread plugin call (prepareToPlay / setState /
+    // getState) threw a C++ exception. The audio thread then outputs silence
+    // instead of calling processBlock, so a throwing plugin cannot abort the
+    // child (std::terminate) — it degrades to a failed-plugin state.
+    std::atomic<bool> pluginFailed{false};
 
     double preparedSampleRate = 44100.0;
     int preparedBlockSize = 512;
