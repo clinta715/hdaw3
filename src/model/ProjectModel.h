@@ -84,6 +84,20 @@ namespace IDs {
     DECLARE_ID(markerName)
     DECLARE_ID(markerColor)
 
+    // Arranger Regions (named timeline sections)
+    DECLARE_ID(ARRANGER_LIST)
+    DECLARE_ID(ARRANGER_REGION)
+    DECLARE_ID(regionID)
+    DECLARE_ID(regionName)
+
+    // Arranger Chains (playback order)
+    DECLARE_ID(ARRANGER_CHAIN_LIST)
+    DECLARE_ID(ARRANGER_CHAIN)
+    DECLARE_ID(chainID)
+    DECLARE_ID(chainName)
+    DECLARE_ID(isActive)
+    DECLARE_ID(CHAIN_ENTRY)
+
     // Routing
     DECLARE_ID(ROUTING_GRAPH)
     DECLARE_ID(BUS_LIST)
