@@ -1,0 +1,147 @@
+.arranger-chain-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px;
+  gap: 8px;
+}
+
+.arranger-chain-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.arranger-chain-toolbar select {
+  background: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.arranger-chain-toolbar button {
+  background: var(--bg-control);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.arranger-chain-toolbar button:hover {
+  background: var(--bg-control-hover);
+}
+
+.arranger-chain-toolbar button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.arranger-chain-columns {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.arranger-chain-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.arranger-chain-column-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.arranger-chain-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.arranger-chain-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.arranger-chain-entry:hover {
+  background: var(--bg-control);
+}
+
+.arranger-chain-entry.dragging {
+  opacity: 0.5;
+}
+
+.arranger-chain-entry-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arranger-chain-entry-repeat {
+  background: var(--bg-control);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+  cursor: pointer;
+  min-width: 28px;
+  text-align: center;
+}
+
+.arranger-chain-entry-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.arranger-chain-entry-remove:hover {
+  color: var(--danger);
+}
+
+.arranger-region-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.arranger-region-item:hover {
+  background: var(--bg-control);
+}
+
+.arranger-region-item-beats {
+  color: var(--text-secondary);
+  font-size: 11px;
+}

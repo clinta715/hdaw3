@@ -19,6 +19,7 @@ import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
 import UndoHistory from "./components/UndoHistory";
 import Inspector from "./components/Inspector";
+import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
@@ -38,6 +39,7 @@ const SAutomationPanel = withHookSentinel(AutomationPanel, "AutomationPanel");
 const SFXChain = withHookSentinel(FXChain, "FXChain");
 const SMidiFxChain = withHookSentinel(MidiFxChain, "MidiFxChain");
 const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
+const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
 
 function App() {
   useKeyboardShortcuts();
@@ -203,6 +205,7 @@ function App() {
     { id: "step-seq", label: "Step Seq", content: <SStepSequencer /> },
     { id: "undo-history", label: "History", content: <UndoHistory /> },
     { id: "inspector", label: "Inspector", content: <Inspector /> },
+    { id: "arranger", label: "Arranger", content: <SArrangerChainEditor /> },
   ], []);
 
   return (
