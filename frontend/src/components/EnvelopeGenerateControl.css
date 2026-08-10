@@ -1,0 +1,97 @@
+.egc-container {
+  border-top: 1px solid var(--border, #2a2a2e);
+  background: var(--bg-panel, #1e1e22);
+}
+
+.egc-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+}
+
+.egc-toggle-btn {
+  padding: 1px 8px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--bg-elevated, #323236);
+  color: var(--text-secondary, #a8a8b0);
+  border: 1px solid var(--border, #2a2a2e);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.egc-toggle-btn:hover {
+  background: var(--accent, #d97706);
+  color: var(--bg-window, #141416);
+  border-color: var(--accent, #d97706);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .egc-toggle-btn {
+    transition: none;
+  }
+}
+
+.egc-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px 6px;
+  background: var(--bg-widget, #2a2a2e);
+  border-top: 1px solid var(--border, #2a2a2e);
+}
+
+.egc-field {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.egc-field label {
+  font-size: 10px;
+  color: var(--text-muted, #787880);
+  white-space: nowrap;
+}
+
+.egc-field select,
+.egc-field input {
+  padding: 2px 4px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--bg-input, #2a2a2e);
+  color: var(--text-primary, #e8e8ec);
+  border: 1px solid var(--border, #2a2a2e);
+  border-radius: 2px;
+  min-width: 0;
+}
+
+.egc-field select {
+  max-width: 100px;
+}
+
+.egc-field input[type="number"] {
+  width: 48px;
+}
+
+.egc-apply-btn {
+  padding: 2px 10px;
+  font-size: 10px;
+  font-family: inherit;
+  background: var(--accent, #d97706);
+  color: var(--bg-window, #141416);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.egc-apply-btn:hover {
+  background: var(--accent-bright, #f59e0b);
+}
+
+.egc-apply-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

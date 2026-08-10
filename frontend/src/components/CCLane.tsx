@@ -3,6 +3,7 @@ import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { snap } from "./snapUtils";
 import { theme } from "../theme";
+import EnvelopeGenerateControl from "./EnvelopeGenerateControl";
 import "./CCLane.css";
 
 interface CcPoint { ccId: number; controllerNumber: number; beat: number; value: number; }
@@ -51,6 +52,7 @@ export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat,
   const [points, setPoints] = useState<CcPoint[]>([]);
   const dragRef = useRef<{ ccId: number; beat: number; value: number } | null>(null);
   const movedRef = useRef(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Re-fetch CC points when clip or controller changes. The consumer
   // (PianoRoll) re-mounts the lane on tree change because it reads through
@@ -63,7 +65,7 @@ export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat,
       })
       .catch(() => { if (!cancelled) setPoints([]); });
     return () => { cancelled = true; };
-  }, [clipId, controllerNumber]);
+  }, [clipId, controllerNumber, refreshKey]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -180,6 +182,14 @@ export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat,
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onContextMenu={handleContextMenu}
+      />
+      <EnvelopeGenerateControl
+        collapsed
+        defaultValueRange={[0, 127]}
+        onGenerate={async (params) => {
+          await rpc.call("project.generateClipCcLane", { clipId, controllerNumber, ...params });
+          setRefreshKey((k) => k + 1);
+        }}
       />
     </div>
   );

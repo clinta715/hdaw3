@@ -9,6 +9,9 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QTemporaryDir>
+#include <QStandardPaths>
+#include <QDir>
+#include <juce_audio_formats/juce_audio_formats.h>
 
 namespace {
 
@@ -18,6 +21,32 @@ QJsonObject parseOne(const QByteArray& buf) {
     int nl = buf.indexOf('\n');
     QByteArray line = nl >= 0 ? buf.left(nl) : buf;
     return QJsonDocument::fromJson(line).object();
+}
+
+QString writeTestWav() {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (dir.isEmpty()) dir = QDir::tempPath();
+    dir = QDir::fromNativeSeparators(dir);
+    QString path = QString("%1/hdaw_env_test_%2.wav")
+                       .arg(dir)
+                       .arg(QCoreApplication::applicationPid());
+    QFile::remove(path);
+
+    constexpr int sampleRate = 44100;
+    constexpr int numChannels = 2;
+    constexpr int numSeconds = 4;
+
+    juce::AudioBuffer<float> buf(numChannels, sampleRate * numSeconds);
+    buf.clear();
+
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(juce::File(path.toStdString())),
+                            sampleRate, numChannels, 16, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
+    writer->flush();
+    return path;
 }
 
 class GuiFuncTest : public ::testing::Test {
@@ -1092,6 +1121,74 @@ TEST_F(GuiFuncTest, BatchNoteCreation) {
 
     auto notes = getNotes(clipId);
     EXPECT_EQ(notes.size(), 64);
+}
+
+// ============================================================================
+// ENVELOPE GENERATION
+// ============================================================================
+
+TEST_F(GuiFuncTest, ListEnvelopeShapes) {
+    auto r = call("list_envelope_shapes");
+    EXPECT_FALSE(isError(r));
+    auto content = text(r);
+    auto doc = QJsonDocument::fromJson(content.toUtf8());
+    auto shapes = doc.object().value("shapes").toArray();
+    EXPECT_EQ(shapes.size(), 11);
+    QStringList names;
+    for (const auto& s : shapes)
+        names << s.toObject().value("name").toString();
+    EXPECT_TRUE(names.contains("ramp"));
+    EXPECT_TRUE(names.contains("adsr"));
+    EXPECT_TRUE(names.contains("sine"));
+    EXPECT_TRUE(names.contains("triangle"));
+    EXPECT_TRUE(names.contains("saw"));
+    EXPECT_TRUE(names.contains("square"));
+    EXPECT_TRUE(names.contains("pulse"));
+    EXPECT_TRUE(names.contains("staircase"));
+    EXPECT_TRUE(names.contains("sCurve"));
+    EXPECT_TRUE(names.contains("randomWalk"));
+    EXPECT_TRUE(names.contains("noise"));
+}
+
+TEST_F(GuiFuncTest, GenerateAutomationEnvelope) {
+    auto r = call("generate_automation_envelope", {
+        {"trackId", 0}, {"lane", "Volume"}, {"shape", "ramp"}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+}
+
+TEST_F(GuiFuncTest, GenerateClipGainEnvelope) {
+    QString wavPath = writeTestWav();
+    ASSERT_FALSE(wavPath.isEmpty()) << "Failed to create test WAV";
+
+    auto clipR = call("add_audio_clip", {
+        {"trackId", 0}, {"start", 0.0}, {"length", 4.0},
+        {"sourceFile", wavPath}, {"name", "EnvTest"}
+    });
+    ASSERT_FALSE(isError(clipR)) << text(clipR).toStdString();
+    int clipId = text(clipR).mid(text(clipR).indexOf('=') + 1).toInt();
+
+    auto r = call("generate_clip_gain_envelope", {{"clipId", clipId}, {"shape", "adsr"}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+}
+
+TEST_F(GuiFuncTest, GenerateClipCcLane) {
+    auto clipR = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
+    ASSERT_FALSE(isError(clipR));
+    int clipId = text(clipR).mid(text(clipR).indexOf('=') + 1).toInt();
+
+    auto r = call("generate_clip_cc_lane", {
+        {"clipId", clipId}, {"controllerNumber", 1}, {"shape", "sine"}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+}
+
+TEST_F(GuiFuncTest, GenerateEnvelopeInvalidShape) {
+    auto r = call("generate_automation_envelope", {
+        {"trackId", 0}, {"lane", "Volume"}, {"shape", "bogus"}
+    });
+    EXPECT_TRUE(isError(r));
+    EXPECT_TRUE(text(r).contains("unknown shape"));
 }
 
 } // namespace

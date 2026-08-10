@@ -5,6 +5,7 @@ import { useUiStore } from "../store/uiStore";
 import { useAutomationStore } from "../store/automationStore";
 import { AutomatableParamSnapshot } from "../rpc/types";
 import AutomationLaneCanvas from "./AutomationLaneCanvas";
+import EnvelopeGenerateControl from "./EnvelopeGenerateControl";
 import "./AutomationPanel.css";
 
 const PARAM_NAMES: Record<number, string> = {
@@ -247,6 +248,12 @@ export default function AutomationPanel({ rpc }: Props) {
               viewStartBeat={0}
               viewEndBeat={32}
               onRemoveLane={() => handleRemoveLane(lane.name)}
+            />
+            <EnvelopeGenerateControl
+              collapsed
+              onGenerate={(params) => {
+                useAutomationStore.getState().generateEnvelope(activeTrackIndex!, lane.name, params, rpc);
+              }}
             />
           </div>
         ))}

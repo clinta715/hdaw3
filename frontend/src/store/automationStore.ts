@@ -34,6 +34,19 @@ interface AutomationState {
   addPoint: (trackIndex: number, laneName: string, time: number, value: number, rpc: RpcClient) => Promise<void>;
   removePoints: (trackIndex: number, laneName: string, times: number[], rpc: RpcClient) => Promise<void>;
   removeLane: (trackIndex: number, laneName: string, rpc: RpcClient) => Promise<void>;
+  generateEnvelope: (trackIndex: number, laneName: string, params: {
+    shape: string;
+    start?: number;
+    end?: number;
+    startValue?: number;
+    endValue?: number;
+    cycles?: number;
+    steps?: number;
+    phase?: number;
+    density?: number;
+    smooth?: number;
+    seed?: number;
+  }, rpc: RpcClient) => Promise<void>;
   setPinnedLaneParamID: (paramID: number | null) => void;
   setLastClickedParamID: (paramID: number | null) => void;
 }
@@ -136,6 +149,27 @@ export const useAutomationStore = create<AutomationState>((set, get) => ({
 
   removeLane: async (trackIndex: number, laneName: string, rpc: RpcClient) => {
     await rpc.call("project.removeAutomationLane", { trackIndex, laneName });
+    await get().fetchForTrack(trackIndex, rpc);
+  },
+
+  generateEnvelope: async (trackIndex: number, laneName: string, params: {
+    shape: string;
+    start?: number;
+    end?: number;
+    startValue?: number;
+    endValue?: number;
+    cycles?: number;
+    steps?: number;
+    phase?: number;
+    density?: number;
+    smooth?: number;
+    seed?: number;
+  }, rpc: RpcClient) => {
+    await rpc.call("project.generateAutomationEnvelope", {
+      trackIndex,
+      lane: laneName,
+      ...params,
+    });
     await get().fetchForTrack(trackIndex, rpc);
   },
 

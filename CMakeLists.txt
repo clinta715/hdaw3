@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.15.1 LANGUAGES CXX)
+project(HDAW VERSION 0.16.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -81,6 +81,7 @@ add_library(HDAW_lib STATIC
     src/engine/AudioEngineCommands_GainEnvelope.cpp
     src/engine/AudioEngineCommands_Midi.cpp
     src/engine/AudioEngineCommands_Automation.cpp
+    src/engine/AudioEngineCommands_Envelope.cpp
     src/engine/AudioEngineCommands_GhostPaint.cpp
     src/engine/AudioEngineCommands_Markers.cpp
     src/engine/AudioEngineCommands_Tracks.cpp
@@ -96,6 +97,7 @@ add_library(HDAW_lib STATIC
     src/engine/ExportManager.cpp
     src/engine/MainAudioProcessor.cpp
     src/engine/PhraseGenerator.cpp
+    src/engine/EnvelopeGenerator.cpp
     src/engine/Generative.cpp
     src/engine/ArrangementGenerator.cpp
         src/engine/PluginManager.cpp

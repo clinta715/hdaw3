@@ -44,6 +44,7 @@ add_executable(hdaw_tests
     unit/engine/bpm_detector_test.cpp
     unit/engine/generative_test.cpp
     unit/engine/phrase_generator_test.cpp
+    unit/engine/envelope_generator_test.cpp
     unit/engine/arrangement_generator_test.cpp
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp
@@ -54,7 +55,9 @@ add_executable(hdaw_tests
     unit/engine/project_metadata_test.cpp
     unit/engine/crossfade_test.cpp
     unit/engine/automation_test.cpp
+    unit/engine/automation_units_test.cpp
     unit/engine/automation_mode_test.cpp
+    unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp
     unit/engine/punch_test.cpp
@@ -66,6 +69,7 @@ add_executable(hdaw_tests
     unit/model/clip_slicing_test.cpp
     unit/frontend/frontend_server_test.cpp
     unit/frontend/ghost_clips_rpc_test.cpp
+    unit/frontend/envelope_generation_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
 )

@@ -16,6 +16,7 @@
 #include "../common/SettingsKeys.h"
 #include "../engine/PhraseGenerator.h"
 #include "../engine/ArrangementGenerator.h"
+#include "../engine/EnvelopeGenerator.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
@@ -29,6 +30,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <thread>
 
 namespace frontend {
@@ -125,6 +127,23 @@ std::string optString(const QJsonObject& o, const char* key, std::string fallbac
 // Extract a params object from a QJsonValue that may be null/undefined.
 QJsonObject paramsObject(const QJsonValue& params) {
     return params.isObject() ? params.toObject() : QJsonObject{};
+}
+
+// Parse a shape string into an EnvelopeGenerator::Shape enum value.
+std::optional<HDAW::EnvelopeGenerator::Shape> parseShape(const std::string& s) {
+    using S = HDAW::EnvelopeGenerator::Shape;
+    if (s == "ramp") return S::Ramp;
+    if (s == "adsr") return S::ADSR;
+    if (s == "sine") return S::Sine;
+    if (s == "triangle") return S::Triangle;
+    if (s == "saw") return S::Saw;
+    if (s == "square") return S::Square;
+    if (s == "pulse") return S::Pulse;
+    if (s == "staircase") return S::Staircase;
+    if (s == "sCurve") return S::SCurve;
+    if (s == "randomWalk") return S::RandomWalk;
+    if (s == "noise") return S::Noise;
+    return std::nullopt;
 }
 
 // Extract a vector<double> from a JSON array of numbers.
@@ -513,6 +532,93 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         return { false, QJsonValue::Null };
     }
     if (m == "notifyClipGainEnvelopeChanged") { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.notifyClipGainEnvelopeChanged(i); return { false, QJsonValue::Null }; }
+
+    // --- Envelope generation ---
+    if (m == "generateAutomationEnvelope") {
+        int trackIndex;
+        std::string lane, shapeStr;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (!requireString(o, "lane", lane, nullptr))
+            return makeError(-32602, "lane required");
+        if (!requireString(o, "shape", shapeStr, nullptr))
+            return makeError(-32602, "shape required");
+
+        auto shape = parseShape(shapeStr);
+        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+
+        HDAW::EnvelopeGenerator::Params params;
+        params.shape = *shape;
+        params.startTime = optDouble(o, "start", 0.0, nullptr);
+        params.endTime = optDouble(o, "end", 16.0, nullptr);
+        params.startValue = optDouble(o, "startValue", 0.0, nullptr);
+        params.endValue = optDouble(o, "endValue", 1.0, nullptr);
+        params.cycles = optDouble(o, "cycles", 1.0, nullptr);
+        params.steps = optInt(o, "steps", 8, nullptr);
+        params.phase = optDouble(o, "phase", 0.0, nullptr);
+        params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
+        params.smooth = optDouble(o, "smooth", 0.0, nullptr);
+        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+
+        c.generateAutomationEnvelope(trackIndex, lane, params);
+        return { false, QJsonObject{} };
+    }
+    if (m == "generateClipGainEnvelope") {
+        int clipId;
+        std::string shapeStr;
+        if (!requireInt(o, "clipId", clipId, nullptr))
+            return makeError(-32602, "clipId required");
+        if (!requireString(o, "shape", shapeStr, nullptr))
+            return makeError(-32602, "shape required");
+
+        auto shape = parseShape(shapeStr);
+        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+
+        HDAW::EnvelopeGenerator::Params params;
+        params.shape = *shape;
+        params.startTime = optDouble(o, "start", 0.0, nullptr);
+        params.endTime = optDouble(o, "end", 16.0, nullptr);
+        params.startValue = optDouble(o, "startValue", 0.0, nullptr);
+        params.endValue = optDouble(o, "endValue", 2.0, nullptr);
+        params.cycles = optDouble(o, "cycles", 1.0, nullptr);
+        params.steps = optInt(o, "steps", 8, nullptr);
+        params.phase = optDouble(o, "phase", 0.0, nullptr);
+        params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
+        params.smooth = optDouble(o, "smooth", 0.0, nullptr);
+        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+
+        c.generateClipGainEnvelope(clipId, params);
+        return { false, QJsonObject{} };
+    }
+    if (m == "generateClipCcLane") {
+        int clipId, controllerNumber;
+        std::string shapeStr;
+        if (!requireInt(o, "clipId", clipId, nullptr))
+            return makeError(-32602, "clipId required");
+        if (!requireInt(o, "controllerNumber", controllerNumber, nullptr))
+            return makeError(-32602, "controllerNumber required");
+        if (!requireString(o, "shape", shapeStr, nullptr))
+            return makeError(-32602, "shape required");
+
+        auto shape = parseShape(shapeStr);
+        if (!shape) return makeError(-32602, QString::fromStdString("unknown shape: " + shapeStr));
+
+        HDAW::EnvelopeGenerator::Params params;
+        params.shape = *shape;
+        params.startTime = optDouble(o, "start", 0.0, nullptr);
+        params.endTime = optDouble(o, "end", 16.0, nullptr);
+        params.startValue = optDouble(o, "startValue", 0.0, nullptr);
+        params.endValue = optDouble(o, "endValue", 127.0, nullptr);
+        params.cycles = optDouble(o, "cycles", 1.0, nullptr);
+        params.steps = optInt(o, "steps", 8, nullptr);
+        params.phase = optDouble(o, "phase", 0.0, nullptr);
+        params.densityPerSec = optDouble(o, "density", 8.0, nullptr);
+        params.smooth = optDouble(o, "smooth", 0.0, nullptr);
+        params.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+
+        c.generateClipCcLane(clipId, controllerNumber, params);
+        return { false, QJsonObject{} };
+    }
 
     // --- Modulation (LFO) ---
     if (m == "addLfo")         { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); c.addLfo(i); return { false, QJsonValue::Null }; }

@@ -48,7 +48,8 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
             if (pt.hasType(IDs::GAIN_ENVELOPE_POINT))
             {
                 ClipSnapshot::GainEnvelopePoint p;
-                p.time = pt.getProperty(IDs::pointTime, 0.0);
+                double tSec = pt.getProperty(IDs::pointTime, 0.0);
+                p.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
                 p.gain = pt.getProperty(IDs::pointGain, 1.0);
                 cs.gainEnvelope.push_back(p);
             }
@@ -346,11 +347,13 @@ std::vector<ClipSnapshot::GainEnvelopePoint> ReadModelImpl::getClipGainEnvelope(
             if (!envelope.isValid())
                 return points;
 
+            double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
             points.reserve(envelope.getNumChildren());
             for (int i = 0; i < envelope.getNumChildren(); ++i) {
                 auto pt = envelope.getChild(i);
                 ClipSnapshot::GainEnvelopePoint p;
-                p.time = pt.getProperty(IDs::pointTime);
+                double tSec = pt.getProperty(IDs::pointTime, 0.0);
+                p.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
                 p.gain = pt.getProperty(IDs::pointGain);
                 points.push_back(p);
             }
@@ -544,11 +547,13 @@ std::vector<AutomationPointSnapshot> ReadModelImpl::getAutomationPoints(
         if (!pointList.isValid())
             return result;
 
+        double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
         for (int p = 0; p < pointList.getNumChildren(); ++p)
         {
             auto pt = pointList.getChild(p);
             AutomationPointSnapshot aps;
-            aps.time = pt.getProperty(IDs::startTime, 0.0);
+            double tSec = pt.getProperty(IDs::startTime, 0.0);
+            aps.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
             aps.value = static_cast<float>(
                 static_cast<double>(pt.getProperty(IDs::gain, 0.0)));
             result.push_back(aps);

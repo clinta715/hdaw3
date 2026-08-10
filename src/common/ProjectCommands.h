@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "../engine/EnvelopeGenerator.h"
 
 namespace HDAW { struct ArrangementParams; }
 
@@ -212,6 +213,14 @@ public:
     virtual void setClipGainEnvelope(int clipId,
                                      const std::vector<std::pair<double, double>>& points) = 0;
     virtual void notifyClipGainEnvelopeChanged(int clipId) = 0;
+
+    // Envelope generation (beats at RPC boundary, seconds in tree)
+    virtual void generateAutomationEnvelope(int trackIndex, const std::string& lane,
+                                             const HDAW::EnvelopeGenerator::Params& params) = 0;
+    virtual void generateClipGainEnvelope(int clipId,
+                                           const HDAW::EnvelopeGenerator::Params& params) = 0;
+    virtual void generateClipCcLane(int clipId, int controllerNumber,
+                                     const HDAW::EnvelopeGenerator::Params& params) = 0;
 
     // Modulation (LFO)
     virtual void addLfo(int trackIndex) = 0;

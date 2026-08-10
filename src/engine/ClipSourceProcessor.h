@@ -455,6 +455,14 @@ public:
         hasEnvelope.store(!gainEnvelopePoints.empty(), std::memory_order_release);
     }
 
+    // Read accessor for tests and message-thread code. SpinLock-guarded copy.
+    // NOT for audio-thread use.
+    std::vector<GainPoint> getGainEnvelopePoints() const
+    {
+        const juce::SpinLock::ScopedLockType lock(envelopeLock);
+        return gainEnvelopePoints;
+    }
+
     double getGainAtTime(double time) const
     {
         // Fast path: no envelope → unity gain, no lock at all.

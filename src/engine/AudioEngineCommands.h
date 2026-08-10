@@ -105,6 +105,14 @@ public:
                              const std::vector<std::pair<double, double>>& points) override;
     void notifyClipGainEnvelopeChanged(int clipId) override;
 
+    // ProjectCommands — Envelope generation
+    void generateAutomationEnvelope(int trackIndex, const std::string& lane,
+                                     const HDAW::EnvelopeGenerator::Params& params) override;
+    void generateClipGainEnvelope(int clipId,
+                                   const HDAW::EnvelopeGenerator::Params& params) override;
+    void generateClipCcLane(int clipId, int controllerNumber,
+                             const HDAW::EnvelopeGenerator::Params& params) override;
+
     // ProjectCommands — Modulation (LFO)
     void addLfo(int trackIndex) override;
     void removeLfo(int trackIndex, int lfoIndex) override;
@@ -286,6 +294,10 @@ private:
 
     // Gain envelope helpers
     std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);
+
+    // CC bulk writer helper
+    void setClipCcPoints(int clipId, int controllerNumber,
+                         const std::vector<std::pair<double, double>>& points);
 
     AudioEngine& engine_;
 };

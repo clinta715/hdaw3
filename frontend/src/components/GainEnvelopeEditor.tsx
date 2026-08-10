@@ -4,6 +4,7 @@ import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { snap } from "./snapUtils";
 import { theme } from "../theme";
+import EnvelopeGenerateControl from "./EnvelopeGenerateControl";
 import "./GainEnvelopeEditor.css";
 
 interface Props {
@@ -216,11 +217,20 @@ export default function GainEnvelopeEditor({ clipId, points, durationBeats }: Pr
   }, [points, durationBeats]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="gee-canvas"
-      style={{ width: "100%", height: CANVAS_H, cursor: "crosshair" }}
-      onMouseDown={handleMouseDown}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="gee-canvas"
+        style={{ width: "100%", height: CANVAS_H, cursor: "crosshair" }}
+        onMouseDown={handleMouseDown}
+      />
+      <EnvelopeGenerateControl
+        collapsed
+        defaultValueRange={[0, 2]}
+        onGenerate={async (params) => {
+          await rpc.call("project.generateClipGainEnvelope", { clipId, ...params });
+        }}
+      />
+    </>
   );
 }

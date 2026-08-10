@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "../model/ProjectModel.h"
@@ -9,6 +10,11 @@ void AudioEngineCommands::addGainEnvelopePoint(int clipId, double time, double g
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
+
+    // RPC/command boundary speaks beats; the clip ValueTree and the
+    // ClipSourceProcessor store clip-relative seconds. Convert before the write.
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    time = HDAW::beatsToSeconds(time, bpm);
 
     auto envelope = ProjectModel::ensureGainEnvelope(clip, &um);
     ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
@@ -21,6 +27,10 @@ void AudioEngineCommands::moveGainEnvelopePoint(int clipId, int pointIndex, doub
     int trackIdx = -1;
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
+
+    // Remove is by index; only the (beats) time needs converting for the add.
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    time = HDAW::beatsToSeconds(time, bpm);
 
     auto envelope = clip.getChildWithName(IDs::GAIN_ENVELOPE);
     if (!envelope.isValid() || pointIndex < 0 || pointIndex >= envelope.getNumChildren()) return;
@@ -68,8 +78,9 @@ void AudioEngineCommands::setClipGainEnvelope(int clipId,
     if (envelope.isValid())
         clip.removeChild(envelope, &um);
     envelope = ProjectModel::ensureGainEnvelope(clip, &um);
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
     for (const auto& [time, gain] : points)
-        ProjectModel::addGainEnvelopePoint(envelope, time, gain, &um);
+        ProjectModel::addGainEnvelopePoint(envelope, HDAW::beatsToSeconds(time, bpm), gain, &um);
     notifyClipGainEnvelopeChanged(clipId);
 }
 

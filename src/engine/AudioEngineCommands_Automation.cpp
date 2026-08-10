@@ -1,4 +1,5 @@
 #include "AudioEngineCommands.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "../model/ProjectModel.h"
@@ -60,6 +61,11 @@ void AudioEngineCommands::addAutomationPoint(int trackIndex, const std::string& 
     auto autoLane = findAutomationLane(trackIndex, lane);
     if (!autoLane.isValid()) return;
 
+    // RPC/command boundary speaks beats; the ValueTree and the audio engine
+    // store seconds. Convert before the tree write (docs/architecture.md).
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    time = HDAW::beatsToSeconds(time, bpm);
+
     auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
     if (!pointList.isValid())
     {
@@ -81,6 +87,11 @@ void AudioEngineCommands::removeAutomationPoint(int trackIndex, const std::strin
     auto& um = engine_.getProjectModel().getUndoManager();
     auto autoLane = findAutomationLane(trackIndex, lane);
     if (!autoLane.isValid()) return;
+
+    // RPC/command boundary speaks beats; the ValueTree stores seconds. Convert
+    // before the match so an identical conversion round-trips exactly.
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    time = HDAW::beatsToSeconds(time, bpm);
 
     auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
     if (!pointList.isValid()) return;
@@ -165,6 +176,12 @@ void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::str
     auto& um = engine_.getProjectModel().getUndoManager();
     auto autoLane = findAutomationLane(trackIndex, lane);
     if (!autoLane.isValid()) return;
+
+    // RPC/command boundary speaks beats; the ValueTree stores seconds. Convert
+    // once, then use the same converted value for the match AND the write so
+    // the round trip is exact.
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    time = HDAW::beatsToSeconds(time, bpm);
 
     auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
     if (!pointList.isValid()) return;
