@@ -237,6 +237,129 @@ void AudioEngineCommands::setChainEntryRepeat(const std::string& cid, int entryI
 
 void AudioEngineCommands::flattenArranger()
 {
-    // Stub — full implementation in Task 11
-    jassertfalse;
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto root = engine_.getProjectModel().getTree();
+
+    // Find active chain
+    auto chainList = root.getChildWithName(IDs::ARRANGER_CHAIN_LIST);
+    if (!chainList.isValid()) return;
+
+    juce::ValueTree activeChain;
+    for (int i = 0; i < chainList.getNumChildren(); ++i)
+    {
+        auto chain = chainList.getChild(i);
+        if (static_cast<bool>(chain.getProperty(IDs::isActive, false)))
+        {
+            activeChain = chain;
+            break;
+        }
+    }
+    if (!activeChain.isValid() || activeChain.getNumChildren() == 0) return;
+
+    // Build region map
+    auto arrangerList = root.getChildWithName(IDs::ARRANGER_LIST);
+    if (!arrangerList.isValid()) return;
+
+    std::map<juce::String, juce::ValueTree> regionMap;
+    for (int i = 0; i < arrangerList.getNumChildren(); ++i)
+    {
+        auto region = arrangerList.getChild(i);
+        regionMap[region.getProperty(IDs::regionID, "").toString()] = region;
+    }
+
+    // Collect all clips per track that fall within any chain region
+    auto trackList = root.getChildWithName(IDs::TRACK_LIST);
+    if (!trackList.isValid()) return;
+
+    struct OutputClip {
+        int trackIndex;
+        juce::ValueTree clipTree;
+        double newStartBeat;
+    };
+    std::vector<OutputClip> outputClips;
+    double outputOffset = 0.0;
+
+    for (int e = 0; e < activeChain.getNumChildren(); ++e)
+    {
+        auto entry = activeChain.getChild(e);
+        juce::String rid = entry.getProperty(IDs::regionID, "").toString();
+        auto it = regionMap.find(rid);
+        if (it == regionMap.end()) continue;
+
+        double regionStart = static_cast<double>(it->second.getProperty(IDs::startTime, 0.0));
+        double regionDuration = static_cast<double>(it->second.getProperty(IDs::duration, 0.0));
+        int repeatCount = juce::jmax(1, static_cast<int>(entry.getProperty(IDs::repeatCount, 1)));
+
+        for (int rep = 0; rep < repeatCount; ++rep)
+        {
+            double repOffset = outputOffset + (rep * regionDuration);
+
+            for (int t = 0; t < trackList.getNumChildren(); ++t)
+            {
+                auto track = trackList.getChild(t);
+                auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+                if (!clipList.isValid()) continue;
+
+                for (int c = 0; c < clipList.getNumChildren(); ++c)
+                {
+                    auto clip = clipList.getChild(c);
+                    double clipStart = static_cast<double>(clip.getProperty(IDs::startTime, 0.0));
+                    double clipDur = static_cast<double>(clip.getProperty(IDs::duration, 0.0));
+                    double clipEnd = clipStart + clipDur;
+
+                    // Check overlap with region
+                    double regionEnd = regionStart + regionDuration;
+                    if (clipEnd <= regionStart || clipStart >= regionEnd) continue;
+
+                    // Compute clipped bounds within region
+                    double clippedStart = juce::jmax(clipStart, regionStart);
+                    double clippedEnd = juce::jmin(clipEnd, regionEnd);
+                    double clippedDur = clippedEnd - clippedStart;
+
+                    // Output position
+                    double newStart = repOffset + (clippedStart - regionStart);
+
+                    // Create output clip (deep copy)
+                    auto newClip = clip.createCopy();
+                    newClip.setProperty(IDs::startTime, newStart, nullptr);
+                    newClip.setProperty(IDs::duration, clippedDur, nullptr);
+                    // Adjust offset for audio clips
+                    if (clip.hasProperty(IDs::offset))
+                    {
+                        double origOffset = static_cast<double>(clip.getProperty(IDs::offset, 0.0));
+                        double clipRelativeStart = clippedStart - clipStart;
+                        newClip.setProperty(IDs::offset, origOffset + clipRelativeStart, nullptr);
+                    }
+                    // Generate new clip ID
+                    newClip.setProperty(IDs::clipID, juce::Uuid().toString(), nullptr);
+
+                    outputClips.push_back({ t, newClip, newStart });
+                }
+            }
+        }
+        outputOffset += regionDuration * repeatCount;
+    }
+
+    // Delete all existing clips from all tracks
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto track = trackList.getChild(t);
+        auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid()) continue;
+        while (clipList.getNumChildren() > 0)
+            clipList.removeChild(0, &um);
+    }
+
+    // Insert output clips
+    for (const auto& oc : outputClips)
+    {
+        auto track = trackList.getChild(oc.trackIndex);
+        auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+        if (clipList.isValid())
+            clipList.addChild(oc.clipTree, -1, &um);
+    }
+
+    // Remove arranger data
+    root.removeChild(arrangerList, &um);
+    root.removeChild(chainList, &um);
 }

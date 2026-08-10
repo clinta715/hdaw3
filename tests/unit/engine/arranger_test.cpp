@@ -160,3 +160,21 @@ TEST_F(ArrangerTest, RedoRegionAdd) {
     engine.getProjectModel().getUndoManager().redo();
     EXPECT_EQ(engine.getReadModel().getArrangerRegions().size(), 1u);
 }
+
+// --- Flatten ---
+
+TEST_F(ArrangerTest, FlattenBasic) {
+    auto rid = cmds->addArrangerRegion("Section", 0.0, 8.0);
+    auto cid = cmds->addArrangerChain("A");
+    cmds->addChainEntry(cid, rid, 1);
+    cmds->flattenArranger();
+
+    // Arranger data should be gone
+    EXPECT_TRUE(engine.getReadModel().getArrangerRegions().empty());
+    EXPECT_TRUE(engine.getReadModel().getArrangerChains().empty());
+}
+
+TEST_F(ArrangerTest, FlattenNoopWhenNoChain) {
+    cmds->flattenArranger(); // should not crash
+    EXPECT_TRUE(engine.getReadModel().getArrangerRegions().empty());
+}
