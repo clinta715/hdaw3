@@ -290,6 +290,30 @@ implementation_plan.md           — current development roadmap
 
 ## Changelog
 
+### v0.16.1 — Structural refactor: oversized file decomposition
+
+Broke the three largest files in the codebase into focused, maintainable
+modules. Pure structural refactor — no behavior changes, no new features.
+
+**FrontendRouter.cpp (1,445 → 61 lines):**
+- Extracted 11 domain-specific router files into `src/frontend/router/`:
+  `Router_Project`, `Router_Session`, `Router_Transport`, `Router_AudioGraph`,
+  `Router_Read`, `Router_Plugin`, `Router_Midi`, `Router_Audio`,
+  `Router_Export`, `Router_Preview`, `Router_Composition`.
+- Extracted `RouterHelpers.h` (13 param-extraction helpers).
+- `FrontendRouter.cpp` is now a 61-line top-level dispatch table.
+
+**NoteGrid.tsx (916 → 235 lines):**
+- Extracted into `NoteGrid/` directory with 7 modules:
+  `noteGridTypes.ts`, `noteGridConstants.ts`, `useNoteGridDrag.ts`,
+  `useNoteGridInteractions.ts`, `useNoteGridMarquee.ts`,
+  `useNoteGridNoteMouseDown.ts`, `NoteGrid.tsx`.
+
+**TimelineMinimal.tsx (911 → 497 lines):**
+- Extracted into `TimelineMinimal/` directory with 4 hooks:
+  `useTimelineRuler.ts`, `useTimelineDrop.ts`, `useTimelineKeyboard.ts`,
+  `useTimelineClipOps.ts`.
+
 ### v0.15.1 — Batch operation crash fix
 
 Fixed UI crashes when deleting, cutting, pasting, or splitting many clips at

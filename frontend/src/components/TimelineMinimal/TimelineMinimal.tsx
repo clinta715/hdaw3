@@ -1,26 +1,29 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { useProjectStore, nextTempId } from "../store/projectStore";
-import { useTransportStore } from "../store/transportStore";
-import { useMarkerStore } from "../store/markerStore";
-import { rpc } from "../rpc";
-import { useUiStore } from "../store/uiStore";
-import { WaveformCanvas } from "./WaveformCanvas";
-import { MidiThumbnailCanvas } from "./MidiThumbnailCanvas";
-import { snap } from "./snapUtils";
-import { useTimelineDrag } from "../hooks/useTimelineDrag";
-import { useTimelineTrim } from "../hooks/useTimelineTrim";
-import { useTimelineFade } from "../hooks/useTimelineFade";
-import { useTimelineLoopDrag } from "../hooks/useTimelineLoopDrag";
-import { useTimelineRubberBand } from "../hooks/useTimelineRubberBand";
-import { useTimelineZoom, MIN_PPS, MAX_PPS } from "../hooks/useTimelineZoom";
-import { TimelineContextMenu } from "./TimelineContextMenu";
-import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../utils/timelineConstants";
-import { buildRowLayout, rowAtY, rowAtYOrCount } from "../utils/rowLayout";
-import { getVisibleTracks } from "../utils/timelineUtils";
-import { colorStr } from "../theme";
-import { AddTrackMenu } from "./AddTrackMenu";
-import PopUpBrowser, { type ContentItem } from "./PopUpBrowser";
-import "./TimelineMinimal.css";
+import { useMemo, useRef, useCallback, useEffect } from "react";
+import { useProjectStore } from "../../store/projectStore";
+import { useTransportStore } from "../../store/transportStore";
+import { useMarkerStore } from "../../store/markerStore";
+import { rpc } from "../../rpc";
+import { useUiStore } from "../../store/uiStore";
+import { WaveformCanvas } from "../WaveformCanvas";
+import { MidiThumbnailCanvas } from "../MidiThumbnailCanvas";
+import { useTimelineDrag } from "../../hooks/useTimelineDrag";
+import { useTimelineTrim } from "../../hooks/useTimelineTrim";
+import { useTimelineFade } from "../../hooks/useTimelineFade";
+import { useTimelineLoopDrag } from "../../hooks/useTimelineLoopDrag";
+import { useTimelineRubberBand } from "../../hooks/useTimelineRubberBand";
+import { useTimelineZoom } from "../../hooks/useTimelineZoom";
+import { useTimelineRuler } from "./useTimelineRuler";
+import { useTimelineDrop } from "./useTimelineDrop";
+import { useTimelineKeyboard } from "./useTimelineKeyboard";
+import { useTimelineClipOps } from "./useTimelineClipOps";
+import { TimelineContextMenu } from "../TimelineContextMenu";
+import { RULER_HEIGHT, TOOLBAR_HEIGHT } from "../../utils/timelineConstants";
+import { buildRowLayout, rowAtY } from "../../utils/rowLayout";
+import { getVisibleTracks } from "../../utils/timelineUtils";
+import { colorStr } from "../../theme";
+import { AddTrackMenu } from "../AddTrackMenu";
+import PopUpBrowser from "../PopUpBrowser";
+import "../TimelineMinimal.css";
 
 export default function TimelineMinimal() {
   const snapshot = useProjectStore((s) => s.snapshot);
@@ -114,14 +117,6 @@ export default function TimelineMinimal() {
     setPps,
   });
 
-  // --- Context menu ---
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: string; clip?: typeof clips[0]; markerIndex?: number } | null>(null);
-  const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; beat: number; trackIndex: number } | null>(null);
-  // Right-click in the dead space below the last track (outside .tl-tracks-inner).
-  const [belowMenu, setBelowMenu] = useState<{ x: number; y: number } | null>(null);
-  // PopUpBrowser state for "Browse for Clip..." from context menu
-  const [browseClipTarget, setBrowseClipTarget] = useState<{ trackIndex: number; beat: number } | null>(null);
-
   useEffect(() => {
     const close = (e: MouseEvent) => {
       // Don't close if clicking inside context menu
@@ -179,420 +174,41 @@ export default function TimelineMinimal() {
     }
   }, []);
 
-  // --- Ruler click-to-seek / drag-scrub ---
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const scrubRef = useRef(false);
+  // --- Ruler click-to-seek / drag-scrub (extracted hook) ---
+  const { isScrubbing, handleRulerMouseDown } = useTimelineRuler({ pps, tracksRef });
 
-  const beatToSec = useCallback((beat: number) => beat * 60 / transport.bpm, [transport.bpm]);
+  // --- File drag-and-drop import (extracted hook) ---
+  const { handleDrop } = useTimelineDrop({ pps, layout, tracksRef });
 
-  const handleRulerMouseDown = useCallback((e: React.MouseEvent) => {
-    const rect = tracksRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const scroll = tracksRef.current?.scrollLeft ?? 0;
-    const beat = Math.max(0, (e.clientX - rect.left + scroll) / pps);
+  // --- Context menu & clip operations (extracted hook) ---
+  const {
+    contextMenu,
+    setContextMenu,
+    emptyContextMenu,
+    setEmptyContextMenu,
+    belowMenu,
+    setBelowMenu,
+    browseClipTarget,
+    handleContextMenu,
+    handleMarkerContextMenu,
+    handleCloseContextMenu,
+    handleBrowseClip,
+    handleBrowseSelect,
+    handleDeleteClip,
+    handleDuplicateClip,
+    handleSplitClip,
+    pasteClipboard,
+  } = useTimelineClipOps({ clips });
 
-    // Ctrl+click = set loop start, Alt+click = set loop end
-    if (e.ctrlKey || e.metaKey) {
-      rpc.call("project.setLoopStart", { beat }).catch(() => {});
-      const t = useTransportStore.getState().transport;
-      useTransportStore.getState().update({ ...t, loopStart: beat });
-      // Auto-enable looping if not already on
-      if (!t.isLooping) rpc.call("transport.toggleLoop").catch(() => {});
-      return;
-    }
-    if (e.altKey) {
-      rpc.call("project.setLoopEnd", { beat }).catch(() => {});
-      const t = useTransportStore.getState().transport;
-      useTransportStore.getState().update({ ...t, loopEnd: beat });
-      if (!t.isLooping) rpc.call("transport.toggleLoop").catch(() => {});
-      return;
-    }
-
-    rpc.call("transport.seekToSeconds", { seconds: beatToSec(beat) }).catch(() => {});
-    scrubRef.current = true;
-    setIsScrubbing(true);
-
-    const onMove = (ev: globalThis.MouseEvent) => {
-      if (!scrubRef.current) return;
-      const r = tracksRef.current?.getBoundingClientRect();
-      if (!r) return;
-      const s = tracksRef.current?.scrollLeft ?? 0;
-      const b = Math.max(0, (ev.clientX - r.left + s) / pps);
-      rpc.call("transport.seekToSeconds", { seconds: beatToSec(b) }).catch(() => {});
-    };
-
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      scrubRef.current = false;
-      setIsScrubbing(false);
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [pps, transport.bpm, beatToSec]);
-
-  // --- File drag-and-drop import ---
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-
-    // Check for internal file browser drag
-    const hdawData = e.dataTransfer.getData("application/hdaw-file");
-    if (hdawData) {
-      try {
-        const { path: filePath, name: fileName } = JSON.parse(hdawData);
-        const rect = e.currentTarget.getBoundingClientRect();
-        const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
-        const trackIdx = rowAtYOrCount(layout, y);
-        const elScroll = tracksRef.current?.scrollLeft ?? 0;
-        const beatX = (e.clientX - rect.left + elScroll) / pps;
-        const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
-        const startBeat = snap(beatX, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
-
-        const ext = "." + fileName.split(".").pop()?.toLowerCase();
-        const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
-        const midiExts = [".mid", ".midi"];
-
-        const doImport = async (targetTrack: number) => {
-          if (audioExts.includes(ext)) {
-            await rpc.call("project.addAudioClip", {
-              trackIndex: targetTrack,
-              start: Math.max(0, startBeat),
-              duration: 4,
-              sourceFile: filePath,
-              name: fileName,
-            });
-          } else if (midiExts.includes(ext)) {
-            await rpc.call("project.addMidiClip", {
-              trackIndex: targetTrack,
-              start: Math.max(0, startBeat),
-              duration: 4,
-              name: fileName,
-            });
-          }
-        };
-
-        const currentTracks = useProjectStore.getState().snapshot?.tracks ?? [];
-        if (trackIdx >= currentTracks.length && (audioExts.includes(ext) || midiExts.includes(ext))) {
-          // Drop below existing tracks → create a new track first
-          const trackType = midiExts.includes(ext) ? 1 : 0; // instrument for MIDI, audio for audio
-          rpc.call("project.addTrack", { trackType }).then((newIdx) => {
-            doImport(typeof newIdx === "number" ? newIdx : currentTracks.length);
-          }).catch(() => {});
-        } else {
-          doImport(Math.max(0, Math.min(trackIdx, currentTracks.length - 1)));
-        }
-        // Reconciled by the debounced notify.treeChanged push.
-      } catch {}
-      return;
-    }
-
-    // External file drop (from OS)
-    const files = Array.from(e.dataTransfer.files);
-    const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
-    const midiExts = [".mid", ".midi"];
-    const rect = e.currentTarget.getBoundingClientRect();
-    const y = e.clientY - rect.top + (tracksRef.current?.scrollTop ?? 0);
-    const trackIdx = rowAtYOrCount(layout, y);
-    const elScroll = tracksRef.current?.scrollLeft ?? 0;
-    const beatX = (e.clientX - rect.left + elScroll) / pps;
-    const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
-    const startBeat = snap(beatX, { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents });
-    const currentTracks = useProjectStore.getState().snapshot?.tracks ?? [];
-
-    for (const file of files) {
-      const ext = "." + file.name.split(".").pop()?.toLowerCase();
-      const isAudio = audioExts.includes(ext);
-      const isMidi = midiExts.includes(ext);
-      if (!isAudio && !isMidi) continue;
-
-      const doImport = async (targetTrack: number) => {
-        if (isAudio) {
-          await rpc.call("project.addAudioClip", {
-            trackIndex: targetTrack,
-            start: Math.max(0, startBeat),
-            duration: 4,
-            sourceFile: (file as any).path ?? file.name,
-            name: file.name,
-          });
-        } else {
-          await rpc.call("project.addMidiClip", {
-            trackIndex: targetTrack,
-            start: Math.max(0, startBeat),
-            duration: 4,
-            name: file.name,
-          });
-        }
-      };
-
-      if (trackIdx >= currentTracks.length) {
-        // Drop below existing tracks → create a new track first
-        const trackType = isMidi ? 1 : 0;
-        rpc.call("project.addTrack", { trackType }).then((newIdx) => {
-          doImport(typeof newIdx === "number" ? newIdx : currentTracks.length);
-        }).catch(() => {});
-      } else {
-        doImport(Math.max(0, Math.min(trackIdx, currentTracks.length - 1)));
-      }
-    }
-    // Reconciled by the debounced notify.treeChanged push.
-  }, [rpc, pps, layout]);
-
-  // --- Context menu handler ---
-  const handleContextMenu = useCallback((e: React.MouseEvent, clip: typeof clips[0]) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Preserve an existing multi-selection when the right-clicked clip is part
-    // of it, so context-menu actions apply to every selected clip. Only collapse
-    // the selection to this clip when it wasn't already selected.
-    const { selectedClipIds, selectClip } = useUiStore.getState();
-    if (!selectedClipIds.has(clip.clipId)) {
-      selectClip(clip.clipId, clip.trackIndex);
-    }
-    setContextMenu({ x: e.clientX, y: e.clientY, type: "clip", clip });
-  }, []);
-
-  const handleMarkerContextMenu = useCallback((e: React.MouseEvent, markerIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, type: "marker", markerIndex });
-  }, []);
-
-  const handleCloseContextMenu = useCallback(() => {
-    setContextMenu(null);
-    setEmptyContextMenu(null);
-    setBelowMenu(null);
-  }, []);
-
-  const handleBrowseClip = useCallback((trackIndex: number, beat: number) => {
-    setBrowseClipTarget({ trackIndex, beat });
-  }, []);
-
-  const handleBrowseSelect = useCallback((item: ContentItem) => {
-    if (!browseClipTarget) return;
-    const { trackIndex, beat } = browseClipTarget;
-    const ext = "." + item.name.split(".").pop()?.toLowerCase();
-    const audioExts = [".wav", ".aiff", ".aif", ".mp3", ".flac", ".ogg"];
-    if (audioExts.includes(ext)) {
-      rpc.call("project.addAudioClip", {
-        trackIndex,
-        start: Math.max(0, beat),
-        duration: 4,
-        sourceFile: item.path,
-        name: item.name,
-      }).catch(() => {});
-    } else {
-      rpc.call("project.addMidiClip", {
-        trackIndex,
-        start: Math.max(0, beat),
-        duration: 4,
-        name: item.name,
-      }).catch(() => {});
-    }
-    useProjectStore.setState({ isDirty: true });
-    setBrowseClipTarget(null);
-  }, [browseClipTarget]);
-
-  const handleDeleteClip = useCallback(() => {
-    const { selectedClipIds } = useUiStore.getState();
-    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
-    if (ids.length === 0) return;
-    (async () => {
-      try {
-        await rpc.call("project.removeClips", { clipIds: ids });
-        useUiStore.getState().clearSelection();
-        // Reconciled by the debounced notify.treeChanged push.
-        useProjectStore.setState({ isDirty: true });
-      } catch (e) {
-        console.error("Failed to delete clips:", e);
-      }
-    })();
-  }, [contextMenu]);
-
-  const handleDuplicateClip = useCallback(() => {
-    const { selectedClipIds } = useUiStore.getState();
-    const snap = useProjectStore.getState().snapshot;
-    if (!snap) return;
-    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
-    if (ids.length === 0) return;
-
-    const tempIds: number[] = [];
-    const clipIds: number[] = [];
-    const newStarts: number[] = [];
-    const newTrackIndices: number[] = [];
-    for (const id of ids) {
-      const src = snap.clips.find((c) => c.clipId === id);
-      if (!src) continue;
-      const targetStart = src.startBeat + src.durationBeats;
-      const tempId = nextTempId();
-      tempIds.push(tempId);
-      clipIds.push(id);
-      newStarts.push(targetStart);
-      newTrackIndices.push(src.trackIndex);
-      useProjectStore.getState().addPendingClip({ ...src, clipId: tempId, startBeat: targetStart });
-    }
-    if (clipIds.length === 0) return;
-
-    setTimeout(() => tempIds.forEach((t) => {
-      if (useProjectStore.getState().pendingTempIds.has(t)) useProjectStore.getState().removePending(t);
-    }), 1500);
-
-    (async () => {
-      try {
-        const res = await rpc.call("project.duplicateClips", { clipIds, newStarts, newTrackIndices });
-        const newIds: number[] = Array.isArray(res) ? res : [];
-        tempIds.forEach((tempId, i) => {
-          const realId = newIds[i];
-          if (typeof realId === "number" && realId > 0) useProjectStore.getState().resolvePending(tempId, realId);
-          else useProjectStore.getState().removePending(tempId);
-        });
-        useProjectStore.setState({ isDirty: true });
-      } catch {
-        tempIds.forEach((t) => useProjectStore.getState().removePending(t));
-      }
-    })();
-  }, [contextMenu]);
-
-  const handleSplitClip = useCallback(() => {
-    const { selectedClipIds } = useUiStore.getState();
-    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : (contextMenu?.clip ? [contextMenu.clip.clipId] : []);
-    if (ids.length === 0) return;
-    (async () => {
-      await rpc.call("project.sliceClipsAtPlayhead", { clipIds: ids }).catch(() => {});
-      useProjectStore.setState({ isDirty: true });
-    })();
-  }, [contextMenu]);
-
-  const pasteClipboard = useCallback(async () => {
-    const { clipClipboard } = useUiStore.getState();
-    if (clipClipboard.length === 0) return;
-    const tr = useTransportStore.getState().transport;
-    const playheadBeats = tr.currentTimeSeconds * (tr.bpm / 60);
-    const minStart = Math.min(...clipClipboard.map(c => c.startBeat));
-    const starts = clipClipboard.map(c => playheadBeats + (c.startBeat - minStart));
-    const durations = clipClipboard.map(c => c.durationBeats);
-    const names = clipClipboard.map(c => c.name);
-    const sourceFiles = clipClipboard.map(c => c.isMidi ? "" : (c.sourceFile ?? ""));
-    const trackIndex = clipClipboard[0]?.trackIndex ?? 0;
-    await rpc.call("project.addClips", { trackIndex, starts, durations, names, sourceFiles });
-    // Reconciled by the debounced notify.treeChanged push.
-    useProjectStore.setState({ isDirty: true });
-  }, []);
-
-  // --- Keyboard shortcuts ---
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      // Skip when focus is inside a focusable custom widget (NoteGrid,
-      // AutomationPanel) that handles its own key events. Prevents double-fire
-      // (e.g. Delete deleting both notes and timeline clips).
-      if (target !== document.body && target?.closest?.("[tabindex]")) return;
-
-      const { selectedClipIds } = useUiStore.getState();
-      const isPlaying = useTransportStore.getState().transport.isPlaying;
-
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        if (selectedClipIds.size > 0) {
-          (async () => {
-            try {
-              await rpc.call("project.removeClips", { clipIds: [...selectedClipIds] });
-              useUiStore.getState().clearSelection();
-              // Reconciled by the debounced notify.treeChanged push.
-              useProjectStore.setState({ isDirty: true });
-            } catch (e) {
-              console.error("Failed to delete clips:", e);
-            }
-          })();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyD") {
-        e.preventDefault();
-        // Route through the same handler as context-menu Duplicate so Ctrl+D
-        // gets the batch RPC, overlap handling, and instant placeholder.
-        handleDuplicateClip();
-      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyM") {
-        e.preventDefault();
-        const snap = useProjectStore.getState().snapshot;
-        if (!snap) return;
-        const selClips = snap.clips.filter((c) => selectedClipIds.has(c.clipId));
-        const canMerge = selClips.length >= 2
-          && selClips.every((c) => c.isMidi && !c.isGhost);
-        if (canMerge) {
-          const ids = selClips.map((c) => c.clipId);
-          rpc.call("project.mergeClips", { clipIds: ids }).then((res) => {
-            const newId = typeof res === "number" ? res : null;
-            if (newId != null && newId > 0) {
-              useUiStore.setState({ selectedClipIds: new Set([newId]) });
-            }
-            useProjectStore.setState({ isDirty: true });
-          }).catch((err) => console.error("Merge failed:", err));
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
-        e.preventDefault();
-        if (selectedClipIds.size > 0) {
-          const snap = useProjectStore.getState().snapshot;
-          if (snap) {
-            const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
-            useUiStore.getState().setClipboard(copied);
-          }
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyX") {
-        e.preventDefault();
-        if (selectedClipIds.size > 0) {
-          const snap = useProjectStore.getState().snapshot;
-          if (snap) {
-            const copied = snap.clips.filter(c => selectedClipIds.has(c.clipId));
-            useUiStore.getState().setClipboard(copied);
-            (async () => {
-              await rpc.call("project.removeClips", { clipIds: [...selectedClipIds] });
-              useUiStore.getState().clearSelection();
-              // Reconciled by the debounced notify.treeChanged push.
-              useProjectStore.setState({ isDirty: true });
-            })();
-          }
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyV") {
-        e.preventDefault();
-        const { clipClipboard } = useUiStore.getState();
-        if (clipClipboard.length > 0) {
-          pasteClipboard();
-        }
-      } else if (e.key === "Escape") {
-        setContextMenu(null);
-        setEmptyContextMenu(null);
-      } else if (e.code === "KeyF" && e.shiftKey) {
-        const snap = useProjectStore.getState().snapshot;
-        const selIds = useUiStore.getState().selectedClipIds;
-        const selectedClips = snap?.clips.filter((c) => selIds.has(c.clipId));
-        if (selectedClips && selectedClips.length > 0) {
-          const minStart = Math.min(...selectedClips.map((c) => c.startBeat));
-          const maxEnd = Math.max(...selectedClips.map((c) => c.startBeat + c.durationBeats));
-          const range = maxEnd - minStart;
-          if (range > 0) {
-            const cw = tracksRef.current?.clientWidth ?? 800;
-            const newPps = (cw * 0.8) / range;
-            setPps(Math.max(MIN_PPS, Math.min(MAX_PPS, newPps)));
-            requestAnimationFrame(() => {
-              if (tracksRef.current) {
-                tracksRef.current.scrollLeft = minStart * newPps - cw * 0.1;
-              }
-            });
-          }
-        }
-        e.preventDefault();
-      } else if (e.key === " ") {
-        e.preventDefault();
-        if (isPlaying)
-          rpc.call("transport.stop").catch(() => {});
-        else
-          rpc.call("transport.play").catch(() => {});
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [pasteClipboard, handleDuplicateClip]);
+  // --- Keyboard shortcuts (extracted hook) ---
+  useTimelineKeyboard({
+    handleDuplicateClip,
+    pasteClipboard,
+    setContextMenu,
+    setEmptyContextMenu,
+    tracksRef,
+    setPps,
+  });
 
   return (
     <div className="timeline-minimal">

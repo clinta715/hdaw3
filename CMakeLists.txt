@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.16.0 LANGUAGES CXX)
+project(HDAW VERSION 0.16.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -138,6 +138,17 @@ src/engine/StretchRenderer.cpp
     src/proxy/ProxySharedMemory.cpp
     src/engine/RegionClipboard.cpp
     src/frontend/FrontendRouter.cpp
+    src/frontend/router/Router_Project.cpp
+    src/frontend/router/Router_Session.cpp
+    src/frontend/router/Router_Transport.cpp
+    src/frontend/router/Router_AudioGraph.cpp
+    src/frontend/router/Router_Read.cpp
+    src/frontend/router/Router_Plugin.cpp
+    src/frontend/router/Router_Midi.cpp
+    src/frontend/router/Router_Audio.cpp
+    src/frontend/router/Router_Export.cpp
+    src/frontend/router/Router_Preview.cpp
+    src/frontend/router/Router_Composition.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp
