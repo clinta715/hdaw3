@@ -19,6 +19,7 @@
 #include "router/Router_Export.h"
 #include "router/Router_Preview.h"
 #include "router/Router_Composition.h"
+#include "router/Router_Library.h"
 
 using namespace frontend::router_helpers;
 
@@ -79,6 +80,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::Preview)     return dispatchPreview(engine, m, params);
     else if (ns == method::Composition) return dispatchComposition(engine, m, params);
     else if (ns == method::Session)     return dispatchSession(engine.getProjectCommands(), m, params);
+    else if (ns == method::Library)     return dispatchLibrary(engine.getFileLibraryManager(), m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

@@ -153,6 +153,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Export.cpp
     src/frontend/router/Router_Preview.cpp
     src/frontend/router/Router_Composition.cpp
+    src/frontend/router/Router_Library.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp
