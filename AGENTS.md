@@ -35,6 +35,62 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
 
+## Codebase Memory MCP (knowledge graph)
+
+The `codebase-memory` MCP server (github.com/DeusData/codebase-memory-mcp)
+indexes this repository into a persistent knowledge graph (functions,
+classes, files, routes, calls). It is the live MCP complement to the
+`graphify-out/graph.json` snapshot — use either for blast-radius analysis,
+dependency tracing, and code discovery; the MCP server is available in every
+session and answers faster than grep for structural questions.
+
+**Indexed project name:** `D-pdf-roo-projects-hdaw3` (root
+`D:\pdf\roo projects\hdaw3`). The index lives server-side — there is no
+checked-in `.codebase-memory/` directory.
+
+### Workflow
+
+1. **Check the index is current** — `index_status` (project
+   `D-pdf-roo-projects-hdaw3`). If code changed significantly since the last
+   index (new files, new RPC methods, new classes), refresh it with
+   `index_repository` (repo_path, mode `fast` for a quick refresh, `full` to
+   also get similarity/semantic edges).
+2. **Discover code** — `search_graph` with a natural-language `query` (BM25,
+   camelCase-aware); use `name_pattern` for regex identifier matches or
+   `semantic_query` for vocabulary-bridging ("publish" → "send"). Prefer it
+   over grep for finding definitions, implementations, or relationships.
+3. **Map callers/callees** — `trace_path` (mode `calls`, direction
+   `inbound`/`outbound`) for dependency analysis and impact mapping. Prefer
+   it over grep for "who calls X".
+4. **Read a definition** — `search_graph` first to get the exact
+   `qualified_name`, then `get_code_snippet` (add `include_neighbors` for
+   surrounding context). Never guess a name.
+5. **Graph-wide analysis** — `query_graph` for Cypher. Functions carry
+   complexity/hot-path properties (`transitive_loop_depth`,
+   `linear_scan_in_loop`, `alloc_in_loop`) — e.g. the hidden-O(n²) hunter:
+   ```cypher
+   MATCH (f:Function) WHERE f.transitive_loop_depth >= 3 OR f.linear_scan_in_loop >= 1
+   RETURN f.qualified_name, f.transitive_loop_depth, f.linear_scan_in_loop
+   ORDER BY f.transitive_loop_depth DESC
+   ```
+6. **Architecture at a glance** — `get_architecture` (Leiden clusters =
+   de-facto modules, often cutting across folder layout), `get_graph_schema`,
+   `detect_changes` (diff since a ref/date).
+
+### Rules
+
+- **Read-only by default.** `search_graph`, `search_code`, `trace_path`,
+  `query_graph`, `get_code_snippet`, `get_architecture`, `detect_changes`
+  never modify the repo. `index_repository` writes the server-side index —
+  only re-index when the graph is stale relative to your task.
+- **Never invent an edge.** If the graph shows no connection, verify with
+  grep/read before assuming (same honesty rule as graphify).
+- **The graph is a snapshot.** Code added since the last index is missing —
+  cross-check critical paths with grep/read.
+- **Refresh after structural changes.** After adding new files, RPC methods,
+  or classes, run `index_repository` so the completion contract (per
+  hdaw-guard §Completion Contract) checks against current topology.
+
 ## Lessons learned
 
 These cost real debugging time — read before touching the relevant area:
