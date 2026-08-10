@@ -4,6 +4,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -533,49 +534,79 @@ std::vector<LibraryEntry> FileLibraryManager::search(const juce::String& query,
     double durationMin, double durationMax, double bpmMin, double bpmMax,
     const juce::String& keyFilter, int offset, int limit) const {
 
-    std::lock_guard<std::mutex> lock(mutex);
-    std::vector<LibraryEntry> results;
-
-    for (const auto& [libId, libEntries] : entries) {
-        if (libraryIdFilter.isNotEmpty() && libId != libraryIdFilter) continue;
-
-        for (const auto& entry : libEntries) {
-            if (typeFilter.isNotEmpty() && entry.format != typeFilter) continue;
-            if (durationMin >= 0 && entry.durationSeconds < durationMin) continue;
-            if (durationMax >= 0 && entry.durationSeconds > durationMax) continue;
-            if (bpmMin >= 0 && entry.tempo < bpmMin) continue;
-            if (bpmMax >= 0 && entry.tempo > bpmMax) continue;
-            if (keyFilter.isNotEmpty() && entry.key != keyFilter) continue;
-
-            if (query.isNotEmpty()) {
-                if (!entry.name.containsIgnoreCase(query) &&
-                    !entry.path.containsIgnoreCase(query) &&
-                    !entry.key.containsIgnoreCase(query))
-                    continue;
-            }
-
-            results.push_back(entry);
+    // Phase 1 — under lock: collect candidate library ids whose metadata matches
+    // the library-level filters (libraryIdFilter + typeFilter on lib.type, NOT
+    // entry.format). Filter on lib.type here so search("", "audio") returns the
+    // audio library's entries, not nothing.
+    std::vector<juce::String> candidateIds;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& lib : libraries) {
+            if (libraryIdFilter.isNotEmpty() && lib.id != libraryIdFilter) continue;
+            if (typeFilter.isNotEmpty() && lib.type != typeFilter) continue;
+            candidateIds.push_back(lib.id);
         }
     }
 
+    // Phase 2 — OUTSIDE the lock: lazy-load each candidate from disk.
+    // loadLibraryEntries is idempotent (guards on loadedLibraries) and takes its
+    // own std::lock_guard on the same mutex — calling it under our own lock would
+    // deadlock (std::mutex is non-recursive).
+    auto* self = const_cast<FileLibraryManager*>(this);
+    for (const auto& id : candidateIds)
+        self->loadLibraryEntries(id);
+
+    // Phase 3 — under lock: iterate loaded entries and apply per-entry filters.
+    std::vector<LibraryEntry> results;
+    auto queryLower = query.toLowerCase();
+    auto keyLower = keyFilter.toLowerCase();
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& id : candidateIds) {
+            auto it = entries.find(id);
+            if (it == entries.end()) continue;
+            for (const auto& entry : it->second) {
+                if (queryLower.isNotEmpty()
+                    && !entry.name.toLowerCase().contains(queryLower)
+                    && !entry.path.toLowerCase().contains(queryLower)
+                    && !entry.key.toLowerCase().contains(queryLower))
+                    continue;
+                if (durationMin >= 0 && entry.durationSeconds < durationMin) continue;
+                if (durationMax >= 0 && entry.durationSeconds > durationMax) continue;
+                double effBpm = entry.bpm > 0.0 ? entry.bpm : entry.tempo;
+                if (bpmMin >= 0 && effBpm < bpmMin) continue;
+                if (bpmMax >= 0 && effBpm > bpmMax) continue;
+                if (keyLower.isNotEmpty()
+                    && !entry.key.toLowerCase().contains(keyLower))
+                    continue;
+                results.push_back(entry);
+            }
+        }
+    }
+
+    // Phase 4 — OUTSIDE the lock: sort by name (case-insensitive) + paginate.
+    std::sort(results.begin(), results.end(),
+        [](const LibraryEntry& a, const LibraryEntry& b) {
+            return a.name.toLowerCase() < b.name.toLowerCase();
+        });
     if (offset > 0 && offset < (int)results.size())
         results.erase(results.begin(), results.begin() + offset);
     else if (offset > 0)
         results.clear();
-
     if (limit > 0 && (int)results.size() > limit)
         results.resize(limit);
-
     return results;
 }
 
 LibraryEntry FileLibraryManager::getEntry(const juce::String& libraryId, const juce::String& path) const {
+    // Lazy-load outside the lock — loadLibraryEntries takes its own lock.
+    auto* self = const_cast<FileLibraryManager*>(this);
+    self->loadLibraryEntries(libraryId);
     std::lock_guard<std::mutex> lock(mutex);
     auto it = entries.find(libraryId);
     if (it == entries.end()) return {};
-    for (const auto& e : it->second) {
+    for (const auto& e : it->second)
         if (e.path == path) return e;
-    }
     return {};
 }
 

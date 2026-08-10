@@ -126,3 +126,151 @@ TEST_F(FileLibraryTest, ExtractAudioMetadata) {
     EXPECT_EQ(results[0].channels, 1);
     EXPECT_EQ(results[0].format, "wav");
 }
+
+TEST_F(FileLibraryTest, SearchByName) {
+    auto midiDir = tempDir.getChildFile("search_name");
+    midiDir.createDirectory();
+    // Create three MIDI files: alpha, beta, gamma
+    const char* names[] = {"alpha.mid", "beta.mid", "gamma.mid"};
+    for (const auto* nm : names) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream stream(midiDir.getChildFile(nm));
+        file.writeTo(stream);
+        stream.flush();
+    }
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("SBN", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    // Empty query returns all 3
+    auto all = mgr.search("");
+    ASSERT_EQ(all.size(), 3u);
+
+    // Substring filter
+    auto filtered = mgr.search("bet");
+    ASSERT_EQ(filtered.size(), 1u);
+    EXPECT_EQ(filtered[0].name, "beta.mid");
+
+    // Case-insensitive
+    auto upper = mgr.search("ALPHA");
+    ASSERT_EQ(upper.size(), 1u);
+    EXPECT_EQ(upper[0].name, "alpha.mid");
+}
+
+TEST_F(FileLibraryTest, SearchFiltersByType) {
+    auto midiDir = tempDir.getChildFile("ftype_midi");
+    midiDir.createDirectory();
+    auto audioDir = tempDir.getChildFile("ftype_audio");
+    audioDir.createDirectory();
+
+    // One MIDI file
+    {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file; file.setTicksPerQuarterNote(480); file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile("song.mid")); file.writeTo(s); s.flush();
+    }
+    // One WAV file (proven pattern from ExtractAudioMetadata)
+    {
+        auto wavFile = audioDir.getChildFile("beat.wav");
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto midiId = mgr.addLibrary("M", midiDir.getFullPathName(), "midi");
+    auto audioId = mgr.addLibrary("A", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(midiId);
+    mgr.scanLibrary(audioId);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    // No filter → both
+    EXPECT_EQ(mgr.search("").size(), 2u);
+    // type=midi → only the MIDI entry
+    auto midis = mgr.search("", "midi");
+    ASSERT_EQ(midis.size(), 1u);
+    EXPECT_EQ(midis[0].name, "song.mid");
+    // type=audio → only the WAV entry
+    auto audios = mgr.search("", "audio");
+    ASSERT_EQ(audios.size(), 1u);
+    EXPECT_EQ(audios[0].name, "beat.wav");
+}
+
+TEST_F(FileLibraryTest, SearchSortsByName) {
+    auto midiDir = tempDir.getChildFile("search_sort");
+    midiDir.createDirectory();
+    // Create files out of order: zebra, apple, mango
+    const char* names[] = {"zebra.mid", "apple.mid", "mango.mid"};
+    for (const auto* nm : names) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file; file.setTicksPerQuarterNote(480); file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile(nm)); file.writeTo(s); s.flush();
+    }
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("SS", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 3u);
+    EXPECT_EQ(results[0].name, "apple.mid");
+    EXPECT_EQ(results[1].name, "mango.mid");
+    EXPECT_EQ(results[2].name, "zebra.mid");
+}
+
+TEST_F(FileLibraryTest, SearchPaginates) {
+    auto midiDir = tempDir.getChildFile("search_page");
+    midiDir.createDirectory();
+    // Create 5 files: f0..f4
+    for (int i = 0; i < 5; ++i) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file; file.setTicksPerQuarterNote(480); file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile("f" + juce::String(i) + ".mid")); file.writeTo(s); s.flush();
+    }
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("SP", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    // limit=2, offset=0 → first 2 (sorted: f0, f1, f2, f3, f4)
+    auto page1 = mgr.search("", {}, {}, -1, -1, -1, -1, {}, 0, 2);
+    ASSERT_EQ(page1.size(), 2u);
+    EXPECT_EQ(page1[0].name, "f0.mid");
+    EXPECT_EQ(page1[1].name, "f1.mid");
+    // offset=2, limit=2 → next 2
+    auto page2 = mgr.search("", {}, {}, -1, -1, -1, -1, {}, 2, 2);
+    ASSERT_EQ(page2.size(), 2u);
+    EXPECT_EQ(page2[0].name, "f2.mid");
+    EXPECT_EQ(page2[1].name, "f3.mid");
+    // offset=4, limit=2 → last 1
+    auto page3 = mgr.search("", {}, {}, -1, -1, -1, -1, {}, 4, 2);
+    ASSERT_EQ(page3.size(), 1u);
+    EXPECT_EQ(page3[0].name, "f4.mid");
+    // offset beyond end → empty
+    auto page4 = mgr.search("", {}, {}, -1, -1, -1, -1, {}, 10, 2);
+    EXPECT_TRUE(page4.empty());
+}
