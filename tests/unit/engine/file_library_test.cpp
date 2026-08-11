@@ -9,6 +9,7 @@ protected:
     void SetUp() override {
         tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
                       .getChildFile("hdaw_file_library_test");
+        tempDir.deleteRecursively();
         tempDir.createDirectory();
     }
     void TearDown() override {
@@ -309,4 +310,71 @@ TEST_F(FileLibraryTest, SearchLazyLoadsFromDiskAcrossInstances) {
     auto results = mgr2.search("");
     ASSERT_EQ(results.size(), 1u);
     EXPECT_EQ(results[0].name, "persisted.mid");
+}
+
+TEST_F(FileLibraryTest, FullMidiPipeline) {
+    auto midiDir = tempDir.getChildFile("midi_pipeline");
+    midiDir.createDirectory();
+
+    for (int i = 0; i < 5; ++i) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60 + i, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60 + i).withTimeStamp(1.0));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream stream(midiDir.getChildFile("test_" + juce::String(i) + ".mid"));
+        file.writeTo(stream);
+        stream.flush();
+    }
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Pipeline Test", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    auto all = mgr.search("");
+    EXPECT_EQ(all.size(), 5u);
+
+    auto filtered = mgr.search("test_2");
+    EXPECT_EQ(filtered.size(), 1u);
+    EXPECT_EQ(filtered[0].name, "test_2.mid");
+}
+
+TEST_F(FileLibraryTest, ScanProgressCallback) {
+    auto midiDir = tempDir.getChildFile("midi_progress");
+    midiDir.createDirectory();
+
+    juce::MidiMessageSequence seq;
+    seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+    seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(1.0));
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote(480);
+    file.addTrack(seq);
+    juce::FileOutputStream stream(midiDir.getChildFile("progress_test.mid"));
+    file.writeTo(stream);
+    stream.flush();
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    std::vector<HDAW::ScanProgress> progressUpdates;
+    mgr.setScanProgressCallback([&](const HDAW::ScanProgress& p) {
+        progressUpdates.push_back(p);
+    });
+
+    bool scanComplete = false;
+    mgr.setScanCompleteCallback([&](const juce::String&, bool) {
+        scanComplete = true;
+    });
+
+    auto id = mgr.addLibrary("Progress", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+
+    for (int i = 0; i < 50 && !scanComplete; ++i)
+        juce::Thread::sleep(100);
+
+    EXPECT_TRUE(scanComplete);
+    EXPECT_FALSE(progressUpdates.empty());
+    EXPECT_EQ(progressUpdates.back().total, 1);
 }

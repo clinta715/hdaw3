@@ -238,6 +238,16 @@ void FileLibraryManager::scanLibrary(const juce::String& id) {
                 }
             }
         }
+
+        if (progressCb) {
+            ScanProgress sp;
+            sp.libraryId = id;
+            sp.scanned = fileCount;
+            sp.total = fileCount;
+            sp.phase = "scanning";
+            progressCb(sp);
+        }
+
         saveLibraryEntries(id);
         saveRegistry();
         scanningCount.fetch_sub(1);
