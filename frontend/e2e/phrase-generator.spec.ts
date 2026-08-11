@@ -20,16 +20,17 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await expect(page.locator(".pgd-header h3")).toContainText("Phrase Generator");
   });
 
-  test("mode selector defaults to Phrase with four options", async ({ page }) => {
+  test("mode selector defaults to Phrase with five options", async ({ page }) => {
     await openDialog(page);
     const mode = page.locator(".pgd-mode-select");
     await expect(mode).toHaveValue("0");
     const options = mode.locator("option");
-    await expect(options).toHaveCount(4);
+    await expect(options).toHaveCount(5);
     await expect(options.nth(0)).toHaveText("Phrase");
     await expect(options.nth(1)).toHaveText("Single Chord");
     await expect(options.nth(2)).toHaveText("Chord Progression");
     await expect(options.nth(3)).toHaveText("Arrangement");
+    await expect(options.nth(4)).toHaveText("Rhythm");
   });
 
   test("phrase page shows style, length and density controls", async ({ page }) => {
