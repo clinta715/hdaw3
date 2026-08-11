@@ -98,6 +98,7 @@ private:
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
     juce::String detectKey(const std::vector<int>& noteCounts) const;
+    void createExampleMidiFiles(const juce::File& dir);
 
     mutable std::mutex mutex;
     std::vector<LibraryInfo> libraries;

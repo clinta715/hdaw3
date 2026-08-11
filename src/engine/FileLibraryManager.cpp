@@ -32,6 +32,34 @@ FileLibraryManager::~FileLibraryManager() {
 }
 
 void FileLibraryManager::initialize() {
+    // Create default MIDI directory if it doesn't exist
+    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                       .getChildFile("HDAW");
+    auto defaultMidiDir = appData.getChildFile("MIDI");
+    defaultMidiDir.createDirectory();
+
+    // Register it if not already present
+    bool hasDefaultMidi = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& lib : libraries) {
+            if (lib.path == defaultMidiDir.getFullPathName()) {
+                hasDefaultMidi = true;
+                break;
+            }
+        }
+    }
+    if (!hasDefaultMidi) {
+        addLibrary("MIDI Collection", defaultMidiDir.getFullPathName(), "midi");
+        // Enable auto-scan for the default library
+        auto ids = getLibraryIds();
+        if (!ids.isEmpty()) setAutoScan(ids[ids.size() - 1], true);
+    }
+
+    // Create example MIDI files if directory is empty
+    createExampleMidiFiles(defaultMidiDir);
+
+    // Auto-scan libraries marked with autoScan
     juce::StringArray autoScanIds;
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -617,6 +645,79 @@ LibraryEntry FileLibraryManager::getEntry(const juce::String& libraryId, const j
     for (const auto& e : it->second)
         if (e.path == path) return e;
     return {};
+}
+
+void FileLibraryManager::createExampleMidiFiles(const juce::File& dir) {
+    // Only create if directory is empty
+    juce::DirectoryIterator iter(dir, false);
+    if (iter.next()) return; // already has files
+
+    auto addNote = [](juce::MidiMessageSequence& seq, int ch, int note, int vel, double onTime, double offTime) {
+        auto on = juce::MidiMessage::noteOn(ch, note, (juce::uint8)vel);
+        on.setTimeStamp(onTime);
+        seq.addEvent(on);
+        auto off = juce::MidiMessage::noteOff(ch, note);
+        off.setTimeStamp(offTime);
+        seq.addEvent(off);
+    };
+
+    // C Major Scale
+    {
+        juce::MidiMessageSequence seq;
+        int notes[] = {60, 62, 64, 65, 67, 69, 71, 72};
+        for (int i = 0; i < 8; ++i)
+            addNote(seq, 1, notes[i], 80, i * 0.5, i * 0.5 + 0.4);
+
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        auto outFile = dir.getChildFile("C Major Scale.mid");
+        juce::FileOutputStream stream(outFile);
+        file.writeTo(stream);
+    }
+
+    // Basic Drum Pattern
+    {
+        juce::MidiMessageSequence seq;
+        for (int bar = 0; bar < 2; ++bar) {
+            double base = bar * 4.0;
+            addNote(seq, 9, 36, 100, base, base + 0.5);
+            addNote(seq, 9, 38, 100, base + 1.0, base + 1.5);
+            addNote(seq, 9, 36, 100, base + 2.0, base + 2.5);
+            addNote(seq, 9, 38, 100, base + 3.0, base + 3.5);
+            for (int h = 0; h < 8; ++h)
+                addNote(seq, 9, 42, 60, base + h * 0.5, base + h * 0.5 + 0.1);
+        }
+
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        auto outFile = dir.getChildFile("Basic Drum Pattern.mid");
+        juce::FileOutputStream stream(outFile);
+        file.writeTo(stream);
+    }
+
+    // Simple Chord Progression (I-IV-V-I)
+    {
+        juce::MidiMessageSequence seq;
+        struct Chord { int notes[3]; double start; };
+        Chord chords[] = {
+            {{60, 64, 67}, 0.0},
+            {{65, 69, 72}, 1.0},
+            {{67, 71, 74}, 2.0},
+            {{60, 64, 67}, 3.0},
+        };
+        for (const auto& c : chords)
+            for (int n : c.notes)
+                addNote(seq, 1, n, 70, c.start, c.start + 0.9);
+
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        auto outFile = dir.getChildFile("Chord Progression I-IV-V-I.mid");
+        juce::FileOutputStream stream(outFile);
+        file.writeTo(stream);
+    }
 }
 
 } // namespace HDAW
