@@ -29,6 +29,7 @@ FileLibraryManager::FileLibraryManager(const juce::File& baseDir) {
 }
 
 FileLibraryManager::~FileLibraryManager() {
+    shutdownRequested.store(true);
     threadPool.removeAllJobs(true, 1000);
 }
 
@@ -113,6 +114,7 @@ void FileLibraryManager::removeLibrary(const juce::String& id) {
             [&](const LibraryInfo& l) { return l.id == id; }), libraries.end());
         entries.erase(id);
         loadedLibraries.erase(id);
+        removedIds.insert(id);
     }
     auto entryFile = librariesDir.getChildFile(id + ".json");
     if (entryFile.existsAsFile()) entryFile.deleteFile();
@@ -142,10 +144,12 @@ bool FileLibraryManager::isScanning() const {
 }
 
 void FileLibraryManager::setScanProgressCallback(ScanProgressCallback cb) {
+    std::lock_guard<std::mutex> lock(mutex);
     progressCallback = std::move(cb);
 }
 
 void FileLibraryManager::setScanCompleteCallback(ScanCompleteCallback cb) {
+    std::lock_guard<std::mutex> lock(mutex);
     completeCallback = std::move(cb);
 }
 
@@ -224,36 +228,60 @@ void FileLibraryManager::scanLibrary(const juce::String& id) {
 
     scanningCount.fetch_add(1);
     threadPool.addJob([this, id, scanDir, type, progressCb, completeCb]() {
-        scanDirectory(id, scanDir);
+        struct ScanCountGuard {
+            std::atomic<int>& counter;
+            ~ScanCountGuard() { counter.fetch_sub(1); }
+        };
+        ScanCountGuard guard{scanningCount};
 
-        int fileCount = 0;
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            for (auto& lib : libraries) {
-                if (lib.id == id) {
-                    lib.fileCount = (int)entries[id].size();
-                    lib.lastScan = juce::Time::getCurrentTime().toISO8601(true);
-                    fileCount = lib.fileCount;
-                    break;
+        try {
+            scanDirectory(id, scanDir);
+
+            // After scanDirectory returns, check if the library was removed
+            // concurrently — if so, bail out without resurrecting it on disk.
+            int fileCount = 0;
+            bool stillPresent = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (removedIds.count(id) == 0) {
+                    for (auto& lib : libraries) {
+                        if (lib.id == id) {
+                            stillPresent = true;
+                            auto eIt = entries.find(id);
+                            fileCount = (eIt != entries.end()) ? (int)eIt->second.size() : 0;
+                            lib.fileCount = fileCount;
+                            lib.lastScan = juce::Time::getCurrentTime().toISO8601(true);
+                            break;
+                        }
+                    }
                 }
             }
+            if (!stillPresent) return;
+
+            if (progressCb) {
+                ScanProgress sp;
+                sp.libraryId = id;
+                sp.scanned = fileCount;
+                sp.total = fileCount;
+                sp.phase = "scanning";
+                progressCb(sp);
+            }
+
+            saveLibraryEntries(id);
+            saveRegistry();
+
+            if (completeCb)
+                completeCb(id, true);
+        } catch (const std::exception& e) {
+            juce::Logger::writeToLog("FileLibraryManager: scan job failed for "
+                + id + ": " + juce::String(e.what()));
+            if (completeCb)
+                completeCb(id, false);
+        } catch (...) {
+            juce::Logger::writeToLog("FileLibraryManager: unknown error in scan job for " + id);
+            if (completeCb)
+                completeCb(id, false);
         }
-
-        if (progressCb) {
-            ScanProgress sp;
-            sp.libraryId = id;
-            sp.scanned = fileCount;
-            sp.total = fileCount;
-            sp.phase = "scanning";
-            progressCb(sp);
-        }
-
-        saveLibraryEntries(id);
-        saveRegistry();
-        scanningCount.fetch_sub(1);
-
-        if (completeCb)
-            completeCb(id, true);
     });
 }
 
@@ -287,6 +315,7 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         e.path = eObj->getProperty("path").toString();
         e.size = (juce::int64)(double)eObj->getProperty("size");
         e.modified = eObj->getProperty("modified").toString();
+        e.modifiedTime = (juce::int64)(double)eObj->getProperty("modifiedTime");
         e.tracks = (int)(double)eObj->getProperty("tracks");
         e.notes = (int)(double)eObj->getProperty("notes");
         e.durationTicks = (int)(double)eObj->getProperty("durationTicks");
@@ -316,18 +345,25 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
 
     // Try single file first
     auto singleFile = librariesDir.getChildFile(id + ".json");
+    bool foundAnyFile = false;
     if (singleFile.existsAsFile()) {
         loadEntriesFromFile(singleFile);
+        foundAnyFile = true;
     } else {
         // Try partition files: {id}_part_*.json
         juce::DirectoryIterator iter(librariesDir, false, id + "_part_*.json");
-        while (iter.next())
+        while (iter.next()) {
+            if (shutdownRequested.load()) return;
             loadEntriesFromFile(iter.getFile());
+            foundAnyFile = true;
+        }
     }
 
-    if (loaded.empty()) return;
-
     // Commit under lock — re-check in case another thread loaded it while we did I/O.
+    // Even an empty loaded vector is committed when at least one file existed on disk,
+    // so subsequent searches don't re-read the empty file every call.
+    if (!foundAnyFile) return;
+
     std::lock_guard<std::mutex> lock(mutex);
     if (loadedLibraries.count(id) > 0) return;
     entries[id] = std::move(loaded);
@@ -348,6 +384,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("path", e.path);
         obj->setProperty("size", (double)e.size);
         obj->setProperty("modified", e.modified);
+        obj->setProperty("modifiedTime", (double)e.modifiedTime);
         obj->setProperty("tracks", e.tracks);
         obj->setProperty("notes", e.notes);
         obj->setProperty("durationTicks", e.durationTicks);
@@ -361,6 +398,14 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("format", e.format);
         return juce::var(obj.get());
     };
+
+    // Clean up stale partition files in ALL cases — covers both the
+    // shrink-to-non-partitioned path (left stale partition files behind)
+    // and the normal partition re-write path. Enumerate by wildcard so we
+    // catch every naming variant regardless of how the partitioned write
+    // branch happens to spell the suffix.
+    juce::DirectoryIterator partIter(librariesDir, false, id + "_part_*.json");
+    while (partIter.next()) partIter.getFile().deleteFile();
 
     if (!shouldPartition) {
         juce::DynamicObject::Ptr root = new juce::DynamicObject();
@@ -381,13 +426,8 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
             partitions[c].push_back(&e);
         }
 
-        // Remove old single file if it exists
+        // Remove old single file (partition files already cleaned up above).
         librariesDir.getChildFile(id + ".json").deleteFile();
-        // Remove old partitions
-        for (int i = 0; i < 26; ++i)
-            librariesDir.getChildFile(id + "_part_" + juce::String(char('a' + i)) + ".json").deleteFile();
-        librariesDir.getChildFile(id + "_part_0.json").deleteFile();
-        librariesDir.getChildFile(id + "_part_.json").deleteFile();
 
         for (const auto& [c, partitionEntries] : partitions) {
             juce::DynamicObject::Ptr root = new juce::DynamicObject();
@@ -442,6 +482,7 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
     juce::Array<juce::File> files;
     juce::DirectoryIterator iter(dir, true, wildcard);
     while (iter.next()) {
+        if (shutdownRequested.load()) return;
         auto f = iter.getFile();
         if (!f.isDirectory()) files.add(f);
     }
@@ -451,14 +492,16 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
     std::vector<LibraryEntry> newEntries;
 
     for (const auto& file : files) {
+        if (shutdownRequested.load()) return;
         const juce::String filePath = file.getFullPathName();
 
-        // Check if file has changed since last scan
+        // Check if file has changed since last scan (millisecond granularity —
+        // ISO8601 string compare silently missed sub-second changes).
         auto it = existingByPath.find(filePath);
         bool needsRescan = true;
         if (it != existingByPath.end()) {
-            const juce::String currentModified = juce::Time(file.getLastModificationTime()).toISO8601(true);
-            if (it->second.modified == currentModified) {
+            const juce::int64 currentModifiedTime = file.getLastModificationTime().toMilliseconds();
+            if (it->second.modifiedTime == currentModifiedTime) {
                 newEntries.push_back(it->second); // reuse existing entry
                 needsRescan = false;
             }
@@ -472,7 +515,8 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                 entry.name = file.getFileName();
                 entry.path = filePath;
                 entry.size = file.getSize();
-                entry.modified = juce::Time(file.getLastModificationTime()).toISO8601(true);
+                entry.modifiedTime = file.getLastModificationTime().toMilliseconds();
+                entry.modified = juce::Time(entry.modifiedTime).toISO8601(true);
                 newEntries.push_back(std::move(entry));
             } catch (const std::exception& e) {
                 juce::Logger::writeToLog("FileLibraryManager: failed to extract metadata for "
@@ -502,14 +546,17 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         }
     }
 
-    // Update entries and library info
+    // Update entries and library info. Bail out if the library was removed
+    // concurrently — otherwise the commit + save below would resurrect it.
     {
         std::lock_guard<std::mutex> lock(mutex);
+        if (removedIds.count(id) > 0) return;
         entries[id] = std::move(newEntries);
         loadedLibraries.insert(id);
         for (auto& lib : libraries) {
             if (lib.id == id) {
-                lib.fileCount = (int)entries[id].size();
+                auto eIt = entries.find(id);
+                lib.fileCount = (eIt != entries.end()) ? (int)eIt->second.size() : 0;
                 lib.lastScan = juce::Time::getCurrentTime().toISO8601(true);
                 break;
             }
@@ -534,7 +581,7 @@ LibraryEntry FileLibraryManager::extractMidiMetadata(const juce::File& file) {
     int ticksPerQuarter = midiFile.getTimeFormat();
     if (ticksPerQuarter <= 0) ticksPerQuarter = 480;
 
-    std::vector<int> noteCounts(12, 0);
+    std::vector<double> noteCounts(12, 0.0);
     int maxTick = 0;
     bool foundTempo = false;
     int numerator = 4, denominator = 4;
@@ -552,7 +599,7 @@ LibraryEntry FileLibraryManager::extractMidiMetadata(const juce::File& file) {
             if (msg.isNoteOn() && msg.getVelocity() > 0) {
                 totalNotes++;
                 int pitch = msg.getNoteNumber() % 12;
-                noteCounts[pitch]++;
+                noteCounts[pitch] += 1.0;
             }
 
             if (msg.isMetaEvent()) {
@@ -595,7 +642,7 @@ LibraryEntry FileLibraryManager::extractMidiMetadata(const juce::File& file) {
     return entry;
 }
 
-juce::String FileLibraryManager::detectKey(const std::vector<int>& noteCounts) const {
+juce::String FileLibraryManager::detectKey(const std::vector<double>& noteCounts) const {
     if (noteCounts.size() != 12) return {};
 
     // Major scale intervals: 0,2,4,5,7,9,11
@@ -618,11 +665,11 @@ juce::String FileLibraryManager::detectKey(const std::vector<int>& noteCounts) c
         for (int i = 0; i < 12; ++i) {
             int idx = (i + root) % 12;
             if (majorPattern[i]) {
-                majorScore += (double)noteCounts[idx];
+                majorScore += noteCounts[idx];
                 majorCount++;
             }
             if (minorPattern[i]) {
-                minorScore += (double)noteCounts[idx];
+                minorScore += noteCounts[idx];
                 minorCount++;
             }
         }
@@ -682,7 +729,7 @@ LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
             juce::AudioBuffer<float> buf((int)reader->numChannels, blockSize);
             reader->read(&buf, 0, blockSize, 0, true, true);
 
-            std::vector<int> pitchClassCounts(12, 0);
+            std::vector<double> pitchClassCounts(12, 0.0);
             juce::dsp::FFT fft(kFftOrder);
             for (int start = 0; start + kFftSize <= blockSize; start += kHopSize) {
                 std::array<float, kFreqDataSize> freqData{};
@@ -702,7 +749,7 @@ LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
                                           + freqData[bin * 2 + 1] * freqData[bin * 2 + 1]);
                     float midi = 69.0f + 12.0f * std::log2(freq / kReferenceA);
                     int pc = ((int)std::round(midi) % 12 + 12) % 12;
-                    pitchClassCounts[pc] += (int)mag;
+                    pitchClassCounts[pc] += (double)mag;
                 }
             }
             entry.key = detectKey(pitchClassCounts);

@@ -81,7 +81,7 @@ function setupSubscriptions() {
     }
   }));
 
-  cleanups.push(rpc.onNotification("notify.scanProgress", (_method, params) => {
+  cleanups.push(rpc.onNotification("notify.libraryScanProgress", (_method, params) => {
     const p = params as { libraryId?: string; scanned?: number; total?: number; phase?: string } | undefined;
     if (p && typeof p.libraryId === "string" && typeof p.scanned === "number" && typeof p.total === "number") {
       useLibraryStore.getState().updateScanProgress({

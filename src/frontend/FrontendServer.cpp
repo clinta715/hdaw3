@@ -55,14 +55,14 @@ FrontendServer::FrontendServer(AudioEngine& engine, QObject* parent)
         evt["total"] = p.total;
         evt["phase"] = QString::fromUtf8(p.phase.toRawUTF8());
         broadcastNotificationFromAnyThread(
-            QString::fromUtf8(frontend::notify::ScanProgress), evt);
+            QString::fromUtf8(frontend::notify::LibraryScanProgress), evt);
     });
     libMgr.setScanCompleteCallback([this](const juce::String& id, bool success) {
         QJsonObject evt;
         evt["libraryId"] = QString::fromUtf8(id.toRawUTF8());
         evt["success"] = success;
         broadcastNotificationFromAnyThread(
-            QStringLiteral("notify.libraryScanComplete"), evt);
+            QString::fromUtf8(frontend::notify::LibraryScanComplete), evt);
     });
 
     // Plugin directory watcher — auto-rescan when VST3/CLAP dirs change.

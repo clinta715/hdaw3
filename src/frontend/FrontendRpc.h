@@ -46,6 +46,8 @@ namespace notify {
     inline constexpr const char* Meters         = "notify.meters";
     inline constexpr const char* Transport      = "notify.transport";
     inline constexpr const char* ScanProgress   = "notify.scanProgress";
+    inline constexpr const char* LibraryScanProgress = "notify.libraryScanProgress";
+    inline constexpr const char* LibraryScanComplete = "notify.libraryScanComplete";
     inline constexpr const char* ExportProgress = "notify.exportProgress";
     inline constexpr const char* LoadProgress   = "notify.loadProgress";
     inline constexpr const char* SessionState   = "notify.sessionStateChanged";

@@ -16,6 +16,7 @@ struct LibraryEntry {
     juce::String path;
     juce::int64 size = 0;
     juce::String modified; // ISO 8601
+    juce::int64 modifiedTime = 0; // raw milliseconds from getLastModificationTime()
 
     // MIDI-specific
     int tracks = 0;
@@ -97,16 +98,18 @@ private:
     void scanDirectory(const juce::String& id, const juce::File& dir);
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
-    juce::String detectKey(const std::vector<int>& noteCounts) const;
+    juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
 
     mutable std::mutex mutex;
     std::vector<LibraryInfo> libraries;
     std::unordered_map<juce::String, std::vector<LibraryEntry>> entries;
     std::unordered_set<juce::String> loadedLibraries;
+    std::unordered_set<juce::String> removedIds;
     juce::File registryFile;
     juce::File librariesDir;
     std::atomic<int> scanningCount{0};
+    std::atomic<bool> shutdownRequested{false};
     ScanProgressCallback progressCallback;
     ScanCompleteCallback completeCallback;
     juce::ThreadPool threadPool{2};

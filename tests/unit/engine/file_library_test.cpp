@@ -448,3 +448,264 @@ TEST_F(FileLibraryTest, PartitioningByFirstChar) {
     EXPECT_DOUBLE_EQ(results[0].durationSeconds, 1.0);
     EXPECT_DOUBLE_EQ(results[1].durationSeconds, 2.0);
 }
+
+// G3: scanningCount must always be decremented when a scan job ends,
+// even if a corrupt input file makes metadata extraction throw inside
+// the per-file try/catch (which catches it) — the invariant is that
+// isScanning() returns false after any scan, success or partial failure.
+TEST_F(FileLibraryTest, ScanLibraryDecrementsScanningCountOnException) {
+    auto midiDir = tempDir.getChildFile("corrupt_scan");
+    midiDir.createDirectory();
+
+    // One valid MIDI file
+    {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile("valid.mid"));
+        file.writeTo(s);
+        s.flush();
+    }
+    // One corrupt .mid file (random bytes — extractMidiMetadata will read it
+    // but the parser yields an empty entry rather than throwing; either way
+    // the per-file try/catch absorbs it and the scan completes).
+    midiDir.getChildFile("corrupt.mid").replaceWithText("NOT A MIDI FILE");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Corrupt", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    EXPECT_FALSE(mgr.isScanning());
+}
+
+// G4: removeLibrary during an in-flight scan must not be resurrected by
+// the scan job's save step. We assert across a NEW manager instance to
+// prove nothing is re-read from disk.
+TEST_F(FileLibraryTest, RemoveLibraryDuringScanDoesNotResurrect) {
+    auto midiDir = tempDir.getChildFile("race_scan");
+    midiDir.createDirectory();
+
+    // Plenty of files so the scan takes observable time.
+    for (int i = 0; i < 20; ++i) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile("f" + juce::String(i) + ".mid"));
+        file.writeTo(s);
+        s.flush();
+    }
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("RaceTarget", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    // Remove immediately while the scan may still be running.
+    mgr.removeLibrary(id);
+
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+
+    auto ids = mgr.getLibraryIds();
+    EXPECT_TRUE(std::find(ids.begin(), ids.end(), id) == ids.end());
+
+    // Restart-simulation: brand-new manager on the same tempDir must not
+    // re-discover the removed library from the registry.
+    HDAW::FileLibraryManager mgr2(tempDir);
+    auto ids2 = mgr2.getLibraryIds();
+    EXPECT_TRUE(std::find(ids2.begin(), ids2.end(), id) == ids2.end());
+
+    // No {id}.json or {id}_part_*.json should exist on disk.
+    auto libsDir = tempDir.getChildFile("libraries");
+    EXPECT_FALSE(libsDir.getChildFile(id + ".json").existsAsFile());
+    for (int i = 0; i < 26; ++i)
+        EXPECT_FALSE(libsDir.getChildFile(id + "_part_" + juce::String(char('a' + i)) + ".json").existsAsFile());
+    EXPECT_FALSE(libsDir.getChildFile(id + "_part_0.json").existsAsFile());
+    EXPECT_FALSE(libsDir.getChildFile(id + "_part_.json").existsAsFile());
+}
+
+// G5: An empty library must be marked loaded so subsequent searches don't
+// re-read the empty .json file every call. Old code bailed on loaded.empty().
+TEST_F(FileLibraryTest, EmptyLibraryMarkedLoaded) {
+    auto emptyDir = tempDir.getChildFile("empty_lib");
+    emptyDir.createDirectory();
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Empty", emptyDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    // scanDirectory's commit block inserted an empty entries[id] and saved
+    // {id}.json with an empty array. search() should produce zero results
+    // without throwing — and, critically, without re-reading the file every
+    // call (the bug being fixed).
+    auto r1 = mgr.search("");
+    EXPECT_EQ(r1.size(), 0u);
+    auto r2 = mgr.search("");
+    EXPECT_EQ(r2.size(), 0u);
+}
+
+// G6: When a library shrinks from >50k partitioned to <=50k single-file,
+// stale {id}_part_*.json files must be cleaned up. We simulate a stale
+// partition file and verify a non-partitioned save removes it.
+TEST_F(FileLibraryTest, ShrinkFromPartitionedRemovesPartitions) {
+    auto midiDir = tempDir.getChildFile("shrink_test");
+    midiDir.createDirectory();
+
+    // One real MIDI file → small library → non-partitioned save path.
+    {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream s(midiDir.getChildFile("only.mid"));
+        file.writeTo(s);
+        s.flush();
+    }
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Shrink", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    auto libsDir = tempDir.getChildFile("libraries");
+    // Plant a stale partition file (as if the library used to be partitioned).
+    libsDir.getChildFile(id + "_part_a.json").replaceWithText("{\"entries\":[]}");
+    ASSERT_TRUE(libsDir.getChildFile(id + "_part_a.json").existsAsFile());
+
+    // Trigger another scan — saveLibraryEntries runs the non-partitioned
+    // branch, which must clean up stale partition files at the top.
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    EXPECT_FALSE(libsDir.getChildFile(id + "_part_a.json").existsAsFile());
+    EXPECT_TRUE(libsDir.getChildFile(id + ".json").existsAsFile());
+}
+
+// G7: Sub-second mtime changes must be detected. ISO8601 string compare has
+// 1-second granularity and missed them; the int64 modifiedTime comparison
+// picks up a 1ms bump. We prove rescan by changing the note count — same
+// file path, different content. Before the fix the entry was reused; after
+// the fix the file is rescanned.
+TEST_F(FileLibraryTest, IncrementalScanDetectsSubSecondChange) {
+    auto midiDir = tempDir.getChildFile("subsec");
+    midiDir.createDirectory();
+    auto midiFile = midiDir.getChildFile("t.mid");
+
+    // Writes N notes all at tick 0 (the proven pattern from ExtractMidiMetadata).
+    // We delete first: JUCE's FileOutputStream opens with OPEN_ALWAYS and does
+    // NOT truncate — re-writing the same path appends bytes and produces a
+    // malformed MIDI stream.
+    auto writeMidi = [&](int noteCount) {
+        midiFile.deleteFile();
+        juce::MidiMessageSequence seq;
+        for (int i = 0; i < noteCount; ++i) {
+            seq.addEvent(juce::MidiMessage::noteOn(1, 60 + i, (juce::uint8)80).withTimeStamp(0.0));
+            seq.addEvent(juce::MidiMessage::noteOff(1, 60 + i).withTimeStamp(1.0));
+        }
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        {
+            juce::FileOutputStream s(midiFile);
+            file.writeTo(s);
+            s.flush();
+        }
+    };
+
+    writeMidi(1);
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("SubSec", midiDir.getFullPathName(), "midi");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    auto r1 = mgr.search("");
+    ASSERT_EQ(r1.size(), 1u);
+    EXPECT_EQ(r1[0].notes, 1);
+
+    const juce::int64 originalMillis = midiFile.getLastModificationTime().toMilliseconds();
+
+    // Rewrite with 3 notes, then bump mtime by 1ms — same ISO8601 second,
+    // different int64. Before the fix the entry was reused (notes still 1);
+    // after the fix the file is rescanned and notes reflects new content.
+    writeMidi(3);
+    ASSERT_TRUE(midiFile.setLastModificationTime(juce::Time(originalMillis + 1)));
+
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    auto r2 = mgr.search("");
+    ASSERT_EQ(r2.size(), 1u);
+    EXPECT_EQ(r2[0].notes, 3) << "sub-second mtime change should trigger rescan";
+}
+
+// G8: Audio key detection must produce a non-empty key. Before the
+// (int)mag truncation fix, the chromagram was effectively all-zero and
+// detectKey returned noise/empty. A full C-major scale (C D E F G A B)
+// puts strong energy in pitch classes {0,2,4,5,7,9,11} — every note of
+// the C major scale — and ~zero elsewhere, so the algorithm robustly
+// classifies the sample as C. (A pure single-tone or triad suffers from
+// FFT-bin leakage that creates phantom pitch classes, making the
+// discriminator's choice noisy; a full scale is the unambiguous test
+// signal for key detection.)
+TEST_F(FileLibraryTest, AudioKeyDetectionProducesNonEmptyKey) {
+    auto audioDir = tempDir.getChildFile("key_detect");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("cmajscale.wav");
+
+    // 3 seconds of a C major scale (C4 D4 E4 F4 G4 A4 B4) played as a chord.
+    constexpr double kPI = 3.14159265358979323846;
+    constexpr double kSampleRate = 44100.0;
+    const double freqs[] = {261.6256, 293.6648, 329.6276, 349.2282, 391.9954, 440.0000, 493.8833};
+    constexpr int kNumSamples = (int)(3.0 * kSampleRate);
+    juce::AudioBuffer<float> buffer(1, kNumSamples);
+    for (int i = 0; i < kNumSamples; ++i) {
+        double s = 0.0;
+        for (double f : freqs)
+            s += std::sin(2.0 * kPI * f * (double)i / kSampleRate);
+        buffer.setSample(0, i, (float)(s / (double)(sizeof(freqs)/sizeof(freqs[0]))));
+    }
+
+    auto outStream = wavFile.createOutputStream();
+    ASSERT_NE(outStream, nullptr);
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(outStream.get(), kSampleRate, 1, 16, {}, 0));
+    ASSERT_NE(writer, nullptr);
+    outStream.release();
+    writer->writeFromAudioSampleBuffer(buffer, 0, kNumSamples);
+    writer.reset();
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("CmajScale", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_FALSE(results[0].key.isEmpty()) << "key detection must produce a non-empty key";
+    EXPECT_TRUE(results[0].key.startsWith("C"))
+        << "expected C-classification for a C major scale, got: " << results[0].key.toStdString();
+}
