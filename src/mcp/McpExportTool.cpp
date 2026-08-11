@@ -44,10 +44,12 @@ void registerExportTool(McpServer& s) {
             if (a.value("dryRun").toBool(false))
                 return McpToolResult::text(QString("would export to %1").arg(path));
 
-            if (s.isCancelRequested()) {
-                s.resetCancelFlag();
-                return McpToolResult::text("export cancelled (flag was already set)", true);
-            }
+            // The MCP client re-sends notifications/cancelled routinely between
+            // tool calls, so a pre-set flag must not block this export: refuse
+            // on a stale flag and export is permanently locked out. Consume the
+            // flag and proceed — cancels arriving DURING the render are still
+            // honored by the onProgress hook below, which checks isCancelRequested().
+            s.resetCancelFlag();
 
             QString formatStr = a.value("format").toString("wav").toLower();
             HDAW::ExportManager::Format fmt = HDAW::ExportManager::WAV;
