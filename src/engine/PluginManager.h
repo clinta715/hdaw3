@@ -94,6 +94,14 @@ public:
 
     juce::Array<juce::File> findPluginFiles(const juce::StringArray& dirs);
 
+    // Isolated scanning
+    struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; int numPrograms = 0; juce::StringArray programNames; juce::String name, manufacturer, category, format, file, id, error; };
+    ScanResult scanPluginIsolated(const juce::String& pluginPath);
+
+    // Test seams (not used in production paths)
+    void setBlacklistFileForTesting(const juce::File& f) { blacklistFile = f; }
+    void setScannerExePathForTesting(const juce::File& f) { scannerExePath = f; }
+
     bool respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& pluginPath);
 
     void killProxyForTesting(uint32_t slotId);
@@ -123,8 +131,6 @@ private:
 
     // Isolated scanning
     juce::File scannerExePath;
-    struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; int numPrograms = 0; juce::StringArray programNames; juce::String name, manufacturer, category, format, file, id, error; };
-    ScanResult scanPluginIsolated(const juce::String& pluginPath);
     int lastScanCrashCount = 0;
 
     std::unique_ptr<CrashRecoveryManager> crashRecovery;

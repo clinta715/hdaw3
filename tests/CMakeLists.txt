@@ -6,6 +6,10 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+add_executable(scan_hang_helper
+    scan_hang_helper/main.cpp
+)
+
 add_executable(hdaw_tests
     test_main.cpp
     unit/mcp/json_rpc_test.cpp
@@ -28,6 +32,7 @@ add_executable(hdaw_tests
     unit/engine/plugin_state_save_load_test.cpp
     unit/engine/plugin_identifier_resolution_test.cpp
     unit/engine/preset_cache_test.cpp
+    unit/engine/plugin_manager_scan_test.cpp
     unit/engine/markers_test.cpp
     unit/engine/stretch_test.cpp
     unit/engine/modulation_test.cpp

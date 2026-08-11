@@ -1,7 +1,9 @@
 #include "PluginManager.h"
 #include "../common/DebugLog.h"
+#include "../common/PluginBinaryInfo.h"
 #include "../frontend/FrontendServer.h"
 #include "../frontend/FrontendRpc.h"
+#include <cstdlib>
 #include <stdexcept>
 #include <QJsonObject>
 #include <QString>
@@ -24,6 +26,36 @@ void __cdecl sehPluginCrashTranslator(unsigned int, struct _EXCEPTION_POINTERS*)
     throw std::runtime_error("Plugin crashed during instantiation");
 }
 #endif
+
+namespace {
+
+// Parses an HDAW_* timeout env knob. Unset/empty/<=0 values fall back to the
+// default. Env vars are trusted (dev diagnostics), but the parse is defensive
+// regardless (never std::stoi on raw env text).
+int envIntOrDefault(const char* name, int defaultValue)
+{
+    const char* v = std::getenv(name);
+    if (v == nullptr || v[0] == '\0')
+        return defaultValue;
+    const int parsed = juce::String(v).getIntValue();
+    return parsed > 0 ? parsed : defaultValue;
+}
+
+// Per-file scanner timeout (was hardcoded 30000 — too short for slow plugins
+// like Serum2/WOMBintro).
+int scanTimeoutMs()
+{
+    return envIntOrDefault("HDAW_SCAN_PLUGIN_TIMEOUT_MS", 90000);
+}
+
+// Hard overall cap for a whole scanAll() pass — guarantees a scan can never
+// stall indefinitely regardless of per-file behavior.
+int totalTimeoutMs()
+{
+    return envIntOrDefault("HDAW_SCAN_TOTAL_TIMEOUT_MS", 900000);
+}
+
+} // namespace
 
 namespace HDAW {
 
@@ -170,9 +202,22 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
     juce::Logger::writeToLog("PluginManager: found " + juce::String(pluginFiles.size()) + " plugin files to scan");
     juce::Logger::writeToLog("PluginManager: scannerExePath=" + scannerExePath.getFullPathName() + " exists=" + (scannerExePath.existsAsFile() ? "yes" : "no"));
 
+    // Hard overall cap so a scan can never stall indefinitely, even if a
+    // wedged child defies the per-file timeout.
+    const auto deadline = juce::Time::getMillisecondCounter() + (juce::uint32)totalTimeoutMs();
+
     for (const auto& file : pluginFiles)
     {
         if (abortRequested.load()) break;
+
+        if (juce::Time::getMillisecondCounter() >= deadline)
+        {
+            juce::Logger::writeToLog("PluginManager: scan aborted - total time cap exceeded ("
+                + juce::String(totalTimeoutMs() / 1000) + "s) after " + juce::String(completed) + " files");
+            if (progressCb)
+                progressCb("aborted (total time cap)", completed, 0);
+            break;
+        }
 
         auto path = file.getFullPathName();
         juce::Logger::writeToLog("PluginManager: scanning " + path);
@@ -190,7 +235,23 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
         if (alreadyKnown) continue;
 
         // Skip if blacklisted
-        if (isBlacklisted(path)) continue;
+        if (isBlacklisted(path))
+        {
+            juce::Logger::writeToLog("PluginManager: skipped (blacklisted): " + path);
+            continue;
+        }
+
+        // Skip 32-bit binaries: they cannot load in the x64 scanner process,
+        // and a bad one (e.g. FM8.vst3) hangs the scanner. Keep them out of
+        // the scan entirely instead of burning the per-file timeout.
+        if (is32BitPluginBinary(file))
+        {
+            juce::Logger::writeToLog("PluginManager: skipped (32-bit binary): " + path);
+            if (progressCb)
+                progressCb("SKIPPED (32-bit): " + file.getFileName(), completed, 0);
+            completed++;
+            continue;
+        }
 
         if (progressCb)
             progressCb(file.getFileName(), completed, 0);
@@ -230,7 +291,7 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                 juce::Logger::writeToLog("PluginManager: found (isolated) - "
                                          + (scanResult.name.isNotEmpty() ? scanResult.name : path));
             }
-            else if (scanResult.error == "Scanner timed out (30s)" ||
+            else if (scanResult.error.startsWith("Scanner timed out") ||
                      scanResult.error.startsWith("Scanner exited with code"))
             {
                 if (pedalFile.existsAsFile())
@@ -407,8 +468,12 @@ juce::Array<juce::File> PluginManager::findPluginFiles(const juce::StringArray& 
         juce::File d(dir);
         if (!d.isDirectory()) continue;
 
-        // VST3 files/bundles
+        // VST3 files/bundles. On Windows, plugins can be single .vst3 files
+        // OR directory bundles (e.g. Serum2.vst3, WOMBintro.vst3 ship as
+        // <name>.vst3/Contents/x86_64-win/...) — enumerate both, otherwise
+        // bundle plugins are invisible to the scan.
         d.findChildFiles(result, juce::File::findFiles, false, "*.vst3");
+        d.findChildFiles(result, juce::File::findDirectories, false, "*.vst3");
         // CLAP files
         d.findChildFiles(result, juce::File::findFiles, false, "*.clap");
     }
@@ -447,19 +512,33 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
         return result;
     }
 
-    // Wait up to 30 seconds
-    bool finished = child.waitForProcessToFinish(30000);
-    auto output = child.readAllProcessOutput();
-    int exitCode = child.getExitCode();
+    // Wait for the scanner to finish (per-file timeout, env knob
+    // HDAW_SCAN_PLUGIN_TIMEOUT_MS, default 90s).
+    const int timeoutMs = scanTimeoutMs();
+    bool finished = child.waitForProcessToFinish(timeoutMs);
 
     if (!finished)
     {
-        // Timeout — kill the child
+        // Timeout — kill the child. NEVER read output or exit code on this
+        // path: on a hung plugin (e.g. a 32-bit image half-loaded into the
+        // x64 scanner) TerminateProcess may not signal the process handle,
+        // so ChildProcess::readAllProcessOutput() would block forever and
+        // the scan would stall indefinitely. Bounded re-waits only.
+        juce::String note = "Scanner timed out (" + juce::String(timeoutMs / 1000) + "s)";
         child.kill();
-        result.error = "Scanner timed out (30s)";
+        if (!child.waitForProcessToFinish(5000))
+        {
+            child.kill();
+            (void)child.waitForProcessToFinish(2000);
+        }
+        note += child.isRunning() ? " (child process may linger)" : " - process terminated";
+        result.error = note;
         // Pedal file still has the plugin path — caller will read it
         return result;
     }
+
+    auto output = child.readAllProcessOutput();
+    int exitCode = child.getExitCode();
 
     // Only clear pedal on normal exit (success or load failure).
     // Leave it intact for crash exit codes so scanAll() can read it.
@@ -683,6 +762,7 @@ void PluginManager::unblacklistPlugin(const juce::String& pluginID)
     {
         if (*it == pluginID)
         {
+            blacklistReasons.erase(*it);
             blacklistedIDs.erase(it);
             saveBlacklist();
             return;
@@ -693,6 +773,7 @@ void PluginManager::unblacklistPlugin(const juce::String& pluginID)
 void PluginManager::loadBlacklist()
 {
     blacklistedIDs.clear();
+    blacklistReasons.clear();
     if (!blacklistFile.existsAsFile())
         return;
 
@@ -700,7 +781,13 @@ void PluginManager::loadBlacklist()
     if (xml == nullptr)
         return;
 
-    auto* root = xml->getChildByName("BLACKLIST");
+    // saveBlacklist() writes <BLACKLIST> as the document root, so the parsed
+    // root IS the blacklist element. Older files wrapped it in a container
+    // element (e.g. <KNOWNPLUGINS><BLACKLIST>...) — fall back to the named
+    // child for those.
+    auto* root = xml.get();
+    if (root == nullptr || !root->hasTagName("BLACKLIST"))
+        root = xml->getChildByName("BLACKLIST");
     if (root == nullptr)
         return;
 
