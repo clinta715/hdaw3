@@ -402,6 +402,20 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
 }
 
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
+    if (!dir.isDirectory()) {
+        juce::Logger::writeToLog("FileLibraryManager: directory not found: " + dir.getFullPathName());
+        std::lock_guard<std::mutex> lock(mutex);
+        for (auto& lib : libraries) {
+            if (lib.id == id) {
+                lib.lastScan = juce::Time::getCurrentTime().toISO8601(true);
+                lib.fileCount = 0;
+                break;
+            }
+        }
+        saveRegistry();
+        return;
+    }
+
     juce::String type;
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -451,14 +465,22 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         }
 
         if (needsRescan) {
-            LibraryEntry entry = (type == "audio")
-                ? extractAudioMetadata(file)
-                : extractMidiMetadata(file);
-            entry.name = file.getFileName();
-            entry.path = filePath;
-            entry.size = file.getSize();
-            entry.modified = juce::Time(file.getLastModificationTime()).toISO8601(true);
-            newEntries.push_back(std::move(entry));
+            try {
+                LibraryEntry entry = (type == "audio")
+                    ? extractAudioMetadata(file)
+                    : extractMidiMetadata(file);
+                entry.name = file.getFileName();
+                entry.path = filePath;
+                entry.size = file.getSize();
+                entry.modified = juce::Time(file.getLastModificationTime()).toISO8601(true);
+                newEntries.push_back(std::move(entry));
+            } catch (const std::exception& e) {
+                juce::Logger::writeToLog("FileLibraryManager: failed to extract metadata for "
+                    + file.getFileName() + ": " + juce::String(e.what()));
+            } catch (...) {
+                juce::Logger::writeToLog("FileLibraryManager: unknown error extracting metadata for "
+                    + file.getFileName());
+            }
         }
 
         ++scanned;
@@ -632,6 +654,7 @@ LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
     formatManager.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
     if (!reader) return entry;
+    if (reader->sampleRate <= 0.0) return entry;
 
     entry.durationSeconds = (double)reader->lengthInSamples / reader->sampleRate;
     entry.sampleRate = reader->sampleRate;
@@ -644,31 +667,40 @@ LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
 
     // Best-effort key detection via chromagram. Runs on the scan threadpool,
     // not the audio thread, so heap allocation / FFT work are fine here.
+    constexpr int kFftOrder = 11;           // 2^11 = 2048-point FFT
+    constexpr int kFftSize = 1 << kFftOrder; // 2048
+    constexpr int kHopSize = kFftSize / 2;   // 1024
+    constexpr int kFreqDataSize = kFftSize * 2; // 4096 (real + imag)
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kMinFreq = 50.0f;
+    constexpr float kMaxFreq = 5000.0f;
+    constexpr float kReferenceA = 440.0f;
+
     int blockSize = juce::jmin((int)reader->lengthInSamples, 44100 * 10);
-    if (blockSize >= 2048) {
+    if (blockSize >= kFftSize) {
         try {
             juce::AudioBuffer<float> buf((int)reader->numChannels, blockSize);
             reader->read(&buf, 0, blockSize, 0, true, true);
 
             std::vector<int> pitchClassCounts(12, 0);
-            juce::dsp::FFT fft(11); // 2^11 = 2048-point
-            for (int start = 0; start + 2048 <= blockSize; start += 1024) {
-                std::array<float, 4096> freqData{};
-                for (int i = 0; i < 2048; ++i) {
+            juce::dsp::FFT fft(kFftOrder);
+            for (int start = 0; start + kFftSize <= blockSize; start += kHopSize) {
+                std::array<float, kFreqDataSize> freqData{};
+                for (int i = 0; i < kFftSize; ++i) {
                     float sample = 0.0f;
                     for (int ch = 0; ch < buf.getNumChannels(); ++ch)
                         sample += buf.getSample(ch, start + i);
                     sample /= (float)buf.getNumChannels();
-                    float hann = 0.5f * (1.0f - std::cos(2.0f * 3.14159265f * (float)i / 2048.0f));
+                    float hann = 0.5f * (1.0f - std::cos(2.0f * kPi * (float)i / (float)kFftSize));
                     freqData[i] = sample * hann;
                 }
                 fft.performRealOnlyForwardTransform(freqData.data());
-                for (int bin = 1; bin < 1024; ++bin) {
-                    float freq = (float)bin * (float)reader->sampleRate / 2048.0f;
-                    if (freq < 50.0f || freq > 5000.0f) continue;
+                for (int bin = 1; bin < kHopSize; ++bin) {
+                    float freq = (float)bin * (float)reader->sampleRate / (float)kFftSize;
+                    if (freq < kMinFreq || freq > kMaxFreq) continue;
                     float mag = std::sqrt(freqData[bin * 2] * freqData[bin * 2]
                                           + freqData[bin * 2 + 1] * freqData[bin * 2 + 1]);
-                    float midi = 69.0f + 12.0f * std::log2(freq / 440.0f);
+                    float midi = 69.0f + 12.0f * std::log2(freq / kReferenceA);
                     int pc = ((int)std::round(midi) % 12 + 12) % 12;
                     pitchClassCounts[pc] += (int)mag;
                 }
