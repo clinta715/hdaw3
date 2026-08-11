@@ -394,6 +394,14 @@ void CLAPPluginInstance::initialize()
     host->setInstance(this);
     buildParameters();
     buildBuses();
+
+    HDAW_LOG("clap_host", "ext-probe plugin=" + getName()
+        + " params=" + juce::String(paramsExt != nullptr ? static_cast<int>(paramsExt->count(plugin)) : 0)
+        + " program-list=" + juce::String(plugin->get_extension(plugin, "clap.program-list") ? "true" : "false")
+        + " preset-load=" + juce::String(plugin->get_extension(plugin, "clap.preset-load") ? "true" : "false")
+        + " preset-load/2=" + juce::String(plugin->get_extension(plugin, "clap.preset-load/2") ? "true" : "false")
+        + " preset-load.draft/2=" + juce::String(plugin->get_extension(plugin, "clap.preset-load.draft/2") ? "true" : "false")
+        + " preset-discovery=" + juce::String(plugin->get_extension(plugin, "clap.preset-discovery") ? "true" : "false"));
 }
 
 void CLAPPluginInstance::addCLAPParameter(std::unique_ptr<CLAPParameter> param)

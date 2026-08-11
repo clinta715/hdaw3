@@ -1,8 +1,13 @@
 @echo off
 :: mcp-launch.bat — copy-on-launch wrapper for HDAW MCP server.
-:: Copies HDAW_headless.exe to %TEMP% before running it, so the original
-:: file is never locked and cmake --build can overwrite it freely.
-:: The next MCP session automatically picks up the freshly built binary.
+:: Copies HDAW_headless.exe, hdaw_plugin_host.exe AND hdaw_plugin_scanner.exe
+:: to %TEMP% before running, so the original files are never locked and
+:: cmake --build can overwrite them freely. The plugin host too:
+:: getHostExePath() resolves it as a sibling of the running exe, and a stale
+:: host in %TEMP% breaks the READY handshake for every isolated plugin. The
+:: scanner likewise: EngineMCP spawns the scanner from %TEMP% at scan time,
+:: so a stale scanner in %TEMP% silently downgrades every plugin scan.
+:: The next MCP session automatically picks up the freshly built binaries.
 ::
 :: DLLs (Qt, JUCE, etc.) stay in the build directory; PATH is extended so
 :: the temp copy can find them without duplicating 100+ MB of DLLs.
@@ -25,6 +30,34 @@ if not exist "%SRC%" (
 copy /Y "%SRC%" "%DST%" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Failed to copy HDAW_headless.exe to temp. >&2
+    exit /b 1
+)
+
+set "HOST_SRC=%BUILD_DIR%\hdaw_plugin_host.exe"
+set "HOST_DST=%TEMP%\hdaw_plugin_host.exe"
+
+if not exist "%HOST_SRC%" (
+    echo ERROR: %HOST_SRC% not found. Run cmake --build build --config Debug --target hdaw_plugin_host first. >&2
+    exit /b 1
+)
+
+copy /Y "%HOST_SRC%" "%HOST_DST%" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Failed to copy hdaw_plugin_host.exe to temp. >&2
+    exit /b 1
+)
+
+set "SCAN_SRC=%BUILD_DIR%\hdaw_plugin_scanner.exe"
+set "SCAN_DST=%TEMP%\hdaw_plugin_scanner.exe"
+
+if not exist "%SCAN_SRC%" (
+    echo ERROR: %SCAN_SRC% not found. Run cmake --build build --config Debug --target hdaw_plugin_scanner first. >&2
+    exit /b 1
+)
+
+copy /Y "%SCAN_SRC%" "%SCAN_DST%" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Failed to copy hdaw_plugin_scanner.exe to temp. >&2
     exit /b 1
 )
 

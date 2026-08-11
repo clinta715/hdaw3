@@ -1,4 +1,5 @@
 #include "ProxyProcessManager.h"
+#include "../common/DebugLog.h"
 #include <chrono>
 #include <cstring>
 
@@ -19,6 +20,8 @@ ProxyProcessManager::~ProxyProcessManager() {
 }
 
 bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_t slotId) {
+    HDAW_LOG("proxy", "spawnPluginHost: slotId=" + std::to_string(slotId) + " plugin=" + pluginPath);
+
     // Defensively terminate + release any orphaned child/pipe/shm for this slot
     // before creating new ones. killPluginHost takes the mutex internally, so we
     // must NOT already hold it here. Returns false if none — harmless. This
@@ -35,8 +38,13 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     auto shmNameStr = makeShmName(slotId);
     auto hostExe = getHostExePath();
 
+    HDAW_LOG("proxy", "spawnPluginHost: hostExe=" + hostExe + " plugin=" + pluginPath);
+
     auto pipeServer = std::make_unique<PipeServer>(pipeName);
-    if (!pipeServer->start()) return false;
+    if (!pipeServer->start()) {
+        HDAW_LOG("proxy", "spawnPluginHost: PipeServer::start() FAILED for " + pipeName);
+        return false;
+    }
 
     auto shmRegion = std::make_unique<ShmRegion>();
     // Size the mapping for the worst-case config (see kMaxShm* in
@@ -45,6 +53,7 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     // index the rings with hdr->capacity, so the mapping must cover it.
     uint32_t shmSize = computeShmSize(kMaxShmChannels, kMaxShmBlockSize);
     if (!shmRegion->create(shmNameStr, shmSize)) {
+        HDAW_LOG("proxy", "spawnPluginHost: ShmRegion::create() FAILED for " + shmNameStr);
         pipeServer->stop();
         return false;
     }
@@ -80,21 +89,27 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         &si, &pi);
 
     if (!ok) {
+        HDAW_LOG("proxy", "spawnPluginHost: CreateProcessA FAILED error=" + std::to_string(static_cast<int>(GetLastError())));
         pipeServer->stop();
         return false;
     }
 
     CloseHandle(pi.hThread);
 
+    HDAW_LOG("proxy", "spawnPluginHost: child spawned, waiting for READY");
+
     // Wait for READY outside the lock (with timeout)
     // Child sends READY as a ProxyResponse
     ProxyResponse readyResp{};
     if (!pipeServer->receiveResp(readyResp)) {
+        HDAW_LOG("proxy", "spawnPluginHost: READY timeout or pipe error for slot " + std::to_string(slotId));
         TerminateProcess(pi.hProcess, 0);
         CloseHandle(pi.hProcess);
         pipeServer->stop();
         return false;
     }
+
+    HDAW_LOG("proxy", "spawnPluginHost: READY received for slot " + std::to_string(slotId));
 
     // Now take the lock to insert the child info
     ChildInfo info;
