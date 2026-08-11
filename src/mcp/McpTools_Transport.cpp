@@ -13,16 +13,19 @@ namespace mcp {
 static void registerTransportReadTool(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"get_transport",
-        "Return transport state (position, isPlaying, isLooping, loopStart, loopEnd).",
+        "Return transport state (bpm, position, isPlaying, isLooping, loopStart, loopEnd, time signature).",
         QJsonObject{{"type","object"}},
         [e](const QJsonObject&) {
             auto tp = e->getProjectModel().getTransportTree();
             QJsonObject o{
+                {"bpm", static_cast<double>(e->getProjectModel().getTree().getProperty(IDs::tempo, 120.0))},
                 {"position", static_cast<double>(tp.getProperty(IDs::position))},
                 {"isPlaying", static_cast<bool>(tp.getProperty(IDs::isPlaying))},
                 {"isLooping", static_cast<bool>(tp.getProperty(IDs::isLooping))},
                 {"loopStart", static_cast<double>(tp.getProperty(IDs::loopStart))},
-                {"loopEnd", static_cast<double>(tp.getProperty(IDs::loopEnd))}
+                {"loopEnd", static_cast<double>(tp.getProperty(IDs::loopEnd))},
+                {"timeSigNumerator", static_cast<int>(tp.getProperty(IDs::timeSigNumerator, 4))},
+                {"timeSigDenominator", static_cast<int>(tp.getProperty(IDs::timeSigDenominator, 4))}
             };
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(o).toJson(QJsonDocument::Compact)));

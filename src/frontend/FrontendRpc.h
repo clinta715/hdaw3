@@ -166,6 +166,8 @@ inline QJsonObject toJson(const TransportSnapshot& t) {
         { "loopEnd",          t.loopEnd },
         { "currentTimeSeconds", t.currentTimeSeconds },
         { "sampleRate",       t.sampleRate },
+        { "timeSigNumerator", t.timeSigNumerator },
+        { "timeSigDenominator", t.timeSigDenominator },
     };
 }
 

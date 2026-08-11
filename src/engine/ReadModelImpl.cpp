@@ -371,6 +371,8 @@ TransportSnapshot ReadModelImpl::getTransport() const
     if (transport.isValid()) {
         ts.isPlaying = transport.getProperty(IDs::isPlaying, false);
         ts.isLooping = transport.getProperty(IDs::isLooping, false);
+        ts.timeSigNumerator = transport.getProperty(IDs::timeSigNumerator, 4);
+        ts.timeSigDenominator = transport.getProperty(IDs::timeSigDenominator, 4);
         // Tree stores loop region in seconds (engine consumers read seconds);
         // the frontend expects beats. Convert seconds → beats.
         double ls = transport.getProperty(IDs::loopStart, 0.0);

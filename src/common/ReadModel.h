@@ -89,6 +89,8 @@ struct TransportSnapshot {
     double loopEnd = 8.0;
     double currentTimeSeconds = 0.0;
     double sampleRate = 0.0;
+    int timeSigNumerator = 4;
+    int timeSigDenominator = 4;
 };
 
 struct ProjectSnapshot {

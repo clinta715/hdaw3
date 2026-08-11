@@ -744,6 +744,21 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"set_tempo", "Set the project tempo (BPM).",
+        objSchema({{"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}}, {"bpm"}),
+        [e](const QJsonObject& a) {
+            e->getProjectCommands().setTempo(a.value("bpm").toDouble());
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_time_signature", "Set the project time signature (numerator/denominator).",
+        objSchema({{"numerator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}},
+                  {"denominator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}}}, {"numerator","denominator"}),
+        [e](const QJsonObject& a) {
+            e->getProjectCommands().setTimeSignature(a.value("numerator").toInt(), a.value("denominator").toInt());
+            return McpToolResult::text("ok");
+        }});
+
     s.registerTool({"get_chord_types", "List all available chord types.",
         objSchema({}),
         [](const QJsonObject&) {
