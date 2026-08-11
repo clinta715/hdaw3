@@ -178,9 +178,12 @@ pass `Debug` for breakpoint debugging.
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 49 tools cover project inspection, transport,
+can drive the DAW. 50 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
-generation), FX, automation, undo, audio export, and file library.
+generation with snare support and Techno/House/DnB genre styles +
+polyrhythmic & euclidean rhythm pattern generation
+(`RhythmPatternGenerator`)), FX, automation, undo, audio export, and
+file library.
 
 ### Launching the stdio server (Claude Desktop, opencode, etc.)
 

@@ -309,6 +309,12 @@ product pillar and should be reached for wherever it fits:
   `composition.generatePhrase/generateChord/generateProgression` (and matching
   MCP tools), surfaced in the UI by `PhraseGeneratorDialog` (TransportBar 🎵 /
   Ctrl+Shift+G).
+- **Rhythm / drum patterns** come from `RhythmPatternGenerator`
+  (`src/engine/RhythmPatternGenerator.h`): two euclidean pulses
+  (polyrhythm) plus a rhythm-DSL voice (`E(k,n[,rot])`, groups).
+  Exposed over RPC as `composition.generateRhythmPattern` (and MCP
+  `generate_rhythm_pattern`), surfaced in the UI by the "Rhythm" mode in
+  `PhraseGeneratorDialog`.
 - **Randomization / humanization** — note timing, velocity, and pitch
   humanize in the piano roll (`NoteGrid`) and clip editor (`ClipEditor`).
 - **Modulation** — a per-track LFO system (`ModulationManager` /
