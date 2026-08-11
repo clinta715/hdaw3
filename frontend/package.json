@@ -1,6 +1,6 @@
 {
   "name": "hdaw-frontend",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {

@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.18.1
+**Current version**: 0.19.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.18.1)
+## What works today (v0.19.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -178,7 +178,7 @@ pass `Debug` for breakpoint debugging.
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 46 tools cover project inspection, transport,
+can drive the DAW. 48 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
 generation), FX, automation, undo, audio export, and file library.
 
@@ -317,6 +317,47 @@ implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog
+
+### v0.19.0 — MCP tempo/time-signature tools, editable time signature, export fix
+
+Adds the missing tempo/time-signature surface to MCP (feature-parity gap:
+`project.setTempo`/`project.setTimeSignature` existed as frontend RPCs but had
+no MCP tools), puts the time signature on the live transport wire end-to-end,
+and fixes the MCP `export_audio` tool being permanently blocked by a stale
+cancel flag. See `docs/plans/2026-08-11-mcp-tempo-timesig-and-export-fix.md`
+for the full record.
+
+**MCP:**
+- New `set_tempo` (bpm 1–999) and `set_time_signature` (numerator/denominator
+  1–32) tools, backed by the existing `AudioEngineCommands` (undoable, same
+  path as the frontend RPCs).
+- `get_transport` now also returns `bpm`, `timeSigNumerator`,
+  `timeSigDenominator`.
+
+**Frontend:**
+- `TransportSnapshot` now carries `timeSigNumerator`/`timeSigDenominator`
+  end-to-end (C++ `ReadModel` → `notify.transport` → Zustand), replacing the
+  hardcoded 4/4 in `transportExtrasStore` (which no longer holds time-signature
+  state at all).
+- The TransportBar `{n}/{d}` readout is now editable: double-click to edit
+  numerator/denominator inline (Enter/blur commits via
+  `project.setTimeSignature`, Escape cancels), mirroring the BPM editor.
+
+**Fix — MCP `export_audio` stale-cancel lockout:**
+- The handler refused to start whenever the server cancel flag was already set.
+  The MCP client re-sends `notifications/cancelled` routinely between tool
+  calls, so every export was refused (`export cancelled (flag was already
+  set)`) and no WAV could ever be rendered over MCP. The flag is now consumed
+  at export start; cancels arriving *during* the render are still honored by
+  the existing `onProgress` check.
+
+**Tests:**
+- Rewrote `ExportAudioSkipsWhenCancelFlagSet` → `ExportAudioConsumesStaleCancelFlag`
+  (stale flag is consumed, render proceeds, WAV written).
+- New `McpServer.SetTempo` / `McpServer.SetTimeSignature` (set → read back via
+  `get_project_summary`/`get_transport` → undo round-trip).
+- Frontend: `transportStore.test.ts` asserts the new time-signature fields.
+- Full suite: 722 tests pass (C++), Vitest transport store 4/4.
 
 ### v0.18.1 — Plugin scan & blacklist fixes
 
