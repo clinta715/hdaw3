@@ -8,6 +8,7 @@ import { useAutomationStore } from "./store/automationStore";
 import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
 import { useUiStore } from "./store/uiStore";
+import { useLibraryStore } from "./store/libraryStore";
 import { TransportSnapshot, MetersPayload, TreeDelta } from "./rpc/types";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -77,6 +78,25 @@ function setupSubscriptions() {
       if (activeTrack !== null) {
         useAutomationStore.getState().fetchForTrack(activeTrack, rpc);
       }
+    }
+  }));
+
+  cleanups.push(rpc.onNotification("notify.scanProgress", (_method, params) => {
+    const p = params as { libraryId?: string; scanned?: number; total?: number; phase?: string } | undefined;
+    if (p && typeof p.libraryId === "string" && typeof p.scanned === "number" && typeof p.total === "number") {
+      useLibraryStore.getState().updateScanProgress({
+        libraryId: p.libraryId,
+        scanned: p.scanned,
+        total: p.total,
+        phase: p.phase ?? "",
+      });
+    }
+  }));
+
+  cleanups.push(rpc.onNotification("notify.libraryScanComplete", (_method, params) => {
+    const p = params as { libraryId?: string; success?: boolean } | undefined;
+    if (p?.success) {
+      useLibraryStore.getState().loadLibraries(rpc);
     }
   }));
 }

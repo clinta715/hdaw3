@@ -45,6 +45,26 @@ FrontendServer::FrontendServer(AudioEngine& engine, QObject* parent)
     // and re-broadcasts notify.treeChanged on any change.
     treeWatcher_ = std::make_unique<FrontendTreeWatcher>(engine_, *this, this);
 
+    // Wire library scan progress/completion events to connected frontends.
+    // The callbacks fire on the scan threadpool, so use the thread-safe variant.
+    auto& libMgr = engine_.getFileLibraryManager();
+    libMgr.setScanProgressCallback([this](const HDAW::ScanProgress& p) {
+        QJsonObject evt;
+        evt["libraryId"] = QString::fromUtf8(p.libraryId.toRawUTF8());
+        evt["scanned"] = p.scanned;
+        evt["total"] = p.total;
+        evt["phase"] = QString::fromUtf8(p.phase.toRawUTF8());
+        broadcastNotificationFromAnyThread(
+            QString::fromUtf8(frontend::notify::ScanProgress), evt);
+    });
+    libMgr.setScanCompleteCallback([this](const juce::String& id, bool success) {
+        QJsonObject evt;
+        evt["libraryId"] = QString::fromUtf8(id.toRawUTF8());
+        evt["success"] = success;
+        broadcastNotificationFromAnyThread(
+            QStringLiteral("notify.libraryScanComplete"), evt);
+    });
+
     // Plugin directory watcher — auto-rescan when VST3/CLAP dirs change.
     pluginDirWatcher_ = new QFileSystemWatcher(this);
     connect(pluginDirWatcher_, &QFileSystemWatcher::directoryChanged,
