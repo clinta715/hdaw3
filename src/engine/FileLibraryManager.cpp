@@ -224,12 +224,6 @@ void FileLibraryManager::scanLibrary(const juce::String& id) {
 
     scanningCount.fetch_add(1);
     threadPool.addJob([this, id, scanDir, type, progressCb, completeCb]() {
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            entries[id].clear();
-            loadedLibraries.erase(id);
-        }
-
         scanDirectory(id, scanDir);
 
         int fileCount = 0;
@@ -419,26 +413,88 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         ? juce::String("*.wav;*.aiff;*.aif;*.mp3;*.flac;*.ogg")
         : juce::String("*.mid;*.midi");
 
-    std::vector<LibraryEntry> newEntries;
-    juce::DirectoryIterator iter(dir, true, wildcard);
-    while (iter.next()) {
-        auto file = iter.getFile();
-        if (file.isDirectory()) continue;
-
-        LibraryEntry entry = (type == "audio")
-            ? extractAudioMetadata(file)
-            : extractMidiMetadata(file);
-
-        entry.name = file.getFileName();
-        entry.path = file.getFullPathName();
-        entry.size = file.getSize();
-        entry.modified = file.getLastModificationTime().toISO8601(true);
-
-        newEntries.push_back(std::move(entry));
+    // Build map of existing entries by path for incremental comparison
+    std::unordered_map<juce::String, LibraryEntry> existingByPath;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = entries.find(id);
+        if (it != entries.end()) {
+            for (const auto& e : it->second)
+                existingByPath[e.path] = e;
+        }
     }
 
-    std::lock_guard<std::mutex> lock(mutex);
-    entries[id] = std::move(newEntries);
+    // Collect all files first for accurate total count
+    juce::Array<juce::File> files;
+    juce::DirectoryIterator iter(dir, true, wildcard);
+    while (iter.next()) {
+        auto f = iter.getFile();
+        if (!f.isDirectory()) files.add(f);
+    }
+
+    const int total = files.size();
+    int scanned = 0;
+    std::vector<LibraryEntry> newEntries;
+
+    for (const auto& file : files) {
+        const juce::String filePath = file.getFullPathName();
+
+        // Check if file has changed since last scan
+        auto it = existingByPath.find(filePath);
+        bool needsRescan = true;
+        if (it != existingByPath.end()) {
+            const juce::String currentModified = juce::Time(file.getLastModificationTime()).toISO8601(true);
+            if (it->second.modified == currentModified) {
+                newEntries.push_back(it->second); // reuse existing entry
+                needsRescan = false;
+            }
+        }
+
+        if (needsRescan) {
+            LibraryEntry entry = (type == "audio")
+                ? extractAudioMetadata(file)
+                : extractMidiMetadata(file);
+            entry.name = file.getFileName();
+            entry.path = filePath;
+            entry.size = file.getSize();
+            entry.modified = juce::Time(file.getLastModificationTime()).toISO8601(true);
+            newEntries.push_back(std::move(entry));
+        }
+
+        ++scanned;
+        // Throttle progress updates to every 10 files
+        if (scanned % 10 == 0 || scanned == total) {
+            ScanProgressCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                cb = progressCallback;
+            }
+            if (cb) {
+                ScanProgress sp;
+                sp.libraryId = id;
+                sp.scanned = scanned;
+                sp.total = total;
+                sp.phase = "scanning";
+                cb(sp);
+            }
+        }
+    }
+
+    // Update entries and library info
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        entries[id] = std::move(newEntries);
+        loadedLibraries.insert(id);
+        for (auto& lib : libraries) {
+            if (lib.id == id) {
+                lib.fileCount = (int)entries[id].size();
+                lib.lastScan = juce::Time::getCurrentTime().toISO8601(true);
+                break;
+            }
+        }
+    }
+    saveLibraryEntries(id);
+    saveRegistry();
 }
 
 LibraryEntry FileLibraryManager::extractMidiMetadata(const juce::File& file) {
