@@ -36,6 +36,9 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     transportManager->setSampleRate(sampleRate);
     metronome.prepareToPlay(sampleRate);
 
+    // Rebuild arranger chain data for audio-thread consumption
+    transportManager->rebuildArrangerChainData(projectModel->getTree());
+
     // Re-sync loop bounds with the actual sample rate. The initial sync in
     // AudioEngine::initialize() uses the default 44100 Hz, but the audio
     // device may use a different rate (e.g. 48000). Without this re-sync

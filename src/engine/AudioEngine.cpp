@@ -84,6 +84,9 @@ void AudioEngine::initialize()
     // Initialize the file library (loads registry, kicks off auto-scans).
     fileLibraryManager.initialize();
 
+    // Build initial arranger chain data
+    transportManager.rebuildArrangerChainData(projectModel.getTree());
+
     // Sync loop state from ValueTree to TransportManager atomics.
     // The listener only fires on property changes, so we must push the
     // initial values here during setup to ensure advance() has valid
@@ -741,6 +744,12 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     {
         rebuildTempoMap();
     }
+    else if (treeWhosePropertyHasChanged.hasType(IDs::ARRANGER_REGION)
+          || treeWhosePropertyHasChanged.hasType(IDs::ARRANGER_CHAIN)
+          || treeWhosePropertyHasChanged.hasType(IDs::CHAIN_ENTRY))
+    {
+        transportManager.rebuildArrangerChainData(projectModel.getTree());
+    }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TRACK))
     {
         if (property == IDs::midiChannel)
@@ -1023,6 +1032,13 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
 
+    // Rebuild arranger chain data when arranger structure changes
+    if (parentTree.hasType(IDs::ARRANGER_LIST) || parentTree.hasType(IDs::ARRANGER_CHAIN_LIST)
+        || parentTree.hasType(IDs::ARRANGER_CHAIN))
+    {
+        transportManager.rebuildArrangerChainData(projectModel.getTree());
+    }
+
     if (childWhichHasBeenAdded.hasType(IDs::MIDI_NOTE) && mainProcessor != nullptr)
     {
         if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
@@ -1108,6 +1124,13 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     juce::ignoreUnused(indexFromWhichItWasRemoved);
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
+
+    // Rebuild arranger chain data when arranger structure changes
+    if (parentTree.hasType(IDs::ARRANGER_LIST) || parentTree.hasType(IDs::ARRANGER_CHAIN_LIST)
+        || parentTree.hasType(IDs::ARRANGER_CHAIN))
+    {
+        transportManager.rebuildArrangerChainData(projectModel.getTree());
+    }
 
     if (childWhichHasBeenRemoved.hasType(IDs::TRANSPORT))
     {
