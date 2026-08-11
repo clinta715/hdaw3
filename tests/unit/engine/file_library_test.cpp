@@ -378,3 +378,73 @@ TEST_F(FileLibraryTest, ScanProgressCallback) {
     EXPECT_FALSE(progressUpdates.empty());
     EXPECT_EQ(progressUpdates.back().total, 1);
 }
+
+TEST_F(FileLibraryTest, PartitioningByFirstChar) {
+    auto libDir = tempDir.getChildFile("partition_test");
+    libDir.createDirectory();
+
+    HDAW::FileLibraryManager mgr(libDir);
+    auto id = mgr.addLibrary("Partitioned", libDir.getFullPathName(), "midi");
+
+    // Manually create partition files in the manager's libraries dir
+    auto mgrDir = libDir.getChildFile("libraries");
+
+    // Partition 'a': alpha.mid
+    {
+        juce::DynamicObject::Ptr root = new juce::DynamicObject();
+        juce::Array<juce::var> arr;
+        juce::DynamicObject::Ptr e1 = new juce::DynamicObject();
+        e1->setProperty("name", "alpha.mid");
+        e1->setProperty("path", "/alpha.mid");
+        e1->setProperty("size", (double)100);
+        e1->setProperty("modified", "");
+        e1->setProperty("tracks", 0);
+        e1->setProperty("notes", 0);
+        e1->setProperty("durationTicks", 0);
+        e1->setProperty("durationSeconds", 1.0);
+        e1->setProperty("tempo", 120.0);
+        e1->setProperty("timeSignature", "4/4");
+        e1->setProperty("key", "");
+        e1->setProperty("sampleRate", 0.0);
+        e1->setProperty("channels", 0);
+        e1->setProperty("bpm", 0.0);
+        e1->setProperty("format", "");
+        arr.add(juce::var(e1.get()));
+        root->setProperty("entries", arr);
+        mgrDir.getChildFile(id + "_part_a.json").replaceWithText(juce::JSON::toString(juce::var(root.get())));
+    }
+
+    // Partition 'b': beta.mid
+    {
+        juce::DynamicObject::Ptr root = new juce::DynamicObject();
+        juce::Array<juce::var> arr;
+        juce::DynamicObject::Ptr e2 = new juce::DynamicObject();
+        e2->setProperty("name", "beta.mid");
+        e2->setProperty("path", "/beta.mid");
+        e2->setProperty("size", (double)200);
+        e2->setProperty("modified", "");
+        e2->setProperty("tracks", 0);
+        e2->setProperty("notes", 0);
+        e2->setProperty("durationTicks", 0);
+        e2->setProperty("durationSeconds", 2.0);
+        e2->setProperty("tempo", 120.0);
+        e2->setProperty("timeSignature", "4/4");
+        e2->setProperty("key", "");
+        e2->setProperty("sampleRate", 0.0);
+        e2->setProperty("channels", 0);
+        e2->setProperty("bpm", 0.0);
+        e2->setProperty("format", "");
+        arr.add(juce::var(e2.get()));
+        root->setProperty("entries", arr);
+        mgrDir.getChildFile(id + "_part_b.json").replaceWithText(juce::JSON::toString(juce::var(root.get())));
+    }
+
+    // search() should lazy-load from partitions and return both entries
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 2u);
+    // Sorted by name: alpha first, beta second
+    EXPECT_EQ(results[0].name, "alpha.mid");
+    EXPECT_EQ(results[1].name, "beta.mid");
+    EXPECT_DOUBLE_EQ(results[0].durationSeconds, 1.0);
+    EXPECT_DOUBLE_EQ(results[1].durationSeconds, 2.0);
+}

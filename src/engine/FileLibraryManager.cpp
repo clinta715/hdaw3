@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 
 namespace HDAW {
 
@@ -115,6 +116,11 @@ void FileLibraryManager::removeLibrary(const juce::String& id) {
     }
     auto entryFile = librariesDir.getChildFile(id + ".json");
     if (entryFile.existsAsFile()) entryFile.deleteFile();
+    // Also remove partition files
+    for (int i = 0; i < 26; ++i)
+        librariesDir.getChildFile(id + "_part_" + juce::String(char('a' + i)) + ".json").deleteFile();
+    librariesDir.getChildFile(id + "_part_0.json").deleteFile();
+    librariesDir.getChildFile(id + "_part_.json").deleteFile();
     saveRegistry();
 }
 
@@ -277,32 +283,12 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
     }
 
     // File I/O + JSON parse OUTSIDE the lock (don't block search/getEntry/scan).
-    auto entryFile = librariesDir.getChildFile(id + ".json");
-    if (!entryFile.existsAsFile()) return;
+    std::vector<LibraryEntry> loaded;
 
-    auto content = entryFile.loadFileAsString();
-    if (content.isEmpty()) return;
-
-    auto json = juce::JSON::parse(content);
-    auto* obj = json.getDynamicObject();
-    if (!obj) return;
-
-    auto& items = obj->getProperty("entries");
-    auto* arr = items.getArray();
-    if (!arr) return;
-
-    // Commit under lock — re-check in case another thread loaded it while we did I/O.
-    std::lock_guard<std::mutex> lock(mutex);
-    if (loadedLibraries.count(id) > 0) return;
-    auto& vec = entries[id];
-    vec.clear();
-
-    for (int i = 0; i < arr->size(); ++i) {
-        const auto& item = (*arr)[i];
-        auto* eObj = item.getDynamicObject();
-        if (!eObj) continue;
-
+    auto deserializeEntry = [](const juce::var& item) -> LibraryEntry {
         LibraryEntry e;
+        auto* eObj = item.getDynamicObject();
+        if (!eObj) return e;
         e.name = eObj->getProperty("name").toString();
         e.path = eObj->getProperty("path").toString();
         e.size = (juce::int64)(double)eObj->getProperty("size");
@@ -318,8 +304,39 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         e.channels = (int)(double)eObj->getProperty("channels");
         e.bpm = (double)eObj->getProperty("bpm");
         e.format = eObj->getProperty("format").toString();
-        vec.push_back(std::move(e));
+        return e;
+    };
+
+    auto loadEntriesFromFile = [&](const juce::File& f) {
+        auto content = f.loadFileAsString();
+        if (content.isEmpty()) return;
+        auto json = juce::JSON::parse(content);
+        auto* obj = json.getDynamicObject();
+        if (!obj) return;
+        auto& items = obj->getProperty("entries");
+        auto* arr = items.getArray();
+        if (!arr) return;
+        for (int i = 0; i < arr->size(); ++i)
+            loaded.push_back(deserializeEntry((*arr)[i]));
+    };
+
+    // Try single file first
+    auto singleFile = librariesDir.getChildFile(id + ".json");
+    if (singleFile.existsAsFile()) {
+        loadEntriesFromFile(singleFile);
+    } else {
+        // Try partition files: {id}_part_*.json
+        juce::DirectoryIterator iter(librariesDir, false, id + "_part_*.json");
+        while (iter.next())
+            loadEntriesFromFile(iter.getFile());
     }
+
+    if (loaded.empty()) return;
+
+    // Commit under lock — re-check in case another thread loaded it while we did I/O.
+    std::lock_guard<std::mutex> lock(mutex);
+    if (loadedLibraries.count(id) > 0) return;
+    entries[id] = std::move(loaded);
     loadedLibraries.insert(id);
 }
 
@@ -328,10 +345,10 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
     auto it = entries.find(id);
     if (it == entries.end()) return;
 
-    juce::DynamicObject::Ptr root = new juce::DynamicObject();
-    juce::Array<juce::var> arr;
+    constexpr int PARTITION_THRESHOLD = 50000;
+    const bool shouldPartition = (int)it->second.size() > PARTITION_THRESHOLD;
 
-    for (const auto& e : it->second) {
+    auto serializeEntry = [](const LibraryEntry& e) -> juce::var {
         juce::DynamicObject::Ptr obj = new juce::DynamicObject();
         obj->setProperty("name", e.name);
         obj->setProperty("path", e.path);
@@ -348,13 +365,46 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("channels", e.channels);
         obj->setProperty("bpm", e.bpm);
         obj->setProperty("format", e.format);
-        arr.add(juce::var(obj.get()));
-    }
+        return juce::var(obj.get());
+    };
 
-    root->setProperty("entries", arr);
-    auto entryFile = librariesDir.getChildFile(id + ".json");
-    entryFile.getParentDirectory().createDirectory();
-    entryFile.replaceWithText(juce::JSON::toString(juce::var(root.get())));
+    if (!shouldPartition) {
+        juce::DynamicObject::Ptr root = new juce::DynamicObject();
+        juce::Array<juce::var> arr;
+        for (const auto& e : it->second)
+            arr.add(serializeEntry(e));
+        root->setProperty("entries", arr);
+        auto entryFile = librariesDir.getChildFile(id + ".json");
+        entryFile.getParentDirectory().createDirectory();
+        entryFile.replaceWithText(juce::JSON::toString(juce::var(root.get())));
+    } else {
+        // Partition by first character
+        std::map<char, std::vector<const LibraryEntry*>> partitions;
+        for (const auto& e : it->second) {
+            char c = e.name.isNotEmpty() ? (char)std::tolower(e.name[0]) : '_';
+            if (c >= '0' && c <= '9') c = '0';
+            else if (c < 'a' || c > 'z') c = '_';
+            partitions[c].push_back(&e);
+        }
+
+        // Remove old single file if it exists
+        librariesDir.getChildFile(id + ".json").deleteFile();
+        // Remove old partitions
+        for (int i = 0; i < 26; ++i)
+            librariesDir.getChildFile(id + "_part_" + juce::String(char('a' + i)) + ".json").deleteFile();
+        librariesDir.getChildFile(id + "_part_0.json").deleteFile();
+        librariesDir.getChildFile(id + "_part_.json").deleteFile();
+
+        for (const auto& [c, partitionEntries] : partitions) {
+            juce::DynamicObject::Ptr root = new juce::DynamicObject();
+            juce::Array<juce::var> arr;
+            for (const auto* e : partitionEntries)
+                arr.add(serializeEntry(*e));
+            root->setProperty("entries", arr);
+            juce::String partFile = id + "_part_" + juce::String(c) + ".json";
+            librariesDir.getChildFile(partFile).replaceWithText(juce::JSON::toString(juce::var(root.get())));
+        }
+    }
 }
 
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
