@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
-import type { ScaleModeInfo, ChordTypeInfo, ProgressionPatternInfo, StyleInfo } from "../rpc/types";
+import type { ScaleModeInfo, ChordTypeInfo, ProgressionPatternInfo, StyleInfo, RhythmPatternResult } from "../rpc/types";
 import "./PhraseGeneratorDialog.css";
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -43,6 +43,8 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [enBass, setEnBass] = useState(true);
   const [enLead, setEnLead] = useState(false);
   const [enChords, setEnChords] = useState(false);
+  const [enSnare, setEnSnare] = useState(false);
+  const [arrStyle, setArrStyle] = useState(0);
 
   // Keep track index in sync with the current selection
   useEffect(() => {
@@ -68,6 +70,20 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [chordTypeOverride, setChordTypeOverride] = useState(-1);
   const [beatsPerChord, setBeatsPerChord] = useState(4.0);
   const [progDuration, setProgDuration] = useState(2.0);
+
+  // Rhythm params (mode 4)
+  const [rhythmGrid, setRhythmGrid] = useState(16);
+  const [rhythmBars, setRhythmBars] = useState(1);
+  const [pulseA, setPulseA] = useState(4);
+  const [pulseB, setPulseB] = useState(3);
+  const [rotationA, setRotationA] = useState(1);
+  const [rotationB, setRotationB] = useState(1);
+  const [pitchA, setPitchA] = useState(36);
+  const [pitchB, setPitchB] = useState(42);
+  const [velocityA, setVelocityA] = useState(112);
+  const [velocityB, setVelocityB] = useState(96);
+  const [rhythmDsl, setRhythmDsl] = useState("");
+  const [dslPitch, setDslPitch] = useState(39);
 
   const [preview, setPreview] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -162,15 +178,38 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           bars,
           complexity,
           swingPercent: swing,
+          style: arrStyle,
           enableKick: enKick,
           enableClosedHat: enHats,
           enableOpenHat: enHats,
           enableClap: enClap,
+          enableSnare: enSnare,
           enableBass: enBass,
           enableLead: enLead,
           enableChords: enChords,
         }) as { trackIndices: number[]; clipIds: number[]; noteCount: number; seed: number };
         setPreview(`Arrangement: ${arr.noteCount} notes across ${arr.clipIds.length} clips`);
+        useProjectStore.setState({ isDirty: true });
+        setTimeout(() => onClose(), 400);
+        return;
+      } else if (mode === 4) {
+        const result = await rpc.call("composition.generateRhythmPattern", {
+          trackIndex,
+          startBeat: 0,
+          grid: rhythmGrid,
+          bars: rhythmBars,
+          pulseA,
+          pulseB,
+          rotationA,
+          rotationB,
+          pitchA,
+          pitchB,
+          velocityA,
+          velocityB,
+          dsl: rhythmDsl.trim(),
+          dslPitch,
+        }) as RhythmPatternResult;
+        setPreview(`Rhythm: ${result.noteCount} notes`);
         useProjectStore.setState({ isDirty: true });
         setTimeout(() => onClose(), 400);
         return;
@@ -203,11 +242,12 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           {/* Mode selector */}
           <div className="pgd-row">
             <label className="pgd-label">Mode</label>
-            <select className="pgd-select pgd-mode-select" value={mode} onChange={(e) => setMode(Number(e.target.value))}>
+            <select className="pgd-select pgd-mode-select" aria-label="Mode" value={mode} onChange={(e) => setMode(Number(e.target.value))}>
               <option value={0}>Phrase</option>
               <option value={1}>Single Chord</option>
               <option value={2}>Chord Progression</option>
               <option value={3}>Arrangement</option>
+              <option value={4}>Rhythm</option>
             </select>
           </div>
 
@@ -426,10 +466,85 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
                   <label className="pgd-label-sm"><input type="checkbox" checked={enKick} onChange={(e) => setEnKick(e.target.checked)} /> Kick</label>
                   <label className="pgd-label-sm"><input type="checkbox" checked={enHats} onChange={(e) => setEnHats(e.target.checked)} /> Hats</label>
                   <label className="pgd-label-sm"><input type="checkbox" checked={enClap} onChange={(e) => setEnClap(e.target.checked)} /> Clap</label>
+                  <label className="pgd-label-sm"><input type="checkbox" checked={enSnare} onChange={(e) => setEnSnare(e.target.checked)} /> Snare</label>
                   <label className="pgd-label-sm"><input type="checkbox" checked={enBass} onChange={(e) => setEnBass(e.target.checked)} /> Bass</label>
                   <label className="pgd-label-sm"><input type="checkbox" checked={enLead} onChange={(e) => setEnLead(e.target.checked)} /> Lead</label>
                   <label className="pgd-label-sm"><input type="checkbox" checked={enChords} onChange={(e) => setEnChords(e.target.checked)} /> Chords</label>
                 </div>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">Style</label>
+                <select className="pgd-select" value={arrStyle} onChange={(e) => setArrStyle(Number(e.target.value))}>
+                  <option value={0}>Techno</option>
+                  <option value={1}>House</option>
+                  <option value={2}>DnB</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Rhythm page */}
+          {mode === 4 && (
+            <div className="pgd-page">
+              <div className="pgd-row">
+                <label className="pgd-label">Grid</label>
+                <select className="pgd-select" value={rhythmGrid} onChange={(e) => setRhythmGrid(Number(e.target.value))}>
+                  <option value={8}>8th notes</option>
+                  <option value={16}>16th notes</option>
+                  <option value={32}>32nd notes</option>
+                </select>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">Bars</label>
+                <input className="pgd-input" type="number" min={1} max={8} value={rhythmBars} onChange={(e) => setRhythmBars(Number(e.target.value))} />
+              </div>
+              <div className="pgd-row-group">
+                <div className="pgd-row">
+                  <label className="pgd-label">Pulse A hits</label>
+                  <input className="pgd-input" type="number" min={0} max={64} value={pulseA} onChange={(e) => setPulseA(Number(e.target.value))} />
+                </div>
+                <div className="pgd-row">
+                  <label className="pgd-label">Rotate A</label>
+                  <input className="pgd-input" type="number" min={0} max={64} value={rotationA} onChange={(e) => setRotationA(Number(e.target.value))} />
+                </div>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">Pitch A</label>
+                <select className="pgd-select pgd-note-select" value={pitchA} onChange={(e) => setPitchA(Number(e.target.value))}>
+                  {Array.from({ length: 128 }, (_, n) => (
+                    <option key={n} value={n}>{NOTE_NAMES[n % 12]}{Math.floor(n / 12) - 1} ({n})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="pgd-row-group">
+                <div className="pgd-row">
+                  <label className="pgd-label">Pulse B hits</label>
+                  <input className="pgd-input" type="number" min={0} max={64} value={pulseB} onChange={(e) => setPulseB(Number(e.target.value))} />
+                </div>
+                <div className="pgd-row">
+                  <label className="pgd-label">Rotate B</label>
+                  <input className="pgd-input" type="number" min={0} max={64} value={rotationB} onChange={(e) => setRotationB(Number(e.target.value))} />
+                </div>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">Pitch B</label>
+                <select className="pgd-select pgd-note-select" value={pitchB} onChange={(e) => setPitchB(Number(e.target.value))}>
+                  {Array.from({ length: 128 }, (_, n) => (
+                    <option key={n} value={n}>{NOTE_NAMES[n % 12]}{Math.floor(n / 12) - 1} ({n})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">DSL</label>
+                <input className="pgd-input" type="text" value={rhythmDsl} placeholder='E.g. "E(3,8,1) [x-]x2"' onChange={(e) => setRhythmDsl(e.target.value)} />
+              </div>
+              <div className="pgd-row">
+                <label className="pgd-label">DSL Pitch</label>
+                <select className="pgd-select pgd-note-select" value={dslPitch} onChange={(e) => setDslPitch(Number(e.target.value))}>
+                  {Array.from({ length: 128 }, (_, n) => (
+                    <option key={n} value={n}>{NOTE_NAMES[n % 12]}{Math.floor(n / 12) - 1} ({n})</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}

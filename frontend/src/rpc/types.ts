@@ -192,3 +192,8 @@ export interface GenerateResult {
   clipId: number;
   noteCount: number;
 }
+
+export interface RhythmPatternResult {
+  clipId: number;
+  noteCount: number;
+}
