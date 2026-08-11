@@ -8,3 +8,17 @@
 .pref-section label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
 .pref-section select { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text-primary); }
 .pref-note { font-size: 12px; color: var(--text-muted); }
+.pref-libraries-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.pref-library-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.pref-library-name { font-weight: 500; min-width: 120px; color: var(--text-primary); }
+.pref-library-path { flex: 1; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pref-library-type { font-size: 11px; padding: 2px 6px; border-radius: 3px; background: var(--bg-widget); color: var(--text-secondary); }
+.pref-library-count { font-size: 12px; color: var(--text-muted); min-width: 60px; }
+.pref-library-autoscan { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+.pref-library-add { display: flex; gap: 8px; align-items: center; }
+.pref-library-add input { flex: 1; background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text-primary); font-size: 13px; }
+.pref-library-add select { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text-primary); font-size: 13px; }
+.pref-library-add button { background: var(--accent); border: none; border-radius: 4px; padding: 6px 12px; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.pref-library-add button:hover { background: var(--bg-elevated); }
+.pref-btn-danger { background: none; border: 1px solid var(--error); color: var(--error); padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
+.pref-btn-danger:hover { background: var(--error); color: var(--text-primary); }

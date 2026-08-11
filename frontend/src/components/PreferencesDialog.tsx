@@ -1,6 +1,86 @@
 import { useState, useEffect, useCallback } from "react";
 import { rpc } from "../rpc";
+import { useLibraryStore } from "../store/libraryStore";
 import "./PreferencesDialog.css";
+
+function LibrarySettings() {
+  const libraries = useLibraryStore((s) => s.libraries);
+  const loading = useLibraryStore((s) => s.loading);
+  const loadLibraries = useLibraryStore((s) => s.loadLibraries);
+  const addLibrary = useLibraryStore((s) => s.addLibrary);
+  const removeLibrary = useLibraryStore((s) => s.removeLibrary);
+  const setAutoScan = useLibraryStore((s) => s.setAutoScan);
+
+  const [addName, setAddName] = useState("");
+  const [addPath, setAddPath] = useState("");
+  const [addType, setAddType] = useState<"midi" | "audio">("midi");
+
+  useEffect(() => {
+    loadLibraries(rpc);
+  }, [loadLibraries]);
+
+  const handleAdd = async () => {
+    if (!addName.trim() || !addPath.trim()) return;
+    const ok = await addLibrary(addName.trim(), addPath.trim(), addType, rpc);
+    if (ok) {
+      setAddName("");
+      setAddPath("");
+    }
+  };
+
+  return (
+    <section className="pref-section">
+      <h3>Libraries</h3>
+      {loading && <p className="pref-note">Loading...</p>}
+      <div className="pref-libraries-list">
+        {libraries.map((lib) => (
+          <div key={lib.id} className="pref-library-row">
+            <span className="pref-library-name">{lib.name}</span>
+            <span className="pref-library-path" title={lib.path}>{lib.path}</span>
+            <span className="pref-library-type">{lib.type}</span>
+            <span className="pref-library-count">{lib.fileCount} files</span>
+            <label className="pref-library-autoscan">
+              <input
+                type="checkbox"
+                checked={lib.autoScan}
+                onChange={(e) => setAutoScan(lib.id, e.target.checked, rpc)}
+              />
+              Auto-scan
+            </label>
+            <button
+              className="pref-btn-danger"
+              onClick={() => removeLibrary(lib.id, rpc)}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="pref-library-add">
+        <input
+          type="text"
+          placeholder="Name"
+          value={addName}
+          onChange={(e) => setAddName(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Path"
+          value={addPath}
+          onChange={(e) => setAddPath(e.target.value)}
+        />
+        <select
+          value={addType}
+          onChange={(e) => setAddType(e.target.value as "midi" | "audio")}
+        >
+          <option value="midi">MIDI</option>
+          <option value="audio">Audio</option>
+        </select>
+        <button onClick={handleAdd}>Add</button>
+      </div>
+    </section>
+  );
+}
 
 interface Props {
   onClose: () => void;
@@ -166,6 +246,7 @@ export default function PreferencesDialog({ onClose }: Props) {
             <h3>MCP Server</h3>
             <p className="pref-note">MCP server settings are configured via the C++ backend.</p>
           </section>
+          <LibrarySettings />
         </div>
       </div>
     </div>
