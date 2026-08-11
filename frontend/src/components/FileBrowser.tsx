@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useBrowserStore, type FileKindFilter } from "../store/browserStore";
+import { useLibraryStore, type LibraryEntry } from "../store/libraryStore";
 import { useUiStore } from "../store/uiStore";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
@@ -45,6 +46,20 @@ function fileKind(name: string): FileKindFilter | null {
   return null;
 }
 
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 const KIND_CHIPS: { label: string; value: FileKindFilter }[] = [
   { label: "All", value: "all" },
   { label: "Samples", value: "samples" },
@@ -52,6 +67,7 @@ const KIND_CHIPS: { label: string; value: FileKindFilter }[] = [
   { label: "Devices", value: "devices" },
   { label: "Presets", value: "presets" },
   { label: "Clips", value: "clips" },
+  { label: "Library", value: "library" },
 ];
 
 function FilterChips() {
@@ -235,9 +251,126 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
   );
 }
 
+function LibraryView() {
+  const libraries = useLibraryStore((s) => s.libraries);
+  const searchResults = useLibraryStore((s) => s.searchResults);
+  const scanProgress = useLibraryStore((s) => s.scanProgress);
+  const loadLibraries = useLibraryStore((s) => s.loadLibraries);
+  const scanLibrary = useLibraryStore((s) => s.scanLibrary);
+  const scanAll = useLibraryStore((s) => s.scanAll);
+  const search = useLibraryStore((s) => s.search);
+  const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
+
+  const [input, setInput] = useState("");
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load configured libraries on mount. loadLibraries is a stable action ref.
+  useEffect(() => {
+    loadLibraries(rpc).catch(() => {});
+  }, [loadLibraries]);
+
+  // Debounce the search input so typing doesn't fire an RPC per keystroke —
+  // mirrors the volume-debounce pattern above.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearchQuery(input);
+      search(input, {}, rpc).catch(() => {});
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [input, setSearchQuery, search]);
+
+  const handleDragStart = useCallback((e: React.DragEvent, entry: LibraryEntry) => {
+    // Match the FileBrowser drag contract ({ path, name }) so the timeline
+    // drop handler works unchanged.
+    e.dataTransfer.setData("application/hdaw-file", JSON.stringify({ path: entry.path, name: entry.name }));
+    e.dataTransfer.effectAllowed = "copy";
+  }, []);
+
+  if (libraries.length === 0) {
+    return (
+      <div className="fb-library-empty">
+        No libraries configured. Add one in Preferences.
+      </div>
+    );
+  }
+
+  return (
+    <div className="fb-library">
+      <div className="fb-library-header">
+        <button
+          className="fb-library-scan-btn"
+          onClick={() => { scanAll(rpc); }}
+        >
+          Rescan All
+        </button>
+        <div className="fb-library-search">
+          <input
+            type="text"
+            placeholder="Search library..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            className="fb-search-input"
+          />
+        </div>
+      </div>
+      <div className="fb-library-list">
+        {libraries.map((lib) => {
+          const prog = scanProgress[lib.id];
+          return (
+            <div key={lib.id} className="fb-library-node">
+              <span className="fb-library-name" title={lib.path}>{lib.name}</span>
+              <span className="fb-library-count">{lib.fileCount} files</span>
+              {prog ? (
+                <span className="fb-scan-progress">{prog.scanned}/{prog.total}</span>
+              ) : null}
+              <button
+                className="fb-library-scan-btn"
+                onClick={() => { scanLibrary(lib.id, rpc); }}
+              >
+                Scan
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {searchResults.length > 0 && (
+        <div className="fb-library-results">
+          <div className="fb-library-columns">
+            <span>Name</span>
+            <span>Duration</span>
+            <span>BPM</span>
+            <span>Key</span>
+            <span>Size</span>
+          </div>
+          {searchResults.map((entry) => (
+            <div
+              key={entry.path}
+              className={`fb-library-entry${selectedPath === entry.path ? " fb-library-entry--selected" : ""}`}
+              draggable
+              onDragStart={(e) => handleDragStart(e, entry)}
+              onClick={() => setSelectedPath(entry.path)}
+            >
+              <span className="fb-library-name">{entry.name}</span>
+              <span>{formatDuration(entry.durationSeconds)}</span>
+              <span>{entry.bpm ? String(entry.bpm) : "—"}</span>
+              <span>{entry.key || "—"}</span>
+              <span>{formatSize(entry.size)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FileBrowser() {
   const folders = useBrowserStore((s) => s.folders);
   const favorites = useBrowserStore((s) => s.favorites);
+  const kindFilter = useBrowserStore((s) => s.kindFilter);
   const searchQuery = useBrowserStore((s) => s.searchQuery);
   const setSearchQuery = useBrowserStore((s) => s.setSearchQuery);
   const addFolder = useBrowserStore((s) => s.addFolder);
@@ -393,68 +526,74 @@ export default function FileBrowser() {
         />
       </div>
       <FilterChips />
-      {favorites.length > 0 && (
-        <div className="fb-favorites">
-          <div className="fb-favorites-header">
-            <span className="fb-favorites-title">&#9733; Favorites</span>
-          </div>
-          <div className="fb-favorites-list">
-            {favorites.map((fav, idx) => (
-              <div key={fav.path} className="fb-favorite-item">
-                <button
-                  className="fb-favorite-btn"
-                  title={fav.path}
-                  onClick={() => {
-                    // Expand the folder in the tree
-                    useBrowserStore.getState().toggleExpanded(fav.path);
-                  }}
-                >
-                  <span className="fb-favorite-icon">&#128193;</span>
-                  <span className="fb-favorite-label">{fav.label}</span>
-                </button>
-                <div className="fb-favorite-actions">
-                  {idx > 0 && (
-                    <button
-                      className="fb-favorite-move"
-                      title="Move up"
-                      onClick={() => moveFavorite(idx, idx - 1)}
-                    >
-                      &#9650;
-                    </button>
-                  )}
-                  {idx < favorites.length - 1 && (
-                    <button
-                      className="fb-favorite-move"
-                      title="Move down"
-                      onClick={() => moveFavorite(idx, idx + 1)}
-                    >
-                      &#9660;
-                    </button>
-                  )}
-                  <button
-                    className="fb-favorite-remove"
-                    title="Remove from favorites"
-                    onClick={() => removeFavorite(fav.path)}
-                  >
-                    &#10005;
-                  </button>
-                </div>
+      {kindFilter === "library" ? (
+        <LibraryView />
+      ) : (
+        <>
+          {favorites.length > 0 && (
+            <div className="fb-favorites">
+              <div className="fb-favorites-header">
+                <span className="fb-favorites-title">&#9733; Favorites</span>
               </div>
+              <div className="fb-favorites-list">
+                {favorites.map((fav, idx) => (
+                  <div key={fav.path} className="fb-favorite-item">
+                    <button
+                      className="fb-favorite-btn"
+                      title={fav.path}
+                      onClick={() => {
+                        // Expand the folder in the tree
+                        useBrowserStore.getState().toggleExpanded(fav.path);
+                      }}
+                    >
+                      <span className="fb-favorite-icon">&#128193;</span>
+                      <span className="fb-favorite-label">{fav.label}</span>
+                    </button>
+                    <div className="fb-favorite-actions">
+                      {idx > 0 && (
+                        <button
+                          className="fb-favorite-move"
+                          title="Move up"
+                          onClick={() => moveFavorite(idx, idx - 1)}
+                        >
+                          &#9650;
+                        </button>
+                      )}
+                      {idx < favorites.length - 1 && (
+                        <button
+                          className="fb-favorite-move"
+                          title="Move down"
+                          onClick={() => moveFavorite(idx, idx + 1)}
+                        >
+                          &#9660;
+                        </button>
+                      )}
+                      <button
+                        className="fb-favorite-remove"
+                        title="Remove from favorites"
+                        onClick={() => removeFavorite(fav.path)}
+                      >
+                        &#10005;
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="fb-tree">
+            {rootEntries.length === 0 && (
+              <div className="fb-empty">
+                <p>No folders added</p>
+                <button className="fb-add-first-btn" onClick={handleAddFolder}>Add a folder</button>
+              </div>
+            )}
+            {rootEntries.map((entry) => (
+              <FolderNode key={entry.path} entry={entry} depth={0} onPreviewFile={handlePreviewFile} />
             ))}
           </div>
-        </div>
+        </>
       )}
-      <div className="fb-tree">
-        {rootEntries.length === 0 && (
-          <div className="fb-empty">
-            <p>No folders added</p>
-            <button className="fb-add-first-btn" onClick={handleAddFolder}>Add a folder</button>
-          </div>
-        )}
-        {rootEntries.map((entry) => (
-          <FolderNode key={entry.path} entry={entry} depth={0} onPreviewFile={handlePreviewFile} />
-        ))}
-      </div>
       <div className="fb-preview-bar">
         <div className="fb-preview-controls">
           <button

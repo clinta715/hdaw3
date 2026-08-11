@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import FileBrowser from "./FileBrowser";
 import { useBrowserStore } from "../store/browserStore";
+import { useLibraryStore } from "../store/libraryStore";
+import { rpc } from "../rpc";
 
 vi.mock("../rpc", () => ({ rpc: { call: vi.fn().mockResolvedValue(null) } }));
 
@@ -78,5 +80,72 @@ describe("FileBrowser filter chips", () => {
       expect(screen.getByText("melody.mid")).toBeInTheDocument();
       expect(screen.getByText("pad.aiff")).toBeInTheDocument();
     });
+  });
+});
+
+describe("FileBrowser library mode", () => {
+  beforeEach(() => {
+    useBrowserStore.setState({
+      folders: ["/test"],
+      expandedPaths: new Set(["/test"]),
+      visible: true,
+      kindFilter: "library",
+      searchQuery: "",
+    });
+    useLibraryStore.setState({
+      libraries: [
+        { id: "lib1", name: "My Samples", path: "/audio", type: "audio", lastScan: "", fileCount: 42, autoScan: false },
+      ],
+      searchResults: [
+        { name: "kick.wav", path: "/audio/kick.wav", size: 102400, durationSeconds: 2.5, key: "C", bpm: 120 },
+        { name: "snare.wav", path: "/audio/snare.wav", size: 51200, durationSeconds: 1.2, key: "", bpm: 0 },
+      ],
+      scanProgress: {},
+      searchQuery: "",
+      loading: false,
+    });
+  });
+
+  afterEach(() => cleanup());
+
+  it("renders the Library chip", () => {
+    render(<FileBrowser />);
+    expect(screen.getByText("Library")).toBeInTheDocument();
+  });
+
+  it("shows LibraryView when kindFilter is library", () => {
+    render(<FileBrowser />);
+    expect(screen.getByText("Rescan All")).toBeInTheDocument();
+    expect(screen.getByText("My Samples")).toBeInTheDocument();
+  });
+
+  it("hides the file tree in library mode", () => {
+    render(<FileBrowser />);
+    expect(screen.queryByText("No folders added")).toBeNull();
+  });
+
+  it("shows search results with metadata columns", () => {
+    render(<FileBrowser />);
+    expect(screen.getByText("kick.wav")).toBeInTheDocument();
+    expect(screen.getByText("snare.wav")).toBeInTheDocument();
+    expect(screen.getByText("Name")).toBeInTheDocument();
+    expect(screen.getByText("Duration")).toBeInTheDocument();
+    expect(screen.getByText("BPM")).toBeInTheDocument();
+    expect(screen.getByText("Key")).toBeInTheDocument();
+    expect(screen.getByText("Size")).toBeInTheDocument();
+  });
+
+  it("shows empty state when no libraries configured", () => {
+    useLibraryStore.setState({ libraries: [], searchResults: [] });
+    render(<FileBrowser />);
+    expect(screen.getByText("No libraries configured. Add one in Preferences.")).toBeInTheDocument();
+  });
+
+  it("Rescan All button calls scanAll", () => {
+    const rpcMock = { call: vi.fn().mockResolvedValue(null) };
+    vi.mocked(rpc).call = rpcMock.call;
+    render(<FileBrowser />);
+    fireEvent.click(screen.getByText("Rescan All"));
+    expect(rpcMock.call).toHaveBeenCalledWith("library.scan", {});
   });
 });

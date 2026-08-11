@@ -537,3 +537,128 @@
 .fb-favorite-remove:hover {
   color: var(--error);
 }
+
+/* Library mode */
+.fb-library {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.fb-library-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.fb-library-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fb-library-scan-btn {
+  background: var(--bg-widget);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fb-library-scan-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.fb-library-search {
+  flex: 1;
+}
+
+.fb-library-list {
+  margin-bottom: 8px;
+}
+
+.fb-library-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.fb-library-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-library-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.fb-scan-progress {
+  font-size: 11px;
+  color: var(--info);
+  flex-shrink: 0;
+}
+
+.fb-library-results {
+  border-top: 1px solid var(--border);
+}
+
+.fb-library-columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.8fr 0.8fr 1fr;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.fb-library-entry {
+  display: grid;
+  grid-template-columns: 2fr 1fr 0.8fr 0.8fr 1fr;
+  padding: 3px 8px;
+  cursor: grab;
+  font-size: 11px;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.fb-library-entry:hover {
+  background: var(--bg-elevated);
+}
+
+.fb-library-entry--selected {
+  background: color-mix(in srgb, var(--info) 18%, var(--bg-widget));
+}
+
+.fb-library-entry--selected:hover {
+  background: color-mix(in srgb, var(--info) 24%, var(--bg-widget));
+}
+
+.fb-library-entry:active {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-library-scan-btn,
+  .fb-library-entry {
+    transition: none;
+  }
+}

@@ -5,7 +5,7 @@ interface FavoriteFolder {
   label: string;
 }
 
-export type FileKindFilter = "all" | "devices" | "presets" | "samples" | "clips" | "midi";
+export type FileKindFilter = "all" | "devices" | "presets" | "samples" | "clips" | "midi" | "library";
 
 interface BrowserState {
   folders: string[];
@@ -126,7 +126,7 @@ const KIND_FILTER_KEY = "hdaw_browser_kindfilter";
 function loadKindFilter(): FileKindFilter {
   try {
     const raw = localStorage.getItem(KIND_FILTER_KEY);
-    if (raw === "all" || raw === "devices" || raw === "presets" || raw === "samples" || raw === "clips" || raw === "midi") return raw;
+    if (raw === "all" || raw === "devices" || raw === "presets" || raw === "samples" || raw === "clips" || raw === "midi" || raw === "library") return raw;
     return "all";
   } catch {
     return "all";
