@@ -263,6 +263,7 @@ function LibraryView() {
 
   const [input, setInput] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [autoPlay, setAutoPlay] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load configured libraries on mount. loadLibraries is a stable action ref.
@@ -307,6 +308,10 @@ function LibraryView() {
         >
           Rescan All
         </button>
+        <label className="fb-library-autoplay">
+          <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} />
+          Auto-play
+        </label>
         <div className="fb-library-search">
           <input
             type="text"
@@ -352,7 +357,14 @@ function LibraryView() {
               className={`fb-library-entry${selectedPath === entry.path ? " fb-library-entry--selected" : ""}`}
               draggable
               onDragStart={(e) => handleDragStart(e, entry)}
-              onClick={() => setSelectedPath(entry.path)}
+              onClick={() => {
+                setSelectedPath(entry.path);
+                if (autoPlay && entry.format && ["wav", "aiff", "aif", "mp3", "flac", "ogg"].includes(entry.format)) {
+                  rpc.call("preview.load", { filePath: entry.path }).then(() => {
+                    return rpc.call("preview.play");
+                  }).catch(() => {});
+                }
+              }}
             >
               <span className="fb-library-name">{entry.name}</span>
               <span>{formatDuration(entry.durationSeconds)}</span>

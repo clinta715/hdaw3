@@ -656,6 +656,23 @@
   cursor: grabbing;
 }
 
+.fb-library-autoplay {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.fb-library-autoplay input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--info);
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fb-library-scan-btn,
   .fb-library-entry {
