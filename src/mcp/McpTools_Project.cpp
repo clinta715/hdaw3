@@ -9,6 +9,7 @@
 #include "../engine/Track.h"
 #include "../engine/PhraseGenerator.h"
 #include "../engine/ArrangementGenerator.h"
+#include "engine/RhythmPatternGenerator.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
 #include <QJsonArray>
@@ -945,7 +946,56 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                           a.value("start").toDouble(0.0), total, notes);
         }});
 
-    s.registerTool({"generate_arrangement", "Generate a multi-track arrangement (kick, hats, clap, bass) into new clips, one track per part. Deterministic for a given seed (0 = random).",
+    s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pattern into a new MIDI clip: two euclidean pulses (polyrhythm, e.g. 4-over-3) plus an optional rhythm-DSL voice ('x' '-' '[..]xN' 'E(k,n[,rot])'). Pure function of its params (no seed).",
+        objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                  {"start",       QJsonObject{{"type","number"}}},
+                  {"grid",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",64}}},
+                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}},
+                  {"pulseA",      QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"pulseB",      QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"rotationA",   QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"rotationB",   QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"pitchA",      QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"pitchB",      QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"velocityA",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"velocityB",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"dsl",         QJsonObject{{"type","string"}}},
+                  {"dslPitch",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"dslVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
+                 {"trackId"}),
+        [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
+            RhythmPatternGenerator::Params p;
+            p.grid        = a.value("grid").toInt(16);
+            p.bars        = a.value("bars").toInt(1);
+            p.pulseA      = a.contains("pulseA") ? a.value("pulseA").toInt() : 4;
+            p.pulseB      = a.contains("pulseB") ? a.value("pulseB").toInt() : 3;
+            p.rotationA   = a.contains("rotationA") ? a.value("rotationA").toInt() : 1;
+            p.rotationB   = a.contains("rotationB") ? a.value("rotationB").toInt() : 1;
+            p.pitchA      = a.contains("pitchA") ? a.value("pitchA").toInt() : 36;
+            p.pitchB      = a.contains("pitchB") ? a.value("pitchB").toInt() : 42;
+            p.velocityA   = a.contains("velocityA") ? a.value("velocityA").toInt() : 112;
+            p.velocityB   = a.contains("velocityB") ? a.value("velocityB").toInt() : 96;
+            p.dsl         = a.contains("dsl") ? a.value("dsl").toString().toStdString() : std::string();
+            p.dslPitch    = a.contains("dslPitch") ? a.value("dslPitch").toInt() : 39;
+            p.dslVelocity = a.contains("dslVelocity") ? a.value("dslVelocity").toInt() : 104;
+
+            std::vector<RhythmPatternGenerator::Note> notes;
+            try { notes = RhythmPatternGenerator::generate(p); }
+            catch (const std::invalid_argument& ex)
+            { return McpToolResult::text(QString("dsl error: ") + ex.what(), true); }
+            if (notes.empty())
+                return McpToolResult::text("pattern produced no notes", true);
+
+            std::vector<PhraseGenerator::GeneratedNote> converted;
+            converted.reserve(notes.size());
+            for (const auto& n : notes)
+                converted.push_back({ n.startBeat, n.pitch, n.velocity, n.durationBeats });
+            return helper(a.value("trackId").toInt(),
+                          a.value("start").toDouble(0.0),
+                          (double) std::max(1, p.bars) * 4.0, converted);
+        }});
+
+    s.registerTool({"generate_arrangement", "Generate a multi-track arrangement (kick, hats, clap, bass) into new clips, one track per part. Deterministic for a given seed (0 = random). style: 0=Techno 1=House 2=DnB.",
         objSchema({{"bars",            QJsonObject{{"type","integer"},{"minimum",1}}},
                   {"style",           QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"complexity",      QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},
@@ -957,6 +1007,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"enableClosedHat", QJsonObject{{"type","boolean"}}},
                   {"enableOpenHat",   QJsonObject{{"type","boolean"}}},
                   {"enableClap",      QJsonObject{{"type","boolean"}}},
+                  {"enableSnare",     QJsonObject{{"type","boolean"}}},
                   {"enableBass",      QJsonObject{{"type","boolean"}}},
                   {"enableLead",      QJsonObject{{"type","boolean"}}},
                   {"enableChords",    QJsonObject{{"type","boolean"}}}},
@@ -974,6 +1025,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.enableClosedHat = a.contains("enableClosedHat") ? a.value("enableClosedHat").toBool() : true;
             p.enableOpenHat = a.contains("enableOpenHat") ? a.value("enableOpenHat").toBool() : true;
             p.enableClap = a.contains("enableClap") ? a.value("enableClap").toBool() : true;
+            p.enableSnare = a.contains("enableSnare") ? a.value("enableSnare").toBool() : false;
             p.enableBass = a.contains("enableBass") ? a.value("enableBass").toBool() : true;
             p.enableLead = a.contains("enableLead") ? a.value("enableLead").toBool() : false;
             p.enableChords = a.contains("enableChords") ? a.value("enableChords").toBool() : false;

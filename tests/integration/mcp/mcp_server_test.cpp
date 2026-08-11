@@ -558,6 +558,36 @@ TEST(McpServer, SetTimeSignature) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, GenerateRhythmPattern) {
+    AudioEngine engine;
+    engine.initialize();  // default project: 3 tracks, track 0 exists
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    // Default params: two euclidean pulses (4-over-3, rotation 1) collide
+    // once at step 0 -> 4 + 3 - 1 = 6 notes in a new MIDI clip.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"generate_rhythm_pattern","arguments":{"trackId":0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r).contains("notes=6")) << "got: [" << textOf(r).toStdString() << "]";
+
+    // Pulses disabled; pure DSL voice: E(3,8) = 3 euclidean hits.
+    tp.drainOutgoing();
+    tp.pumpIncoming(QByteArray(R"rp({"jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"name":"generate_rhythm_pattern","arguments":{"trackId":0,"pulseA":0,"pulseB":0,"dsl":"E(3,8)"}}})rp"));
+    out.clear(); ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r2 = parseOne(out);
+    EXPECT_FALSE(r2.value("error").isObject());
+    EXPECT_FALSE(r2.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r2).contains("notes=3")) << "got: [" << textOf(r2).toStdString() << "]";
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, ExportAudioRendersDefaultProject) {
     AudioEngine engine;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
