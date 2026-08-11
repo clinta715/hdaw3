@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.17.0
+**Current version**: 0.18.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.17.0)
+## What works today (v0.18.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -152,12 +152,35 @@ pass `Debug` for breakpoint debugging.
 - MCP HTTP server host is configurable in Preferences (defaults to
   `127.0.0.1`). `--no-mcp` CLI flag fully implemented.
 
+### File Library
+- **File Library System** — a centralized registry of external audio and
+  MIDI directories. Libraries are registered in Preferences, scanned
+  (with progress events pushed to the frontend), and searched with
+  filters (name, type, BPM, key, duration).
+- File Browser **Library mode** (Library chip in the filter bar) shows
+  configured libraries, scan progress, and a metadata-rich search
+  results table (Name, Duration, BPM, Key, Size). Entries are draggable
+  to the timeline.
+- **Auto-play preview** — clicking a library entry loads and plays the
+  audio preview when the auto-play toggle is enabled.
+- **Default MIDI library** — on first launch, creates
+  `%APPDATA%/HDAW/MIDI` with example files (C Major Scale, Drum
+  Pattern, Chord Progression) and auto-scans it.
+- **Incremental scanning** — only re-indexes files whose modification
+  time has changed; deleted files are pruned automatically.
+- **Partitioning** — libraries with >50k entries are saved as
+  per-first-character partition files for efficient loading.
+- **Error hardening** — corrupt files are logged and skipped; missing
+  directories are handled gracefully; FFT uses named constants.
+- 7 MCP tools (`library.*`) and 7 RPC methods mirror the full feature
+  set.
+
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 39 tools cover project inspection, transport,
+can drive the DAW. 46 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
-generation), FX, automation, undo, and audio export.
+generation), FX, automation, undo, audio export, and file library.
 
 ### Launching the stdio server (Claude Desktop, opencode, etc.)
 
@@ -294,6 +317,41 @@ implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog
+
+### v0.18.0 — File Library System
+
+A centralized file library for managing external audio and MIDI directories.
+Libraries are registered, scanned, searched, and previewed from the File Browser
+or via MCP tools.
+
+**Engine changes:**
+- New `FileLibraryManager` — persistent registry (`%APPDATA%/HDAW/libraries/`),
+  MIDI and audio metadata extraction (tempo, key detection via chromagram, BPM,
+  channels, sample rate), search with filters (name, type, duration, BPM, key),
+  lazy-loaded entries with double-checked locking, incremental scanning
+  (timestamp-based change detection), partitioning for >50k entries, and error
+  hardening (try/catch per file, sampleRate==0 guard, named FFT constants).
+- 7 RPC methods (`library.list/add/remove/scan/search/getEntry/setAutoScan`)
+  and 7 MCP tools with JSON shape parity.
+- Default MIDI library created on first launch with example files (scales,
+  drum patterns, chord progressions).
+- Scan progress and completion events broadcast to frontend via WebSocket
+  (`notify.scanProgress`, `notify.libraryScanComplete`).
+
+**Frontend changes:**
+- New Zustand `libraryStore` (DI pattern, 17 tests).
+- File Browser **Library mode**: filter chip, library list with scan/progress,
+  search with debounce, metadata columns (Name, Duration, BPM, Key, Size),
+  drag-to-timeline, auto-play preview on click.
+- Preferences **Libraries** section: add/remove libraries, auto-scan toggle.
+- Scan progress events wired to store via `main.tsx` notification handlers.
+
+**Tests:**
+- 14 C++ gtests: registry CRUD, metadata extraction (MIDI + audio), search
+  (name, type, sort, pagination, lazy-load), full pipeline, scan progress
+  callback, partitioning.
+- 17 frontend Vitest tests for the library store.
+- 6 new Vitest tests for FileBrowser library mode.
 
 ### v0.17.0 — MIDI file import
 
