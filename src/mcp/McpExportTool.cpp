@@ -27,7 +27,7 @@ void registerExportTool(McpServer& s) {
     if (!e) return;
 
     s.registerTool({"export_audio",
-        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cooperative cancellation: a notifications/cancelled received before the export starts skips it entirely; a notifications/cancelled received while the export is running is picked up by the render thread at the next progress tick (the per-block onProgress callback checks the cancel flag) and aborts the render, deleting the partial file.",
+        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cancellation is explicit via the cancel_export tool, which aborts an in-progress render and deletes the partial file.",
         objSchema({{"outputPath", QJsonObject{{"type","string"}}},
                   {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav","aiff","flac"}}}},
                   {"start",      QJsonObject{{"type","number"}}},
@@ -47,8 +47,8 @@ void registerExportTool(McpServer& s) {
             // The MCP client re-sends notifications/cancelled routinely between
             // tool calls, so a pre-set flag must not block this export: refuse
             // on a stale flag and export is permanently locked out. Consume the
-            // flag and proceed — cancels arriving DURING the render are still
-            // honored by the onProgress hook below, which checks isCancelRequested().
+            // flag and proceed. The flag is no longer polled for mid-render
+            // cancel — cancellation is explicit via the cancel_export tool.
             s.resetCancelFlag();
 
             QString formatStr = a.value("format").toString("wav").toLower();
@@ -79,11 +79,8 @@ void registerExportTool(McpServer& s) {
             auto* pluginManager = &e->getPluginManager();
 
             QPointer<McpServer> serverPtr(&s);
-            em.onProgress = [serverPtr, &em](float prog) {
+            em.onProgress = [serverPtr](float prog) {
                 if (serverPtr.isNull()) return;
-                if (serverPtr->isCancelRequested()) {
-                    em.cancel();
-                }
                 QJsonObject params{
                     {"progress", static_cast<double>(prog)},
                     {"message", QString("rendering... %1%").arg(static_cast<int>(prog * 100.0))}
@@ -123,6 +120,24 @@ void registerExportTool(McpServer& s) {
             }
 
             return McpToolResult::text(QString("export started: %1").arg(path));
+        }});
+}
+
+void registerCancelExportTool(McpServer& s) {
+    auto* e = s.engine();
+    if (!e) return;
+
+    s.registerTool({"cancel_export", "Cancel an in-progress audio export. No-op if nothing is rendering; aborts the render and deletes the partial file.",
+        QJsonObject{{"type","object"}},
+        [e](const QJsonObject&) -> McpToolResult {
+            auto* mainProc = e->getMainProcessor();
+            if (mainProc == nullptr)
+                return McpToolResult::text("audio engine not initialized", true);
+            auto& em = mainProc->getExportManager();
+            if (!em.isExporting())
+                return McpToolResult::text("no export in progress");
+            em.cancel();
+            return McpToolResult::text("cancel requested");
         }});
 }
 

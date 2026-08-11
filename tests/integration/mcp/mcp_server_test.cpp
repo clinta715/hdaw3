@@ -620,8 +620,8 @@ TEST(McpServer, ExportAudioCancelsMidRender) {
 
     QString path = makeTempWavPath("cancel-mid");
 
-    // An 8-second render is long enough that the cancel notification sent
-    // right after the (immediate) response is picked up mid-render.
+    // An 8-second render is long enough that the explicit cancel_export tool
+    // call right after the (immediate) response is picked up mid-render.
     QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":8.0,"sampleRate":44100.0,"bitDepth":16})")
                        .arg(path);
     QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
@@ -634,8 +634,18 @@ TEST(McpServer, ExportAudioCancelsMidRender) {
     QString text = textOf(r);
     EXPECT_TRUE(text.contains("export started")) << "got: [" << text.toStdString() << "]";
 
-    // JSON-RPC notification (no id) — dispatchRequest routes it to setCancelFlag.
-    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","method":"notifications/cancelled"})"));
+    // Cancellation is explicit via the cancel_export tool: it flips
+    // ExportManager's cancel flag, the render loop aborts at the next block,
+    // and the partial file is deleted.
+    tp.drainOutgoing();
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":2,"method":"tools/call",
+        "params":{"name":"cancel_export","arguments":{}}})"));
+    out.clear();
+    ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto c = parseResponse(out);
+    EXPECT_FALSE(c.value("error").isObject());
+    EXPECT_TRUE(textOf(c).contains("cancel requested"))
+        << "got: [" << textOf(c).toStdString() << "]";
 
     auto complete = waitExportComplete(tp, 30000);
     ASSERT_FALSE(complete.isEmpty());

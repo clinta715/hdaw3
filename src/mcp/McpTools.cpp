@@ -103,6 +103,7 @@ void registerAllTools(McpServer& s) {
     registerSessionDomain(s, e);
     registerLibraryDomain(s, e);
     registerExportTool(s);
+    registerCancelExportTool(s);
 }
 
 } // namespace mcp

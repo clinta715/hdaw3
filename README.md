@@ -178,7 +178,7 @@ pass `Debug` for breakpoint debugging.
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 48 tools cover project inspection, transport,
+can drive the DAW. 49 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
 generation), FX, automation, undo, audio export, and file library.
 
@@ -348,8 +348,12 @@ for the full record.
   The MCP client re-sends `notifications/cancelled` routinely between tool
   calls, so every export was refused (`export cancelled (flag was already
   set)`) and no WAV could ever be rendered over MCP. The flag is now consumed
-  at export start; cancels arriving *during* the render are still honored by
-  the existing `onProgress` check.
+  at export start.
+- **Explicit cancellation:** the flag is no longer polled for mid-render
+  cancel (the same client notification pattern re-armed it during the render
+  and killed every export after the first block). Cancellation is now explicit
+  via the new `cancel_export` tool, which aborts an in-progress render and
+  deletes the partial file — mirroring the frontend's `export.cancel` RPC.
 
 **Tests:**
 - Rewrote `ExportAudioSkipsWhenCancelFlagSet` → `ExportAudioConsumesStaleCancelFlag`
