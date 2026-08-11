@@ -4,6 +4,7 @@
 #include "../../engine/AudioEngine.h"
 #include "../../engine/PhraseGenerator.h"
 #include "../../engine/ArrangementGenerator.h"
+#include "../../engine/RhythmPatternGenerator.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
 
@@ -14,6 +15,7 @@
 
 #include <string>
 #include <vector>
+#include <algorithm>
 
 using namespace frontend::router_helpers;
 
@@ -216,6 +218,50 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "seed", static_cast<double>(result.seed) }
         };
         return { false, res };
+    }
+
+    if (m == "generateRhythmPattern")
+    {
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+
+        RhythmPatternGenerator::Params rp;
+        rp.grid        = optInt(o, "grid", 16, nullptr);
+        rp.bars        = optInt(o, "bars", 1, nullptr);
+        rp.pulseA      = optInt(o, "pulseA", 4, nullptr);
+        rp.pulseB      = optInt(o, "pulseB", 3, nullptr);
+        rp.rotationA   = optInt(o, "rotationA", 1, nullptr);
+        rp.rotationB   = optInt(o, "rotationB", 1, nullptr);
+        rp.pitchA      = optInt(o, "pitchA", 36, nullptr);
+        rp.pitchB      = optInt(o, "pitchB", 42, nullptr);
+        rp.velocityA   = optInt(o, "velocityA", 112, nullptr);
+        rp.velocityB   = optInt(o, "velocityB", 96, nullptr);
+        rp.dsl         = optString(o, "dsl", "");
+        rp.dslPitch    = optInt(o, "dslPitch", 39, nullptr);
+        rp.dslVelocity = optInt(o, "dslVelocity", 104, nullptr);
+
+        double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
+
+        std::vector<RhythmPatternGenerator::Note> notes;
+        try
+        {
+            notes = RhythmPatternGenerator::generate(rp);
+        }
+        catch (const std::invalid_argument& ex)
+        {
+            return makeError(-32602, QString("dsl: ") + ex.what());
+        }
+        if (notes.empty())
+            return makeError(-32602, "pattern produced no notes");
+
+        std::vector<PhraseGenerator::GeneratedNote> converted;
+        converted.reserve(notes.size());
+        for (const auto& n : notes)
+            converted.push_back({ n.startBeat, n.pitch, n.velocity, n.durationBeats });
+
+        const double totalBeats = (std::max)(1, rp.bars) * 4.0;
+        return generateIntoClip(trackIndex, startBeat, totalBeats, "Rhythm Pattern", converted);
     }
 
     return makeError(-32601, "unknown composition method: " + m);
