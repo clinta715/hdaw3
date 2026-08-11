@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.18.0
+**Current version**: 0.18.1
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.18.0)
+## What works today (v0.18.1)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -317,6 +317,49 @@ implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog
+
+### v0.18.1 — Plugin scan & blacklist fixes
+
+Fixes to the plugin scan/blacklist engine surfaced by the preset-listing task
+(`list_plugin_presets` / `list_fx_params`). See
+`docs/plans/2026-08-11-fix-scan-blacklist-bugs.md` for the full record.
+
+**Engine fixes:**
+- **Blacklist now actually loads.** `saveBlacklist()` writes `<BLACKLIST>` as the
+  XML document root but `loadBlacklist()` only looked for a `<BLACKLIST>` *child*,
+  so the blacklist was silently never enforced. The loader now accepts both the
+  root-is-BLACKLIST form and the legacy wrapper form — blacklisted plugins are
+  excluded at scan, listing, and instantiation time (with per-file skip logging).
+- **Hung scanners can no longer stall a scan indefinitely.** The timeout path
+  previously fell through to `readAllProcessOutput()`, which blocks forever when
+  a wedged child's process handle never signals (e.g. a poison plugin half-loaded
+  in the x64 scanner). The timeout path now kills with bounded re-waits, reports
+  `"Scanner timed out (Ns)"` with the final process state, and never reads output
+  on that path. A hard overall scan cap (`HDAW_SCAN_TOTAL_TIMEOUT_MS`, 15 min
+  default) bounds the whole pass.
+- **Slow plugins are no longer dropped.** The per-file scanner timeout is now the
+  `HDAW_SCAN_PLUGIN_TIMEOUT_MS` knob (default 90s, was a hardcoded 30s). Also,
+  `findPluginFiles` now enumerates VST3 **directory bundles** (e.g.
+  `Serum2.vst3/Contents/x86_64-win/...`) in addition to single-file `.vst3`/`.clap`
+  — bundle plugins were previously invisible to the engine scan entirely.
+- **32-bit PE guard.** New shared header `src/common/PluginBinaryInfo.h` reads the
+  PE machine type straight off disk and skips genuine 32-bit binaries (which
+  cannot load in the x64 scanner) in both the engine and the scanner, with a
+  clean `"skipped (32-bit binary)"` reason. FM8's exclusion is its blacklist
+  entry (now active) — FM8 is actually an x64 image whose 2nd factory component
+  wedges the scanner.
+
+**Preset listing (carried over from the preset-listing task, verified live):**
+- VST3 presets list via MCP `list_plugin_presets` (128-program banks for
+  Zebralette3/TyrellN6/TripleCheese/Podolski/BazilleCM, Serum 2, Identity, and
+  more); CLAP correctly reports empty (no program extension in CLAP 1.2.7).
+
+**Tests:**
+- New `PluginManagerScan` gtest suite (8 tests): blacklist round-trip through the
+  manager, legacy wrapper form, PE machine-type detection (32/64/garbage),
+  bundle enumeration, bounded timeout with hang-fixture + no-survivor tasklist
+  probe, and the scanner exit-code reporting path.
+- Full suite: 722 tests pass.
 
 ### v0.18.0 — File Library System
 
