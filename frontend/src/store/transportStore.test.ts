@@ -13,6 +13,8 @@ describe("transportStore", () => {
         loopEnd: 8,
         currentTimeSeconds: 0,
         sampleRate: 44100,
+        timeSigNumerator: 4,
+        timeSigDenominator: 4,
       },
     });
   });
@@ -35,6 +37,8 @@ describe("transportStore", () => {
       loopEnd: 10,
       currentTimeSeconds: 5,
       sampleRate: 48000,
+      timeSigNumerator: 4,
+      timeSigDenominator: 4,
     });
 
     const t = useTransportStore.getState().transport;
@@ -44,6 +48,25 @@ describe("transportStore", () => {
     expect(t.loopStart).toBe(2);
     expect(t.loopEnd).toBe(10);
     expect(t.sampleRate).toBe(48000);
+  });
+
+  it("updates time signature from the transport snapshot", () => {
+    useTransportStore.getState().update({
+      bpm: 140,
+      isPlaying: false,
+      isLooping: false,
+      isRecording: false,
+      loopStart: 0,
+      loopEnd: 8,
+      currentTimeSeconds: 0,
+      sampleRate: 44100,
+      timeSigNumerator: 3,
+      timeSigDenominator: 4,
+    });
+
+    const t = useTransportStore.getState().transport;
+    expect(t.timeSigNumerator).toBe(3);
+    expect(t.timeSigDenominator).toBe(4);
   });
 
   it("preserves fields not in update", () => {
@@ -56,6 +79,8 @@ describe("transportStore", () => {
       loopEnd: 8,
       currentTimeSeconds: 0,
       sampleRate: 44100,
+      timeSigNumerator: 4,
+      timeSigDenominator: 4,
     });
 
     expect(useTransportStore.getState().transport.bpm).toBe(90);

@@ -8,6 +8,8 @@ export interface TransportSnapshot {
   loopEnd: number;
   currentTimeSeconds: number;
   sampleRate: number;
+  timeSigNumerator: number;
+  timeSigDenominator: number;
 }
 
 export interface TrackSnapshot {

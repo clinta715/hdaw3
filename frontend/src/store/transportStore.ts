@@ -16,6 +16,8 @@ export const useTransportStore = create<TransportState>((set) => ({
     loopEnd: 8,
     currentTimeSeconds: 0,
     sampleRate: 0,
+    timeSigNumerator: 4,
+    timeSigDenominator: 4,
   },
   update: (data) => set({ transport: data }),
 }));

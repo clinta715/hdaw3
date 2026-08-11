@@ -27,10 +27,9 @@ export default function TransportBar() {
   const metronomeEnabled = useTransportExtrasStore((s) => s.metronomeEnabled);
   const countInEnabled = useTransportExtrasStore((s) => s.countInEnabled);
   const followPlayhead = useTransportExtrasStore((s) => s.followPlayhead);
-  const timeSignatureNum = useTransportExtrasStore((s) => s.timeSignatureNum);
-  const timeSignatureDen = useTransportExtrasStore((s) => s.timeSignatureDen);
   const setExtras = useTransportExtrasStore((s) => s.set);
   const [bpmInput, setBpmInput] = useState<string | null>(null);
+  const [tsEdit, setTsEdit] = useState<{ n: number; d: number } | null>(null);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [ccRecArmed, setCcRecArmed] = useState(false);
@@ -76,6 +75,19 @@ export default function TransportBar() {
     }
   }, []);
 
+  // Commit an edited time signature (numerator/denominator) to the backend.
+  // Reads fresh transport state so fallbacks never rely on stale closures.
+  const commitTimeSig = useCallback(() => {
+    if (!tsEdit) return;
+    const { n, d } = tsEdit;
+    const cur = useTransportStore.getState().transport;
+    const numerator = Number.isFinite(n) && n > 0 ? n : cur.timeSigNumerator;
+    const denominator = Number.isFinite(d) && d > 0 ? d : cur.timeSigDenominator;
+    rpc.call("project.setTimeSignature", { numerator, denominator })
+      .catch((err) => reportRpcError("project.setTimeSignature", err));
+    setTsEdit(null);
+  }, [tsEdit]);
+
   // Poll the dirty flag on an interval. Snapshot updates arrive via the
   // notify.treeChanged push (debounced to ~16 ms in FrontendTreeWatcher), so
   // we don't poll the snapshot here anymore — that was redundant load on
@@ -97,8 +109,8 @@ export default function TransportBar() {
 
   const barBeat = (() => {
     const totalBeats = transport.currentTimeSeconds * (transport.bpm / 60);
-    const bar = Math.floor(totalBeats / timeSignatureNum) + 1;
-    const beat = Math.floor(totalBeats % timeSignatureNum) + 1;
+    const bar = Math.floor(totalBeats / transport.timeSigNumerator) + 1;
+    const beat = Math.floor(totalBeats % transport.timeSigNumerator) + 1;
     return `${bar}.${beat}`;
   })();
 
@@ -201,8 +213,33 @@ export default function TransportBar() {
               `${transport.bpm.toFixed(1)} BPM`
             )}
           </span>
-          <span className="tb-time-sig">
-            {timeSignatureNum}/{timeSignatureDen}
+          <span
+            className="tb-time-sig"
+            onDoubleClick={() => setTsEdit({ n: transport.timeSigNumerator, d: transport.timeSigDenominator })}
+            title="Double-click to edit time signature"
+          >
+            {tsEdit != null ? (
+              <>
+                <input
+                  className="tb-bpm-input"
+                  autoFocus
+                  value={tsEdit.n}
+                  onChange={(e) => setTsEdit((prev) => (prev ? { ...prev, n: e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0 } : prev))}
+                  onBlur={() => commitTimeSig()}
+                  onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLElement).blur(); } if (e.key === "Escape") setTsEdit(null); }}
+                />
+                /
+                <input
+                  className="tb-bpm-input"
+                  value={tsEdit.d}
+                  onChange={(e) => setTsEdit((prev) => (prev ? { ...prev, d: e.target.value === "" ? 0 : parseInt(e.target.value, 10) || 0 } : prev))}
+                  onBlur={() => commitTimeSig()}
+                  onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLElement).blur(); } if (e.key === "Escape") setTsEdit(null); }}
+                />
+              </>
+            ) : (
+              `${transport.timeSigNumerator}/${transport.timeSigDenominator}`
+            )}
           </span>
         </div>
       </div>
