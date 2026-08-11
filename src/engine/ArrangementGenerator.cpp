@@ -112,7 +112,7 @@ double swingOffsetBeats (int step, double swingPercent)
 
 // ── Kick ──
 
-int pickKickArchetype (SplitMix64& rng, Section sec)
+int pickKickArchetype (SplitMix64& rng, Section sec, int style)
 {
     double w[4]; // fotf, two_step, broken, syncopated
     switch (sec)
@@ -125,6 +125,11 @@ int pickKickArchetype (SplitMix64& rng, Section sec)
         case Section::Drop:    w[0]=0.60; w[1]=0.20; w[2]=0.10; w[3]=0.10; break;
         default:               w[0]=0.35; w[1]=0.30; w[2]=0.20; w[3]=0.15; break;
     }
+    if (style == 1)      { w[0] *= 1.7; w[1] *= 0.3; w[2] *= 0.3; w[3] *= 0.3; } // House: fotf dominant
+    else if (style == 2) { w[0] *= 0.3; w[1] *= 1.7; w[2] *= 2.0; w[3] *= 0.8; } // DnB: two-step/broken
+    double sum = w[0] + w[1] + w[2] + w[3];
+    if (sum > 0.0)
+        for (double& x : w) x /= sum;
     return weightedChoice (rng, { { 0, w[0] }, { 1, w[1] }, { 2, w[2] }, { 3, w[3] } });
 }
 
@@ -163,7 +168,7 @@ std::vector<ArrangementNote> generateKick (const ArrangementParams& p, ReproStat
             continue; // kick drops out during breaks
         auto rng = repro.rng ("kick", std::to_string (bar));
         const int e = energy[static_cast<size_t>(bar)];
-        const int arch = pickKickArchetype (rng, sections[static_cast<size_t>(bar)]);
+        const int arch = pickKickArchetype (rng, sections[static_cast<size_t>(bar)], p.style);
         const auto anchors = kickAnchors (arch, e);
         const double density = elementDensity (TrackRole::Kick, e);
         const int drift = rng.nextInt (-2, 2);
@@ -200,9 +205,10 @@ std::vector<ArrangementNote> generateClap (const ArrangementParams& p, ReproStat
         auto rng = repro.rng ("clap", std::to_string (bar));
         const int e = energy[static_cast<size_t>(bar)];
         const double presence = std::clamp (0.5 + 0.15 * e, 0.0, 1.0);
+        const double styleScale = (p.style == 2) ? 0.35 : 1.0; // DnB: snare owns the backbeat
         for (int step : { 4, 12 }) // beats 2 and 4
         {
-            if (! rng.nextBool (presence))
+            if (! rng.nextBool (presence * styleScale))
                 continue;
             ArrangementNote n;
             n.startBeat = stepToBeat (bar, step);
@@ -213,7 +219,7 @@ std::vector<ArrangementNote> generateClap (const ArrangementParams& p, ReproStat
             onsetsByBar[static_cast<size_t>(bar)].push_back (step);
         }
         const double pEnd = 0.05 + (e / 3.0) * 0.07;
-        if (rng.nextBool (pEnd))
+        if (rng.nextBool (pEnd * styleScale))
         {
             ArrangementNote n;
             n.startBeat = stepToBeat (bar, 15);
@@ -222,6 +228,63 @@ std::vector<ArrangementNote> generateClap (const ArrangementParams& p, ReproStat
             n.durationBeats = 0.08;
             notes.push_back (n);
             onsetsByBar[static_cast<size_t>(bar)].push_back (15);
+        }
+    }
+    return notes;
+}
+
+// ── Snare ──
+
+std::vector<ArrangementNote> generateSnare (const ArrangementParams& p, ReproState& repro,
+                                            const std::vector<int>& energy,
+                                            const std::vector<Section>& sections)
+{
+    std::vector<ArrangementNote> notes;
+    constexpr int kSnare = 38; // D2
+    for (int bar = 0; bar < p.bars; ++bar)
+    {
+        if (sections[static_cast<size_t>(bar)] == Section::Break)
+            continue;
+        auto rng = repro.rng ("snare", std::to_string (bar));
+        const int e = energy[static_cast<size_t>(bar)];
+
+        std::vector<int> steps;
+        if (p.style == 2) // DnB two-step breakbeat
+        {
+            steps = { 4, 11 };
+            if (e >= 2 && rng.nextBool (0.4))
+                steps.push_back (14); // extra backbeat at high energy
+            const int ghosts = rng.nextInt (1, 3);
+            static const int candidates[] = { 2, 6, 10, 13 };
+            for (int i = 0; i < ghosts; ++i)
+                steps.push_back (candidates[rng.nextInt (0, 3)]);
+        }
+        else if (p.style == 1) // House: 2&4 backbeat + occasional ghost
+        {
+            steps = { 4, 12 };
+            if (e >= 2 && rng.nextBool (0.25))
+                steps.push_back (14);
+        }
+        else // Techno: 2&4, sparser ghost only at high energy
+        {
+            steps = { 4, 12 };
+            if (e >= 3 && rng.nextBool (0.4))
+                steps.push_back (11);
+        }
+
+        std::sort (steps.begin(), steps.end());
+        steps.erase (std::unique (steps.begin(), steps.end()), steps.end());
+        for (int step : steps)
+        {
+            const bool backbeat = (step == 4 || step == 11 || step == 12);
+            const int vel = backbeat ? rng.nextInt (105, 118)
+                                     : rng.nextInt (60, 85);
+            ArrangementNote n;
+            n.startBeat = stepToBeat (bar, step) + swingOffsetBeats (step, p.swingPercent);
+            n.noteNumber = kSnare;
+            n.velocity = std::clamp (vel, 1, 127);
+            n.durationBeats = 0.1;
+            notes.push_back (n);
         }
     }
     return notes;
@@ -254,7 +317,8 @@ void generateHats (const ArrangementParams& p, ReproState& repro,
         // Closed hat
         {
             auto rng = repro.rng ("closedhat", std::to_string (bar));
-            const double density = elementDensity (TrackRole::ClosedHat, e);
+            double density = elementDensity (TrackRole::ClosedHat, e);
+            if (p.style == 2) density *= 1.15; // DnB: busier 16ths
             const bool offbeatMode = density < 0.35 && e <= 1;
             std::vector<int> steps;
             if (offbeatMode)
@@ -686,12 +750,14 @@ Arrangement generateArrangement (const ArrangementParams& params)
     const auto sections = sectionByBar (bars, arr.sectionMap);
 
     std::vector<std::vector<int>> kickOnsets, clapOnsets;
-    std::vector<ArrangementNote> kickNotes, clapNotes, closedNotes, openNotes, bassNotes, leadNotes, chordsNotes;
+    std::vector<ArrangementNote> kickNotes, clapNotes, snareNotes, closedNotes, openNotes, bassNotes, leadNotes, chordsNotes;
 
     if (params.enableKick)
         kickNotes = generateKick (params, repro, arr.energyByBar, sections, kickOnsets);
     if (params.enableClap)
         clapNotes = generateClap (params, repro, arr.energyByBar, sections, clapOnsets);
+    if (params.enableSnare)
+        snareNotes = generateSnare (params, repro, arr.energyByBar, sections);
     if (params.enableClosedHat || params.enableOpenHat)
         generateHats (params, repro, arr.energyByBar, sections, clapOnsets, closedNotes, openNotes);
     if (params.enableBass)
@@ -718,6 +784,7 @@ Arrangement generateArrangement (const ArrangementParams& params)
     if (params.enableClosedHat) addPart (TrackRole::ClosedHat, std::move (closedNotes));
     if (params.enableOpenHat)   addPart (TrackRole::OpenHat, std::move (openNotes));
     if (params.enableClap)      addPart (TrackRole::Clap, std::move (clapNotes));
+    if (params.enableSnare)     addPart (TrackRole::Snare, std::move (snareNotes));
     if (params.enableBass)      addPart (TrackRole::Bass, std::move (bassNotes));
     if (params.enableLead)      addPart (TrackRole::Lead, std::move (leadNotes));
     if (params.enableChords)    addPart (TrackRole::Chords, std::move (chordsNotes));

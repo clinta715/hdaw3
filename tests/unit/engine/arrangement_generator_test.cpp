@@ -319,3 +319,113 @@ TEST(ArrangementLeadChords, Deterministic)
         EXPECT_EQ (la->notes[i].noteNumber, lb->notes[i].noteNumber);
     }
 }
+
+// ── Snare ──
+
+TEST(ArrangementSnare, HousePlacesBackbeatOnTwoAndFour)
+{
+    ArrangementParams p = defaultParams (99, 16);
+    p.style = 1;
+    p.enableSnare = true;
+    auto arr = generateArrangement (p);
+    const auto* snare = findPart (arr, TrackRole::Snare);
+    ASSERT_NE (snare, nullptr);
+
+    std::vector<std::set<int>> stepsByBar (16);
+    for (const auto& n : snare->notes)
+    {
+        const int bar = beatToBar (n.startBeat);
+        ASSERT_GE (bar, 0);
+        ASSERT_LT (bar, 16);
+        stepsByBar[static_cast<size_t>(bar)].insert (beatToStep (n.startBeat));
+    }
+    for (int bar = 0; bar < 16; ++bar)
+    {
+        EXPECT_NE (stepsByBar[static_cast<size_t>(bar)].count (4), 0u)
+            << "bar " << bar << " lacks beat-2 snare";
+        EXPECT_NE (stepsByBar[static_cast<size_t>(bar)].count (12), 0u)
+            << "bar " << bar << " lacks beat-4 snare";
+    }
+}
+
+TEST(ArrangementSnare, DnbTwoStepBackbeatWithQuietGhosts)
+{
+    ArrangementParams p = defaultParams (1234, 16);
+    p.style = 2;
+    p.enableSnare = true;
+    auto arr = generateArrangement (p);
+    const auto* snare = findPart (arr, TrackRole::Snare);
+    ASSERT_NE (snare, nullptr);
+
+    std::vector<std::set<int>> stepsByBar (16);
+    for (const auto& n : snare->notes)
+    {
+        const int bar = beatToBar (n.startBeat);
+        ASSERT_GE (bar, 0);
+        ASSERT_LT (bar, 16);
+        stepsByBar[static_cast<size_t>(bar)].insert (beatToStep (n.startBeat));
+    }
+    for (int bar = 0; bar < 16; ++bar)
+    {
+        EXPECT_NE (stepsByBar[static_cast<size_t>(bar)].count (4), 0u)
+            << "bar " << bar << " lacks two-step snare 1";
+        EXPECT_NE (stepsByBar[static_cast<size_t>(bar)].count (11), 0u)
+            << "bar " << bar << " lacks two-step snare 2";
+    }
+    for (const auto& n : snare->notes)
+    {
+        const int step = beatToStep (n.startBeat);
+        if (step != 4 && step != 11 && step != 14)
+            EXPECT_LT (n.velocity, 90) << "ghost snare not quiet";
+    }
+}
+
+TEST(ArrangementSnare, DisabledByDefault)
+{
+    auto arr = generateArrangement (defaultParams (42, 32));
+    EXPECT_EQ (findPart (arr, TrackRole::Snare), nullptr);
+}
+
+// ── Genre styles ──
+
+TEST(ArrangementGenre, HouseKickMoreFourOnFloorThanTechno)
+{
+    auto countFotfBars = [] (const Arrangement& arr) {
+        const auto* kick = findPart (arr, TrackRole::Kick);
+        if (!kick) return 0;
+        std::set<int> bars;
+        for (const auto& n : kick->notes) bars.insert (beatToBar (n.startBeat));
+        int n = 0;
+        for (int bar : bars)
+        {
+            std::set<int> steps;
+            for (const auto& note : kick->notes)
+                if (beatToBar (note.startBeat) == bar) steps.insert (beatToStep (note.startBeat));
+            if (steps.count (4) != 0u && steps.count (12) != 0u) ++n;
+        }
+        return n;
+    };
+
+    ArrangementParams house = defaultParams (42, 32);
+    house.style = 1;
+    ArrangementParams techno = defaultParams (42, 32);
+    techno.style = 0;
+    const int h = countFotfBars (generateArrangement (house));
+    const int t = countFotfBars (generateArrangement (techno));
+    EXPECT_GT (h, t) << "house fotf bars=" << h << " techno=" << t;
+}
+
+TEST(ArrangementGenre, DnbClosedHatsDenserThanTechno)
+{
+    ArrangementParams dnb = defaultParams (42, 32);
+    dnb.style = 2;
+    ArrangementParams techno = defaultParams (42, 32);
+    techno.style = 0;
+    auto dnbArr = generateArrangement (dnb);
+    auto techArr = generateArrangement (techno);
+    const auto* dnbHats = findPart (dnbArr, TrackRole::ClosedHat);
+    const auto* techHats = findPart (techArr, TrackRole::ClosedHat);
+    ASSERT_NE (dnbHats, nullptr);
+    ASSERT_NE (techHats, nullptr);
+    EXPECT_GT (dnbHats->notes.size(), techHats->notes.size());
+}
