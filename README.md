@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.19.0
+**Current version**: 0.20.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.19.0)
+## What works today (v0.20.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -151,6 +151,8 @@ pass `Debug` for breakpoint debugging.
   restored on startup with fallback to defaults).
 - MCP HTTP server host is configurable in Preferences (defaults to
   `127.0.0.1`). `--no-mcp` CLI flag fully implemented.
+
+- Generative composition: PhraseGeneratorDialog (phrase styles, chords, progressions) gained a Rhythm mode — polyrhythmic/euclidean drum patterns, snare toggle, and house/techno/dnb genre styles.
 
 ### File Library
 - **File Library System** — a centralized registry of external audio and
@@ -320,6 +322,52 @@ implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog
+
+### v0.20.0 — Rhythm pattern generator, export isolation fix
+
+Ships the generative **rhythm pattern generator** end-to-end (engine, RPC, MCP,
+UI) and fixes the **isolated-plugin export wedge**: a 475-clip export could
+hang indefinitely (observed ~2.5 h at 0 bytes) because the offline render
+shared the live `PluginManager`, so live graph rebuilds collided with the
+export's proxy children and JUCE 8's non-realtime render-sequence bake had no
+interrupt or timeout. Exports now run on a dedicated, per-export offline
+plugin manager. See `docs/plans/2026-08-11-rhythm-pattern-generation.md`
+(feature) and `docs/plans/2026-08-11-export-isolation-wedge.md` (fix) for the
+full records.
+
+**Rhythm pattern generation:**
+- New `RhythmPatternGenerator` engine: two euclidean pulses (classic
+  polyrhythm, e.g. 4-over-3) plus a rhythm-DSL voice (`E(k,n[,rot])`, groups)
+  that finally drives the existing `Generative::expandToDivision`.
+- `ArrangementGenerator` gains a real `generateSnare` (house 2&4 backbeat, dnb
+  two-step breakbeat, techno sparse) and genre-aware style weights
+  (style 0 = Techno unchanged, 1 = House, 2 = DnB).
+- RPC `composition.generateRhythmPattern`, MCP `generate_rhythm_pattern`
+  (plus `enableSnare`/genre styles on `generate_arrangement`), and a new
+  "Rhythm" mode in `PhraseGeneratorDialog` with snare toggle and genre
+  selector.
+
+**Fix — export plugin isolation (the wedge):**
+- The offline render now builds a dedicated `PluginManager::createOfflineCopy`
+  with a per-export `ProxyProcessManager`, a per-domain pipe/SHM namespace
+  (`hdaw_plugin_export_*`), and per-domain proxy crash-state files — live
+  rebuilds, health monitoring, crash recovery, and slot IDs can no longer
+  collide with export children.
+- Bounded render-sequence bake wait: JUCE 8 bakes the offline graph
+  asynchronously on the message thread with no interruptible path; the first
+  `processBlock` waits on a FIFO-ordered message probe (max 15 s) and fails
+  fast with a clear diagnostic instead of wedging forever.
+- Verified against the wedge repro: a 475-clip / 2,634-note polyrhythm
+  composition (A minor, 120 BPM, 240 s) exports cleanly with plugins isolated;
+  in-process rendering regression-checked. Demo project:
+  `polyrhythm_aminor_120bpm.hdaw3`.
+
+**Tests:**
+- New `CrashRecovery.OfflinePluginDomainIsolatedFromLive` — the export plugin
+  domain cannot clobber live crash state.
+- New `McpServer.ExportAudioWithMultipleIsolatedInstances`.
+- PluginIsolation suite 37/37; export + MCP suites pass (50/50 in the
+  isolation/export scope).
 
 ### v0.19.0 — MCP tempo/time-signature tools, editable time signature, export fix
 
