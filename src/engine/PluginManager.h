@@ -10,7 +10,12 @@
 #include <atomic>
 #include <mutex>
 
-namespace proxy { class PluginProxySlot; }
+namespace proxy {
+class PluginProxySlot;
+#if HDAW_PLUGIN_ISOLATION
+class ProxyProcessManager;
+#endif
+}
 
 namespace HDAW {
 
@@ -30,6 +35,20 @@ public:
     // respawn a proxy slot after the proxies (owned by the track graph) are
     // destroyed.
     void stopCrashMonitor() { stopTimer(); }
+
+    // Builds a self-contained offline (export) PluginManager seeded from a
+    // live one: plugin list, blacklist, and preset cache are copied in
+    // memory so createPluginInstance / resolveIdentifierToPath work without
+    // a scan or disk cache access. The offline domain owns a FRESH
+    // ProxyProcessManager whose health monitor is never started; set
+    // setProxyNamespacePrefix() before creating any instance so its pipe/shm
+    // names and crash-state files cannot collide with the live domain.
+    static std::unique_ptr<PluginManager> createOfflineCopy(const PluginManager& source);
+
+    // Sets the OS name namespace prefix for this manager's isolated children
+    // (pipes/shm/state files). Empty by default (live domain). Must be set
+    // before any createPluginInstance call.
+    void setProxyNamespacePrefix(const juce::String& prefix);
 
     bool isolationEnabled = true;
 
@@ -110,8 +129,15 @@ public:
     int  slotTrackIndex(uint32_t slotId) const;   // returns -1 if unknown
 
 private:
+    // `offline` marks a dedicated copy for offline rendering (export): no
+    // crash-recovery timer, no disk cache reads/writes, no frontend crash
+    // broadcasts, and its ProxyProcessManager never starts a health
+    // monitor. Used by createOfflineCopy.
+    explicit PluginManager(bool offline);
     void onScanFinished();
     void timerCallback() override;
+
+    bool offline = false;
 
     juce::AudioPluginFormatManager formatManager;
     juce::KnownPluginList knownPluginList;
@@ -134,6 +160,14 @@ private:
     int lastScanCrashCount = 0;
 
     std::unique_ptr<CrashRecoveryManager> crashRecovery;
+#if HDAW_PLUGIN_ISOLATION
+    // Per-instance proxy process manager. Each PluginManager owns its own
+    // child processes, slot crash callbacks, and health monitor, so a
+    // dedicated offline (export) PluginManager can never kill or observe the
+    // live graph's children and vice versa. Unique_ptr (incomplete type in
+    // this header); destroyed in ~PluginManager.
+    std::unique_ptr<proxy::ProxyProcessManager> proxyProcessMgr;
+#endif
     // Raw-pointer observer registry of currently-alive proxy slots. The proxy
     // is OWNED by the audio graph (unique_ptr in AudioProcessorGraph), not by
     // this map. Guarded by liveProxySlotsMutex_ because the map is mutated

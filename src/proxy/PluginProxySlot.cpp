@@ -31,7 +31,8 @@ PluginProxySlot::PluginProxySlot(ProxyProcessManager& mgr, uint32_t id,
       processManager(mgr),
       slotId(id),
       pluginDisplayName(name),
-      pluginPathForRecovery(pluginPath)
+      pluginPathForRecovery(pluginPath),
+      stateFilePrefix(juce::String(mgr.getNamePrefix()))
 {
     auto* raw = processManager.getShm(slotId);
     if (raw)
@@ -696,7 +697,7 @@ void PluginProxySlot::saveStateToTemp() {
     if (block.getSize() == 0) return;
 
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    auto file = tempDir.getChildFile("hdaw_proxy_state_" +
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix +
         juce::String(static_cast<int>(slotId)) + ".bin");
     file.getParentDirectory().createDirectory();
     file.replaceWithData(block.getData(), block.getSize());
@@ -718,7 +719,7 @@ void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRe
 
 bool PluginProxySlot::restoreStateFromTemp() {
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    auto file = tempDir.getChildFile("hdaw_proxy_state_" +
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix +
         juce::String(static_cast<int>(slotId)) + ".bin");
 
     juce::FileInputStream stream(file);
@@ -760,9 +761,9 @@ void PluginProxySlot::timerCallback() {
         saveStateToTemp();
 }
 
-juce::MemoryBlock PluginProxySlot::loadStateForOldSlotId(uint32_t oldSlotId) {
+juce::MemoryBlock PluginProxySlot::loadStateForOldSlot(uint32_t oldSlotId) const {
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    auto file = tempDir.getChildFile("hdaw_proxy_state_" + juce::String((int)oldSlotId) + ".bin");
+    auto file = tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix + juce::String((int)oldSlotId) + ".bin");
     juce::MemoryBlock block;
     if (file.existsAsFile()) {
         juce::FileInputStream stream(file);
@@ -772,9 +773,9 @@ juce::MemoryBlock PluginProxySlot::loadStateForOldSlotId(uint32_t oldSlotId) {
     return block;
 }
 
-void PluginProxySlot::clearStateForSlotId(uint32_t slotId) {
+void PluginProxySlot::clearStateForSlot(uint32_t slotId) {
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
-    tempDir.getChildFile("hdaw_proxy_state_" + juce::String((int)slotId) + ".bin").deleteFile();
+    tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix + juce::String((int)slotId) + ".bin").deleteFile();
 }
 
 } // namespace proxy

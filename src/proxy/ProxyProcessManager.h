@@ -90,11 +90,22 @@ public:
     void startHealthMonitor(uint32_t intervalMs = 2000);
     void stopHealthMonitor();
 
+    // Per-domain namespace for the OS named objects (pipes/shm) this manager
+    // creates. Empty for the live domain; the offline-export domain uses a
+    // distinct prefix so its slot ids can never collide with live slots on
+    // the OS namespace even though both counters start at 1. Must be set
+    // before any spawnPluginHost call. Children are agnostic: they receive
+    // the exact pipe/shm names on their command line.
+    void setNamePrefix(const std::string& prefix) { namePrefix = prefix; }
+    const std::string& getNamePrefix() const { return namePrefix; }
+
     static std::string getHostExePath();
 
 private:
     std::string makePipeName(uint32_t slotId);
     std::string makeShmName(uint32_t slotId);
+
+    std::string namePrefix;
 
     std::unordered_map<uint32_t, ChildInfo> children;
     mutable std::mutex mutex;

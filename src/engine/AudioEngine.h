@@ -127,12 +127,17 @@ private:
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;
+    // PluginManager is declared BEFORE mainProcessor so destruction runs in
+    // reverse: the graph (and its PluginProxySlots) is destroyed first, then
+    // the PluginManager whose ProxyProcessManager those slots reference. A
+    // reversed order would destroy the proxy registry (and terminate the
+    // children) while the proxies were still alive.
+    HDAW::PluginManager pluginManager;
     std::unique_ptr<MainAudioProcessor> mainProcessor;
     ProjectModel projectModel;
     SPSCBridge spscBridge;
     HDAW::TransportManager transportManager;
     HDAW::ProjectPool projectPool;
-    HDAW::PluginManager pluginManager;
     HDAW::MidiInputManager midiInputManager;
     HDAW::StretchCache stretchCache;
     HDAW::SessionManager sessionManager;

@@ -78,6 +78,33 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     proxy::setRenderMode(true);
     proxy::setRenderCancelRequested(false);
 
+    // Layer 1: the export render graph gets its OWN plugin domain. Passing
+    // the live PluginManager into the render RoutingManager shared the live
+    // ProxyProcessManager (children map, slot crash callbacks, health
+    // monitor, nextProxySlotId), the live CrashRecoveryManager, and the live
+    // liveProxySlots registry with the export. A live FX-chain rebuild during
+    // export could then spawn a host whose defensive killPluginHost(slotId)
+    // killed the export's own child and replaced its shm — the wedged-export
+    // root cause. The dedicated PluginManager is seeded from the live one
+    // (plugin list / blacklist / preset cache, in memory — no scan, no disk
+    // cache IO) so createPluginInstance / resolveIdentifierToPath work
+    // offline, and its ProxyProcessManager gets its own OS name namespace
+    // (pipes/shm/crash-state files) so its slot ids can never collide with
+    // live slots even though both counters start at 1. Its health monitor is
+    // never started (createPluginInstance skips it for offline domains) and
+    // its crash callbacks land only in its own registry.
+    //
+    // Declared BEFORE the render-graph scope so C++ reverse destruction
+    // order guarantees it outlives every ~PluginProxySlot (which calls back
+    // into its ProxyProcessManager during renderGraph teardown), and
+    // destroyed before render mode is cleared below.
+    std::unique_ptr<HDAW::PluginManager> exportPluginManager;
+    if (pluginManager != nullptr)
+    {
+        exportPluginManager = HDAW::PluginManager::createOfflineCopy(*pluginManager);
+        exportPluginManager->setProxyNamespacePrefix("export_");
+    }
+
     // Suppress crash-recovery respawn for the ENTIRE export duration,
     // including teardown. A crashed plugin during offline export should
     // fail the export, not respawn into a half-rendered file; and with
@@ -87,21 +114,23 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     // This RAII guard is declared BEFORE `renderGraph` so C++ reverse
     // destruction order guarantees its destructor runs AFTER renderGraph's
     // — i.e. AFTER every ~PluginProxySlot has fired its destruction
-    // callback (erasing from liveProxySlots + cancel()ing the recovery
-    // entry). By the time respawnEnabled is restored to true, all of
-    // export's proxies are gone and their entries canceled, so a Timer
-    // tick can never dereference a freed export proxy. This is the
-    // essential ordering the plan specifies ("restore after proxies are
-    // destroyed + cancel fired").
+    // callback (erasing from the dedicated domain's liveProxySlots +
+    // cancel()ing the recovery entry). By the time respawnEnabled is
+    // restored to true, all of export's proxies are gone and their entries
+    // canceled, so a Timer tick can never dereference a freed export proxy.
+    //
+    // NOTE: the guard targets the DEDICATED export domain's
+    // CrashRecoveryManager, not the live one's — with per-domain plugin
+    // machinery the live graph's crash recovery can no longer touch export
+    // children, so it keeps running during export.
     //
     // NOTE: the callers (McpExportTool, FrontendRouter) drive the ENGINE's
     // member ExportManager, whose ~ExportManager only runs at engine
     // teardown — so a pure join-based restore would leave respawnEnabled
-    // false between exports, suppressing live crash recovery. The RAII
-    // guard closes that gap: it fires the instant this render thread
-    // finishes unwinding.
+    // false between exports. The RAII guard closes that gap: it fires the
+    // instant this render thread finishes unwinding.
     HDAW::CrashRecoveryManager* recoveryMgr =
-        pluginManager ? &pluginManager->recovery() : nullptr;
+        exportPluginManager ? &exportPluginManager->recovery() : nullptr;
     struct RespawnSuppressionGuard {
         HDAW::CrashRecoveryManager* crm;
         explicit RespawnSuppressionGuard(HDAW::CrashRecoveryManager* c) : crm(c) {
@@ -163,7 +192,9 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
             }
     
             RoutingManager routingManager(renderGraph, localModel, *formatManager,
-                                          renderTransport, pluginManager);
+                                          renderTransport,
+                                          exportPluginManager ? exportPluginManager.get()
+                                                              : pluginManager);
             routingManager.setPlaybackInfo(sampleRate, blockSize);
             routingManager.rebuildFromValueTree();
     
@@ -179,13 +210,74 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
             routingManager.reconnectMasterToOutput();
     
             renderGraph.prepareToPlay(sampleRate, blockSize);
-    
+
             // Offline render: wait for the async render-sequence bake (delivered
             // on the JUCE message pump thread) instead of racing it. Without
             // this, processBlock hits the audio.clear() fallback for every block
             // processed before the bake lands — the race that intermittently
             // produced fully-silent exports.
             renderGraph.setNonRealtime(true);
+
+            // Layer 2: bounded render-sequence bake wait. JUCE 8's
+            // AudioProcessorGraph::processBlock in non-realtime mode spins
+            // forever (Thread::sleep(1)) when no render sequence has been
+            // baked; that spin cannot be interrupted from another thread, so
+            // the FIRST processBlock must never be called until the bake has
+            // landed. The bake is delivered by the JUCE message thread when it
+            // services the graph's LockingAsyncUpdater. We detect it without
+            // touching the graph's internals: post a probe message to the
+            // message queue AFTER the graph's own updater messages (posted
+            // during rebuildFromValueTree/prepareToPlay on this same render
+            // thread — FIFO ordering), then wait a bounded deadline for the
+            // probe to fire. When it fires, every message queued before it —
+            // including the render-sequence bake — has been processed, so the
+            // first processBlock can no longer spin. On timeout the export
+            // FAILS with a clear message instead of hanging forever.
+            {
+                // Heap-allocated with the message queue as SOLE owner: JUCE
+                // deletes posted MessageBase objects after dispatch (the
+                // ReferenceCountedArray holds the only refs), so the probe
+                // must be a plain `new` — neither a stack object (deleted on
+                // a stack address) nor a shared_ptr-owned object (deleted
+                // while its control block lives) is valid here. The FLAG is
+                // kept alive separately via shared_ptr: if the export times
+                // out, the queued probe may still fire later, and the flag
+                // must outlive the stack unwind.
+                auto bakeLanded = std::make_shared<std::atomic<bool>>(false);
+                struct BakeProbeMessage final : public juce::CallbackMessage {
+                    std::shared_ptr<std::atomic<bool>> landed;
+                    explicit BakeProbeMessage(std::shared_ptr<std::atomic<bool>> f)
+                        : landed(std::move(f)) {}
+                    void messageCallback() override
+                    {
+                        landed->store(true, std::memory_order_release);
+                    }
+                };
+                auto* probe = new BakeProbeMessage(bakeLanded);
+                probe->post();
+
+                constexpr uint32_t kMaxBakeWaitMs = 15000;
+                const auto bakeDeadline =
+                    juce::Time::getMillisecondCounter() + kMaxBakeWaitMs;
+                while (!bakeLanded->load(std::memory_order_acquire)
+                       && !cancelFlag.load()
+                       && juce::Time::getMillisecondCounter() < bakeDeadline)
+                {
+                    juce::Thread::sleep(10);
+                }
+
+                if (!bakeLanded->load(std::memory_order_acquire))
+                {
+                    success = false;
+                    message = cancelFlag.load()
+                        ? "Export cancelled."
+                        : "Render graph bake timed out after 15s - export aborted.";
+                    // Mirrors the cancel path: never leave a partial/zero-byte
+                    // output file behind for a failed export.
+                    outputPath.deleteFile();
+                    goto finish;
+                }
+            }
     
             int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
             int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;

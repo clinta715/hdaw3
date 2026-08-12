@@ -20,6 +20,7 @@
 #include <QTimer>
 #include <QThread>
 #include <QUrl>
+#include <QVector>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
@@ -801,7 +802,144 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
     s.setTransport(nullptr);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// Isolation-of-the-export regression: an export whose render graph hosts
+// MULTIPLE isolated plugin instances must complete and produce a non-empty,
+// non-silent WAV while the LIVE graph keeps its own isolated instances
+// untouched. Before the isolation-export-wedge fix, the export render graph
+// shared the live PluginManager/ProxyProcessManager (slot counter, children
+// map, crash callbacks), so live FX-chain rebuilds during export could kill
+// the export's own children via defensive killPluginHost(slotId) — the render
+// never settled and the export hung forever. The fix gives the export its own
+// plugin domain. This test drives the old failure shape (several isolated
+// instances inside one export, several isolated instances on the live graph)
+// through the real MCP export_audio path and requires completion within the
+// wait budget; a hang regression trips the waitExportComplete timeout.
+TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
+    AudioEngine engine;
+    engine.initialize();
+
+    // Find a CLAP instrument plugin from the cache (loaded by initialize()).
+    QString clapPluginId;
+    for (const auto& pd : engine.getPluginManager().getPlugins()) {
+        if (pd.pluginFormatName == "CLAP") {
+            clapPluginId = QString::fromStdString(pd.createIdentifierString().toStdString());
+            break;
+        }
+    }
+
+    if (clapPluginId.isEmpty()) {
+        GTEST_SKIP() << "No CLAP plugins found in cache — skipping multi-instance export test";
+    }
+
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+
+    // Three live tracks, each with its own isolated CLAP instance (the live
+    // graph keeps these alive across the export below).
+    QVector<int> trackIds;
+    for (int i = 0; i < 3; ++i) {
+        QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"add_track_with_fx","arguments":{"name":"MultiInst Track %1","pluginId":"%2"}}})")
+                          .arg(i).arg(clapPluginId);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out;
+        ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+        auto r = parseResponse(out);
+        QString text = textOf(r);
+        ASSERT_TRUE(text.contains("trackId")) << "Failed to add track: " << text.toStdString();
+        QRegularExpression re("trackId=(\\d+)");
+        auto match = re.match(text);
+        ASSERT_TRUE(match.hasMatch()) << "Could not parse trackId from: " << text.toStdString();
+        trackIds.append(match.captured(1).toInt());
+    }
+
+    // Give each track a MIDI phrase so the isolated instruments render audio.
+    for (int i = 0; i < trackIds.size(); ++i) {
+        QString req = QString(R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"generate_phrase","arguments":{"trackId":%1,"style":"Lead","length":16,"density":20}}})")
+                          .arg(trackIds[i]);
+        tp.drainOutgoing();
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out;
+        ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+    }
+
+    // Export 8 seconds with the three isolated instances on the render graph.
+    // Must complete within the wait budget — a wedge regression hangs here.
+    QString path1 = makeTempWavPath("multiinst1");
+    {
+        QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":8.0,"sampleRate":44100.0,"bitDepth":16})")
+                           .arg(path1);
+        QString req = QString(R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
+                          .arg(args);
+        tp.drainOutgoing();
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out;
+        ASSERT_TRUE(tp.waitForOutgoing(30000, &out))
+            << "Multi-instance export did not start within 30s";
+        auto r = parseResponse(out);
+        EXPECT_FALSE(r.value("error").isObject());
+        QString text = textOf(r);
+        if (r.value("result").toObject().value("isError").toBool(false)) {
+            FAIL() << "Export failed: " << text.toStdString();
+        }
+        EXPECT_TRUE(text.contains("export started")) << "got: [" << text.toStdString() << "]";
+        auto complete = waitExportComplete(tp, 60000);
+        ASSERT_FALSE(complete.isEmpty()) << "Export never completed (render-graph wedge?)";
+        EXPECT_TRUE(complete.value("success").toBool())
+            << "message: " << complete.value("message").toString().toStdString();
+    }
+
+    EXPECT_TRUE(QFile::exists(path1));
+    EXPECT_GT(QFile(path1).size(), 0) << "Exported WAV is empty";
+
+    // The render must be non-silent: each of the three isolated instruments
+    // must have produced audio (peak assertion below).
+    {
+        juce::AudioFormatManager fmtMgr;
+        fmtMgr.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader(
+            fmtMgr.createReaderFor(juce::File(path1.toStdString())));
+        ASSERT_NE(reader, nullptr) << "Could not open exported WAV for peak analysis";
+        juce::AudioBuffer<float> buf(
+            static_cast<int>(reader->numChannels),
+            static_cast<int>(reader->lengthInSamples));
+        reader->read(&buf, 0, static_cast<int>(reader->lengthInSamples), 0, true, true);
+        float peakAbs = 0.0f;
+        for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+            for (int s = 0; s < buf.getNumSamples(); ++s)
+                peakAbs = std::max(peakAbs, std::abs(buf.getSample(ch, s)));
+        EXPECT_GT(peakAbs, 0.01f) << "Exported WAV is silent (peak=" << peakAbs << ")";
+    }
+    QFile::remove(path1);
+
+    // A second export must work back-to-back: the dedicated export domain is
+    // created and destroyed per export, and the live graph (with its three
+    // still-loaded instances) must not have been disturbed by the first one.
+    QString path2 = makeTempWavPath("multiinst2");
+    {
+        QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":4.0,"sampleRate":44100.0,"bitDepth":16})")
+                           .arg(path2);
+        QString req = QString(R"({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
+                          .arg(args);
+        tp.drainOutgoing();
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out;
+        ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+        auto r = parseResponse(out);
+        QString text = textOf(r);
+        if (r.value("result").toObject().value("isError").toBool(false)) {
+            FAIL() << "Second export failed: " << text.toStdString();
+        }
+        auto complete = waitExportComplete(tp, 60000);
+        ASSERT_FALSE(complete.isEmpty()) << "Second export never completed";
+        EXPECT_TRUE(complete.value("success").toBool());
+    }
+    EXPECT_TRUE(QFile::exists(path2));
+    EXPECT_GT(QFile(path2).size(), 0);
+    QFile::remove(path2);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
 // Diagnostic matrix: exports every installed target CLAP instrument and
 // asserts each produces non-silent audio. Exercises the full export pipeline
 // (AudioProcessorGraph + isolated CLAP children) end-to-end.

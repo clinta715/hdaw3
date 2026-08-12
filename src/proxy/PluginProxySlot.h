@@ -139,8 +139,12 @@ public:
     void saveStateToTemp();
     bool restoreStateFromTemp();
 
-    static juce::MemoryBlock loadStateForOldSlotId(uint32_t oldSlotId);
-    static void clearStateForSlotId(uint32_t slotId);
+    // Loads/clears the crash-recovery state file for a slot within THIS
+    // slot's domain (the crash-state files are keyed by the owning
+    // ProxyProcessManager's name prefix, so live and offline-export slots
+    // with the same id can never clobber each other's state).
+    juce::MemoryBlock loadStateForOldSlot(uint32_t oldSlotId) const;
+    void clearStateForSlot(uint32_t slotId);
 
     using CrashNotifyFn = std::function<void(uint32_t, const juce::String&, const juce::String&)>;
     void setCrashRecoveryNotifier(CrashNotifyFn fn) { crashRecoveryNotifier = std::move(fn); }
@@ -167,6 +171,10 @@ private:
     uint32_t slotId;
     juce::String pluginDisplayName;
     juce::String pluginPathForRecovery;
+    // Per-domain prefix for crash-state temp files (from the owning
+    // ProxyProcessManager's name prefix), so an export-domain slot can
+    // never overwrite or read a live-domain slot's state file.
+    juce::String stateFilePrefix;
 
     std::atomic<bool> crashed{false};
     std::atomic<bool> childAlive{true};

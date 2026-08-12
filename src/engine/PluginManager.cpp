@@ -11,9 +11,6 @@
 #if HDAW_PLUGIN_ISOLATION
 #include "proxy/PluginProxySlot.h"
 #include "proxy/ProxyProcessManager.h"
-namespace {
-    proxy::ProxyProcessManager proxyProcessManager;
-}
 #endif
 
 #if JUCE_WINDOWS
@@ -60,6 +57,12 @@ int totalTimeoutMs()
 namespace HDAW {
 
 PluginManager::PluginManager()
+    : PluginManager(false)
+{
+}
+
+PluginManager::PluginManager(bool offline)
+    : offline(offline)
 {
     // HDAW_NO_PLUGIN_ISOLATION=1 forces in-process CLAP loading (diagnostic knob).
     const auto* noIsolation = std::getenv("HDAW_NO_PLUGIN_ISOLATION");
@@ -78,8 +81,11 @@ PluginManager::PluginManager()
     blacklistFile = hdawDir.getChildFile("plugin_blacklist.xml");
     presetCacheFile = hdawDir.getChildFile("preset_cache.xml");
 
-    loadBlacklist();
-    loadCache();
+    if (!offline)
+    {
+        loadBlacklist();
+        loadCache();
+    }
 
 #if HDAW_PLUGIN_ISOLATION
     crashRecovery = std::make_unique<CrashRecoveryManager>();
@@ -89,14 +95,41 @@ PluginManager::PluginManager()
     crashRecovery->setGiveUpFn([](uint32_t slotId, const juce::String& name) {
         juce::Logger::writeToLog("CrashRecovery: gave up on slot " + juce::String((int)slotId));
     });
-    startTimer(250);
+    // The offline (export) domain never runs the crash-recovery ticker: its
+    // respawn is suppressed for the whole export anyway, and its entries are
+    // canceled by the proxy destruction callbacks at render-graph teardown.
+    if (!offline)
+        startTimer(250);
+    proxyProcessMgr = std::make_unique<proxy::ProxyProcessManager>();
+#endif
+}
+
+std::unique_ptr<PluginManager> PluginManager::createOfflineCopy(const PluginManager& source)
+{
+    auto pm = std::unique_ptr<PluginManager>(new PluginManager(true));
+    pm->isolationEnabled = source.isolationEnabled;
+    pm->knownPlugins = source.knownPlugins;
+    for (const auto& desc : source.knownPlugins)
+        pm->knownPluginList.addType(desc);
+    pm->blacklistedIDs = source.blacklistedIDs;
+    pm->blacklistReasons = source.blacklistReasons;
+    pm->presetCache = source.presetCache;
+    return pm;
+}
+
+void PluginManager::setProxyNamespacePrefix(const juce::String& prefix)
+{
+#if HDAW_PLUGIN_ISOLATION
+    if (proxyProcessMgr)
+        proxyProcessMgr->setNamePrefix(prefix.toStdString());
 #endif
 }
 
 PluginManager::~PluginManager()
 {
     stopTimer();
-    saveCache();
+    if (!offline)
+        saveCache();
 }
 
 void PluginManager::loadCache()
@@ -594,7 +627,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
 
         auto resolvedDesc = resolveIdentifierToPath(desc, knownPluginList);
 
-        if (!proxyProcessManager.spawnPluginHost(
+        if (!proxyProcessMgr->spawnPluginHost(
                 resolvedDesc.fileOrIdentifier.toStdString(), slotId))
         {
             errorMessage = "Failed to spawn isolated plugin process";
@@ -602,21 +635,26 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         }
 
         auto* proxy = new proxy::PluginProxySlot(
-            proxyProcessManager, slotId, desc.name, resolvedDesc.fileOrIdentifier);
+            *proxyProcessMgr, slotId, desc.name, resolvedDesc.fileOrIdentifier);
 
-        proxyProcessManager.setSlotCrashCallback(slotId,
+        proxyProcessMgr->setSlotCrashCallback(slotId,
             [proxy](uint32_t id) { proxy->onChildCrashed(); });
 
         proxy->setCrashRecoveryNotifier(
             [this](uint32_t sid, const juce::String& name, const juce::String& path) {
                 if (crashRecovery) crashRecovery->onSlotCrashed(sid, name, path);
-                if (auto* srv = frontend::FrontendServer::instance()) {
-                    QJsonObject payload{
-                        { "trackIndex", slotTrackIndex(sid) },
-                        { "pluginName", QString::fromUtf8(name.toRawUTF8()) },
-                        { "pluginId",   QString::fromUtf8(path.toRawUTF8()) },
-                    };
-                    srv->broadcastNotificationFromAnyThread(frontend::notify::PluginCrashed, payload);
+                // Only the LIVE domain broadcasts to the frontend; the
+                // offline (export) domain has no UI and must not surface its
+                // slots as if they were live graph slots.
+                if (!offline) {
+                    if (auto* srv = frontend::FrontendServer::instance()) {
+                        QJsonObject payload{
+                            { "trackIndex", slotTrackIndex(sid) },
+                            { "pluginName", QString::fromUtf8(name.toRawUTF8()) },
+                            { "pluginId",   QString::fromUtf8(path.toRawUTF8()) },
+                        };
+                        srv->broadcastNotificationFromAnyThread(frontend::notify::PluginCrashed, payload);
+                    }
                 }
             });
         proxy->setRespawnRequestFn(
@@ -644,7 +682,13 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
             liveProxySlots[slotId] = proxy;
         }
 
-        proxyProcessManager.startHealthMonitor(2000);
+        // The health monitor is opt-in per domain: the live graph's monitor
+        // detects crashed children and drives crash recovery; the offline
+        // (export) domain never starts one because respawn is suppressed for
+        // the whole export and its children are managed synchronously by the
+        // render thread.
+        if (!offline)
+            proxyProcessMgr->startHealthMonitor(2000);
 
         return std::unique_ptr<juce::AudioPluginInstance>(proxy);
     }
@@ -863,16 +907,16 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     //    silence until PREPARE lands on the new region, so this gap is benign.
     auto newSlotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
 
-    if (!proxyProcessManager.spawnPluginHost(pluginPath.toStdString(), newSlotId))
+    if (!proxyProcessMgr->spawnPluginHost(pluginPath.toStdString(), newSlotId))
         return false;
 
-    proxyProcessManager.setSlotCrashCallback(newSlotId,
+    proxyProcessMgr->setSlotCrashCallback(newSlotId,
         [proxy](uint32_t) { proxy->onChildCrashed(); });
 
-    auto* rawShm = proxyProcessManager.getShm(newSlotId);
+    auto* rawShm = proxyProcessMgr->getShm(newSlotId);
     if (!rawShm) {
         // Don't leak the just-spawned child on shm-attach failure.
-        proxyProcessManager.killPluginHost(newSlotId, proxy::KillMode::KillHard);
+        proxyProcessMgr->killPluginHost(newSlotId, proxy::KillMode::KillHard);
         return false;
     }
 
@@ -891,7 +935,7 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     //    already dead so the internal wait returns instantly, keeping this
     //    critical section sub-millisecond (no allocation / IPC under the lock).
     if (graphLockPtr) graphLockPtr->enter();
-    proxyProcessManager.killPluginHost(oldSlotId, proxy::KillMode::KillHard);
+    proxyProcessMgr->killPluginHost(oldSlotId, proxy::KillMode::KillHard);
     proxy->migrateToNewSlot(newSlotId, newShm);
     if (graphLockPtr) graphLockPtr->exit();
 
@@ -899,7 +943,7 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     //    NOT hold graphLock (that would starve the audio thread). The
     //    capacity==0 guard above keeps processBlock silent until PREPARE lands.
 
-    auto stateBlock = proxy::PluginProxySlot::loadStateForOldSlotId(oldSlotId);
+    auto stateBlock = proxy->loadStateForOldSlot(oldSlotId);
     if (stateBlock.getSize() > 0)
         proxy->setStateInformation(stateBlock.getData(), (int)stateBlock.getSize());
 
@@ -912,15 +956,17 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     }
 
     registerSlotTrackIndex(newSlotId, slotTrackIndex(oldSlotId));
-    if (auto* srv = frontend::FrontendServer::instance()) {
-        QJsonObject payload{
-            { "trackIndex", slotTrackIndex(newSlotId) },
-            { "pluginId",   QString::fromUtf8(pluginPath.toRawUTF8()) },
-        };
-        srv->broadcastNotificationFromAnyThread(frontend::notify::PluginRecovered, payload);
+    if (!offline) {
+        if (auto* srv = frontend::FrontendServer::instance()) {
+            QJsonObject payload{
+                { "trackIndex", slotTrackIndex(newSlotId) },
+                { "pluginId",   QString::fromUtf8(pluginPath.toRawUTF8()) },
+            };
+            srv->broadcastNotificationFromAnyThread(frontend::notify::PluginRecovered, payload);
+        }
     }
 
-    proxy::PluginProxySlot::clearStateForSlotId(oldSlotId);
+    proxy->clearStateForSlot(oldSlotId);
 
     return true;
 #else
@@ -931,7 +977,7 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
 void PluginManager::killProxyForTesting(uint32_t slotId)
 {
 #if HDAW_PLUGIN_ISOLATION
-    auto* info = proxyProcessManager.getChildInfo(slotId);
+    auto* info = proxyProcessMgr->getChildInfo(slotId);
     if (info && info->processHandle != INVALID_HANDLE_VALUE)
         TerminateProcess(info->processHandle, 0);
 #endif

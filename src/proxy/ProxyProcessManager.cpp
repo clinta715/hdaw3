@@ -299,11 +299,11 @@ std::string ProxyProcessManager::getHostExePath() {
 }
 
 std::string ProxyProcessManager::makePipeName(uint32_t slotId) {
-    return "\\\\.\\pipe\\hdaw_plugin_" + std::to_string(slotId);
+    return "\\\\.\\pipe\\hdaw_plugin_" + namePrefix + std::to_string(slotId);
 }
 
 std::string ProxyProcessManager::makeShmName(uint32_t slotId) {
-    return "hdaw_plugin_shm_" + std::to_string(slotId);
+    return "hdaw_plugin_shm_" + namePrefix + std::to_string(slotId);
 }
 
 void ProxyProcessManager::setSlotCrashCallback(uint32_t slotId, CrashCallback cb) {

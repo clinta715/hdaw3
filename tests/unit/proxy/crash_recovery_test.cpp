@@ -319,4 +319,144 @@ TEST(CrashRecovery, RespawnSuppressedWhenDisabled) {
         << "cancel() must prevent any respawn attempt for that slot";
 }
 
+// Isolation-of-the-export gate: an offline (export) PluginManager must live in
+// its OWN plugin domain — its own ProxyProcessManager (children, crash
+// callbacks, health monitor), its own slot counter (which restarts at 1 while
+// live slots 1..N exist), its own pipe/shm names, and its own crash-state
+// files. Before the fix the export reused the LIVE PluginManager's machinery,
+// so live FX rebuilds during export could kill the export's children (slot-id
+// collision) and wedge the render. This test drives two domains concurrently
+// and asserts every seam is disjoint:
+//   - the offline domain spawns children under the live domain's nose (same
+//     slot ids — the collision the fix prevents);
+//   - the live PM must NOT know the offline slots (respawnIsolatedSlot must
+//     return false for them — a shared registry would find and respawn them);
+//   - crash-state files are keyed per domain (a save from the offline domain
+//     must not overwrite the live slot's file with the same id);
+//   - destroying the offline domain must not disturb the live child.
+TEST(CrashRecovery, OfflinePluginDomainIsolatedFromLive) {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    HDAW::PluginManager livePm;
+
+    juce::PluginDescription desc;
+    desc.name = "Passthrough";
+    desc.fileOrIdentifier = "__passthrough__";
+
+    // Live domain: one isolated instance (slot id 1 — the counter starts at 1).
+    juce::String liveError;
+    auto liveInstance = livePm.createPluginInstance(desc, liveError, 44100.0, 512, true);
+    ASSERT_NE(liveInstance, nullptr) << liveError.toStdString();
+    auto* liveProxy = dynamic_cast<proxy::PluginProxySlot*>(liveInstance.get());
+    ASSERT_NE(liveProxy, nullptr);
+    const uint32_t liveSlotId = liveProxy->getSlotId();
+    liveProxy->prepareToPlay(44100.0, 512);
+
+    // Offline (export) domain: seeded from the live PM, own namespace.
+    auto offlinePm = HDAW::PluginManager::createOfflineCopy(livePm);
+    ASSERT_NE(offlinePm, nullptr);
+    offlinePm->setProxyNamespacePrefix("export_");
+    // Copy must carry the plugin list so resolveIdentifierToPath works offline.
+    EXPECT_EQ(offlinePm->getPlugins().size(), livePm.getPlugins().size());
+
+    // The offline counter restarts at 1 — the exact id space collision the
+    // shared-domain bug hit (live slot 1 and export slot 1 coexist now).
+    juce::String err1, err2;
+    auto offlineInst1 = offlinePm->createPluginInstance(desc, err1, 44100.0, 512, true);
+    ASSERT_NE(offlineInst1, nullptr) << err1.toStdString();
+    auto* offlineProxy1 = dynamic_cast<proxy::PluginProxySlot*>(offlineInst1.get());
+    ASSERT_NE(offlineProxy1, nullptr);
+    EXPECT_EQ(offlineProxy1->getSlotId(), liveSlotId)
+        << "offline slot id should collide numerically with the live slot id; "
+           "the domains must still be disjoint";
+    offlineProxy1->prepareToPlay(44100.0, 512);
+
+    auto offlineInst2 = offlinePm->createPluginInstance(desc, err2, 44100.0, 512, true);
+    ASSERT_NE(offlineInst2, nullptr) << err2.toStdString();
+    auto* offlineProxy2 = dynamic_cast<proxy::PluginProxySlot*>(offlineInst2.get());
+    ASSERT_NE(offlineProxy2, nullptr);
+    offlineInst2->prepareToPlay(44100.0, 512);
+
+    // Crash-state files are per-domain: a save from the offline slot with the
+    // SAME id must not clobber the live slot's state file.
+    {
+        auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+        const auto liveStateFile = tempDir.getChildFile(
+            "hdaw_proxy_state_" + juce::String((int)liveSlotId) + ".bin");
+        const auto exportStateFile = tempDir.getChildFile(
+            "hdaw_proxy_state_export_" + juce::String((int)offlineProxy1->getSlotId()) + ".bin");
+        liveStateFile.deleteFile();
+        exportStateFile.deleteFile();
+
+        liveProxy->saveStateToTemp();
+        ASSERT_TRUE(liveStateFile.existsAsFile())
+            << "live slot state file should exist after saveStateToTemp";
+        const auto liveContentBefore = liveStateFile.loadFileAsString();
+
+        offlineProxy1->saveStateToTemp();
+        ASSERT_TRUE(exportStateFile.existsAsFile())
+            << "offline slot state file should exist after saveStateToTemp";
+        EXPECT_EQ(liveStateFile.loadFileAsString(), liveContentBefore)
+            << "offline slot save must not overwrite the live slot's state file "
+               "(same numeric slot id, different domains)";
+
+        // Domain-scoped cleanup: clearing the offline slot leaves the live
+        // slot's file untouched.
+        offlineProxy1->clearStateForSlot(offlineProxy1->getSlotId());
+        EXPECT_FALSE(exportStateFile.existsAsFile());
+        EXPECT_TRUE(liveStateFile.existsAsFile());
+
+        liveProxy->clearStateForSlot(liveSlotId);
+        liveStateFile.deleteFile();
+        exportStateFile.deleteFile();
+    }
+
+    // The live PM must not know the offline domain's slots: a respawn lookup
+    // of a slot that exists ONLY in the offline domain (the second offline
+    // instance — the first one numerically collides with the live slot, which
+    // legitimately belongs to the live PM) must fail. With a shared registry
+    // it would succeed and spawn a host — the cross-domain leak the fix
+    // removes. It must also return WITHOUT spawning or migrating anything.
+    const uint32_t offlineOnlySlotId = offlineProxy2->getSlotId();
+    ASSERT_NE(offlineOnlySlotId, liveSlotId) << "test premise broken";
+    EXPECT_FALSE(livePm.respawnIsolatedSlot(offlineOnlySlotId, "__passthrough__"))
+        << "live PM must not have the offline domain's slots in its registry";
+    // The failed lookup must not have disturbed either domain's children.
+    EXPECT_FALSE(offlineProxy2->isCrashed());
+    EXPECT_FALSE(liveProxy->isCrashed());
+
+    // Destroy the offline domain (render graph teardown at export end):
+    // instances first (they reference the offline PM), then the PM, which
+    // terminates any remaining children of ITS OWN domain.
+    offlineInst2.reset();
+    offlineInst1.reset();
+    offlinePm.reset();
+
+    // The live child must be untouched: not crashed, and still producing
+    // audio through the live slot.
+    EXPECT_FALSE(liveProxy->isCrashed())
+        << "offline domain teardown must not kill the live child";
+
+    proxy::setRenderMode(true);
+    bool liveStillProducesAudio = false;
+    juce::AudioBuffer<float> verify(2, 512);
+    juce::MidiBuffer midi;
+    for (int i = 0; i < 25; ++i) {
+        for (int ch = 0; ch < verify.getNumChannels(); ++ch)
+            for (int s = 0; s < verify.getNumSamples(); ++s)
+                verify.setSample(ch, s,
+                    0.4f * std::sin(2.0 * 3.14159265 * 440.0 * s / 44100.0));
+        liveProxy->processBlock(verify, midi);
+        float peak = 0.0f;
+        for (int ch = 0; ch < verify.getNumChannels(); ++ch)
+            for (int s = 0; s < verify.getNumSamples(); ++s)
+                peak = (std::max)(peak, std::abs(verify.getSample(ch, s)));
+        if (peak > 0.01f) { liveStillProducesAudio = true; break; }
+    }
+    proxy::setRenderMode(false);
+    EXPECT_TRUE(liveStillProducesAudio)
+        << "live slot must keep processing audio after the offline domain "
+           "was created and destroyed alongside it";
+}
+
 #endif
