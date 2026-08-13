@@ -221,6 +221,10 @@ public:
         const std::string& pluginID, const std::string& pluginFormat,
         const std::string& pluginPath) = 0;
 
+    // Sampler — set sample file on a sampler FX slot
+    virtual void setSamplerSample(int trackIndex, int slotIndex,
+        const std::string& filePath, int rootNote = 60) = 0;
+
     // Automation — point mutation by time (for drag)
     virtual void setAutomationPointValue(int trackIndex, const std::string& lane,
         double time, float value) = 0;

@@ -320,6 +320,20 @@ void AudioEngineCommands::setFxSlotPlugin(int trackIndex, int slotIndex,
         proc->rebuildTrackFX(trackIndex);
 }
 
+void AudioEngineCommands::setSamplerSample(int trackIndex, int slotIndex,
+                                           const std::string& filePath, int rootNote)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    slot.setProperty(juce::Identifier("sampleFile"), juce::String(filePath), &um);
+    slot.setProperty(juce::Identifier("rootNote"), rootNote, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
 void AudioEngineCommands::respawnFxSlot(int trackIndex, int slotIndex)
 {
     auto* proc = engine_.getMainProcessor();

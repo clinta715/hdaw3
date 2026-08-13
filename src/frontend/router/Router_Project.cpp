@@ -333,6 +333,15 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         c.respawnFxSlot(i, s);
         return { false, QJsonValue::Null };
     }
+    if (m == "sampler.setSample") {
+        int ti, si; std::string filePath; int root = 60;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+            || !requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, filePath required");
+        if (o.contains("rootNote")) root = static_cast<int>(o.value("rootNote").toDouble(60));
+        c.setSamplerSample(ti, si, filePath, root);
+        return { false, QJsonValue::Null };
+    }
 
     // --- Automation ---
     if (m == "addAutomationLane")       { int i; std::string lane; if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "laneName", lane, nullptr)) return makeError(-32602, "trackIndex and laneName required"); int paramID = optInt(o, "paramID", 0, nullptr); c.addAutomationLane(i, lane, paramID); return { false, QJsonValue::Null }; }

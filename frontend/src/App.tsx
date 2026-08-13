@@ -17,6 +17,7 @@ import AutomationPanel from "./components/AutomationPanel";
 import FXChain from "./components/FXChain";
 import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
+import SamplerEditor from "./components/SamplerEditor";
 import UndoHistory from "./components/UndoHistory";
 import Inspector from "./components/Inspector";
 import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
@@ -39,6 +40,7 @@ const SAutomationPanel = withHookSentinel(AutomationPanel, "AutomationPanel");
 const SFXChain = withHookSentinel(FXChain, "FXChain");
 const SMidiFxChain = withHookSentinel(MidiFxChain, "MidiFxChain");
 const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
+const SSamplerEditor = withHookSentinel(SamplerEditor, "SamplerEditor");
 const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
 
 function App() {
@@ -132,7 +134,7 @@ function App() {
                   title: "Save Project",
                   defaultPath,
                   filters: [
-                    { name: "HDAW Projects", extensions: ["hdaw"] },
+                    { name: "HDAW Projects", extensions: ["hdaw", "hdaw3"] },
                     { name: "All Files", extensions: ["*"] },
                   ],
                 });
@@ -199,6 +201,7 @@ function App() {
     { id: "piano-roll", label: "Piano Roll", content: <SPianoRoll /> },
     { id: "automation", label: "Automation", content: <SAutomationPanel rpc={rpc} /> },
     { id: "fx", label: "FX Chain", content: <SFXChain /> },
+    { id: "sampler", label: "Sampler", content: <SSamplerEditor /> },
     { id: "midi-fx", label: "MIDI FX", content: <SMidiFxChain /> },
     { id: "audio-editor", label: "Audio Editor", content: <SAudioClipEditor /> },
     { id: "modulation", label: "Modulation", content: <SModulationPanel /> },
