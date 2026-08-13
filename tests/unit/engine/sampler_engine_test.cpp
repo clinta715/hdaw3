@@ -74,3 +74,19 @@ TEST(SamplerEngine, MonoModeKeepsSingleVoice)
     engine.render(buf, midi);
     EXPECT_EQ(engine.activeVoiceCount(), 1);
 }
+
+TEST(SamplerEngine, OneShotIgnoresNoteOff)
+{
+    HDAW::SamplerEngine engine;
+    engine.prepare(44100.0, 64);
+    engine.setSound(sine(2000, 44100.0));
+    HDAW::SamplerEngine::Params p; p.mode = HDAW::SamplerVoice::Mode::OneShot;
+    engine.setParams(p);
+    juce::MidiBuffer on; on.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 64); buf.clear(); engine.render(buf, on);
+    int after = engine.activeVoiceCount();
+    ASSERT_GT(after, 0);
+    juce::MidiBuffer off; off.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+    buf.clear(); engine.render(buf, off);
+    EXPECT_EQ(engine.activeVoiceCount(), after); // one-shot ignores note-off
+}

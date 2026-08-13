@@ -1,5 +1,6 @@
 #include "engine/SamplerEngine.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace HDAW {
@@ -129,9 +130,24 @@ void SamplerEngine::handleNoteOn (int note, float vel)
 
     const Params p = params_;
     const int    noteOffset = note + transposeAtom_.load (std::memory_order_relaxed);
-    // start() snapshots the envelope internally, so the voice carries a
-    // self-consistent copy of the DSP state for this note's lifetime.
-    v->start (s, noteOffset, vel, p.mode, p.env, p.reverse);
+
+    if (p.mode == SamplerVoice::Mode::Slice && ! s->slicePoints.empty())
+    {
+        // Chromatic slice mapping: slice index = note - baseNote, clamped.
+        const int idx = std::clamp (noteOffset - p.baseNote, 0,
+                                    static_cast<int> (s->slicePoints.size()) - 1);
+        const int64_t sliceStart = s->slicePoints[static_cast<size_t> (idx)];
+        const int64_t sliceEnd   = (idx + 1 < static_cast<int> (s->slicePoints.size()))
+                                       ? s->slicePoints[static_cast<size_t> (idx + 1)]
+                                       : s->length;
+        v->startSlice (s, noteOffset, vel, p.env, sliceStart, sliceEnd);
+    }
+    else
+    {
+        // start() snapshots the envelope internally, so the voice carries a
+        // self-consistent copy of the DSP state for this note's lifetime.
+        v->start (s, noteOffset, vel, p.mode, p.env, p.reverse);
+    }
 }
 
 void SamplerEngine::handleNoteOff (int /*note*/)

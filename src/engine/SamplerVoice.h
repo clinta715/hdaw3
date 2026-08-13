@@ -67,13 +67,49 @@ public:
         env_.set (params);
         env_.noteOn();
         inRelease_ = false;
+        useSliceBounds_ = false;
         done_      = false;
     }
 
     void noteOff() noexcept
     {
+        if (mode_ == Mode::OneShot || mode_ == Mode::Slice)
+            return; // one-shot/slice play to end; ignore note-off
         env_.noteOff();
         inRelease_ = true;
+    }
+
+    // Start a voice in slice mode with explicit start/end frames (override the sound's defaults).
+    void startSlice (const SamplerSound* sound, int note, float velocity,
+                     const AHDSRParams& params, int64_t sliceStartFrame, int64_t sliceEndFrame) noexcept
+    {
+        sound_    = sound;
+        mode_     = Mode::Slice;
+        velocity_ = velocity;
+        dir_      = 1.0;
+
+        if (sound != nullptr)
+        {
+            pitchRatio_ = std::pow (2.0, (note - sound->rootNote) / 12.0)
+                        * (sound->nativeSampleRate / sr_);
+            readPos_ = static_cast<double> (sliceStartFrame);
+        }
+        else
+        {
+            pitchRatio_ = 1.0;
+            readPos_    = 0.0;
+        }
+
+        // Store the slice boundaries so the render loop uses them instead of the sound's defaults.
+        sliceStart_ = sliceStartFrame;
+        sliceEnd_   = sliceEndFrame;
+        useSliceBounds_ = true;
+
+        env_.setSampleRate (sr_);
+        env_.set (params);
+        env_.noteOn();
+        inRelease_ = false;
+        done_      = false;
     }
 
     void stop() noexcept
@@ -102,8 +138,12 @@ public:
         const int    outCh = out.getNumChannels();
         const int    sn    = sound_->numChannels;
         const float  vel   = velocity_;
-        const double startF = static_cast<double> (sound_->startFrame());
-        const double endF   = static_cast<double> (sound_->endFrame());
+        const double startF = useSliceBounds_
+            ? static_cast<double> (sliceStart_)
+            : static_cast<double> (sound_->startFrame());
+        const double endF   = useSliceBounds_
+            ? static_cast<double> (sliceEnd_)
+            : static_cast<double> (sound_->endFrame());
         const bool   looping = sound_->loopEnabled && !inRelease_;
         const double loopStartF = static_cast<double> (sound_->loopStartFrame());
         const double loopEndF   = static_cast<double> (sound_->loopEndFrame());
@@ -205,6 +245,10 @@ private:
     float  velocity_    = 1.0f;
     bool   inRelease_   = false;
     bool   done_        = true;    // nothing started yet -> done
+
+    int64_t sliceStart_ = 0;
+    int64_t sliceEnd_   = 0;
+    bool    useSliceBounds_ = false;
 };
 
 } // namespace HDAW

@@ -22,6 +22,7 @@
 #include "engine/AHDSREnvelope.h"
 #include "engine/SamplerSound.h"
 #include "engine/SamplerVoice.h"
+#include "engine/SliceDetector.h"
 
 namespace HDAW {
 
