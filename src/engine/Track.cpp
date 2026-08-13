@@ -215,6 +215,20 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             continue;
         }
 
+        if (type == "sampler")
+        {
+            auto slot = std::make_unique<TrackFXSlot> ("sampler");
+            slot->setBypassed (slotTree.getProperty (IDs::bypassed));
+            if (fxSpec.sampleRate > 0)
+            {
+                slot->prepare (fxSpec);
+                slot->loadSamplerState (slotTree);
+                slot->loadParamsFromTree (slotTree);
+            }
+            fxChain.push_back (std::move (slot));
+            continue;
+        }
+
         auto slot = std::make_unique<TrackFXSlot>(type);
         slot->setBypassed(slotTree.getProperty(IDs::bypassed));
 

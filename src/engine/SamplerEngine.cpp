@@ -46,10 +46,27 @@ void SamplerEngine::applyPendingSwap()
     hasSound_.store (activeSound_ != nullptr, std::memory_order_release);
 }
 
+void SamplerEngine::applyPendingParams()
+{
+    if (! paramsDirty_.load (std::memory_order_acquire))
+        return;
+    AHDSRParams env;
+    env.attack  = attackAtom_.load  (std::memory_order_relaxed);
+    env.decay   = decayAtom_.load   (std::memory_order_relaxed);
+    env.sustain = sustainAtom_.load (std::memory_order_relaxed);
+    env.release = releaseAtom_.load (std::memory_order_relaxed);
+    env.hold    = params_.env.hold;  // hold not yet automatable
+    for (auto& v : voices_)
+        v.setEnvelope (env);
+    params_.env = env;
+    paramsDirty_.store (false, std::memory_order_release);
+}
+
 void SamplerEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     applyPendingSwap();
+    applyPendingParams();   // L13 fix: push AHDSR from atomics at block boundary
 
     const int numSamples = buffer.getNumSamples();
     if (! hasSound_.load (std::memory_order_acquire) || numSamples <= 0)

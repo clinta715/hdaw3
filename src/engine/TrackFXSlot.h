@@ -8,6 +8,7 @@
 #include "../common/DebugLog.h"
 #include "CLAPPluginInstance.h"
 #include "../proxy/PluginProxySlot.h"
+#include "engine/SamplerEngine.h"
 
 namespace HDAW {
 
@@ -75,6 +76,15 @@ public:
                 { 3, "Feedback",         0.0f,   -1.0f,    1.0f     },
                 { 4, "Mix",              0.5f,    0.0f,    1.0f     },
             };
+        if (type == "sampler")
+            return {
+                { 0, "Attack",      0.005f,  0.0f,   5.0f  },
+                { 1, "Decay",       0.1f,    0.0f,   5.0f  },
+                { 2, "Sustain",     0.9f,    0.0f,   1.0f  },
+                { 3, "Release",     0.1f,    0.0f,  10.0f  },
+                { 4, "Transpose",   0.0f,  -36.0f,  36.0f  },
+                { 5, "SampleStart", 0.0f,    0.0f,   1.0f  },
+            };
         return {};
     }
 
@@ -96,6 +106,8 @@ public:
             activeType = ActiveType::Flanger;
         else if (type == "phaser")
             activeType = ActiveType::Phaser;
+        else if (type == "sampler")
+            activeType = ActiveType::Sampler;
         else if (type == "plugin")
             activeType = ActiveType::Plugin;
         else
@@ -299,6 +311,27 @@ public:
                 if (internalParamValues.size() > 4) phaserDsp->setMix(internalParamValues[4]);
                 break;
             }
+            case ActiveType::Sampler:
+            {
+                sampler = std::make_unique<SamplerEngine>();
+                sampler->prepare (spec.sampleRate, static_cast<int> (spec.maximumBlockSize));
+                // Push initial params from internalParamValues
+                SamplerEngine::Params sp;
+                sp.env.attack  = (internalParamValues.size() > 0) ? internalParamValues[0] : 0.005f;
+                sp.env.decay   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.1f;
+                sp.env.sustain = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.9f;
+                sp.env.release = (internalParamValues.size() > 3) ? internalParamValues[3] : 0.1f;
+                sp.transpose   = static_cast<int> ((internalParamValues.size() > 4) ? internalParamValues[4] : 0.0f);
+                sp.sampleStart = (internalParamValues.size() > 5) ? internalParamValues[5] : 0.0f;
+                sampler->setParams (sp);
+                // If a sound was staged before prepare, adopt it now.
+                if (stagedSound_)
+                {
+                    sampler->setSound (stagedSound_);
+                    stagedSound_.reset();
+                }
+                break;
+            }
             case ActiveType::None:
             default:
                 break;
@@ -334,6 +367,17 @@ public:
                 return;
             }
             pluginInstance->processBlock(buffer, midiMessages);
+            return;
+        }
+
+        if (activeType == ActiveType::Sampler)
+        {
+            if (sampler)
+            {
+                buffer.clear();    // instrument = source (overwrite)
+                sampler->render (buffer, midiMessages);
+                midiMessages.clear();
+            }
             return;
         }
 
@@ -400,6 +444,7 @@ public:
         if (comp)      comp->reset();
         if (chorusDsp) chorusDsp->reset();
         if (phaserDsp) phaserDsp->reset();
+        // Sampler voices stop on sound swap; no explicit reset needed.
     }
 
     std::unique_ptr<juce::AudioPluginInstance> releasePlugin()
@@ -447,6 +492,86 @@ public:
         }
     }
 
+    void loadSamplerState (const juce::ValueTree& slotTree, juce::AudioFormatManager* formatManager = nullptr)
+    {
+        if (activeType != ActiveType::Sampler)
+            return;
+
+        juce::String sampleFile = slotTree.getProperty ("sampleFile", "").toString();
+        if (sampleFile.isEmpty())
+            return;
+
+        // Use a basic AudioFormatManager if none provided
+        juce::AudioFormatManager localFmt;
+        if (! formatManager)
+        {
+            localFmt.registerBasicFormats();
+            formatManager = &localFmt;
+        }
+
+        auto* reader = formatManager->createReaderFor (juce::File (sampleFile));
+        if (! reader)
+            return;
+
+        const int64_t totalSamples = reader->lengthInSamples;
+        const int numChannels = static_cast<int> (reader->numChannels);
+        const double sr = reader->sampleRate;
+
+        SamplerSound::Builder builder;
+        builder.numChannels = std::min (numChannels, 2);
+        builder.length = totalSamples;
+        builder.nativeSampleRate = sr;
+        builder.rootNote = static_cast<int> (slotTree.getProperty ("rootNote", 60));
+        builder.sampleStart = static_cast<double> (slotTree.getProperty ("sampleStart", 0.0));
+        builder.sampleEnd   = static_cast<double> (slotTree.getProperty ("sampleEnd", 1.0));
+        builder.loopStart   = static_cast<double> (slotTree.getProperty ("loopStart", 0.0));
+        builder.loopEnd     = static_cast<double> (slotTree.getProperty ("loopEnd", 1.0));
+        builder.loopEnabled = static_cast<bool> (slotTree.getProperty ("loopEnabled", false));
+
+        for (int ch = 0; ch < builder.numChannels; ++ch)
+            builder.data[ch] = std::make_unique<float[]> (static_cast<size_t> (totalSamples));
+
+        juce::AudioBuffer<float> readBuf (builder.numChannels, static_cast<int> (totalSamples));
+        reader->read (&readBuf, 0, static_cast<int> (totalSamples), 0, true, true);
+        for (int ch = 0; ch < builder.numChannels; ++ch)
+            std::memcpy (builder.data[ch].get(), readBuf.getReadPointer (ch),
+                         static_cast<size_t> (totalSamples) * sizeof (float));
+
+        delete reader;
+
+        auto sound = builder.build();
+
+        // Update engine mode from tree
+        SamplerEngine::Params sp;
+        juce::String mode = slotTree.getProperty ("mode", "classic").toString();
+        if (mode == "one-shot" || mode == "OneShot")
+            sp.mode = SamplerVoice::Mode::OneShot;
+        else if (mode == "slice" || mode == "Slice")
+            sp.mode = SamplerVoice::Mode::Slice;
+        else
+            sp.mode = SamplerVoice::Mode::Classic;
+        sp.reverse = static_cast<bool> (slotTree.getProperty ("playReverse", false));
+        sp.mono    = static_cast<bool> (slotTree.getProperty ("mono", false));
+        sp.transpose = static_cast<int> (slotTree.getProperty ("transpose", 0));
+        sp.baseNote  = static_cast<int> (slotTree.getProperty ("baseNote", 60));
+        sp.env.attack  = (internalParamValues.size() > 0) ? internalParamValues[0] : 0.005f;
+        sp.env.decay   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.1f;
+        sp.env.sustain = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.9f;
+        sp.env.release = (internalParamValues.size() > 3) ? internalParamValues[3] : 0.1f;
+
+        if (sampler)
+        {
+            sampler->setParams (sp);
+            sampler->setSound (sound);
+        }
+        else
+        {
+            // Engine not yet prepared — stage the sound for prepare() to adopt.
+            stagedSound_ = sound;
+            stagedParams_ = sp;
+        }
+    }
+
     int getNumPrograms() const
     {
         if (isExternal && pluginInstance)
@@ -474,8 +599,19 @@ public:
             pluginInstance->setCurrentProgram(index);
     }
 
+    // --- Test hooks ---
+    void setSamplerSoundForTest (std::shared_ptr<const SamplerSound> sound)
+    {
+        if (sampler)
+            sampler->setSound (std::move (sound));
+        else
+            stagedSound_ = std::move (sound);
+    }
+
+    SamplerEngine* samplerEngineForTest() { return sampler.get(); }
+
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin, Sampler };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -496,6 +632,7 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
+    std::unique_ptr<SamplerEngine> sampler;
 
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
@@ -514,6 +651,9 @@ private:
     // this buffer, then channels 0-1 are mixed back into the track buffer.
     juce::AudioBuffer<float> pluginWorkspace;
     int pluginWorkspaceChannels = 0;
+
+    std::shared_ptr<const SamplerSound> stagedSound_;
+    SamplerEngine::Params stagedParams_;
 
     void wireEditorClosedCallback();
 
@@ -600,6 +740,21 @@ private:
                     case 2: phaserDsp->setCentreFrequency(value); break;
                     case 3: phaserDsp->setFeedback(value);        break;
                     case 4: phaserDsp->setMix(value);             break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::Sampler:
+            {
+                if (! sampler) return;
+                switch (paramIndex)
+                {
+                    case 0: sampler->setAttack  (value); break;
+                    case 1: sampler->setDecay   (value); break;
+                    case 2: sampler->setSustain (value); break;
+                    case 3: sampler->setRelease (value); break;
+                    case 4: sampler->setTranspose (static_cast<int> (value)); break;
+                    case 5: /* sampleStart — handled via loadSamplerState */ break;
                     default: return;
                 }
                 break;
