@@ -40,6 +40,7 @@ add_executable(hdaw_tests
     unit/engine/sampler_sound_test.cpp
     unit/engine/sampler_interpolator_test.cpp
     unit/engine/ahdsr_envelope_test.cpp
+    unit/engine/sampler_voice_test.cpp
     unit/engine/track_mixer_state_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
