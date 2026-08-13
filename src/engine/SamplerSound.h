@@ -2,7 +2,6 @@
 #include <memory>
 #include <cstdint>
 #include <vector>
-#include <algorithm>
 
 namespace HDAW {
 

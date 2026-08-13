@@ -36,3 +36,18 @@ TEST(SamplerSound, NormalizedCoordsConvertToFrames)
     EXPECT_EQ(sound->loopStartFrame(), 500);
     EXPECT_EQ(sound->loopEndFrame(), 500);
 }
+
+TEST(SamplerSound, SlicePointsRoundTrip)
+{
+    HDAW::SamplerSound::Builder b;
+    b.numChannels = 1; b.nativeSampleRate = 44100.0; b.length = 1000;
+    b.data[0] = std::make_unique<float[]>(1000);
+    b.slicePoints = { 0, 250, 750, 1000 };
+    auto sound = b.build();
+    ASSERT_NE(sound, nullptr);
+    EXPECT_EQ(sound->slicePoints.size(), 4u);
+    EXPECT_EQ(sound->slicePoints[0], 0);
+    EXPECT_EQ(sound->slicePoints[1], 250);
+    EXPECT_EQ(sound->slicePoints[2], 750);
+    EXPECT_EQ(sound->slicePoints[3], 1000);
+}
