@@ -21,10 +21,15 @@ void SamplerEngine::setSound (std::shared_ptr<const SamplerSound> sound)
 
 void SamplerEngine::setParams (const Params& p)
 {
+    drainGraveyard();   // free old sound on message thread before staging new state
     params_ = p;
     transposeAtom_.store (p.transpose, std::memory_order_relaxed);
     monoAtom_.store (p.mono, std::memory_order_relaxed);
     glideAtom_.store (p.glide, std::memory_order_relaxed);
+    modeAtom_.store (static_cast<int> (p.mode), std::memory_order_relaxed);
+    reverseAtom_.store (p.reverse, std::memory_order_relaxed);
+    baseNoteAtom_.store (p.baseNote, std::memory_order_relaxed);
+    sampleStartAtom_.store (p.sampleStart, std::memory_order_relaxed);
     for (auto& v : voices_)
         v.setEnvelope (p.env);
 }
@@ -41,6 +46,7 @@ void SamplerEngine::applyPendingSwap()
     for (auto& v : voices_)
         v.stop();
 
+    soundGraveyard_ = std::move (activeSound_);  // keep old sound alive; freed on message thread
     activeSound_ = std::move (pendingSound_);
     reloadGate_.store (false, std::memory_order_release);
     hasSound_.store (activeSound_ != nullptr, std::memory_order_release);
@@ -145,25 +151,28 @@ void SamplerEngine::handleNoteOn (int note, float vel)
     if (v == nullptr)
         return;
 
-    const Params p = params_;
-    const int    noteOffset = note + transposeAtom_.load (std::memory_order_relaxed);
+    const auto  mode      = static_cast<SamplerVoice::Mode> (modeAtom_.load (std::memory_order_relaxed));
+    const bool  reverse   = reverseAtom_.load (std::memory_order_relaxed);
+    const int   baseNote  = baseNoteAtom_.load (std::memory_order_relaxed);
+    const int   noteOffset = note + transposeAtom_.load (std::memory_order_relaxed);
+    const auto& env       = params_.env;  // envelope is pushed via atomics in applyPendingParams
 
-    if (p.mode == SamplerVoice::Mode::Slice && ! s->slicePoints.empty())
+    if (mode == SamplerVoice::Mode::Slice && ! s->slicePoints.empty())
     {
         // Chromatic slice mapping: slice index = note - baseNote, clamped.
-        const int idx = std::clamp (noteOffset - p.baseNote, 0,
+        const int idx = std::clamp (noteOffset - baseNote, 0,
                                     static_cast<int> (s->slicePoints.size()) - 1);
         const int64_t sliceStart = s->slicePoints[static_cast<size_t> (idx)];
         const int64_t sliceEnd   = (idx + 1 < static_cast<int> (s->slicePoints.size()))
                                        ? s->slicePoints[static_cast<size_t> (idx + 1)]
                                        : s->length;
-        v->startSlice (s, noteOffset, vel, p.env, sliceStart, sliceEnd);
+        v->startSlice (s, noteOffset, vel, env, sliceStart, sliceEnd);
     }
     else
     {
         // start() snapshots the envelope internally, so the voice carries a
         // self-consistent copy of the DSP state for this note's lifetime.
-        v->start (s, noteOffset, vel, p.mode, p.env, p.reverse);
+        v->start (s, noteOffset, vel, mode, env, reverse);
     }
 }
 

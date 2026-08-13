@@ -80,13 +80,23 @@ private:
 
     std::shared_ptr<const SamplerSound> activeSound_;
     std::shared_ptr<const SamplerSound> pendingSound_;
+    std::shared_ptr<const SamplerSound> soundGraveyard_;   // holds old sound until message thread drains
     std::atomic<bool> reloadGate_{ false };
     std::atomic<bool> hasSound_{ false };
+
+    // drainGraveyard: message thread — frees the old sound outside the audio thread.
+    void drainGraveyard() noexcept { soundGraveyard_.reset(); }
 
     Params            params_;
     std::atomic<int>  transposeAtom_{ 0 };
     std::atomic<bool> monoAtom_{ false };
     std::atomic<double> glideAtom_{ 0.0 };
+
+    // Atomic mirrors for non-atomic Params fields read on the audio thread (L-pitfall: data race).
+    std::atomic<int>   modeAtom_       { 0 };     // 0=Classic, 1=OneShot, 2=Slice
+    std::atomic<bool>  reverseAtom_    { false };
+    std::atomic<int>   baseNoteAtom_   { 60 };
+    std::atomic<float> sampleStartAtom_{ 0.0f };
 
     // Atomic AHDSR params for lock-free message→audio param push (L13 fix).
     std::atomic<float> attackAtom_  { 0.005f };
