@@ -85,6 +85,11 @@ public:
     bool   isDone()       const noexcept { return done_; }
     double readPosition() const noexcept { return readPos_; }
 
+    // The sound this voice is currently rendering (nullptr if idle/done).
+    // Used by the engine to verify the block-boundary swap invariant: every
+    // non-done voice must point at the engine's active sound, never a freed one.
+    const SamplerSound* sound() const noexcept { return sound_; }
+
     // Renders numSamples into `out`, ADDING into whatever is already there.
     // RT-safe: noexcept, no allocation, no locking.
     void render (juce::AudioBuffer<float>& out, int numSamples) noexcept

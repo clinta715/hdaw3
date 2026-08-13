@@ -102,6 +102,7 @@ add_library(HDAW_lib STATIC
     src/engine/Generative.cpp
     src/engine/ArrangementGenerator.cpp
     src/engine/RhythmPatternGenerator.cpp
+    src/engine/SamplerEngine.cpp
         src/engine/PluginManager.cpp
         src/engine/CrashRecoveryManager.cpp
     src/engine/MidiInputManager.cpp
