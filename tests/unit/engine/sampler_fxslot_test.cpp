@@ -2,6 +2,10 @@
 #include "engine/TrackFXSlot.h"
 #include "engine/SamplerEngine.h"
 #include "engine/SamplerSound.h"
+#include "engine/AudioEngine.h"
+#include "engine/MainAudioProcessor.h"
+#include "engine/Track.h"
+#include "model/ProjectModel.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
 
@@ -78,4 +82,48 @@ TEST (SamplerFxSlot, SetInternalParamRoutesToEngine)
     auto vals = slot.getInternalParamValues();
     ASSERT_GE (vals.size(), 1u);
     EXPECT_FLOAT_EQ (vals[0], 1.0f);
+}
+
+TEST (SamplerFxSlot, RebuildRestoresSampleAndParams)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto* mp = engine.getMainProcessor();
+    ASSERT_NE (mp, nullptr);
+    auto* tr = mp->getTrack (0);
+    ASSERT_NE (tr, nullptr);
+
+    auto trackTree = engine.getProjectModel().getTrackListTree().getChild (0);
+    ASSERT_TRUE (trackTree.isValid());
+
+    juce::ValueTree fxChain (IDs::FX_CHAIN);
+    juce::ValueTree slot (IDs::FX_SLOT);
+    slot.setProperty (IDs::fxType, "sampler", nullptr);
+    slot.setProperty (IDs::bypassed, false, nullptr);
+    slot.setProperty (juce::Identifier ("param_0"), 1.0f, nullptr);
+    slot.setProperty (juce::Identifier ("param_2"), 0.3f, nullptr);
+    fxChain.addChild (slot, -1, nullptr);
+
+    auto existingFX = trackTree.getChildWithName (IDs::FX_CHAIN);
+    if (existingFX.isValid())
+        trackTree.removeChild (existingFX, nullptr);
+    trackTree.addChild (fxChain, -1, nullptr);
+
+    mp->rebuildRoutingGraph();
+
+    tr = mp->getTrack (0);
+    ASSERT_NE (tr, nullptr);
+    auto& chain = tr->getFXChain();
+    ASSERT_GE (chain.size(), 1u);
+    ASSERT_NE (chain[0], nullptr);
+    EXPECT_EQ (chain[0]->getType(), "sampler");
+
+    auto vals = chain[0]->getInternalParamValues();
+    ASSERT_GE (vals.size(), 3u);
+    EXPECT_FLOAT_EQ (vals[0], 1.0f);
+    EXPECT_FLOAT_EQ (vals[2], 0.3f);
+
+    auto* samplerEngine = chain[0]->samplerEngineForTest();
+    ASSERT_NE (samplerEngine, nullptr);
 }
