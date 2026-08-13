@@ -161,6 +161,8 @@ public:
                         float value) override;
     void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
     void respawnFxSlot(int trackIndex, int slotIndex) override;
+    void setSamplerSample(int trackIndex, int slotIndex,
+                          const std::string& filePath, int rootNote = 60) override;
 
     // ProjectCommands — Automation
     void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;
