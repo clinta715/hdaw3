@@ -59,3 +59,18 @@ TEST(SamplerEngine, SampleSwapStopsAllVoices_NoDangle)
     EXPECT_TRUE(engine.allVoicesReferenceCurrentSound());
     EXPECT_EQ(engine.currentSound(), s2.get());
 }
+
+TEST(SamplerEngine, MonoModeKeepsSingleVoice)
+{
+    HDAW::SamplerEngine engine;
+    engine.prepare(44100.0, 64);
+    engine.setSound(sine(5000, 44100.0));
+    HDAW::SamplerEngine::Params p; p.mono = true;
+    engine.setParams(p);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 64); buf.clear();
+    engine.render(buf, midi);
+    EXPECT_EQ(engine.activeVoiceCount(), 1);
+}
