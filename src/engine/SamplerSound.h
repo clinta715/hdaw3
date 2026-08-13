@@ -42,29 +42,47 @@ struct SamplerSound
         std::unique_ptr<float[]> data[2];
         std::vector<int64_t> slicePoints;
 
-        std::shared_ptr<const SamplerSound> build()
-        {
-            auto* s = new SamplerSound();
-            s->numChannels = numChannels;
-            s->length = length;
-            s->nativeSampleRate = nativeSampleRate;
-            s->rootNote = rootNote;
-            s->sampleStart = sampleStart; s->sampleEnd = sampleEnd;
-            s->loopStart = loopStart;     s->loopEnd = loopEnd;
-            s->loopEnabled = loopEnabled;
-            s->slicePoints = std::move(slicePoints);
-            auto storage = std::make_shared<Owned>();
-            storage->owned[0] = std::move(data[0]);
-            storage->owned[1] = std::move(data[1]);
-            s->data[0] = storage->owned[0].get();
-            s->data[1] = storage->owned[1].get();
-            // Alias-shared ptr: refcounts `storage`, points to `s`.
-            return std::shared_ptr<const SamplerSound>(storage, s);
-        }
-
-    private:
-        struct Owned { std::unique_ptr<float[]> owned[2]; };
+        // Defined out-of-line below: build() uses SamplerSoundStorage, which
+        // embeds SamplerSound by value and so requires SamplerSound to be a
+        // complete type (not possible while Owned-style types are nested
+        // inside SamplerSound's own body).
+        std::shared_ptr<const SamplerSound> build();
     };
 };
+
+namespace detail {
+// Single bundle so ONE shared_ptr control block governs both the float storage
+// and the SamplerSound wrapper. Embedding SamplerSound by value requires the
+// type to be complete, hence this lives at namespace scope (not nested inside
+// SamplerSound). On refcount -> 0 the control block deletes this object,
+// destroying `sound` (incl. its slicePoints vector) and the two buffers
+// together. Nothing is leaked; the struct is never separately `new`ed.
+struct SamplerSoundStorage
+{
+    std::unique_ptr<float[]> owned[2];
+    SamplerSound sound;
+};
+} // namespace detail
+
+inline std::shared_ptr<const SamplerSound> SamplerSound::Builder::build()
+{
+    auto storage = std::make_shared<detail::SamplerSoundStorage>();
+    storage->sound.numChannels = numChannels;
+    storage->sound.length = length;
+    storage->sound.nativeSampleRate = nativeSampleRate;
+    storage->sound.rootNote = rootNote;
+    storage->sound.sampleStart = sampleStart; storage->sound.sampleEnd = sampleEnd;
+    storage->sound.loopStart = loopStart;     storage->sound.loopEnd = loopEnd;
+    storage->sound.loopEnabled = loopEnabled;
+    storage->sound.slicePoints = std::move(slicePoints);
+    storage->owned[0] = std::move(data[0]);
+    storage->owned[1] = std::move(data[1]);
+    storage->sound.data[0] = storage->owned[0].get();
+    storage->sound.data[1] = storage->owned[1].get();
+    // Alias-shared ptr: refcounts `storage`, points to the embedded `sound`.
+    // `sound` lives inside the SamplerSoundStorage object the control block
+    // owns and deletes, so it is destroyed together with the buffers.
+    return std::shared_ptr<const SamplerSound>(storage, &storage->sound);
+}
 
 } // namespace HDAW
