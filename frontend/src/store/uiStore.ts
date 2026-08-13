@@ -17,6 +17,8 @@ export const BOTTOM_TAB_IDS = [
   "step-seq",
   "undo-history",
   "inspector",
+  "sampler",
+  "arranger",
 ] as const;
 export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";
