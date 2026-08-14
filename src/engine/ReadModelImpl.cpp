@@ -502,6 +502,60 @@ std::vector<InternalFxParamSnapshot> ReadModelImpl::getInternalFxParams(int trac
     return result;
 }
 
+SamplerStateSnapshot ReadModelImpl::getSamplerState(int trackIndex, int slotIndex) const
+{
+    SamplerStateSnapshot snap;
+    auto trackList = model_.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return snap;
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid() || slotIndex < 0 || slotIndex >= fxChain.getNumChildren())
+        return snap;
+
+    auto slotTree = fxChain.getChild(slotIndex);
+    juce::String fxType = slotTree.getProperty(IDs::fxType).toString();
+    if (fxType != "sampler")
+        return snap;
+
+    snap.sampleFile = slotTree.getProperty("sampleFile", "").toString().toStdString();
+    snap.mode = slotTree.getProperty("mode", "classic").toString().toStdString();
+    snap.rootNote = static_cast<int>(slotTree.getProperty("rootNote", 60));
+    snap.transpose = static_cast<int>(slotTree.getProperty("transpose", 0));
+    snap.mono = static_cast<bool>(slotTree.getProperty("mono", false));
+    snap.playReverse = static_cast<bool>(slotTree.getProperty("playReverse", false));
+
+    snap.attack = static_cast<float>(slotTree.getProperty("param_0", 0.005));
+    snap.decay = static_cast<float>(slotTree.getProperty("param_1", 0.1));
+    snap.sustain = static_cast<float>(slotTree.getProperty("param_2", 0.9));
+    snap.release = static_cast<float>(slotTree.getProperty("param_3", 0.1));
+    snap.hold = static_cast<float>(slotTree.getProperty("param_6", 0.0));
+    snap.glide = static_cast<float>(slotTree.getProperty("param_7", 0.0));
+    snap.sampleStart = static_cast<float>(slotTree.getProperty("param_5", 0.0));
+    snap.sampleEnd = static_cast<float>(slotTree.getProperty("param_9", 1.0));
+
+    if (engine_)
+    {
+        auto* proc = engine_->getMainProcessor();
+        if (proc)
+        {
+            auto* track = proc->getTrack(trackIndex);
+            if (track)
+            {
+                auto& chain = track->getFXChain();
+                if (slotIndex < static_cast<int>(chain.size()) && chain[slotIndex])
+                {
+                    auto* sampler = chain[slotIndex]->samplerEngineForTest();
+                    snap.hasSound = (sampler != nullptr && sampler->currentSound() != nullptr);
+                    if (sampler)
+                        snap.activeVoices = sampler->activeVoiceCount();
+                }
+            }
+        }
+    }
+
+    return snap;
+}
+
 std::vector<AutomationLaneSnapshot> ReadModelImpl::getAutomationLanes(int trackIndex) const
 {
     std::vector<AutomationLaneSnapshot> result;

@@ -4,6 +4,7 @@
 #include "../../common/ReadModel.h"
 
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
 
@@ -100,6 +101,30 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
         return { false, arr };
     }
     if (m == "isDirty")         { return { false, r.isDirty() }; }
+    if (m == "sampler.getState") {
+        int ti, si; if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)) return makeError(-32602, "trackIndex and slotIndex required");
+        auto s = r.getSamplerState(ti, si);
+        QJsonObject obj;
+        obj["sampleFile"] = QString::fromStdString(s.sampleFile);
+        obj["mode"] = QString::fromStdString(s.mode);
+        obj["rootNote"] = s.rootNote;
+        obj["transpose"] = s.transpose;
+        obj["mono"] = s.mono;
+        obj["playReverse"] = s.playReverse;
+        QJsonObject env;
+        env["attack"] = static_cast<double>(s.attack);
+        env["hold"] = static_cast<double>(s.hold);
+        env["decay"] = static_cast<double>(s.decay);
+        env["sustain"] = static_cast<double>(s.sustain);
+        env["release"] = static_cast<double>(s.release);
+        obj["envelope"] = env;
+        obj["sampleStart"] = static_cast<double>(s.sampleStart);
+        obj["sampleEnd"] = static_cast<double>(s.sampleEnd);
+        obj["glide"] = static_cast<double>(s.glide);
+        obj["hasSound"] = s.hasSound;
+        obj["activeVoices"] = s.activeVoices;
+        return { false, obj };
+    }
     return makeError(-32601, "unknown read method: " + m);
 }
 

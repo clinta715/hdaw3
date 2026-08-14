@@ -214,6 +214,25 @@ struct SendSnapshot {
     bool bypassed = false;
 };
 
+struct SamplerStateSnapshot {
+    std::string sampleFile;
+    std::string mode = "classic";
+    int rootNote = 60;
+    int transpose = 0;
+    bool mono = false;
+    bool playReverse = false;
+    float attack = 0.005f;
+    float hold = 0.0f;
+    float decay = 0.1f;
+    float sustain = 0.9f;
+    float release = 0.1f;
+    float sampleStart = 0.0f;
+    float sampleEnd = 1.0f;
+    float glide = 0.0f;
+    bool hasSound = false;
+    int activeVoices = 0;
+};
+
 class ReadModel {
 public:
     virtual ~ReadModel() = default;
@@ -246,4 +265,5 @@ public:
     virtual MeterSnapshot getMasterMeter() const = 0;
     virtual std::vector<SendSnapshot> getTrackSends(int trackIndex) const = 0;
     virtual bool isDirty() const = 0;
+    virtual SamplerStateSnapshot getSamplerState(int trackIndex, int slotIndex) const = 0;
 };
