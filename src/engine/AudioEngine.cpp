@@ -3,6 +3,8 @@
 #include <QSettings>
 #include <cmath>
 #include "../common/SettingsKeys.h"
+#include "../common/DebugLog.h"
+#include "../common/BufferCheck.h"
 #include <algorithm>
 
 namespace {
@@ -112,10 +114,27 @@ void AudioEngine::initialize()
     // Initialize plugin manager — load cache (scan happens asynchronously after UI starts)
     pluginManager.loadCache();
 
-    // Initialize default audio device (2 in, 2 out) as fallback
-    auto error = deviceManager.initialiseWithDefaultDevices(2, 2);
-    if (error.isNotEmpty())
-        juce::Logger::writeToLog("AudioEngine::initialize Error: " + error);
+    // Initialize default audio device (2 in, 2 out) as fallback, retrying
+    // output-only when no capture device exists.
+    // Fallback for environments without a capture device (e.g. RDP sessions
+    // with render-only endpoints): JUCE fails the whole open if the requested
+    // input count can't be satisfied, so retry output-only rather than running
+    // with no device at all.
+    auto initDefaultDevice = [this]() {
+        auto err = deviceManager.initialiseWithDefaultDevices(2, 2);
+        if (err.isNotEmpty())
+        {
+            juce::Logger::writeToLog("AudioEngine::initialize Error: " + err);
+            HDAW_LOG("AudioEngine", "default device init failed: " + err + " - retrying output-only");
+            err = deviceManager.initialiseWithDefaultDevices(0, 2);
+            if (err.isNotEmpty())
+            {
+                juce::Logger::writeToLog("AudioEngine::initialize Error (output-only retry): " + err);
+                HDAW_LOG("AudioEngine", "output-only device init failed: " + err);
+            }
+        }
+    };
+    initDefaultDevice();
 
     // Restore saved audio device preferences if available
     {
@@ -149,7 +168,7 @@ void AudioEngine::initialize()
             {
                 juce::Logger::writeToLog("AudioEngine: saved device restore failed: " + err
                     + " — using defaults");
-                deviceManager.initialiseWithDefaultDevices(2, 2);
+                initDefaultDevice();
             }
         }
     }
@@ -1307,6 +1326,15 @@ void AudioEngine::timerCallback()
     {
         if (proc->consumeRecordStartPending())
             proc->beginActualRecording();
+    }
+
+    // Realtime-safety instrumentation drainer: any buffer-check flags set by
+    // the audio thread are drained and logged here on the message thread.
+    if (HDAW::BufferCheck::anyProblemPending())
+    {
+        const juce::String desc = HDAW::BufferCheck::drainProblem();
+        if (desc.isNotEmpty())
+            HDAW_LOG_ALWAYS(desc);
     }
 }
 

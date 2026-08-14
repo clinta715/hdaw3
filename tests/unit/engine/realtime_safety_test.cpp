@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "common/BufferCheck.h"
 #include "common/RealtimeGuard.h"
+#include "common/DebugLog.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
 #include <limits>
@@ -110,4 +111,18 @@ TEST(RealtimeSafety, LockBlockHelpsDetectPriorityInversion)
     // A successful acquire must not flag a block.
     EXPECT_TRUE(HDAW::RealtimeGuard::tryEnterLock(true));
     EXPECT_FALSE(HDAW::RealtimeGuard::lastBlockWasAudioThreadLock());
+}
+
+TEST(RealtimeSafety, DrainProducesLogString)
+{
+    ResetGuard g;
+    juce::AudioBuffer<float> buf(1, 64);
+    buf.clear();
+    buf.setSample(0, 10, std::numeric_limits<float>::quiet_NaN());
+    HDAW::BufferCheck::checkBuffer(buf, 44100.0, 7);
+    const juce::String desc = HDAW::BufferCheck::drainProblem();
+    EXPECT_TRUE(desc.contains("non-finite"));
+    EXPECT_TRUE(desc.contains("ctx=7"));
+    // Nothing left after drain.
+    EXPECT_FALSE(HDAW::BufferCheck::anyProblemPending());
 }
