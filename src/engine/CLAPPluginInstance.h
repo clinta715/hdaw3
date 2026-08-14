@@ -13,6 +13,7 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <thread>
 
 class CLAPPluginInstance;
 
@@ -26,6 +27,11 @@ public:
     explicit CLAPHost(CLAPPluginInstance* instance);
     ~CLAPHost() override { cancelPendingUpdate(); }
     void setInstance(CLAPPluginInstance* inst) { instance = inst; }
+
+    // The thread actually running CLAP process(); recorded by
+    // CLAPPluginInstance::processBlock. This — not "whatever is not the
+    // message thread" — is what the CLAP spec means by the audio thread.
+    std::atomic<std::thread::id> audioThreadId{};
 
     bool threadCheckIsMainThread() const noexcept override;
     bool threadCheckIsAudioThread() const noexcept override;

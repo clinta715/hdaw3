@@ -28,7 +28,14 @@ bool CLAPHost::threadCheckIsMainThread() const noexcept
 
 bool CLAPHost::threadCheckIsAudioThread() const noexcept
 {
-    return !juce::MessageManager::getInstance()->isThisTheMessageThread();
+    // The CLAP audio thread is the one running process() — recorded in
+    // CLAPPluginInstance::processBlock. Reporting "any thread that is not
+    // the message thread" is wrong: it marks the Qt main thread (headless
+    // MCP tool dispatch / frontend command thread) as the audio thread,
+    // and clap-helpers then terminates plugins that legally call
+    // request_flush() from the main thread ([thread-safe,!audio-thread]).
+    const auto audio = audioThreadId.load(std::memory_order_relaxed);
+    return audio != std::thread::id{} && std::this_thread::get_id() == audio;
 }
 
 void CLAPHost::requestRestart() noexcept
@@ -597,6 +604,7 @@ void CLAPPluginInstance::processMidiToClap(const juce::MidiBuffer& midi,
 void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
                                       juce::MidiBuffer& midiMessages)
 {
+    host->audioThreadId.store(std::this_thread::get_id(), std::memory_order_relaxed);
     juce::ScopedNoDenormals noDenormals;
 
     if (plugin == nullptr || !activated)
