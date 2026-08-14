@@ -327,7 +327,7 @@ TEST(AudioPoolDedup, EngineWiresPoolAndRebuildReacquiresWithoutRedecode)
     auto* rm = engine.getMainProcessor()->getRoutingManager();
     ASSERT_NE(rm, nullptr);
     EXPECT_EQ(rm->getAudioClipSources().size(), 2u);
-    for (const auto& [key, clip] : rm->getAudioClipSources())
+    for (const auto& [unused, clip] : rm->getAudioClipSources())
     {
         ASSERT_NE(clip, nullptr);
         EXPECT_NE(clip->getPreloadedDataForTest(0), nullptr);

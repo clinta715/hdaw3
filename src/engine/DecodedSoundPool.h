@@ -57,6 +57,17 @@ struct DecodedSound
 // is 1 — nothing outside the pool holds them. The audio thread never touches
 // this class — consumers copy the pointer into their own member at prepare
 // time, mirroring the SamplerSound pattern.
+//
+// Threading: acquire/pruneUnreferenced are normally called on the message
+// thread. Two exceptions are serialized in practice, not by a lock:
+//  - RoutingManager::prebuildTracks (pre-park phase, pump running) reaches
+//    acquire via rebuildFXChain -> TrackFXSlot::loadSamplerState; it relies
+//    on no queued pump rebuild being in flight (same window as the
+//    pre-existing prebuild-vs-pump graph race).
+//  - MainAudioProcessor::prepareToPlay may run on the audio thread at device
+//    (re)start; it always hits the cache in production (entries are strong
+//    and never pruned), which is still strictly safer than the inline decode
+//    it replaced.
 class DecodedSoundPool
 {
 public:
@@ -84,8 +95,8 @@ public:
     }
 
     // Message thread. Drops cache entries no consumer references
-    // (use_count()==1 means only the pool holds it). Called by tests and
-    // opportunistically by acquire when the cache grows.
+    // (use_count()==1 means only the pool holds it). Called by tests; not
+    // invoked from acquire today.
     void pruneUnreferenced()
     {
         for (auto it = cache.begin(); it != cache.end();)

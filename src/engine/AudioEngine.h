@@ -137,6 +137,12 @@ private:
     ProjectModel projectModel;
     SPSCBridge spscBridge;
     HDAW::TransportManager transportManager;
+    // Declared AFTER mainProcessor, so at destruction the pool dies first
+    // (reverse member order) while the graph teardown is still running. Safe:
+    // consumers hold shared_ptr copies of decodes (ClipSourceProcessor::decoded_,
+    // TrackFXSlot pooled sampler state), so the DecodedSound data outlives the
+    // pool's map, and raw DecodedSoundPool* members are never dereferenced
+    // during destruction. Do not reorder without revisiting this contract.
     HDAW::ProjectPool projectPool;
     HDAW::MidiInputManager midiInputManager;
     HDAW::StretchCache stretchCache;
