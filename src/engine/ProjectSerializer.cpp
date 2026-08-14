@@ -1,4 +1,6 @@
 #include "ProjectSerializer.h"
+#include "MainAudioProcessor.h"
+#include "TrackFXSlot.h"
 #include "common/Version.h"
 #include "../common/DebugLog.h"
 
@@ -30,9 +32,59 @@ void migrateProjectTree(juce::ValueTree& root)
 
 } // namespace
 
-bool ProjectSerializer::save(ProjectModel& model, const juce::File& file)
+bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAudioProcessor* processor)
 {
     auto& tree = model.getTree();
+
+    // Capture live plugin state from all tracks/FX slots before serializing.
+    // This ensures that parameters tweaked through a plugin's own UI are
+    // persisted — the ValueTree's pluginState property is otherwise only
+    // updated during rebuildFXChain (Track.cpp).
+    if (processor)
+    {
+        auto trackList = tree.getChildWithName(IDs::TRACK_LIST);
+        if (trackList.isValid())
+        {
+            const int numTracks = processor->getNumTracks();
+            for (int ti = 0; ti < numTracks; ++ti)
+            {
+                auto* track = processor->getTrack(ti);
+                if (!track)
+                    continue;
+
+                auto& fxChain = track->getFXChain();
+                if (ti >= trackList.getNumChildren())
+                    continue;
+
+                auto trackTree = trackList.getChild(ti);
+                auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
+                if (!fxChainTree.isValid())
+                    continue;
+
+                for (size_t si = 0; si < fxChain.size(); ++si)
+                {
+                    auto& slot = fxChain[si];
+                    if (!slot || !slot->isPlugin() || !slot->getPluginInstance())
+                        continue;
+
+                    auto* instance = slot->getPluginInstance();
+                    juce::MemoryBlock state;
+                    instance->getStateInformation(state);
+
+                    // Match by pluginID (same pattern as Track::rebuildFXChain)
+                    if (static_cast<int>(si) < fxChainTree.getNumChildren())
+                    {
+                        auto slotTree = fxChainTree.getChild(static_cast<int>(si));
+                        if (slotTree.getProperty(IDs::pluginID).toString() == slot->getPluginID())
+                        {
+                            if (state.getSize() > 0)
+                                slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Backfill provenance for legacy in-memory trees that never had it stamped
     // (e.g. loaded from a metadata-less file then re-saved). Use a nullptr

@@ -1263,7 +1263,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
             juce::File f(juce::String(path.toUtf8().constData()));
-            bool ok = HDAW::ProjectSerializer::save(e->getProjectModel(), f);
+            bool ok = HDAW::ProjectSerializer::save(e->getProjectModel(), f, e->getMainProcessor());
             if (ok)
                 HDAW::backupProject(f);
             return McpToolResult::text(ok ? "saved" : "save failed", !ok);

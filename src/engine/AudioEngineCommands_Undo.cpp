@@ -56,7 +56,7 @@ void AudioEngineCommands::newProject()
 bool AudioEngineCommands::saveProject(const std::string& filePath)
 {
     auto f = juce::File(filePath);
-    bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f);
+    bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f, engine_.getMainProcessor());
     if (ok)
         HDAW::backupProject(f);
     return ok;
