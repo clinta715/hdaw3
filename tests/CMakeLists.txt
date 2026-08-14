@@ -46,6 +46,7 @@ add_executable(hdaw_tests
     unit/engine/slice_detector_test.cpp
     unit/engine/sampler_fxslot_test.cpp
     unit/engine/realtime_safety_test.cpp
+    unit/engine/streaming_clip_source_test.cpp
     unit/engine/track_mixer_state_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
