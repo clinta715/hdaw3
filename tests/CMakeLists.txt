@@ -42,6 +42,7 @@ add_executable(hdaw_tests
     unit/engine/ahdsr_envelope_test.cpp
     unit/engine/sampler_voice_test.cpp
     unit/engine/sampler_engine_test.cpp
+    unit/engine/fm_synth_test.cpp
     unit/engine/slice_detector_test.cpp
     unit/engine/sampler_fxslot_test.cpp
     unit/engine/realtime_safety_test.cpp
@@ -93,6 +94,7 @@ add_executable(hdaw_tests
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_options(hdaw_tests PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
 target_link_libraries(hdaw_tests PRIVATE
     Qt6::Core
     Qt6::Network

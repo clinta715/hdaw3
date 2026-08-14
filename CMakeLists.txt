@@ -103,6 +103,17 @@ add_library(HDAW_lib STATIC
     src/engine/ArrangementGenerator.cpp
     src/engine/RhythmPatternGenerator.cpp
     src/engine/SamplerEngine.cpp
+    src/engine/FmSynthEngine.cpp
+    src/engine/msfa/fm_core.cc
+    src/engine/msfa/fm_op_kernel.cc
+    src/engine/msfa/sin.cc
+    src/engine/msfa/exp2.cc
+    src/engine/msfa/env.cc
+    src/engine/msfa/pitchenv.cc
+    src/engine/msfa/freqlut.cc
+    src/engine/msfa/lfo.cc
+    src/engine/msfa/dx7note.cc
+    src/engine/msfa/porta.cpp
         src/engine/PluginManager.cpp
         src/engine/CrashRecoveryManager.cpp
     src/engine/MidiInputManager.cpp

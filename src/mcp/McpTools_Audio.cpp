@@ -8,6 +8,7 @@
 #include "../engine/EnvelopeGenerator.h"
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/ProjectPool.h"
+#include "../engine/TrackFXSlot.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -154,10 +155,10 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
 static void registerFxTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,sampler}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,sampler,fm_synth}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","sampler"}}}},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","sampler","fm_synth"}}}},
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
@@ -275,7 +276,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
-    s.registerTool({"list_fx_params", "List all automatable parameters of a plugin FX slot.",
+    s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, sampler).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         [e](const QJsonObject& a) -> McpToolResult {
@@ -284,24 +285,43 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
-            if (fxSlots[si].fxType != "plugin")
-                return McpToolResult::text("slot has no plugin", true);
-            auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+            if (fxSlots[si].fxType == "none")
+                return McpToolResult::text("slot is empty", true);
+
             QJsonArray arr;
-            for (const auto& pi : params) {
-                QJsonObject o;
-                o["index"] = pi.index;
-                o["name"] = QString::fromStdString(pi.name);
-                o["automatable"] = pi.automatable;
-                o["value"] = static_cast<double>(pi.value);
-                o["text"] = QString::fromStdString(pi.text);
-                arr.append(o);
+            if (fxSlots[si].fxType == "plugin")
+            {
+                auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+                for (const auto& pi : params) {
+                    QJsonObject o;
+                    o["index"] = pi.index;
+                    o["name"] = QString::fromStdString(pi.name);
+                    o["automatable"] = pi.automatable;
+                    o["value"] = static_cast<double>(pi.value);
+                    o["text"] = QString::fromStdString(pi.text);
+                    arr.append(o);
+                }
+            }
+            else
+            {
+                // Internal FX: enumerate from param definitions
+                auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+                for (const auto& def : defs) {
+                    QJsonObject o;
+                    o["index"] = def.index;
+                    o["name"] = QString::fromUtf8(def.name.toRawUTF8());
+                    o["automatable"] = true;
+                    o["minValue"] = static_cast<double>(def.minValue);
+                    o["maxValue"] = static_cast<double>(def.maxValue);
+                    o["defaultValue"] = static_cast<double>(def.defaultValue);
+                    arr.append(o);
+                }
             }
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"set_fx_param", "Set a plugin FX parameter value (normalized 0..1).",
+    s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, sampler).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -312,15 +332,31 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             auto fxSlots = e->getReadModel().getFxSlots(ti);
             if (si < 0 || si >= (int)fxSlots.size())
                 return McpToolResult::text("slot not found", true);
-            if (fxSlots[si].fxType != "plugin")
-                return McpToolResult::text("slot has no plugin", true);
+            if (fxSlots[si].fxType == "none")
+                return McpToolResult::text("slot is empty", true);
             int pi = a.value("paramIndex").toInt();
-            auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
-            if (pi < 0 || pi >= static_cast<int>(params.size()))
-                return McpToolResult::text("param index out of range", true);
             float v = static_cast<float>(a.value("value").toDouble());
             v = std::clamp(v, 0.0f, 1.0f);
-            e->getPluginParamService().setParam(ti, fxSlots[si].pluginId, pi, v);
+
+            if (fxSlots[si].fxType == "plugin")
+            {
+                auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+                if (pi < 0 || pi >= static_cast<int>(params.size()))
+                    return McpToolResult::text("param index out of range", true);
+                e->getPluginParamService().setParam(ti, fxSlots[si].pluginId, pi, v);
+            }
+            else
+            {
+                // Internal FX: route through the command layer which sets the
+                // ValueTree property, triggering the listener to apply to DSP.
+                // The ValueTree stores real values, so denormalize first.
+                auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+                if (pi < 0 || pi >= static_cast<int>(defs.size()))
+                    return McpToolResult::text("param index out of range", true);
+                float realValue = defs[static_cast<size_t>(pi)].minValue
+                    + v * (defs[static_cast<size_t>(pi)].maxValue - defs[static_cast<size_t>(pi)].minValue);
+                e->getProjectCommands().setFxSlotParam(ti, si, pi, realValue);
+            }
             return McpToolResult::text("ok");
         }});
 
@@ -533,6 +569,85 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
 
             return McpToolResult::text(
                 QString::fromUtf8(QJsonDocument(state).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"fm_synth_load_preset",
+        "Load a raw DX7 patch (156 bytes hex string) into an FM synth FX slot.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}},
+                   {"patchData", QJsonObject{{"type","string"}}}}, {"trackId","slotIndex","patchData"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
+                return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "fm_synth")
+                return McpToolResult::text("slot is not an FM synth", true);
+
+            QString hex = a.value("patchData").toString();
+            if (hex.isEmpty() || hex.size() != 312)
+                return McpToolResult::text("patchData must be 312 hex characters (156 bytes)", true);
+
+            uint8_t patch[156];
+            for (int i = 0; i < 156; i++)
+            {
+                bool ok;
+                patch[i] = static_cast<uint8_t>(hex.mid(i * 2, 2).toInt(&ok, 16));
+                if (!ok) return McpToolResult::text("invalid hex at offset " + QString::number(i), true);
+            }
+
+            auto* proc = e->getMainProcessor();
+            if (!proc) return McpToolResult::text("audio engine not initialized", true);
+            auto* track = proc->getTrack(ti);
+            if (!track) return McpToolResult::text("track not found", true);
+            auto& chain = track->getFXChain();
+            if (si >= (int)chain.size() || !chain[si])
+                return McpToolResult::text("FX slot not found in chain", true);
+            auto* slot = chain[si].get();
+            if (!slot->fmSynthEngine())
+                return McpToolResult::text("FM synth engine not initialized", true);
+
+            slot->fmSynthEngine()->loadPatch(patch);
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"fm_synth_get_state",
+        "Get the current state of an FM synth FX slot (active voices, algorithm).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
+                return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "fm_synth")
+                return McpToolResult::text("slot is not an FM synth", true);
+
+            QJsonObject state;
+            auto* proc = e->getMainProcessor();
+            if (proc)
+            {
+                auto* track = proc->getTrack(ti);
+                if (track)
+                {
+                    auto& chain = track->getFXChain();
+                    if (si < (int)chain.size() && chain[si])
+                    {
+                        auto* engine = chain[si]->fmSynthEngine();
+                        if (engine)
+                            state["activeVoices"] = engine->activeVoiceCount();
+                    }
+                }
+            }
+            auto& model = e->getProjectModel();
+            auto slotTree = model.getTrackListTree().getChild(ti)
+                .getChildWithName(IDs::FX_CHAIN).getChild(si);
+            state["algorithm"] = slotTree.isValid()
+                ? static_cast<int>(slotTree.getProperty("param_0", 0)) : 0;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(state).toJson(QJsonDocument::Compact)));
         }});
 }
 

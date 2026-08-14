@@ -6,9 +6,11 @@
 #include <memory>
 #include <vector>
 #include "../common/DebugLog.h"
+#include "../common/RealtimeGuard.h"
 #include "CLAPPluginInstance.h"
 #include "../proxy/PluginProxySlot.h"
 #include "engine/SamplerEngine.h"
+#include "engine/FmSynthEngine.h"
 
 namespace HDAW {
 
@@ -84,6 +86,39 @@ public:
                 { 3, "Release",     0.1f,    0.0f,  10.0f  },
                 { 4, "Transpose",   0.0f,  -36.0f,  36.0f  },
                 { 5, "SampleStart", 0.0f,    0.0f,   1.0f  },
+                { 6, "Hold",        0.0f,    0.0f,   5.0f  },
+                { 7, "Glide",       0.0f,    0.0f,   5.0f  },
+                { 8, "Reverse",     0.0f,    0.0f,   1.0f  },
+                { 9, "SampleEnd",   1.0f,    0.0f,   1.0f  },
+            };
+        if (type == "fm_synth")
+            return {
+                { 0, "Algorithm",      0.0f,  0.0f, 31.0f },
+                { 1, "Feedback",       5.0f,  0.0f,  7.0f },
+                { 2, "Output Level",   0.8f,  0.0f,  1.0f },
+                { 3, "OP1 Level",      0.8f,  0.0f,  1.0f },
+                { 4, "OP2 Level",      0.8f,  0.0f,  1.0f },
+                { 5, "OP3 Level",      0.8f,  0.0f,  1.0f },
+                { 6, "OP4 Level",      0.8f,  0.0f,  1.0f },
+                { 7, "OP5 Level",      0.8f,  0.0f,  1.0f },
+                { 8, "OP6 Level",      0.8f,  0.0f,  1.0f },
+                { 9, "OP1 Coarse",     0.0f,  0.0f, 31.0f },
+                {10, "OP2 Coarse",     0.0f,  0.0f, 31.0f },
+                {11, "OP3 Coarse",     0.0f,  0.0f, 31.0f },
+                {12, "OP4 Coarse",     0.0f,  0.0f, 31.0f },
+                {13, "OP5 Coarse",     0.0f,  0.0f, 31.0f },
+                {14, "OP6 Coarse",     0.0f,  0.0f, 31.0f },
+                {15, "OP1 Fine",       0.0f,  0.0f, 99.0f },
+                {16, "OP2 Fine",       0.0f,  0.0f, 99.0f },
+                {17, "OP3 Fine",       0.0f,  0.0f, 99.0f },
+                {18, "OP4 Fine",       0.0f,  0.0f, 99.0f },
+                {19, "OP5 Fine",       0.0f,  0.0f, 99.0f },
+                {20, "OP6 Fine",       0.0f,  0.0f, 99.0f },
+                {21, "LFO Rate",       0.5f,  0.0f,  1.0f },
+                {22, "LFO Delay",      0.0f,  0.0f,  1.0f },
+                {23, "LFO Pitch Depth",0.0f,  0.0f,  1.0f },
+                {24, "LFO Amp Depth",  0.0f,  0.0f,  1.0f },
+                {25, "LFO Waveform",   0.0f,  0.0f,  3.0f },
             };
         return {};
     }
@@ -108,6 +143,8 @@ public:
             activeType = ActiveType::Phaser;
         else if (type == "sampler")
             activeType = ActiveType::Sampler;
+        else if (type == "fm_synth")
+            activeType = ActiveType::FmSynth;
         else if (type == "plugin")
             activeType = ActiveType::Plugin;
         else
@@ -159,29 +196,75 @@ public:
     };
 
     // Returns the plugin's parameters that report isAutomatable()==true.
-    // The cache still indexes by the raw plugin parameter position (so
-    // setAutomationParam/applyAutomation use the same indices as
-    // pluginInstance->getParameters()); the flag is informational and lets
-    // the UI/MCP surface filter out output-only or meter parameters.
+    // For internal FX, returns synthetic ParamInfo entries derived from
+    // getInternalParamDefs() so the UI/MCP can enumerate them uniformly.
     const std::vector<ParamInfo>& getAutomatableParams() const
     {
+        if (!isExternal && activeType != ActiveType::None)
+        {
+            // Rebuild internal param info cache if empty or if type changed
+            if (cachedParams.empty() && !internalParamValues.empty())
+            {
+                auto defs = getParamDefsForType(slotType);
+                cachedParams.reserve(defs.size());
+                for (const auto& d : defs)
+                    cachedParams.push_back({ d.name, d.index, true });
+            }
+        }
         return cachedParams;
     }
 
+    // Set an FX parameter by normalized value (0..1).
+    // For external plugins: stores in the atomic param cache for
+    // applyAutomation() to push to the plugin.
+    // For internal FX: denormalizes to the real param range, stores in
+    // internalParamValues, and applies to the live DSP immediately.
     void setAutomationParam(int paramIndex, float normalizedValue)
     {
-        if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
+        if (isExternal)
         {
-            paramValues[paramIndex].store(normalizedValue, std::memory_order_relaxed);
-            paramDirty[paramIndex].store(true, std::memory_order_relaxed);
+            if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
+            {
+                paramValues[paramIndex].store(normalizedValue, std::memory_order_relaxed);
+                paramDirty[paramIndex].store(true, std::memory_order_relaxed);
+            }
+        }
+        else
+        {
+            // Internal FX: denormalize 0..1 → real range and apply
+            if (paramIndex < 0 || paramIndex >= static_cast<int>(internalParamValues.size()))
+                return;
+            auto defs = getParamDefsForType(slotType);
+            if (paramIndex >= static_cast<int>(defs.size()))
+                return;
+            float realValue = denormalizeParam(normalizedValue, defs[static_cast<size_t>(paramIndex)]);
+            internalParamValues[static_cast<size_t>(paramIndex)] = realValue;
+            applyInternalParamToDsp(paramIndex, realValue);
         }
     }
 
+    // Get an FX parameter as a normalized value (0..1).
+    // For external plugins: reads from the atomic param cache.
+    // For internal FX: reads from internalParamValues and normalizes.
     float getAutomationParam(int paramIndex) const
     {
-        if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
-            return paramValues[paramIndex].load(std::memory_order_relaxed);
-        return 0.0f;
+        if (isExternal)
+        {
+            if (paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed))
+                return paramValues[paramIndex].load(std::memory_order_relaxed);
+            return 0.0f;
+        }
+        else
+        {
+            // Internal FX: normalize real value → 0..1
+            if (paramIndex < 0 || paramIndex >= static_cast<int>(internalParamValues.size()))
+                return 0.0f;
+            auto defs = getParamDefsForType(slotType);
+            if (paramIndex >= static_cast<int>(defs.size()))
+                return 0.0f;
+            return normalizeParam(internalParamValues[static_cast<size_t>(paramIndex)],
+                                  defs[static_cast<size_t>(paramIndex)]);
+        }
     }
 
     void applyAutomation()
@@ -209,6 +292,12 @@ public:
 
     void prepare(const juce::dsp::ProcessSpec& spec)
     {
+        // Lesson 13 tripwire: prepare recreates DSP objects under stateLock;
+        // it must run message-side. Best-effort — the existing stateLock
+        // still protects the DSP objects.
+        if (!HDAW::RealtimeGuard::isMessageThread())
+            juce::Logger::writeToLog("TrackFXSlot::prepare off message thread");
+
         sampleRate_ = spec.sampleRate;
 
         if (isExternal && pluginInstance)
@@ -313,7 +402,8 @@ public:
             }
             case ActiveType::Sampler:
             {
-                sampler = std::make_unique<SamplerEngine>();
+                if (!sampler)
+                    sampler = std::make_unique<SamplerEngine>();
                 sampler->prepare (spec.sampleRate, static_cast<int> (spec.maximumBlockSize));
                 // Push initial params from internalParamValues
                 SamplerEngine::Params sp;
@@ -323,6 +413,9 @@ public:
                 sp.env.release = (internalParamValues.size() > 3) ? internalParamValues[3] : 0.1f;
                 sp.transpose   = static_cast<int> ((internalParamValues.size() > 4) ? internalParamValues[4] : 0.0f);
                 sp.sampleStart = (internalParamValues.size() > 5) ? internalParamValues[5] : 0.0f;
+                sp.env.hold    = (internalParamValues.size() > 6) ? internalParamValues[6] : 0.0f;
+                sp.glide       = (internalParamValues.size() > 7) ? internalParamValues[7] : 0.0;
+                sp.reverse     = (internalParamValues.size() > 8) ? (internalParamValues[8] >= 0.5f) : false;
                 sampler->setParams (sp);
                 // If a sound was staged before prepare, adopt it now.
                 if (stagedSound_)
@@ -330,6 +423,32 @@ public:
                     sampler->setSound (stagedSound_);
                     stagedSound_.reset();
                 }
+                break;
+            }
+            case ActiveType::FmSynth:
+            {
+                if (!fmSynth)
+                    fmSynth = std::make_unique<FmSynthEngine>();
+                fmSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                // Push initial params from internalParamValues
+                if (internalParamValues.size() > 0) fmSynth->setAlgorithm(static_cast<int>(internalParamValues[0]));
+                if (internalParamValues.size() > 1) fmSynth->setFeedback(static_cast<int>(internalParamValues[1]));
+                if (internalParamValues.size() > 2) fmSynth->setOutputLevel(internalParamValues[2]);
+                for (int op = 0; op < 6 && internalParamValues.size() > (size_t)(3 + op); op++)
+                    fmSynth->setOpLevel(op, internalParamValues[3 + op]);
+                if (internalParamValues.size() > 9) {
+                    for (int op = 0; op < 6 && internalParamValues.size() > (size_t)(9 + op); op++)
+                        fmSynth->setOpCoarse(op, static_cast<int>(internalParamValues[9 + op]));
+                }
+                if (internalParamValues.size() > 15) {
+                    for (int op = 0; op < 6 && internalParamValues.size() > (size_t)(15 + op); op++)
+                        fmSynth->setOpFine(op, static_cast<int>(internalParamValues[15 + op]));
+                }
+                if (internalParamValues.size() > 21) fmSynth->setLfoRate(internalParamValues[21]);
+                if (internalParamValues.size() > 22) fmSynth->setLfoDelay(internalParamValues[22]);
+                if (internalParamValues.size() > 23) fmSynth->setLfoPitchDepth(internalParamValues[23]);
+                if (internalParamValues.size() > 24) fmSynth->setLfoAmpDepth(internalParamValues[24]);
+                if (internalParamValues.size() > 25) fmSynth->setLfoWaveform(static_cast<int>(internalParamValues[25]));
                 break;
             }
             case ActiveType::None:
@@ -376,6 +495,17 @@ public:
             {
                 buffer.clear();    // instrument = source (overwrite)
                 sampler->render (buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
+        if (activeType == ActiveType::FmSynth)
+        {
+            if (fmSynth)
+            {
+                buffer.clear();
+                fmSynth->render(buffer, midiMessages);
                 midiMessages.clear();
             }
             return;
@@ -444,6 +574,7 @@ public:
         if (comp)      comp->reset();
         if (chorusDsp) chorusDsp->reset();
         if (phaserDsp) phaserDsp->reset();
+        if (fmSynth)   fmSynth->prepare(sampleRate_, 0);
         // Sampler voices stop on sound swap; no explicit reset needed.
     }
 
@@ -558,6 +689,9 @@ public:
         sp.env.decay   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.1f;
         sp.env.sustain = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.9f;
         sp.env.release = (internalParamValues.size() > 3) ? internalParamValues[3] : 0.1f;
+        sp.env.hold    = (internalParamValues.size() > 6) ? internalParamValues[6] : 0.0f;
+        sp.glide       = (internalParamValues.size() > 7) ? internalParamValues[7] : 0.0;
+        sp.reverse     = (internalParamValues.size() > 8) ? (internalParamValues[8] >= 0.5f) : false;
 
         if (sampler)
         {
@@ -610,8 +744,10 @@ public:
 
     SamplerEngine* samplerEngineForTest() { return sampler.get(); }
 
+    FmSynthEngine* fmSynthEngine() { return fmSynth.get(); }
+
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin, Sampler };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin, Sampler, FmSynth };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -633,6 +769,7 @@ private:
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
     std::unique_ptr<SamplerEngine> sampler;
+    std::unique_ptr<FmSynthEngine> fmSynth;
 
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
@@ -656,6 +793,20 @@ private:
     SamplerEngine::Params stagedParams_;
 
     void wireEditorClosedCallback();
+
+    // Normalize a real param value to 0..1 for automation/modulation.
+    static float normalizeParam(float realValue, const InternalParamDef& def)
+    {
+        float range = def.maxValue - def.minValue;
+        if (range <= 0.0f) return 0.0f;
+        return (realValue - def.minValue) / range;
+    }
+
+    // Denormalize a 0..1 automation/modulation value to the real param range.
+    static float denormalizeParam(float normalizedValue, const InternalParamDef& def)
+    {
+        return def.minValue + normalizedValue * (def.maxValue - def.minValue);
+    }
 
     void applyInternalParamToDsp(int paramIndex, float value)
     {
@@ -755,6 +906,33 @@ private:
                     case 3: sampler->setRelease (value); break;
                     case 4: sampler->setTranspose (static_cast<int> (value)); break;
                     case 5: /* sampleStart — handled via loadSamplerState */ break;
+                    case 6: sampler->setHold    (value); break;
+                    case 7: sampler->setGlide   (value); break;
+                    case 8: sampler->setReverse (value >= 0.5f); break;
+                    case 9: sampler->setSampleEnd (value); break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::FmSynth:
+            {
+                if (!fmSynth) return;
+                switch (paramIndex)
+                {
+                    case 0: fmSynth->setAlgorithm(static_cast<int>(value)); break;
+                    case 1: fmSynth->setFeedback(static_cast<int>(value)); break;
+                    case 2: fmSynth->setOutputLevel(value); break;
+                    case 3: case 4: case 5: case 6: case 7: case 8:
+                        fmSynth->setOpLevel(paramIndex - 3, value); break;
+                    case 9: case 10: case 11: case 12: case 13: case 14:
+                        fmSynth->setOpCoarse(paramIndex - 9, static_cast<int>(value)); break;
+                    case 15: case 16: case 17: case 18: case 19: case 20:
+                        fmSynth->setOpFine(paramIndex - 15, static_cast<int>(value)); break;
+                    case 21: fmSynth->setLfoRate(value); break;
+                    case 22: fmSynth->setLfoDelay(value); break;
+                    case 23: fmSynth->setLfoPitchDepth(value); break;
+                    case 24: fmSynth->setLfoAmpDepth(value); break;
+                    case 25: fmSynth->setLfoWaveform(static_cast<int>(value)); break;
                     default: return;
                 }
                 break;
