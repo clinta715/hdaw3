@@ -7,6 +7,7 @@
 #include <vector>
 #include "TransportManager.h"
 #include "StreamingClipSource.h"
+#include "DecodedSoundPool.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
 
@@ -15,10 +16,11 @@ namespace HDAW {
 class ClipSourceProcessor : public juce::AudioProcessor
 {
 public:
-    ClipSourceProcessor(HDAW::TransportManager& tm, juce::AudioFormatManager& fm)
+    ClipSourceProcessor(HDAW::TransportManager& tm, juce::AudioFormatManager& fm,
+                        HDAW::DecodedSoundPool* pool = nullptr)
         : AudioProcessor(BusesProperties()
               .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-          transportManager(tm), formatManager(fm)
+          transportManager(tm), formatManager(fm), decodedPool(pool)
     {
     }
 
@@ -32,8 +34,7 @@ public:
     void switchToSourceFile(const juce::String& path)
     {
         sourceFile = path;
-        preloadedData[0].free();
-        preloadedData[1].free();
+        decoded_.reset();
         preloadedChannels = 0;
         preloadedLength = 0;
         streamer.stopPlayback();
@@ -72,23 +73,32 @@ public:
         }
     }
 
-    // Message-thread preload of the whole source file (legacy path / fallback).
+    // Message-thread preload of the whole source file. Borrows the shared
+    // decode from the pool when one is set (zero copy); otherwise decodes
+    // directly. The pooled buffer stays alive via decoded_'s shared_ptr even
+    // across routing rebuilds (Gate 1/10: reacquired, not re-decoded).
     void preloadWholeFile()
     {
-        std::unique_ptr<juce::AudioFormatReader> r(
-            formatManager.createReaderFor(juce::File(sourceFile)));
-        if (r != nullptr)
+        decoded_.reset();
+        preloadedChannels = 0;
+        preloadedLength = 0;
+
+        auto acquire = [this]() -> std::shared_ptr<const HDAW::DecodedSound>
         {
-            preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
-            const int total = static_cast<int>(r->lengthInSamples);
-            if (preloadedChannels > 0 && total > 0)
-            {
-                preloadedData[0].malloc(total);
-                preloadedData[1].malloc(total);
-                float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
-                r->read(ptrs, preloadedChannels, 0, total);
-                preloadedLength = static_cast<int64_t>(total);
-            }
+            if (decodedPool != nullptr)
+                return decodedPool->acquire(sourceFile);
+            return HDAW::DecodedSound::decode(formatManager, sourceFile);
+        };
+
+        decoded_ = acquire();
+        if (decoded_ != nullptr)
+        {
+            preloadedChannels = decoded_->numChannels;
+            preloadedLength = decoded_->length;
+        }
+        else
+        {
+            HDAW_LOG("DIAG", "ClipSourceProc preload FAIL file=" + sourceFile.toStdString());
         }
     }
 
@@ -105,6 +115,16 @@ public:
     }
 
     juce::String getSourceFile() const { return sourceFile; }
+
+    // Test hook: the L buffer of the active preload (null when not preloaded).
+    const float* getPreloadedDataForTest(int ch) const
+    {
+        if (decoded_ == nullptr || ch < 0 || ch > 1)
+            return nullptr;
+        if (decoded_->numChannels > 1)
+            return decoded_->data[ch].get();
+        return decoded_->data[0].get();
+    }
 
     // Streaming escape hatch. Default on. RoutingManager enables it at build
     // time; the decision takes effect on the next prepareToPlay/rebuild.
@@ -144,9 +164,9 @@ public:
 
     // Adopts a stretched buffer produced by StretchCache. Called on the
     // message thread during rebuildRoutingGraph's prepareToPlay. After
-    // this call, processBlock reads from stretchedData instead of
-    // preloadedData; the original preloadedData is retained so a later
-    // cache miss (e.g. ratio reverted to 1.0) can fall back to it.
+    // this call, processBlock reads from stretchedData instead of the
+    // pooled decode; the pooled decode is retained so a later cache miss
+    // (e.g. ratio reverted to 1.0) can fall back to it.
     // `length` is per-channel sample count; `channels` is 1 or 2.
     void adoptStretchedBuffer(const int* ch0, const int* ch1,
                               int64_t length, int channels)
@@ -185,8 +205,7 @@ public:
         sr = sampleRate;
         blockSize = samplesPerBlock;
 
-        preloadedData[0].free();
-        preloadedData[1].free();
+        decoded_.reset();
         preloadedChannels = 0;
         preloadedLength = 0;
 
@@ -221,30 +240,7 @@ public:
 
         if (sourceFile.isNotEmpty())
         {
-            juce::File f(sourceFile);
-            bool fileExists = f.existsAsFile();
-            std::unique_ptr<juce::AudioFormatReader> r(
-                formatManager.createReaderFor(f));
-            if (r != nullptr && fileExists)
-            {
-                preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
-                const int total = static_cast<int>(r->lengthInSamples);
-                if (preloadedChannels > 0 && total > 0)
-                {
-                    preloadedData[0].malloc(total);
-                    preloadedData[1].malloc(total);
-                    float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
-                    r->read(ptrs, preloadedChannels, 0, total);
-                    preloadedLength = static_cast<int64_t>(total);
-                }
-            }
-            else
-            {
-                // Missing/unreadable source — surface once per clip so users
-                // notice (the clip will render silent). The OK path is silent
-                // to avoid one log line per clip per routing rebuild.
-                HDAW_LOG("DIAG", "ClipSourceProc prepareToPlay FAIL file=" + sourceFile.toStdString() + " exists=" + (fileExists ? "yes" : "no") + " reader=" + (r ? "ok" : "null"));
-            }
+            preloadWholeFile();
         }
 
         // Never clobber an adopted stretched buffer (activeBuffer stays 1).
@@ -258,8 +254,7 @@ public:
     void releaseResources() override
     {
         streamer.stopPlayback();
-        preloadedData[0].free();
-        preloadedData[1].free();
+        decoded_.reset();
         preloadedChannels = 0;
         preloadedLength = 0;
         stretchedData[0].free();
@@ -343,8 +338,10 @@ public:
         }
         else
         {
-            preloadedPtrs[0] = preloadedData[0];
-            preloadedPtrs[1] = preloadedData[1];
+            preloadedPtrs[0] = decoded_ ? decoded_->data[0].get() : nullptr;
+            preloadedPtrs[1] = (decoded_ && decoded_->numChannels > 1)
+                                   ? decoded_->data[1].get()
+                                   : preloadedPtrs[0];
             srcChannels = preloadedChannels;
             srcLength = preloadedLength;
             useFloatBuffer = true;
@@ -632,6 +629,7 @@ public:
 private:
     HDAW::TransportManager& transportManager;
     juce::AudioFormatManager& formatManager;
+    HDAW::DecodedSoundPool* decodedPool = nullptr;
     juce::String sourceFile;
 
     std::atomic<double> startTime{ 0.0 };
@@ -643,7 +641,7 @@ private:
     std::atomic<bool> looping{ false };
     std::atomic<bool> muted{ false };
 
-    juce::HeapBlock<float> preloadedData[2];
+    std::shared_ptr<const HDAW::DecodedSound> decoded_;
     int preloadedChannels = 0;
     int64_t preloadedLength = 0;
 
@@ -657,7 +655,7 @@ private:
 
     // Stretched buffer produced off-thread by StretchCache and adopted
     // during rebuildRoutingGraph. processBlock selects between this and
-    // preloadedData via `activeBuffer` (one atomic load per block).
+    // the pooled decode via `activeBuffer` (one atomic load per block).
     juce::HeapBlock<int> stretchedData[2];
     int stretchedChannels = 0;
     int64_t stretchedLength = 0;

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "engine/DecodedSoundPool.h"
+#include "engine/ClipSourceProcessor.h"
+#include "engine/TransportManager.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <cmath>
 #include <fstream>
@@ -159,5 +161,46 @@ TEST(AudioPoolDedup, MonoDataMatchesDecodedSamples)
     for (int64_t i = 0; i < sound->length && !anyNonZero; ++i)
         anyNonZero = std::abs(sound->data[0][i]) > 0.0f;
     EXPECT_TRUE(anyNonZero);
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, TwoClipProcessorsShareOneDecode)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    HDAW::DecodedSoundPool pool(fm);
+    HDAW::TransportManager tm;
+
+    auto file = writeSineWav("proc_share", 44100);
+    auto path = file.getFullPathName();
+
+    HDAW::ClipSourceProcessor a(tm, fm, &pool);
+    HDAW::ClipSourceProcessor b(tm, fm, &pool);
+    a.setSourceFile(path);
+    b.setSourceFile(path);
+    a.prepareToPlay(44100.0, 512);
+    b.prepareToPlay(44100.0, 512);
+
+    EXPECT_EQ(pool.getDecodeCount(), 1);    // one decode, two consumers
+    EXPECT_EQ(pool.getEntryCount(), 1);
+
+    // Both processors read the SAME pooled buffer (pointer identity).
+    EXPECT_EQ(a.getPreloadedDataForTest(0), b.getPreloadedDataForTest(0));
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, ProcessorWithoutPoolFallsBackToDirectDecode)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    HDAW::TransportManager tm;
+
+    auto file = writeSineWav("proc_fallback", 44100);
+    auto path = file.getFullPathName();
+
+    HDAW::ClipSourceProcessor a(tm, fm); // no pool
+    a.setSourceFile(path);
+    a.prepareToPlay(44100.0, 512);
+    EXPECT_NE(a.getPreloadedDataForTest(0), nullptr);
     file.deleteFile();
 }
