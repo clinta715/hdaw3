@@ -62,7 +62,7 @@ export default function TimelineMinimal() {
   const maxEnd = clips.reduce((max, c) => Math.max(max, c.startBeat + c.durationBeats), 4);
 
   // --- Zoom (extracted hook) ---
-  const { pps, setPps, zoomIn, zoomOut, zoomFit } = useTimelineZoom({ maxEnd, bodyRef });
+  const { pps, setPps, zoomIn, zoomOut, zoomFit, zoomToRange } = useTimelineZoom({ maxEnd, bodyRef, tracksRef, rulerRef });
 
   // --- Clip drag (extracted hook) ---
   const {
@@ -180,8 +180,8 @@ export default function TimelineMinimal() {
     }
   }, []);
 
-  // --- Ruler click-to-seek / drag-scrub (extracted hook) ---
-  const { isScrubbing, handleRulerMouseDown } = useTimelineRuler({ pps, tracksRef });
+  // --- Ruler click-to-seek / drag-scrub / marquee-zoom (extracted hook) ---
+  const { isScrubbing, handleRulerMouseDown, zoomRect } = useTimelineRuler({ pps, tracksRef, onMarqueeZoom: zoomToRange });
 
   // --- File drag-and-drop import (extracted hook) ---
   const { handleDrop } = useTimelineDrop({ pps, layout, tracksRef });
@@ -260,6 +260,12 @@ export default function TimelineMinimal() {
                 <div className="tl-loop-handle tl-loop-handle--start" style={{ left: loopLX }} onMouseDown={startLoopDrag("start")} />
                 <div className="tl-loop-handle tl-loop-handle--end" style={{ left: loopRX }} onMouseDown={startLoopDrag("end")} />
               </>
+            )}
+            {zoomRect && (
+              <div
+                className="tl-zoom-rect"
+                style={{ left: Math.min(zoomRect.x1, zoomRect.x2), width: Math.abs(zoomRect.x2 - zoomRect.x1) }}
+              />
             )}
             {markers.map((m) => (
               <div

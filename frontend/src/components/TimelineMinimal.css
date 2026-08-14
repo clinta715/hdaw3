@@ -415,6 +415,17 @@
   z-index: 100;
 }
 
+/* --- Ruler marquee-zoom rectangle (Ctrl+Alt+drag) --- */
+.tl-zoom-rect {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  pointer-events: none;
+  z-index: 20;
+}
+
 /* --- Ghost clip --- */
 .tl-clip--ghost {
   border: 2px dashed rgba(255, 255, 255, 0.5);

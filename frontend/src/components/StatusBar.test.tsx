@@ -126,8 +126,10 @@ describe("StatusBar", () => {
   it("shows the arrange default hint with no selection", () => {
     render(<StatusBar />);
     expect(
-      screen.getByText("Arrange — drag in an empty lane to create · double-click to add a clip")
+      screen.getByText(/^Arrange — drag in an empty lane to create/)
     ).toBeInTheDocument();
+    expect(screen.getByText(/wheel zooms ruler/)).toBeInTheDocument();
+    expect(screen.getByText(/Ctrl\+Alt\+drag to zoom region/)).toBeInTheDocument();
   });
 
   it("shows the track default hint when a track is selected", () => {

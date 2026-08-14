@@ -28,7 +28,7 @@ export default function StatusBar() {
   } else if (viewMode === "session") {
     defaultHint = "Session view — click a clip to launch · Tab toggles Arrange/Session";
   } else {
-    defaultHint = "Arrange — drag in an empty lane to create · double-click to add a clip";
+    defaultHint = "Arrange — drag in an empty lane to create · double-click to add a clip · wheel zooms ruler · Ctrl+wheel zooms · Ctrl+Alt+drag to zoom region";
   }
 
   return (
