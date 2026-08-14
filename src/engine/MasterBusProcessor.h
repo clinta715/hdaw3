@@ -1,5 +1,6 @@
 #pragma once
 #include "BusProcessorBase.h"
+#include "../common/BufferCheck.h"
 
 namespace HDAW {
 
@@ -44,6 +45,8 @@ public:
             buffer.clear(ch, 0, numSamples);
 
         meter.update(buffer);
+
+        HDAW::BufferCheck::checkBuffer(buffer, getSampleRate(), 0);
     }
 
 private:

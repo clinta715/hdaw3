@@ -1,5 +1,6 @@
 #include "Track.h"
 #include "../common/DebugLog.h"
+#include "../common/BufferCheck.h"
 #include <cmath>
 
 namespace HDAW {
@@ -648,6 +649,8 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
     }
 
     meter.update(buffer);
+
+    HDAW::BufferCheck::checkBuffer(buffer, getSampleRate(), trackIndex);
 }
 
 void Track::toggleFXEditor(int slotIndex)

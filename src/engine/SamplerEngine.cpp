@@ -1,4 +1,5 @@
 #include "engine/SamplerEngine.h"
+#include "../common/BufferCheck.h"
 
 #include <algorithm>
 #include <limits>
@@ -58,10 +59,10 @@ void SamplerEngine::applyPendingParams()
         return;
     AHDSRParams env;
     env.attack  = attackAtom_.load  (std::memory_order_relaxed);
+    env.hold    = holdAtom_.load    (std::memory_order_relaxed);
     env.decay   = decayAtom_.load   (std::memory_order_relaxed);
     env.sustain = sustainAtom_.load (std::memory_order_relaxed);
     env.release = releaseAtom_.load (std::memory_order_relaxed);
-    env.hold    = params_.env.hold;  // hold not yet automatable
     for (auto& v : voices_)
         v.setEnvelope (env);
     params_.env = env;
@@ -103,6 +104,8 @@ void SamplerEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& 
         if (v.isDone())
             v.stop();
     }
+
+    HDAW::BufferCheck::checkBuffer(buffer, sr_, 0);
 }
 
 SamplerVoice* SamplerEngine::allocateVoice()

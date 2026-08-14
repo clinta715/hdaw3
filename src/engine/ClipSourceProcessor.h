@@ -7,6 +7,7 @@
 #include <vector>
 #include "TransportManager.h"
 #include "../common/DebugLog.h"
+#include "../common/BufferCheck.h"
 
 namespace HDAW {
 
@@ -412,6 +413,8 @@ public:
                 channelData[s] *= g * envelope * envGain;
             }
         }
+
+        HDAW::BufferCheck::checkBuffer(buffer, sr, clipID);
     }
 
     // AudioProcessor boilerplate

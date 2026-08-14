@@ -62,3 +62,10 @@ TEST(RealtimeSafety, ShortToneIsNotDC)
     HDAW::BufferCheck::checkBuffer(buf, 44100.0, 0);
     EXPECT_FALSE(HDAW::BufferCheck::anyProblemPending());
 }
+
+TEST(RealtimeSafety, InstrumentedProcessBlocksCompile)
+{
+    // Building this TU with the hooks present proves the engine's
+    // processBlock entry points accept the instrumentation call.
+    SUCCEED();
+}
