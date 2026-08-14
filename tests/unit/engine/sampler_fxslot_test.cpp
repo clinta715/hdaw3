@@ -127,3 +127,29 @@ TEST (SamplerFxSlot, RebuildRestoresSampleAndParams)
     auto* samplerEngine = chain[0]->samplerEngineForTest();
     ASSERT_NE (samplerEngine, nullptr);
 }
+
+TEST (SamplerFxSlot, ReprepareKeepsLoadedSound)
+{
+    HDAW::TrackFXSlot slot ("sampler");
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = 44100.0;
+    spec.maximumBlockSize = 64;
+    spec.numChannels = 1;
+    slot.prepare (spec);                       // first prepare (chain build)
+    slot.setSamplerSoundForTest (makeTestSine (1000, 44100.0));  // staged into the engine
+    slot.prepare (spec);                       // second prepare (graph.prepareToPlay re-prepare)
+
+    juce::AudioBuffer<float> buf (1, 64);
+    buf.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+    slot.process (buf, midi);                  // applies the pending swap
+
+    bool anyNonZero = false;
+    for (int i = 0; i < 64; ++i)
+        if (std::abs (buf.getSample (0, i)) > 1e-6f)
+            anyNonZero = true;
+    EXPECT_TRUE (anyNonZero);
+    EXPECT_NE (slot.samplerEngineForTest(), nullptr);
+    EXPECT_NE (slot.samplerEngineForTest()->currentSound(), nullptr);
+}
