@@ -87,9 +87,10 @@ reader_ = std::unique_ptr<juce::AudioFormatReader>(
         {
             // Stream: fixed std::int16_t double buffer.
             bufLen_ = static_cast<int64_t>(kBufferSeconds) * static_cast<int64_t>(sampleRate_);
+            windowLen_ = bufLen_ + blockSize_;
             if (bufLen_ > 0)
             {
-                const size_t sideSize = static_cast<size_t>(bufLen_) * static_cast<size_t>(numChannels_);
+                const size_t sideSize = static_cast<size_t>(windowLen_) * static_cast<size_t>(numChannels_);
                 bufA_.assign(sideSize, 0);
                 bufB_.assign(sideSize, 0);
             }
@@ -220,18 +221,28 @@ reader_ = std::unique_ptr<juce::AudioFormatReader>(
                 }
             }
         }
+        // Lookahead: request the next window once the audio thread has consumed
+        // half the current window. This gives the reader ~half a window of real
+        // time to fill + swap before the edge is crossed, so the boundary block
+        // is never starved. The new window starts at the CURRENT audio position,
+        // so it still covers the crossing point even if the swap lands late.
+        if (!nonRealtime_.load() && sourcePos - base >= windowLen_ / 2)
+        {
+            targetPos_.store(sourcePos);
+            swapRequest_.store(true, std::memory_order_release);
+        }
     }
 
     float getDiskUsagePercent() const
     {
         if (promoted_)
             return 1.0f;
-        if (bufLen_ <= 0)
+        if (bufLen_ <= 0 || windowLen_ <= 0)
             return 0.0f;
         const int which = activeBuffer_.load(std::memory_order_acquire);
         const int64_t fill = (which == 0) ? fillA_.load(std::memory_order_acquire)
                                           : fillB_.load(std::memory_order_acquire);
-        return static_cast<float>(fill) / static_cast<float>(bufLen_);
+        return static_cast<float>(fill) / static_cast<float>(windowLen_);
     }
 
     uint64_t starvedCount() const { return starvedCount_.load(std::memory_order_relaxed); }
@@ -285,7 +296,7 @@ private:
 
         std::int16_t* dest = (which == 0) ? bufA_.data() : bufB_.data();
         const int64_t available = (std::max)(static_cast<int64_t>(0),
-            (std::min)(sourceLength_ - base, bufLen_));
+            (std::min)(sourceLength_ - base, windowLen_));
 
         if (available > 0)
         {
@@ -307,7 +318,7 @@ private:
         }
 
         // Zero the tail so the audio thread's off+s < fill guard sees silence.
-        for (int64_t i = available; i < bufLen_; ++i)
+        for (int64_t i = available; i < windowLen_; ++i)
         {
             for (int ch = 0; ch < numChannels_; ++ch)
                 dest[static_cast<size_t>(i) * numChannels_ + ch] = 0;
@@ -360,6 +371,7 @@ private:
 
     std::vector<std::int16_t> bufA_, bufB_;
     int64_t bufLen_ = 0;
+    int64_t windowLen_ = 0;
 
     std::atomic<int64_t> baseA_{0}, baseB_{0};
     std::atomic<int64_t> fillA_{0}, fillB_{0};

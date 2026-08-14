@@ -65,6 +65,11 @@ public:
     const std::map<std::pair<int, int>, ClipSourceProcessor*>& getAudioClipSources() const { return audioClipSources; }
     const std::map<std::pair<int, int>, MidiClipProcessor*>& getMidiClipSources() const { return midiClipSources; }
 
+    // Propagates non-realtime (export) mode to every live clip source. Called
+    // from the export render thread before rendering begins; the streamer
+    // switches to synchronous refill and joins its background reader.
+    void setClipSourcesNonRealtime(bool nr);
+
 private:
     void connectTrackToBus(int trackIndex, int busID);
     void connectBusToParent(int busID);

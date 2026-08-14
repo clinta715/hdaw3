@@ -631,6 +631,12 @@ void RoutingManager::switchClipTake(int trackIndex, int clipIndex, const juce::S
         audioIt->second->switchToSourceFile(sourceFile);
 }
 
+void RoutingManager::setClipSourcesNonRealtime(bool nr)
+{
+    for (auto& kv : audioClipSources)
+        kv.second->setNonRealtimeFlag(nr);
+}
+
 void RoutingManager::rebuildTrackFX(int trackIndex)
 {
     auto trackIt = trackProcessors.find(trackIndex);

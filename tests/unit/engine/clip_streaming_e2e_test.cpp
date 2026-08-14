@@ -54,3 +54,54 @@ TEST(ClipStreamingE2E, LongFileNotWholeFileResident)
     EXPECT_GT(src.sourceLength(), 0);
     file.deleteFile();
 }
+
+// Non-realtime (export) mode and realtime (background reader) mode fill the
+// same contiguous windows from the same source offsets (both call
+// fillBuffer(side, pos)), so their sample streams must be identical. The
+// preload-head prefill in startPlayback (buffer 0 filled synchronously in
+// BOTH modes) is what makes the first blocks deterministic.
+TEST(ClipStreamingE2E, NonRealtimeStreamingMatchesPreloadAcrossLongFile)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    const double sr = 44100.0;
+    auto file = writeSineWav(static_cast<int>(sr * 60), sr);
+
+    // Non-realtime streamer: synchronous refill on demand, deterministic.
+    HDAW::StreamingClipSource nr;
+    nr.prepare(file, fm, sr, 512);
+    nr.setNonRealtime(true);
+    nr.startPlayback();
+    juce::AudioBuffer<float> a(2, 512);
+    std::vector<float> outA;
+    for (int i = 0; i < 430; ++i)
+    {
+        a.clear();
+        nr.readNextBlock(a, static_cast<int64_t>(i) * 512);
+        for (int s = 0; s < 512; ++s) outA.push_back(a.getSample(0, s));
+    }
+
+    // Realtime streamer: background reader.
+    HDAW::StreamingClipSource rt;
+    rt.prepare(file, fm, sr, 512);
+    rt.setNonRealtime(false);
+    rt.startPlayback();
+    juce::AudioBuffer<float> b(2, 512);
+    std::vector<float> outB;
+    for (int i = 0; i < 430; ++i)
+    {
+        b.clear();
+        rt.readNextBlock(b, static_cast<int64_t>(i) * 512);
+        // Pace so the reader thread is scheduled (real playback advances one
+        // block per 11.6 ms; this loop is otherwise far faster).
+        if (i % 8 == 0)
+            juce::Thread::sleep(2);
+        for (int s = 0; s < 512; ++s) outB.push_back(b.getSample(0, s));
+    }
+    rt.stopPlayback();
+
+    ASSERT_EQ(outA.size(), outB.size());
+    for (size_t i = 0; i < outA.size(); ++i)
+        EXPECT_NEAR(outA[i], outB[i], 4.0 / 32768.0) << "sample " << i;
+    file.deleteFile();
+}

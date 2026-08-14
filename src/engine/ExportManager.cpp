@@ -218,6 +218,15 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
             // produced fully-silent exports.
             renderGraph.setNonRealtime(true);
 
+            // Switch clip sources to synchronous (non-realtime) streaming
+            // BEFORE the first processBlock. The live graph was already built
+            // by prepareToPlay above; the flag-alone route would only reach the
+            // streamer on the next rebuild, so push through to every live
+            // ClipSourceProcessor now. No audio thread is running yet, and the
+            // streamer's background reader does plain AudioFormatReader I/O
+            // (no JUCE message machinery), so stopping/joining it is safe here.
+            routingManager.setClipSourcesNonRealtime(true);
+
             // Layer 2: bounded render-sequence bake wait. JUCE 8's
             // AudioProcessorGraph::processBlock in non-realtime mode spins
             // forever (Thread::sleep(1)) when no render sequence has been
