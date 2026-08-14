@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "common/BufferCheck.h"
+#include "common/RealtimeGuard.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
 #include <limits>
@@ -68,4 +69,45 @@ TEST(RealtimeSafety, InstrumentedProcessBlocksCompile)
     // Building this TU with the hooks present proves the engine's
     // processBlock entry points accept the instrumentation call.
     SUCCEED();
+}
+
+TEST(RealtimeSafety, GuardRejectsWrongThread)
+{
+    // ResetGuard currently only resets BufferCheck; also reset the guard.
+    HDAW::RealtimeGuard::resetForTest();
+
+    // With nothing recorded, the current thread is not the audio thread.
+    EXPECT_FALSE(HDAW::RealtimeGuard::isAudioThread());
+
+    // Record the current thread as the audio thread, then the check passes.
+    const auto real = juce::Thread::getCurrentThreadId();
+    HDAW::RealtimeGuard::recordAudioThreadId(real);
+    EXPECT_TRUE(HDAW::RealtimeGuard::isAudioThread());
+
+    // A different (bogus) id must be rejected.
+    void* bogus = reinterpret_cast<void*>(0x1234);
+    EXPECT_FALSE(HDAW::RealtimeGuard::isAudioThreadFor(bogus));
+
+    // isMessageThread() reflects the JUCE message thread. In this test process
+    // the MessagePumpThread owns the loop, so the main test thread is NOT it.
+    // The guard must agree with MessageManager (not hardcode an expectation).
+    EXPECT_EQ(HDAW::RealtimeGuard::isMessageThread(),
+              juce::MessageManager::getInstance()->isThisTheMessageThread());
+}
+
+TEST(RealtimeSafety, LockBlockHelpsDetectPriorityInversion)
+{
+    HDAW::RealtimeGuard::resetForTest();
+    // Nothing blocked → helper reports false.
+    EXPECT_FALSE(HDAW::RealtimeGuard::lastBlockWasAudioThreadLock());
+
+    // Simulate a failed non-blocking acquire → helper reports true and clears.
+    EXPECT_FALSE(HDAW::RealtimeGuard::tryEnterLock(false));
+    EXPECT_TRUE(HDAW::RealtimeGuard::lastBlockWasAudioThreadLock());
+    // Cleared after one read.
+    EXPECT_FALSE(HDAW::RealtimeGuard::lastBlockWasAudioThreadLock());
+
+    // A successful acquire must not flag a block.
+    EXPECT_TRUE(HDAW::RealtimeGuard::tryEnterLock(true));
+    EXPECT_FALSE(HDAW::RealtimeGuard::lastBlockWasAudioThreadLock());
 }

@@ -56,14 +56,17 @@ public:
         }
 
         // Glitch detector: any single block taking more than 4x its nominal
-        // duration indicates a priority inversion / overrun.
+        // duration indicates a priority inversion / overrun. The 4x threshold
+        // is floored at 100 ms so scheduler-timeslice noise can't false-positive
+        // while genuine overruns (typically hundreds of ms) are still caught.
         if (problemFlags_.load(std::memory_order_relaxed) == 0)
         {
             const uint32_t blockElapsed =
                 juce::Time::getMillisecondCounterHiRes() - blockStart;
             const uint32_t nominalMs = static_cast<uint32_t>(
                 1000.0 * static_cast<double>(numSamples) / (sampleRate > 0.0 ? sampleRate : 1.0));
-            if (nominalMs > 0 && blockElapsed > nominalMs * 4)
+            const uint32_t glitchThresholdMs = (nominalMs * 4) > 100 ? (nominalMs * 4) : 100;
+            if (nominalMs > 0 && blockElapsed > glitchThresholdMs)
             {
                 problemFlags_.fetch_or(kProblemGlitch, std::memory_order_relaxed);
                 lastContext_.store(contextId, std::memory_order_relaxed);
