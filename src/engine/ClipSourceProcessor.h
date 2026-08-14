@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include "TransportManager.h"
+#include "StreamingClipSource.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
 
@@ -35,28 +36,86 @@ public:
         preloadedData[1].free();
         preloadedChannels = 0;
         preloadedLength = 0;
+        streamer.stopPlayback();
+
+        // Stretch guard: a stretched clip owns activeBuffer==1 (adopted by
+        // adoptStretchedBuffer during the rebuild, BEFORE prepareToPlay runs).
+        // Never clobber it; legacy preload stays as the fallback.
+        if (stretchedLength > 0)
+        {
+            if (sourceFile.isNotEmpty() && sr > 0)
+                preloadWholeFile();
+            return;
+        }
 
         if (sourceFile.isNotEmpty() && sr > 0)
         {
-            std::unique_ptr<juce::AudioFormatReader> r(
-                formatManager.createReaderFor(juce::File(sourceFile)));
-            if (r != nullptr)
+            if (streamingEnabled && shouldStream(sourceFile))
             {
-                preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
-                const int total = static_cast<int>(r->lengthInSamples);
-                if (preloadedChannels > 0 && total > 0)
+                streamer.prepare(juce::File(sourceFile), formatManager, sr, blockSize);
+                if (streamer.isOk())
                 {
-                    preloadedData[0].malloc(total);
-                    preloadedData[1].malloc(total);
-                    float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
-                    r->read(ptrs, preloadedChannels, 0, total);
-                    preloadedLength = static_cast<int64_t>(total);
+                    preloadedChannels = streamer.numChannels();
+                    preloadedLength = streamer.sourceLength();
+                    streamer.setNonRealtime(nonRealtimeFlag);
+                    streamer.startPlayback();
+                    activeBuffer.store(2, std::memory_order_release);
+                    return;
                 }
+            }
+            preloadWholeFile();
+            activeBuffer.store(0, std::memory_order_release);
+        }
+        else
+        {
+            activeBuffer.store(0, std::memory_order_release);
+        }
+    }
+
+    // Message-thread preload of the whole source file (legacy path / fallback).
+    void preloadWholeFile()
+    {
+        std::unique_ptr<juce::AudioFormatReader> r(
+            formatManager.createReaderFor(juce::File(sourceFile)));
+        if (r != nullptr)
+        {
+            preloadedChannels = juce::jmin(static_cast<int>(r->numChannels), 2);
+            const int total = static_cast<int>(r->lengthInSamples);
+            if (preloadedChannels > 0 && total > 0)
+            {
+                preloadedData[0].malloc(total);
+                preloadedData[1].malloc(total);
+                float* const ptrs[2] = { preloadedData[0], preloadedData[1] };
+                r->read(ptrs, preloadedChannels, 0, total);
+                preloadedLength = static_cast<int64_t>(total);
             }
         }
     }
 
+    // Long-file (non-promotable) check. Uses the same promotion threshold as
+    // StreamingClipSource so the streaming decision is consistent.
+    bool shouldStream(const juce::String& path) const
+    {
+        std::unique_ptr<juce::AudioFormatReader> r(
+            formatManager.createReaderFor(juce::File(path)));
+        if (r == nullptr)
+            return false;
+        const double durSec = static_cast<double>(r->lengthInSamples) / sr;
+        return durSec * 1000.0 > StreamingClipSource::kPromoteToWholeFileMs;
+    }
+
     juce::String getSourceFile() const { return sourceFile; }
+
+    // Streaming escape hatch. Default on. RoutingManager enables it at build
+    // time; the decision takes effect on the next prepareToPlay/rebuild.
+    void setStreamingEnabled(bool enabled) { streamingEnabled = enabled; }
+    bool isStreamingEnabled() const { return streamingEnabled; }
+
+    // Non-realtime (export) mode: the streamer switches to synchronous refill
+    // (no background thread). Wired by ExportManager before rendering. Named
+    // setNonRealtimeFlag to avoid overriding juce::AudioProcessor's virtual
+    // setNonRealtime (which has a noexcept contract JUCE calls itself).
+    void setNonRealtimeFlag(bool nr) { nonRealtimeFlag = nr; streamer.setNonRealtime(nr); }
 
     void setStartTime(double t) { startTime.store(t); }
     double getStartTime() const { return startTime.load(); }
@@ -124,11 +183,41 @@ public:
     {
         (void) samplesPerBlock;
         sr = sampleRate;
+        blockSize = samplesPerBlock;
 
         preloadedData[0].free();
         preloadedData[1].free();
         preloadedChannels = 0;
         preloadedLength = 0;
+
+        // Stretch guard: adoptStretchedBuffer (activeBuffer=1, stretchedLength>0)
+        // runs BEFORE this prepareToPlay during rebuildRoutingGraph, so the
+        // streaming decision must never clobber an adopted stretched buffer.
+        const bool isStretched = (stretchedLength > 0);
+
+        if (!isStretched && streamingEnabled && sourceFile.isNotEmpty()
+            && shouldStream(sourceFile))
+        {
+            // Streaming decision: long file (non-promotable). prepare() opens
+            // its own reader; on failure fall through to legacy preload.
+            streamer.setNonRealtime(nonRealtimeFlag);
+            streamer.prepare(juce::File(sourceFile), formatManager, sampleRate, samplesPerBlock);
+            if (streamer.isOk())
+            {
+                preloadedChannels = streamer.numChannels();
+                preloadedLength = streamer.sourceLength();
+                streamer.startPlayback();
+                activeBuffer.store(2, std::memory_order_release);
+            }
+            else
+            {
+                preloadWholeFile();
+                activeBuffer.store(0, std::memory_order_release);
+            }
+            gainSmooth.reset(sampleRate, 0.02);
+            gainSmooth.setCurrentAndTargetValue(gain.load());
+            return;
+        }
 
         if (sourceFile.isNotEmpty())
         {
@@ -158,12 +247,17 @@ public:
             }
         }
 
+        // Never clobber an adopted stretched buffer (activeBuffer stays 1).
+        if (!isStretched)
+            activeBuffer.store(0, std::memory_order_release);
+
         gainSmooth.reset(sampleRate, 0.02);
         gainSmooth.setCurrentAndTargetValue(gain.load());
     }
 
     void releaseResources() override
     {
+        streamer.stopPlayback();
         preloadedData[0].free();
         preloadedData[1].free();
         preloadedChannels = 0;
@@ -224,18 +318,28 @@ public:
         // Select the active source buffer. The audio thread reads exactly one
         // pointer per block; swap-in happens during rebuildRoutingGraph on the
         // message thread, so this load is lock-free and allocation-free.
+        // activeBuffer: 0 = preloaded, 1 = stretched, 2 = streaming.
         const int buf = activeBuffer.load(std::memory_order_acquire);
         const float* preloadedPtrs[2];
         const int* stretchedPtrs[2];
         int srcChannels;
         int64_t srcLength;
         bool useFloatBuffer = false;
+        bool useStreaming = false;
         if (buf == 1 && stretchedLength > 0)
         {
             stretchedPtrs[0] = stretchedData[0];
             stretchedPtrs[1] = stretchedData[1];
             srcChannels = stretchedChannels;
             srcLength = stretchedLength;
+        }
+        else if (buf == 2)
+        {
+            // Streaming source: readNextBlock below pulls from the background
+            // double-buffer reader (no disk I/O on the audio thread).
+            srcChannels = streamer.numChannels();
+            srcLength = streamer.sourceLength();
+            useStreaming = true;
         }
         else
         {
@@ -263,24 +367,40 @@ public:
                                    static_cast<int>(audibleRemaining));
 
             buffer.clear();
-            for (int ch = 0; ch < numChannels; ++ch)
+            if (useStreaming)
             {
-                int srcCh = (srcChannels > 1) ? (std::min)(ch, srcChannels - 1) : 0;
-                float* dest = buffer.getWritePointer(ch);
-                if (useFloatBuffer)
+                // Streaming path: the reader fills the whole block from
+                // sourceSample (silence past EOF or while starved). Zero the
+                // tail past numToRead (audible clamp) like the preload path.
+                streamer.readNextBlock(buffer, sourceSample);
+                for (int ch = 0; ch < numChannels; ++ch)
                 {
-                    const float* src = preloadedPtrs[srcCh];
-                    for (int s = 0; s < numToRead; ++s)
-                        dest[s] = src[sourceSample + s];
+                    float* dest = buffer.getWritePointer(ch);
+                    for (int s = numToRead; s < numSamples; ++s)
+                        dest[s] = 0.0f;
                 }
-                else
+            }
+            else
+            {
+                for (int ch = 0; ch < numChannels; ++ch)
                 {
-                    const int* src = stretchedPtrs[srcCh];
-                    for (int s = 0; s < numToRead; ++s)
-                        dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
+                    int srcCh = (srcChannels > 1) ? (std::min)(ch, srcChannels - 1) : 0;
+                    float* dest = buffer.getWritePointer(ch);
+                    if (useFloatBuffer)
+                    {
+                        const float* src = preloadedPtrs[srcCh];
+                        for (int s = 0; s < numToRead; ++s)
+                            dest[s] = src[sourceSample + s];
+                    }
+                    else
+                    {
+                        const int* src = stretchedPtrs[srcCh];
+                        for (int s = 0; s < numToRead; ++s)
+                            dest[s] = static_cast<float>(src[sourceSample + s]) / 32768.0f;
+                    }
+                    for (int s = numToRead; s < numSamples; ++s)
+                        dest[s] = 0.0f;
                 }
-                for (int s = numToRead; s < numSamples; ++s)
-                    dest[s] = 0.0f;
             }
         }
         else
@@ -526,6 +646,14 @@ private:
     juce::HeapBlock<float> preloadedData[2];
     int preloadedChannels = 0;
     int64_t preloadedLength = 0;
+
+    // Streaming source for long files (see StreamingClipSource.h). Active when
+    // activeBuffer == 2. Owned by this processor; lifecycle is driven by
+    // prepareToPlay / switchToSourceFile / releaseResources.
+    HDAW::StreamingClipSource streamer;
+    bool streamingEnabled = true;
+    bool nonRealtimeFlag = false;
+    int blockSize = 512;
 
     // Stretched buffer produced off-thread by StretchCache and adopted
     // during rebuildRoutingGraph. processBlock selects between this and
