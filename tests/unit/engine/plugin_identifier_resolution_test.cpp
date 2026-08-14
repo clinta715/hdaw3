@@ -110,3 +110,78 @@ TEST(PluginIdentifierResolution, EmptyKnownListDoesNotCrash)
     auto resolved = HDAW::PluginManager::resolveIdentifierToPath(id, known);
     EXPECT_EQ(resolved.fileOrIdentifier, id.fileOrIdentifier);
 }
+
+TEST(PluginIdentifierResolution, PreservesUniqueIdFromKnownEntry)
+{
+    juce::PluginDescription real;
+    real.name = "SomeVst";
+    real.pluginFormatName = "VST3";
+    real.fileOrIdentifier = "C:\\Program Files\\Common Files\\VST3\\SomeVst.vst3";
+    real.uniqueId = 0x3d9dac4c;
+    real.deprecatedUid = 0x11223344;
+
+    auto known = juce::KnownPluginList();
+    addToKnown(known, real);
+
+    juce::PluginDescription id;
+    id.pluginFormatName = "VST3";
+    id.fileOrIdentifier = real.createIdentifierString();
+    id.name.clear();
+
+    auto resolved = HDAW::PluginManager::resolveIdentifierToPath(id, known);
+
+    EXPECT_EQ(resolved.fileOrIdentifier, real.fileOrIdentifier);
+    EXPECT_EQ(resolved.name, "SomeVst");
+    EXPECT_EQ(resolved.uniqueId, real.uniqueId);
+    EXPECT_EQ(resolved.deprecatedUid, real.deprecatedUid);
+}
+
+TEST(PluginIdentifierResolution, FallbackMatchPreservesUniqueId)
+{
+    juce::PluginDescription real;
+    real.name = "Vital";
+    real.pluginFormatName = "CLAP";
+    real.fileOrIdentifier = "C:\\Program Files\\Common Files\\CLAP\\Vital.clap";
+    real.uniqueId = 0xaaca468a;
+
+    auto known = juce::KnownPluginList();
+    addToKnown(known, real);
+
+    // Identifier hash matches nothing, so resolution must fall back to the
+    // format+name match.
+    juce::PluginDescription id;
+    id.name = "Vital";
+    id.pluginFormatName = "CLAP";
+    id.fileOrIdentifier = "CLAP-NoSuchHash-ffffffff-0";
+
+    auto resolved = HDAW::PluginManager::resolveIdentifierToPath(id, known);
+
+    EXPECT_EQ(resolved.fileOrIdentifier, real.fileOrIdentifier);
+    EXPECT_EQ(resolved.uniqueId, real.uniqueId);
+}
+
+TEST(PluginManagerInProcessVst3, InstantiatesRealVst3ByIdentifier)
+{
+    HDAW::PluginManager pm;
+    pm.isolationEnabled = false;
+
+    const juce::PluginDescription* vst3 = nullptr;
+    for (const auto& d : pm.getPlugins())
+    {
+        if (d.pluginFormatName == "VST3")
+        {
+            vst3 = &d;
+            break;
+        }
+    }
+    if (vst3 == nullptr)
+        GTEST_SKIP() << "No VST3 plugins in cache";
+
+    juce::PluginDescription desc;
+    desc.fileOrIdentifier = vst3->createIdentifierString();
+    desc.pluginFormatName = "VST3";
+
+    juce::String error;
+    auto instance = pm.createPluginInstance(desc, error, 44100.0, 512, false);
+    EXPECT_NE(instance, nullptr) << error;
+}
