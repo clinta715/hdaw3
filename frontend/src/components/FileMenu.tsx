@@ -63,7 +63,7 @@ export default function FileMenu() {
         const result = await window.hdaw.showOpenDialog({
           title: "Open Project",
           filters: [
-            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "HDAW Projects", extensions: ["hdaw", "hdaw3"] },
             { name: "All Files", extensions: ["*"] },
           ],
           properties: ["openFile"],
@@ -119,7 +119,7 @@ export default function FileMenu() {
           title: "Save Project",
           defaultPath,
           filters: [
-            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "HDAW Projects", extensions: ["hdaw", "hdaw3"] },
             { name: "All Files", extensions: ["*"] },
           ],
         });
@@ -147,7 +147,7 @@ export default function FileMenu() {
         title: "Save Project As",
         defaultPath: filePath ?? "project.hdaw",
         filters: [
-          { name: "HDAW Projects", extensions: ["hdaw"] },
+          { name: "HDAW Projects", extensions: ["hdaw", "hdaw3"] },
           { name: "All Files", extensions: ["*"] },
         ],
       });

@@ -29,7 +29,7 @@ export default function StartupDialog({ onClose }: Props) {
         const result = await window.hdaw.showOpenDialog({
           title: "Open Project",
           filters: [
-            { name: "HDAW Projects", extensions: ["hdaw"] },
+            { name: "HDAW Projects", extensions: ["hdaw", "hdaw3"] },
             { name: "All Files", extensions: ["*"] },
           ],
           properties: ["openFile"],

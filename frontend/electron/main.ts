@@ -274,7 +274,7 @@ app.whenReady().then(async () => {
   }
 
   // Handle .hdaw file open from command line (double-click file association).
-  const filePath = process.argv.find((arg) => arg.endsWith(".hdaw"));
+  const filePath = process.argv.find((arg) => arg.endsWith(".hdaw") || arg.endsWith(".hdaw3"));
   if (filePath && mainWindow) {
     mainWindow.webContents.once("did-finish-load", () => {
       mainWindow?.webContents.send("open-project-file", filePath);

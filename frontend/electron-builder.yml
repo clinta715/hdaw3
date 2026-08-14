@@ -21,7 +21,7 @@ extraResources:
       - "*.dll"
 
 fileAssociations:
-  - ext: hdaw
+  - ext: [hdaw, hdaw3]
     name: HDAW Project
     description: HDAW Project File
     role: Editor
