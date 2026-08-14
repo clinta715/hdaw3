@@ -63,7 +63,7 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     graph.setBusesLayout(getBusesLayout());
 
     routingManager = std::make_unique<HDAW::RoutingManager>(
-        graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
+        graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
     routingManager->rebuildFromValueTree();
 
@@ -500,7 +500,7 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         const bool needsPark = (mm != nullptr && !mm->isThisTheMessageThread());
 
         auto fresh = std::make_unique<HDAW::RoutingManager>(
-            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
+            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool);
         fresh->loadingPhase = loading;
         if (needsPark && pluginManager != nullptr && !pluginManager->isolationEnabled)
             fresh->prebuildTracks();

@@ -191,6 +191,8 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 renderGraph.setBusesLayout(renderLayout);
             }
     
+            // Note: no DecodedSoundPool here — the export render thread must
+            // not touch the live (message-thread) pool; clips decode directly.
             RoutingManager routingManager(renderGraph, localModel, *formatManager,
                                           renderTransport,
                                           exportPluginManager ? exportPluginManager.get()

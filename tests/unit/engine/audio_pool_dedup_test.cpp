@@ -230,6 +230,14 @@ TEST(AudioPoolDedup, ClipAndSamplerShareOneDecodeAcrossRebuild)
     // rebuildRoutingGraph destroys the RoutingManager (and its Tracks) that
     // the synchronous rebuildTrackFX below mutates, so without this the test
     // races a use-after-free (crash inside Track::rebuildFXChain).
+    // This sleep only closes the FIRST window. addFxSlot/setSamplerSample
+    // (below) queue their OWN async rebuild that the explicit
+    // rebuildRoutingGraph() at the end does not drain — that second window is
+    // benign for this test (the assertions only need the sampler's synchronous
+    // loadSamplerState decode, not a settled graph), but a pending pump
+    // rebuild could still swap the RoutingManager behind the live-processor
+    // read. No drain seam exists (handleAsyncUpdate is private,
+    // graphRebuildPending has no accessor), so the sleep stays.
     juce::Thread::sleep(50);
 
     // Sampler slot on track 0 with the same file.
@@ -271,6 +279,59 @@ TEST(AudioPoolDedup, SamplerWithoutPoolStillDecodesLocally)
     // No pool passed → existing local-decode fallback must still work.
     HDAW::TrackFXSlot slot("sampler");
     slot.loadSamplerState(slotTree); // no format manager, no pool
+    // The sampler engine only exists after prepare() (the slot ctor stages
+    // the sound otherwise); prepare() adopts the staged sound into the engine.
+    slot.prepare({ 44100.0, 512, 2 });
     EXPECT_FALSE(slot.getSamplerSoundForTest() == nullptr);
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, EngineWiresPoolAndRebuildReacquiresWithoutRedecode)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto file = writeSineWav("engine_wire", 44100);
+    const juce::String path = file.getFullPathName();
+    engine.getProjectCommands().addAudioClip(0, 0.0, 1.0, path.toStdString(), "clipA");
+
+    // Clip adds only mutate the ValueTree; the routing rebuild is scheduled
+    // asynchronously (AudioEngine::valueTreeChildAdded → triggerAsyncUpdate)
+    // and AudioProcessorGraph prepares its nodes on ANOTHER async pass on the
+    // message-pump thread (the render-sequence bake). The test thread is not
+    // the message thread, so both passes must land before any engine-state
+    // assertion. There is no public drain seam (handleAsyncUpdate is private,
+    // graphRebuildPending has no accessor) — sleep, like
+    // ClipAndSamplerShareOneDecodeAcrossRebuild, and document each window.
+    juce::Thread::sleep(50);
+
+    auto& pool = engine.getProjectPool().getDecodedSoundPool();
+    EXPECT_EQ(pool.getDecodeCount(), 1);
+
+    // Second clip, same file → still one decode.
+    engine.getProjectCommands().addAudioClip(2, 0.0, 1.0, path.toStdString(), "clipB");
+    juce::Thread::sleep(50);
+    EXPECT_EQ(pool.getDecodeCount(), 1);
+
+    // Rebuild the graph twice — decode count must NOT grow (Gate 1/10). The
+    // synchronous rebuilds swap in fresh processors, but their prepareToPlay
+    // (which acquires the pooled decode) runs in the graph's async bake on
+    // the pump thread — sleep again so the live processors are prepared
+    // before they are inspected.
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    juce::Thread::sleep(50);
+    EXPECT_EQ(pool.getDecodeCount(), 1);
+
+    // Live processors actually hold the shared buffer (not just the model).
+    auto* rm = engine.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    EXPECT_EQ(rm->getAudioClipSources().size(), 2u);
+    for (const auto& [key, clip] : rm->getAudioClipSources())
+    {
+        ASSERT_NE(clip, nullptr);
+        EXPECT_NE(clip->getPreloadedDataForTest(0), nullptr);
+    }
+
     file.deleteFile();
 }

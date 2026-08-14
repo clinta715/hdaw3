@@ -56,6 +56,7 @@ void AudioEngine::initialize()
     mainProcessor->setPluginManager(&pluginManager);
     pluginManager.setGraphLock(&mainProcessor->getGraphLock());
     mainProcessor->setStretchCache(&stretchCache);
+    mainProcessor->setDecodedSoundPool(&projectPool.getDecodedSoundPool());
 
     // When a background stretch render completes, swap the stretched buffer
     // into the playing clip via a routing graph rebuild. The signal is emitted

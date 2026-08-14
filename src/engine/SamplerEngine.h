@@ -79,9 +79,11 @@ public:
     // Message-thread test read: the sound the engine will play. Until the
     // audio thread adopts a staged swap (applyPendingSwap at the next block
     // start) that sound is pendingSound_; afterwards it is activeSound_.
-    std::shared_ptr<const SamplerSound> getSoundForTest() const
+    // Test-only read. Returns a raw pointer (not a shared_ptr copy) to avoid
+    // a non-atomic control-block copy racing applyPendingSwap on a live device.
+    const HDAW::SamplerSound* getSoundForTest() const
     {
-        return activeSound_ != nullptr ? activeSound_ : pendingSound_;
+        return pendingSound_ ? pendingSound_.get() : activeSound_.get();
     }
 
 private:

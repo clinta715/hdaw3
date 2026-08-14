@@ -3,6 +3,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -32,6 +33,10 @@ struct DecodedSound
         sound->length = r->lengthInSamples;
         sound->sampleRate = r->sampleRate;
         if (sound->numChannels <= 0 || sound->length <= 0)
+            return nullptr;
+        // Guard against corrupt headers or files >= 2^31 samples: a negative
+        // static_cast<int>(length) would make the allocation below throw.
+        if (sound->length > static_cast<int64_t>(std::numeric_limits<int>::max()))
             return nullptr;
         const int total = static_cast<int>(sound->length);
         sound->data[0] = std::make_unique<float[]>(static_cast<size_t>(total));

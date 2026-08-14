@@ -6,9 +6,10 @@ namespace HDAW {
 
 RoutingManager::RoutingManager(juce::AudioProcessorGraph& g, ProjectModel& model,
                                juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
-                               HDAW::PluginManager* pm, StretchCache* sc)
+                               HDAW::PluginManager* pm, StretchCache* sc,
+                               HDAW::DecodedSoundPool* pool)
     : graph(g), projectModel(model), formatManager(fm), transportManager(tm),
-      pluginManager(pm), stretchCache(sc)
+      pluginManager(pm), stretchCache(sc), decodedPool(pool)
 {
 }
 
@@ -111,6 +112,7 @@ std::unique_ptr<HDAW::Track> RoutingManager::buildTrackProcessor(int trackIndex,
 {
     auto newTrack = std::make_unique<HDAW::Track>();
     newTrack->setPluginManager(pluginManager);
+    newTrack->setDecodedSoundPool(decodedPool);
     newTrack->setProjectContext(&projectModel, trackIndex);
     newTrack->prepareToPlay(sampleRate, blockSize);
     float trackVol = trackTree.getProperty(IDs::volume, 1.0);
@@ -504,7 +506,7 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
 
         if (clipType == "audio")
         {
-            auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager);
+            auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager, decodedPool);
 
             juce::String sourcePath = clipTree.getProperty(IDs::sourceFile).toString();
             auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
@@ -562,8 +564,8 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
             // processor be identified by StretchCache; stretchRatio keys
             // the cache lookup. If a matching rendered entry is ready,
             // adopt it now so the realtime path reads the stretched audio
-            // from the first block. The processor retains its original
-            // preloadedData as a fallback (activeBuffer=0).
+            // from the first block. The processor retains its pooled preload
+            // (decoded_ from DecodedSoundPool) as a fallback (activeBuffer=0).
             int cid = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
             clipProc->setClipID(cid);
             int stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));

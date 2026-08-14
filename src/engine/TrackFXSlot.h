@@ -761,15 +761,15 @@ public:
             stagedSound_ = std::move (sound);
     }
 
-    std::shared_ptr<const SamplerSound> getSamplerSoundForTest() const
+    const HDAW::SamplerSound* getSamplerSoundForTest() const
     {
-        // Before prepare() the engine doesn't exist and the sound lives in
-        // stagedSound_; after prepare() the engine holds it (pending until
-        // the audio thread adopts the block-boundary swap). Both must be
-        // visible here so tests can assert the sound on the live processor
-        // without needing an audio thread to have rendered.
+        // Raw pointer, never a shared_ptr copy (same race avoidance as
+        // SamplerEngine::getSoundForTest: a copy on the message thread would
+        // tear against applyPendingSwap's non-atomic swap on the audio thread).
+        // The engine only exists after prepare(); tests must prepare() the
+        // slot before asserting (the staged-sound path is not exposed here).
         if (sampler == nullptr)
-            return stagedSound_;
+            return nullptr;
         return sampler->getSoundForTest();
     }
 

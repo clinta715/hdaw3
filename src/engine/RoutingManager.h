@@ -15,13 +15,16 @@
 
 namespace HDAW {
 
+class DecodedSoundPool;
+
 class RoutingManager
 {
 public:
     RoutingManager(juce::AudioProcessorGraph& graph, ProjectModel& model,
                    juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
                    HDAW::PluginManager* pm = nullptr,
-                   StretchCache* stretchCache = nullptr);
+                   StretchCache* stretchCache = nullptr,
+                   HDAW::DecodedSoundPool* decodedPool = nullptr);
     ~RoutingManager();
 
     void rebuildFromValueTree();
@@ -85,6 +88,7 @@ private:
     HDAW::TransportManager& transportManager;
     HDAW::PluginManager* pluginManager = nullptr;
     StretchCache* stretchCache = nullptr;
+    HDAW::DecodedSoundPool* decodedPool = nullptr;
 
     double sampleRate = 44100.0;
     int blockSize = 512;

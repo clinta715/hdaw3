@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
+#include "DecodedSoundPool.h"
 
 namespace HDAW {
 
@@ -11,7 +12,8 @@ class ProjectPool
 {
 public:
     ProjectPool()
-        : thumbnailCache(50) // Cache up to 50 thumbnails in memory
+        : thumbnailCache(50), // Cache up to 50 thumbnails in memory
+          decodedSoundPool(formatManager)
     {
         // Register standard audio formats
         formatManager.registerBasicFormats();
@@ -21,6 +23,7 @@ public:
 
     juce::AudioFormatManager& getFormatManager() { return formatManager; }
     juce::AudioThumbnailCache& getThumbnailCache() { return thumbnailCache; }
+    HDAW::DecodedSoundPool& getDecodedSoundPool() { return decodedSoundPool; }
 
     /**
      * Helper to create a new thumbnail for a specific file.
@@ -37,6 +40,7 @@ public:
 private:
     juce::AudioFormatManager formatManager;
     juce::AudioThumbnailCache thumbnailCache;
+    HDAW::DecodedSoundPool decodedSoundPool;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectPool)
 };
