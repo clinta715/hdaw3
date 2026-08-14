@@ -223,7 +223,7 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             if (fxSpec.sampleRate > 0)
             {
                 slot->prepare (fxSpec);
-                slot->loadSamplerState (slotTree);
+                slot->loadSamplerState (slotTree, nullptr, decodedPool);
                 slot->loadParamsFromTree (slotTree);
             }
             fxChain.push_back (std::move (slot));

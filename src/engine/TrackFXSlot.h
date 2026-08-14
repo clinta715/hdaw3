@@ -11,6 +11,7 @@
 #include "../proxy/PluginProxySlot.h"
 #include "engine/SamplerEngine.h"
 #include "engine/FmSynthEngine.h"
+#include "DecodedSoundPool.h"
 
 namespace HDAW {
 
@@ -623,7 +624,9 @@ public:
         }
     }
 
-    void loadSamplerState (const juce::ValueTree& slotTree, juce::AudioFormatManager* formatManager = nullptr)
+    void loadSamplerState (const juce::ValueTree& slotTree,
+                           juce::AudioFormatManager* formatManager = nullptr,
+                           HDAW::DecodedSoundPool* decodedPool = nullptr)
     {
         if (activeType != ActiveType::Sampler)
             return;
@@ -632,43 +635,59 @@ public:
         if (sampleFile.isEmpty())
             return;
 
-        // Use a basic AudioFormatManager if none provided
-        juce::AudioFormatManager localFmt;
-        if (! formatManager)
-        {
-            localFmt.registerBasicFormats();
-            formatManager = &localFmt;
-        }
-
-        auto* reader = formatManager->createReaderFor (juce::File (sampleFile));
-        if (! reader)
-            return;
-
-        const int64_t totalSamples = reader->lengthInSamples;
-        const int numChannels = static_cast<int> (reader->numChannels);
-        const double sr = reader->sampleRate;
+        std::shared_ptr<const HDAW::DecodedSound> decoded;
+        if (decodedPool != nullptr)
+            decoded = decodedPool->acquire (sampleFile);
 
         SamplerSound::Builder builder;
-        builder.numChannels = std::min (numChannels, 2);
-        builder.length = totalSamples;
-        builder.nativeSampleRate = sr;
-        builder.rootNote = static_cast<int> (slotTree.getProperty ("rootNote", 60));
         builder.sampleStart = static_cast<double> (slotTree.getProperty ("sampleStart", 0.0));
         builder.sampleEnd   = static_cast<double> (slotTree.getProperty ("sampleEnd", 1.0));
         builder.loopStart   = static_cast<double> (slotTree.getProperty ("loopStart", 0.0));
         builder.loopEnd     = static_cast<double> (slotTree.getProperty ("loopEnd", 1.0));
         builder.loopEnabled = static_cast<bool> (slotTree.getProperty ("loopEnabled", false));
+        builder.rootNote = static_cast<int> (slotTree.getProperty ("rootNote", 60));
 
-        for (int ch = 0; ch < builder.numChannels; ++ch)
-            builder.data[ch] = std::make_unique<float[]> (static_cast<size_t> (totalSamples));
-
-        juce::AudioBuffer<float> readBuf (builder.numChannels, static_cast<int> (totalSamples));
-        reader->read (&readBuf, 0, static_cast<int> (totalSamples), 0, true, true);
-        for (int ch = 0; ch < builder.numChannels; ++ch)
-            std::memcpy (builder.data[ch].get(), readBuf.getReadPointer (ch),
-                         static_cast<size_t> (totalSamples) * sizeof (float));
-
-        delete reader;
+        if (decoded != nullptr)
+        {
+            // Pooled path: one decode shared with clips. Copy into the
+            // immutable SamplerSound (the pool still owns the canonical data;
+            // decode-count stays 1 across rebuilds).
+            builder.numChannels = decoded->numChannels;
+            builder.length = decoded->length;
+            builder.nativeSampleRate = decoded->sampleRate;
+            for (int ch = 0; ch < builder.numChannels; ++ch)
+            {
+                builder.data[ch] = std::make_unique<float[]> (static_cast<size_t> (builder.length));
+                std::memcpy (builder.data[ch].get(), decoded->data[ch].get(),
+                             static_cast<size_t> (builder.length) * sizeof (float));
+            }
+        }
+        else
+        {
+            // Fallback: existing direct decode (no pool / local format manager).
+            juce::AudioFormatManager localFmt;
+            if (! formatManager)
+            {
+                localFmt.registerBasicFormats();
+                formatManager = &localFmt;
+            }
+            auto* reader = formatManager->createReaderFor (juce::File (sampleFile));
+            if (! reader)
+                return;
+            const int64_t totalSamples = reader->lengthInSamples;
+            const int numChannels = static_cast<int> (reader->numChannels);
+            builder.numChannels = std::min (numChannels, 2);
+            builder.length = totalSamples;
+            builder.nativeSampleRate = reader->sampleRate;
+            for (int ch = 0; ch < builder.numChannels; ++ch)
+                builder.data[ch] = std::make_unique<float[]> (static_cast<size_t> (totalSamples));
+            juce::AudioBuffer<float> readBuf (builder.numChannels, static_cast<int> (totalSamples));
+            reader->read (&readBuf, 0, static_cast<int> (totalSamples), 0, true, true);
+            for (int ch = 0; ch < builder.numChannels; ++ch)
+                std::memcpy (builder.data[ch].get(), readBuf.getReadPointer (ch),
+                             static_cast<size_t> (totalSamples) * sizeof (float));
+            delete reader;
+        }
 
         auto sound = builder.build();
 
@@ -740,6 +759,18 @@ public:
             sampler->setSound (std::move (sound));
         else
             stagedSound_ = std::move (sound);
+    }
+
+    std::shared_ptr<const SamplerSound> getSamplerSoundForTest() const
+    {
+        // Before prepare() the engine doesn't exist and the sound lives in
+        // stagedSound_; after prepare() the engine holds it (pending until
+        // the audio thread adopts the block-boundary swap). Both must be
+        // visible here so tests can assert the sound on the live processor
+        // without needing an audio thread to have rendered.
+        if (sampler == nullptr)
+            return stagedSound_;
+        return sampler->getSoundForTest();
     }
 
     SamplerEngine* samplerEngineForTest() { return sampler.get(); }

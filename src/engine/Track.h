@@ -14,6 +14,8 @@
 
 namespace HDAW {
 
+class DecodedSoundPool;
+
 class Track : public juce::AudioProcessor
 {
 public:
@@ -70,6 +72,8 @@ public:
     void setPluginManager(PluginManager* pm) { pluginManager = pm; }
     PluginManager* getPluginManager() const { return pluginManager; }
 
+    void setDecodedSoundPool(HDAW::DecodedSoundPool* p) { decodedPool = p; }
+
     void rebuildModulation(const juce::ValueTree& modulationListTree);
 
     // Back-pointer to the project model + the track's index. Set once at track
@@ -116,6 +120,7 @@ private:
     std::unique_ptr<ModulationManager> modulationManager;
 
     PluginManager* pluginManager = nullptr;
+    HDAW::DecodedSoundPool* decodedPool = nullptr;
 
     ProjectModel* projectModel = nullptr;
     int trackIndex = -1;

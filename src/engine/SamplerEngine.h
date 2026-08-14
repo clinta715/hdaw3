@@ -76,6 +76,14 @@ public:
     bool allVoicesReferenceCurrentSound() const noexcept;
     const SamplerSound* currentSound() const noexcept { return activeSound_.get(); }
 
+    // Message-thread test read: the sound the engine will play. Until the
+    // audio thread adopts a staged swap (applyPendingSwap at the next block
+    // start) that sound is pendingSound_; afterwards it is activeSound_.
+    std::shared_ptr<const SamplerSound> getSoundForTest() const
+    {
+        return activeSound_ != nullptr ? activeSound_ : pendingSound_;
+    }
+
 private:
     SamplerVoice voices_[kMaxVoices];
     int          voiceOrder_[kMaxVoices]{};   // monotonic "last started" counter per voice

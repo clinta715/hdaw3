@@ -2,6 +2,10 @@
 #include "engine/DecodedSoundPool.h"
 #include "engine/ClipSourceProcessor.h"
 #include "engine/TransportManager.h"
+#include "engine/AudioEngine.h"
+#include "engine/MainAudioProcessor.h"
+#include "engine/TrackFXSlot.h"
+#include "model/ProjectModel.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <cmath>
 #include <fstream>
@@ -202,5 +206,71 @@ TEST(AudioPoolDedup, ProcessorWithoutPoolFallsBackToDirectDecode)
     a.setSourceFile(path);
     a.prepareToPlay(44100.0, 512);
     EXPECT_NE(a.getPreloadedDataForTest(0), nullptr);
+    file.deleteFile();
+}
+
+// Two clips + one sampler slot all referencing the same file → exactly one
+// decode, and a routing rebuild reacquires the pool entry (no re-decode).
+TEST(AudioPoolDedup, ClipAndSamplerShareOneDecodeAcrossRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto file = writeSineWav("engine_share", 44100);
+    const juce::String path = file.getFullPathName();
+
+    // Two audio clips on tracks 0 and 2 (track 1 is the MIDI "Synth" track).
+    auto& cmds = engine.getProjectCommands();
+    cmds.addAudioClip(0, 0.0, 1.0, path.toStdString(), "clipA");
+    cmds.addAudioClip(2, 0.0, 1.0, path.toStdString(), "clipB");
+
+    // The clip adds schedule a coalesced async routing rebuild on the message
+    // pump thread (AudioEngine::valueTreeChildAdded → triggerAsyncUpdate).
+    // Let it land BEFORE rebuilding track FX from this thread: the pump's
+    // rebuildRoutingGraph destroys the RoutingManager (and its Tracks) that
+    // the synchronous rebuildTrackFX below mutates, so without this the test
+    // races a use-after-free (crash inside Track::rebuildFXChain).
+    juce::Thread::sleep(50);
+
+    // Sampler slot on track 0 with the same file.
+    cmds.addFxSlot(0, "sampler", 0, "");
+    cmds.setSamplerSample(0, 0, path.toStdString(), 60);
+
+    auto& pool = engine.getProjectPool().getDecodedSoundPool();
+    EXPECT_EQ(pool.getDecodeCount(), 1);    // one decode, three consumers
+    EXPECT_EQ(pool.getEntryCount(), 1);
+
+    // Rebuild the routing graph — the new processors must reacquire the
+    // pool entry, not re-decode (Gate 1/10).
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    EXPECT_EQ(pool.getDecodeCount(), 1);
+    EXPECT_EQ(pool.getEntryCount(), 1);
+
+    // And the sampler slot still has its sound on the LIVE processor.
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* slot = track->getFXChain()[0].get();
+    ASSERT_NE(slot, nullptr);
+    EXPECT_FALSE(slot->getSamplerSoundForTest() == nullptr);
+
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, SamplerWithoutPoolStillDecodesLocally)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    HDAW::DecodedSoundPool pool(fm);
+
+    auto file = writeSineWav("sampler_local", 44100);
+    juce::ValueTree slotTree(IDs::FX_SLOT);
+    slotTree.setProperty(IDs::fxType, "sampler", nullptr);
+    slotTree.setProperty(juce::Identifier("sampleFile"), file.getFullPathName(), nullptr);
+    slotTree.setProperty(juce::Identifier("rootNote"), 60, nullptr);
+
+    // No pool passed → existing local-decode fallback must still work.
+    HDAW::TrackFXSlot slot("sampler");
+    slot.loadSamplerState(slotTree); // no format manager, no pool
+    EXPECT_FALSE(slot.getSamplerSoundForTest() == nullptr);
     file.deleteFile();
 }
