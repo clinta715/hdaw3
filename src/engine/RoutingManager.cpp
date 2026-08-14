@@ -16,6 +16,7 @@ RoutingManager::~RoutingManager()
 {
     trackNodes.clear();
     trackProcessors.clear();
+    prebuiltTracks.clear();
     busNodes.clear();
     groupBuses.clear();
     fxBusProcessors.clear();
@@ -98,6 +99,59 @@ void RoutingManager::rebuildFromValueTree()
         + " audioClips=" + juce::String(static_cast<int>(audioClipNodes.size()))
         + " buses=" + juce::String(static_cast<int>(busNodes.size()))
         + " sends=" + juce::String(static_cast<int>(sendConnections.size())));
+
+    if (!prebuiltTracks.empty())
+    {
+        HDAW_LOG("RoutingDiag", "rebuildFromValueTree: " + juce::String(static_cast<int>(prebuiltTracks.size())) + " prebuilt tracks NOT adopted");
+        prebuiltTracks.clear();
+    }
+}
+
+std::unique_ptr<HDAW::Track> RoutingManager::buildTrackProcessor(int trackIndex, juce::ValueTree trackTree)
+{
+    auto newTrack = std::make_unique<HDAW::Track>();
+    newTrack->setPluginManager(pluginManager);
+    newTrack->setProjectContext(&projectModel, trackIndex);
+    newTrack->prepareToPlay(sampleRate, blockSize);
+    float trackVol = trackTree.getProperty(IDs::volume, 1.0);
+    float trackPan = trackTree.getProperty(IDs::pan, 0.0);
+    bool trackMuted = trackTree.getProperty(IDs::isMuted, false);
+    bool trackSoloed = trackTree.getProperty(IDs::isSoloed, false);
+
+    bool anySoloed = false;
+    auto allTracks = projectModel.getTrackListTree();
+    for (int i = 0; i < allTracks.getNumChildren(); ++i)
+    {
+        if (static_cast<bool>(allTracks.getChild(i).getProperty(IDs::isSoloed, false)))
+        {
+            anySoloed = true;
+            break;
+        }
+    }
+    bool effectiveMute = trackMuted || (anySoloed && !trackSoloed);
+    newTrack->restoreMixerState(trackVol, trackPan, effectiveMute);
+    return newTrack;
+}
+
+void RoutingManager::prebuildTracks()
+{
+    // Phase-0 of the two-phase rebuild: construct Track processors and their
+    // plugin FX instances while the JUCE message pump still runs. JUCE
+    // plugin instantiation dispatches to the message thread; once
+    // MainAudioProcessor::rebuildRoutingGraph parks the pump, creating a
+    // plugin instance deadlocks. Only used when plugins run in-process.
+    prebuiltTracks.clear();
+    auto trackList = projectModel.getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+    {
+        auto trackTree = trackList.getChild(t);
+        if (isFolderTrack(trackTree)) continue;
+        auto track = buildTrackProcessor(t, trackTree);
+        auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
+        if (fxChainTree.isValid())
+            track->rebuildFXChain(fxChainTree);
+        prebuiltTracks[t] = std::move(track);
+    }
 }
 
 void RoutingManager::reconnectMasterToOutput()
@@ -125,27 +179,22 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
 {
     if (isFolderTrack(trackTree)) return; // Folders are visual-only
 
-    auto newTrack = std::make_unique<HDAW::Track>();
-    newTrack->setPluginManager(pluginManager);
-    newTrack->setProjectContext(&projectModel, trackIndex);
-    newTrack->prepareToPlay(sampleRate, blockSize);
-    float trackVol = trackTree.getProperty(IDs::volume, 1.0);
-    float trackPan = trackTree.getProperty(IDs::pan, 0.0);
-    bool trackMuted = trackTree.getProperty(IDs::isMuted, false);
-    bool trackSoloed = trackTree.getProperty(IDs::isSoloed, false);
-
-    bool anySoloed = false;
-    auto allTracks = projectModel.getTrackListTree();
-    for (int i = 0; i < allTracks.getNumChildren(); ++i)
+    bool wasPrebuilt = false;
+    std::unique_ptr<HDAW::Track> newTrack;
+    auto preIt = prebuiltTracks.find(trackIndex);
+    if (preIt != prebuiltTracks.end())
     {
-        if (static_cast<bool>(allTracks.getChild(i).getProperty(IDs::isSoloed, false)))
-        {
-            anySoloed = true;
-            break;
-        }
+        // Built in prebuildTracks() before the message pump was parked:
+        // plugin instantiation needs a live message thread (JUCE hops to it),
+        // which is unavailable once the rebuild park is held.
+        newTrack = std::move(preIt->second);
+        prebuiltTracks.erase(preIt);
+        wasPrebuilt = true;
     }
-    bool effectiveMute = trackMuted || (anySoloed && !trackSoloed);
-    newTrack->restoreMixerState(trackVol, trackPan, effectiveMute);
+    else
+    {
+        newTrack = buildTrackProcessor(trackIndex, trackTree);
+    }
     auto node = graph.addNode(std::move(newTrack));
     trackProcessors[trackIndex] = static_cast<HDAW::Track*>(node->getProcessor());
     trackNodes[trackIndex] = node;
@@ -180,7 +229,7 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     // build, so the plugin state bytes get decoded and pushed into the
     // newly instantiated VST3/CLAP instance.
     auto fxChainTree = trackTree.getChildWithName(IDs::FX_CHAIN);
-    if (fxChainTree.isValid())
+    if (fxChainTree.isValid() && !wasPrebuilt)
         trackProcessors[trackIndex]->rebuildFXChain(fxChainTree);
 
     auto midiFxChainTree = trackTree.getChildWithName(IDs::MIDI_FX_CHAIN);

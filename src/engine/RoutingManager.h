@@ -25,6 +25,7 @@ public:
     ~RoutingManager();
 
     void rebuildFromValueTree();
+    void prebuildTracks();
     // Re-establish the master-bus → audio-output connections. Must be called
     // AFTER AudioProcessorGraph::prepareToPlay, which is when the audioOutput
     // IO node's input-channel count is negotiated with the host bus layout.
@@ -71,6 +72,7 @@ public:
     void setClipSourcesNonRealtime(bool nr);
 
 private:
+    std::unique_ptr<HDAW::Track> buildTrackProcessor(int trackIndex, juce::ValueTree trackTree);
     void connectTrackToBus(int trackIndex, int busID);
     void connectBusToParent(int busID);
     void rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree);
@@ -96,6 +98,7 @@ private:
 
     std::map<int, juce::AudioProcessorGraph::Node::Ptr>  trackNodes;
     std::map<int, HDAW::Track*>  trackProcessors;
+    std::map<int, std::unique_ptr<HDAW::Track>> prebuiltTracks;
 
     std::map<std::pair<int, int>, juce::AudioProcessorGraph::Node::Ptr> audioClipNodes;
     std::map<std::pair<int, int>, ClipSourceProcessor*> audioClipSources;

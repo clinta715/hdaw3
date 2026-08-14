@@ -489,18 +489,31 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         // (engine handleAsyncUpdate dispatched by the pump) dispatch and
         // mutation are already serialized, and MessageManagerLock would
         // self-deadlock, so skip it.
+        // Two-phase rebuild: the replacement RoutingManager (and, when plugins
+        // run in-process, its plugin FX instances) is built BEFORE parking the
+        // pump. JUCE plugin instantiation dispatches to the message thread
+        // (AudioPluginFormat::createInstanceFromDescription); with the pump
+        // parked that dispatch never runs and the rebuild deadlocks. Isolated
+        // mode spawns child processes instead and needs no message thread, so
+        // it keeps the single-phase path.
+        auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+        const bool needsPark = (mm != nullptr && !mm->isThisTheMessageThread());
+
+        auto fresh = std::make_unique<HDAW::RoutingManager>(
+            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
+        fresh->loadingPhase = loading;
+        if (needsPark && pluginManager != nullptr && !pluginManager->isolationEnabled)
+            fresh->prebuildTracks();
+
         std::optional<juce::MessageManagerLock> pumpPark;
-        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating();
-            mm != nullptr && !mm->isThisTheMessageThread())
+        if (needsPark)
             pumpPark.emplace();
 
         graphRebuildPending.store(true, std::memory_order_release);
         graphLock.enter();
         graph.clear();
         graph.setBusesLayout(getBusesLayout());
-        routingManager = std::make_unique<HDAW::RoutingManager>(
-            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache);
-        routingManager->loadingPhase = loading;
+        routingManager = std::move(fresh);
         routingManager->rebuildFromValueTree();
         graph.setPlayHead(internalPlayHead.get());
         if (getSampleRate() > 0)
