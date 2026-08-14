@@ -52,7 +52,10 @@ describe("SamplerEditor", () => {
         transpose: 0,
         mono: false,
         playReverse: false,
-        envelope: { attack: 0.005, decay: 0.1, sustain: 0.9, release: 0.1 },
+        envelope: { attack: 0.005, hold: 0, decay: 0.1, sustain: 0.9, release: 0.1 },
+        sampleStart: 0,
+        sampleEnd: 1,
+        glide: 0,
         hasSound: false,
         activeVoices: 0,
       });

@@ -10,7 +10,10 @@ interface SamplerState {
   transpose: number;
   mono: boolean;
   playReverse: boolean;
-  envelope: { attack: number; decay: number; sustain: number; release: number };
+  envelope: { attack: number; hold: number; decay: number; sustain: number; release: number };
+  sampleStart: number;
+  sampleEnd: number;
+  glide: number;
   hasSound: boolean;
   activeVoices: number;
 }
@@ -169,18 +172,44 @@ export default function SamplerEditor() {
           <label className="sampler-editor__label">
             <input
               type="checkbox"
+              checked={state.playReverse}
+              onChange={(e) => setParam(8, e.target.checked ? 1 : 0)}
+            />
+            Reverse
+          </label>
+        </div>
+
+        <div className="sampler-editor__field">
+          <label className="sampler-editor__label">
+            <input
+              type="checkbox"
               checked={state.mono}
               onChange={(e) => {
                 rpc.call("setFxSlotParam", {
                   trackIndex: selectedTrackIndex,
                   slotIndex,
-                  paramIndex: 7,
+                  paramIndex: -1,
                   value: e.target.checked ? 1 : 0,
+                  property: "mono",
                 }).then(refreshState);
               }}
             />
             Mono
           </label>
+        </div>
+
+        <div className="sampler-editor__field">
+          <label className="sampler-editor__label">Glide</label>
+          <input
+            className="sampler-editor__slider"
+            type="range"
+            min={0}
+            max={5}
+            step={0.01}
+            value={state.glide}
+            onChange={(e) => setParam(7, parseFloat(e.target.value))}
+          />
+          <span className="sampler-editor__value">{state.glide.toFixed(2)}s</span>
         </div>
       </div>
 
@@ -207,6 +236,20 @@ export default function SamplerEditor() {
             onChange={(e) => setParam(0, parseFloat(e.target.value))}
           />
           <span className="sampler-editor__value">{env.attack.toFixed(3)}s</span>
+        </div>
+
+        <div className="sampler-editor__field">
+          <label className="sampler-editor__label">H</label>
+          <input
+            className="sampler-editor__slider"
+            type="range"
+            min={0}
+            max={5}
+            step={0.001}
+            value={env.hold}
+            onChange={(e) => setParam(6, parseFloat(e.target.value))}
+          />
+          <span className="sampler-editor__value">{env.hold.toFixed(3)}s</span>
         </div>
 
         <div className="sampler-editor__field">
@@ -262,10 +305,11 @@ export default function SamplerEditor() {
             const w = canvas.width;
             const h = canvas.height;
             ctx.clearRect(0, 0, w, h);
-            const total = env.attack + env.decay + 0.5 + env.release;
+            const total = env.attack + env.hold + env.decay + 0.5 + env.release;
             if (total <= 0) return;
             const ax = (env.attack / total) * w;
-            const dx = ax + (env.decay / total) * w;
+            const hx = ax + (env.hold / total) * w;
+            const dx = hx + (env.decay / total) * w;
             const sx = dx + (0.5 / total) * w;
             const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#d97706";
             ctx.strokeStyle = accent;
@@ -273,12 +317,43 @@ export default function SamplerEditor() {
             ctx.beginPath();
             ctx.moveTo(0, h);
             ctx.lineTo(ax, 0);
+            ctx.lineTo(hx, 0);
             ctx.lineTo(dx, h * (1 - env.sustain));
             ctx.lineTo(sx, h * (1 - env.sustain));
             ctx.lineTo(w, h);
             ctx.stroke();
           }}
         />
+      </div>
+
+      <div className="sampler-editor__sample-range">
+        <div className="sampler-editor__field">
+          <label className="sampler-editor__label">Start</label>
+          <input
+            className="sampler-editor__slider"
+            type="range"
+            min={0}
+            max={1}
+            step={0.001}
+            value={state.sampleStart}
+            onChange={(e) => setParam(5, parseFloat(e.target.value))}
+          />
+          <span className="sampler-editor__value">{Math.round(state.sampleStart * 100)}%</span>
+        </div>
+
+        <div className="sampler-editor__field">
+          <label className="sampler-editor__label">End</label>
+          <input
+            className="sampler-editor__slider"
+            type="range"
+            min={0}
+            max={1}
+            step={0.001}
+            value={state.sampleEnd}
+            onChange={(e) => setParam(9, parseFloat(e.target.value))}
+          />
+          <span className="sampler-editor__value">{Math.round(state.sampleEnd * 100)}%</span>
+        </div>
       </div>
     </div>
   );
