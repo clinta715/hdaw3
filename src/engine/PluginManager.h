@@ -83,9 +83,9 @@ public:
     // real plugin file path by looking it up in the known plugin list. Used by
     // createPluginInstance in the non-isolated (in-process) branch, which JUCE's
     // AudioPluginFormatManager requires to be a path ending in the format's
-    // extension. Returns a copy of desc with fileOrIdentifier/name patched; if no
-    // match is found (or the identifier is already a path), desc is returned
-    // unchanged.
+    // extension. Returns the full matched known entry (its scanned uniqueId is
+    // required for JUCE's VST3 module matching); if no match is found (or the
+    // identifier is already a path), desc is returned unchanged.
     static juce::PluginDescription resolveIdentifierToPath(
         const juce::PluginDescription& desc,
         const juce::KnownPluginList& knownList);

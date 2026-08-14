@@ -745,10 +745,10 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
         {
             if (kd.matchesIdentifierString(resolved.fileOrIdentifier))
             {
-                resolved.fileOrIdentifier = kd.fileOrIdentifier;
-                if (resolved.name.isEmpty())
-                    resolved.name = kd.name;
-                return resolved;
+                // Return the full known entry, not a stitched copy of desc:
+                // JUCE's VST3 module matching requires the scanned
+                // uniqueId/deprecatedUid, which the input desc lacks (they stay 0).
+                return kd;
             }
         }
 
@@ -759,8 +759,7 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
             if (kd.pluginFormatName == resolved.pluginFormatName
                 && kd.name == resolved.name)
             {
-                resolved.fileOrIdentifier = kd.fileOrIdentifier;
-                return resolved;
+                return kd;
             }
         }
     }
