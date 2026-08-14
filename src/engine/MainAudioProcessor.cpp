@@ -479,6 +479,9 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
 {
     if (routingManager != nullptr && projectModel != nullptr)
     {
+        if (decodedPool != nullptr)
+            decodedPool->pruneUnreferenced();
+
         // The JUCE message pump thread (MessagePumpThread) concurrently
         // dispatches AudioProcessorGraph's internal async rebuild messages
         // (Pimpl::handleAsyncUpdate iterates the live node list). A rebuild

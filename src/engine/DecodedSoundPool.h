@@ -95,8 +95,9 @@ public:
     }
 
     // Message thread. Drops cache entries no consumer references
-    // (use_count()==1 means only the pool holds it). Called by tests; not
-    // invoked from acquire today.
+    // (use_count()==1 means only the pool holds it). Called at the top of
+    // MainAudioProcessor::rebuildRoutingGraph (message/command/MCP threads)
+    // and by tests; not invoked from acquire today.
     void pruneUnreferenced()
     {
         for (auto it = cache.begin(); it != cache.end();)
