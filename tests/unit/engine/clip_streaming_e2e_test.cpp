@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "engine/StreamingClipSource.h"
+#include "engine/DecodedSoundPool.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -103,5 +104,89 @@ TEST(ClipStreamingE2E, NonRealtimeStreamingMatchesPreloadAcrossLongFile)
     ASSERT_EQ(outA.size(), outB.size());
     for (size_t i = 0; i < outA.size(); ++i)
         EXPECT_NEAR(outA[i], outB[i], 4.0 / 32768.0) << "sample " << i;
+    file.deleteFile();
+}
+
+// Subsystem D gate G1a: with non-realtime set, the loader reads
+// synchronously — a position jump far beyond the filled window returns
+// correct samples immediately (there is no background reader to wait on)
+// and never counts a starvation. In realtime mode the same jump starves
+// (silence) until the reader catches up.
+TEST(ClipStreamingE2E, NonRealtimeJumpRefillsSynchronouslyWithoutStarvation)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    const double sr = 44100.0;
+    auto file = writeSineWav(static_cast<int>(sr * 30), sr);
+
+    HDAW::StreamingClipSource src;
+    src.prepare(file, fm, sr, 512);
+    ASSERT_FALSE(src.isWholeFileResident());
+    src.setNonRealtime(true);
+    src.startPlayback();
+
+    juce::AudioBuffer<float> out(2, 512);
+
+    // First block from the preloaded head (sine phase 0).
+    out.clear();
+    src.readNextBlock(out, 0);
+    EXPECT_NEAR(out.getSample(0, 0), 0.0f, 2.0f / 32768.0f);
+
+    // Jump to 20 s — ~5 windows past the prefill. Must refill synchronously.
+    const int64_t jumpPos = static_cast<int64_t>(20.0 * sr);
+    out.clear();
+    src.readNextBlock(out, jumpPos);
+    for (int s = 0; s < 512; ++s)
+    {
+        const float expected = static_cast<float>(
+            std::sin(2.0 * 3.14159 * 440.0 * (jumpPos + s) / sr));
+        EXPECT_NEAR(out.getSample(0, s), expected, 2.0f / 32768.0f)
+            << "sample " << s;
+    }
+    EXPECT_EQ(src.starvedCount(), 0u);
+
+    src.stopPlayback();
+    file.deleteFile();
+}
+
+// Subsystem D gate G1b: non-realtime streaming matches the whole-file
+// preload path (DecodedSound float decode) within int16 requantization.
+// Streaming stores int16 (Subsystem A decision, lesson 8), so equality
+// holds within 1 LSB; 16-bit source material requantizes idempotently, so
+// samples match in practice — the 2 LSB band is the guard.
+TEST(ClipStreamingE2E, NonRealtimeStreamingMatchesWholeFileDecode)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    const double sr = 44100.0;
+    // 12 s: long enough to stream (> 8 s threshold) and to cross two
+    // ~4 s window boundaries in the first 9 s.
+    auto file = writeSineWav(static_cast<int>(sr * 12), sr);
+
+    auto whole = HDAW::DecodedSound::decode(fm, file.getFullPathName());
+    ASSERT_NE(whole, nullptr);
+
+    HDAW::StreamingClipSource src;
+    src.prepare(file, fm, sr, 512);
+    ASSERT_FALSE(src.isWholeFileResident());
+    src.setNonRealtime(true);
+    src.startPlayback();
+
+    juce::AudioBuffer<float> out(2, 512);
+    const int blocks = static_cast<int>((sr * 9.0) / 512.0);
+    for (int i = 0; i < blocks; ++i)
+    {
+        out.clear();
+        src.readNextBlock(out, static_cast<int64_t>(i) * 512);
+        for (int s = 0; s < 512; ++s)
+        {
+            const int64_t idx = static_cast<int64_t>(i) * 512 + s;
+            EXPECT_NEAR(out.getSample(0, s), whole->data[0][idx],
+                        2.0f / 32768.0f) << "sample " << idx;
+        }
+    }
+    EXPECT_EQ(src.starvedCount(), 0u);
+
+    src.stopPlayback();
     file.deleteFile();
 }
