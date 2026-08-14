@@ -104,12 +104,15 @@ QJsonObject waitExportComplete(mcp::TransportLoopback& tp, int msec) {
 // The transport binds to 127.0.0.1:18765; the unit smoke test
 // (HttpTransport.StartStopLifecycle) uses a different port so the two
 // can coexist in the same test binary.
+// NOTE: in every test below the transport object must be declared BEFORE the
+// McpServer so it outlives it: ~McpServer() calls transport_->stop(), and a
+// destroyed transport's QMutex hangs the teardown forever.
 TEST(McpServer, HttpRoundTrip) {
     AudioEngine engine;
+    mcp::TransportHttp t(18765);
     mcp::McpServer s;
     s.setEngine(&engine);
     mcp::registerAllTools(s);
-    mcp::TransportHttp t(18765);
     ASSERT_TRUE(t.start(&s)) << "start failed: " << t.lastError().toStdString();
 
     QNetworkAccessManager nam;
@@ -137,10 +140,10 @@ TEST(McpServer, HttpRoundTrip) {
 
 TEST(McpServer, InitializeAndList) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s;
     s.setEngine(&engine);
     mcp::registerAllTools(s);
-    mcp::TransportLoopback tp;
     tp.start(&s);
     s.setTransport(&tp);
     s.start();
@@ -162,8 +165,9 @@ TEST(McpServer, InitializeAndList) {
 
 TEST(McpServer, GetProjectSummary) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"get_project_summary","arguments":{}}})"));
     QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
@@ -177,8 +181,9 @@ TEST(McpServer, GetProjectSummary) {
 
 TEST(McpServer, UndoAddThenUndoRemoves) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"undo","arguments":{"count":1}}})"));
@@ -191,8 +196,9 @@ TEST(McpServer, UndoAddThenUndoRemoves) {
 
 TEST(McpServer, HandlerRunsOnMainThread) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
     std::thread::id mainTid = std::this_thread::get_id();
     s.registerTool({"whereami","test", QJsonObject{{"type","object"}},
         [mainTid](const QJsonObject&) {
@@ -216,8 +222,9 @@ TEST(McpServer, FxAddRemoveBypass) {
     // mutation methods require those back-pointers to be live.
     engine.initialize();
 
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     auto* tr0 = engine.getMainProcessor()->getTrack(0);
     ASSERT_NE(tr0, nullptr);
@@ -327,8 +334,9 @@ TEST(McpServer, FxAddRemoveBypass) {
 
 TEST(McpServer, NotificationsCancelledSetsFlagAndProducesNoResponse) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     EXPECT_FALSE(s.isCancelRequested());
 
@@ -413,8 +421,9 @@ QString textOf(const QJsonObject& r) {
 
 TEST(McpServer, ExportAudioDryRunReturnsPlan) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     QString path = makeTempWavPath("dryrun");
 
@@ -434,8 +443,9 @@ TEST(McpServer, ExportAudioDryRunReturnsPlan) {
 
 TEST(McpServer, ExportAudioConsumesStaleCancelFlag) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     // Arm the cancel flag directly (simulating a notifications/cancelled the
     // MCP client dispatched before this tool call). The export handler must
@@ -477,8 +487,9 @@ TEST(McpServer, ExportAudioConsumesStaleCancelFlag) {
 TEST(McpServer, SetTempo) {
     AudioEngine engine;
     engine.initialize();  // getProjectCommands() requires initialize()
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"set_tempo","arguments":{"bpm":132}}})"));
@@ -520,8 +531,9 @@ TEST(McpServer, SetTempo) {
 TEST(McpServer, SetTimeSignature) {
     AudioEngine engine;
     engine.initialize();  // getProjectCommands() requires initialize()
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"set_time_signature","arguments":{"numerator":3,"denominator":4}}})"));
@@ -562,8 +574,9 @@ TEST(McpServer, SetTimeSignature) {
 TEST(McpServer, GenerateRhythmPattern) {
     AudioEngine engine;
     engine.initialize();  // default project: 3 tracks, track 0 exists
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     // Default params: two euclidean pulses (4-over-3, rotation 1) collide
     // once at step 0 -> 4 + 3 - 1 = 6 notes in a new MIDI clip.
@@ -591,8 +604,9 @@ TEST(McpServer, GenerateRhythmPattern) {
 
 TEST(McpServer, ExportAudioRendersDefaultProject) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     QString path = makeTempWavPath("real");
 
@@ -646,8 +660,9 @@ TEST(McpServer, ExportAudioRendersDefaultProject) {
 
 TEST(McpServer, ExportAudioCancelsMidRender) {
     AudioEngine engine;
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     QString path = makeTempWavPath("cancel-mid");
 
@@ -715,8 +730,9 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         GTEST_SKIP() << "No CLAP plugins found in cache — skipping export hang test";
     }
 
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     // Add a track with the CLAP plugin
     int trackId = -1;
@@ -831,8 +847,9 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
         GTEST_SKIP() << "No CLAP plugins found in cache — skipping multi-instance export test";
     }
 
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     // Three live tracks, each with its own isolated CLAP instance (the live
     // graph keeps these alive across the export below).
@@ -1026,8 +1043,9 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     if (selected.empty())
         GTEST_SKIP() << "No target CLAP plugins found in cache";
 
+    mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
-    mcp::TransportLoopback tp; tp.start(&s); s.setTransport(&tp); s.start();
+    tp.start(&s); s.setTransport(&tp); s.start();
 
     HDAW_LOG("DiagMatrix",
              juce::String("matrix-start selected=") + juce::String((int)selected.size()));
