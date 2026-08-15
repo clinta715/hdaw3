@@ -160,20 +160,42 @@ public:
             // sound has fewer channels than the buffer. Stereo+ sounds read
             // EACH channel independently (the buggy draft read data[c][0] for
             // the second channel -- a constant; we interpolate per channel).
-            const float sample0 =
-                (sn >= 1 && sound_->data[0] != nullptr)
+            float sample0 = 0.0f;
+            const bool inCrossfade = looping && sound_->crossfadeLength > 0
+                && readPos_ >= static_cast<double>(sound_->crossfadeZoneStart)
+                && readPos_ < static_cast<double>(sound_->crossfadeZoneStart + sound_->crossfadeLength);
+
+            if (inCrossfade)
+            {
+                const int64_t xi = static_cast<int64_t>(readPos_ - static_cast<double>(sound_->crossfadeZoneStart));
+                const int64_t xlen = sound_->crossfadeLength;
+                const int64_t idx = (xi >= 0 && xi < xlen) ? xi : 0;
+                sample0 = (sound_->crossfadeData[0] != nullptr)
+                    ? sound_->crossfadeData[0][idx] : 0.0f;
+                for (int c = 0; c < outCh; ++c)
+                {
+                    float s;
+                    if (sn > 1 && c < sn && sound_->crossfadeData[c] != nullptr)
+                        s = sound_->crossfadeData[c][idx];
+                    else
+                        s = sample0;
+                    out.addSample (c, i, s * g);
+                }
+            }
+            else
+            {
+                sample0 = (sn >= 1 && sound_->data[0] != nullptr)
                     ? lagrange4 (sound_->data[0], sound_->length, readPos_)
                     : 0.0f;
-
-            for (int c = 0; c < outCh; ++c)
-            {
-                float s;
-                if (sn > 1 && c < sn && sound_->data[c] != nullptr)
-                    s = lagrange4 (sound_->data[c], sound_->length, readPos_);
-                else
-                    s = sample0; // mono: same value into every output channel
-
-                out.addSample (c, i, s * g);
+                for (int c = 0; c < outCh; ++c)
+                {
+                    float s;
+                    if (sn > 1 && c < sn && sound_->data[c] != nullptr)
+                        s = lagrange4 (sound_->data[c], sound_->length, readPos_);
+                    else
+                        s = sample0;
+                    out.addSample (c, i, s * g);
+                }
             }
 
             // Envelope finished its release tail -> voice is silent and done.

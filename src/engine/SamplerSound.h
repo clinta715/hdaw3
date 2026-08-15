@@ -24,6 +24,12 @@ struct SamplerSound
 
     std::vector<int64_t> slicePoints; // frame indices (boundaries), sorted
 
+    const float* crossfadeData[2] = { nullptr, nullptr };
+    int64_t crossfadeLength = 0;
+    int64_t crossfadeFadeLen = 0;
+    int64_t crossfadeZoneStart = 0;
+    static constexpr double kCrossfadeMs = 8.0;
+
     int64_t startFrame() const noexcept { return static_cast<int64_t>(sampleStart * length); }
     int64_t endFrame()   const noexcept { return static_cast<int64_t>(sampleEnd   * length); }
     int64_t loopStartFrame() const noexcept { return static_cast<int64_t>(loopStart * length); }
@@ -59,6 +65,7 @@ namespace detail {
 struct SamplerSoundStorage
 {
     std::unique_ptr<float[]> owned[2];
+    std::unique_ptr<float[]> crossfadeOwned[2];
     SamplerSound sound;
 };
 } // namespace detail
@@ -78,6 +85,48 @@ inline std::shared_ptr<const SamplerSound> SamplerSound::Builder::build()
     storage->owned[1] = std::move(data[1]);
     storage->sound.data[0] = storage->owned[0].get();
     storage->sound.data[1] = storage->owned[1].get();
+
+    if (loopEnabled && length > 0)
+    {
+        const int64_t ls = static_cast<int64_t>(loopStart * length);
+        const int64_t le = static_cast<int64_t>(loopEnd * length);
+        const int64_t loopLen = le - ls;
+        if (loopLen >= 4)
+        {
+            int64_t fadeLen = static_cast<int64_t>(SamplerSound::kCrossfadeMs / 1000.0 * nativeSampleRate);
+            fadeLen = std::min(fadeLen, loopLen / 4);
+            if (fadeLen >= 1)
+            {
+                const int64_t xfadeLen = fadeLen * 2;
+                const int nc = numChannels;
+                for (int ch = 0; ch < nc; ++ch)
+                {
+                    if (storage->owned[ch] == nullptr) continue;
+                    storage->crossfadeOwned[ch] = std::make_unique<float[]>(static_cast<size_t>(xfadeLen));
+                    const float* src = storage->owned[ch].get();
+                    float* xbuf = storage->crossfadeOwned[ch].get();
+                    for (int64_t i = 0; i < xfadeLen; ++i)
+                    {
+                        const double alpha = static_cast<double>(i) / static_cast<double>(xfadeLen - 1);
+                        int64_t idxA = le - fadeLen + i;
+                        if (idxA >= length) idxA = length - 1;
+                        if (idxA < 0) idxA = 0;
+                        int64_t idxB = ls + (i % loopLen);
+                        if (idxB >= length) idxB = length - 1;
+                        const float a = src[idxA];
+                        const float b = src[idxB];
+                        xbuf[i] = static_cast<float>(a * (1.0 - alpha) + b * alpha);
+                    }
+                }
+                storage->sound.crossfadeData[0] = storage->crossfadeOwned[0].get();
+                storage->sound.crossfadeData[1] = (nc > 1) ? storage->crossfadeOwned[1].get() : nullptr;
+                storage->sound.crossfadeLength = xfadeLen;
+                storage->sound.crossfadeFadeLen = fadeLen;
+                storage->sound.crossfadeZoneStart = le - fadeLen;
+            }
+        }
+    }
+
     // Alias-shared ptr: refcounts `storage`, points to the embedded `sound`.
     // `sound` lives inside the SamplerSoundStorage object the control block
     // owns and deletes, so it is destroyed together with the buffers.
