@@ -330,7 +330,7 @@ live in the "Hardening lessons learned" section above.
   project rebuilds — see "ValueTree listener orphans" above.
 
 - **MCP server v1 follow-ups** (tracked in
-  `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
+  `docs/archive/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
   §10):
   - HTTP authentication for non-loopback exposure (loopback-
     only is current; auth is needed before any
@@ -412,6 +412,6 @@ take down the DAW. Enabled by default; disable with `-DHDAW_PLUGIN_ISOLATION=OFF
 `CrashRecoveryManager`, and the `hdaw_plugin_host` target.
 
 **Spec / plan:**
-- `docs/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
-- `docs/superpowers/specs/2026-08-03-plugin-isolation-fixes-design.md`
-- `docs/superpowers/plans/2026-08-03-plugin-isolation-fixes.md`
+- `docs/archive/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
+- `docs/archive/superpowers/specs/2026-08-03-plugin-isolation-fixes-design.md`
+- `docs/archive/superpowers/plans/2026-08-03-plugin-isolation-fixes.md`

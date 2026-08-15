@@ -4,7 +4,7 @@
 ```
 skill: "hdaw-guard"
 ```
-This skill enforces plan-first development, guards against the 9 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
+This skill enforces plan-first development, guards against the 16 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
 
 Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
@@ -34,6 +34,10 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest suite, TransportLoopback test seam, MCP server architecture, MCP tool safety, file browser audio preview |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
+| [`docs/adr-automation-model.md`](docs/adr-automation-model.md) | ADR: track-based automation as the primary model (clip-based/relative deferred), beats-vs-seconds implication |
+| [`docs/bitwig-reference.md`](docs/bitwig-reference.md) | Bitwig Studio UI/architecture design reference with HDAW-side takeaways |
+| [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
+| [`docs/archive/superpowers/`](docs/archive/superpowers/) | Historical plans/specs (Jun–Aug 2026). Completed work — context only, not live specs. Current plans live in `docs/plans/` |
 
 ## Codebase Memory MCP (knowledge graph)
 
@@ -257,6 +261,81 @@ These cost real debugging time — read before touching the relevant area:
     `threadCheckIsMainThread()`. This recovered Odin2 (isolated export
     `peak≈0.5`, removed from `kKnownSilent`). See
     `docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md`.
+
+17. **Audio-device init must degrade to output-only, and device errors must be
+    logged somewhere visible.** `initialiseWithDefaultDevices(2, 2)` fails the
+    WHOLE open when no capture device exists (RDP sessions expose a render-only
+    "Remote Audio" endpoint; headless/CI boxes may have none) → no device →
+    `prepareToPlay` never runs → `routingManager` stays null → every
+    `getTrack()`-style consumer nulls. `AudioEngine::initialize()` now retries
+    output-only `(0, 2)` via the `initDefaultDevice` lambda (both init sites).
+    Also: `juce::Logger::writeToLog` goes to OutputDebugString on Windows —
+    NEVER stderr, never `hdaw_debug.log` — so device errors were invisible in
+    captured stderr; the new fallback also emits `HDAW_LOG`. **Rule:** engine
+    startup must survive zero input devices; when diagnosing "the device never
+    started", capture OutputDebugString or breakpoint
+    `juce::Logger::writeToLog` (`da poi(@rcx)` under cdb) — stderr captures
+    prove nothing.
+
+18. **Never instantiate plugins while the message pump is parked — two-phase
+    rebuild.** `rebuildRoutingGraph` parks the pump via `MessageManagerLock`
+    (lesson 12), but JUCE plugin instantiation OFF the message thread
+    (`AudioPluginFormat::createInstanceFromDescription`) dispatches TO the
+    message thread and blocks → the park deadlocks its own dispatch. This was
+    invisible while `routingManager` was null (no device); it fires on any
+    non-message-thread rebuild with in-process plugins (e.g. MCP `load_project`
+    with `HDAW_NO_PLUGIN_ISOLATION=1`). Fix: `RoutingManager::prebuildTracks()`
+    builds Track processors + FX plugin instances BEFORE the park (only when
+    `needsPark && !isolationEnabled`); `addTrack` adopts prebuilt tracks.
+    Isolated mode needs no message thread (child spawn) and keeps the
+    single-phase path. **Rule:** any new code added inside the parked section
+    of `rebuildRoutingGraph` must not call JUCE plugin/format APIs that hop to
+    the message thread; do such work in the pre-park phase.
+
+19. **The CLAP audio thread is the thread running `process()` — nothing else.**
+    `CLAPHost::threadCheckIsAudioThread()` used to return
+    `!isThisTheMessageThread()`, which classifies the Qt main thread (and any
+    other thread) as "audio". Since JUCE's message thread is the pump thread,
+    plugin window-proc code on the Qt main thread counted as audio-thread, and
+    a legal `clap_params_request_flush` call from there (spec:
+    `[thread-safe,!audio-thread]`) tripped clap-helpers
+    (`MisbehaviourHandler::Terminate, CheckingLevel::Maximal`) →
+    `pluginMisbehaving` → `std::terminate` → `abort()` (rc=3, MSVC dialog spam).
+    Fix: `CLAPHost::audioThreadId` recorded in `CLAPPluginInstance::processBlock`;
+    the check compares against it. **Rule:** thread-check predicates must report
+    real thread identities (recorded ids), never "not X" complements; any new
+    CLAP host callback added under `CheckingLevel::Maximal` inherits terminate
+    semantics — verify its thread contract against `clap/ext/*.h` `[thread]`
+    annotations before wiring it.
+
+20. **Orphaned `hdaw_plugin_host.exe` children from a stale engine block the
+    proxy tests — check for live engines before blaming the suite.** The
+    "known to fail" five (`CrashRecovery.AutoRespawnAfterCrash`,
+    `CrashRecovery.RespawnDuringActiveProcessing`,
+    `CrashRecovery.DestroyedProxyIsDeregistered`,
+    `CrashRecovery.OfflinePluginDomainIsolatedFromLive`,
+    `PluginIsolation.UniqueSlotIdPerInstance`) are NOT flaky code — they fail
+    or hang (30s READY wait) because a long-lived `HDAW_headless_mcp.exe`
+    (or `HDAW.exe`) from a previous session still runs and its orphaned
+    children hold the named pipes/shm for the slots the tests use
+    (`\\.\pipe\hdaw_plugin_<n>` / `hdaw_plugin_shm_<n>`, n = 1..N — the
+    `PluginManager` slot counter restarts at 1 per instance, so slot 1 is
+    guaranteed to collide). Symptoms: spawn fails in ~28ms with "Failed to
+    spawn isolated plugin process", or the READY wait times out; the tests
+    pass when run alone IF no stale engine is alive, and the failure comes
+    and goes as engines start/stop. Diagnosis: `Get-CimInstance
+    Win32_Process -Filter "Name='hdaw_plugin_host.exe'"` and look for
+    children whose parent (`HDAW_headless_mcp.exe`/`HDAW.exe`) has been
+    running for hours/days. Fix: kill the engine tree (`Stop-Process -Id
+    <enginePid> -Force` + `Get-Process hdaw_plugin_host | Stop-Process
+    -Force` — killing the parent does NOT kill the children on Windows,
+    they survive and keep the names), then re-run; verified 5/5 PASS after
+    cleanup (2026-08-14). Note: killing `HDAW_headless_mcp.exe` kills the
+    session's hdaw MCP backend. **Rule:** before debugging any
+    proxy-spawn failure, check for live engines; if the run's slot ids
+    could collide with a running engine, either stop it or expect these
+    tests to fail. A permanent guard (per-run pipe/shm namespace or a
+    held-name skip) is a standing follow-up.
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 

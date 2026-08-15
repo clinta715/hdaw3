@@ -1,4 +1,4 @@
-# Fix plugin scan/blacklist engine bugs (handoff: docs/handoff-scan-blacklist-bugs.md)
+# Fix plugin scan/blacklist engine bugs (handoff: docs/handoffs/2026-08-11-scan-blacklist-bugs.md)
 
 ## Goal
 

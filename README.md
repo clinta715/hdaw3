@@ -318,7 +318,6 @@ cmake/
 CMakeLists.txt                   — top-level build script
 AGENTS.md                        — pitfalls and conventions
 DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
-implementation_plan.md           — current development roadmap
 ```
 
 ## Changelog

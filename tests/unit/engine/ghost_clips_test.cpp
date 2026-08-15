@@ -1,5 +1,5 @@
 // Tests for the v0.12.0+ ghost-clip + paint/repeat features
-// (spec: docs/superpowers/specs/2026-07-21-paint-ghost-clips-design.md).
+// (spec: docs/archive/superpowers/specs/2026-07-21-paint-ghost-clips-design.md).
 //
 // These exercise the engine at the same level the frontend RPC layer and the
 // GUI do: AudioEngine is fully initialize()d so the AudioEngine ValueTree

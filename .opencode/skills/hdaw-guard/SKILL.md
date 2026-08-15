@@ -1,6 +1,6 @@
 ---
 name: hdaw-guard
-description: ALWAYS load before any code change in this project. Guards against the 9 recurring pitfalls, enforces plan-first development with success gates, requires dependency/consequence analysis before mutations, and alerts on anti-patterns. Non-negotiable for every task.
+description: ALWAYS load before any code change in this project. Guards against the 16 recurring pitfalls, enforces plan-first development with success gates, requires dependency/consequence analysis before mutations, and alerts on anti-patterns. Non-negotiable for every task.
 ---
 
 # HDAW Guard
@@ -21,9 +21,9 @@ If the work involves writing or editing code, you must dispatch it to a subagent
 ## Pre-Flight Checklist (mandatory before every change)
 
 1. **PLAN** — Write a plan with explicit success-gating criteria (see §Planning).
-2. **GRAPH QUERY** — Consult the knowledge graph (`graphify-out/graph.json`) to map the blast radius. Use `graphify query`, `graphify path`, and `graphify explain` (see §Graph-Based Analysis). Do not assume relationships — verify them.
+2. **GRAPH QUERY** — Consult the knowledge graph to map the blast radius. Prefer the `codebase-memory` MCP (`search_graph`, `trace_path`, `query_graph`); `graphify-out/graph.json` is the offline snapshot complement (see §Graph-Based Analysis). Do not assume relationships — verify them.
 3. **DEPENDENCIES** — Identify all upstream callers and downstream consumers of the code you will touch. Use `trace_path`, `search_graph`, graphify traversal, grep. Do not assume.
-4. **PITFALL SCAN** — Check your change against the 9 Recurring Pitfalls (§Pitfall Gates). If any gate triggers, address it in the plan.
+4. **PITFALL SCAN** — Check your change against the 16 Recurring Pitfalls (§Pitfall Gates). If any gate triggers, address it in the plan.
 5. **ANTI-PATTERN SCAN** — Check your change against the Anti-Pattern Alerts (§Anti-Patterns). If any alert fires, stop and redesign.
 6. **VERIFY** — After implementation, run the success gates from the plan. Evidence before claims.
 
@@ -118,7 +118,7 @@ Every task gets a plan BEFORE code. The plan must contain:
 - Path integrity: <graphify path verified? gaps found?>
 
 ## Pitfall Gates Triggered
-- <which of the 9 pitfalls apply, and how you address each>
+- <which of the 16 pitfalls apply, and how you address each>
 
 ## Steps
 1. ...
@@ -235,6 +235,62 @@ Check EVERY change against these. They are ranked by historical frequency.
 
 **Alert if:** You see `allocateClipID` used for notes, `getMainProcessor()` without a null check, or unguarded `stoi`.
 
+### Gate 10: Rebuild State Restore — Test Discipline (lesson 10)
+
+**Trigger:** Adding state to a track/clip processor, changing `RoutingManager::addTrack` / `rebuildRoutingGraph`, or adding any projection seam.
+
+**Rule:** Any state that reaches a processor via SPSC must ALSO be restored in the rebuild path (`Track::restoreMixerState` or equivalent). Cover the seam with a test that (1) mutates state, (2) rebuilds, (3) asserts on the LIVE processor (`getMainProcessor()->getTrack(idx)`) — ReadModel-only or no-crash smoke tests are NOT sufficient.
+
+**Alert if:** A new processor field is written live but has no restore branch in `addTrack`, or a rebuild test doesn't assert the live processor.
+
+### Gate 11: Missing JUCE Message Pump in Non-GUI Processes (lesson 11)
+
+**Trigger:** New headless/test/offline-render entry points, or JUCE construction ordering in `main`/`main_headless`/`test_main`.
+
+**Rule:** Every non-GUI process MUST start `MessagePumpThread` BEFORE any JUCE construction. Without it, `AudioProcessorGraph`'s async bake falls back → **silent export**, and the first `MessageManager::getInstance()` caller orphans the queue → shutdown hang.
+
+**Alert if:** A new entry point constructs JUCE objects before the pump starts, or a test binary's `main` doesn't start the pump (verify the **binary**, not just the source — Gate 15).
+
+### Gate 12: AudioProcessorGraph Mutation From Non-Message Threads (lesson 12)
+
+**Trigger:** Any `AudioProcessorGraph` mutation (add/remove node, connect, `graph.clear()`) from command/MCP/test/render threads.
+
+**Rule:** Park the pump via `MessageManagerLock` for the duration of the mutation, guarded by `!isThisTheMessageThread()` — taking the lock ON the message thread self-deadlocks. Follow `MainAudioProcessor::rebuildRoutingGraph` as the reference.
+
+**Alert if:** Graph mutation without the park idiom, or a `MessageManagerLock` taken unconditionally.
+
+### Gate 13: DSP-State Writes Without `stateLock` (lesson 13)
+
+**Trigger:** Listeners/commands writing a processor's DSP objects or vectors (EQ, filters, FX chain, automation, modulation).
+
+**Rule:** Writes must hold the processor's dedicated `stateLock`; guard iteration with the `prepareToPlay` `stateLock.tryEnter()` idiom — `prepareToPlay` can recreate (and free) DSP objects concurrently.
+
+**Alert if:** A `valueTreePropertyChanged` listener writes DSP state (e.g. `*eq->state`) without a lock.
+
+### Gate 14: Cross-Process (Isolated Plugin) Truncation & Races (lesson 14)
+
+**Trigger:** Proxy pipe protocol, plugin state transfer, crash-recovery respawn, or handles shared with the audio thread in the isolated child.
+
+**Rule:** Assume fixed-size messages lose data — chunk large payloads (`STATE_CHUNK`) and bounds-check `dataSize` on BOTH sides. Any `shared_ptr`/handle swap the audio thread reads must hold `graphLock`. Resize scratch buffers on `PREPARE` (constructor defaults are wrong). Respawn must carry `desc.fileOrIdentifier`.
+
+**Alert if:** A pipe write exceeds the fixed buffer minus header, or a `shared_ptr` is swapped without `graphLock`.
+
+### Gate 15: Stale Flags and Stale Binaries (lesson 15)
+
+**Trigger:** Transport play/stop sequencing, or verifying a fix that "doesn't take effect".
+
+**Rule:** The audio thread flips flags immediately but the ValueTree lags ~50 ms — `play()` must consume a pending auto-stop first; `setProperty` on an unchanged value is a no-op (Gate: lesson 2). After editing entry points, verify the **binary** (`.obj` timestamps / breakpoint probe), not the source — MSBuild skips recompile when the source is older than its `.obj`.
+
+**Alert if:** Transport commands rely on ValueTree state inside the sync-lag window, or a fix is verified by reading source only.
+
+### Gate 16: Plugin Lifecycle Off the Main Thread (lesson 16)
+
+**Trigger:** New plugin lifecycle calls (`prepareToPlay`, `setStateInformation`, `getStateInformation`, `activate`/`deactivate`) from control/pipe/render threads, in-process or in the isolated child.
+
+**Rule:** Lifecycle calls must run on the host's reported "main thread": in the child, marshal via `PluginHost::runLifecycleOnMessageThread`; on render threads, pass `CLAPHost::threadCheckIsMainThread()` (JUCE message thread OR export render thread). Keep the control-thread try/catch + `pluginFailed` second line of defense. In-process export teardown must keep render mode set until the render graph destructor runs `deactivate()`.
+
+**Alert if:** A new direct lifecycle call in `PluginHost::controlLoop` isn't marshaled, or a render/pipe thread calls a main-thread-only plugin API without the thread check.
+
 ---
 
 ## §Anti-Patterns (auto-alert)
@@ -258,21 +314,31 @@ If you observe any of these in code you are writing or reviewing, STOP and flag:
 
 ---
 
-## §Graph-Based Analysis (graphify)
+## §Graph-Based Analysis (knowledge graphs)
 
-This project maintains a knowledge graph at `graphify-out/graph.json`. Use it as
-the FIRST tool for understanding blast radius, tracing paths, and verifying
-assumptions. The graph is persistent across sessions — query it, don't rebuild it.
+Two knowledge graphs are available; use them as the FIRST tools for understanding
+blast radius, tracing paths, and verifying assumptions:
+
+1. **`codebase-memory` MCP (preferred)** — live server-side index, available in
+   every session, faster than grep for structural questions: `search_graph`
+   (discover), `trace_path` (callers/callees, data flow), `query_graph` (Cypher,
+   incl. complexity/hot-path properties), `get_code_snippet`, `get_architecture`.
+   Project name: `D-pdf-roo-projects-hdaw3`. Refresh with `index_repository`
+   after structural changes. See AGENTS.md → "Codebase Memory MCP".
+2. **`graphify-out/graph.json` (offline snapshot complement)** — persistent
+   across sessions; query it, don't rebuild it. Its `GRAPH_REPORT.md` carries
+   pre-computed God Nodes / community analysis. Note it can lag the codebase —
+   check its date before trusting edges added recently.
 
 ### When to use which traversal
 
 | Question shape | Tool | Mode |
 |---|---|---|
-| "What does X touch / affect?" | `graphify query "What calls X and what does X call?"` | BFS (broad context) |
-| "How does state flow from A to B?" | `graphify query "trace data flow from A to B" --dfs` | DFS (specific path) |
-| "Are A and B connected?" | `graphify path "A" "B"` | Shortest path |
-| "What is X and what does it do?" | `graphify explain "X"` | Node explanation |
-| "What are the risky hub nodes?" | Read `graphify-out/GRAPH_REPORT.md` → God Nodes | Pre-computed |
+| "What does X touch / affect?" | `trace_path` (MCP) or `graphify query "What calls X and what does X call?"` | callers/callees, BFS |
+| "How does state flow from A to B?" | `trace_path` mode `data_flow` (MCP) or `graphify query ... --dfs` | DFS (specific path) |
+| "Are A and B connected?" | `query_graph` Cypher path or `graphify path "A" "B"` | Shortest path |
+| "What is X and what does it do?" | `get_code_snippet` (MCP) or `graphify explain "X"` | Node explanation |
+| "What are the risky hub nodes?" | `get_architecture` (MCP) or `graphify-out/GRAPH_REPORT.md` → God Nodes | Pre-computed |
 
 ### Mandatory graph queries before code changes
 
@@ -329,7 +395,7 @@ verification pass so the completion contract checks against current topology.
 
 Before modifying ANY function, class, property, or RPC method:
 
-1. **Graph first:** Run `graphify query` (BFS) on the target. Read the blast radius.
+1. **Graph first:** Run a blast-radius query on the target (`trace_path` both directions, or `graphify query` BFS). Read the blast radius.
 2. **Upstream:** Who calls this? Confirm with `trace_path` (direction: inbound) or grep.
 3. **Downstream:** What consumes the output? Confirm with `trace_path` (direction: outbound).
 4. **Path integrity:** For new wiring, run `graphify path "source" "sink"` — if no path exists, the feature is unimplemented (Gate 2).
@@ -367,5 +433,5 @@ Work is complete ONLY when:
 5. If C++ changed: `cmake --build build --config Debug` succeeds.
 6. If frontend changed: `cd frontend && npm run build` succeeds.
 7. If new RPC/command: MCP tool exists (parity rule).
-8. If structural change (new files/classes/RPC methods): `graphify . --update` run so the knowledge graph stays current.
-9. Graph path integrity re-verified for any new wiring (`graphify path "source" "sink"` shows a complete chain).
+8. If structural change (new files/classes/RPC methods): knowledge graph refreshed (`codebase-memory` `index_repository`, and/or `graphify . --update`) so it stays current.
+9. Graph path integrity re-verified for any new wiring (`trace_path` / `graphify path "source" "sink"` shows a complete chain).

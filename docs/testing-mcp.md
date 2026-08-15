@@ -153,8 +153,8 @@ composition (`PhraseGenerator`), FX, automation, undo, and audio export.
   never touched. Audio-thread concerns (e.g. plugin parameter
   changes) are the tool handler's responsibility — use `SPSCBridge` for
   audio-thread notifications, as documented in the next section.
-- **Spec / plan** documents: `docs/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
-  and `docs/superpowers/plans/2026-06-29-hdaw-mcp-server-phase{1,2}.md`.
+- **Spec / plan** documents: `docs/archive/superpowers/specs/2026-06-29-hdaw-mcp-server-design.md`
+  and `docs/archive/superpowers/plans/2026-06-29-hdaw-mcp-server-phase{1,2}.md`.
 
 ## File Browser Audio Preview (v0.9.2)
 
