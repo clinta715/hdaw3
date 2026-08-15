@@ -1,5 +1,77 @@
 #include "MainAudioProcessor.h"
 #include "ClipSourceProcessor.h"
+#include <exception>
+
+namespace
+{
+
+// Runs fn on the JUCE message thread, blocking the caller until it completes
+// (and rethrowing any exception the callback produced on the calling thread —
+// same marshaling shape as PluginHost::runLifecycleOnMessageThread).
+//
+// Why this exists — the rebuildTrackFX/rebuildMidiTrackFX race: those entry
+// points are called from command/RPC/undo/test threads and used to mutate the
+// live Track directly, while the pump thread's async rebuildRoutingGraph
+// (handleAsyncUpdate) destroys the whole RoutingManager — and every Track in
+// it — via `routingManager = std::move(fresh)`. That overlap is a
+// use-after-free (crash inside Track::rebuildFXChain).
+//
+// Message-thread execution closes the window from every direction:
+//  * The async rebuild is itself a message callback, and the pump delivers
+//    messages one at a time, so it cannot interleave with our marshaled
+//    callback.
+//  * Any other thread's direct rebuildRoutingGraph parks the pump
+//    (MessageManagerLock precedes graphLock). JUCE's park posts a
+//    BlockingMessage that suspends the message thread inside the holder, so
+//    (a) the park cannot be acquired while our callback runs (its acquire
+//    message is undelivered until we return to the loop), and (b) while
+//    another thread holds the park, our callback simply waits and then runs
+//    against the post-swap manager — which is why callers must re-check the
+//    routingManager pointer INSIDE the callback, not before marshaling.
+//
+// Why NOT the Gate-12 pump park instead: parking would suspend the message
+// thread while Track::rebuildFXChain instantiates plugins in-process —
+// AudioPluginFormat::createInstanceFromDescription dispatches to the message
+// thread, which the park suspends → self-deadlock (lesson 18, the exact trap
+// documented at RoutingManager::prebuildTracks, RoutingManager.cpp:138-157).
+// On the message thread that dispatch executes inline.
+//
+// callFunctionOnMessageThread jasserts if the caller holds a
+// MessageManagerLock; no call path into the FX rebuilds holds one. It executes
+// the callback inline when already on the message thread, but we check
+// explicitly so the null-MessageManager fallback (no pump yet) also runs
+// inline, preserving the old direct-call behavior.
+template <typename Fn>
+void runOnMessageThread(Fn&& fn)
+{
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    if (mm == nullptr || mm->isThisTheMessageThread())
+    {
+        fn();
+        return;
+    }
+
+    struct CallContext
+    {
+        Fn* fn;
+        std::exception_ptr exception;
+    } ctx{ &fn, nullptr };
+
+    mm->callFunctionOnMessageThread(
+        [](void* userData) -> void*
+        {
+            auto& c = *static_cast<CallContext*>(userData);
+            try { (*c.fn)(); }
+            catch (...) { c.exception = std::current_exception(); }
+            return nullptr;
+        },
+        &ctx);
+
+    if (ctx.exception != nullptr)
+        std::rethrow_exception(ctx.exception);
+}
+
+} // namespace
 
 MainAudioProcessor::MainAudioProcessor()
     : AudioProcessor(BusesProperties()
@@ -433,14 +505,23 @@ void MainAudioProcessor::toggleFXEditor(int trackIndex, int slotIndex)
 
 void MainAudioProcessor::rebuildTrackFX(int trackIndex)
 {
-    if (routingManager != nullptr)
-        routingManager->rebuildTrackFX(trackIndex);
+    // Marshaled to the message thread (see runOnMessageThread above); the
+    // routingManager check must live inside the callback — the manager can be
+    // swapped by a rebuild that completes while we waited for the pump.
+    runOnMessageThread([this, trackIndex]
+    {
+        if (routingManager != nullptr)
+            routingManager->rebuildTrackFX(trackIndex);
+    });
 }
 
 void MainAudioProcessor::rebuildMidiTrackFX(int trackIndex)
 {
-    if (routingManager != nullptr)
-        routingManager->rebuildMidiTrackFX(trackIndex);
+    runOnMessageThread([this, trackIndex]
+    {
+        if (routingManager != nullptr)
+            routingManager->rebuildMidiTrackFX(trackIndex);
+    });
 }
 
 void MainAudioProcessor::rebuildModulation(int trackIndex)
