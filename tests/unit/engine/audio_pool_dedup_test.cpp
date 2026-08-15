@@ -12,9 +12,8 @@
 
 namespace {
 
-juce::File writeSineWav(const char* tag, int lengthSamples, double sr = 44100.0)
+juce::File writeSineWav(const char* tag, int lengthSamples, double sr = 44100.0, int numChannels = 1)
 {
-    const int numChannels = 1;
     const int bitsPerSample = 16;
     const int bytesPerSample = bitsPerSample / 8;
     const int dataSize = lengthSamples * numChannels * bytesPerSample;
@@ -55,7 +54,8 @@ juce::File writeSineWav(const char* tag, int lengthSamples, double sr = 44100.0)
     for (int i = 0; i < lengthSamples; ++i)
     {
         short v = static_cast<short>(std::sin(2.0 * 3.14159 * 440.0 * i / sampleRate) * 32000.0);
-        out.write(reinterpret_cast<const char*>(&v), 2);
+        for (int ch = 0; ch < numChannels; ++ch)
+            out.write(reinterpret_cast<const char*>(&v), 2);
     }
     out.close();
     return file;
@@ -334,6 +334,70 @@ TEST(AudioPoolDedup, EngineWiresPoolAndRebuildReacquiresWithoutRedecode)
         ASSERT_NE(clip, nullptr);
         EXPECT_NE(clip->getPreloadedDataForTest(0), nullptr);
     }
+
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, StereoDataMatchesDecodedSamples)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    HDAW::DecodedSoundPool pool(fm);
+
+    auto file = writeSineWav("stereo_data", 44100, 44100.0, 2);
+    auto sound = pool.acquire(file.getFullPathName());
+    ASSERT_NE(sound, nullptr);
+    EXPECT_EQ(sound->numChannels, 2);
+    EXPECT_EQ(sound->length, 44100);
+    ASSERT_NE(sound->data[0], nullptr);
+    ASSERT_NE(sound->data[1], nullptr);
+    bool anyNonZero0 = false;
+    bool anyNonZero1 = false;
+    for (int64_t i = 0; i < sound->length && (!anyNonZero0 || !anyNonZero1); ++i)
+    {
+        if (std::abs(sound->data[0][i]) > 0.0f) anyNonZero0 = true;
+        if (std::abs(sound->data[1][i]) > 0.0f) anyNonZero1 = true;
+    }
+    EXPECT_TRUE(anyNonZero0);
+    EXPECT_TRUE(anyNonZero1);
+    file.deleteFile();
+}
+
+TEST(AudioPoolDedup, TwoClipProcessorsShareOneStereoDecode)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    HDAW::DecodedSoundPool pool(fm);
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    auto file = writeSineWav("stereo_share", 44100, 44100.0, 2);
+    auto path = file.getFullPathName();
+
+    HDAW::ClipSourceProcessor a(tm, fm, &pool);
+    HDAW::ClipSourceProcessor b(tm, fm, &pool);
+    a.setSourceFile(path);
+    b.setSourceFile(path);
+    a.prepareToPlay(44100.0, 512);
+    b.prepareToPlay(44100.0, 512);
+
+    EXPECT_EQ(pool.getDecodeCount(), 1);
+    EXPECT_EQ(pool.getEntryCount(), 1);
+
+    EXPECT_NE(a.getPreloadedDataForTest(0), nullptr);
+    EXPECT_EQ(a.getPreloadedDataForTest(0), b.getPreloadedDataForTest(0));
+
+    tm.setCurrentSample(0);
+    juce::AudioBuffer<float> buffer(2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    a.processBlock(buffer, midi);
+    float maxAbs = 0.0f;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int s = 0; s < 512; ++s)
+            maxAbs = std::max(maxAbs, std::abs(buffer.getSample(ch, s)));
+    EXPECT_GT(maxAbs, 0.05f);
 
     file.deleteFile();
 }
