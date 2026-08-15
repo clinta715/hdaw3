@@ -42,6 +42,7 @@ public:
     void addExternalMidiMessage(const juce::MidiMessage& msg);
     void rebuildTrackFX(int trackIndex);
     void rebuildMidiTrackFX(int trackIndex);
+    void rebuildMidiClipCache(juce::ValueTree clipTree);
     void rebuildModulation(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph(bool loading = false);

@@ -2,6 +2,8 @@
 #include "engine/AudioEngine.h"
 #include "engine/AudioEngineCommands.h"
 #include "engine/MainAudioProcessor.h"
+#include "engine/RoutingManager.h"
+#include "engine/MidiClipProcessor.h"
 #include "engine/Track.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <cmath>
@@ -234,6 +236,55 @@ TEST(TrackFxRebuildRace, ToggleFXEditorSerializedAgainstAsyncGraphRebuild)
         EXPECT_EQ(track->getNumFXSlots(), 1);
 
         cmds.removeFxSlot(0, 0);
+    }
+
+    file.deleteFile();
+}
+
+// Same race shape for rebuildMidiClipCache: addNote's MIDI_NOTE child-added
+// listener (AudioEngine.cpp valueTreeChildAdded) used to invalidate the live
+// MidiClipProcessor's note cache directly on this thread while addAudioClip's
+// async graph rebuild can swap (and destroy) the RoutingManager mid-iteration.
+// The marshal must keep the cache observable synchronously — no sleep.
+// Track 1 is the default MIDI "Synth" track with an empty clip list (lesson 9),
+// so our clip is index 0 there; track 2 is an audio track whose clip adds
+// queue the async rebuild without touching track 1's clip indices.
+TEST(TrackFxRebuildRace, RebuildMidiClipCacheSerializedAgainstAsyncGraphRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto file = writeSineWav("midirace", 44100);
+    const juce::String path = file.getFullPathName();
+
+    auto& cmds = engine.getProjectCommands();
+    const int clipId = cmds.addMidiClip(1, 0.0, 4.0, "raceMidiCache");
+    ASSERT_GE(clipId, 0);
+
+    for (int i = 0; i < 25; ++i)
+    {
+        // Queue an async graph rebuild on the pump thread (CLIP child-added
+        // → triggerAsyncUpdate) that will swap the RoutingManager.
+        cmds.addAudioClip(2, 0.0, 1.0, path.toStdString(),
+                          std::string("midiCacheRace") + std::to_string(i));
+
+        // Real note command: mints a MIDI_NOTE child under the clip's
+        // MIDI_NOTE_LIST → child-added listener → rebuildMidiClipCache.
+        cmds.addNote(clipId, 60 + i, 100, static_cast<double>(i), 1.0);
+
+        // Synchronous semantics: the CURRENT routing manager's live
+        // processor for {track 1, clip 0} must already see at least i+1
+        // cached notes — even if the async rebuild swapped the manager
+        // between the command and this read.
+        auto* main = engine.getMainProcessor();
+        ASSERT_NE(main, nullptr);
+        auto* rm = main->getRoutingManager();
+        ASSERT_NE(rm, nullptr);
+        const auto& sources = rm->getMidiClipSources();
+        auto it = sources.find({ 1, 0 });
+        ASSERT_NE(it, sources.end());
+        ASSERT_NE(it->second, nullptr);
+        EXPECT_GE(it->second->getNumCachedNotes(), i + 1);
     }
 
     file.deleteFile();

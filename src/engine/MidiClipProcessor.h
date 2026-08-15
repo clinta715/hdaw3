@@ -73,6 +73,7 @@ public:
     int  getMidiChannel() const { return midiChannel.load(); }
     void setSeed(uint64_t s) { clipSeed.store(s, std::memory_order_relaxed); }
     uint64_t getSeed() const { return clipSeed.load(std::memory_order_relaxed); }
+    int getNumCachedNotes() const { return noteCount.load(std::memory_order_acquire); }
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {

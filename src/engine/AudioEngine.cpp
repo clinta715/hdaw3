@@ -941,8 +941,7 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             auto clipTree = noteList.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP) && mainProcessor != nullptr)
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
             }
         }
     }
@@ -954,8 +953,7 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
             auto clipTree = ccList.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP) && mainProcessor != nullptr)
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
             }
         }
     }
@@ -1066,8 +1064,7 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
 
                 // Propagate the new note to all ghosts of the source clip
                 int srcIsGhost = static_cast<int>(clipTree.getProperty(IDs::isGhost, 0));
@@ -1111,8 +1108,7 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
             }
         }
     }
@@ -1166,8 +1162,7 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
 
                 // Remove matching note from all ghosts of the source clip.
                 // Ghosts get fresh noteIDs at creation time, so we match by
@@ -1224,8 +1219,7 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {
-                if (auto* rm = mainProcessor->getRoutingManager())
-                    rm->rebuildMidiClipCache(clipTree);
+                mainProcessor->rebuildMidiClipCache(clipTree);
             }
         }
     }
@@ -1234,8 +1228,7 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     {
         if (parentTree.hasType(IDs::CLIP))
         {
-            if (auto* rm = mainProcessor->getRoutingManager())
-                rm->rebuildMidiClipCache(parentTree);
+            mainProcessor->rebuildMidiClipCache(parentTree);
         }
     }
 

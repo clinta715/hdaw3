@@ -529,6 +529,17 @@ void MainAudioProcessor::rebuildMidiTrackFX(int trackIndex)
     });
 }
 
+void MainAudioProcessor::rebuildMidiClipCache(juce::ValueTree clipTree)
+{
+    // Marshaled to the message thread — see the runOnMessageThread rationale
+    // block above (live MIDI-clip cache invalidation vs graph-rebuild destruction).
+    runOnMessageThread([this, clipTree]
+    {
+        if (routingManager != nullptr)
+            routingManager->rebuildMidiClipCache(clipTree);
+    });
+}
+
 void MainAudioProcessor::rebuildModulation(int trackIndex)
 {
     // Marshaled to the message thread — see the runOnMessageThread rationale
