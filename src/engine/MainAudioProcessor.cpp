@@ -135,7 +135,7 @@ void MainAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     graph.setBusesLayout(getBusesLayout());
 
     routingManager = std::make_unique<HDAW::RoutingManager>(
-        graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool);
+        graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool, streamingPool);
     routingManager->setPlaybackInfo(sampleRate, samplesPerBlock);
     routingManager->rebuildFromValueTree();
 
@@ -588,6 +588,8 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
     {
         if (decodedPool != nullptr)
             decodedPool->pruneUnreferenced();
+        if (streamingPool != nullptr)
+            streamingPool->pruneUnreferenced();
 
         // The JUCE message pump thread (MessagePumpThread) concurrently
         // dispatches AudioProcessorGraph's internal async rebuild messages
@@ -610,7 +612,7 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         const bool needsPark = (mm != nullptr && !mm->isThisTheMessageThread());
 
         auto fresh = std::make_unique<HDAW::RoutingManager>(
-            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool);
+            graph, *projectModel, *formatManager, *transportManager, pluginManager, stretchCache, decodedPool, streamingPool);
         fresh->loadingPhase = loading;
         if (needsPark && pluginManager != nullptr && !pluginManager->isolationEnabled)
             fresh->prebuildTracks();

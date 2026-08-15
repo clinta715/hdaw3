@@ -8,6 +8,7 @@
 #include "TransportManager.h"
 #include "StreamingClipSource.h"
 #include "DecodedSoundPool.h"
+#include "StreamingSoundPool.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
 
@@ -17,10 +18,12 @@ class ClipSourceProcessor : public juce::AudioProcessor
 {
 public:
     ClipSourceProcessor(HDAW::TransportManager& tm, juce::AudioFormatManager& fm,
-                        HDAW::DecodedSoundPool* pool = nullptr)
+                        HDAW::DecodedSoundPool* pool = nullptr,
+                        HDAW::StreamingSoundPool* streamPool = nullptr)
         : AudioProcessor(BusesProperties()
               .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-          transportManager(tm), formatManager(fm), decodedPool(pool)
+          transportManager(tm), formatManager(fm), decodedPool(pool),
+          streamingPool(streamPool)
     {
     }
 
@@ -53,15 +56,21 @@ public:
         {
             if (streamingEnabled && shouldStream(sourceFile))
             {
-                streamer.prepare(juce::File(sourceFile), formatManager, sr, blockSize);
-                if (streamer.isOk())
+                auto handle = (streamingPool != nullptr)
+                    ? streamingPool->acquire(sourceFile)
+                    : HDAW::StreamingSoundHandle::open(formatManager, juce::File(sourceFile));
+                if (handle)
                 {
-                    preloadedChannels = streamer.numChannels();
-                    preloadedLength = streamer.sourceLength();
                     streamer.setNonRealtime(nonRealtimeFlag);
-                    streamer.startPlayback();
-                    activeBuffer.store(2, std::memory_order_release);
-                    return;
+                    streamer.prepare(handle, sr, blockSize);
+                    if (streamer.isOk())
+                    {
+                        preloadedChannels = streamer.numChannels();
+                        preloadedLength = streamer.sourceLength();
+                        streamer.startPlayback();
+                        activeBuffer.store(2, std::memory_order_release);
+                        return;
+                    }
                 }
             }
             preloadWholeFile();
@@ -102,8 +111,6 @@ public:
         }
     }
 
-    // Long-file (non-promotable) check. Uses the same promotion threshold as
-    // StreamingClipSource so the streaming decision is consistent.
     bool shouldStream(const juce::String& path) const
     {
         std::unique_ptr<juce::AudioFormatReader> r(
@@ -124,6 +131,11 @@ public:
         if (decoded_->numChannels > 1)
             return decoded_->data[ch].get();
         return decoded_->data[0].get();
+    }
+
+    std::shared_ptr<HDAW::StreamingSoundHandle> getStreamingHandleForTest() const
+    {
+        return streamer.getHandleForTest();
     }
 
     // Streaming escape hatch. Default on. RoutingManager enables it at build
@@ -217,25 +229,29 @@ public:
         if (!isStretched && streamingEnabled && sourceFile.isNotEmpty()
             && shouldStream(sourceFile))
         {
-            // Streaming decision: long file (non-promotable). prepare() opens
-            // its own reader; on failure fall through to legacy preload.
-            streamer.setNonRealtime(nonRealtimeFlag);
-            streamer.prepare(juce::File(sourceFile), formatManager, sampleRate, samplesPerBlock);
-            if (streamer.isOk())
+            auto handle = (streamingPool != nullptr)
+                ? streamingPool->acquire(sourceFile)
+                : HDAW::StreamingSoundHandle::open(formatManager, juce::File(sourceFile));
+            if (handle)
             {
-                preloadedChannels = streamer.numChannels();
-                preloadedLength = streamer.sourceLength();
-                streamer.startPlayback();
-                activeBuffer.store(2, std::memory_order_release);
+                streamer.setNonRealtime(nonRealtimeFlag);
+                streamer.prepare(handle, sampleRate, samplesPerBlock);
+                if (streamer.isOk())
+                {
+                    preloadedChannels = streamer.numChannels();
+                    preloadedLength = streamer.sourceLength();
+                    streamer.startPlayback();
+                    activeBuffer.store(2, std::memory_order_release);
+                }
+                else
+                {
+                    preloadWholeFile();
+                    activeBuffer.store(0, std::memory_order_release);
+                }
+                gainSmooth.reset(sampleRate, 0.02);
+                gainSmooth.setCurrentAndTargetValue(gain.load());
+                return;
             }
-            else
-            {
-                preloadWholeFile();
-                activeBuffer.store(0, std::memory_order_release);
-            }
-            gainSmooth.reset(sampleRate, 0.02);
-            gainSmooth.setCurrentAndTargetValue(gain.load());
-            return;
         }
 
         if (sourceFile.isNotEmpty())
@@ -630,6 +646,7 @@ private:
     HDAW::TransportManager& transportManager;
     juce::AudioFormatManager& formatManager;
     HDAW::DecodedSoundPool* decodedPool = nullptr;
+    HDAW::StreamingSoundPool* streamingPool = nullptr;
     juce::String sourceFile;
 
     std::atomic<double> startTime{ 0.0 };

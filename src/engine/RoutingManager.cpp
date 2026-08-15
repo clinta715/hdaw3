@@ -7,9 +7,10 @@ namespace HDAW {
 RoutingManager::RoutingManager(juce::AudioProcessorGraph& g, ProjectModel& model,
                                juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
                                HDAW::PluginManager* pm, StretchCache* sc,
-                               HDAW::DecodedSoundPool* pool)
+                               HDAW::DecodedSoundPool* pool,
+                               HDAW::StreamingSoundPool* streamPool)
     : graph(g), projectModel(model), formatManager(fm), transportManager(tm),
-      pluginManager(pm), stretchCache(sc), decodedPool(pool)
+      pluginManager(pm), stretchCache(sc), decodedPool(pool), streamPool(streamPool)
 {
 }
 
@@ -506,7 +507,7 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
 
         if (clipType == "audio")
         {
-            auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager, decodedPool);
+            auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager, decodedPool, streamPool);
 
             juce::String sourcePath = clipTree.getProperty(IDs::sourceFile).toString();
             auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);

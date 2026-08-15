@@ -14,7 +14,7 @@
 #include "../model/ProjectModel.h"
 #include <memory>
 
-namespace HDAW { class DecodedSoundPool; }
+namespace HDAW { class DecodedSoundPool; class StreamingSoundPool; }
 
 class MainAudioProcessor : public juce::AudioProcessor
 {
@@ -29,6 +29,7 @@ public:
     void setPluginManager(HDAW::PluginManager* pm) { pluginManager = pm; }
     void setStretchCache(HDAW::StretchCache* sc) { stretchCache = sc; }
     void setDecodedSoundPool(HDAW::DecodedSoundPool* p) { decodedPool = p; }
+    void setStreamingSoundPool(HDAW::StreamingSoundPool* p) { streamingPool = p; }
     juce::SpinLock& getGraphLock() { return graphLock; }
 
     // Track Management (delegated to RoutingManager)
@@ -99,6 +100,7 @@ private:
     HDAW::PluginManager* pluginManager = nullptr;
     HDAW::StretchCache* stretchCache = nullptr;
     HDAW::DecodedSoundPool* decodedPool = nullptr;
+    HDAW::StreamingSoundPool* streamingPool = nullptr;
     std::unique_ptr<HDAW::InternalPlayHead> internalPlayHead;
 
     juce::AudioProcessorGraph graph;

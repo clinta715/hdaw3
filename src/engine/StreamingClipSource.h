@@ -11,6 +11,8 @@
 #include <thread>
 #include <vector>
 
+#include "StreamingSoundPool.h"
+
 namespace HDAW {
 
 // Background double-buffer reader for long audio clips. Replaces whole-file
@@ -26,6 +28,8 @@ public:
     static constexpr int kPromoteToWholeFileMs = 8000;
 
     StreamingClipSource() = default;
+    // Must stay in the destructor body: joins the background reader before
+    // the members (including handle_) are destroyed.
     ~StreamingClipSource() { stopPlayback(); }
 
     StreamingClipSource(const StreamingClipSource&) = delete;
@@ -35,6 +39,12 @@ public:
     // short file to whole-file residency or allocates the double-buffer sides.
     void prepare(const juce::File& file, juce::AudioFormatManager& fm,
                  double sampleRate, int samplesPerBlock)
+    {
+        prepare(StreamingSoundHandle::open(fm, file), sampleRate, samplesPerBlock);
+    }
+
+    void prepare(std::shared_ptr<StreamingSoundHandle> handle, double sampleRate,
+                 int samplesPerBlock)
     {
         stopPlayback();
 
@@ -61,14 +71,13 @@ public:
         sampleRate_ = sampleRate;
         blockSize_ = samplesPerBlock;
 
-reader_ = std::unique_ptr<juce::AudioFormatReader>(
-            fm.createReaderFor(file));
-        if (reader_ == nullptr)
+        handle_ = handle;
+        if (!handle_)
             return;
 
-        numChannels_ = juce::jmin(static_cast<int>(reader_->numChannels), 2);
-        sourceLength_ = reader_->lengthInSamples;
-        const double durationSec = static_cast<double>(sourceLength_) / sampleRate_;
+        numChannels_ = handle_->numChannels;
+        sourceLength_ = handle_->lengthInSamples;
+        const double durationSec = static_cast<double>(sourceLength_) / sampleRate;
 
         if (durationSec * 1000.0 <= kPromoteToWholeFileMs)
         {
@@ -247,15 +256,19 @@ reader_ = std::unique_ptr<juce::AudioFormatReader>(
 
     uint64_t starvedCount() const { return starvedCount_.load(std::memory_order_relaxed); }
 
+    std::shared_ptr<StreamingSoundHandle> getHandleForTest() const { return handle_; }
+
 private:
     void fillWholeFile()
     {
+        if (!handle_)
+            return;
         juce::AudioBuffer<float> scratch(wholeFile_.channels,
                                          static_cast<int>(wholeFile_.length));
         scratch.clear();
         float* ptrs[2] = { scratch.getWritePointer(0),
                            wholeFile_.channels > 1 ? scratch.getWritePointer(1) : nullptr };
-        reader_->read(ptrs, wholeFile_.channels, 0,
+        handle_->read(ptrs, wholeFile_.channels, 0,
                       static_cast<int>(wholeFile_.length));
         for (int64_t i = 0; i < wholeFile_.length; ++i)
         {
@@ -293,6 +306,8 @@ private:
     {
         if (bufLen_ <= 0 || numChannels_ <= 0)
             return;
+        if (!handle_)
+            return;
 
         std::int16_t* dest = (which == 0) ? bufA_.data() : bufB_.data();
         const int64_t available = (std::max)(static_cast<int64_t>(0),
@@ -305,7 +320,7 @@ private:
             scratch.clear();
             float* ptrs[2] = { scratch.getWritePointer(0),
                                numChannels_ > 1 ? scratch.getWritePointer(1) : nullptr };
-            reader_->read(ptrs, numChannels_, base, static_cast<int>(available));
+            handle_->read(ptrs, numChannels_, base, static_cast<int>(available));
             for (int64_t i = 0; i < available; ++i)
             {
                 for (int ch = 0; ch < numChannels_; ++ch)
@@ -354,7 +369,7 @@ private:
         }
     }
 
-    std::unique_ptr<juce::AudioFormatReader> reader_;
+    std::shared_ptr<StreamingSoundHandle> handle_;
     double sampleRate_ = 44100.0;
     int blockSize_ = 512;
     bool ok_ = false;
