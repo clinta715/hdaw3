@@ -127,4 +127,9 @@ test_output*.txt
 # rationale as the artifact block above).
 /compositions/
 
+# JUCE 9.0.1 source drop held in place for the eventual JUCE 9 engine
+# migration. NOT a current dependency — the build uses the JUCE 8 fetch in
+# build/_deps. Ignored so the tree stays clean until the upgrade lands.
+/JUCE-v9.0.1/
+
 
