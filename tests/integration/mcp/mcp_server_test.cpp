@@ -412,6 +412,40 @@ QString writeSineWav(const char* tag) {
     return path;
 }
 
+// 12 s stereo 440 Hz sine (0.5 amplitude) — longer than the 8 s streaming
+// promotion threshold (StreamingClipSource::kPromoteToWholeFileMs), for the
+// streamed-clip export test (Subsystem D gate G2).
+QString writeLongSineWav() {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (dir.isEmpty()) dir = QDir::tempPath();
+    dir = QDir::fromNativeSeparators(dir);
+    QString path = QString("%1/hdaw_stream_long_%2.wav")
+                       .arg(dir)
+                       .arg(QCoreApplication::applicationPid());
+    QFile::remove(path);
+
+    constexpr int sampleRate = 44100;
+    constexpr int numChannels = 2;
+    constexpr int numSeconds = 12;
+    constexpr double amplitude = 0.5;
+    constexpr double freqHz = 440.0;
+
+    juce::AudioBuffer<float> buf(numChannels, sampleRate * numSeconds);
+    for (int ch = 0; ch < numChannels; ++ch)
+        for (int s = 0; s < buf.getNumSamples(); ++s)
+            buf.setSample(ch, s, static_cast<float>(
+                amplitude * std::sin(2.0 * juce::MathConstants<double>::pi * freqHz * s / sampleRate)));
+
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(juce::File(path.toStdString())),
+                            sampleRate, numChannels, 16, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
+    writer->flush();
+    return path;
+}
+
 QString textOf(const QJsonObject& r) {
     return r.value("result").toObject()
             .value("content").toArray().at(0).toObject()
@@ -654,6 +688,88 @@ TEST(McpServer, ExportAudioRendersDefaultProject) {
     EXPECT_FALSE(s.isCancelRequested());
 
     QFile::remove(path);
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+// Subsystem D gate G2: a clip whose source file is long enough to STREAM
+// (> 8 s) must export via the non-realtime synchronous-refill path with no
+// dropouts. Before 76bc275 the realtime reader starved ~74 blocks at every
+// ~4 s window boundary; this asserts every 100 ms slice of the render
+// carries signal (a 100 ms slice straddling a boundary would dip below the
+// threshold if whole blocks rendered silence).
+TEST(McpServer, ExportAudioStreamsLongClipWithoutDropouts) {
+    AudioEngine engine;
+    engine.initialize();  // default project: 3 tracks, track 0 exists
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const QString srcPath = writeLongSineWav();
+    ASSERT_FALSE(srcPath.isEmpty());
+
+    // 120 BPM so 24 beats == exactly 12 s (add_audio_clip takes beats).
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"set_tempo","arguments":{"bpm":120}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(5000, &out));
+    EXPECT_FALSE(parseOne(out).value("error").isObject());
+
+    tp.drainOutgoing();
+    QString addArgs = QString(R"({"trackId":0,"start":0.0,"length":24.0,"sourceFile":"%1"})")
+                          .arg(srcPath);
+    QString addReq = QString(R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_audio_clip","arguments":%1}})")
+                         .arg(addArgs);
+    tp.pumpIncoming(addReq.toUtf8());
+    out.clear(); ASSERT_TRUE(tp.waitForOutgoing(5000, &out));
+    auto addR = parseOne(out);
+    EXPECT_FALSE(addR.value("error").isObject());
+    EXPECT_TRUE(textOf(addR).contains("clipId="))
+        << "got: [" << textOf(addR).toStdString() << "]";
+
+    QString path = makeTempWavPath("stream-long");
+    tp.drainOutgoing();
+    QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":12.0,"sampleRate":44100.0,"bitDepth":16})")
+                       .arg(path);
+    QString req = QString(R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"export_audio","arguments":%1}})")
+                      .arg(args);
+    tp.pumpIncoming(req.toUtf8());
+    out.clear(); ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseResponse(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    if (r.value("result").toObject().value("isError").toBool(false)) {
+        FAIL() << "export failed: " << textOf(r).toStdString();
+    }
+
+    auto complete = waitExportComplete(tp, 30000);
+    ASSERT_FALSE(complete.isEmpty());
+    EXPECT_TRUE(complete.value("success").toBool());
+    ASSERT_TRUE(QFile::exists(path));
+
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(
+        fm.createReaderFor(juce::File(path.toStdString())));
+    ASSERT_NE(reader, nullptr);
+    ASSERT_GT(reader->lengthInSamples, 44100 * 11); // ~12 s rendered
+
+    const int slice = 4410; // 100 ms at 44.1 kHz
+    juce::AudioBuffer<float> buf(static_cast<int>(reader->numChannels), slice);
+    for (int64_t pos = 0; pos + slice <= reader->lengthInSamples; pos += slice) {
+        buf.clear();
+        float* ptrs[2] = { buf.getWritePointer(0),
+                           buf.getNumChannels() > 1 ? buf.getWritePointer(1) : nullptr };
+        reader->read(ptrs, buf.getNumChannels(), pos, slice);
+        double rms = 0.0;
+        for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+            for (int i = 0; i < slice; ++i)
+                rms += buf.getSample(ch, i) * buf.getSample(ch, i);
+        rms = std::sqrt(rms / (slice * buf.getNumChannels()));
+        EXPECT_GT(rms, 0.1) << "silent slice at sample " << pos
+                            << " (t=" << (pos / 44100.0) << " s)";
+    }
+
+    QFile::remove(path);
+    QFile::remove(srcPath);
     s.stop();
     s.setTransport(nullptr);
 }
