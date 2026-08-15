@@ -42,6 +42,35 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   documents this. A future fix is to make the test order-independent
   (e.g. by isolating the audio device).
 
+### Async routing-rebuild drain seam
+
+Clip/track add/remove listeners in `AudioEngine` call
+`triggerAsyncUpdate()`; the message pump thread later dispatches
+`handleAsyncUpdate()` → `MainAudioProcessor::rebuildRoutingGraph()`,
+which swaps the whole `RoutingManager`. Engine tests that mutate the
+`ValueTree` from the test thread race that coalesced rebuild: a
+pump-side rebuild can destroy the very `RoutingManager`/`Track` objects
+that the test's synchronous mutations and live-processor reads touch —
+a use-after-free window that fixed sleeps only paper over.
+
+The seam is `AudioEngine::drainPendingRoutingRebuild()`
+(`src/engine/AudioEngine.cpp`): it marshals
+`AsyncUpdater::handleUpdateNowIfNeeded()` onto the message thread (the
+flush is documented main-thread-only), where the rebuild takes its
+already-serialized no-park path and the graph's `prepareToPlay`
+topology pass (the render-sequence bake that prepares the live
+processors) also runs synchronously. Delivery is exactly-once (the
+`shouldDeliver` atomic exchange) against the pump's own dispatch, a
+no-op when nothing is pending, and it blocks until the rebuild
+completes.
+
+**Rule:** engine tests that need a settled routing graph before
+touching live processors (`getMainProcessor()`) MUST call
+`engine.drainPendingRoutingRebuild()` — never a fixed
+`juce::Thread::sleep()`. Caller contract: any thread except the
+message thread, and must not hold a `MessageManagerLock`
+(`callFunctionOnMessageThread` jasserts).
+
 ## Frontend Tests (v0.12.0+)
 
 The React frontend has a comprehensive test suite using **Vitest** for
