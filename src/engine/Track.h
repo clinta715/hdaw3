@@ -68,6 +68,7 @@ public:
     void setAutomationTrees(const juce::ValueTree& automationList);
     AutomationManager& getAutomation(int index) { return *automationManagers[index]; }
     int getNumAutomations() const { return static_cast<int>(automationManagers.size()); }
+    int getNumModulations() const { return modulationManager ? modulationManager->getNumSources() : 0; }
 
     void setPluginManager(PluginManager* pm) { pluginManager = pm; }
     PluginManager* getPluginManager() const { return pluginManager; }

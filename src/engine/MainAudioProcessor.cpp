@@ -495,12 +495,17 @@ HDAW::Track* MainAudioProcessor::getTrack(int index) const
 
 void MainAudioProcessor::toggleFXEditor(int trackIndex, int slotIndex)
 {
-    if (routingManager != nullptr)
+    // Marshaled to the message thread — see the runOnMessageThread rationale
+    // block above (live-Track destruction race; also fixes editor affinity).
+    runOnMessageThread([this, trackIndex, slotIndex]
     {
-        auto* track = routingManager->getTrackNode(trackIndex);
-        if (track != nullptr)
-            track->toggleFXEditor(slotIndex);
-    }
+        if (routingManager != nullptr)
+        {
+            auto* track = routingManager->getTrackNode(trackIndex);
+            if (track != nullptr)
+                track->toggleFXEditor(slotIndex);
+        }
+    });
 }
 
 void MainAudioProcessor::rebuildTrackFX(int trackIndex)
@@ -526,34 +531,44 @@ void MainAudioProcessor::rebuildMidiTrackFX(int trackIndex)
 
 void MainAudioProcessor::rebuildModulation(int trackIndex)
 {
-    if (routingManager == nullptr) return;
-    auto* track = routingManager->getTrackNode(trackIndex);
-    if (track == nullptr) return;
-    if (projectModel == nullptr) return;
-    auto trackList = projectModel->getTrackListTree();
-    if (trackIndex >= trackList.getNumChildren()) return;
-    auto trackTree = trackList.getChild(trackIndex);
-    auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
-    track->rebuildModulation(modList);
+    // Marshaled to the message thread — see the runOnMessageThread rationale
+    // block above (live-Track destruction race).
+    runOnMessageThread([this, trackIndex]
+    {
+        if (routingManager == nullptr) return;
+        auto* track = routingManager->getTrackNode(trackIndex);
+        if (track == nullptr) return;
+        if (projectModel == nullptr) return;
+        auto trackList = projectModel->getTrackListTree();
+        if (trackIndex >= trackList.getNumChildren()) return;
+        auto trackTree = trackList.getChild(trackIndex);
+        auto modList = trackTree.getChildWithName(IDs::MODULATION_LIST);
+        track->rebuildModulation(modList);
+    });
 }
 
 void MainAudioProcessor::rebuildAutomationCache(int trackIndex)
 {
-    if (routingManager == nullptr) return;
-    auto* track = routingManager->getTrackNode(trackIndex);
-    if (track == nullptr) return;
+    // Marshaled to the message thread — see the runOnMessageThread rationale
+    // block above (live-Track destruction race).
+    runOnMessageThread([this, trackIndex]
+    {
+        if (routingManager == nullptr) return;
+        auto* track = routingManager->getTrackNode(trackIndex);
+        if (track == nullptr) return;
 
-    if (projectModel != nullptr)
-    {
-        auto trackList = projectModel->getTrackListTree();
-        auto trackTree = trackList.getChild(trackIndex);
-        track->setAutomationTrees(trackTree.getChildWithName(IDs::AUTOMATION_LIST));
-    }
-    else
-    {
-        for (int i = 0; i < track->getNumAutomations(); ++i)
-            track->getAutomation(i).rebuildCache();
-    }
+        if (projectModel != nullptr)
+        {
+            auto trackList = projectModel->getTrackListTree();
+            auto trackTree = trackList.getChild(trackIndex);
+            track->setAutomationTrees(trackTree.getChildWithName(IDs::AUTOMATION_LIST));
+        }
+        else
+        {
+            for (int i = 0; i < track->getNumAutomations(); ++i)
+                track->getAutomation(i).rebuildCache();
+        }
+    });
 }
 
 void MainAudioProcessor::rebuildRoutingGraph(bool loading)
