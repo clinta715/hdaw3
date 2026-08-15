@@ -115,11 +115,16 @@ test_output*.txt
 /*.wav
 /*.mp3
 /*.hdaw
+/*.hdaw3
 /*.hdp
 /*.js
 /*.mjs
 /headless_err.txt
 /.tmp_probe/
 /auto-backups/
+
+# Test-project / audio-media scratch at the repo root (same root-scoped
+# rationale as the artifact block above).
+/compositions/
 
 
