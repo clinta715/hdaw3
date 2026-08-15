@@ -230,15 +230,12 @@ TEST(AudioPoolDedup, ClipAndSamplerShareOneDecodeAcrossRebuild)
     // rebuildRoutingGraph destroys the RoutingManager (and its Tracks) that
     // the synchronous rebuildTrackFX below mutates, so without this the test
     // races a use-after-free (crash inside Track::rebuildFXChain).
-    // This sleep only closes the FIRST window. addFxSlot/setSamplerSample
-    // (below) queue their OWN async rebuild that the explicit
-    // rebuildRoutingGraph() at the end does not drain — that second window is
-    // benign for this test (the assertions only need the sampler's synchronous
-    // loadSamplerState decode, not a settled graph), but a pending pump
-    // rebuild could still swap the RoutingManager behind the live-processor
-    // read. No drain seam exists (handleAsyncUpdate is private,
-    // graphRebuildPending has no accessor), so the sleep stays.
-    juce::Thread::sleep(50);
+    // This drain closes the FIRST window. addFxSlot/setSamplerSample (below)
+    // queue their OWN async rebuild — drained again just before the explicit
+    // rebuildRoutingGraph() below, closing that second window too, so the
+    // live-processor read cannot race a RoutingManager swap.
+    // Drain the coalesced async routing rebuild (deterministic; see AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
 
     // Sampler slot on track 0 with the same file.
     cmds.addFxSlot(0, "sampler", 0, "");
@@ -248,6 +245,8 @@ TEST(AudioPoolDedup, ClipAndSamplerShareOneDecodeAcrossRebuild)
     EXPECT_EQ(pool.getDecodeCount(), 1);    // one decode, three consumers
     EXPECT_EQ(pool.getEntryCount(), 1);
 
+    // Drain the coalesced async routing rebuild (deterministic; see AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
     // Rebuild the routing graph — the new processors must reacquire the
     // pool entry, not re-decode (Gate 1/10).
     engine.getMainProcessor()->rebuildRoutingGraph();
@@ -300,27 +299,30 @@ TEST(AudioPoolDedup, EngineWiresPoolAndRebuildReacquiresWithoutRedecode)
     // and AudioProcessorGraph prepares its nodes on ANOTHER async pass on the
     // message-pump thread (the render-sequence bake). The test thread is not
     // the message thread, so both passes must land before any engine-state
-    // assertion. There is no public drain seam (handleAsyncUpdate is private,
-    // graphRebuildPending has no accessor) — sleep, like
-    // ClipAndSamplerShareOneDecodeAcrossRebuild, and document each window.
-    juce::Thread::sleep(50);
+    // assertion. The drain flushes the coalesced rebuild ON the message
+    // thread, where graph.prepareToPlay's topology pass runs synchronously
+    // as well — both passes settle before it returns.
+    // Drain the coalesced async routing rebuild (deterministic; see AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
 
     auto& pool = engine.getProjectPool().getDecodedSoundPool();
     EXPECT_EQ(pool.getDecodeCount(), 1);
 
     // Second clip, same file → still one decode.
     engine.getProjectCommands().addAudioClip(2, 0.0, 1.0, path.toStdString(), "clipB");
-    juce::Thread::sleep(50);
+    // Drain the coalesced async routing rebuild (deterministic; see AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
     EXPECT_EQ(pool.getDecodeCount(), 1);
 
     // Rebuild the graph twice — decode count must NOT grow (Gate 1/10). The
     // synchronous rebuilds swap in fresh processors, but their prepareToPlay
     // (which acquires the pooled decode) runs in the graph's async bake on
-    // the pump thread — sleep again so the live processors are prepared
-    // before they are inspected.
+    // the pump thread — drain again so the bake and any queued updates land
+    // before the live processors are inspected.
     engine.getMainProcessor()->rebuildRoutingGraph();
     engine.getMainProcessor()->rebuildRoutingGraph();
-    juce::Thread::sleep(50);
+    // Drain the coalesced async routing rebuild (deterministic; see AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
     EXPECT_EQ(pool.getDecodeCount(), 1);
 
     // Live processors actually hold the shared buffer (not just the model).

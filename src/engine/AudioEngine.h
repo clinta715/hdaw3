@@ -106,6 +106,24 @@ public:
     bool isMidiNoteRecordArmed() const { return midiNoteRecordArmed.load(); }
     void recordMidiNoteEvent(int channel, int noteNumber, int velocity, bool isNoteOn, int64_t sample);
 
+    // Deterministic drain for the coalesced async routing rebuild.
+    //
+    // Clip/track add/remove listeners call triggerAsyncUpdate(); the message
+    // pump thread later dispatches handleAsyncUpdate() -> rebuildRoutingGraph().
+    // Callers on background threads (tests, tooling) that need the graph
+    // SETTLED before touching live processors should call this instead of
+    // sleeping: it marshals AsyncUpdater::handleUpdateNowIfNeeded() onto the
+    // message thread (the flush is documented main-thread-only), where the
+    // rebuild takes its already-serialized no-park path. Delivery is
+    // exactly-once (shouldDeliver atomic exchange) vs the pump's own
+    // dispatch, and a no-op when nothing is pending. Blocks until the
+    // rebuild COMPLETES.
+    //
+    // Caller contract: any thread EXCEPT the message thread, and must NOT
+    // hold a MessageManagerLock (callFunctionOnMessageThread jasserts).
+    // Calling on the message thread flushes inline (allowed, harmless).
+    void drainPendingRoutingRebuild();
+
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;

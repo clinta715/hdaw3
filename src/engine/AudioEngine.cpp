@@ -1292,6 +1292,25 @@ void AudioEngine::handleAsyncUpdate()
         mainProcessor->rebuildRoutingGraph();
 }
 
+void AudioEngine::drainPendingRoutingRebuild()
+{
+    auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+    if (mm == nullptr || mm->isThisTheMessageThread())
+    {
+        handleUpdateNowIfNeeded(); // inline flush: already the event thread
+        return;
+    }
+
+    struct Ctx { AudioEngine* engine; } ctx{ this };
+    mm->callFunctionOnMessageThread(
+        [](void* userData) -> void*
+        {
+            static_cast<Ctx*>(userData)->engine->handleUpdateNowIfNeeded();
+            return nullptr;
+        },
+        &ctx);
+}
+
 void AudioEngine::timerCallback()
 {
     if (transportManager.consumeAutoStopRequested())
