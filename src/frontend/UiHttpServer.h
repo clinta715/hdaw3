@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QtGlobal>
+#include <QHostAddress>
+#include <QString>
 #include <memory>
 
 class QTcpServer;
@@ -16,9 +18,10 @@ public:
     explicit UiHttpServer(quint16 wsPort);
     ~UiHttpServer();
 
-    // Bind to the given HTTP port on loopback. Returns false if the port is
-    // already in use. Idempotent: a second start() after stop() works.
-    bool start(quint16 port);
+    // Bind to the given HTTP port. Defaults to loopback. Returns false if the
+    // port is already in use. Idempotent: a second start() after stop() works.
+    bool start(quint16 port,
+               const QHostAddress& bindAddress = QHostAddress::LocalHost);
 
     // Stop listening and tear down the server.
     void stop();
@@ -26,8 +29,12 @@ public:
     // The actual bound port (handy if start(0) was used to pick a free port).
     quint16 port() const;
 
+    // The auth token. Empty when auth is disabled.
+    QString authToken() const;
+
 private:
     quint16 wsPort_;
+    QString authToken_;
     std::unique_ptr<QTcpServer> tcp_;
     std::unique_ptr<QHttpServer> server_;
 };
