@@ -130,6 +130,11 @@ void RoutingManager::rebuildFromValueTree()
     }
 }
 
+void RoutingManager::rebuildGraph()
+{
+    graph.rebuild();
+}
+
 std::unique_ptr<HDAW::Track> RoutingManager::buildTrackProcessor(int trackIndex, juce::ValueTree trackTree)
 {
     auto newTrack = std::make_unique<HDAW::Track>();
@@ -478,7 +483,8 @@ void RoutingManager::setSendBypassed(int trackIndex, int sendIndex, bool bypasse
         it->second.processor->setBypassed(bypassed);
 }
 
-void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree)
+void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree,
+                                          juce::AudioProcessorGraph::UpdateKind updateKind)
 {
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
     if (!clipList.isValid()) return;
@@ -489,7 +495,7 @@ void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackT
     auto crossfadeMap = computeTrackCrossfades(trackTree);
 
     for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
-        buildClipNode(trackIndex, ci, clipList.getChild(ci), crossfadeMap);
+        buildClipNode(trackIndex, ci, clipList.getChild(ci), crossfadeMap, updateKind);
 }
 
 RoutingManager::CrossfadeMap RoutingManager::computeTrackCrossfades(const juce::ValueTree& trackTree)
@@ -566,7 +572,8 @@ std::vector<ClipSourceProcessor::GainPoint> RoutingManager::computeMergedEnvelop
 
 void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
                                    const juce::ValueTree& clipTree,
-                                   const CrossfadeMap& crossfadeMap)
+                                   const CrossfadeMap& crossfadeMap,
+                                   juce::AudioProcessorGraph::UpdateKind updateKind)
 {
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt == trackNodes.end()) return;
@@ -636,14 +643,14 @@ void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
             }
         }
 
-        auto node = graph.addNode(std::move(clipProc));
+        auto node = graph.addNode(std::move(clipProc), std::nullopt, updateKind);
         audioClipNodes[{trackIndex, clipIndex}] = node;
         audioClipSources[{trackIndex, clipIndex}] =
             static_cast<ClipSourceProcessor*>(node->getProcessor());
 
         // Connect clip source → track input
-        graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
-        graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+        graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } }, updateKind);
+        graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } }, updateKind);
     }
     else if (clipType == "midi")
     {
@@ -662,7 +669,7 @@ void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
             trackChannel = trackList.getChild(trackIndex).getProperty(IDs::midiChannel, 1);
         clipProc->setMidiChannel(trackChannel);
 
-        auto node = graph.addNode(std::move(clipProc));
+        auto node = graph.addNode(std::move(clipProc), std::nullopt, updateKind);
         midiClipNodes[{trackIndex, clipIndex}] = node;
         midiClipSources[{trackIndex, clipIndex}] =
             static_cast<MidiClipProcessor*>(node->getProcessor());
@@ -671,15 +678,15 @@ void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
         // JUCE's AudioProcessorGraph requires explicit MIDI connections
         // just like audio connections — MIDI does NOT flow automatically.
         bool midiConn = graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
-                              { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+                              { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } }, updateKind);
 
         // Also connect stereo audio so JUCE's graph includes this node in
         // its processing order. Without an audio path to the output, the
         // graph skips the node entirely and processBlock is never called.
         // The audio buffer is silence (cleared in processBlock) — this is
         // just a topology requirement.
-        bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
-        bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+        bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } }, updateKind);
+        bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } }, updateKind);
 
         HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
             + " a0=" + juce::String(a0 ? 1 : 0)
@@ -689,7 +696,8 @@ void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
     }
 }
 
-void RoutingManager::addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree)
+void RoutingManager::addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree,
+                             juce::AudioProcessorGraph::UpdateKind updateKind)
 {
     // Incremental counterpart of the rebuild loop: adds ONE clip node to the
     // live graph (no graph.clear / prepareToPlay / reconnect). The shared
@@ -710,7 +718,7 @@ void RoutingManager::addClip(int trackIndex, int clipIndex, const juce::ValueTre
     // would.
     auto crossfadeMap = computeTrackCrossfades(trackTree);
 
-    buildClipNode(trackIndex, clipIndex, clipTree, crossfadeMap);
+    buildClipNode(trackIndex, clipIndex, clipTree, crossfadeMap, updateKind);
 
     // Re-push merged envelopes to sibling audio clips whose crossfade points
     // changed (the new clip may overlap them). Envelope re-push is the only
@@ -732,7 +740,8 @@ void RoutingManager::addClip(int trackIndex, int clipIndex, const juce::ValueTre
     }
 }
 
-void RoutingManager::removeClip(int trackIndex, int clipIndex)
+void RoutingManager::removeClip(int trackIndex, int clipIndex,
+                                juce::AudioProcessorGraph::UpdateKind updateKind)
 {
     // Incremental counterpart of the removeClipsForTrack loop: removes ONE clip
     // node + its live edges from the graph (no graph.clear / prepareToPlay /
@@ -765,16 +774,16 @@ void RoutingManager::removeClip(int trackIndex, int clipIndex)
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt != trackNodes.end() && node != nullptr)
     {
-        graph.removeConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
-        graph.removeConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+        graph.removeConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } }, updateKind);
+        graph.removeConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } }, updateKind);
         if (isMidi)
         {
             graph.removeConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
-                                     { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+                                     { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } }, updateKind);
         }
     }
     if (node != nullptr)
-        graph.removeNode(node.get());
+        graph.removeNode(node.get(), updateKind);
 
     // Erase the identity-map entries.
     if (isMidi)
@@ -810,8 +819,10 @@ void RoutingManager::removeClip(int trackIndex, int clipIndex)
     }
 }
 
-void RoutingManager::updateClipPlacement(int trackIndex, int clipIndex)
+void RoutingManager::updateClipPlacement(int trackIndex, int clipIndex,
+                                         juce::AudioProcessorGraph::UpdateKind updateKind)
 {
+    (void)updateKind; // No graph mutations in this path — only processor property pushes
     // Incremental placement-change path: re-read the clip's placement
     // properties from the ValueTree and re-push them to the live processor,
     // then recompute the track crossfades and re-apply merged envelopes to the

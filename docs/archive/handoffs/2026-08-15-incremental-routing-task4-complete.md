@@ -33,10 +33,11 @@
 - **T4-G3 default flipped**: unset/empty `HDAW_FORCE_INCREMENTAL_ROUTING` →
   incremental ON; `=0`/`false`/`FALSE` → full-rebuild path.
 - **T4-G4 suite + build green with default flipped**: `cmake --build build
-  --config Debug` succeeds; `hdaw_tests.exe` full suite **848/848 PASSED**
-  (162 suites, ~8 min), 5 pre-existing DISABLED, 0 failures. Every unflagged
+  --config Debug` succeeds; `hdaw_tests.exe` full suite **849/849 PASSED**
+  (163 suites, ~8 min), 5 pre-existing DISABLED, 0 failures. Every unflagged
   engine test now exercises the incremental path by default and still passes.
-  Incremental suites (15): Spike 3 + RemoveMove 3 + Engine 7 + AB 2, all PASS.
+  Incremental suites (16): Spike 3 + RemoveMove 3 + Engine 7 + AB 2 + Bake 1,
+  all PASS.
 
 ## Constraints / contracts now in force
 
@@ -56,13 +57,13 @@
 
 ## Known deviations / notes
 
-- T4-G1's "burst of 128 incremental adds" was run as a **32-clip batched burst**.
-  N separate `addClips` commands each trigger a message-thread synchronous graph
-  bake (`AudioProcessorGraph::addNode(UpdateKind::sync)`), so 128 per-op commands
-  are a lesson-6 time cliff, not a deadlock (pump thread 79.8 s CPU, test thread
-  waiting on `MessageManagerLock`). One batched `addClips` + one drain = one
-  tick. The latency/equivalence claim is fully proven at 32; a faster per-op
-  path would require `UpdateKind::none` + an end-of-drain rebuild (out of scope).
+- T4-G1's "burst of 128 incremental adds" was originally run as a **32-clip
+  batched burst** because 128 per-op commands were a lesson-6 time cliff
+  (pump thread ~80 s CPU). **Fixed** (2026-08-15): `UpdateKind::none` on
+  incremental graph mutations + one end-of-batch `graph.rebuild()` reduces
+  128 per-op drain to ~1.6 s. The `IncrementalRoutingBake.OneRebuildPerBatch128Ops`
+  test regresses this. The latency/equivalence claim is proven at both 32
+  (batched) and 128 (per-op with deferred bake).
 - `tests/CMakeLists.txt` is an explicit source list (no GLOB) — new test files
   must be registered or they silently never compile.
 
@@ -70,7 +71,11 @@
 
 The incremental-routing feature (Tasks 1-4) is **complete and shipped by
 default**. Remaining follow-ups are standing items, not gates:
-lesson-6 incremental-routing improvement (avoid N message-thread bakes for
-per-op commands), and the per-run pipe/shm namespace guard for plugin-isolation
-tests (lesson 20). Version bump (0.20.0) and release notes are separate work —
-see `README.md` feature history.
+~~lesson-6 incremental-routing improvement (avoid N message-thread bakes for
+per-op commands)~~ **DONE** (2026-08-15): `UpdateKind::none` on incremental
+graph mutations + one end-of-batch `graph.rebuild()`. 128 per-op drain now
+completes in ~1.6 s (was ~80 s). See
+`docs/handoffs/2026-08-15-incremental-routing-perop-bake-followup.md`.
+The per-run pipe/shm namespace guard for plugin-isolation tests (lesson 20)
+is still outstanding. Version bump (0.20.0) and release notes are separate
+work — see `README.md` feature history.

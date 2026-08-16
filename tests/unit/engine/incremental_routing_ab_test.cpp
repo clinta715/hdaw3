@@ -475,3 +475,71 @@ TEST(IncrementalRoutingAB, RealDeviceLatencyStable)
     // 9) Clean up the source WAV.
     sourceWav.deleteFile();
 }
+
+// G1 / lesson-6 fix — 128 per-op incremental adds. With UpdateKind::none on
+// each graph mutation and one end-of-batch rebuildGraph(), the total drain
+// must complete in bounded time (the old per-op sync bake would stall ~80s
+// for 128 ops). Each addClips call enqueues one PendingClipOp; the drain
+// applies all 128 with UpdateKind::none + a single rebuildGraph().
+TEST(IncrementalRoutingBake, OneRebuildPerBatch128Ops)
+{
+    AudioEngine on;
+    {
+        ScopedIncrementalFlag flag("1");
+        on.initialize();
+    }
+    ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_TRUE(ensureRoutingGraph(on));
+
+    juce::File sourceWav = writeSineWav(static_cast<int>(44100.0 * 0.2), 44100.0);
+    ASSERT_TRUE(sourceWav.existsAsFile());
+
+    constexpr int kNumClips = 128;
+
+    // Baseline graph latency.
+    const int graphLatencyBefore = on.getMainProcessor()->getRoutingGraphLatencySamples();
+
+    // Enqueue 128 separate per-op addClips calls. Each call modifies the
+    // ValueTree, enqueues one PendingClipOp, and returns immediately. The
+    // pump is parked so no drain fires during the loop.
+    {
+        const juce::MessageManagerLock pumpPark;
+        for (int i = 0; i < kNumClips; ++i)
+        {
+            double start = static_cast<double>(i) * 0.02;
+            on.getProjectCommands().addClips(
+                0, { start }, { 0.01 },
+                { "bake" + std::to_string(i) },
+                { sourceWav.getFullPathName().toStdString() });
+        }
+    }
+
+    // Drain the batch: all 128 ops apply with UpdateKind::none, then one
+    // end-of-batch rebuildGraph(). Measure wall-clock time — with the old
+    // per-op sync bake this would stall ~80s; with the fix it should be
+    // well under 30s.
+    const double t0 = juce::Time::getMillisecondCounterHiRes();
+    on.drainPendingRoutingRebuild();
+    const double t1 = juce::Time::getMillisecondCounterHiRes();
+    const double elapsedMs = t1 - t0;
+    std::cout << "[IncrementalRoutingBake] 128 per-op drain: " << elapsedMs << " ms" << std::endl;
+
+    ASSERT_TRUE(waitForGraphBake()) << "post-128-op graph bake timed out";
+
+    // Assert bounded wall-clock time (generous 30s ceiling vs old ~80s cliff).
+    EXPECT_LT(elapsedMs, 30000.0)
+        << "128 per-op drain exceeded 30s — UpdateKind::none not taking effect?";
+
+    // Assert all clips landed on the live graph.
+    auto* rm = on.getMainProcessor()->getRoutingManager();
+    ASSERT_NE(rm, nullptr);
+    EXPECT_EQ(static_cast<int>(rm->getAudioClipSources().size()), kNumClips)
+        << "not all 128 clips landed on the live graph";
+
+    // Latency gate: graph latency must remain unchanged (lesson 7).
+    const int graphLatencyAfter = on.getMainProcessor()->getRoutingGraphLatencySamples();
+    EXPECT_EQ(graphLatencyBefore, graphLatencyAfter)
+        << "graph latency shifted across 128 per-op burst (lesson 7)";
+
+    sourceWav.deleteFile();
+}

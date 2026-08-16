@@ -31,6 +31,9 @@ public:
     ~RoutingManager();
 
     void rebuildFromValueTree();
+    // Triggers a single graph rebuild (bake). Used by the incremental drain
+    // after applying a batch of ops with UpdateKind::none.
+    void rebuildGraph();
     void prebuildTracks();
     // Re-establish the master-bus → audio-output connections. Must be called
     // AFTER AudioProcessorGraph::prepareToPlay, which is when the audioOutput
@@ -59,7 +62,8 @@ public:
     // live graph without tearing it down. The clip must already be appended at
     // the end of the track's CLIP_LIST (clipIndex == last position) so the
     // existing (trackIndex, clipIndex) map keys stay valid.
-    void addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree);
+    void addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree,
+                 juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);
     // Incremental clip-removal path (Task 2): removes a single clip node + its
     // live edges from the graph without tearing it down, erases the identity
     // map entries, and re-applies crossfades to the remaining audio siblings
@@ -72,14 +76,16 @@ public:
     // MessageManagerLock for the duration — exactly mirroring
     // MainAudioProcessor::rebuildRoutingGraph. RoutingManager does NOT take
     // these locks itself.
-    void removeClip(int trackIndex, int clipIndex);
+    void removeClip(int trackIndex, int clipIndex,
+                    juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);
     // Incremental placement-change path (Task 2): re-reads the clip's
     // startTime/duration/offset/gain/fadeIn/fadeOut/looping/muted from the clip
     // ValueTree, re-pushes them to the live processor, and re-applies
     // crossfades to the moved clip + overlapping audio siblings. Move-within-
     // track only; cross-track moves and middle inserts route to full rebuild.
     // Same locking contract as removeClip.
-    void updateClipPlacement(int trackIndex, int clipIndex);
+    void updateClipPlacement(int trackIndex, int clipIndex,
+                             juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);
     void rebuildTrackFX(int trackIndex);
     void rebuildMidiTrackFX(int trackIndex);
     void setTrackMidiChannel(int trackIndex, int channel);
@@ -106,13 +112,15 @@ private:
     std::unique_ptr<HDAW::Track> buildTrackProcessor(int trackIndex, juce::ValueTree trackTree);
     void connectTrackToBus(int trackIndex, int busID);
     void connectBusToParent(int busID);
-    void rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree);
+    void rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree,
+                              juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);
     using CrossfadeMap = std::unordered_map<int, std::vector<ClipSourceProcessor::GainPoint>>;
     CrossfadeMap computeTrackCrossfades(const juce::ValueTree& trackTree);
     std::vector<ClipSourceProcessor::GainPoint> computeMergedEnvelopeForClip(
         const juce::ValueTree& clipTree, const CrossfadeMap& crossfadeMap);
     void buildClipNode(int trackIndex, int clipIndex, const juce::ValueTree& clipTree,
-                       const CrossfadeMap& crossfadeMap);
+                       const CrossfadeMap& crossfadeMap,
+                       juce::AudioProcessorGraph::UpdateKind updateKind = juce::AudioProcessorGraph::UpdateKind::sync);
     void removeSendsForTrack(int trackIndex);
     void removeClipsForTrack(int trackIndex);
 

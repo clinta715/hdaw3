@@ -1467,18 +1467,28 @@ void AudioEngine::drainPendingClipOps()
                 if (!clipTree.isValid()) break;
                 int currentIndex = clipList.indexOf(clipTree);
                 if (currentIndex < 0) break;
-                rm->addClip(op.trackIndex, currentIndex, clipTree);
+                rm->addClip(op.trackIndex, currentIndex, clipTree,
+                            juce::AudioProcessorGraph::UpdateKind::none);
                 break;
             }
             case PendingClipOp::Op::Remove:
-                rm->removeClip(op.trackIndex, op.clipIndex);
+                rm->removeClip(op.trackIndex, op.clipIndex,
+                               juce::AudioProcessorGraph::UpdateKind::none);
                 break;
             case PendingClipOp::Op::Place:
-                rm->updateClipPlacement(op.trackIndex, op.clipIndex);
+                rm->updateClipPlacement(op.trackIndex, op.clipIndex,
+                                        juce::AudioProcessorGraph::UpdateKind::none);
                 break;
             }
         }
     }
+
+    // End-of-batch rebuild: all incremental ops used UpdateKind::none to
+    // avoid per-op bakes. Trigger one synchronous rebuild now so the final
+    // topology bakes. This runs on the message thread (drain is dispatched
+    // by handleAsyncUpdate), so graph.rebuild() is safe without pump-park.
+    if (auto* rm = mainProcessor->getRoutingManager())
+        rm->rebuildGraph();
 
     // Auto-stop correctness: this path bypassed rebuildRoutingGraph, so refresh
     // projectEndSample from the live clip sources (lessons 5/15).

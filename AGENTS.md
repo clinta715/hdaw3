@@ -116,15 +116,16 @@ These cost real debugging time — read before touching the relevant area:
 5. **`projectEndSample` (auto-stop) goes stale on SPSC timing edits** because
    those don't rebuild the graph; it's recomputed in `processBlock` when a
    timing param changes. See `docs/realtime-safety.md`.
-6. **`rebuildRoutingGraph()` is O(project) per call.** Clip add/remove is
-   coalesced into one rebuild per message-loop tick (`AsyncUpdater`), but a
-   single rebuild still tears down and re-instantiates every clip/plugin — at
-   extreme bursts (128+ clips) it can stall ~30s. Incremental routing is the
-   remaining follow-up. For batched multi-clip ops that need slicing (ripple
-   delete, future insert-silence/duplicate-region), call the model-level
-   `ProjectModel::sliceClipAtTimes` directly — it does NOT rebuild — and do one
-   `rebuildRoutingGraph()` at the end; the command-layer `sliceClipAtTimes`
-   wrapper rebuilds per call, which defeats the coalescing.
+6. **`rebuildRoutingGraph()` is O(project) per call — incremental path avoids it.**
+   The full-rebuild path (`rebuildRoutingGraph`) tears down and re-instantiates
+   every clip/plugin. The **incremental path** (default ON, `HDAW_FORCE_INCREMENTAL_ROUTING`)
+   uses `RoutingManager::addClip/removeClip/updateClipPlacement` with
+   `UpdateKind::none` and one end-of-batch `graph.rebuild()`, keeping per-op
+   drain under ~2 s for 128 clips (was ~80 s). For batched multi-clip ops that
+   need slicing (ripple delete, insert-silence/duplicate-region), call the
+   model-level `ProjectModel::sliceClipAtTimes` directly — it does NOT rebuild —
+   and do one `rebuildRoutingGraph()` at the end; the command-layer
+   `sliceClipAtTimes` wrapper rebuilds per call, which defeats the coalescing.
 7. **Every audio engine change affects latency — evaluate it explicitly.**
    Any modification to `processBlock`, plugin graph topology, bus layout,
    buffer sizes, or signal-path length changes the overall input-to-output
@@ -340,7 +341,7 @@ These cost real debugging time — read before touching the relevant area:
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what
-keep the arrange view smooth and avoid the "black screen" cliff (lesson 6).
+keep the arrange view smooth and avoid the "black screen" cliff (lesson 6, now mitigated by incremental routing).
 
 1. **Consolidate RPC calls — one batch, not N loops.** A set of related
    mutations must be a single batch RPC (`addClips`, `removeClips`, `moveClips`,
@@ -362,8 +363,8 @@ keep the arrange view smooth and avoid the "black screen" cliff (lesson 6).
 3. **Don't re-walk the whole `ValueTree` to touch one node.** Use indexed access
    / `getChildWithProperty` and held references instead of full-tree scans per
    mutation. `rebuildRoutingGraph()` and `ReadModel` snapshot building are
-   O(project) and are the hot path to keep incremental (lesson 6 is the remaining
-   follow-up).
+   O(project) and are the hot path to keep incremental (the incremental routing
+   path, default ON, avoids `rebuildRoutingGraph` for clip add/remove/move).
 
 ## MCP feature parity
 
