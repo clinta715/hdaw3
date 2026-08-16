@@ -636,32 +636,37 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         graphLock.exit();
         graphRebuildPending.store(false, std::memory_order_release);
 
-        // Compute project end: the latest sample position across all clips.
-        // The transport auto-stops when it reaches this position (unless looping).
-        {
-            double sr = getSampleRate();
-            if (sr <= 0) sr = 44100.0;
-            int64_t maxEnd = 0;
-            if (routingManager) {
-                for (auto& kv : routingManager->getAudioClipSources())
-                {
-                    auto* clip = kv.second;
-                    if (clip->isLooping()) continue;   // looping clips don't bound the project
-                    double endSec = clip->getStartTime() + clip->getDuration();
-                    int64_t endSample = static_cast<int64_t>(endSec * sr);
-                    if (endSample > maxEnd) maxEnd = endSample;
-                }
-                for (auto& kv : routingManager->getMidiClipSources())
-                {
-                    auto* clip = kv.second;
-                    double endSec = clip->getStartTime() + clip->getDuration();
-                    int64_t endSample = static_cast<int64_t>(endSec * sr);
-                    if (endSample > maxEnd) maxEnd = endSample;
-                }
-            }
-            transportManager->setProjectEndSample(maxEnd);
-        }
+        recomputeProjectEndSample();
     }
+}
+
+void MainAudioProcessor::recomputeProjectEndSample()
+{
+    // Compute project end: the latest sample position across all clips.
+    // The transport auto-stops when it reaches this position (unless looping).
+    // Extracted from rebuildRoutingGraph so the incremental routing drain can
+    // refresh it after a batched clip mutation without a full rebuild.
+    if (routingManager == nullptr || transportManager == nullptr)
+        return;
+    double sr = getSampleRate();
+    if (sr <= 0) sr = 44100.0;
+    int64_t maxEnd = 0;
+    for (auto& kv : routingManager->getAudioClipSources())
+    {
+        auto* clip = kv.second;
+        if (clip->isLooping()) continue;   // looping clips don't bound the project
+        double endSec = clip->getStartTime() + clip->getDuration();
+        int64_t endSample = static_cast<int64_t>(endSec * sr);
+        if (endSample > maxEnd) maxEnd = endSample;
+    }
+    for (auto& kv : routingManager->getMidiClipSources())
+    {
+        auto* clip = kv.second;
+        double endSec = clip->getStartTime() + clip->getDuration();
+        int64_t endSample = static_cast<int64_t>(endSec * sr);
+        if (endSample > maxEnd) maxEnd = endSample;
+    }
+    transportManager->setProjectEndSample(maxEnd);
 }
 
 HDAW::LevelMeter& MainAudioProcessor::getMasterMeter()

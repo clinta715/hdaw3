@@ -76,6 +76,9 @@ add_executable(hdaw_tests
     unit/engine/rpc_surface_test.cpp
     unit/engine/project_metadata_test.cpp
     unit/engine/crossfade_test.cpp
+    unit/engine/incremental_routing_spike_test.cpp
+    unit/engine/incremental_routing_remove_move_test.cpp
+    unit/engine/incremental_routing_engine_test.cpp
     unit/engine/automation_test.cpp
     unit/engine/automation_units_test.cpp
     unit/engine/automation_mode_test.cpp

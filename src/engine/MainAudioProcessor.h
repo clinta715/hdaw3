@@ -47,6 +47,12 @@ public:
     void rebuildModulation(int trackIndex);
     void toggleFXEditor(int trackIndex, int slotIndex);
     void rebuildRoutingGraph(bool loading = false);
+    // Recomputes the transport auto-stop boundary (projectEndSample) from the
+    // live clip sources. Called by rebuildRoutingGraph after a full rebuild and
+    // by the incremental routing drain after a batched clip mutation (auto-stop
+    // correctness, AGENTS.md lessons 5/15). Safe off the audio thread; reads
+    // only clip processor state.
+    void recomputeProjectEndSample();
     void rebuildAutomationCache(int trackIndex);
     void updateClipGainEnvelope(int clipId, const std::vector<HDAW::ClipSourceProcessor::GainPoint>& points);
 

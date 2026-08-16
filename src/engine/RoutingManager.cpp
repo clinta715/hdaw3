@@ -4,6 +4,27 @@
 
 namespace HDAW {
 
+namespace {
+
+// Whether two gain-envelope point sets represent the same envelope. `a` may be
+// unsorted (the merge helper only sorts when crossfade points are present);
+// the processor stores the sorted canonical form, so sort a copy first.
+bool sameEnvelopePoints(std::vector<ClipSourceProcessor::GainPoint> a,
+                        const std::vector<ClipSourceProcessor::GainPoint>& b)
+{
+    std::sort(a.begin(), a.end(),
+        [](const auto& x, const auto& y) { return x.time < y.time; });
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        if (std::abs(a[i].time - b[i].time) >= 1e-6 || a[i].gain != b[i].gain)
+            return false;
+    }
+    return true;
+}
+
+} // namespace
+
 RoutingManager::RoutingManager(juce::AudioProcessorGraph& g, ProjectModel& model,
                                juce::AudioFormatManager& fm, HDAW::TransportManager& tm,
                                HDAW::PluginManager* pm, StretchCache* sc,
@@ -460,188 +481,396 @@ void RoutingManager::setSendBypassed(int trackIndex, int sendIndex, bool bypasse
 void RoutingManager::rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree)
 {
     auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
-    if (!clipList.isValid())
-        return;
+    if (!clipList.isValid()) return;
 
     auto trackIt = trackNodes.find(trackIndex);
     if (trackIt == trackNodes.end()) return;
 
+    auto crossfadeMap = computeTrackCrossfades(trackTree);
+
+    for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+        buildClipNode(trackIndex, ci, clipList.getChild(ci), crossfadeMap);
+}
+
+RoutingManager::CrossfadeMap RoutingManager::computeTrackCrossfades(const juce::ValueTree& trackTree)
+{
+    CrossfadeMap crossfadeMap;
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid())
+        return crossfadeMap;
+
     // Pre-compute crossfade envelope points for all audio clips on this track.
     // Crossfades are ephemeral (not stored in the project) — they're recomputed
     // on every graph rebuild so they always reflect the current clip layout.
-    std::unordered_map<int, std::vector<HDAW::ClipSourceProcessor::GainPoint>> crossfadeMap;
-    {
-        std::vector<CrossfadeEngine::ClipInfo> trackClips;
-        for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
-        {
-            auto ct = clipList.getChild(ci);
-            if (ct.getProperty(IDs::clipType, "audio").toString() != "audio")
-                continue;
-            trackClips.push_back({
-                static_cast<int>(ct.getProperty(IDs::clipID, 0)),
-                static_cast<double>(ct.getProperty(IDs::startTime, 0.0)),
-                static_cast<double>(ct.getProperty(IDs::duration, 0.0)),
-                static_cast<double>(ct.getProperty(IDs::fadeIn, 0.0)),
-                static_cast<double>(ct.getProperty(IDs::fadeOut, 0.0)),
-            });
-        }
-        std::sort(trackClips.begin(), trackClips.end(),
-            [](const auto& a, const auto& b) { return a.startSec < b.startSec; });
-
-        auto crossfades = CrossfadeEngine::computeCrossfades(trackClips, 0.01);
-        for (const auto& cf : crossfades)
-        {
-            if (cf.points.empty()) continue;
-            std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
-            gpts.reserve(cf.points.size());
-            for (const auto& p : cf.points)
-                gpts.push_back({ p.time, p.gain });
-            crossfadeMap[cf.clipId] = std::move(gpts);
-        }
-    }
-
+    std::vector<CrossfadeEngine::ClipInfo> trackClips;
     for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
     {
-        auto clipTree = clipList.getChild(ci);
-        juce::String clipType = clipTree.getProperty(IDs::clipType).toString();
+        auto ct = clipList.getChild(ci);
+        if (ct.getProperty(IDs::clipType, "audio").toString() != "audio")
+            continue;
+        trackClips.push_back({
+            static_cast<int>(ct.getProperty(IDs::clipID, 0)),
+            static_cast<double>(ct.getProperty(IDs::startTime, 0.0)),
+            static_cast<double>(ct.getProperty(IDs::duration, 0.0)),
+            static_cast<double>(ct.getProperty(IDs::fadeIn, 0.0)),
+            static_cast<double>(ct.getProperty(IDs::fadeOut, 0.0)),
+        });
+    }
+    std::sort(trackClips.begin(), trackClips.end(),
+        [](const auto& a, const auto& b) { return a.startSec < b.startSec; });
 
-        if (clipType == "audio")
+    auto crossfades = CrossfadeEngine::computeCrossfades(trackClips, 0.01);
+    for (const auto& cf : crossfades)
+    {
+        if (cf.points.empty()) continue;
+        std::vector<ClipSourceProcessor::GainPoint> gpts;
+        gpts.reserve(cf.points.size());
+        for (const auto& p : cf.points)
+            gpts.push_back({ p.time, p.gain });
+        crossfadeMap[cf.clipId] = std::move(gpts);
+    }
+    return crossfadeMap;
+}
+
+std::vector<ClipSourceProcessor::GainPoint> RoutingManager::computeMergedEnvelopeForClip(
+    const juce::ValueTree& clipTree, const CrossfadeMap& crossfadeMap)
+{
+    std::vector<ClipSourceProcessor::GainPoint> gpts;
+    auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
+    if (envTree.isValid())
+    {
+        auto envPoints = ProjectModel::getGainEnvelopePoints(envTree);
+        gpts.reserve(envPoints.size() + 4);
+        for (const auto& p : envPoints)
+            gpts.push_back({ p.time, p.gain });
+    }
+    // Merge crossfade points if this clip has any. Crossfade points are
+    // ephemeral (computed above, not stored in the project).
+    int clipId = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+    auto cfIt = crossfadeMap.find(clipId);
+    if (cfIt != crossfadeMap.end())
+    {
+        for (const auto& cp : cfIt->second)
+            gpts.push_back({ cp.time, cp.gain });
+        // Sort by time, then deduplicate (keep last value at each time).
+        std::sort(gpts.begin(), gpts.end(),
+            [](const auto& a, const auto& b) { return a.time < b.time; });
+        auto last = std::unique(gpts.begin(), gpts.end(),
+            [](const auto& a, const auto& b) {
+                return std::abs(a.time - b.time) < 1e-6;
+            });
+        gpts.erase(last, gpts.end());
+    }
+    return gpts;
+}
+
+void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
+                                   const juce::ValueTree& clipTree,
+                                   const CrossfadeMap& crossfadeMap)
+{
+    auto trackIt = trackNodes.find(trackIndex);
+    if (trackIt == trackNodes.end()) return;
+
+    juce::String clipType = clipTree.getProperty(IDs::clipType).toString();
+
+    if (clipType == "audio")
+    {
+        auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager, decodedPool, streamPool);
+
+        juce::String sourcePath = clipTree.getProperty(IDs::sourceFile).toString();
+        auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+        if (takeList.isValid() && takeList.getNumChildren() > 0)
         {
-            auto clipProc = std::make_unique<ClipSourceProcessor>(transportManager, formatManager, decodedPool, streamPool);
-
-            juce::String sourcePath = clipTree.getProperty(IDs::sourceFile).toString();
-            auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
-            if (takeList.isValid() && takeList.getNumChildren() > 0)
-            {
-                int activeIdx = static_cast<int>(clipTree.getProperty(IDs::activeTake, 0));
-                activeIdx = juce::jlimit(0, takeList.getNumChildren() - 1, activeIdx);
-                sourcePath = takeList.getChild(activeIdx).getProperty(IDs::sourceFile).toString();
-            }
-
-            clipProc->setSourceFile(sourcePath);
-            clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
-            clipProc->setDuration(clipTree.getProperty(IDs::duration));
-            clipProc->setOffset(clipTree.getProperty(IDs::offset));
-            clipProc->setGain(clipTree.getProperty(IDs::gain));
-            clipProc->setFadeIn(clipTree.getProperty(IDs::fadeIn));
-            clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
-            clipProc->setLooping(clipTree.getProperty(IDs::looping));
-            clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
-
-            // Push the per-clip gain envelope to the freshly-built processor,
-            // merged with any crossfade points for this clip. Crossfade points
-            // are ephemeral (computed above, not stored in the project).
-            {
-                std::vector<HDAW::ClipSourceProcessor::GainPoint> gpts;
-                auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
-                if (envTree.isValid())
-                {
-                    auto envPoints = ProjectModel::getGainEnvelopePoints(envTree);
-                    gpts.reserve(envPoints.size() + 4);
-                    for (const auto& p : envPoints)
-                        gpts.push_back({ p.time, p.gain });
-                }
-                // Merge crossfade points if this clip has any.
-                int clipId = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
-                auto cfIt = crossfadeMap.find(clipId);
-                if (cfIt != crossfadeMap.end())
-                {
-                    for (const auto& cp : cfIt->second)
-                        gpts.push_back({ cp.time, cp.gain });
-                    // Sort by time, then deduplicate (keep last value at each time).
-                    std::sort(gpts.begin(), gpts.end(),
-                        [](const auto& a, const auto& b) { return a.time < b.time; });
-                    auto last = std::unique(gpts.begin(), gpts.end(),
-                        [](const auto& a, const auto& b) {
-                            return std::abs(a.time - b.time) < 1e-6;
-                        });
-                    gpts.erase(last, gpts.end());
-                }
-                if (!gpts.empty())
-                    clipProc->setGainEnvelopePoints(gpts);
-            }
-
-            // Resolve stretch intent from the ValueTree. clipID lets the
-            // processor be identified by StretchCache; stretchRatio keys
-            // the cache lookup. If a matching rendered entry is ready,
-            // adopt it now so the realtime path reads the stretched audio
-            // from the first block. The processor retains its pooled preload
-            // (decoded_ from DecodedSoundPool) as a fallback (activeBuffer=0).
-            int cid = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
-            clipProc->setClipID(cid);
-            int stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
-            double ratio = static_cast<double>(clipTree.getProperty(IDs::stretchRatio, 1.0));
-            if (stretchMode != 0 && std::abs(ratio - 1.0) > 1e-4 && stretchCache != nullptr)
-            {
-                clipProc->setStretchRatio(ratio);
-                if (sampleRate > 0.0)
-                {
-                    if (const auto* entry = stretchCache->lookup(cid, ratio, sampleRate))
-                    {
-                        clipProc->adoptStretchedBuffer(
-                            entry->data[0].get(), entry->data[1].get(),
-                            entry->length, entry->channels);
-                    }
-                    else if (!loadingPhase)
-                    {
-                        // Cache miss: request a render. When it completes,
-                        // AudioEngine triggers rebuildRoutingGraph, which
-                        // rebuilds this clip and adopts the buffer.
-                        // Skip during loadingPhase to avoid cascading rebuilds.
-                        stretchCache->requestRender(cid, sourcePath, ratio,
-                                                    sampleRate, formatManager);
-                    }
-                }
-            }
-
-            auto node = graph.addNode(std::move(clipProc));
-            audioClipNodes[{trackIndex, ci}] = node;
-            audioClipSources[{trackIndex, ci}] =
-                static_cast<ClipSourceProcessor*>(node->getProcessor());
-
-            // Connect clip source → track input
-            graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
-            graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+            int activeIdx = static_cast<int>(clipTree.getProperty(IDs::activeTake, 0));
+            activeIdx = juce::jlimit(0, takeList.getNumChildren() - 1, activeIdx);
+            sourcePath = takeList.getChild(activeIdx).getProperty(IDs::sourceFile).toString();
         }
-        else if (clipType == "midi")
+
+        clipProc->setSourceFile(sourcePath);
+        clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
+        clipProc->setDuration(clipTree.getProperty(IDs::duration));
+        clipProc->setOffset(clipTree.getProperty(IDs::offset));
+        clipProc->setGain(clipTree.getProperty(IDs::gain));
+        clipProc->setFadeIn(clipTree.getProperty(IDs::fadeIn));
+        clipProc->setFadeOut(clipTree.getProperty(IDs::fadeOut));
+        clipProc->setLooping(clipTree.getProperty(IDs::looping));
+        clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
+
+        // Push the per-clip gain envelope to the freshly-built processor,
+        // merged with any crossfade points for this clip. Crossfade points
+        // are ephemeral (computed above, not stored in the project).
+        auto merged = computeMergedEnvelopeForClip(clipTree, crossfadeMap);
+        if (!merged.empty())
+            clipProc->setGainEnvelopePoints(merged);
+
+        // Resolve stretch intent from the ValueTree. clipID lets the
+        // processor be identified by StretchCache; stretchRatio keys
+        // the cache lookup. If a matching rendered entry is ready,
+        // adopt it now so the realtime path reads the stretched audio
+        // from the first block. The processor retains its pooled preload
+        // (decoded_ from DecodedSoundPool) as a fallback (activeBuffer=0).
+        int cid = static_cast<int>(clipTree.getProperty(IDs::clipID, -1));
+        clipProc->setClipID(cid);
+        int stretchMode = static_cast<int>(clipTree.getProperty(IDs::stretchMode, 0));
+        double ratio = static_cast<double>(clipTree.getProperty(IDs::stretchRatio, 1.0));
+        if (stretchMode != 0 && std::abs(ratio - 1.0) > 1e-4 && stretchCache != nullptr)
         {
-            auto clipProc = std::make_unique<MidiClipProcessor>(transportManager);
-            clipProc->setClipTree(clipTree);
-            clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
-            clipProc->setDuration(clipTree.getProperty(IDs::duration));
-            clipProc->setGain(clipTree.getProperty(IDs::gain));
-            clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
-            // Apply the track's MIDI channel to the new clip processor.
-            // The track's midiChannel defaults to 1; the user can change
-            // it via the track header.
-            int trackChannel = trackTree.getProperty(IDs::midiChannel, 1);
-            clipProc->setMidiChannel(trackChannel);
-
-            auto node = graph.addNode(std::move(clipProc));
-            midiClipNodes[{trackIndex, ci}] = node;
-            midiClipSources[{trackIndex, ci}] =
-                static_cast<MidiClipProcessor*>(node->getProcessor());
-
-            // Connect MIDI clip output → track MIDI input.
-            // JUCE's AudioProcessorGraph requires explicit MIDI connections
-            // just like audio connections — MIDI does NOT flow automatically.
-            bool midiConn = graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
-                                  { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
-
-            // Also connect stereo audio so JUCE's graph includes this node in
-            // its processing order. Without an audio path to the output, the
-            // graph skips the node entirely and processBlock is never called.
-            // The audio buffer is silence (cleared in processBlock) — this is
-            // just a topology requirement.
-            bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
-            bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
-
-            HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
-                + " a0=" + juce::String(a0 ? 1 : 0)
-                + " a1=" + juce::String(a1 ? 1 : 0)
-                + " clipOuts=" + juce::String(node->getProcessor()->getTotalNumOutputChannels())
-                + " trackIns=" + juce::String(trackIt->second->getProcessor()->getTotalNumInputChannels()));
+            clipProc->setStretchRatio(ratio);
+            if (sampleRate > 0.0)
+            {
+                if (const auto* entry = stretchCache->lookup(cid, ratio, sampleRate))
+                {
+                    clipProc->adoptStretchedBuffer(
+                        entry->data[0].get(), entry->data[1].get(),
+                        entry->length, entry->channels);
+                }
+                else if (!loadingPhase)
+                {
+                    // Cache miss: request a render. When it completes,
+                    // AudioEngine triggers rebuildRoutingGraph, which
+                    // rebuilds this clip and adopts the buffer.
+                    // Skip during loadingPhase to avoid cascading rebuilds.
+                    stretchCache->requestRender(cid, sourcePath, ratio,
+                                                sampleRate, formatManager);
+                }
+            }
         }
+
+        auto node = graph.addNode(std::move(clipProc));
+        audioClipNodes[{trackIndex, clipIndex}] = node;
+        audioClipSources[{trackIndex, clipIndex}] =
+            static_cast<ClipSourceProcessor*>(node->getProcessor());
+
+        // Connect clip source → track input
+        graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
+        graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+    }
+    else if (clipType == "midi")
+    {
+        auto clipProc = std::make_unique<MidiClipProcessor>(transportManager);
+        clipProc->setClipTree(clipTree);
+        clipProc->setStartTime(clipTree.getProperty(IDs::startTime));
+        clipProc->setDuration(clipTree.getProperty(IDs::duration));
+        clipProc->setGain(clipTree.getProperty(IDs::gain));
+        clipProc->setMuted(clipTree.getProperty(IDs::muted, false));
+        // Apply the track's MIDI channel to the new clip processor.
+        // The track's midiChannel defaults to 1; the user can change
+        // it via the track header.
+        int trackChannel = 1;
+        auto trackList = projectModel.getTrackListTree();
+        if (trackIndex < trackList.getNumChildren())
+            trackChannel = trackList.getChild(trackIndex).getProperty(IDs::midiChannel, 1);
+        clipProc->setMidiChannel(trackChannel);
+
+        auto node = graph.addNode(std::move(clipProc));
+        midiClipNodes[{trackIndex, clipIndex}] = node;
+        midiClipSources[{trackIndex, clipIndex}] =
+            static_cast<MidiClipProcessor*>(node->getProcessor());
+
+        // Connect MIDI clip output → track MIDI input.
+        // JUCE's AudioProcessorGraph requires explicit MIDI connections
+        // just like audio connections — MIDI does NOT flow automatically.
+        bool midiConn = graph.addConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                              { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+
+        // Also connect stereo audio so JUCE's graph includes this node in
+        // its processing order. Without an audio path to the output, the
+        // graph skips the node entirely and processBlock is never called.
+        // The audio buffer is silence (cleared in processBlock) — this is
+        // just a topology requirement.
+        bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
+        bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+
+        HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
+            + " a0=" + juce::String(a0 ? 1 : 0)
+            + " a1=" + juce::String(a1 ? 1 : 0)
+            + " clipOuts=" + juce::String(node->getProcessor()->getTotalNumOutputChannels())
+            + " trackIns=" + juce::String(trackIt->second->getProcessor()->getTotalNumInputChannels()));
+    }
+}
+
+void RoutingManager::addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree)
+{
+    // Incremental counterpart of the rebuild loop: adds ONE clip node to the
+    // live graph (no graph.clear / prepareToPlay / reconnect). The shared
+    // helpers keep construction and crossfade math identical to a full
+    // rebuild. Spike constraint: the new clip must be appended at the end of
+    // the track's CLIP_LIST (clipIndex == last position); middle inserts must
+    // shift the sibling (trackIndex, clipIndex) keys — Task 3 work alongside
+    // remove/move.
+    auto trackIt = trackNodes.find(trackIndex);
+    if (trackIt == trackNodes.end()) return;
+
+    auto trackList = projectModel.getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(trackIndex);
+
+    // Recompute crossfades over ALL clips on the track (including the new one)
+    // so the new clip crossfades against siblings exactly as a full rebuild
+    // would.
+    auto crossfadeMap = computeTrackCrossfades(trackTree);
+
+    buildClipNode(trackIndex, clipIndex, clipTree, crossfadeMap);
+
+    // Re-push merged envelopes to sibling audio clips whose crossfade points
+    // changed (the new clip may overlap them). Envelope re-push is the only
+    // sibling mutation an incremental add needs — the sibling nodes stay live.
+    // Skipped when unchanged, so an unaffected sibling's processor state is
+    // preserved bit-for-bit.
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid()) return;
+    for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+    {
+        if (ci == clipIndex) continue;
+        auto sibling = clipList.getChild(ci);
+        if (sibling.getProperty(IDs::clipType, "audio").toString() != "audio") continue;
+        auto sIt = audioClipSources.find({trackIndex, ci});
+        if (sIt == audioClipSources.end()) continue;
+        auto merged = computeMergedEnvelopeForClip(sibling, crossfadeMap);
+        if (!sameEnvelopePoints(merged, sIt->second->getGainEnvelopePoints()))
+            sIt->second->setGainEnvelopePoints(merged);
+    }
+}
+
+void RoutingManager::removeClip(int trackIndex, int clipIndex)
+{
+    // Incremental counterpart of the removeClipsForTrack loop: removes ONE clip
+    // node + its live edges from the graph (no graph.clear / prepareToPlay /
+    // reconnect). The clip must already be removed from the track's CLIP_LIST
+    // (crossfades are recomputed back from the model tree), and should be the
+    // LAST child so the (trackIndex, clipIndex) keys of the remaining clips
+    // stay valid. Callers hold graphLock (+ pump-park off the message thread).
+    const std::pair<int, int> key{trackIndex, clipIndex};
+
+    juce::AudioProcessorGraph::Node::Ptr node;
+    bool isMidi = false;
+    auto audioIt = audioClipNodes.find(key);
+    if (audioIt != audioClipNodes.end())
+    {
+        node = audioIt->second;
+    }
+    else
+    {
+        auto midiIt = midiClipNodes.find(key);
+        if (midiIt == midiClipNodes.end())
+            return; // no-op: identity key absent
+        node = midiIt->second;
+        isMidi = true;
+    }
+
+    // Drop the live edges first (audio clip→track: two connections; midi
+    // clip→track: the MIDI edge + the two audio stubs added by buildClipNode),
+    // then the node. removeNode also disconnects internally, but removing the
+    // edges explicitly keeps the teardown symmetric with the construction.
+    auto trackIt = trackNodes.find(trackIndex);
+    if (trackIt != trackNodes.end() && node != nullptr)
+    {
+        graph.removeConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } });
+        graph.removeConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } });
+        if (isMidi)
+        {
+            graph.removeConnection({ { node->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                                     { trackIt->second->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+        }
+    }
+    if (node != nullptr)
+        graph.removeNode(node.get());
+
+    // Erase the identity-map entries.
+    if (isMidi)
+    {
+        midiClipNodes.erase(key);
+        midiClipSources.erase(key);
+    }
+    else
+    {
+        audioClipNodes.erase(key);
+        audioClipSources.erase(key);
+    }
+
+    // Recompute crossfades over the REMAINING clips and re-push merged
+    // envelopes to the surviving audio siblings whose points changed (the
+    // removed clip may have overlapped them). Skipped when unchanged, so an
+    // unaffected sibling's processor state is preserved bit-for-bit.
+    auto trackList = projectModel.getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(trackIndex);
+    auto crossfadeMap = computeTrackCrossfades(trackTree);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid()) return;
+    for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+    {
+        auto sibling = clipList.getChild(ci);
+        if (sibling.getProperty(IDs::clipType, "audio").toString() != "audio") continue;
+        auto sIt = audioClipSources.find({trackIndex, ci});
+        if (sIt == audioClipSources.end()) continue;
+        auto merged = computeMergedEnvelopeForClip(sibling, crossfadeMap);
+        if (!sameEnvelopePoints(merged, sIt->second->getGainEnvelopePoints()))
+            sIt->second->setGainEnvelopePoints(merged);
+    }
+}
+
+void RoutingManager::updateClipPlacement(int trackIndex, int clipIndex)
+{
+    // Incremental placement-change path: re-read the clip's placement
+    // properties from the ValueTree and re-push them to the live processor,
+    // then recompute the track crossfades and re-apply merged envelopes to the
+    // moved clip + overlapping siblings. This closes the gap where the SPSC
+    // clip-param path (AudioEngine) pushes properties but never recomputes
+    // crossfades on a placement change. Move-within-track only; structural
+    // changes (cross-track move, middle insert) route to full rebuild.
+    // Callers hold graphLock (+ pump-park off the message thread).
+    auto trackList = projectModel.getTrackListTree();
+    if (trackIndex >= trackList.getNumChildren()) return;
+    auto trackTree = trackList.getChild(trackIndex);
+    auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+    if (!clipList.isValid() || clipIndex >= clipList.getNumChildren()) return;
+    auto clipTree = clipList.getChild(clipIndex);
+    if (!clipTree.isValid()) return;
+
+    const std::pair<int, int> key{trackIndex, clipIndex};
+    juce::String clipType = clipTree.getProperty(IDs::clipType).toString();
+    if (clipType == "audio")
+    {
+        auto audioIt = audioClipSources.find(key);
+        if (audioIt == audioClipSources.end()) return;
+        auto* clip = audioIt->second;
+        clip->setStartTime(clipTree.getProperty(IDs::startTime));
+        clip->setDuration(clipTree.getProperty(IDs::duration));
+        clip->setOffset(clipTree.getProperty(IDs::offset));
+        clip->setGain(clipTree.getProperty(IDs::gain));
+        clip->setFadeIn(clipTree.getProperty(IDs::fadeIn));
+        clip->setFadeOut(clipTree.getProperty(IDs::fadeOut));
+        clip->setLooping(clipTree.getProperty(IDs::looping));
+        clip->setMuted(clipTree.getProperty(IDs::muted, false));
+    }
+    else if (clipType == "midi")
+    {
+        auto midiIt = midiClipSources.find(key);
+        if (midiIt == midiClipSources.end()) return;
+        auto* clip = midiIt->second;
+        clip->setStartTime(clipTree.getProperty(IDs::startTime));
+        clip->setDuration(clipTree.getProperty(IDs::duration));
+        clip->setGain(clipTree.getProperty(IDs::gain));
+        clip->setMuted(clipTree.getProperty(IDs::muted, false));
+    }
+    else
+    {
+        return;
+    }
+
+    // Recompute the track crossfades over ALL clips and re-push merged
+    // envelopes to the moved clip + every audio sibling whose points changed.
+    auto crossfadeMap = computeTrackCrossfades(trackTree);
+    for (int ci = 0; ci < clipList.getNumChildren(); ++ci)
+    {
+        auto c = clipList.getChild(ci);
+        if (c.getProperty(IDs::clipType, "audio").toString() != "audio") continue;
+        auto sIt = audioClipSources.find({trackIndex, ci});
+        if (sIt == audioClipSources.end()) continue;
+        auto merged = computeMergedEnvelopeForClip(c, crossfadeMap);
+        if (!sameEnvelopePoints(merged, sIt->second->getGainEnvelopePoints()))
+            sIt->second->setGainEnvelopePoints(merged);
     }
 }
 

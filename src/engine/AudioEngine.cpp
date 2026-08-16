@@ -1,6 +1,7 @@
 #include "AudioEngine.h"
 #include <juce_events/juce_events.h>
 #include <QSettings>
+#include <cstdlib>
 #include <cmath>
 #include "../common/SettingsKeys.h"
 #include "../common/DebugLog.h"
@@ -34,6 +35,16 @@ int modulationTrackIndexOf(const juce::ValueTree& tree)
     int idx = trackList.indexOf(trackTree);
     return idx;
 }
+
+// Index of a TRACK ValueTree within the project's track list (-1 if absent).
+// Bounded single-level scan of the track list — never a project-wide walk.
+int trackIndexOf(const juce::ValueTree& trackTree, const juce::ValueTree& trackList)
+{
+    if (!trackTree.isValid() || !trackTree.hasType(IDs::TRACK)) return -1;
+    for (int t = 0; t < trackList.getNumChildren(); ++t)
+        if (trackList.getChild(t) == trackTree) return t;
+    return -1;
+}
 } // namespace
 
 AudioEngine::AudioEngine()
@@ -49,6 +60,16 @@ AudioEngine::~AudioEngine()
 }
 void AudioEngine::initialize()
 {
+    // Incremental routing mode (Task 3): read ONCE at startup, default OFF.
+    // Precedent: FrontendTreeWatcher.cpp:25-29 / PluginManager.cpp:34,68.
+    incrementalEnabled_ = []() {
+        const char* v = std::getenv("HDAW_FORCE_INCREMENTAL_ROUTING");
+        if (v == nullptr || v[0] == '\0') return false;
+        return v[0] != '0' && v[0] != 'f' && v[0] != 'F';
+    }();
+    if (incrementalEnabled_)
+        HDAW_LOG("Routing", "HDAW_FORCE_INCREMENTAL_ROUTING set — incremental clip routing enabled");
+
     // Link bridge, project model, and format manager to processor
     mainProcessor->setBridge(&spscBridge);
     mainProcessor->setProjectModel(&projectModel);
@@ -872,6 +893,25 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     {
                         ParamUpdate update{ t, paramID, value, c };
                         spscBridge.pushUpdate(update);
+                        if (incrementalEnabled_
+                            && (property == IDs::startTime
+                                || property == IDs::duration
+                                || property == IDs::offset))
+                        {
+                            // Placement changes ride the SPSC path today but
+                            // never recompute crossfades on the live graph.
+                            // Enqueue a Place op so the incremental drain
+                            // re-pushes placement AND re-applies crossfades
+                            // (updateClipPlacement), closing that gap (T3-G2).
+                            enqueueClipOp(PendingClipOp::Op::Place, t, c,
+                                static_cast<int>(treeWhosePropertyHasChanged.getProperty(IDs::clipID, -1)),
+                                false);
+                            // A placement-only change (move) must also wake the
+                            // drain: unlike add/remove, the child listener never
+                            // fired, so without this the queued Place op would
+                            // sit until an unrelated event triggered a rebuild.
+                            triggerAsyncUpdate();
+                        }
                         break;
                     }
                 }
@@ -1129,18 +1169,40 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
     if (childWhichHasBeenAdded.hasType(IDs::CLIP) && mainProcessor != nullptr)
     {
         HDAW_LOG("DIAG", "valueTreeChildAdded: new CLIP, scheduling routing graph rebuild");
+        if (incrementalEnabled_ && parentTree.hasType(IDs::CLIP_LIST))
+        {
+            // Capture the op identity at listener time (bounded single-track
+            // lookup). Append-adds are incremental-safe — the captured
+            // (trackIndex, clipIndex) keys stay valid because appends never
+            // shift earlier siblings. Any middle insert invalidates sibling
+            // keys → structural (full rebuild).
+            int trackIndex = trackIndexOf(parentTree.getParent(),
+                                          projectModel.getTrackListTree());
+            int clipIndex = parentTree.indexOf(childWhichHasBeenAdded);
+            if (trackIndex >= 0 && clipIndex >= 0)
+            {
+                const bool isAppend = (clipIndex == parentTree.getNumChildren() - 1);
+                enqueueClipOp(PendingClipOp::Op::Add, trackIndex, clipIndex,
+                              static_cast<int>(childWhichHasBeenAdded.getProperty(IDs::clipID, -1)),
+                              !isAppend);
+            }
+        }
         triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
     if (childWhichHasBeenAdded.hasType(IDs::TRACK) && mainProcessor != nullptr)
     {
         HDAW_LOG("DIAG", "valueTreeChildAdded: new TRACK, scheduling routing graph rebuild");
+        if (incrementalEnabled_)
+        {
+            std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+            forceFullRebuild_ = true; // track add is structural
+        }
         triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
 }
 
 void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
 {
-    juce::ignoreUnused(indexFromWhichItWasRemoved);
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
 
@@ -1273,6 +1335,26 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
             }
         }
 
+        if (incrementalEnabled_ && parentTree.hasType(IDs::CLIP_LIST))
+        {
+            // Record the removal AFTER ghost cleanup so the captured index is
+            // final. A removal NOT at the last position shifts sibling
+            // (trackIndex, clipIndex) keys → structural (full rebuild). The
+            // common removeClips / undo-of-add path removes the last clip per
+            // step, so those are incremental-safe.
+            int trackIndex = trackIndexOf(parentTree.getParent(),
+                                          projectModel.getTrackListTree());
+            if (trackIndex >= 0 && indexFromWhichItWasRemoved >= 0)
+            {
+                const bool isStructural =
+                    (indexFromWhichItWasRemoved != parentTree.getNumChildren());
+                enqueueClipOp(PendingClipOp::Op::Remove, trackIndex,
+                              indexFromWhichItWasRemoved,
+                              static_cast<int>(childWhichHasBeenRemoved.getProperty(IDs::clipID, -1)),
+                              isStructural);
+            }
+        }
+
         if (mainProcessor != nullptr)
         {
             HDAW_LOG("DIAG", "valueTreeChildRemoved: CLIP removed, scheduling routing graph rebuild");
@@ -1282,6 +1364,11 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     if (childWhichHasBeenRemoved.hasType(IDs::TRACK) && mainProcessor != nullptr)
     {
         HDAW_LOG("DIAG", "valueTreeChildRemoved: TRACK removed, scheduling routing graph rebuild");
+        if (incrementalEnabled_)
+        {
+            std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+            forceFullRebuild_ = true; // track removal is structural
+        }
         triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
 }
@@ -1291,8 +1378,109 @@ void AudioEngine::handleAsyncUpdate()
     // Runs on the message thread. Any number of clip/track add/remove events
     // that called triggerAsyncUpdate() during the same tick collapse into this
     // single rebuild.
-    if (mainProcessor != nullptr)
+    if (mainProcessor == nullptr)
+        return;
+
+    if (incrementalEnabled_)
+    {
+        drainPendingClipOps();
+        return;
+    }
+
+    mainProcessor->rebuildRoutingGraph();
+}
+
+void AudioEngine::enqueueClipOp(PendingClipOp::Op op, int trackIndex, int clipIndex,
+                                int clipID, bool isStructural)
+{
+    if (!incrementalEnabled_) return;
+    std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+    if (isStructural)
+    {
+        // A single structural op invalidates every captured (trackIndex,
+        // clipIndex) identity → the drain must full-rebuild.
+        forceFullRebuild_ = true;
+        return;
+    }
+    pendingClipOps_.push_back({ op, trackIndex, clipIndex, clipID });
+}
+
+void AudioEngine::drainPendingClipOps()
+{
+    // Runs on the message thread (dispatched by handleAsyncUpdate). Applies the
+    // coalesced clip ops captured at listener time to the live graph under ONE
+    // graphLock hold (T3-G3), mirroring rebuildRoutingGraph's message-thread
+    // no-park path. Any structural event → full rebuildRoutingGraph (queue
+    // discarded). The queue is written on command threads and drained here, so
+    // it is mutex-guarded; triggerAsyncUpdate already bridges the threads.
+    std::vector<PendingClipOp> ops;
+    bool forceFull = false;
+    {
+        std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+        ops.swap(pendingClipOps_);
+        forceFull = forceFullRebuild_;
+        forceFullRebuild_ = false;
+    }
+
+    if (mainProcessor == nullptr)
+        return;
+
+    if (forceFull)
+    {
+        ++fullRebuilds_;
         mainProcessor->rebuildRoutingGraph();
+        return;
+    }
+
+    auto* rm = mainProcessor->getRoutingManager();
+    if (rm == nullptr || ops.empty())
+        return; // no live graph or nothing to apply
+
+    incrementalOpsApplied_ += static_cast<uint64_t>(ops.size());
+
+    {
+        juce::SpinLock::ScopedLockType graphLockScope(mainProcessor->getGraphLock());
+
+        for (const auto& op : ops)
+        {
+            if (op.trackIndex < 0 || op.clipIndex < 0)
+                continue;
+
+            switch (op.op)
+            {
+            case PendingClipOp::Op::Add:
+            {
+                // The clip was appended to the end of the track's CLIP_LIST
+                // (append-only is the incremental-safe contract, so its index
+                // is stable). Re-derive the clip within ONE track's CLIP_LIST
+                // by ID (bounded — never a project-wide scan); if a later op
+                // in the batch removed it, skip (a structural remove would
+                // already have forced a full rebuild).
+                auto trackList = projectModel.getTrackListTree();
+                if (op.trackIndex >= trackList.getNumChildren()) break;
+                auto clipList = trackList.getChild(op.trackIndex)
+                                    .getChildWithName(IDs::CLIP_LIST);
+                if (!clipList.isValid()) break;
+                auto clipTree = clipList.getChildWithProperty(IDs::clipID, op.clipID);
+                if (!clipTree.isValid()) break;
+                int currentIndex = clipList.indexOf(clipTree);
+                if (currentIndex < 0) break;
+                rm->addClip(op.trackIndex, currentIndex, clipTree);
+                break;
+            }
+            case PendingClipOp::Op::Remove:
+                rm->removeClip(op.trackIndex, op.clipIndex);
+                break;
+            case PendingClipOp::Op::Place:
+                rm->updateClipPlacement(op.trackIndex, op.clipIndex);
+                break;
+            }
+        }
+    }
+
+    // Auto-stop correctness: this path bypassed rebuildRoutingGraph, so refresh
+    // projectEndSample from the live clip sources (lessons 5/15).
+    mainProcessor->recomputeProjectEndSample();
 }
 
 void AudioEngine::drainPendingRoutingRebuild()

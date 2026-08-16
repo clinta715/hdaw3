@@ -18,8 +18,10 @@
 #include "MidiServiceImpl.h"
 #include "../model/ProjectModel.h"
 #include <functional>
+#include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -124,6 +126,30 @@ public:
     // Calling on the message thread flushes inline (allowed, harmless).
     void drainPendingRoutingRebuild();
 
+    // Incremental-routing mode (Task 3): ON when HDAW_FORCE_INCREMENTAL_ROUTING
+    // was non-zero/non-'f' at engine startup (read once in initialize()).
+    // Exposed so tests can prove the flag plumbing (T3-G4).
+    bool isIncrementalRoutingEnabled() const { return incrementalEnabled_; }
+
+    // Test seams (read-only; cumulative counters are settled once
+    // drainPendingRoutingRebuild() returns, because the drain is exactly-once).
+    // Prove the drain took the incremental branch (ops applied under one
+    // graphLock hold, T3-G3) vs the full-rebuild fallback (T3-G2) and that the
+    // queue emptied. No-ops when the flag is OFF, so a zero-change regression
+    // is visible as a zero delta on both counters.
+    uint64_t debugIncrementalOpsApplied() const { return incrementalOpsApplied_; }
+    uint64_t debugFullRebuilds() const { return fullRebuilds_; }
+    int debugPendingClipOpCount() const
+    {
+        std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+        return static_cast<int>(pendingClipOps_.size());
+    }
+    bool debugForceFullRebuildFlag() const
+    {
+        std::lock_guard<std::mutex> lock(pendingOpsMutex_);
+        return forceFullRebuild_;
+    }
+
 private:
     // ValueTree::Listener overrides
     void valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHasChanged, const juce::Identifier& property) override;
@@ -142,6 +168,33 @@ private:
 
     void rebuildTempoMap();
     void pushEffectiveMuteState();
+
+    // Task 3 — incremental clip-mutation queue (behind HDAW_FORCE_INCREMENTAL_ROUTING).
+    // The ValueTree listeners capture coalesced clip ops at mutation time; the
+    // pump thread's handleAsyncUpdate applies them to the live graph under one
+    // graphLock hold instead of tearing down the whole graph. Identity
+    // (trackIndex/clipIndex) is captured at listener time and stays stable
+    // because only append-adds / last-position removes are incremental-safe;
+    // any structural event sets forceFullRebuild_ so the drain falls back to a
+    // full rebuildRoutingGraph (T3-G1/G2/G3).
+    struct PendingClipOp
+    {
+        enum class Op { Add, Remove, Place };
+        Op op = Op::Place;
+        int trackIndex = -1;
+        int clipIndex = -1;
+        int clipID = -1;
+    };
+    void enqueueClipOp(PendingClipOp::Op op, int trackIndex, int clipIndex,
+                       int clipID, bool isStructural);
+    void drainPendingClipOps();
+    std::vector<PendingClipOp> pendingClipOps_;
+    mutable std::mutex pendingOpsMutex_;
+    bool forceFullRebuild_ = false;
+    bool incrementalEnabled_ = false;
+    // Test seams (see debug* getters above).
+    uint64_t incrementalOpsApplied_ = 0;
+    uint64_t fullRebuilds_ = 0;
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;

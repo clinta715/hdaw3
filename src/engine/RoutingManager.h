@@ -12,6 +12,7 @@
 #include "StretchCache.h"
 #include "../model/ProjectModel.h"
 #include <map>
+#include <unordered_map>
 
 namespace HDAW {
 
@@ -54,6 +55,31 @@ public:
 
     void updateClipParam(int trackIndex, int clipIndex, int paramID, float value);
     void switchClipTake(int trackIndex, int clipIndex, const juce::String& sourceFile);
+    // Incremental clip-add path (spike scope): adds a single clip node to the
+    // live graph without tearing it down. The clip must already be appended at
+    // the end of the track's CLIP_LIST (clipIndex == last position) so the
+    // existing (trackIndex, clipIndex) map keys stay valid.
+    void addClip(int trackIndex, int clipIndex, const juce::ValueTree& clipTree);
+    // Incremental clip-removal path (Task 2): removes a single clip node + its
+    // live edges from the graph without tearing it down, erases the identity
+    // map entries, and re-applies crossfades to the remaining audio siblings
+    // via the shared helpers. The clip must already be removed from the track's
+    // CLIP_LIST before this call (the crossfade recompute reads back from the
+    // model tree), and the removed clip should be the LAST child so the
+    // (trackIndex, clipIndex) keys of the remaining clips stay valid.
+    // LOCKING CONTRACT (all incremental clip mutations): callers must hold
+    // graphLock and, when not on the JUCE message thread, park the pump via
+    // MessageManagerLock for the duration — exactly mirroring
+    // MainAudioProcessor::rebuildRoutingGraph. RoutingManager does NOT take
+    // these locks itself.
+    void removeClip(int trackIndex, int clipIndex);
+    // Incremental placement-change path (Task 2): re-reads the clip's
+    // startTime/duration/offset/gain/fadeIn/fadeOut/looping/muted from the clip
+    // ValueTree, re-pushes them to the live processor, and re-applies
+    // crossfades to the moved clip + overlapping audio siblings. Move-within-
+    // track only; cross-track moves and middle inserts route to full rebuild.
+    // Same locking contract as removeClip.
+    void updateClipPlacement(int trackIndex, int clipIndex);
     void rebuildTrackFX(int trackIndex);
     void rebuildMidiTrackFX(int trackIndex);
     void setTrackMidiChannel(int trackIndex, int channel);
@@ -81,6 +107,12 @@ private:
     void connectTrackToBus(int trackIndex, int busID);
     void connectBusToParent(int busID);
     void rebuildClipsForTrack(int trackIndex, juce::ValueTree trackTree);
+    using CrossfadeMap = std::unordered_map<int, std::vector<ClipSourceProcessor::GainPoint>>;
+    CrossfadeMap computeTrackCrossfades(const juce::ValueTree& trackTree);
+    std::vector<ClipSourceProcessor::GainPoint> computeMergedEnvelopeForClip(
+        const juce::ValueTree& clipTree, const CrossfadeMap& crossfadeMap);
+    void buildClipNode(int trackIndex, int clipIndex, const juce::ValueTree& clipTree,
+                       const CrossfadeMap& crossfadeMap);
     void removeSendsForTrack(int trackIndex);
     void removeClipsForTrack(int trackIndex);
 
