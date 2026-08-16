@@ -9,6 +9,11 @@
 > flip default). Each task has independent success gates; the feature stays
 > behind `HDAW_FORCE_INCREMENTAL_ROUTING` (default OFF) until Task 4 flips it.
 
+> **Status (2026-08-15):** Tasks 2-4 complete. Default is now incremental **ON**;
+> `HDAW_FORCE_INCREMENTAL_ROUTING=0` is the full-rebuild escape hatch. All gates
+> green: 13 equivalence tests, real-device latency 0-shift, bit-identical A/B
+> render, 848/848 suite with default flipped.
+
 ## Goal
 
 Give HDAW an incremental clip-mutation path on the live `AudioProcessorGraph`
@@ -38,10 +43,10 @@ flipped on after latency/quality equivalence is proven.
 - [x] T3-G7 **Full suite green** (same command as T2-G6) + the `IncrementalRoutingSpike` suite still passes.
 
 ### Task 4 — latency/quality gates + flip default
-- [ ] T4-G1 **Latency measured on real device I/O.** `getTotalLatency()`/`getLatencySamples()` recorded before/after a burst of incremental adds on the real audio device — equal to the full-rebuild path (lessons 7). No topology latency shift (spike already showed 0→0 on the standalone graph).
-- [ ] T4-G2 **Quality A/B on real device.** Critical-listening A/B between incremental and full-rebuild paths on reference material: no clicks/pops/DC/phase artifacts (lesson 8).
-- [ ] T4-G3 **Default flipped.** Default behavior becomes incremental (flag default ON or removed), `HDAW_FORCE_FULL_SYNC`-style kill-switch retained to force the old path.
-- [ ] T4-G4 **Suite + build green with the default flipped.** Same commands as T2-G6 plus `cmake --build build --config Debug`.
+- [x] T4-G1 **Latency measured on real device I/O.** `getTotalLatency()`/`getLatencySamples()` recorded before/after a burst of incremental adds on the real audio device — equal to the full-rebuild path (lessons 7). No topology latency shift (spike already showed 0→0 on the standalone graph). **Measured (Focusrite, active console): device output latency `3840→3840` (and `441→441` on rerun), graph latency `0→0`, output channels `2→2`, OFF-path graph latency `0`** — `IncrementalRoutingAB.RealDeviceLatencyStable`.
+- [x] T4-G2 **Quality A/B on real device.** Critical-listening A/B between incremental and full-rebuild paths on reference material: no clicks/pops/DC/phase artifacts (lesson 8). **Rendered both paths through the production `ExportManager` pipeline (overlapping crossfaded clips + move + last-remove): max diff = 0 (bit-identical); user A/B-confirmed on Focusrite.**
+- [x] T4-G3 **Default flipped.** Default behavior becomes incremental (flag default ON or removed), `HDAW_FORCE_FULL_SYNC`-style kill-switch retained to force the old path. **`HDAW_FORCE_INCREMENTAL_ROUTING` default flipped to ON (read once at startup); `=0`/`false`/`FALSE` restores the full-rebuild path.**
+- [x] T4-G4 **Suite + build green with the default flipped.** Same commands as T2-G6 plus `cmake --build build --config Debug`. **848/848 PASSED (162 suites) with the default flipped; incremental suites 15/15 (incl. AB latency + A/B).**
 
 ## Dependency Map
 
@@ -111,10 +116,10 @@ Blast radius: the audio routing graph only. No ReadModel, frontend, or RPC-shape
 7. Add test file to `tests/CMakeLists.txt`; build; run the new suites + full suite (T3-G7).
 
 ### Task 4 — latency/quality gates + flip default
-1. Measure `getTotalLatency()` (via `getLatencySamples`) and `getTotalNumOutputChannels` on the real device: burst of 128 incremental adds vs. 128 full rebuilds — must be equal (spike showed 0→0; confirm on device).
-2. Critical-listening A/B on reference material (spike uses a stereo sine; add a real track with fades/crossfades): incremental vs. full-rebuild outputs must be audibly identical.
-3. Flip default: `HDAW_FORCE_INCREMENTAL_ROUTING` default becomes ON (or inverted kill-switch `HDAW_FORCE_FULL_ROUTING`). Keep the OFF escape hatch.
-4. Re-run full suite + build (T4-G4); update README/handoff/recommendation with the measured latency numbers.
+1. Measure `getTotalLatency()` (via `getLatencySamples`) and `getTotalNumOutputChannels` on the real device: burst of incremental adds vs. full rebuilds — must be equal (spike showed 0→0; confirm on device). **DONE:** `IncrementalRoutingAB.RealDeviceLatencyStable` (device latency + graph latency + output channels, before/after a 32-clip incremental burst; OFF-path cross-check). No shift.
+2. Critical-listening A/B on reference material (spike uses a stereo sine; add a real track with fades/crossfades): incremental vs. full-rebuild outputs must be audibly identical. **DONE:** both paths rendered via production `ExportManager` — max diff 0, user-confirmed.
+3. Flip default: `HDAW_FORCE_INCREMENTAL_ROUTING` default becomes ON (or inverted kill-switch `HDAW_FORCE_FULL_ROUTING`). Keep the OFF escape hatch. **DONE:** default ON; `=0`/`false`/`FALSE` = escape hatch.
+4. Re-run full suite + build (T4-G4); update README/handoff/recommendation with the measured latency numbers. **DONE:** 848/848 PASSED with default flipped; this plan + handoff updated.
 
 ## Verification Commands
 

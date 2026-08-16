@@ -66,7 +66,9 @@ ripple delete, move) to a full rebuild.
 ## Flag
 
 `HDAW_FORCE_INCREMENTAL_ROUTING`, read once at engine startup, default **OFF**
-(full rebuild) until all Task 4 gates pass. Precedent for read-once env-flag
+(full rebuild) until all Task 4 gates pass. **DONE (2026-08-15):** default is
+now **ON** (Task 4 flip); `HDAW_FORCE_INCREMENTAL_ROUTING=0`/`false`/`FALSE`
+restores the full-rebuild path. Precedent for read-once env-flag
 semantics: `HDAW_FORCE_FULL_SYNC` in `src/frontend/FrontendTreeWatcher.cpp:26`.
 The spike does not read the flag (it calls `addClip` directly).
 

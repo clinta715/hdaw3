@@ -60,15 +60,17 @@ AudioEngine::~AudioEngine()
 }
 void AudioEngine::initialize()
 {
-    // Incremental routing mode (Task 3): read ONCE at startup, default OFF.
+    // Incremental routing mode (Tasks 3/4): read ONCE at startup, default ON.
     // Precedent: FrontendTreeWatcher.cpp:25-29 / PluginManager.cpp:34,68.
+    // Escape hatch: HDAW_FORCE_INCREMENTAL_ROUTING=0 (or false/FALSE) restores
+    // the pre-existing full-rebuild path (handleAsyncUpdate → rebuildRoutingGraph).
     incrementalEnabled_ = []() {
         const char* v = std::getenv("HDAW_FORCE_INCREMENTAL_ROUTING");
-        if (v == nullptr || v[0] == '\0') return false;
+        if (v == nullptr || v[0] == '\0') return true;
         return v[0] != '0' && v[0] != 'f' && v[0] != 'F';
     }();
     if (incrementalEnabled_)
-        HDAW_LOG("Routing", "HDAW_FORCE_INCREMENTAL_ROUTING set — incremental clip routing enabled");
+        HDAW_LOG("Routing", "Incremental clip routing enabled (default ON; set HDAW_FORCE_INCREMENTAL_ROUTING=0 to force full rebuild)");
 
     // Link bridge, project model, and format manager to processor
     mainProcessor->setBridge(&spscBridge);

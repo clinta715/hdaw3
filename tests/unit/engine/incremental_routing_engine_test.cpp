@@ -185,7 +185,8 @@ void makeSixClipParams(const juce::String& path,
 } // namespace
 
 // T3-G4 — the flag is read once at initialize(): "1"/"true" enable the
-// incremental path, "0"/"false"/"" leave it off (default).
+// incremental path, "0"/"false"/"FALSE" leave it off (the escape hatch), and
+// unset/"" default to ON (Task 4 flip).
 TEST(IncrementalRoutingEngine, FlagPlumbingReadOnceAtStartup)
 {
     {
@@ -222,7 +223,7 @@ TEST(IncrementalRoutingEngine, FlagPlumbingReadOnceAtStartup)
         ScopedIncrementalFlag flag("");
         AudioEngine engine;
         engine.initialize();
-        EXPECT_FALSE(engine.isIncrementalRoutingEnabled());
+        EXPECT_TRUE(engine.isIncrementalRoutingEnabled());
     }
 }
 

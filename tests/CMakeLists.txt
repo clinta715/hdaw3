@@ -79,6 +79,7 @@ add_executable(hdaw_tests
     unit/engine/incremental_routing_spike_test.cpp
     unit/engine/incremental_routing_remove_move_test.cpp
     unit/engine/incremental_routing_engine_test.cpp
+    unit/engine/incremental_routing_ab_test.cpp
     unit/engine/automation_test.cpp
     unit/engine/automation_units_test.cpp
     unit/engine/automation_mode_test.cpp

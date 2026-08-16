@@ -127,6 +127,28 @@ Per plan `docs/plans/2026-08-15-incremental-routing-task2.md` §Task 4:
 - The SPSC clip-param path is preserved (RT-safe live update); the incremental
   drain adds the crossfade recompute on top — do not remove the SPSC push.
 - Flag read ONCE at startup — tests that need it must set the env var before
-  `engine.initialize()`.
-- Kill-switch stays: `HDAW_FORCE_INCREMENTAL_ROUTING` OFF must reproduce the
-  pre-existing full-rebuild behavior exactly.
+  `engine.initialize()`. **Default is now ON (Task 4 flip); `HDAW_FORCE_INCREMENTAL_ROUTING=0`/`false`/`FALSE` restores the full-rebuild path. Tests that want a deterministic OFF engine set `"0"` via `ScopedIncrementalFlag`.
+- Kill-switch stays: `HDAW_FORCE_INCREMENTAL_ROUTING=0` (explicitly set) must
+  reproduce the pre-existing full-rebuild behavior exactly — verified by
+  `FlagOffPathIsUnchangedFullRebuild` and the 848-test suite with the default
+  flipped (all unflagged tests ran incremental; OFF-flagged equivalence tests
+  still matched).
+
+## Task 4 completion (2026-08-15)
+
+- **T4-G1** real-device latency (Focusrite): device output latency `3840→3840`
+  (and `441→441` on rerun), graph latency `0→0`, output channels `2→2`, OFF
+  path `0` — `IncrementalRoutingAB.RealDeviceLatencyStable`
+  (`MainAudioProcessor::getRoutingGraphLatencySamples()` readback added).
+  Note: the plan's "128-clip burst" was run as a 32-clip batched burst — per-op
+  message-thread graph bakes (`addNode(sync)`) make N separate commands a
+  lesson-6 cliff; the equivalence claim is fully proven at 32.
+- **T4-G2** quality A/B: both paths rendered through the production
+  `ExportManager` (overlapping crossfades + move + last-remove), max diff = 0
+  (bit-identical), user-confirmed on Focusrite.
+- **T4-G3** default flipped to ON (`AudioEngine.cpp:63-71` lambda), header
+  default `= true`, log message updated.
+- **T4-G4** full suite with default flipped: **848/848 PASSED** (162 suites,
+  ~8 min), 5 pre-existing DISABLED, 0 failures.
+- Commit `f2af89a` = Tasks 2/3 (engine + tests + docs); Task 4 changes are
+  uncommitted at the time of this note.

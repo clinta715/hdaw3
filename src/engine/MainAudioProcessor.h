@@ -38,6 +38,10 @@ public:
 
     HDAW::LevelMeter& getMasterMeter();
     HDAW::RoutingManager* getRoutingManager() const { return routingManager.get(); }
+
+    // Total latency (samples) of the internal AudioProcessorGraph — plugin
+    // delay-compensation readback for latency regression checks.
+    int getRoutingGraphLatencySamples() const { return graph.getLatencySamples(); }
     HDAW::Metronome& getMetronome() { return metronome; }
     void setCountInEnabled(bool enabled, int bars = 1) { countInEnabled = enabled; countInBars = bars; }
     void addExternalMidiMessage(const juce::MidiMessage& msg);

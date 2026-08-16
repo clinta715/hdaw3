@@ -191,7 +191,7 @@ private:
     std::vector<PendingClipOp> pendingClipOps_;
     mutable std::mutex pendingOpsMutex_;
     bool forceFullRebuild_ = false;
-    bool incrementalEnabled_ = false;
+    bool incrementalEnabled_ = true;
     // Test seams (see debug* getters above).
     uint64_t incrementalOpsApplied_ = 0;
     uint64_t fullRebuilds_ = 0;
