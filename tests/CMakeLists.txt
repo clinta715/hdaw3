@@ -48,6 +48,7 @@ add_executable(hdaw_tests
     unit/engine/realtime_safety_test.cpp
     unit/engine/audio_pool_dedup_test.cpp
     unit/engine/track_fx_rebuild_race_test.cpp
+    unit/engine/render_sequence_release_test.cpp
     unit/engine/streaming_clip_source_test.cpp
     unit/engine/streaming_pool_test.cpp
     unit/engine/clip_streaming_e2e_test.cpp

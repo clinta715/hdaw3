@@ -22,6 +22,14 @@ set "BUILD_DIR=%~dp0build\Debug"
 set "SRC=%BUILD_DIR%\HDAW_headless.exe"
 set "DST=%TEMP%\HDAW_headless_mcp.exe"
 
+:: Kill stale engines before copying: a lingering MCP engine holds the target
+:: exe locked -> copy /Y fails silently -> the session reuses the pre-fix
+:: binary. Killing the parent does NOT kill children on Windows, so the
+:: plugin hosts must be killed explicitly (lesson 20). Any holder of the
+:: target at launch time is by definition stale (one engine per session).
+taskkill /F /IM HDAW_headless_mcp.exe >nul 2>&1
+taskkill /F /IM hdaw_plugin_host.exe >nul 2>&1
+
 if not exist "%SRC%" (
     echo ERROR: %SRC% not found. Run cmake --build build --config Debug --target HDAW_headless first. >&2
     exit /b 1
@@ -30,6 +38,12 @@ if not exist "%SRC%" (
 copy /Y "%SRC%" "%DST%" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Failed to copy HDAW_headless.exe to temp. >&2
+    exit /b 1
+)
+for %%A in ("%SRC%") do set "SRCSZ=%%~zA"
+for %%A in ("%DST%") do set "DSTSZ=%%~zA"
+if not "%SRCSZ%"=="%DSTSZ%" (
+    echo ERROR: Size mismatch copying HDAW_headless.exe: source %SRCSZ% bytes, destination %DSTSZ% bytes. Stale engine holding the target? >&2
     exit /b 1
 )
 
@@ -46,6 +60,12 @@ if errorlevel 1 (
     echo ERROR: Failed to copy hdaw_plugin_host.exe to temp. >&2
     exit /b 1
 )
+for %%A in ("%HOST_SRC%") do set "HOST_SRCSZ=%%~zA"
+for %%A in ("%HOST_DST%") do set "HOST_DSTSZ=%%~zA"
+if not "%HOST_SRCSZ%"=="%HOST_DSTSZ%" (
+    echo ERROR: Size mismatch copying hdaw_plugin_host.exe: source %HOST_SRCSZ% bytes, destination %HOST_DSTSZ% bytes. Stale engine holding the target? >&2
+    exit /b 1
+)
 
 set "SCAN_SRC=%BUILD_DIR%\hdaw_plugin_scanner.exe"
 set "SCAN_DST=%TEMP%\hdaw_plugin_scanner.exe"
@@ -58,6 +78,12 @@ if not exist "%SCAN_SRC%" (
 copy /Y "%SCAN_SRC%" "%SCAN_DST%" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Failed to copy hdaw_plugin_scanner.exe to temp. >&2
+    exit /b 1
+)
+for %%A in ("%SCAN_SRC%") do set "SCAN_SRCSZ=%%~zA"
+for %%A in ("%SCAN_DST%") do set "SCAN_DSTSZ=%%~zA"
+if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
+    echo ERROR: Size mismatch copying hdaw_plugin_scanner.exe: source %SCAN_SRCSZ% bytes, destination %SCAN_DSTSZ% bytes. Stale engine holding the target? >&2
     exit /b 1
 )
 

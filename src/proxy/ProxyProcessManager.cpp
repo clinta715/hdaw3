@@ -2,6 +2,7 @@
 #include "../common/DebugLog.h"
 #include <chrono>
 #include <cstring>
+#include <cstdio>
 
 namespace proxy {
 
@@ -119,6 +120,9 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     info.pipe = std::move(pipeServer);
     info.shm = std::move(shmRegion);
     info.alive.store(true);
+    info.lastBlocksSnapshot = 0;
+    info.lastSnapshotMs = 0;
+    info.crashNotified = false;
 
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -234,7 +238,15 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
 
             DWORD exitCode = 0;
             if (!GetExitCodeProcess(info.processHandle, &exitCode)) {
-                crashedSlots.push_back(id);
+                const DWORD flagError = GetLastError();
+                if (!info.crashNotified) {
+                    info.crashNotified = true;
+                    char buf[128];
+                    std::snprintf(buf, sizeof(buf), "checkAllChildren: slot %u flagged: GetExitCodeProcess failed, error=%d",
+                        id, static_cast<int>(flagError));
+                    HDAW_LOG("CrashRecovery", buf);
+                    crashedSlots.push_back(id);
+                }
                 continue;
             }
             if (exitCode == proxy::GRACEFUL_EXIT_CODE) {
@@ -243,7 +255,14 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
             }
             if (exitCode != STILL_ACTIVE) {
                 info.alive.store(false);
-                crashedSlots.push_back(id);
+                if (!info.crashNotified) {
+                    info.crashNotified = true;
+                    char buf[128];
+                    std::snprintf(buf, sizeof(buf), "checkAllChildren: slot %u flagged: exit code 0x%x",
+                        id, static_cast<unsigned>(exitCode));
+                    HDAW_LOG("CrashRecovery", buf);
+                    crashedSlots.push_back(id);
+                }
                 continue;
             }
 
@@ -271,7 +290,16 @@ void ProxyProcessManager::checkAllChildren(uint32_t staleThresholdMs) {
                 } else if (info.lastSnapshotMs == 0) {
                     info.lastSnapshotMs = nowMs;
                 } else if (nowMs - info.lastSnapshotMs > staleThresholdMs) {
-                    crashedSlots.push_back(id);
+                    if (!info.crashNotified) {
+                        info.crashNotified = true;
+                        char buf[160];
+                        std::snprintf(buf, sizeof(buf), "checkAllChildren: slot %u flagged: stalled (blocks=%llu frozenMs=%llu thresholdMs=%u)",
+                            id, static_cast<unsigned long long>(currentBlocks),
+                            static_cast<unsigned long long>(nowMs - info.lastSnapshotMs),
+                            static_cast<unsigned>(staleThresholdMs));
+                        HDAW_LOG("CrashRecovery", buf);
+                        crashedSlots.push_back(id);
+                    }
                     continue;
                 }
             } else {

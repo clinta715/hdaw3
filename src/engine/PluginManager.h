@@ -90,6 +90,19 @@ public:
         const juce::PluginDescription& desc,
         const juce::KnownPluginList& knownList);
 
+    // Resolves a respawn plugin path (lesson 21). Crash-recovery entries can
+    // carry unresolved identifier strings (e.g. "VST3-Identity-98879c0c-0")
+    // instead of file paths; the child host cannot load those and
+    // PluginHost::loadPlugin never fails on a bad path, so respawning one
+    // would host a silent passthrough child. Real file paths ending in
+    // .vst3/.clap (case-insensitive) and "__"-prefixed test sentinels pass
+    // through unchanged; anything else is re-resolved against knownList
+    // (mirrors resolveIdentifierToPath). Returns an empty string when an
+    // identifier cannot be resolved — callers must refuse to spawn.
+    static juce::String resolveRespawnPath(
+        const juce::String& path,
+        const juce::KnownPluginList& knownList);
+
     void loadCache();
     void saveCache();
 

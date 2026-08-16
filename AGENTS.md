@@ -335,8 +335,40 @@ These cost real debugging time — read before touching the relevant area:
     session's hdaw MCP backend. **Rule:** before debugging any
     proxy-spawn failure, check for live engines; if the run's slot ids
     could collide with a running engine, either stop it or expect these
-    tests to fail. A permanent guard (per-run pipe/shm namespace or a
+     tests to fail. A permanent guard (per-run pipe/shm namespace or a
     held-name skip) is a standing follow-up.
+
+21. **Render sequence pins old graph after `graph.clear()` until next
+    `processBlock` re-bake — load with stopped transport leaked all previous
+    plugin children (100% CPU each).** `graph.clear()` removes nodes from the
+    live list but the render sequence (baked during playback) still holds
+    `Node::Ptr`s → Tracks → FX slots → plugin proxies → child processes. The
+    sequence is only re-baked by `graph.processBlock`, which
+    `MainAudioProcessor::processBlock` early-outs before when transport is
+    stopped. Every loaded project's children leaked, each spinning its audio
+    loop at 100% CPU → saturation → `processBlock` hangs (>1 s minidumps) →
+    health-flag → infinite ~2 s respawn storm (no global circuit breaker).
+    **Fixes:** (a) synchronous `graph.rebuild()` + scratch `processBlock` drive
+    at end of full `rebuildRoutingGraph` to close the JUCE
+    `RenderSequenceExchange` handshake (outside `graphLock`, outside pump-park);
+    (b) global sliding-window respawn budget (8/30 s default, env-overridable);
+    (c) respawn path re-resolution for stale identifier strings; (d)
+    flag-reason logging in `checkAllChildren`.
+    **Second follow-up (respawn-storm termination):** the "persisting storm"
+    after fixes a–d was a **pre-fix orphan engine interleaving in the shared
+    `%TEMP%\hdaw_debug.log`** — log lines now carry `"date"` + `"pid"`; always
+    attribute a line to a pid before concluding a fix failed. Storm-termination
+    contract: crash flags in `checkAllChildren` fire **once per child death**
+    (`ChildInfo::crashNotified`, reset on successful respawn);
+    `onSlotCrashed` preserves the attempt ladder for existing entries (a
+    re-flag can no longer reset `attemptCount`, so `kMaxAttempts` give-up
+    terminates the slot); `respawnIsolatedSlot` **cancels the recovery entry**
+    when the proxy is gone (logs + `crashRecovery->cancel` instead of
+    retrying silently forever); `mcp-launch.bat` kills stale engine/plugin-host
+    holders before copying and verifies the copied size — a lingering engine
+    held the target exe locked, `copy /Y` failed silently, and every
+    bat-launched MCP session reused the pre-fix binary (the stale-`.obj` trap
+    of lesson 15, in script form).
 
 ## Performance rules: batch RPCs, walk the tree incrementally
 
@@ -429,11 +461,21 @@ rebuilding," this is almost certainly why:
 | **Vite dev server** | `npm run dev` (+ engine for WS on 8766) | Live from `frontend/src` | Hard-refresh the browser (Ctrl+Shift+R). No build needed. |
 
 **The packaged Electron app is the one users run.** Its frontend is baked into
-`app.asar` at packaging time — editing source, rebuilding `dist/`, or
+`app.asar` at packaging time - editing source, rebuilding `dist/`, or
 refreshing the window has zero effect until you repackage. `frontend\build.bat`
 rebuilds the SPA, the C++ engine, runs the tests, and repackages Electron in one
 command. Both build scripts detect an obsolete `app.asar` and fail/warn loudly,
 so you can't silently iterate against a stale `.asar`.
+
+**The packaged app's ENGINE comes from `build/RelWithDebInfo/`** (see
+`electron-builder.yml` `extraResources`), NOT `build/Debug/`. A bare
+`npm run package:dir` re-ships whatever `RelWithDebInfo` happens to contain —
+on 2026-08-16 that was an 11-day-old engine (8/5) with none of the
+respawn-storm fixes, so the app kept crashing plugins while every Debug-mode
+verification looked clean. `frontend\build.bat` builds the engine too; if you
+repackage by hand, run `cmake --build build --config RelWithDebInfo` FIRST and
+verify the binary (string-search the shipped `resources\engine\HDAW_headless.exe`
+for a fix marker) before trusting the package.
 
 ## Testing
 

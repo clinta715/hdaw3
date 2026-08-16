@@ -31,6 +31,7 @@ public:
     void setDecodedSoundPool(HDAW::DecodedSoundPool* p) { decodedPool = p; }
     void setStreamingSoundPool(HDAW::StreamingSoundPool* p) { streamingPool = p; }
     juce::SpinLock& getGraphLock() { return graphLock; }
+    juce::AudioProcessorGraph& getGraph() { return graph; }
 
     // Track Management (delegated to RoutingManager)
     HDAW::Track* getTrack(int index) const;

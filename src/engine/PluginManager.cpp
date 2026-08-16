@@ -766,6 +766,31 @@ juce::PluginDescription PluginManager::resolveIdentifierToPath(
     return resolved;
 }
 
+juce::String PluginManager::resolveRespawnPath(
+    const juce::String& path,
+    const juce::KnownPluginList& knownList)
+{
+    if (path.isEmpty())
+        return {};
+
+    // Real file paths and "__"-prefixed test sentinels (e.g. "__passthrough__")
+    // are spawnable as-is.
+    auto lower = path.toLowerCase();
+    if (lower.endsWith(".vst3") || lower.endsWith(".clap") || path.startsWith("__"))
+        return path;
+
+    // An identifier string: re-resolve against the scan results, mirroring
+    // resolveIdentifierToPath's identifier-hash match. (The format+name
+    // fallback is unavailable here — a bare identifier string carries no
+    // separate name/format fields.)
+    for (const auto& kd : knownList.getTypes())
+    {
+        if (kd.matchesIdentifierString(path))
+            return kd.fileOrIdentifier;
+    }
+    return {};
+}
+
 bool PluginManager::isBlacklisted(const juce::String& pluginID) const
 {
     for (const auto& id : blacklistedIDs)
@@ -898,15 +923,34 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
         if (it != liveProxySlots.end())
             proxy = it->second;
     }
-    if (proxy == nullptr) return false;
+    if (proxy == nullptr) {
+        HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: no live proxy for slot ")
+            + juce::String((int)oldSlotId) + " - slot torn down, canceling recovery");
+        if (crashRecovery) crashRecovery->cancel(oldSlotId);
+        return false;
+    }
 
-    // 1. Spawn the NEW host first, OUTSIDE the lock. Process creation is slow;
+    // 1. Validate/re-resolve the plugin path (lesson 21). Crash-recovery
+    //    entries can carry unresolved identifier strings (e.g.
+    //    "VST3-Identity-98879c0c-0") instead of file paths; the child host
+    //    cannot load those and PluginHost::loadPlugin never fails on a bad
+    //    path, so respawning one would host a silent passthrough child.
+    const auto resolvedPath = resolveRespawnPath(pluginPath, knownPluginList);
+    if (resolvedPath.isEmpty()) {
+        HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: unresolvable identifier '") + pluginPath + "' for slot " + juce::String((int)oldSlotId) + ", refusing to spawn");
+        return false;
+    }
+    if (resolvedPath != pluginPath) {
+        HDAW_LOG("CrashRecovery", juce::String("respawnIsolatedSlot: resolved '") + pluginPath + "' -> '" + resolvedPath + "' for slot " + juce::String((int)oldSlotId));
+    }
+
+    // 2. Spawn the NEW host first, OUTSIDE the lock. Process creation is slow;
     //    holding graphLock across spawn would starve the audio callback. The
     //    capacity==0 guard in PluginProxySlot::processBlock safely returns
     //    silence until PREPARE lands on the new region, so this gap is benign.
     auto newSlotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
 
-    if (!proxyProcessMgr->spawnPluginHost(pluginPath.toStdString(), newSlotId))
+    if (!proxyProcessMgr->spawnPluginHost(resolvedPath.toStdString(), newSlotId))
         return false;
 
     proxyProcessMgr->setSlotCrashCallback(newSlotId,

@@ -107,7 +107,12 @@ namespace DebugLog {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03d",
                 utc.tm_hour, utc.tm_min, utc.tm_sec, static_cast<int>(ms.count()));
-            f << "{\"ts\":\"" << buf << "\",\"tag\":\"" << tag
+            char dateBuf[16];
+            std::snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d",
+                utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday);
+            f << "{\"ts\":\"" << buf << "\",\"date\":\"" << dateBuf
+              << "\",\"pid\":" << currentPid()
+              << ",\"tag\":\"" << tag
               << "\",\"msg\":\"" << message << "\"}\n";
             f.flush();
         }
@@ -132,7 +137,12 @@ namespace DebugLog {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03d",
                 utc.tm_hour, utc.tm_min, utc.tm_sec, static_cast<int>(ms.count()));
-            f << "{\"ts\":\"" << buf << "\",\"tag\":\"" << tag
+            char dateBuf[16];
+            std::snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d",
+                utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday);
+            f << "{\"ts\":\"" << buf << "\",\"date\":\"" << dateBuf
+              << "\",\"pid\":" << currentPid()
+              << ",\"tag\":\"" << tag
               << "\",\"msg\":\"" << message << "\"}\n";
             f.flush();
         }

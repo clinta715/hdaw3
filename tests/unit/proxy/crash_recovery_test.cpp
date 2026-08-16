@@ -5,10 +5,14 @@
 #include "engine/CrashRecoveryManager.h"
 #include "proxy/PluginProxySlot.h"
 #include "proxy/ProxyProcessManager.h"
+#include "common/DebugLog.h"
 #include <chrono>
 #include <thread>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <string>
 
 #if HDAW_PLUGIN_ISOLATION
 
@@ -201,6 +205,76 @@ TEST(CrashRecovery, GivesUpAfterThreeFailures) {
     EXPECT_TRUE(gaveUp.load()) << "CrashRecovery should give up after 3 failed attempts";
 }
 
+// T4 (Fix E2): re-flag sweeps (checkAllChildren re-notifying a dead slot
+// while its entry is still pending) must NOT reset the attempt ladder —
+// onSlotCrashed preserves attemptCount for an existing entry, so the
+// kMaxAttempts give-up still terminates the slot.
+TEST(CrashRecovery, RepeatedCrashNotificationsKeepAttemptLadder) {
+    HDAW::CrashRecoveryManager crm;
+
+    int respawnCalls = 0;
+    crm.setRespawnFn([&](uint32_t, const juce::String&) {
+        ++respawnCalls;
+        return false;
+    });
+
+    std::atomic<bool> gaveUp{false};
+    crm.setGiveUpFn([&](uint32_t, const juce::String&) { gaveUp.store(true); });
+
+    crm.onSlotCrashed(4242, "LadderPlugin", "/fake/ladder.vst3");
+
+    // Re-notify every ~2 s (health-sweep cadence); tick faster so the
+    // grace/backoff timers still come due between re-notifications.
+    for (int i = 0; i < 150 && !gaveUp.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (i > 0 && (i % 20) == 0)
+            crm.onSlotCrashed(4242, "LadderPlugin", "/fake/ladder.vst3");
+        crm.tick();
+    }
+
+    EXPECT_TRUE(gaveUp.load())
+        << "re-flag notifications must not reset the attempt ladder";
+    EXPECT_LE(respawnCalls, 3)
+        << "respawnFn must fire at most kMaxAttempts (3) times, fired "
+        << respawnCalls;
+}
+
+// T6 (Fix E3): respawnFn mirroring PluginManager's proxy-gone path — cancel
+// the entry on the manager, then return false. The entry must be gone after
+// the attempt and no further attempts may occur on subsequent ticks.
+TEST(CrashRecovery, RespawnCancelsEntryWhenProxyGone) {
+    HDAW::CrashRecoveryManager crm;
+
+    int respawnCalls = 0;
+    crm.setRespawnFn([&](uint32_t slotId, const juce::String&) {
+        ++respawnCalls;
+        crm.cancel(slotId);
+        return false;
+    });
+
+    crm.onSlotCrashed(5151, "GonePlugin", "/fake/gone.vst3");
+
+    bool attempted = false;
+    for (int i = 0; i < 60 && !attempted; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        crm.tick();
+        attempted = (respawnCalls > 0);
+    }
+    ASSERT_TRUE(attempted) << "respawnFn should fire once after the grace period";
+
+    EXPECT_EQ(crm.numEntries(), 0u)
+        << "cancel() from inside respawnFn must erase the entry";
+
+    const int callsAtCancel = respawnCalls;
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        crm.tick();
+    }
+    EXPECT_EQ(respawnCalls, callsAtCancel)
+        << "no further attempts after the entry was canceled";
+    EXPECT_EQ(crm.numEntries(), 0u);
+}
+
 TEST(ProxyHealth, IdleChildNotKilledByStallDetector) {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
@@ -220,6 +294,37 @@ TEST(ProxyHealth, IdleChildNotKilledByStallDetector) {
     }
     EXPECT_FALSE(crashFired.load())
         << "Idle child with no pending input was falsely flagged as stalled";
+
+    ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
+}
+
+// T5 (Fix E1): a dead child is flagged exactly once — subsequent health
+// sweeps over the same ChildInfo must not re-fire the crash callback.
+TEST(CrashRecovery, CrashCallbackFiresOncePerDeath) {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    proxy::ProxyProcessManager ppm;
+    uint32_t slotId = 7778;
+    ASSERT_TRUE(ppm.spawnPluginHost("__passthrough__", slotId));
+
+    std::atomic<int> crashCount{0};
+    ppm.setSlotCrashCallback(slotId, [&](uint32_t) { crashCount.fetch_add(1); });
+
+    // Same seam as killProxyForTesting: kill the process out-of-band so the
+    // ChildInfo (and its handle) stay in the map for the sweeps to flag.
+    auto* info = ppm.getChildInfo(slotId);
+    ASSERT_NE(info, nullptr);
+    ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
+    TerminateProcess(info->processHandle, 0);
+    WaitForSingleObject(info->processHandle, 1000);
+
+    ppm.checkAllChildren(2000);
+    ppm.checkAllChildren(2000);
+    ppm.checkAllChildren(2000);
+
+    EXPECT_EQ(crashCount.load(), 1)
+        << "crash callback must fire exactly once per child death, fired "
+        << crashCount.load();
 
     ppm.killPluginHost(slotId, proxy::KillMode::KillHard);
 }
@@ -457,6 +562,163 @@ TEST(CrashRecovery, OfflinePluginDomainIsolatedFromLive) {
     EXPECT_TRUE(liveStillProducesAudio)
         << "live slot must keep processing audio after the offline domain "
            "was created and destroyed alongside it";
+}
+
+// T2 (Fix B): global respawn circuit breaker. 20 distinct slot crashes in a
+// storm signature, one tick() → respawn attempts must be ≤ budget (default 8)
+// and remaining entries must still be pending.
+TEST(CrashRecovery, StormBreakerCapsRespawnsWithinBudget) {
+    HDAW::CrashRecoveryManager crm;
+
+    int respawnCalls = 0;
+    crm.setRespawnFn([&](uint32_t, const juce::String&) {
+        ++respawnCalls;
+        return true;
+    });
+
+    // Simulate a storm: 20 different slot ids crash.
+    for (uint32_t slot = 1; slot <= 20; ++slot)
+        crm.onSlotCrashed(slot, "StormPlugin", "/fake/storm.vst3");
+
+    // One tick processes all entries whose nextRetryMs has arrived (all of them,
+    // since crashedAtMs + kGracePeriodMs 500 ms is in the past by now or very
+    // close). The budget (default 8) must cap the respawn attempts.
+    crm.tick();
+
+    EXPECT_LE(respawnCalls, 8)
+        << "Storm breaker should cap respawns to the budget (default 8), "
+           "but " << respawnCalls << " respawnFn calls were made";
+
+    // Entries beyond the budget must still exist (pending, not erased).
+    EXPECT_GE(crm.numEntries(), 12u)
+        << "Entries beyond the budget should remain pending (not erased), "
+           "but only " << crm.numEntries() << " entries remain";
+}
+
+// T2b: custom budget via env override (reads once in constructor).
+TEST(CrashRecovery, StormBreakerRespectsBudgetOverride) {
+    // Set the env var before constructing (read-once in constructor).
+    SetEnvironmentVariableA("HDAW_RESPAWN_BUDGET", "3");
+    SetEnvironmentVariableA("HDAW_RESPAWN_WINDOW_MS", "60000");
+
+    HDAW::CrashRecoveryManager crm;
+
+    int respawnCalls = 0;
+    crm.setRespawnFn([&](uint32_t, const juce::String&) {
+        ++respawnCalls;
+        return true;
+    });
+
+    for (uint32_t slot = 100; slot <= 119; ++slot)
+        crm.onSlotCrashed(slot, "BudgetPlugin", "/fake/budget.vst3");
+
+    crm.tick();
+
+    EXPECT_LE(respawnCalls, 3)
+        << "Custom budget of 3 should cap respawns, but " << respawnCalls
+        << " calls were made";
+
+    EXPECT_GE(crm.numEntries(), 17u)
+        << "Entries beyond the custom budget should remain pending";
+
+    // Restore defaults for subsequent tests.
+    SetEnvironmentVariableA("HDAW_RESPAWN_BUDGET", nullptr);
+    SetEnvironmentVariableA("HDAW_RESPAWN_WINDOW_MS", nullptr);
+}
+
+// T3 (Fix C): resolveRespawnPath resolves known identifiers and rejects
+// unknown ones.
+TEST(RespawnPath, ResolveKnownIdentifier) {
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    juce::KnownPluginList knownList;
+    juce::PluginDescription known;
+    known.name = "TestPassthrough";
+    known.pluginFormatName = "CLAP";
+    known.fileOrIdentifier = "C:\\plugins\\TestPassthrough.clap";
+    known.uniqueId = 0x12345678;
+    knownList.addType(known);
+
+    // Generate the proper identifier string from the registered entry.
+    auto identifierStr = known.createIdentifierString();
+
+    // A known identifier should resolve to the file path.
+    auto result = HDAW::PluginManager::resolveRespawnPath(
+        identifierStr, knownList);
+    EXPECT_EQ(result, "C:\\plugins\\TestPassthrough.clap")
+        << "Known identifier '" << identifierStr.toStdString()
+        << "' should resolve to the registered file path";
+}
+
+TEST(RespawnPath, RealPathPassesThrough) {
+    juce::KnownPluginList knownList;
+
+    // Real file paths pass through unchanged.
+    auto vst3 = HDAW::PluginManager::resolveRespawnPath(
+        "C:\\plugins\\MyPlugin.vst3", knownList);
+    EXPECT_EQ(vst3, "C:\\plugins\\MyPlugin.vst3");
+
+    auto clap = HDAW::PluginManager::resolveRespawnPath(
+        "/usr/lib/MyPlugin.clap", knownList);
+    EXPECT_EQ(clap, "/usr/lib/MyPlugin.clap");
+}
+
+TEST(RespawnPath, TestSentinelPassesThrough) {
+    juce::KnownPluginList knownList;
+
+    // "__"-prefixed test sentinels pass through unchanged.
+    auto result = HDAW::PluginManager::resolveRespawnPath(
+        "__passthrough__", knownList);
+    EXPECT_EQ(result, "__passthrough__");
+}
+
+TEST(RespawnPath, UnknownIdentifierReturnsEmpty) {
+    juce::KnownPluginList knownList;
+    juce::PluginDescription known;
+    known.name = "RealPlugin";
+    known.pluginFormatName = "VST3";
+    known.fileOrIdentifier = "C:\\plugins\\Real.vst3";
+    knownList.addType(known);
+
+    // An identifier that doesn't match any known plugin returns empty.
+    auto result = HDAW::PluginManager::resolveRespawnPath(
+        "VST3-Ghost-deadbeef-0", knownList);
+    EXPECT_TRUE(result.isEmpty())
+        << "Unknown identifier should return empty (refuse to spawn)";
+}
+
+TEST(RespawnPath, EmptyInputReturnsEmpty) {
+    juce::KnownPluginList knownList;
+    auto result = HDAW::PluginManager::resolveRespawnPath({}, knownList);
+    EXPECT_TRUE(result.isEmpty());
+}
+
+// T7 (Fix E4): every JSON log line carries "date" and "pid" so lines can be
+// attributed to a process and a day (the orphan-interleaving trap that
+// derailed the respawn-storm diagnosis).
+TEST(DebugLog, JsonLinesCarryDateAndPid) {
+    const std::string unique = "hdaw_debuglog_probe_7c4d1e_"
+        + std::to_string(DebugLog::currentPid());
+    HDAW_LOG("DebugLog", unique);
+
+    std::string tempDir;
+    if (const char* t = std::getenv("TEMP")) tempDir = t;
+    else if (const char* t = std::getenv("TMP")) tempDir = t;
+    else tempDir = ".";
+    const std::string path = tempDir + "/hdaw_debug.log";
+
+    std::ifstream in(path, std::ios::binary);
+    ASSERT_TRUE(in.is_open()) << "failed to open " << path;
+    std::string line;
+    std::string found;
+    while (std::getline(in, line))
+        if (line.find(unique) != std::string::npos)
+            found = line;
+
+    ASSERT_FALSE(found.empty()) << "probe line not found in " << path;
+    EXPECT_NE(found.find("\"ts\":\""), std::string::npos);
+    EXPECT_NE(found.find("\"date\":\""), std::string::npos);
+    EXPECT_NE(found.find("\"pid\":"), std::string::npos);
 }
 
 #endif

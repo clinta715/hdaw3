@@ -636,6 +636,55 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         graphLock.exit();
         graphRebuildPending.store(false, std::memory_order_release);
 
+        // Release the pump park BEFORE re-baking (lesson 18): the bake may touch
+        // node processors; plugin work must not run while the pump is parked.
+        pumpPark.reset();
+
+        // Fix A (lesson 21): force a render-sequence re-bake so the sequence
+        // baked during the PREVIOUS playback (pinning old Node::Ptr -> Tracks ->
+        // FX slots -> plugin proxies -> child processes) is released.
+        // graph.clear() alone leaves it pinned until the next processBlock
+        // re-bake, so a load with stopped transport leaked the whole previous
+        // graph's plugin children. Outside graphLock + outside the park.
+        // Mirrors the drain-path precedent (AudioEngine.cpp:1491).
+        if (routingManager != nullptr)
+            routingManager->rebuildGraph();
+
+        // Close the release handshake (lesson 21): the bake installs the NEW
+        // sequence in the graph's mainThreadState, but the OLD sequence stays
+        // pinned in audioThreadState until the audio thread's next
+        // graph.processBlock swaps it (RenderSequenceExchange). With stopped
+        // transport this processor's processBlock early-outs before
+        // graph.processBlock, so the swap never happens and the old sequence
+        // keeps the previous graph's plugin children alive indefinitely.
+        // Drive one graph.processBlock on a scratch buffer to force the swap;
+        // the graph's internal 500 ms timer then frees the old sequence (now in
+        // mainThreadState), destroying the stale proxies and their children.
+        //
+        // Ordering: off the message thread graph.rebuild() only QUEUES the bake
+        // (a message on the pump), so the drive must run on the message thread
+        // AFTER it — runOnMessageThread posts behind the queued bake (FIFO) and
+        // runs inline when already on the message thread (where the bake above
+        // was synchronous). The drive takes graphLock: the real audio thread
+        // tryEnter()s it in processBlock and skips on contention (silence), so
+        // the two can never interleave (same discipline as respawn, lesson 14).
+        // No audio-thread work is added: this runs on the rebuild caller's
+        // thread / the message thread only.
+        if (routingManager != nullptr)
+        {
+            runOnMessageThread([this]()
+            {
+                graphLock.enter();
+                const int numChannels = juce::jmax(1, getTotalNumOutputChannels());
+                const int numSamples = getBlockSize() > 0 ? getBlockSize() : 512;
+                juce::AudioBuffer<float> scratch(numChannels, numSamples);
+                scratch.clear();
+                juce::MidiBuffer midi;
+                graph.processBlock(scratch, midi);
+                graphLock.exit();
+            });
+        }
+
         recomputeProjectEndSample();
     }
 }

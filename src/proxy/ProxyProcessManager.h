@@ -23,6 +23,7 @@ struct ChildInfo {
     std::atomic<bool> alive{false};
     uint64_t lastBlocksSnapshot{0};
     uint64_t lastSnapshotMs{0};
+    bool crashNotified = false;
 
     ChildInfo() = default;
     ChildInfo(ChildInfo&& o) noexcept
@@ -34,6 +35,7 @@ struct ChildInfo {
         , alive(o.alive.load())
         , lastBlocksSnapshot(o.lastBlocksSnapshot)
         , lastSnapshotMs(o.lastSnapshotMs)
+        , crashNotified(o.crashNotified)
     {
         o.processHandle = INVALID_HANDLE_VALUE;
     }
@@ -47,6 +49,7 @@ struct ChildInfo {
             alive.store(o.alive.load());
             lastBlocksSnapshot = o.lastBlocksSnapshot;
             lastSnapshotMs = o.lastSnapshotMs;
+            crashNotified = o.crashNotified;
             o.processHandle = INVALID_HANDLE_VALUE;
         }
         return *this;
