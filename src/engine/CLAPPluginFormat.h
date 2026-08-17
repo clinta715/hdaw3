@@ -42,7 +42,7 @@ public:
 
     std::unique_ptr<juce::AudioPluginInstance> createInstanceFromDescription(
         const juce::PluginDescription& desc, double initialSampleRate,
-        int initialBufferSize, juce::String& errorMessage) override;
+        int initialBufferSize, juce::String& errorMessage);
 
 protected:
     void createPluginInstance(const juce::PluginDescription& desc,
