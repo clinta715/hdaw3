@@ -10,7 +10,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.20.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.23.1** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -370,6 +370,37 @@ These cost real debugging time — read before touching the relevant area:
     bat-launched MCP session reused the pre-fix binary (the stale-`.obj` trap
     of lesson 15, in script form).
 
+22. **JUCE 8's Windows WASAPI never calls `CoInitialize` itself — the host
+    thread must initialize COM, or the WASAPI scan silently returns empty
+    (cached forever) and `AudioDeviceManager` falls back to DirectSound:
+    "only DirectSound devices selectable" + choppy/stuttering audio.**
+    JUCE's `ComSmartPtr::CoCreateInstance` jasserts `hr != CO_E_NOTINITIALIZED`
+    with the comment "trying to call from a thread which hasn't been
+    initialised with CoInitialize()" (`juce_ComSmartPtr_windows.h:133`); the
+    WASAPI device type contains **zero** `CoInitialize` calls, and the failed
+    first scan is cached (`hasScanned = true` → empty `devices` list for the
+    process lifetime). HDAW's `QApplication`→`QCoreApplication` refactor
+    (dd76505) removed Qt's `OleInitialize` on the main thread, and the engine
+    never added its own — so `initialiseWithDefaultDevices(2,2)` fell through
+    to DirectSound (emulated, ~58 ms latency, jittery callbacks → audible
+    stutter) while `getDeviceTypes()` still advertised the WASAPI types.
+    **Fixes:** (a) `HDAW::ScopedComInit` (RAII `CoInitializeEx`,
+    `COINIT_MULTITHREADED`, `src/common/ScopedComInit.h`) is the first
+    statement of `main`/`main_headless`/`test_main` — it covers both the
+    startup default-init AND the `audio.*` RPCs, which `QWebSocketServer`
+    dispatches on the main Qt event loop; (b) the saved-device restore in
+    `AudioEngine::initialize` now switches the driver type FIRST, re-fetches
+    the setup after, and applies a saved device name only when it exists in
+    the new type's device list — the pre-fix order captured the setup under
+    DirectSound ("Primary Sound Driver"), applied those names under WASAPI,
+    got "No such device: Primary Sound Driver", and re-fell to DirectSound.
+    **Rule:** any new Windows entry point that touches `AudioDeviceManager`
+    (or any JUCE COM path) must construct `ScopedComInit` before anything
+    else; when diagnosing "only DirectSound devices show up", suspect COM
+    state before blaming the device manager. Note: in an RDP session the
+    WASAPI endpoint set is session-scoped (render-only "Remote Audio"),
+    which is correct behavior, not a regression. See `docs/pitfalls-juce.md`.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what
@@ -481,9 +512,10 @@ for a fix marker) before trusting the package.
 
 - **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
   - Filter: `--gtest_filter=SuiteName.*`
-  - 250+ cases across ~35 suites: MCP tools/server, transport, tracks, clips,
+  - 862 tests across 166 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
-    ripple delete, ghost clips, stretch, markers, error conditions, batch ops.
+    ripple delete, ghost clips, stretch, markers, error conditions, batch ops,
+    plugin isolation, audio pool, streaming.
   - **Engine change test discipline:** when modifying the C++ core, RPC surface,
     or JUCE interfaces, assess test impact before finishing: (1) identify gtest
     suites that exercise the changed code (RPC handlers → MCP tool tests,
@@ -539,8 +571,8 @@ for a fix marker) before trusting the package.
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.20.0 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.20.0"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.23.1 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.23.1"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 

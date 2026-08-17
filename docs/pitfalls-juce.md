@@ -52,7 +52,7 @@ log is wrong on two counts:
    to the wrong macro and silently produce garbage.
 
 The project's own logging facility is `HDAW_LOG(tag, msg)`, defined
-in `src/ui/DebugLog.h`. It writes NDJSON to
+in `src/common/DebugLog.h`. It writes NDJSON to
 `%TEMP%/hdaw_debug.log`. All TUs that call it must
 `#include "DebugLog.h"`.
 
@@ -225,3 +225,44 @@ the UI stays stale even though the user clicked a button. The two
 pitfalls compound: a silent `setProperty` → no `TransportManager`
 update → no payload diff → no push → dead button. Fixing the
 `setProperty` side (above) restores the whole chain.
+
+## WASAPI device scan returns empty without `CoInitialize` on the caller thread
+
+JUCE 8's Windows WASAPI audio device type **never calls `CoInitialize`
+itself**. The first `CoCreateInstance(MMDeviceEnumerator)` from a thread
+that hasn't initialized COM fails with `CO_E_NOTINITIALIZED` — the
+`jassert` in `juce_core/native/juce_ComSmartPtr_windows.h:133` says
+exactly that ("trying to call from a thread which hasn't been
+initialised with CoInitialize()") — and the resulting empty device list
+is **cached** (`hasScanned = true` in `juce_WASAPI_windows.cpp`), so the
+WASAPI type appears broken for the rest of the process. `DirectSound`
+needs no COM, so `AudioDeviceManager::initialiseWithDefaultDevices`
+silently falls through to it: "only DirectSound devices selectable",
+~58 ms emulated latency, jittery callbacks → choppy/stuttering audio.
+
+HDAW hit this after the `QApplication` → `QCoreApplication` refactor
+(dd76505): Qt's GUI layer used to `OleInitialize` the main thread;
+`QCoreApplication` does not, and the engine had no COM init of its own.
+
+**The fix pattern** — `HDAW::ScopedComInit` (RAII `CoInitializeEx`,
+`COINIT_MULTITHREADED`, `src/common/ScopedComInit.h`) is the first
+statement of every entry point (`main`, `main_headless`, `test_main`).
+It must precede any `AudioEngine` construction because the
+`audio.*` RPCs (e.g. `audio.setDeviceType`) also run on the main Qt
+event loop and need COM there too.
+
+Second-order bug: the saved-device restore in `AudioEngine::initialize`
+used to capture `getAudioDeviceSetup()` **before** switching the driver
+type, then applied those stale device names under the new type —
+DirectSound-era names ("Primary Sound Driver") don't exist under WASAPI,
+`setAudioDeviceSetup` returned "No such device: Primary Sound Driver",
+and the fallback re-landed on DirectSound. Restore now switches the type
+first, re-fetches the setup after, and validates saved names against the
+new type's device list (empty name = JUCE default).
+
+**Rule:** any new Windows entry point that touches `AudioDeviceManager`
+(or any JUCE COM path) must construct `ScopedComInit` first; when
+diagnosing "only DirectSound devices show up", check COM state before
+blaming the device manager. RDP sessions are an expected false alarm:
+their WASAPI endpoint set is session-scoped (render-only "Remote
+Audio"), which is correct, not a regression.
