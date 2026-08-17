@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.20.0
+**Current version**: 0.23.1
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.20.0)
+## What works today (v0.23.1)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -321,6 +321,64 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.23.1 — WASAPI device enumeration fix (COM init), choppy-audio fix
+
+Fixes the **"only DirectSound devices are selectable / audio is choppy"** bug.
+JUCE 8's WASAPI device type never calls `CoInitialize` itself (it asserts
+`CO_E_NOTINITIALIZED` in `ComSmartPtr::CoCreateInstance`); since the Qt-GUI
+removal (`QApplication` → `QCoreApplication`), nothing initialized COM on the
+main thread, so the WASAPI endpoint scan returned empty (cached by
+`hasScanned`) and `AudioDeviceManager` silently fell back to **DirectSound** —
+an emulated driver (~58 ms latency, jittery callbacks → stuttering audio).
+
+- New `HDAW::ScopedComInit` (RAII `CoInitializeEx(COINIT_MULTITHREADED)`) is
+  the first statement of `main`/`main_headless`/`test_main` — covers startup
+  default-init AND the `audio.*` RPCs (dispatched on the main Qt event loop).
+- Saved-device restore in `AudioEngine::initialize` now switches the driver
+  type FIRST, re-fetches the setup after, and only applies a saved device name
+  if it exists in the new type's device list — previously it applied
+  DirectSound-era names ("Primary Sound Driver") under WASAPI, got "No such
+  device", and fell back to DirectSound again.
+- Verified: WASAPI endpoints enumerate (Focusrite + NVIDIA HDMI), Focusrite
+  opens at **10 ms / 441-sample** buffer (was 58 ms / 2560 on DirectSound);
+  full gtest suite 862/862 pass.
+- **Packaged-Electron note:** the shipped engine comes from
+  `build/RelWithDebInfo/` — rebuild that config (`cmake --build build --config
+  RelWithDebInfo`) and repackage before trusting the packaged app.
+
+### v0.23.0 — Streaming handle sharing, incremental routing default ON, per-op bake avoidance
+
+- `StreamingSoundPool` shares streaming file handles across clips; incremental
+  clip routing flips to **default ON** (`HDAW_FORCE_INCREMENTAL_ROUTING=0` to
+  opt out) with per-operation graph-bake avoidance, keeping clip edit ops under
+  ~2 s for 128 clips (was ~80 s).
+- Token-based HTTP auth for `UiHttpServer`.
+- Per-instance pipe/shm namespace prefix for isolated plugin proxies (lesson-20
+  guard); plugin respawn-storm termination: flag-once crash notification,
+  sliding-window respawn budget (8/30 s), path re-resolution, pid+date log
+  attribution.
+
+### v0.22.0 — Clip disk streaming, shared decode pool, live-track race marshals
+
+- `StreamingClipSource` background double-buffer reader: long clips stream from
+  disk instead of whole-file loads; non-realtime sync-refill during export
+  (Subsystem D gates).
+- `DecodedSoundPool`: shared decode cache keyed by path — clips and the sampler
+  share one decode; unused decodes pruned on rebuild.
+- Sampler refinements: hold/glide/reverse/sample-range params, live plugin
+  state persistence, loop crossfade.
+- Message-thread marshaling of live-track mutations (track-FX rebuilds,
+  modulation/automation/FX-editor, MIDI clip cache) — race/UAF fixes.
+- Cursor-pinned wheel zoom + ruler marquee zoom; `.hdaw3` file association.
+
+### v0.21.0 — Internal sampler instrument, FM synth, realtime-safety instrumentation
+
+- Internal sampler instrument end-to-end (`SamplerEditor`, E2E tests) and an
+  internal DX7-compatible 6-operator FM synthesizer (32 algorithms).
+- Realtime-safety instrumentation: `RealtimeGuard` thread-id + lock-block
+  tripwire, `BufferCheck` NaN/Inf/DC/glitch detector with atomic flag drain on
+  clip/track/master/sampler paths, `HDAW_LOG_ALWAYS` bypass for tripwires.
 
 ### v0.20.0 — Rhythm pattern generator, export isolation fix
 
