@@ -34,7 +34,7 @@ function isSupported(name: string) {
 }
 
 const DEVICE_EXTS = [".vst3", ".clap", ".dll"];
-const PRESET_EXTS = [".fxp", ".fxb", ".vstpreset"];
+const PRESET_EXTS = [".fxp", ".fxb", ".vstpreset", ".syx"];
 
 function fileKind(name: string): FileKindFilter | null {
   if (isAudio(name)) return "samples";
