@@ -33,6 +33,39 @@ function writeTestSysex(filePath: string): void {
   fs.writeFileSync(filePath, syx);
 }
 
+/** Create a valid 32-voice DX7 cartridge SysEx file (4104 bytes). */
+function writeCartridgeSysex(filePath: string): void {
+  const data = Buffer.alloc(4096, 0);
+  for (let i = 0; i < 4096; i++) data[i] = i & 0x7f;
+
+  // Voice 0: name "BASS", algorithm 31
+  const bass = "BASS      ";
+  for (let i = 0; i < bass.length; i++) data[118 + i] = bass.charCodeAt(i);
+  data[110] = 31;
+
+  // Voice 4: name "LEADX", algorithm 7
+  const voice4Base = 4 * 128;
+  const leadx = "LEADX     ";
+  for (let i = 0; i < leadx.length; i++) data[voice4Base + 118 + i] = leadx.charCodeAt(i);
+  data[voice4Base + 110] = 7;
+
+  const syx = Buffer.alloc(4104);
+  syx[0] = 0xf0; // SysEx start
+  syx[1] = 0x43; // Yamaha
+  syx[2] = 0x00; // sub-status 0
+  syx[3] = 0x09; // format 9 (32-voice cartridge)
+  syx[4] = 0x20; // byte count MSB (32)
+  syx[5] = 0x00; // byte count LSB
+  data.copy(syx, 6);
+  // Compute checksum over the 4096 data bytes (6..4101)
+  let sum = 0;
+  for (let i = 6; i <= 4101; i++) sum += syx[i];
+  syx[4102] = (~sum + 1) & 0x7f;
+  syx[4103] = 0xf7; // SysEx end
+
+  fs.writeFileSync(filePath, syx);
+}
+
 /**
  * Set up an FM synth FX slot on track 0 and open the FX Chain panel so the
  * slot is visible. Returns the slotIndex and a locator for the rendered slot.
@@ -98,13 +131,16 @@ async function spyOnRpc(page: Page) {
 
 test.describe("FM Synth SysEx import (user journeys)", () => {
   const syxPath = path.join(os.tmpdir(), `hdaw-e2e-syx-${Date.now()}.syx`);
+  const cartPath = path.join(os.tmpdir(), `hdaw-e2e-cart-${Date.now()}.syx`);
 
   test.beforeAll(() => {
     writeTestSysex(syxPath);
+    writeCartridgeSysex(cartPath);
   });
 
   test.afterAll(() => {
     try { fs.unlinkSync(syxPath); } catch {}
+    try { fs.unlinkSync(cartPath); } catch {}
   });
 
   test.beforeEach(async ({ page }) => {
@@ -180,5 +216,40 @@ test.describe("FM Synth SysEx import (user journeys)", () => {
 
     await expect(slot).toBeVisible();
     await expect(slot.locator(".fx-slot-type")).toHaveText("eq");
+  });
+
+  test("cartridge drop shows a voice picker and picking a voice re-imports it", async ({ page }) => {
+    const { slotIndex, slot } = await setupFmSynthSlot(page);
+    await spyOnRpc(page);
+
+    await dropInternalFile(page, `.fx-slot[data-track-index='0'][data-slot-index='${slotIndex}']`, cartPath, "cart.syx");
+
+    // Wait for the import RPC to fire (async)
+    await expect(async () => {
+      const calls = await page.evaluate(() => (window as any).__rpcCalls ?? []);
+      expect(calls.some((c: { method: string }) => c.method === "audio.fm_synthImportSysex")).toBe(true);
+    }).toPass({ timeout: 5000 });
+
+    // The Voice button appears after a cartridge import
+    const voiceBtn = slot.locator(".fx-voice-btn");
+    await expect(voiceBtn).toBeVisible({ timeout: 5000 });
+
+    // Open the picker and verify named voices are listed
+    await voiceBtn.click();
+    const list = slot.locator(".fx-voice-list");
+    await expect(list).toBeVisible();
+    await expect(list.locator(".fx-voice-name").first()).toHaveText("BASS");
+
+    // Pick voice 4 by name
+    const leadx = list.locator(".fx-voice-item", { hasText: "LEADX" });
+    await expect(leadx).toBeVisible();
+    await leadx.click();
+
+    // The re-import call must carry voiceIndex 4
+    await expect(async () => {
+      const calls = await page.evaluate(() => (window as any).__rpcCalls ?? []);
+      const importCalls = calls.filter((c: { method: string }) => c.method === "audio.fm_synthImportSysex");
+      expect(importCalls.some((c: any) => c.params?.voiceIndex === 4 && c.params?.filePath === cartPath)).toBe(true);
+    }).toPass({ timeout: 5000 });
   });
 });

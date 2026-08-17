@@ -32,6 +32,14 @@ interface InternalParamInfo {
   defaultValue: number;
 }
 
+interface CartridgeVoice { index: number; name: string; algorithm: number; }
+interface CartridgeInfo {
+  filePath: string;
+  totalVoices: number;
+  voiceIndex: number;
+  voices: CartridgeVoice[];
+}
+
 // Map value from real range to 0-1000 for slider, or just show as percentage
 function formatParamValue(value: number, min: number, max: number): string {
   // For 0-1 range params, show as percentage
@@ -69,6 +77,8 @@ export default function FXChain() {
   const [presets, setPresets] = useState<{index: number; name: string; current: boolean}[]>([]);
   const [abSlots, setAbSlots] = useState<Set<number>>(new Set());
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [cartridgeInfo, setCartridgeInfo] = useState<Map<number, CartridgeInfo>>(new Map());
+  const [voiceMenuSlot, setVoiceMenuSlot] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,6 +93,11 @@ export default function FXChain() {
       })
       .catch(() => setSlots([]));
   }, [selectedTrackIndex, refreshKey]);
+
+  useEffect(() => {
+    setCartridgeInfo(new Map());
+    setVoiceMenuSlot(null);
+  }, [selectedTrackIndex]);
 
   const fetchPluginLists = useCallback(() => {
     console.log("[FXChain] fetchPluginLists called");
@@ -325,16 +340,49 @@ export default function FXChain() {
       const slot = slots.find(s => s.slotIndex === targetSlotIndex);
       if (!slot || slot.fxType !== "fm_synth") return;
 
-      await rpc.call("audio.fm_synthImportSysex", {
+      const resp = await rpc.call("audio.fm_synthImportSysex", {
         trackIndex: selectedTrackIndex,
         slotIndex: targetSlotIndex,
         filePath,
       });
+      if (resp && Array.isArray((resp as any).voices) && (resp as any).totalVoices > 1) {
+        setCartridgeInfo(prev => new Map(prev).set(targetSlotIndex, {
+          filePath,
+          totalVoices: (resp as any).totalVoices,
+          voiceIndex: (resp as any).voiceIndex ?? 0,
+          voices: (resp as any).voices,
+        }));
+      }
       refresh();
     } catch (err) {
       console.error("fm_synthImportSysex failed", err);
     }
   }, [selectedTrackIndex, dragSlot, slots, refresh]);
+
+  const selectCartridgeVoice = useCallback(async (slotIndex: number, voiceIndex: number) => {
+    if (selectedTrackIndex == null) return;
+    const info = cartridgeInfo.get(slotIndex);
+    if (!info) return;
+    try {
+      const resp = await rpc.call("audio.fm_synthImportSysex", {
+        trackIndex: selectedTrackIndex,
+        slotIndex,
+        filePath: info.filePath,
+        voiceIndex,
+      });
+      if (resp && Array.isArray((resp as any).voices) && (resp as any).totalVoices > 1) {
+        setCartridgeInfo(prev => new Map(prev).set(slotIndex, {
+          filePath: info.filePath,
+          totalVoices: (resp as any).totalVoices,
+          voiceIndex: (resp as any).voiceIndex ?? voiceIndex,
+          voices: (resp as any).voices,
+        }));
+      }
+      refresh();
+    } catch (err) {
+      console.error("fm_synthImportSysex failed", err);
+    }
+  }, [selectedTrackIndex, cartridgeInfo, refresh]);
 
   const handleDragEnd = useCallback(() => setDragSlot(null), []);
 
@@ -545,6 +593,16 @@ export default function FXChain() {
                 <span className="fx-btn-label">Presets</span>
               </button>
             )}
+            {slot.fxType === "fm_synth" && cartridgeInfo.has(slot.slotIndex) && (
+              <button
+                className={`fx-btn fx-voice-btn${voiceMenuSlot === slot.slotIndex ? " active" : ""}`}
+                onClick={() => setVoiceMenuSlot(v => (v === slot.slotIndex ? null : slot.slotIndex))}
+                title="Select cartridge voice"
+              >
+                <span className="fx-btn-icon">&#9834;</span>
+                <span className="fx-btn-label">Voice</span>
+              </button>
+            )}
             {slot.pluginId && (
               <button
                 className={`fx-btn fx-ab-btn${abSlots.has(slot.slotIndex) ? " active" : ""}`}
@@ -566,6 +624,21 @@ export default function FXChain() {
                 >
                   <span className="fx-preset-dot" />
                   <span className="fx-preset-name">{p.name || `Preset ${p.index}`}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {slot.fxType === "fm_synth" && voiceMenuSlot === slot.slotIndex && cartridgeInfo.has(slot.slotIndex) && (
+            <div className="fx-voice-list">
+              {(cartridgeInfo.get(slot.slotIndex)!.voices || []).map(v => (
+                <div
+                  key={v.index}
+                  className={`fx-voice-item${v.index === cartridgeInfo.get(slot.slotIndex)!.voiceIndex ? " fx-voice-item--current" : ""}`}
+                  onClick={() => selectCartridgeVoice(slot.slotIndex, v.index)}
+                >
+                  <span className="fx-voice-dot" />
+                  <span className="fx-voice-name">{v.name || `Voice ${v.index + 1}`}</span>
+                  <span className="fx-voice-algo">Alg {v.algorithm + 1}</span>
                 </div>
               ))}
             </div>

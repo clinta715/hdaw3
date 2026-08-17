@@ -648,14 +648,17 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
 
             std::optional<HDAW::Dx7Voice> voice;
             std::vector<HDAW::Dx7Voice> voices;
+            int resolvedVoiceIndex = 0;
 
             if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x00) {
                 voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
             } else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x09) {
                 voices = HDAW::parseCartridgeSysex(bytes, fileSize);
                 int vi = a.value("voiceIndex").toInt(0);
-                if (vi >= 0 && vi < (int)voices.size())
+                if (vi >= 0 && vi < (int)voices.size()) {
                     voice = voices[vi];
+                    resolvedVoiceIndex = vi;
+                }
             } else {
                 return McpToolResult::text(
                     "not a recognized DX7 SysEx file (expected F0 43 00 00 or F0 43 00 09 header)", true);
@@ -682,8 +685,19 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
             result["voiceName"] = QString::fromStdString(voice->voiceName);
             result["algorithm"] = voice->algorithm;
             result["feedback"] = voice->feedback;
-            if (!voices.empty())
+            if (!voices.empty()) {
                 result["totalVoices"] = static_cast<int>(voices.size());
+                QJsonArray voicesArr;
+                for (int i = 0; i < (int)voices.size(); ++i) {
+                    QJsonObject v;
+                    v["index"] = i;
+                    v["name"] = QString::fromStdString(voices[i].voiceName);
+                    v["algorithm"] = voices[i].algorithm;
+                    voicesArr.append(v);
+                }
+                result["voices"] = voicesArr;
+                result["voiceIndex"] = resolvedVoiceIndex;
+            }
 
             return McpToolResult::text(
                 QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));

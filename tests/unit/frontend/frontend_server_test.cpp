@@ -344,6 +344,106 @@ TEST(FrontendServer, FmSynthImportSysexRpc) {
     s.tearDown();
 }
 
+// 32-voice cartridge import: the response must carry the full parsed voice
+// list (index/name/algorithm), totalVoices, and the resolved voiceIndex so the
+// frontend can render a voice picker. Exercises the same path the drop handler
+// will use: addFxSlot → read.getFxSlots → audio.fm_synthImportSysex → live
+// engine.
+TEST(FrontendServer, FmSynthImportSysexCartridgeVoices) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    // Add an FM synth slot on track 0 via the same RPC the UI/drop uses.
+    QJsonObject addParams{ { "trackIndex", 0 }, { "fxType", "fm_synth" } };
+    auto addResp = client.call(1, "project.addFxSlot", addParams);
+    ASSERT_FALSE(addResp.contains("error")) << addResp.value("error").toObject()
+                                                  .value("message").toString().toStdString();
+
+    // Locate the slot index (robust to pre-existing slots).
+    QJsonObject readParams{ { "trackIndex", 0 } };
+    auto readResp = client.call(2, "read.getFxSlots", readParams);
+    ASSERT_FALSE(readResp.contains("error"));
+    int slotIndex = -1;
+    for (const auto& v : readResp.value("result").toArray()) {
+        auto o = v.toObject();
+        if (o.value("fxType").toString() == "fm_synth") {
+            slotIndex = o.value("slotIndex").toInt(-1);
+            break;
+        }
+    }
+    ASSERT_GE(slotIndex, 0) << "fm_synth slot not found";
+
+    // Build a 4104-byte 32-voice cartridge: F0 43 00 09 20 00 + 4096 data
+    // bytes + checksum + F7. Each 128-byte voice block sits at syx[6 + v*128].
+    std::vector<uint8_t> syx(4104);
+    syx[0] = 0xF0; syx[1] = 0x43; syx[2] = 0x00; syx[3] = 0x09;
+    syx[4] = 0x20; syx[5] = 0x00;                    // 4096 bytes of voice data
+    for (int i = 6; i < 4102; ++i)
+        syx[i] = static_cast<uint8_t>(i & 0x7F);
+
+    // Voice 0: name "BASS" (packed offsets 118-127), algorithm 31 (offset 110).
+    const char* bassName = "BASS";
+    for (int i = 0; i < 4; ++i) syx[6 + 118 + i] = static_cast<uint8_t>(bassName[i]);
+    for (int i = 4; i < 10; ++i) syx[6 + 118 + i] = ' ';
+    syx[6 + 110] = 31;
+
+    // Voice 5: name "LEADX" (packed offsets 118-127), algorithm 7 (offset 110).
+    const char* leadName = "LEADX";
+    for (int i = 0; i < 5; ++i) syx[6 + 5 * 128 + 118 + i] = static_cast<uint8_t>(leadName[i]);
+    for (int i = 5; i < 10; ++i) syx[6 + 5 * 128 + 118 + i] = ' ';
+    syx[6 + 5 * 128 + 110] = 7;
+
+    int sum = 0;
+    for (int i = 6; i <= 4101; ++i) sum += syx[i];
+    syx[4102] = static_cast<uint8_t>((~sum + 1) & 0x7F);  // checksum
+    syx[4103] = 0xF7;                                     // SysEx end
+
+    auto syxFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_test_cartridge.syx");
+    syxFile.replaceWithData(syx.data(), static_cast<int>(syx.size()));
+
+    // Import voice 5 from the cartridge via RPC.
+    QJsonObject importParams{
+        { "trackIndex", 0 },
+        { "slotIndex", slotIndex },
+        { "filePath", syxFile.getFullPathName().toStdString().c_str() },
+        { "voiceIndex", 5 },
+    };
+    auto importResp = client.call(3, "audio.fm_synthImportSysex", importParams);
+    ASSERT_FALSE(importResp.contains("error")) << importResp.value("error").toObject()
+                                                    .value("message").toString().toStdString();
+    auto result = importResp.value("result").toObject();
+    EXPECT_TRUE(result.value("ok").toBool());
+    EXPECT_EQ(result.value("totalVoices").toInt(), 32);
+    EXPECT_EQ(result.value("voiceIndex").toInt(), 5);
+    EXPECT_TRUE(result.value("voiceName").toString().contains("LEADX"));
+
+    auto voices = result.value("voices").toArray();
+    ASSERT_EQ(static_cast<int>(voices.size()), 32);
+    EXPECT_EQ(voices.at(0).toObject().value("name").toString(), "BASS");
+    EXPECT_EQ(voices.at(5).toObject().value("name").toString(), "LEADX");
+    EXPECT_EQ(voices.at(5).toObject().value("algorithm").toInt(), 7);
+
+    // Verify the LIVE processor loaded the patch (not just the ReadModel).
+    auto* proc = s.engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_GT(static_cast<int>(chain.size()), slotIndex);
+    auto* slot = chain[slotIndex].get();
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->getType().toStdString(), "fm_synth");
+    ASSERT_NE(slot->fmSynthEngine(), nullptr);
+
+    syxFile.deleteFile();
+    client.close();
+    s.tearDown();
+}
+
 // JSON-RPC notification (no id): fire-and-forget. The server must not send a
 // response. Verify by sending a notification then a request; confirm only the
 // request gets a response (the notification may produce a push notification

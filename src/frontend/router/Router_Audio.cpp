@@ -246,14 +246,17 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
 
         std::optional<HDAW::Dx7Voice> voice;
         std::vector<HDAW::Dx7Voice> voices;
+        int resolvedVoiceIndex = 0;
 
         if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x00) {
             voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
         } else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x09) {
             voices = HDAW::parseCartridgeSysex(bytes, fileSize);
             int vi = o.value("voiceIndex").toInt(0);
-            if (vi >= 0 && vi < static_cast<int>(voices.size()))
+            if (vi >= 0 && vi < static_cast<int>(voices.size())) {
                 voice = voices[vi];
+                resolvedVoiceIndex = vi;
+            }
         } else {
             return makeError(-32602, "not a recognized DX7 SysEx file");
         }
@@ -267,8 +270,19 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
         result["ok"] = true;
         result["voiceName"] = QString::fromStdString(voice->voiceName);
         result["algorithm"] = voice->algorithm;
-        if (!voices.empty())
+        if (!voices.empty()) {
             result["totalVoices"] = static_cast<int>(voices.size());
+            QJsonArray voicesArr;
+            for (int i = 0; i < static_cast<int>(voices.size()); ++i) {
+                QJsonObject v;
+                v["index"] = i;
+                v["name"] = QString::fromStdString(voices[i].voiceName);
+                v["algorithm"] = voices[i].algorithm;
+                voicesArr.append(v);
+            }
+            result["voices"] = voicesArr;
+            result["voiceIndex"] = resolvedVoiceIndex;
+        }
 
         return { false, result };
     }

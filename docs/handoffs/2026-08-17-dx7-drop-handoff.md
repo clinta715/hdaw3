@@ -1,9 +1,9 @@
-# Handoff: HDAW DX7 SysEx Import — Drop Handler + E2E Done, Cartridge UI & Full-Suite Remaining
+# Handoff: HDAW DX7 SysEx Import — Drop Handler + Cartridge Voice Picker Done, Full-Suite Remaining
 
 **Project root:** `D:\pdf\roo projects\hdaw3`
 **Current version:** 0.23.1 (in sync in `CMakeLists.txt` + `frontend/package.json`)
 **Build:** VS 2026 (v180), CMake generator `"Visual Studio 18 2026"` — `cmake --build build --config Debug -- /p:CL_MPCount=8`
-**⚠️ ALL WORK SINCE `bb98615` IS UNCOMMITTED** — see "Working tree state" below.
+**⚠️ Voice-picker batch since `2e39cd8` IS UNCOMMITTED** — see "Working tree state" below.
 
 ---
 
@@ -15,6 +15,26 @@
 - `src/mcp/McpTools_Audio.cpp` — MCP tool `fm_synth_import_sysex` (`trackId`, `slotIndex`, `filePath`, optional `voiceIndex` for cartridge dumps; returns `voiceName`/`algorithm`/`totalVoices`).
 - `frontend/src/components/FileBrowser.tsx` — `.syx` added to `PRESET_EXTS` (classified as "presets").
 - `CMakeLists.txt` / `tests/CMakeLists.txt` — source + test wired.
+
+### This session (cartridge voice picker — handoff item #1)
+- **Import RPC + MCP tool** now return `{ ok, voiceName, algorithm, totalVoices,
+  voiceIndex, voices: [{index, name, algorithm}] }` for cartridge files (Router
+  + MCP symmetric; single-voice responses unchanged).
+- **FXChain.tsx** — per-slot `cartridgeInfo` state (from the import response)
+  + a **Voice** button / named `.fx-voice-list` dropdown on FM slots; selecting
+  a voice re-imports with that `voiceIndex`. Per-track reset via a dedicated
+  `[selectedTrackIndex]` effect.
+- **Tests** — new `FrontendServer.FmSynthImportSysexCartridgeVoices` gtest
+  (asserts 32 voices + names + voiceIndex + live processor) and a new E2E
+  journey (drop cartridge → picker → pick named voice → `voiceIndex` param).
+  Plan: `docs/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
+
+### Verified this session (all evidence on record)
+- C++ build ✓ (HDAW_lib + HDAW.exe + hdaw_tests.exe, 8/17 3:47 PM)
+- `FrontendServer.*` 11/11 (incl. new cartridge test) · `Dx7SysexImport.*` +
+  `FmSynthTest.*` 34/34
+- Frontend unit 337/337 · `npm run build` ✓
+- E2E `fm-synth-sysex.spec.ts` 5/5 (incl. cartridge voice picker journey)
 
 ### This session (frontend drop path + coverage)
 - **`src/frontend/router/Router_Audio.cpp`** — NEW RPC `audio.fm_synthImportSysex` (`trackIndex`, `slotIndex`, `filePath`, optional `voiceIndex`). Frontend-facing twin of the MCP tool (MCP parity preserved). Reads file → parses → `slot->fmSynthEngine()->loadPatch(voice->patchData.data())` → returns `{ok, voiceName, algorithm, totalVoices?}`. Error codes: -32602 bad params/slot-not-fm-synth/file-not-found, -32603 engine not init / parse failure.
@@ -33,18 +53,34 @@
 
 ## Working tree state (DO NOT lose this)
 
-All of the following is **uncommitted** (last commit `bb98615` = FM analysis handoff). Modified:
-`CMakeLists.txt`, `frontend/src/components/FXChain.tsx`, `frontend/src/components/FileBrowser.tsx`, `src/frontend/router/Router_Audio.cpp`, `src/mcp/McpTools_Audio.cpp`, `tests/CMakeLists.txt`, `tests/unit/frontend/frontend_server_test.cpp`
+**Voice-picker work since `2e39cd8` is uncommitted** (the earlier DX7/drop batch
+is committed as `5339206`..`2e39cd8`). Modified:
+`src/frontend/router/Router_Audio.cpp`, `src/mcp/McpTools_Audio.cpp`,
+`tests/unit/frontend/frontend_server_test.cpp`, `frontend/src/components/FXChain.tsx`,
+`frontend/src/components/FXChain.css`, `frontend/e2e/fm-synth-sysex.spec.ts`
 Untracked:
-`docs/plans/2026-08-17-dx7-sysex-import.md`, `frontend/e2e/fm-synth-sysex.spec.ts`, `src/engine/Dx7SysexImport.{h,cpp}`, `tests/unit/engine/dx7_sysex_import_test.cpp`
+`docs/plans/2026-08-17-dx7-cartridge-voice-picker.md` (+ this handoff updated).
 
-**Before starting new work, decide:** commit this batch (3 logical commits per plan doc Tasks 1-3, or one squashed commit) or keep working on top of it. Do NOT lose track of the uncommitted state.
+**Before starting new work, decide:** commit this batch (one commit — it's a
+single feature) or keep working on top of it.
 
 ---
 
 ## Remaining work (prioritized)
 
-1. **Cartridge voice selection UI** — The MCP tool AND the new RPC both support `voiceIndex` for 32-voice cartridge dumps, but the frontend has NO picker. A `.syx` cartridge dropped via the new drop handler always loads voice 0. TODO: a UI control (e.g. a voice-picker dropdown on the FM synth slot, or in an FM editor) that re-imports with a chosen `voiceIndex` via `audio.fm_synthImportSysex`; `read.snapshot` FX slot does NOT expose totalVoices, so the picker needs the import response's `totalVoices` (or a read RPC twin of MCP `fm_synth_get_state`). Wire as: drop handler → parse with `voiceIndex` param → refresh. Add E2E for picking a voice from a cartridge. **Pitfall: Gate 2 (full path trace) + Gate 5 (stale closures post-await).**
+1. **Cartridge voice selection UI — DONE (2026-08-17)**
+
+   The import RPC (`audio.fm_synthImportSysex`) and MCP tool now return, for
+   cartridge files, `{ ok, voiceName, algorithm, totalVoices, voiceIndex, voices:
+   [{index, name, algorithm}] }`. FXChain stores the parsed list per slot after a
+   cartridge drop and renders a **Voice** button (`.fx-voice-btn`) on FM slots,
+   opening `.fx-voice-list` with named entries (`name || "Voice N"`, `Alg N`
+   tag, `--current` highlight); clicking a voice re-imports with that
+   `voiceIndex`. Per-track state resets via a dedicated `[selectedTrackIndex]`
+   effect (NOT the `[.., refreshKey]` fetch effect — `refresh()` would wipe it).
+   Gates: FrontendServer 11/11 (new `...CartridgeVoices` gtest incl. live
+   processor), Dx7+FmSynth 34/34, npm build ✓, vitest 337/337, E2E spec 5/5.
+   Plan: `docs/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
 
 2. **Full engine test suite** — Prior run timed out at 5 min. Use the plan doc's exclusion filter (Task 5 Step 1):
    ```
