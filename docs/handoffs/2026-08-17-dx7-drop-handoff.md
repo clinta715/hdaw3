@@ -82,11 +82,11 @@ single feature) or keep working on top of it.
    processor), Dx7+FmSynth 34/34, npm build ✓, vitest 337/337, E2E spec 5/5.
    Plan: `docs/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
 
-2. **Full engine test suite** — Prior run timed out at 5 min. Use the plan doc's exclusion filter (Task 5 Step 1):
-   ```
-   build\Debug\hdaw_tests.exe --gtest_filter=-CrashRecovery.*:ProxyHealth.*:IsolatedScanner.*:PluginIsolation.*:McpServer.ExportAudioWithClapPluginDoesNotHang:McpServer.ExportAudioWithMultipleIsolatedInstances:McpServer.DiagnosticClapExportMatrix:RenderSequenceRelease.*
-   ```
-   (the five known-fail proxy tests need a clean engine tree first — see AGENTS.md lesson 20). Verify no regression from the DX7/drop changes.
+2. **Full engine test suite — DONE (2026-08-17)** — `833/833 passed` (162
+   suites, 336 s) with the exclusion filter below. No regressions from the
+   DX7/drop/voice-picker changes. (The 29 excluded tests are the known proxy
+   suites; the five known-fail CrashRecovery/PluginIsolation tests still need a
+   clean engine tree + proxy cleanup — see lesson 20 — and remain un-run.)
 
 3. **Plan-doc check** — `docs/plans/` has ~40 plans. `2026-08-17-dx7-sysex-import.md` is the active one (its checkboxes are now effectively complete except Task 5 verification). Older plans (sampler crossfade, clip disk streaming, guard-and-auth, hise-derived master plan) may have unfinished items — scan before assuming done.
 
