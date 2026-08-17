@@ -52,6 +52,12 @@ public:
     TransportCommands& getTransportCommands();
     AudioGraphCommands& getAudioGraphCommands();
 
+    // Concrete command object. Sampler-specific control (setSamplerMode,
+    // setSamplerSliceMode, detectSamplerSlices, triggerSamplerSlice) lives on
+    // AudioEngineCommands but is not yet part of the ProjectCommands interface;
+    // the sampler RPC router / MCP tools reach it through this accessor.
+    AudioEngineCommands& getAudioEngineCommands() { return *commands; }
+
     // Service interfaces
     PluginService& getPluginService() { return *pluginService; }
     PluginParamService& getPluginParamService() { return *paramService; }

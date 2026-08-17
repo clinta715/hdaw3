@@ -102,3 +102,38 @@
   border-radius: 3px;
   border: 1px solid var(--border-subtle);
 }
+
+.sampler-editor__slice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+  min-width: 170px;
+  max-width: 220px;
+  border-left: 1px solid var(--border);
+  padding-left: var(--spacing-sm, 8px);
+}
+
+.sampler-slice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs, 4px);
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.sampler-slice-btn {
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sampler-slice-btn:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}

@@ -90,3 +90,47 @@ TEST(SamplerEngine, OneShotIgnoresNoteOff)
     buf.clear(); engine.render(buf, off);
     EXPECT_EQ(engine.activeVoiceCount(), after); // one-shot ignores note-off
 }
+
+static std::shared_ptr<const HDAW::SamplerSound> sineWithSlices(int len, double sr,
+                                                                std::vector<int64_t> slices)
+{
+    // Rebuild the sine with explicit slice boundaries (sine() does not set them).
+    HDAW::SamplerSound::Builder b;
+    b.numChannels = 1; b.length = len; b.nativeSampleRate = sr; b.rootNote = 60;
+    b.data[0] = std::make_unique<float[]>(static_cast<size_t>(len));
+    for (int i = 0; i < len; ++i)
+        b.data[0][i] = std::sin(6.2831853 * 440.0 * i / sr);
+    b.slicePoints = std::move(slices);
+    return b.build();
+}
+
+TEST(SamplerEngine, TriggerSliceAuditionsSlice)
+{
+    HDAW::SamplerEngine engine;
+    engine.prepare(44100.0, 64);
+    engine.setSound(sineWithSlices(1024, 44100.0, {0, 256, 512, 1024}));
+    engine.triggerSlice(1, 0.8f);
+
+    juce::MidiBuffer empty;
+    juce::AudioBuffer<float> buf(1, 64); buf.clear();
+    engine.render(buf, empty);
+    EXPECT_GT(engine.activeVoiceCount(), 0);
+
+    // The auditioned slice [256,512) is ~242 samples long at root pitch plus a
+    // release tail, so it is still playing after a second block — don't over-assert.
+    buf.clear(); engine.render(buf, empty);
+    EXPECT_GT(engine.activeVoiceCount(), 0);
+}
+
+TEST(SamplerEngine, TriggerSliceWithoutSlicesDoesNothing)
+{
+    HDAW::SamplerEngine engine;
+    engine.prepare(44100.0, 64);
+    engine.setSound(sineWithSlices(1024, 44100.0, {}));
+    engine.triggerSlice(0, 0.8f);
+
+    juce::MidiBuffer empty;
+    juce::AudioBuffer<float> buf(1, 64); buf.clear();
+    engine.render(buf, empty);
+    EXPECT_EQ(engine.activeVoiceCount(), 0);
+}

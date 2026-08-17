@@ -1,7 +1,9 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -687,6 +689,29 @@ public:
                 std::memcpy (builder.data[ch].get(), readBuf.getReadPointer (ch),
                              static_cast<size_t> (totalSamples) * sizeof (float));
             delete reader;
+        }
+
+        // Restore slice boundaries from a comma-separated normalized (0..1) string.
+        juce::String sliceStr = slotTree.getProperty ("slicePoints", "").toString();
+        if (sliceStr.isNotEmpty())
+        {
+            const int64_t len = builder.length;
+            auto tokens = juce::StringArray::fromTokens (sliceStr, ",", "");
+            for (auto& tok : tokens)
+            {
+                tok = tok.trim();
+                const double norm = tok.getDoubleValue();
+                if (norm < 0.0 || norm > 1.0)
+                    continue;
+                int64_t frame = static_cast<int64_t> (std::round (norm * static_cast<double> (len)));
+                frame = std::clamp<int64_t> (frame, 0, len);
+                builder.slicePoints.push_back (frame);
+            }
+            if (! builder.slicePoints.empty())
+            {
+                builder.slicePoints.front() = 0;
+                builder.slicePoints.back()  = len;
+            }
         }
 
         auto sound = builder.build();

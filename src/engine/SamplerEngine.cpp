@@ -69,11 +69,37 @@ void SamplerEngine::applyPendingParams()
     paramsDirty_.store (false, std::memory_order_release);
 }
 
+void SamplerEngine::applyPendingAudition()
+{
+    if (! pendingAudition_.exchange (false, std::memory_order_acq_rel))
+        return;
+    const auto* s = activeSound_.get();
+    if (s == nullptr || s->slicePoints.empty())
+        return;
+    const int idx = std::clamp (pendingAuditionIndex_.load (std::memory_order_relaxed), 0,
+                                static_cast<int> (s->slicePoints.size()) - 1);
+    if (monoAtom_.load (std::memory_order_relaxed))
+        for (auto& v : voices_)
+            if (! v.isDone())
+                v.stop();
+    SamplerVoice* v = allocateVoice();
+    if (v == nullptr)
+        return;
+    const int64_t start = s->slicePoints[static_cast<size_t> (idx)];
+    const int64_t end   = (idx + 1 < static_cast<int> (s->slicePoints.size()))
+                              ? s->slicePoints[static_cast<size_t> (idx + 1)]
+                              : s->length;
+    const int note = baseNoteAtom_.load (std::memory_order_relaxed) + idx;
+    v->startSlice (s, note, pendingAuditionVel_.load (std::memory_order_relaxed),
+                   params_.env, start, end);
+}
+
 void SamplerEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
     applyPendingSwap();
     applyPendingParams();   // L13 fix: push AHDSR from atomics at block boundary
+    applyPendingAudition(); // consume any pending slice-audition request
 
     const int numSamples = buffer.getNumSamples();
     if (! hasSound_.load (std::memory_order_acquire) || numSamples <= 0)

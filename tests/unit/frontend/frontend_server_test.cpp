@@ -25,6 +25,8 @@
 #include <QUrl>
 #include <QVariantList>
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <cstring>
 #include <vector>
 
@@ -560,6 +562,176 @@ TEST(FrontendServer, ClipAddRemoveBroadcastsIncrementalDelta) {
     s.tearDown();
 }
 
+// New sampler RPC namespace contract (sampler.*): add a sampler slot, load a
+// sample, switch to slice mode, detect slices, read state back, and audition a
+// slice. Exercises the full router path the SamplerEditor uses and asserts the
+// LIVE engine (sound slicePoints + mode) after the rebuilds — not just the
+// ReadModel.
+TEST(FrontendServer, SamplerRpcFamily) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    // 1. Add a sampler FX slot on track 0 via the same RPC the UI uses.
+    QJsonObject addParams{ { "trackIndex", 0 }, { "fxType", "sampler" } };
+    auto addResp = client.call(1, "project.addFxSlot", addParams);
+    ASSERT_FALSE(addResp.contains("error")) << addResp.value("error").toObject()
+                                                  .value("message").toString().toStdString();
+
+    // Locate the slot index (robust to pre-existing slots).
+    QJsonObject readParams{ { "trackIndex", 0 } };
+    auto readResp = client.call(2, "read.getFxSlots", readParams);
+    ASSERT_FALSE(readResp.contains("error"));
+    int slotIndex = -1;
+    for (const auto& v : readResp.value("result").toArray()) {
+        auto o = v.toObject();
+        if (o.value("fxType").toString() == "sampler") {
+            slotIndex = o.value("slotIndex").toInt(-1);
+            break;
+        }
+    }
+    ASSERT_GE(slotIndex, 0) << "sampler slot not found";
+
+    // Close the coalesced async routing-rebuild window from addFxSlot before
+    // the synchronous rebuildTrackFX calls below (audio_pool_dedup_test
+    // pattern) so the live-processor reads cannot race a RoutingManager swap.
+    s.engine.drainPendingRoutingRebuild();
+
+    // 2. Write a small mono WAV whose signal is a full-buffer rising ramp, so
+    // the transient detector reliably finds slice boundaries (the envelope
+    // follower tracks the rise and fires above threshold).
+    const int len = 8000;
+    const double sr = 44100.0;
+    auto wavFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_sampler_rpc_test.wav");
+    wavFile.deleteFile();
+    {
+        juce::WavAudioFormat wav;
+        auto* fileOut = new juce::FileOutputStream(wavFile);
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            wav.createWriterFor(fileOut, sr, 1, 16, {}, 0));
+        if (writer == nullptr) delete fileOut;
+        ASSERT_NE(writer, nullptr);
+        juce::AudioBuffer<float> data(1, len);
+        for (int i = 0; i < len; ++i)
+            data.setSample(0, i, static_cast<float>(i) / static_cast<float>(len));
+        writer->writeFromAudioSampleBuffer(data, 0, len);
+        writer->flush();
+    }
+
+    // 3. Load the sample.
+    QJsonObject setSampleParams{
+        { "trackIndex", 0 },
+        { "slotIndex", slotIndex },
+        { "filePath", wavFile.getFullPathName().toStdString().c_str() },
+    };
+    auto setSampleResp = client.call(3, "sampler.setSample", setSampleParams);
+    ASSERT_FALSE(setSampleResp.contains("error")) << setSampleResp.value("error").toObject()
+                                                        .value("message").toString().toStdString();
+
+    // 4. Switch to slice mode.
+    QJsonObject setModeParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex }, { "mode", "slice" } };
+    auto setModeResp = client.call(4, "sampler.setMode", setModeParams);
+    ASSERT_FALSE(setModeResp.contains("error")) << setModeResp.value("error").toObject()
+                                                      .value("message").toString().toStdString();
+
+    // 5. Configure transient detection.
+    QJsonObject setSliceParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex },
+                                { "sliceMode", "transient" }, { "sliceSensitivity", 0.3 } };
+    auto setSliceResp = client.call(5, "sampler.setSliceMode", setSliceParams);
+    ASSERT_FALSE(setSliceResp.contains("error")) << setSliceResp.value("error").toObject()
+                                                       .value("message").toString().toStdString();
+
+    s.engine.drainPendingRoutingRebuild();
+
+    // 6. Detect slices.
+    QJsonObject detectParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex } };
+    auto detectResp = client.call(6, "sampler.detectSlices", detectParams);
+    ASSERT_FALSE(detectResp.contains("error")) << detectResp.value("error").toObject()
+                                                     .value("message").toString().toStdString();
+    auto detectResult = detectResp.value("result").toObject();
+    EXPECT_TRUE(detectResult.value("ok").toBool());
+    const int totalSlices = detectResult.value("totalSlices").toInt();
+    EXPECT_GE(totalSlices, 1) << "rising ramp should yield at least one slice";
+    auto slicePoints = detectResult.value("slicePoints").toArray();
+    EXPECT_EQ(static_cast<int>(slicePoints.size()), totalSlices + 1);
+
+    s.engine.drainPendingRoutingRebuild();
+
+    // 7. Read the state back — the slice fields reflect the detection.
+    QJsonObject stateParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex } };
+    auto stateResp = client.call(7, "sampler.getState", stateParams);
+    ASSERT_FALSE(stateResp.contains("error")) << stateResp.value("error").toObject()
+                                                    .value("message").toString().toStdString();
+    auto state = stateResp.value("result").toObject();
+    EXPECT_EQ(state.value("mode").toString().toStdString(), std::string("slice"));
+    EXPECT_EQ(state.value("sliceMode").toString().toStdString(), std::string("transient"));
+    EXPECT_FALSE(state.value("slicePoints").toArray().isEmpty());
+
+    // 8-9. Audition a slice. The engine stages the rebuilt sound into the
+    // SamplerEngine's pendingSound_ and only adopts it into activeSound_ (what
+    // currentSound()/triggerSamplerSlice read) at the next audio-thread render.
+    // Start playback — with the track volume at 0 (NOT mute, which early-outs
+    // the track before the FX chain renders) — so the device callback renders
+    // a block, adopts the swap, and the output stays silent.
+    QJsonObject volParams{ { "trackIndex", 0 }, { "volume", 0.0 } };
+    client.call(8, "project.setTrackVolume", volParams);
+    auto playResp = client.call(9, "transport.play");
+    ASSERT_FALSE(playResp.contains("error")) << playResp.value("error").toObject()
+                                                   .value("message").toString().toStdString();
+
+    auto* proc = s.engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_GT(static_cast<int>(chain.size()), slotIndex);
+    auto* slot = chain[slotIndex].get();
+    ASSERT_NE(slot, nullptr);
+    auto* sampler = slot->samplerEngineForTest();
+    ASSERT_NE(sampler, nullptr);
+
+    // Poll bounded for the audio thread to adopt the staged sound.
+    auto deadline = QDateTime::currentMSecsSinceEpoch() + 3000;
+    while (sampler->currentSound() == nullptr && QDateTime::currentMSecsSinceEpoch() < deadline)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    ASSERT_NE(sampler->currentSound(), nullptr)
+        << "audio thread never adopted the staged sampler sound";
+
+    QJsonObject trigParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex }, { "sliceIndex", 0 } };
+    auto trigResp = client.call(10, "sampler.triggerSlice", trigParams);
+    ASSERT_FALSE(trigResp.contains("error")) << trigResp.value("error").toObject()
+                                                   .value("message").toString().toStdString();
+    auto trigResult = trigResp.value("result").toObject();
+    EXPECT_TRUE(trigResult.value("ok").toBool());
+    EXPECT_GE(trigResult.value("totalSlices").toInt(), 1);
+
+    // The LIVE engine's adopted sound carries the detected slice boundaries.
+    EXPECT_GE(static_cast<int>(sampler->currentSound()->slicePoints.size()), 2);
+
+    client.call(11, "transport.stop");
+
+    // 12-13. setParam property-path round-trip (Mono checkbox contract): write
+    // the named "mono" slot property and read it back through getState. The
+    // rebuild applies it to the live engine via loadSamplerState.
+    QJsonObject monoParams{ { "trackIndex", 0 }, { "slotIndex", slotIndex },
+                            { "property", "mono" }, { "value", true } };
+    auto monoResp = client.call(12, "sampler.setParam", monoParams);
+    ASSERT_FALSE(monoResp.contains("error")) << monoResp.value("error").toObject()
+                                                   .value("message").toString().toStdString();
+
+    auto monoStateResp = client.call(13, "sampler.getState", stateParams);
+    ASSERT_FALSE(monoStateResp.contains("error")) << monoStateResp.value("error").toObject()
+                                                         .value("message").toString().toStdString();
+    EXPECT_TRUE(monoStateResp.value("result").toObject().value("mono").toBool())
+        << "sampler.setParam property:mono should be reflected in getState";
+
+    wavFile.deleteFile();
+    client.close();
+    s.tearDown();
+}
 // Kill-switch: with HDAW_FORCE_FULL_SYNC armed, a change that would normally
 // broadcast an incremental delta (a pure clip add) is routed to a fullSync
 // instead, so the delta path can be disabled in the field if drift surfaces.

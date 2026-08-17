@@ -68,6 +68,15 @@ public:
     void setReverse (bool  v) noexcept { reverseAtom_.store (v, std::memory_order_relaxed); }
     void setSampleEnd (float v) noexcept { sampleEndAtom_.store (v, std::memory_order_relaxed); }
 
+    // Message thread: request an audition of one slice. Stored via atomics;
+    // the audio thread starts the voice at the next block start.
+    void triggerSlice (int sliceIndex, float velocity = 0.8f) noexcept
+    {
+        pendingAuditionIndex_.store (sliceIndex, std::memory_order_relaxed);
+        pendingAuditionVel_.store (velocity, std::memory_order_relaxed);
+        pendingAudition_.store (true, std::memory_order_release);
+    }
+
     // Audio thread: adopt any pending sample swap, consume MIDI, render voices.
     void render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
 
@@ -75,6 +84,12 @@ public:
     int  activeVoiceCount() const noexcept;
     bool allVoicesReferenceCurrentSound() const noexcept;
     const SamplerSound* currentSound() const noexcept { return activeSound_.get(); }
+
+    // Test-only read: the engine's current playback mode (Classic/OneShot/Slice).
+    SamplerVoice::Mode modeForTest() const noexcept
+    {
+        return static_cast<SamplerVoice::Mode> (modeAtom_.load (std::memory_order_relaxed));
+    }
 
     // Message-thread test read: the sound the engine will play. Until the
     // audio thread adopts a staged swap (applyPendingSwap at the next block
@@ -115,6 +130,12 @@ private:
     std::atomic<float> sampleStartAtom_{ 0.0f };
     std::atomic<float> sampleEndAtom_  { 1.0f };
 
+    // Atomic audition gate (message thread → audio thread): triggerSlice stores
+    // the request; render() consumes it at the next block start.
+    std::atomic<bool>  pendingAudition_      { false };
+    std::atomic<int>   pendingAuditionIndex_ { 0 };
+    std::atomic<float> pendingAuditionVel_   { 0.8f };
+
     // Atomic AHDSR params for lock-free message→audio param push (L13 fix).
     std::atomic<float> attackAtom_  { 0.005f };
     std::atomic<float> holdAtom_    { 0.0f   };
@@ -125,6 +146,7 @@ private:
 
     void         applyPendingSwap();                 // audio thread, block start
     void         applyPendingParams();               // audio thread, block start
+    void         applyPendingAudition();            // audio thread, block start
     void         handleNoteOn (int note, float vel);
     void         handleNoteOff (int note);
     SamplerVoice* allocateVoice();

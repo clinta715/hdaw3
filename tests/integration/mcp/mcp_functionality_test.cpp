@@ -1191,4 +1191,33 @@ TEST_F(GuiFuncTest, GenerateEnvelopeInvalidShape) {
     EXPECT_TRUE(text(r).contains("unknown shape"));
 }
 
+// ============================================================================
+// SAMPLER RPC/MCP FAMILY
+// ============================================================================
+
+// MCP parity: the sampler_* tools promised by the sampler RPC/MCP family must
+// be registered with the server, alongside the extended sampler_get_state.
+TEST_F(GuiFuncTest, SamplerToolsRegistered) {
+    for (const char* name : {"set_sampler_param", "set_sampler_mode",
+                             "detect_sampler_slices", "trigger_sampler_slice",
+                             "sampler_set_sample", "sampler_get_state"})
+        EXPECT_TRUE(server->tools().contains(name)) << "missing tool: " << name;
+}
+
+// MCP round-trip for the sampler mode control: add a sampler slot, switch it
+// to slice mode, and read the state back.
+TEST_F(GuiFuncTest, SamplerSetModeRoundTrip) {
+    auto add = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(add)) << text(add).toStdString();
+    QString addText = text(add);                    // "slot=N"
+    int slot = addText.mid(addText.indexOf('=') + 1).toInt();
+
+    auto setMode = call("set_sampler_mode", {{"trackId", 0}, {"slotIndex", slot}, {"mode", "slice"}});
+    ASSERT_FALSE(isError(setMode)) << text(setMode).toStdString();
+
+    auto state = QJsonDocument::fromJson(
+        callText("sampler_get_state", {{"trackId", 0}, {"slotIndex", slot}}).toString().toUtf8()).object();
+    EXPECT_EQ(state.value("mode").toString().toStdString(), "slice");
+}
+
 } // namespace

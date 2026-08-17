@@ -47,7 +47,7 @@
 - [ ] G3: `build/Debug/hdaw_tests.exe --gtest_filter=SliceDetector*` passes (transient + grid + `sliceGrid` beats→frames exactness).
 - [ ] G4: Full suite `build/Debug/hdaw_tests.exe` (no filter) passes — no regression.
 - [ ] G5: `cmake --build build --config Debug` succeeds; new `.cpp` in CMake source lists; test binary timestamp newer than build (lesson 15).
-- [ ] G6: `sampler.*` RPC methods + `sampler_*` MCP tools registered and covered by tests (MCP parity).
+- [x] G6: `sampler.*` RPC methods + `sampler_*` MCP tools registered and covered by tests (MCP parity). — DONE 2026-08-17 (see `docs/plans/2026-08-17-sampler-rpc-family.md`).
 - [ ] G7: `cd frontend && npm test` passes (new `SamplerEditor` tests); `npm run build` succeeds.
 - [ ] G8: `cd frontend && npm run test:e2e -- --grep sampler` passes (load → mode → audition → markers).
 - [ ] G9: `audio-dsp-review` + `audio-numerics-review` skills clean on the voice engine (no audio-thread alloc/lock, denormals handled, unity gain staging).
@@ -1145,19 +1145,19 @@ TEST(SamplerFxSlot, RebuildRestoresSampleAndParams)
 
 **Files:** Modify the FX RPC router (`src/engine/AudioEngineCommands_Fx.cpp` + its router, alongside `set_fx_param`), Test in `sampler_rpc_test.cpp` (model on `rhythm_generation_rpc_test.cpp`).
 
-- [ ] **Step 1: Failing test** — `sampler.setSample`/`setParam`/`setMode`/`detectSlices`/`triggerSlice`/`getState` route end-to-end via the RPC dispatcher and mutate the ValueTree / live engine. Copy the harness shape from `tests/unit/engine/rhythm_generation_rpc_test.cpp`.
-- [ ] **Step 2: Run — FAIL.**
-- [ ] **Step 3: Implement** handlers in `AudioEngineCommands_Fx.cpp`: each parses `{trackId, slotIndex, ...}`, locates the `FX_SLOT`, writes the property (or loads the sample), returns ack + state for `getState`. Follow the exact pattern of the existing `set_fx_param`/`add_fx` handlers in that file.
-- [ ] **Step 4: PASS. Commit.**
+- [x] **Step 1: Failing test** — `sampler.setSample`/`setParam`/`setMode`/`detectSlices`/`triggerSlice`/`getState` route end-to-end via the RPC dispatcher and mutate the ValueTree / live engine. Copy the harness shape from `tests/unit/engine/rhythm_generation_rpc_test.cpp`. — DONE 2026-08-17: `FrontendServer.SamplerRpcFamily`.
+- [x] **Step 2: Run — FAIL.**
+- [x] **Step 3: Implement** handlers in `AudioEngineCommands_Fx.cpp`: each parses `{trackId, slotIndex, ...}`, locates the `FX_SLOT`, writes the property (or loads the sample), returns ack + state for `getState`. Follow the exact pattern of the existing `set_fx_param`/`add_fx` handlers in that file. — DONE: `sampler` namespace (`method::Sampler` + `Router_Sampler.cpp`) + commands (`setSamplerMode`/`setSamplerSliceMode`/`setSamplerProperty`/`detectSamplerSlices`/`triggerSamplerSlice`); `setParam` supports param-index + property forms.
+- [x] **Step 4: PASS. Commit.**
 
 ### Task 11: MCP `sampler_*` tools
 
 **Files:** Modify the MCP tool registry (alongside `set_fx_param`, see `McpTools_Project.cpp` FX section), Test `sampler_mcp_test.cpp`.
 
-- [ ] **Step 1: Failing test** — the tools `set_sampler_sample`, `set_sampler_param`, `set_sampler_mode`, `detect_sampler_slices`, `trigger_sampler_slice`, `get_sampler_state` are registered (appear in `list_tools`) and a `tools/call` round-trips into the ValueTree.
-- [ ] **Step 2: Run — FAIL.**
-- [ ] **Step 3: Implement** — register each tool mapping to the RPC handlers from Task 10 (the MCP layer wraps RPC). Mirror the `set_fx_param` tool registration exactly.
-- [ ] **Step 4: PASS. Commit.**
+- [x] **Step 1: Failing test** — the tools `set_sampler_sample`, `set_sampler_param`, `set_sampler_mode`, `detect_sampler_slices`, `trigger_sampler_slice`, `get_sampler_state` are registered (appear in `list_tools`) and a `tools/call` round-trips into the ValueTree. — DONE 2026-08-17: `GuiFuncTest.SamplerToolsRegistered` + `SamplerSetModeRoundTrip`.
+- [x] **Step 2: Run — FAIL.**
+- [x] **Step 3: Implement** — register each tool mapping to the RPC handlers from Task 10 (the MCP layer wraps RPC). Mirror the `set_fx_param` tool registration exactly. — DONE: `set_sampler_param`/`set_sampler_mode`/`detect_sampler_slices`/`trigger_sampler_slice` added; `sampler_set_sample`/`sampler_get_state` extended with slice fields.
+- [x] **Step 4: PASS. Commit.**
 
 ---
 

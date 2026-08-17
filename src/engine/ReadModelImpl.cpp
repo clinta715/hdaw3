@@ -533,6 +533,13 @@ SamplerStateSnapshot ReadModelImpl::getSamplerState(int trackIndex, int slotInde
     snap.sampleStart = static_cast<float>(slotTree.getProperty("param_5", 0.0));
     snap.sampleEnd = static_cast<float>(slotTree.getProperty("param_9", 1.0));
 
+    snap.sliceMode = slotTree.getProperty("sliceMode", "transient").toString().toStdString();
+    snap.sliceGrid = static_cast<double>(slotTree.getProperty("sliceGrid", 0.25));
+    snap.sliceSensitivity = static_cast<double>(slotTree.getProperty("sliceSensitivity", 0.5));
+    juce::String sliceStr = slotTree.getProperty("slicePoints", "").toString();
+    for (auto& tok : juce::StringArray::fromTokens(sliceStr, ",", ""))
+        snap.slicePoints.push_back(static_cast<float>(tok.trim().getDoubleValue()));
+
     if (engine_)
     {
         auto* proc = engine_->getMainProcessor();

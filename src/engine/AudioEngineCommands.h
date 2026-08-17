@@ -4,6 +4,7 @@
 #include "../common/AudioGraphCommands.h"
 #include "../model/ProjectModel.h"
 #include <juce_data_structures/juce_data_structures.h>
+#include <vector>
 
 class AudioEngine;
 
@@ -163,6 +164,20 @@ public:
     void respawnFxSlot(int trackIndex, int slotIndex) override;
     void setSamplerSample(int trackIndex, int slotIndex,
                           const std::string& filePath, int rootNote = 60) override;
+    void setSamplerMode(int trackIndex, int slotIndex, const std::string& mode);
+    void setSamplerProperty(int trackIndex, int slotIndex,
+                            const std::string& property, bool value);
+    void setSamplerSliceMode(int trackIndex, int slotIndex,
+                             const std::string& sliceMode,
+                             double sliceGrid, double sliceSensitivity);
+
+    struct SamplerDetectionResult { bool ok = false; int totalSlices = 0; std::vector<float> slicePoints; };
+    SamplerDetectionResult detectSamplerSlices(int trackIndex, int slotIndex,
+                                               const std::string& sliceMode,
+                                               double sliceGrid, double sliceSensitivity);
+    struct SamplerTriggerResult { bool ok = false; int totalSlices = 0; };
+    SamplerTriggerResult triggerSamplerSlice(int trackIndex, int slotIndex,
+                                             int sliceIndex, float velocity);
 
     // ProjectCommands — Automation
     void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;

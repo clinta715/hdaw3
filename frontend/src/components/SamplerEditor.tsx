@@ -16,6 +16,10 @@ interface SamplerState {
   glide: number;
   hasSound: boolean;
   activeVoices: number;
+  sliceMode?: string;
+  sliceGrid?: number;
+  sliceSensitivity?: number;
+  slicePoints?: number[];
 }
 
 const MODES = ["classic", "one-shot", "slice"] as const;
@@ -39,7 +43,7 @@ export default function SamplerEditor() {
         const idx = slots.findIndex((s) => s.fxType === "sampler");
         setSlotIndex(idx);
         if (idx >= 0) {
-          return rpc.call("read.sampler.getState", {
+          return rpc.call("sampler.getState", {
             trackIndex: selectedTrackIndex,
             slotIndex: idx,
           });
@@ -55,14 +59,14 @@ export default function SamplerEditor() {
 
   const refreshState = useCallback(() => {
     if (selectedTrackIndex == null || slotIndex < 0) return;
-    rpc.call("read.sampler.getState", { trackIndex: selectedTrackIndex, slotIndex })
+    rpc.call("sampler.getState", { trackIndex: selectedTrackIndex, slotIndex })
       .then((data) => setState(data as SamplerState))
       .catch(() => {});
   }, [selectedTrackIndex, slotIndex]);
 
   const setParam = useCallback(async (paramIndex: number, value: number) => {
     if (selectedTrackIndex == null || slotIndex < 0) return;
-    await rpc.call("setFxSlotParam", {
+    await rpc.call("sampler.setParam", {
       trackIndex: selectedTrackIndex,
       slotIndex,
       paramIndex,
@@ -73,15 +77,54 @@ export default function SamplerEditor() {
 
   const setMode = useCallback(async (mode: string) => {
     if (selectedTrackIndex == null || slotIndex < 0) return;
-    const modeMap: Record<string, number> = { "classic": 0, "one-shot": 1, "slice": 2 };
-    await rpc.call("setFxSlotParam", {
+    await rpc.call("sampler.setMode", {
       trackIndex: selectedTrackIndex,
       slotIndex,
-      paramIndex: 6,
-      value: modeMap[mode] ?? 0,
+      mode,
     });
     refreshState();
   }, [selectedTrackIndex, slotIndex, refreshState]);
+
+  const setSliceMode = useCallback(async (sliceMode: string) => {
+    if (selectedTrackIndex == null || slotIndex < 0) return;
+    await rpc.call("sampler.setSliceMode", {
+      trackIndex: selectedTrackIndex,
+      slotIndex,
+      sliceMode,
+      sliceGrid: state?.sliceGrid ?? 0.25,
+      sliceSensitivity: state?.sliceSensitivity ?? 0.5,
+    });
+    refreshState();
+  }, [selectedTrackIndex, slotIndex, refreshState, state?.sliceGrid, state?.sliceSensitivity]);
+
+  const updateSliceConfig = useCallback(async (patch: Partial<{ sliceMode: string; sliceGrid: number; sliceSensitivity: number }>) => {
+    if (selectedTrackIndex == null || slotIndex < 0) return;
+    await rpc.call("sampler.setSliceMode", {
+      trackIndex: selectedTrackIndex,
+      slotIndex,
+      sliceMode: patch.sliceMode ?? state?.sliceMode ?? "transient",
+      sliceGrid: patch.sliceGrid ?? state?.sliceGrid ?? 0.25,
+      sliceSensitivity: patch.sliceSensitivity ?? state?.sliceSensitivity ?? 0.5,
+    });
+    refreshState();
+  }, [selectedTrackIndex, slotIndex, refreshState, state?.sliceMode, state?.sliceGrid, state?.sliceSensitivity]);
+
+  const detectSlices = useCallback(async () => {
+    if (selectedTrackIndex == null || slotIndex < 0) return;
+    await rpc.call("sampler.detectSlices", {
+      trackIndex: selectedTrackIndex,
+      slotIndex,
+      sliceMode: state?.sliceMode ?? "transient",
+      sliceGrid: state?.sliceGrid ?? 0.25,
+      sliceSensitivity: state?.sliceSensitivity ?? 0.5,
+    });
+    refreshState();
+  }, [selectedTrackIndex, slotIndex, refreshState, state?.sliceMode, state?.sliceGrid, state?.sliceSensitivity]);
+
+  const auditionSlice = useCallback(async (sliceIndex: number) => {
+    if (selectedTrackIndex == null || slotIndex < 0) return;
+    await rpc.call("sampler.triggerSlice", { trackIndex: selectedTrackIndex, slotIndex, sliceIndex });
+  }, [selectedTrackIndex, slotIndex]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -120,6 +163,8 @@ export default function SamplerEditor() {
   }
 
   const env = state.envelope;
+  const slicePoints = state.slicePoints || [];
+  const sliceCount = Math.max(0, slicePoints.length - 1);
 
   return (
     <div className="sampler-editor">
@@ -185,12 +230,11 @@ export default function SamplerEditor() {
               type="checkbox"
               checked={state.mono}
               onChange={(e) => {
-                rpc.call("setFxSlotParam", {
+                rpc.call("sampler.setParam", {
                   trackIndex: selectedTrackIndex,
                   slotIndex,
-                  paramIndex: -1,
-                  value: e.target.checked ? 1 : 0,
                   property: "mono",
+                  value: e.target.checked,
                 }).then(refreshState);
               }}
             />
@@ -355,6 +399,72 @@ export default function SamplerEditor() {
           <span className="sampler-editor__value">{Math.round(state.sampleEnd * 100)}%</span>
         </div>
       </div>
+
+      {state.mode === "slice" && (
+        <div className="sampler-editor__slice">
+          <div className="sampler-editor__field">
+            <label className="sampler-editor__label">Slice Mode</label>
+            <select
+              className="sampler-editor__select"
+              value={state.sliceMode || "transient"}
+              onChange={(e) => setSliceMode(e.target.value)}
+            >
+              <option value="transient">transient</option>
+              <option value="grid">grid</option>
+            </select>
+          </div>
+
+          {state.sliceMode !== "grid" && (
+            <div className="sampler-editor__field">
+              <label className="sampler-editor__label">Sensitivity</label>
+              <input
+                className="sampler-editor__slider"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={state.sliceSensitivity ?? 0.5}
+                onChange={(e) => updateSliceConfig({ sliceSensitivity: parseFloat(e.target.value) })}
+              />
+              <span className="sampler-editor__value">{(state.sliceSensitivity ?? 0.5).toFixed(2)}</span>
+            </div>
+          )}
+
+          {state.sliceMode === "grid" && (
+            <div className="sampler-editor__field">
+              <label className="sampler-editor__label">Grid</label>
+              <input
+                className="sampler-editor__slider"
+                type="range"
+                min={0.0625}
+                max={1}
+                step={0.0625}
+                value={state.sliceGrid ?? 0.25}
+                onChange={(e) => updateSliceConfig({ sliceGrid: parseFloat(e.target.value) })}
+              />
+              <span className="sampler-editor__value">{Math.round((state.sliceGrid ?? 0.25) * 100)}%</span>
+            </div>
+          )}
+
+          <button className="sampler-slice-btn" onClick={() => detectSlices()}>Detect</button>
+
+          <div className="sampler-slice-list">
+            {sliceCount <= 0 ? (
+              <span className="sampler-editor__hint">No slices yet</span>
+            ) : (
+              Array.from({ length: sliceCount }, (_, i) => (
+                <button
+                  key={i}
+                  className="sampler-slice sampler-slice-btn"
+                  onClick={() => auditionSlice(i)}
+                >
+                  Slice {i + 1}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

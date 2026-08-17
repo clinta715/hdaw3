@@ -7,6 +7,7 @@
 #include "engine/Track.h"
 #include "model/ProjectModel.h"
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <cmath>
 
 static std::shared_ptr<const HDAW::SamplerSound> makeTestSine (int len, double sr)
@@ -152,4 +153,56 @@ TEST (SamplerFxSlot, ReprepareKeepsLoadedSound)
     EXPECT_TRUE (anyNonZero);
     EXPECT_NE (slot.samplerEngineForTest(), nullptr);
     EXPECT_NE (slot.samplerEngineForTest()->currentSound(), nullptr);
+}
+
+TEST (SamplerFxSlot, LoadStateRestoresSlicePoints)
+{
+    // Write a small mono WAV so the fallback decode path has a real file.
+    const int len = 4000;
+    const double sr = 44100.0;
+    juce::File wavFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                             .getChildFile ("hdaw_sampler_slice_test.wav");
+    wavFile.deleteFile();
+    {
+        juce::WavAudioFormat wav;
+        auto* fileOut = new juce::FileOutputStream (wavFile);
+        std::unique_ptr<juce::AudioFormatWriter> writer (
+            wav.createWriterFor (fileOut, sr, 1, 16, {}, 0));
+        if (writer == nullptr)
+            delete fileOut;
+        ASSERT_NE (writer, nullptr);
+        juce::AudioBuffer<float> data (1, len);
+        for (int i = 0; i < len; ++i)
+            data.setSample (0, i, static_cast<float> (std::sin (6.2831853 * 440.0 * i / sr)));
+        writer->writeFromAudioSampleBuffer (data, 0, len);
+        writer->flush();
+    }
+
+    HDAW::TrackFXSlot slot ("sampler");
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sr;
+    spec.maximumBlockSize = 64;
+    spec.numChannels = 1;
+    slot.prepare (spec);
+
+    juce::ValueTree tree (IDs::FX_SLOT);
+    tree.setProperty (IDs::fxType, "sampler", nullptr);
+    tree.setProperty (juce::Identifier ("sampleFile"), wavFile.getFullPathName(), nullptr);
+    tree.setProperty (juce::Identifier ("mode"), "slice", nullptr);
+    tree.setProperty (juce::Identifier ("slicePoints"), "0,0.25,0.5,1", nullptr);
+
+    slot.loadSamplerState (tree, nullptr, nullptr);
+
+    auto* eng = slot.samplerEngineForTest();
+    ASSERT_NE (eng, nullptr);
+    const auto* sound = eng->getSoundForTest();
+    ASSERT_NE (sound, nullptr);
+    ASSERT_EQ (sound->slicePoints.size(), 4u);
+    EXPECT_EQ (sound->slicePoints[0], 0);
+    EXPECT_EQ (sound->slicePoints[1], 1000);
+    EXPECT_EQ (sound->slicePoints[2], 2000);
+    EXPECT_EQ (sound->slicePoints[3], 4000);
+    EXPECT_EQ (eng->modeForTest(), HDAW::SamplerVoice::Mode::Slice);
+
+    wavFile.deleteFile();
 }

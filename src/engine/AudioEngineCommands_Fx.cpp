@@ -3,6 +3,10 @@
 #include "../model/ProjectModel.h"
 #include "../engine/PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
+#include "engine/SliceDetector.h"
+#include <juce_audio_formats/juce_audio_formats.h>
+#include <algorithm>
+#include <cmath>
 
 // ─── ProjectCommands — FX operations ──────────────────────────────
 
@@ -332,6 +336,144 @@ void AudioEngineCommands::setSamplerSample(int trackIndex, int slotIndex,
 
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setSamplerMode(int trackIndex, int slotIndex,
+                                         const std::string& mode)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    juce::String m = juce::String(mode).trim().toLowerCase();
+    if (m != "classic" && m != "one-shot" && m != "slice")
+        return;
+
+    slot.setProperty(juce::Identifier("mode"), m, &um);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setSamplerProperty(int trackIndex, int slotIndex,
+                                             const std::string& property, bool value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    if (property == "mono" || property == "playReverse")
+        slot.setProperty(juce::Identifier(property), value, &um);
+    else if (property == "transpose" || property == "baseNote")
+        slot.setProperty(juce::Identifier(property), static_cast<int>(value), &um);
+    else
+        return;
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setSamplerSliceMode(int trackIndex, int slotIndex,
+                                              const std::string& sliceMode,
+                                              double sliceGrid, double sliceSensitivity)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+
+    juce::String sm = juce::String(sliceMode).trim().toLowerCase();
+    if (sm != "transient" && sm != "grid")
+        return;
+
+    slot.setProperty(juce::Identifier("sliceMode"), sm, &um);
+    slot.setProperty(juce::Identifier("sliceGrid"), sliceGrid, &um);
+    slot.setProperty(juce::Identifier("sliceSensitivity"), sliceSensitivity, &um);
+}
+
+AudioEngineCommands::SamplerDetectionResult AudioEngineCommands::detectSamplerSlices(
+    int trackIndex, int slotIndex, const std::string& sliceMode, double sliceGrid, double sliceSensitivity)
+{
+    SamplerDetectionResult result;
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return result;
+
+    juce::String sampleFile = slot.getProperty("sampleFile", "").toString();
+    if (sampleFile.isEmpty()) return result;
+
+    juce::AudioFormatManager fmt;
+    fmt.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(fmt.createReaderFor(juce::File(sampleFile)));
+    if (!reader) return result;
+    const int64_t len = reader->lengthInSamples;
+    if (len <= 0) return result;
+
+    std::vector<int64_t> points;
+    const bool grid = (juce::String(sliceMode).trim().toLowerCase() == "grid");
+    if (grid)
+    {
+        const double bpm = engine_.getTransportManager().getBPM();
+        points = HDAW::SliceDetector::grid(len, reader->sampleRate, bpm, sliceGrid);
+    }
+    else
+    {
+        // Cap the decode so a pathological huge file cannot exhaust memory;
+        // detection on the capped region is fine for the >2^28-sample case.
+        const int readLen = static_cast<int>((std::min)(len, static_cast<int64_t>(1) << 28));
+        std::vector<float> mono(static_cast<size_t>(readLen), 0.0f);
+        juce::AudioBuffer<float> buf(1, readLen);
+        if (!reader->read(&buf, 0, readLen, 0, true, true))
+            return result;
+        const float* ch0 = buf.getReadPointer(0);
+        std::copy(ch0, ch0 + readLen, mono.begin());
+        points = HDAW::SliceDetector::transient(mono, sliceSensitivity);
+    }
+    if (points.size() < 2) return result;
+
+    // Store normalized (0..1), comma-separated, for loadSamplerState to restore.
+    juce::String parts;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        if (i) parts += ",";
+        parts += juce::String(points[i] / static_cast<double>(len), 6);
+    }
+    slot.setProperty(juce::Identifier("sliceMode"), juce::String(sliceMode), &um);
+    slot.setProperty(juce::Identifier("sliceGrid"), sliceGrid, &um);
+    slot.setProperty(juce::Identifier("sliceSensitivity"), sliceSensitivity, &um);
+    slot.setProperty(juce::Identifier("slicePoints"), parts, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+
+    result.ok = true;
+    result.totalSlices = static_cast<int>(points.size()) - 1;
+    for (int64_t p : points)
+        result.slicePoints.push_back(static_cast<float>(p / static_cast<double>(len)));
+    return result;
+}
+
+AudioEngineCommands::SamplerTriggerResult AudioEngineCommands::triggerSamplerSlice(
+    int trackIndex, int slotIndex, int sliceIndex, float velocity)
+{
+    SamplerTriggerResult result;
+    auto* proc = engine_.getMainProcessor();
+    if (!proc) return result;
+    auto* track = proc->getTrack(trackIndex);
+    if (!track) return result;
+    auto& chain = track->getFXChain();
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(chain.size()) || !chain[slotIndex])
+        return result;
+    auto* slot = chain[slotIndex].get();
+    if (slot->getType() != "sampler") return result;
+    auto* eng = slot->samplerEngineForTest();
+    if (!eng) return result;
+    const auto* sound = eng->currentSound();
+    if (!sound || sound->slicePoints.size() < 2) return result;
+    if (sliceIndex < 0 || sliceIndex >= static_cast<int>(sound->slicePoints.size()) - 1)
+        return result;
+    eng->triggerSlice(sliceIndex, velocity);
+    result.ok = true;
+    result.totalSlices = static_cast<int>(sound->slicePoints.size()) - 1;
+    return result;
 }
 
 void AudioEngineCommands::respawnFxSlot(int trackIndex, int slotIndex)

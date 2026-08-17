@@ -237,6 +237,10 @@ struct SamplerStateSnapshot {
     float glide = 0.0f;
     bool hasSound = false;
     int activeVoices = 0;
+    std::string sliceMode = "transient";
+    double sliceGrid = 0.25;
+    double sliceSensitivity = 0.5;
+    std::vector<float> slicePoints;   // normalized 0..1
 };
 
 class ReadModel {
