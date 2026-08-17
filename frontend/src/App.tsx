@@ -18,6 +18,7 @@ import FXChain from "./components/FXChain";
 import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
 import SamplerEditor from "./components/SamplerEditor";
+import FmAnalysisPanel from "./components/FmAnalysisPanel";
 import UndoHistory from "./components/UndoHistory";
 import Inspector from "./components/Inspector";
 import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
@@ -41,6 +42,7 @@ const SFXChain = withHookSentinel(FXChain, "FXChain");
 const SMidiFxChain = withHookSentinel(MidiFxChain, "MidiFxChain");
 const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
 const SSamplerEditor = withHookSentinel(SamplerEditor, "SamplerEditor");
+const SFmAnalysisPanel = withHookSentinel(FmAnalysisPanel, "FmAnalysisPanel");
 const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
 
 function App() {
@@ -209,6 +211,7 @@ function App() {
     { id: "undo-history", label: "History", content: <UndoHistory /> },
     { id: "inspector", label: "Inspector", content: <Inspector /> },
     { id: "arranger", label: "Arranger", content: <SArrangerChainEditor /> },
+    { id: "fm-analysis", label: "FM Analysis", content: <SFmAnalysisPanel /> },
   ], []);
 
   return (

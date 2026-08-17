@@ -19,6 +19,7 @@ export const BOTTOM_TAB_IDS = [
   "inspector",
   "sampler",
   "arranger",
+  "fm-analysis",
 ] as const;
 export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";

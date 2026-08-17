@@ -7,9 +7,10 @@ import { useProjectStore } from "./store/projectStore";
 import { useAutomationStore } from "./store/automationStore";
 import { useTransportStore } from "./store/transportStore";
 import { useMeterStore } from "./store/meterStore";
+import { useAnalysisStore } from "./store/analysisStore";
 import { useUiStore } from "./store/uiStore";
 import { useLibraryStore } from "./store/libraryStore";
-import { TransportSnapshot, MetersPayload, TreeDelta } from "./rpc/types";
+import { TransportSnapshot, MetersPayload, TreeDelta, FmAnalysisPayload } from "./rpc/types";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import StartupDialog from "./components/StartupDialog";
@@ -42,6 +43,10 @@ function setupSubscriptions() {
 
   cleanups.push(rpc.onNotification("notify.meters", (_, params) => {
     useMeterStore.getState().update(params as MetersPayload);
+  }));
+
+  cleanups.push(rpc.onNotification("notify.fmAnalysis", (_, params) => {
+    useAnalysisStore.getState().update(params as FmAnalysisPayload);
   }));
 
   cleanups.push(rpc.onNotification("notify.pluginCrashed", (_method, params) => {

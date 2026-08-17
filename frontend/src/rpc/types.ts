@@ -197,3 +197,13 @@ export interface RhythmPatternResult {
   clipId: number;
   noteCount: number;
 }
+
+export interface FmAnalysisSnapshot {
+  opEgLevel: number[];
+  activeVoices: number;
+  algorithm: number;
+}
+
+export interface FmAnalysisPayload {
+  tracks: FmAnalysisSnapshot[];
+}

@@ -1,0 +1,87 @@
+.fm-analysis {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.fm-analysis__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary, #888);
+  font-size: 13px;
+}
+
+.fm-analysis__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.fm-analysis__label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.fm-analysis__voices,
+.fm-analysis__algo {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  font-variant-numeric: tabular-nums;
+}
+
+.fm-analysis__bars {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex: 1;
+}
+
+.fm-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.fm-bar__label {
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+}
+
+.fm-bar__meter {
+  width: 28px;
+  height: 120px;
+  background: var(--bg-panel, #1a1a1a);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.fm-bar__fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--vu-green, #22c55e);
+  transition: height 0.06s ease-out;
+}
+
+.fm-bar__fill--hot {
+  background: var(--vu-yellow, #eab308);
+}
+
+.fm-bar__fill--clip {
+  background: var(--vu-red, #ef4444);
+}
+
+.fm-bar__value {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary, #888);
+}
