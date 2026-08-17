@@ -64,6 +64,9 @@ void FmSynthEngine::prepare(double sampleRate, int /*maxBlockSize*/)
     }
 
     lfo_.reset(patchData_ + 137);
+
+    extra_buf_size_ = 0;
+    std::memset(extra_buf_, 0, sizeof(extra_buf_));
 }
 
 void FmSynthEngine::setAlgorithm(int v) noexcept
@@ -318,6 +321,39 @@ int FmSynthEngine::activeVoiceCount() const noexcept
     return n;
 }
 
+void FmSynthEngine::computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, int count)
+{
+    for (auto& v : voices_)
+    {
+        if (! v.live || v.note == nullptr)
+            continue;
+
+        if (! v.note->isPlaying())
+        {
+            v.live = false;
+            v.keydown = false;
+            v.sustained = false;
+            continue;
+        }
+
+        int32_t tempBuf[kBlockSize]{};
+        v.note->compute(tempBuf, lfoVal, lfoDelay, &controllers_);
+
+        for (int k = 0; k < count; ++k)
+        {
+            int32_t val = tempBuf[k] >> 4;
+            val = std::max(-32768, std::min(32767, val));
+            dest[k] += static_cast<float>(val) / 32768.0f;
+        }
+        for (int k = count; k < kBlockSize; ++k)
+        {
+            int32_t val = tempBuf[k] >> 4;
+            val = std::max(-32768, std::min(32767, val));
+            extra_buf_[k - count] += static_cast<float>(val) / 32768.0f;
+        }
+    }
+}
+
 void FmSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -362,43 +398,50 @@ void FmSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& m
 
     const float outputLevel = outputLevelAtom_.load(std::memory_order_relaxed);
     const int numChannels = buffer.getNumChannels();
+    float* chL = buffer.getWritePointer(0, 0);
 
-    static constexpr int kBlockSize = 64;
-    int samplesProcessed = 0;
+    int i = 0;
+    int n = numSamples;
 
-    while (samplesProcessed < numSamples)
+    if (extra_buf_size_ > 0)
     {
-        const int blockLen = std::min(kBlockSize, numSamples - samplesProcessed);
+        const int flushLen = std::min(extra_buf_size_, n);
+        for (int k = 0; k < flushLen; ++k)
+            chL[k] += extra_buf_[k];
 
+        if (extra_buf_size_ > n)
+        {
+            const int remainder = extra_buf_size_ - n;
+            for (int k = 0; k < remainder; ++k)
+                extra_buf_[k] = extra_buf_[k + n];
+            extra_buf_size_ = remainder;
+            n = 0;
+        }
+        else
+        {
+            i = extra_buf_size_;
+            n -= extra_buf_size_;
+            extra_buf_size_ = 0;
+        }
+    }
+
+    while (n >= kBlockSize)
+    {
         const int32_t lfoVal = lfo_.getsample();
         const int32_t lfoDelay = lfo_.getdelay();
+        computeBlock(lfoVal, lfoDelay, chL + i, kBlockSize);
+        i += kBlockSize;
+        n -= kBlockSize;
+    }
 
-        for (auto& v : voices_)
-        {
-            if (! v.live || v.note == nullptr)
-                continue;
-
-            if (! v.note->isPlaying())
-            {
-                v.live = false;
-                v.keydown = false;
-                v.sustained = false;
-                continue;
-            }
-
-            int32_t tempBuf[kBlockSize]{};
-            v.note->compute(tempBuf, lfoVal, lfoDelay, &controllers_);
-
-            float* chL = buffer.getWritePointer(0, samplesProcessed);
-            for (int i = 0; i < blockLen; ++i)
-            {
-                int32_t val = tempBuf[i] >> 4;
-                val = std::max(-32768, std::min(32767, val));
-                chL[i] += static_cast<float>(val) / 32768.0f;
-            }
-        }
-
-        samplesProcessed += blockLen;
+    if (n > 0)
+    {
+        for (int k = 0; k < kBlockSize; ++k)
+            extra_buf_[k] = 0.0f;
+        const int32_t lfoVal = lfo_.getsample();
+        const int32_t lfoDelay = lfo_.getdelay();
+        computeBlock(lfoVal, lfoDelay, chL + i, n);
+        extra_buf_size_ = kBlockSize - n;
     }
 
     if (outputLevel < 1.0f)

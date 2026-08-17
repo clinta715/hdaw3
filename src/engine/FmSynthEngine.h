@@ -64,6 +64,10 @@ private:
     FmCore engineMsfa_;
     uint8_t patchData_[kPatchSize]{};
 
+    static constexpr int kBlockSize = 64;
+    float extra_buf_[kBlockSize] = {};
+    int extra_buf_size_ = 0;
+
     double sampleRate_ = 44100.0;
 
     // Atomic mirrors
@@ -83,6 +87,7 @@ private:
     std::atomic<bool>  paramsDirty_{ false };
 
     void applyPendingParams();
+    void computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, int count);
     void handleNoteOn(int note, float vel, int channel);
     void handleNoteOff(int note, int channel);
     Voice* allocateVoice();

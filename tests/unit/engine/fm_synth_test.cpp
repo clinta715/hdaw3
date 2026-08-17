@@ -125,6 +125,74 @@ TEST_F(FmSynthTest, PolyphonyLimit) {
     EXPECT_LE(engine.activeVoiceCount(), 16); // Should not exceed kMaxVoices
 }
 
+TEST_F(FmSynthTest, PartialBlockRendersBitIdenticalToSingleCall)
+{
+    // Engine A: render 300 samples in one call
+    FmSynthEngine engineA;
+    engineA.prepare(44100.0, 512);
+    juce::MidiBuffer midiA;
+    midiA.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> bufA(1, 300);
+    bufA.clear();
+    engineA.render(bufA, midiA);
+
+    // Engine B: render 300 samples in 3 calls of 100 (100 is not a multiple of 64)
+    FmSynthEngine engineB;
+    engineB.prepare(44100.0, 512);
+    juce::MidiBuffer midiB;
+    midiB.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> bufB(1, 300);
+    bufB.clear();
+    juce::MidiBuffer emptyMidi;  // note-on only in first chunk
+    int offset = 0;
+    const int chunk = 100;
+    while (offset < 300)
+    {
+        juce::AudioBuffer<float> temp(1, chunk);
+        temp.clear();
+        engineB.render(temp, (offset == 0) ? midiB : emptyMidi);
+        for (int i = 0; i < chunk; ++i)
+            bufB.setSample(0, offset + i, temp.getSample(0, i));
+        offset += chunk;
+    }
+
+    for (int i = 0; i < 300; ++i)
+        EXPECT_FLOAT_EQ(bufA.getSample(0, i), bufB.getSample(0, i))
+            << "mismatch at sample " << i;
+}
+
+TEST_F(FmSynthTest, SmallChunkRendersBitIdenticalToSingleCall)
+{
+    // 128 samples as 8 calls of 16 vs one call of 128
+    FmSynthEngine engineA;
+    engineA.prepare(44100.0, 512);
+    juce::MidiBuffer midiA;
+    midiA.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> bufA(1, 128);
+    bufA.clear();
+    engineA.render(bufA, midiA);
+
+    FmSynthEngine engineB;
+    engineB.prepare(44100.0, 512);
+    juce::MidiBuffer midiB;
+    midiB.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> bufB(1, 128);
+    bufB.clear();
+    for (int off = 0; off < 128; off += 16)
+    {
+        juce::AudioBuffer<float> temp(1, 16);
+        temp.clear();
+        juce::MidiBuffer chunkMidi = (off == 0) ? midiB : juce::MidiBuffer{};
+        engineB.render(temp, chunkMidi);
+        for (int i = 0; i < 16; ++i)
+            bufB.setSample(0, off + i, temp.getSample(0, i));
+    }
+
+    for (int i = 0; i < 128; ++i)
+        EXPECT_FLOAT_EQ(bufA.getSample(0, i), bufB.getSample(0, i))
+            << "mismatch at sample " << i;
+}
+
 TEST_F(FmSynthTest, DifferentAlgorithms) {
     // Test that algorithms 0, 15, 31 all produce output without crashing
     for (int algo : {0, 15, 31}) {
