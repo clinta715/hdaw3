@@ -25,6 +25,9 @@
 #include <QUrl>
 #include <QVariantList>
 
+#include <cstring>
+#include <vector>
+
 namespace {
 
 // A tiny JSON-RPC client used only by these tests. It keeps a persistent
@@ -256,6 +259,87 @@ TEST(FrontendServer, MissingParamReturnsError) {
     ASSERT_TRUE(resp.contains("error"));
     EXPECT_EQ(resp.value("error").toObject().value("code").toInt(), -32602);
 
+    client.close();
+    s.tearDown();
+}
+
+// New RPC method contract: audio.fm_synthImportSysex loads a DX7 .syx file
+// into an FM synth FX slot. Exercises the full path the drop handler uses:
+// addFxSlot → read.getFxSlots → audio.fm_synthImportSysex → live engine.
+TEST(FrontendServer, FmSynthImportSysexRpc) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    // Add an FM synth slot on track 0 via the same RPC the UI/drop uses.
+    QJsonObject addParams{ { "trackIndex", 0 }, { "fxType", "fm_synth" } };
+    auto addResp = client.call(1, "project.addFxSlot", addParams);
+    ASSERT_FALSE(addResp.contains("error")) << addResp.value("error").toObject()
+                                                  .value("message").toString().toStdString();
+
+    // Locate the slot index (robust to pre-existing slots).
+    QJsonObject readParams{ { "trackIndex", 0 } };
+    auto readResp = client.call(2, "read.getFxSlots", readParams);
+    ASSERT_FALSE(readResp.contains("error"));
+    int slotIndex = -1;
+    for (const auto& v : readResp.value("result").toArray()) {
+        auto o = v.toObject();
+        if (o.value("fxType").toString() == "fm_synth") {
+            slotIndex = o.value("slotIndex").toInt(-1);
+            break;
+        }
+    }
+    ASSERT_GE(slotIndex, 0) << "fm_synth slot not found";
+
+    // Write a minimal single-voice DX7 SysEx file (algorithm 5, feedback 3,
+    // name "E.PIANO") — same bytes the E2E test generates.
+    std::vector<uint8_t> syx(163);
+    syx[0] = 0xF0; syx[1] = 0x43; syx[2] = 0x00; syx[3] = 0x00;
+    syx[4] = 0x00; syx[5] = 0x9B;                    // 155 bytes of voice data
+    uint8_t voice[155] = {};
+    voice[134] = 5;                                  // algorithm
+    voice[135] = 3;                                  // feedback
+    const char* name = "E.PIANO";
+    for (int i = 0; i < 7; ++i) voice[145 + i] = static_cast<uint8_t>(name[i]);
+    std::memcpy(syx.data() + 6, voice, 155);
+    int sum = 0;
+    for (int i = 6; i <= 160; ++i) sum += syx[i];
+    syx[161] = static_cast<uint8_t>((~sum + 1) & 0x7F);  // checksum
+    syx[162] = 0xF7;                                 // SysEx end
+
+    auto syxFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_test_voice.syx");
+    syxFile.replaceWithData(syx.data(), static_cast<int>(syx.size()));
+
+    // Import via RPC.
+    QJsonObject importParams{
+        { "trackIndex", 0 },
+        { "slotIndex", slotIndex },
+        { "filePath", syxFile.getFullPathName().toStdString().c_str() },
+    };
+    auto importResp = client.call(3, "audio.fm_synthImportSysex", importParams);
+    ASSERT_FALSE(importResp.contains("error")) << importResp.value("error").toObject()
+                                                    .value("message").toString().toStdString();
+    auto result = importResp.value("result").toObject();
+    EXPECT_TRUE(result.value("ok").toBool());
+    EXPECT_EQ(result.value("algorithm").toInt(), 5);
+    EXPECT_TRUE(result.value("voiceName").toString().contains("E.PIANO"));
+
+    // Verify the LIVE processor loaded the patch (not just the ReadModel).
+    auto* proc = s.engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    auto* track = proc->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_GT(static_cast<int>(chain.size()), slotIndex);
+    auto* slot = chain[slotIndex].get();
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->getType().toStdString(), "fm_synth");
+    ASSERT_NE(slot->fmSynthEngine(), nullptr);
+
+    syxFile.deleteFile();
     client.close();
     s.tearDown();
 }

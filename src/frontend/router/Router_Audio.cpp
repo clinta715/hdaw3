@@ -2,6 +2,7 @@
 #include "RouterHelpers.h"
 
 #include "../../engine/AudioEngine.h"
+#include "../../engine/Dx7SysexImport.h"
 #include "../../common/SettingsKeys.h"
 
 #include <QJsonArray>
@@ -208,6 +209,68 @@ DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonV
             }
         }
         return { false, QJsonValue::Null };
+    }
+
+    if (m == "fm_synthImportSysex") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+
+        std::string filePath;
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+
+        auto* proc = engine.getMainProcessor();
+        if (!proc) return makeError(-32603, "audio engine not initialized");
+        auto* track = proc->getTrack(ti);
+        if (!track) return makeError(-32602, "track not found");
+        auto& chain = track->getFXChain();
+        if (si < 0 || si >= static_cast<int>(chain.size()))
+            return makeError(-32602, "slot not found");
+        auto* slot = chain[si].get();
+        if (!slot || slot->getType() != "fm_synth")
+            return makeError(-32602, "slot is not an FM synth");
+        if (!slot->fmSynthEngine())
+            return makeError(-32603, "FM synth engine not initialized");
+
+        juce::File syxFile(filePath);
+        if (!syxFile.existsAsFile())
+            return makeError(-32602, "file not found: " + QString::fromStdString(filePath));
+
+        juce::MemoryBlock raw;
+        if (!syxFile.loadFileAsData(raw))
+            return makeError(-32603, "failed to read file");
+
+        auto* bytes = static_cast<const uint8_t*>(raw.getData());
+        size_t fileSize = raw.getSize();
+
+        std::optional<HDAW::Dx7Voice> voice;
+        std::vector<HDAW::Dx7Voice> voices;
+
+        if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x00) {
+            voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
+        } else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x09) {
+            voices = HDAW::parseCartridgeSysex(bytes, fileSize);
+            int vi = o.value("voiceIndex").toInt(0);
+            if (vi >= 0 && vi < static_cast<int>(voices.size()))
+                voice = voices[vi];
+        } else {
+            return makeError(-32602, "not a recognized DX7 SysEx file");
+        }
+
+        if (!voice.has_value())
+            return makeError(-32603, "failed to parse SysEx data");
+
+        slot->fmSynthEngine()->loadPatch(voice->patchData.data());
+
+        QJsonObject result;
+        result["ok"] = true;
+        result["voiceName"] = QString::fromStdString(voice->voiceName);
+        result["algorithm"] = voice->algorithm;
+        if (!voices.empty())
+            result["totalVoices"] = static_cast<int>(voices.size());
+
+        return { false, result };
     }
 
     return makeError(-32601, "unknown audio method: " + m);

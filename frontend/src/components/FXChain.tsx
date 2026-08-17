@@ -295,21 +295,46 @@ export default function FXChain() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  }, []);
+    // Use "copy" for external file drops, "move" for internal reorder
+    e.dataTransfer.dropEffect = dragSlot != null ? "move" : "copy";
+  }, [dragSlot]);
 
   const handleDrop = useCallback(async (e: React.DragEvent, targetSlotIndex: number) => {
     e.preventDefault();
-    if (selectedTrackIndex == null || dragSlot == null || dragSlot === targetSlotIndex) {
+
+    // Internal slot reorder
+    if (dragSlot != null && dragSlot !== targetSlotIndex && selectedTrackIndex != null) {
+      try {
+        await rpc.call("project.reorderFxSlots", { trackIndex: selectedTrackIndex, fromSlot: dragSlot, toSlot: targetSlotIndex });
+        refresh();
+      } catch (err) { console.error("reorderFxSlots failed", err); }
       setDragSlot(null);
       return;
     }
-    try {
-      await rpc.call("project.reorderFxSlots", { trackIndex: selectedTrackIndex, fromSlot: dragSlot, toSlot: targetSlotIndex });
-      refresh();
-    } catch (err) { console.error("reorderFxSlots failed", err); }
     setDragSlot(null);
-  }, [selectedTrackIndex, dragSlot, refresh]);
+
+    // External file drop (.syx onto FM synth slot)
+    const hdawData = e.dataTransfer.getData("application/hdaw-file");
+    if (!hdawData || selectedTrackIndex == null) return;
+
+    try {
+      const { path: filePath, name: fileName } = JSON.parse(hdawData);
+      const ext = "." + fileName.split(".").pop()?.toLowerCase();
+      if (ext !== ".syx") return;
+
+      const slot = slots.find(s => s.slotIndex === targetSlotIndex);
+      if (!slot || slot.fxType !== "fm_synth") return;
+
+      await rpc.call("audio.fm_synthImportSysex", {
+        trackIndex: selectedTrackIndex,
+        slotIndex: targetSlotIndex,
+        filePath,
+      });
+      refresh();
+    } catch (err) {
+      console.error("fm_synthImportSysex failed", err);
+    }
+  }, [selectedTrackIndex, dragSlot, slots, refresh]);
 
   const handleDragEnd = useCallback(() => setDragSlot(null), []);
 
