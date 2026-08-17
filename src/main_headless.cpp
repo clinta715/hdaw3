@@ -20,6 +20,7 @@
 #include "frontend/FrontendRpc.h"
 #include "common/DebugLog.h"
 #include "common/MessagePumpThread.h"
+#include "common/ScopedComInit.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>
@@ -56,6 +57,12 @@ static const char* parseValue(int argc, char** argv, const char* name)
 
 int main(int argc, char *argv[])
 {
+    // COM init is host-app responsibility for JUCE 8's WASAPI (see
+    // common/ScopedComInit.h). Constructed first so the AudioDeviceManager
+    // lifecycle + audio.* RPCs (main Qt event loop) hit COM-initialised paths.
+    HDAW::ScopedComInit comInit;
+    (void) comInit;
+
     // MUST be the process' first JUCE use: the pump thread owns the
     // MessageManager queue so AudioProcessorGraph render sequences and
     // AsyncUpdaters can bake (exports render on a worker thread; without a

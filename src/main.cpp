@@ -14,6 +14,7 @@
 
 #include "common/DebugLog.h"
 #include "common/MessagePumpThread.h"
+#include "common/ScopedComInit.h"
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
@@ -66,6 +67,15 @@ static const char* parseValue(int argc, char** argv, const char* name)
 
 int main(int argc, char *argv[])
 {
+    // COM init must be the very first thing on the main thread: JUCE 8's WASAPI
+    // scan jasserts CO_E_NOTINITIALIZED otherwise and silently falls back to
+    // DirectSound (emulated, choppy). See common/ScopedComInit.h. Constructed
+    // before the JUCE pump/initialiser and before the AudioEngine in every
+    // mode below so AudioDeviceManager + audio.* RPCs (main Qt event loop) all
+    // run on a COM-initialised thread.
+    HDAW::ScopedComInit comInit;
+    (void) comInit;
+
     // MUST be the process' first JUCE use: the pump thread owns the
     // MessageManager queue so AudioProcessorGraph render sequences and
     // AsyncUpdaters can bake (exports render on a worker thread; without a

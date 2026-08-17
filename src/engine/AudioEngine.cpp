@@ -163,7 +163,20 @@ void AudioEngine::initialize()
     };
     initDefaultDevice();
 
-    // Restore saved audio device preferences if available
+    // Restore saved audio device preferences if available.
+    //
+    // Pre-fix order was: getAudioDeviceSetup() (captured in the CURRENT type's
+    // namespace, e.g. DirectSound "Primary Sound Driver"), then
+    // setCurrentAudioDeviceType(savedDriver) (switch to WASAPI), then apply the
+    // stale captured names under the new type — setAudioDeviceSetup returned
+    // "No such device: Primary Sound Driver" and initDefaultDevice() fell back
+    // to DirectSound again. With empty savedOutput/savedInput the stale names
+    // survived because nothing overwrote them. Fix: switch FIRST, re-fetch
+    // setup AFTER the switch, and only apply a saved device name if it actually
+    // exists in the new type's device list (otherwise let JUCE keep the type
+    // default — empty is a valid sentinel). When COM init is in place on the
+    // main thread (see common/ScopedComInit.h) the WASAPI scan returns real
+    // endpoints, so saved "Windows Audio (Low Latency Mode)" actually restores.
     {
         QSettings s;
         QString savedDriver = s.value(SettingsKeys::kKeyAudioDriver).toString();
@@ -172,30 +185,65 @@ void AudioEngine::initialize()
         int savedRate       = s.value(SettingsKeys::kKeyAudioSampleRate, 0).toInt();
         int savedBuffer     = s.value(SettingsKeys::kKeyAudioBufferSize, 0).toInt();
 
-        if (!savedDriver.isEmpty() || !savedOutput.isEmpty())
+        const bool haveSaved = !savedDriver.isEmpty() || !savedOutput.isEmpty()
+                            || !savedInput.isEmpty()  || savedRate > 0 || savedBuffer > 0;
+        if (haveSaved)
         {
-            juce::AudioDeviceManager::AudioDeviceSetup setup;
-            setup = deviceManager.getAudioDeviceSetup();
-
+            // (1) Switch driver type FIRST so the device list is re-scanned in
+            //     the new type's namespace before we touch device names.
             if (!savedDriver.isEmpty())
                 deviceManager.setCurrentAudioDeviceType(
                     juce::String(savedDriver.toUtf8().constData()), true);
 
-            if (!savedOutput.isEmpty())
-                setup.outputDeviceName = juce::String(savedOutput.toUtf8().constData());
-            if (!savedInput.isEmpty())
-                setup.inputDeviceName = juce::String(savedInput.toUtf8().constData());
-            if (savedRate > 0)
-                setup.sampleRate = savedRate;
-            if (savedBuffer > 0)
-                setup.bufferSize = savedBuffer;
+            // (2) Re-fetch the setup AFTER the type switch — its device names
+            //     now live in the new type's namespace.
+            juce::AudioDeviceManager::AudioDeviceSetup setup
+                = deviceManager.getAudioDeviceSetup();
 
-            auto err = deviceManager.setAudioDeviceSetup(setup, true);
+            // (3) Apply a saved device name ONLY when it exists in the current
+            //     type's device list; otherwise keep whatever the switch
+            //     already chose (empty name = JUCE type default). Never fall
+            //     back to a name inherited from a different driver family.
+            if (auto* devType = deviceManager.getCurrentDeviceTypeObject())
+            {
+                const auto outs = devType->getDeviceNames(false);
+                const auto ins  = devType->getDeviceNames(true);
+
+                auto pick = [](const juce::StringArray& available,
+                               const juce::String& savedName,
+                               const juce::String& current) -> juce::String
+                {
+                    if (!savedName.isEmpty() && available.contains(savedName, true))
+                        return savedName;
+                    if (!current.isEmpty() && available.contains(current, true))
+                        return current;
+                    return {};
+                };
+
+                const juce::String savedOut = juce::String(savedOutput.toUtf8().constData());
+                const juce::String savedIn  = juce::String(savedInput.toUtf8().constData());
+                setup.outputDeviceName = pick(outs, savedOut, setup.outputDeviceName);
+                setup.inputDeviceName  = pick(ins,  savedIn,  setup.inputDeviceName);
+            }
+
+            if (savedRate > 0)   setup.sampleRate  = savedRate;
+            if (savedBuffer > 0) setup.bufferSize  = savedBuffer;
+
+            const auto err = deviceManager.setAudioDeviceSetup(setup, true);
             if (err.isNotEmpty())
             {
                 juce::Logger::writeToLog("AudioEngine: saved device restore failed: " + err
                     + " — using defaults");
+                HDAW_LOG("AudioEngine", "saved device restore failed: " + err + " — using defaults");
                 initDefaultDevice();
+            }
+            else
+            {
+                juce::String log = "saved audio device restored: driver=" + deviceManager.getCurrentAudioDeviceType();
+                log << " out=\"" << setup.outputDeviceName << "\" in=\"" << setup.inputDeviceName << "\"";
+                if (savedRate > 0)   log << " rate=" << savedRate;
+                if (savedBuffer > 0) log << " buf=" << savedBuffer;
+                HDAW_LOG("AudioEngine", log);
             }
         }
     }

@@ -2,8 +2,15 @@
 #include <QCoreApplication>
 
 #include "common/MessagePumpThread.h"
+#include "common/ScopedComInit.h"
 
 int main(int argc, char** argv) {
+    // COM init is host-app responsibility for JUCE 8's WASAPI (see
+    // common/ScopedComInit.h). Tests construct AudioEngine / touch
+    // AudioDeviceManager; without COM the WASAPI scan returns empty.
+    static HDAW::ScopedComInit comInit;
+    (void) comInit;
+
     // MUST precede any other JUCE construction: the pump thread wins
     // MessageManager messageThreadId + the hidden message window on first
     // getInstance() (see MessagePumpThread.h), so AudioProcessorGraph render
