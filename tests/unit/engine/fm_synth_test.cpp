@@ -250,6 +250,67 @@ TEST_F(FmSynthTest, PeekVoiceStatusFalseWhenIdle)
     EXPECT_FALSE(engine.peekVoiceStatus(status));
 }
 
+TEST_F(FmSynthTest, MonoLegatoTransfersEnvelopeState)
+{
+    // Slow-attack patch (rate 1 = 30, sustained at level 99) so a restarted
+    // envelope is clearly distinguishable from a carried-over (legato) one.
+    uint8_t patch[156] = {};
+    for (int op = 0; op < 6; ++op)
+    {
+        const int off = op * 21;
+        patch[off + 0] = 30; // EG Rate 1 (slow attack)
+        patch[off + 1] = 99; // EG Rate 2
+        patch[off + 2] = 99; // EG Rate 3
+        patch[off + 3] = 99; // EG Rate 4
+        patch[off + 4] = 99; // EG Level 1
+        patch[off + 5] = 99; // EG Level 2
+        patch[off + 6] = 99; // EG Level 3
+        patch[off + 7] = 0;  // EG Level 4
+        patch[off + 16] = 99; // Output level
+    }
+    engine.loadPatch(patch);
+    engine.setMonoMode(true);
+
+    // Note C4; render well past the slow attack into the sustain plateau.
+    // (The env advances once per 64-sample compute block; ~62k samples are
+    // needed to complete a rate-30 attack, so render ~100k.)
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 512);
+    for (int block = 0; block < 200; ++block)
+    {
+        buf.clear();
+        engine.render(buf, midi);
+        midi.clear();
+    }
+
+    FmSynthEngine::FmVoiceStatus before;
+    ASSERT_TRUE(engine.peekVoiceStatus(before));
+    EXPECT_EQ(engine.activeVoiceCount(), 1);
+
+    // Legato to E4 while C4 is still held — the envelope must CONTINUE, not restart.
+    juce::MidiBuffer midi2;
+    midi2.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
+    juce::AudioBuffer<float> buf2(1, 64);
+    buf2.clear();
+    engine.render(buf2, midi2);
+
+    EXPECT_EQ(engine.activeVoiceCount(), 1); // old voice retired, one live voice
+
+    FmSynthEngine::FmVoiceStatus after;
+    ASSERT_TRUE(engine.peekVoiceStatus(after));
+
+    bool anyOpSustained = false;
+    for (int i = 0; i < 6; ++i)
+        if (before.amp[i] > 1000 && after.amp[i] > before.amp[i] / 2)
+        {
+            anyOpSustained = true;
+            break;
+        }
+    EXPECT_TRUE(anyOpSustained)
+        << "envelope restarted from near-zero after mono legato (release gap bug)";
+}
+
 TEST_F(FmSynthTest, DifferentAlgorithms) {
     // Test that algorithms 0, 15, 31 all produce output without crashing
     for (int algo : {0, 15, 31}) {

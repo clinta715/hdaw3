@@ -238,16 +238,29 @@ FmSynthEngine::Voice* FmSynthEngine::allocateVoice()
 void FmSynthEngine::noteOn(int channel, int pitch, int velocity)
 {
     const bool monoMode = monoModeAtom_.load(std::memory_order_relaxed);
+
+    // Mono mode: remember the first live voice as the legato source. It stays
+    // live until after the new voice is initialised so allocateVoice() cannot
+    // reuse its slot (a self-transfer would lose the state). Any further live
+    // voices (e.g. after a poly->mono switch) are retired as before.
+    Voice* legatoSrc = nullptr;
     if (monoMode)
     {
         for (auto& v : voices_)
         {
             if (v.live && v.note != nullptr)
             {
-                v.note->keyup();
-                v.live = false;
-                v.keydown = false;
-                v.sustained = false;
+                if (legatoSrc == nullptr)
+                {
+                    legatoSrc = &v;
+                }
+                else
+                {
+                    v.note->keyup();
+                    v.live = false;
+                    v.keydown = false;
+                    v.sustained = false;
+                }
             }
         }
     }
@@ -265,6 +278,20 @@ void FmSynthEngine::noteOn(int channel, int pitch, int velocity)
     v->keydownSeq = nextKeydownSeq_++;
 
     v->note->init(patchData_, pitch, velocity, channel, &controllers_);
+
+    if (monoMode && legatoSrc != nullptr && legatoSrc != v)
+    {
+        // Legato: the new voice inherits the old voice's envelope/gain/phase
+        // state instead of the old voice releasing (no gap). Old key still
+        // down -> full state; already releasing -> signal only.
+        if (legatoSrc->keydown)
+            v->note->transferState(*legatoSrc->note);
+        else
+            v->note->transferSignal(*legatoSrc->note);
+        legatoSrc->live = false;
+        legatoSrc->keydown = false;
+        legatoSrc->sustained = false;
+    }
 
     // Poly mode: if another voice is already sounding this pitch, transfer its
     // oscillator phases so the two voices add constructively instead of
