@@ -104,6 +104,7 @@ add_library(HDAW_lib STATIC
     src/engine/RhythmPatternGenerator.cpp
     src/engine/SamplerEngine.cpp
     src/engine/FmSynthEngine.cpp
+    src/engine/Dx7SysexImport.cpp
     src/engine/msfa/fm_core.cc
     src/engine/msfa/fm_op_kernel.cc
     src/engine/msfa/sin.cc

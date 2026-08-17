@@ -1,0 +1,143 @@
+#include "Dx7SysexImport.h"
+#include <cstring>
+
+namespace HDAW {
+
+static bool verifyChecksum(const uint8_t* data, size_t len) {
+    int sum = 0;
+    for (size_t i = 0; i < len; ++i)
+        sum += data[i];
+    return (sum & 0x7F) == 0;
+}
+
+std::optional<Dx7Voice> parseSingleVoiceSysex(const uint8_t* data, size_t size) {
+    if (size < 6 || data[0] != 0xF0 || data[1] != 0x43)
+        return std::nullopt;
+
+    if (data[3] != 0x00)
+        return std::nullopt;
+
+    size_t dataLen = (static_cast<size_t>(data[4]) << 7) | data[5];
+    if (dataLen != 155)
+        return std::nullopt;
+
+    size_t totalExpected = 6 + dataLen + 1;
+    if (size < totalExpected)
+        return std::nullopt;
+
+    if (!verifyChecksum(data + 6, dataLen + 1))
+        return std::nullopt;
+
+    Dx7Voice voice;
+    std::memcpy(voice.patchData.data(), data + 6, 155);
+    voice.patchData[155] = 0x3F;
+
+    char nameBuf[11] = {};
+    std::memcpy(nameBuf, data + 6 + 145, 10);
+    voice.voiceName = std::string(nameBuf, 10);
+    auto pos = voice.voiceName.find_last_not_of(' ');
+    if (pos != std::string::npos)
+        voice.voiceName.erase(pos + 1);
+
+    voice.algorithm = data[6 + 134] & 0x1F;
+    voice.feedback = data[6 + 135] & 0x07;
+
+    return voice;
+}
+
+void unpackVmemVoice(const uint8_t packed[128], uint8_t unpacked[156]) {
+    std::memset(unpacked, 0, 156);
+
+    for (int op = 0; op < 6; ++op) {
+        const uint8_t* p = packed + op * 17;
+        uint8_t* u = unpacked + op * 21;
+
+        for (int i = 0; i < 8; ++i)
+            u[i] = p[i];
+
+        u[8]  = p[8];
+        u[9]  = p[9];
+        u[10] = p[10];
+
+        u[11] = p[11] & 0x07;
+        u[12] = (p[11] >> 3) & 0x07;
+
+        u[13] = p[12] & 0x07;
+        u[14] = (p[12] >> 3) & 0x0F;
+
+        u[15] = p[13] & 0x07;
+        u[16] = (p[13] >> 3) & 0x07;
+
+        u[17] = p[14];
+
+        u[18] = p[15] & 0x01;
+        u[19] = (p[15] >> 1) & 0x1F;
+
+        u[20] = p[16];
+    }
+
+    for (int i = 0; i < 8; ++i)
+        unpacked[126 + i] = packed[102 + i];
+
+    unpacked[134] = packed[110] & 0x1F;
+
+    unpacked[135] = (packed[111] >> 1) & 0x07;
+    unpacked[136] = packed[111] & 0x01;
+
+    for (int i = 0; i < 4; ++i)
+        unpacked[137 + i] = packed[112 + i];
+
+    unpacked[141] = packed[116] & 0x01;
+    unpacked[142] = (packed[116] >> 1) & 0x07;
+    unpacked[143] = (packed[116] >> 4) & 0x07;
+
+    unpacked[144] = packed[117];
+
+    for (int i = 0; i < 10; ++i)
+        unpacked[145 + i] = packed[118 + i];
+
+    unpacked[155] = 0x3F;
+}
+
+std::vector<Dx7Voice> parseCartridgeSysex(const uint8_t* data, size_t size) {
+    if (size < 6 || data[0] != 0xF0 || data[1] != 0x43)
+        return {};
+
+    if (data[3] != 0x09)
+        return {};
+
+    size_t dataLen = (static_cast<size_t>(data[4]) << 7) | data[5];
+    if (dataLen != 4096)
+        return {};
+
+    size_t totalExpected = 6 + dataLen + 1;
+    if (size < totalExpected)
+        return {};
+
+    if (!verifyChecksum(data + 6, dataLen + 1))
+        return {};
+
+    std::vector<Dx7Voice> voices;
+    voices.reserve(32);
+
+    for (int v = 0; v < 32; ++v) {
+        Dx7Voice voice;
+        unpackVmemVoice(data + 6 + v * 128, voice.patchData.data());
+
+        char nameBuf[11] = {};
+        std::memcpy(nameBuf, voice.patchData.data() + 145, 10);
+        voice.voiceName = std::string(nameBuf, 10);
+        auto pos = voice.voiceName.find_last_not_of(' ');
+        if (pos != std::string::npos)
+            voice.voiceName.erase(pos + 1);
+
+        voice.algorithm = voice.patchData[134] & 0x1F;
+        voice.feedback = voice.patchData[135] & 0x07;
+
+        voices.push_back(std::move(voice));
+    }
+
+    return voices;
+}
+
+} // namespace HDAW

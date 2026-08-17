@@ -43,6 +43,7 @@ add_executable(hdaw_tests
     unit/engine/sampler_voice_test.cpp
     unit/engine/sampler_engine_test.cpp
     unit/engine/fm_synth_test.cpp
+    unit/engine/dx7_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
     unit/engine/sampler_fxslot_test.cpp
     unit/engine/realtime_safety_test.cpp
