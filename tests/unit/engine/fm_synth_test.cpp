@@ -331,3 +331,47 @@ TEST_F(FmSynthTest, DifferentAlgorithms) {
         engine.render(buf, midi);
     }
 }
+
+TEST_F(FmSynthTest, AnalysisCapturePopulatesOpLevels)
+{
+    // Render a note
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 256);
+    buf.clear();
+    engine.render(buf, midi);
+
+    // At least one operator should have a non-zero EG level
+    bool anyNonZero = false;
+    for (int op = 0; op < 6; ++op)
+    {
+        float level = engine.getOpEgLevel(op);
+        EXPECT_GE(level, 0.0f);
+        EXPECT_LE(level, 1.0f);
+        if (level > 0.01f) anyNonZero = true;
+    }
+    EXPECT_TRUE(anyNonZero) << "no operator has a non-zero EG level after note-on";
+    EXPECT_GE(engine.getAnalysisVoiceCount(), 1);
+}
+
+TEST_F(FmSynthTest, AnalysisCaptureAlgorithm)
+{
+    engine.setAlgorithm(15);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 256);
+    buf.clear();
+    engine.render(buf, midi);
+    EXPECT_EQ(engine.getAnalysisAlgorithm(), 15);
+}
+
+TEST_F(FmSynthTest, AnalysisCaptureZeroWhenIdle)
+{
+    juce::AudioBuffer<float> buf(1, 64);
+    buf.clear();
+    juce::MidiBuffer midi;
+    engine.render(buf, midi);
+    for (int op = 0; op < 6; ++op)
+        EXPECT_FLOAT_EQ(engine.getOpEgLevel(op), 0.0f);
+    EXPECT_EQ(engine.getAnalysisVoiceCount(), 0);
+}

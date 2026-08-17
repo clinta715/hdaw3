@@ -47,6 +47,11 @@ public:
     bool peekVoiceStatus(FmVoiceStatus& status);
     const Controllers& getControllers() const { return controllers_; }
 
+    // Analysis data (audio-thread writes, main-thread reads — lock-free)
+    float getOpEgLevel(int op) const noexcept;
+    int getAnalysisVoiceCount() const noexcept;
+    int getAnalysisAlgorithm() const noexcept;
+
     // Test-only inspection: operator phase and midi note per voice slot.
     int32_t getVoicePhaseForTest(int voiceIndex, int op) const;
     int getVoiceMidiNoteForTest(int voiceIndex) const;
@@ -95,6 +100,11 @@ private:
     std::atomic<float> lfoAmpDepthAtom_{ 0.0f };
     std::atomic<int>   lfoWaveformAtom_{ 0 };
     std::atomic<bool>  paramsDirty_{ false };
+
+    // Analysis atomics (written at end of render())
+    std::atomic<float> opEgLevel_[6]{};
+    std::atomic<int> analysisVoiceCount_{0};
+    std::atomic<int> analysisAlgorithm_{0};
 
     void applyPendingParams();
     void computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, int count);

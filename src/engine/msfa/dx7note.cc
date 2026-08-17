@@ -385,6 +385,14 @@ void Dx7Note::oscSync() {
     }
 }
 
+float Dx7Note::getEgLevel(int op) const {
+    if (op < 0 || op >= 6) return 0.0f;
+    // Convert from Q24 log envelope level to linear amplitude (0..1),
+    // matching the conversion in peekVoiceStatus.
+    uint32_t amp = Exp2::lookup(params_[op].level_in - (14 * (1 << 24)));
+    return static_cast<float>(amp) / static_cast<float>(0x7fffffff);
+}
+
 // a note is playing if it's been initialised and any carrier's amp
 // envelope is active
 bool Dx7Note::isPlaying() {

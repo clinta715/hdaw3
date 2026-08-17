@@ -821,6 +821,37 @@ MeterSnapshot ReadModelImpl::getMasterMeter() const
     return ms;
 }
 
+FmAnalysisSnapshot ReadModelImpl::getFmAnalysis(int trackIndex) const
+{
+    if (engine_ == nullptr) return {};
+    auto* proc = engine_->getMainProcessor();
+    if (proc == nullptr) return {};
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr) return {};
+
+    FmAnalysisSnapshot snap;
+    auto& fxChain = track->getFXChain();
+    for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
+    {
+        auto& slot = fxChain[si];
+        if (!slot || slot->isBypassed())
+            continue;
+        if (slot->getType() == "fm_synth")
+        {
+            auto* fm = slot->fmSynthEngine();
+            if (fm != nullptr)
+            {
+                for (int op = 0; op < 6; ++op)
+                    snap.opEgLevel[op] = fm->getOpEgLevel(op);
+                snap.activeVoices = fm->getAnalysisVoiceCount();
+                snap.algorithm = fm->getAnalysisAlgorithm();
+            }
+            break;
+        }
+    }
+    return snap;
+}
+
 bool ReadModelImpl::isDirty() const
 {
     return model_.isDirty();

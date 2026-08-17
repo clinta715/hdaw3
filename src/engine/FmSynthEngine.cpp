@@ -365,6 +365,18 @@ int FmSynthEngine::activeVoiceCount() const noexcept
     return n;
 }
 
+float FmSynthEngine::getOpEgLevel(int op) const noexcept {
+    return (op >= 0 && op < 6) ? opEgLevel_[op].load(std::memory_order_relaxed) : 0.0f;
+}
+
+int FmSynthEngine::getAnalysisVoiceCount() const noexcept {
+    return analysisVoiceCount_.load(std::memory_order_relaxed);
+}
+
+int FmSynthEngine::getAnalysisAlgorithm() const noexcept {
+    return analysisAlgorithm_.load(std::memory_order_relaxed);
+}
+
 int32_t FmSynthEngine::getVoicePhaseForTest(int voiceIndex, int op) const
 {
     if (voiceIndex < 0 || voiceIndex >= kMaxVoices) return 0;
@@ -536,4 +548,34 @@ void FmSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& m
 
     if (numChannels > 1)
         buffer.copyFrom(1, 0, buffer, 0, 0, numSamples);
+
+    // Capture analysis data for the frontend (audio-thread → main-thread via atomics)
+    {
+        float accum[6] = {};
+        int count = 0;
+        for (const auto& v : voices_)
+        {
+            if (! v.live || v.note == nullptr)
+                continue;
+            for (int op = 0; op < 6; ++op)
+                accum[op] += v.note->getEgLevel(op);
+            ++count;
+        }
+        if (count > 0)
+        {
+            const float inv = 1.0f / static_cast<float>(count);
+            for (int op = 0; op < 6; ++op)
+                opEgLevel_[op].store(accum[op] * inv, std::memory_order_relaxed);
+            analysisVoiceCount_.store(count, std::memory_order_relaxed);
+        }
+        else
+        {
+            for (int op = 0; op < 6; ++op)
+                opEgLevel_[op].store(0.0f, std::memory_order_relaxed);
+            analysisVoiceCount_.store(0, std::memory_order_relaxed);
+        }
+        analysisAlgorithm_.store(
+            std::clamp(algorithmAtom_.load(std::memory_order_relaxed), 0, 31),
+            std::memory_order_relaxed);
+    }
 }

@@ -95,6 +95,7 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
     }
     if (m == "getTrackMeter")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getTrackMeter(i)) }; }
     if (m == "getMasterMeter")  { return { false, toJson(r.getMasterMeter()) }; }
+    if (m == "getFmAnalysis")   { int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required"); return { false, toJson(r.getFmAnalysis(i)) }; }
     if (m == "getTrackSends") {
         int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
         QJsonArray arr; for (const auto& s : r.getTrackSends(i)) arr.append(toJson(s));

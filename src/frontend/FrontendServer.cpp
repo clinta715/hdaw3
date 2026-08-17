@@ -41,6 +41,10 @@ FrontendServer::FrontendServer(AudioEngine& engine, QObject* parent)
     transportTimer_->setInterval(kPushIntervalMs);
     connect(transportTimer_, &QTimer::timeout, this, &FrontendServer::onTransportTimer);
 
+    analysisTimer_ = new QTimer(this);
+    analysisTimer_->setInterval(kPushIntervalMs);
+    connect(analysisTimer_, &QTimer::timeout, this, &FrontendServer::onAnalysisTimer);
+
     // The tree watcher attaches itself to the project root tree in its ctor
     // and re-broadcasts notify.treeChanged on any change.
     treeWatcher_ = std::make_unique<FrontendTreeWatcher>(engine_, *this, this);
@@ -92,6 +96,7 @@ bool FrontendServer::start(quint16 port) {
     }
     meterTimer_->start();
     transportTimer_->start();
+    analysisTimer_->start();
 
     // Watch VST3/CLAP plugin directories for changes — auto-rescan when a
     // plugin is added or removed. The watcher fires on any touch to the
@@ -279,6 +284,19 @@ void FrontendServer::onTransportTimer() {
         return;
     lastTransportPayload_ = payload;
     broadcastNotification(notify::Transport, payload);
+}
+
+void FrontendServer::onAnalysisTimer() {
+    if (clients_.isEmpty()) return;
+    auto& readModel = engine_.getReadModel();
+    QJsonArray tracks;
+    const int n = readModel.getTrackCount();
+    for (int i = 0; i < n; ++i)
+        tracks.append(toJson(readModel.getFmAnalysis(i)));
+    QJsonObject payload{
+        { "tracks", tracks },
+    };
+    broadcastNotification(notify::FmAnalysis, payload);
 }
 
 void FrontendServer::onPluginDirChanged() {

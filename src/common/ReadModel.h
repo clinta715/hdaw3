@@ -185,6 +185,12 @@ struct MeterSnapshot {
     float lufsMomentary = -70.0f;
 };
 
+struct FmAnalysisSnapshot {
+    float opEgLevel[6] = {};
+    int activeVoices = 0;
+    int algorithm = 0;
+};
+
 struct LfoSnapshot {
     int index = 0;
     std::string name;
@@ -263,6 +269,7 @@ public:
     virtual std::vector<LfoSnapshot> getModulationLfos(int trackIndex) const = 0;
     virtual MeterSnapshot getTrackMeter(int trackIndex) const = 0;
     virtual MeterSnapshot getMasterMeter() const = 0;
+    virtual FmAnalysisSnapshot getFmAnalysis(int trackIndex) const = 0;
     virtual std::vector<SendSnapshot> getTrackSends(int trackIndex) const = 0;
     virtual bool isDirty() const = 0;
     virtual SamplerStateSnapshot getSamplerState(int trackIndex, int slotIndex) const = 0;

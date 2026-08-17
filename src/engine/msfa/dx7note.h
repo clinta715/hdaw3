@@ -64,6 +64,8 @@ public:
 
     int32_t getOpPhaseForTest(int op) const { return (op >= 0 && op < 6) ? params_[op].phase : 0; }
 
+    float getEgLevel(int op) const;
+
     int mpePitchBend = 8192;
     int mpePressure = 0;
     int mpeTimbre = 0;

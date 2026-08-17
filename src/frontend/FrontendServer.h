@@ -60,6 +60,7 @@ private slots:
     void onBinaryMessageReceived(const QByteArray& data);
     void onMeterTimer();
     void onTransportTimer();
+    void onAnalysisTimer();
     void onPluginDirChanged();
     void onPluginDirDebounceExpired();
 
@@ -74,6 +75,7 @@ private:
     // timers in the Qt GUI). 30 Hz is the same cadence the GUI uses.
     QTimer* meterTimer_ = nullptr;
     QTimer* transportTimer_ = nullptr;
+    QTimer* analysisTimer_ = nullptr;
 
     // Server-side push: any ValueTree change re-broadcasts notify.treeChanged.
     std::unique_ptr<FrontendTreeWatcher> treeWatcher_;

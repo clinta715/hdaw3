@@ -44,6 +44,7 @@ namespace method {
 namespace notify {
     inline constexpr const char* TreeChanged    = "notify.treeChanged";
     inline constexpr const char* Meters         = "notify.meters";
+    inline constexpr const char* FmAnalysis     = "notify.fmAnalysis";
     inline constexpr const char* Transport      = "notify.transport";
     inline constexpr const char* ScanProgress   = "notify.scanProgress";
     inline constexpr const char* LibraryScanProgress = "notify.libraryScanProgress";
@@ -272,6 +273,17 @@ inline QJsonObject toJson(const MeterSnapshot& m, const char* leftKey = "l", con
         { "rmsL",  static_cast<double>(m.rmsLeftLevel) },
         { "rmsR",  static_cast<double>(m.rmsRightLevel) },
         { "lufs",  static_cast<double>(m.lufsMomentary) },
+    };
+}
+
+inline QJsonObject toJson(const FmAnalysisSnapshot& a) {
+    QJsonArray levels;
+    for (int i = 0; i < 6; ++i)
+        levels.append(static_cast<double>(a.opEgLevel[i]));
+    return QJsonObject{
+        { "opEgLevel", levels },
+        { "activeVoices", a.activeVoices },
+        { "algorithm", a.algorithm },
     };
 }
 
