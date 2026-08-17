@@ -688,11 +688,12 @@ void RoutingManager::buildClipNode(int trackIndex, int clipIndex,
         bool a0 = graph.addConnection({ { node->nodeID, 0 }, { trackIt->second->nodeID, 0 } }, updateKind);
         bool a1 = graph.addConnection({ { node->nodeID, 1 }, { trackIt->second->nodeID, 1 } }, updateKind);
 
-        HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
-            + " a0=" + juce::String(a0 ? 1 : 0)
-            + " a1=" + juce::String(a1 ? 1 : 0)
-            + " clipOuts=" + juce::String(node->getProcessor()->getTotalNumOutputChannels())
-            + " trackIns=" + juce::String(trackIt->second->getProcessor()->getTotalNumInputChannels()));
+        if (getenv("HDAW_AUDIO_THREAD_DIAG") != nullptr)
+            HDAW_LOG("MidiClipConn", "midiConn=" + juce::String(midiConn ? 1 : 0)
+                + " a0=" + juce::String(a0 ? 1 : 0)
+                + " a1=" + juce::String(a1 ? 1 : 0)
+                + " clipOuts=" + juce::String(node->getProcessor()->getTotalNumOutputChannels())
+                + " trackIns=" + juce::String(trackIt->second->getProcessor()->getTotalNumInputChannels()));
     }
 }
 
