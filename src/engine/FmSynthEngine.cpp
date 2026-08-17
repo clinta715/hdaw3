@@ -237,7 +237,8 @@ FmSynthEngine::Voice* FmSynthEngine::allocateVoice()
 
 void FmSynthEngine::noteOn(int channel, int pitch, int velocity)
 {
-    if (monoModeAtom_.load(std::memory_order_relaxed))
+    const bool monoMode = monoModeAtom_.load(std::memory_order_relaxed);
+    if (monoMode)
     {
         for (auto& v : voices_)
         {
@@ -264,6 +265,22 @@ void FmSynthEngine::noteOn(int channel, int pitch, int velocity)
     v->keydownSeq = nextKeydownSeq_++;
 
     v->note->init(patchData_, pitch, velocity, channel, &controllers_);
+
+    // Poly mode: if another voice is already sounding this pitch, transfer its
+    // oscillator phases so the two voices add constructively instead of
+    // clicking (mirrors Dexed's osc-sync-off retrigger behaviour).
+    if (!monoMode)
+    {
+        for (auto& other : voices_)
+        {
+            if (&other != v && other.live && other.note != nullptr
+                && other.midiNote == pitch && other.note->isPlaying())
+            {
+                v->note->transferPhase(*other.note);
+                break;
+            }
+        }
+    }
 }
 
 void FmSynthEngine::noteOff(int channel, int pitch)
@@ -319,6 +336,22 @@ int FmSynthEngine::activeVoiceCount() const noexcept
         if (v.live)
             ++n;
     return n;
+}
+
+int32_t FmSynthEngine::getVoicePhaseForTest(int voiceIndex, int op) const
+{
+    if (voiceIndex < 0 || voiceIndex >= kMaxVoices) return 0;
+    const Voice& v = voices_[voiceIndex];
+    if (v.note == nullptr) return 0;
+    return v.note->getOpPhaseForTest(op);
+}
+
+int FmSynthEngine::getVoiceMidiNoteForTest(int voiceIndex) const
+{
+    if (voiceIndex < 0 || voiceIndex >= kMaxVoices) return 0;
+    const Voice& v = voices_[voiceIndex];
+    if (!v.live || v.note == nullptr) return 0;
+    return v.midiNote;
 }
 
 bool FmSynthEngine::peekVoiceStatus(FmVoiceStatus& status)

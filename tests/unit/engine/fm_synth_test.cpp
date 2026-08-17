@@ -193,6 +193,37 @@ TEST_F(FmSynthTest, SmallChunkRendersBitIdenticalToSingleCall)
             << "mismatch at sample " << i;
 }
 
+TEST_F(FmSynthTest, SamePitchRetriggerTransfersPhase)
+{
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 256);
+    buf.clear();
+    engine.render(buf, midi);
+
+    int firstIdx = -1;
+    for (int i = 0; i < FmSynthEngine::kMaxVoices; ++i)
+        if (engine.getVoiceMidiNoteForTest(i) == 60) { firstIdx = i; break; }
+    ASSERT_GE(firstIdx, 0);
+
+    // Retrigger the same pitch — the new voice lands in a different slot
+    juce::MidiBuffer midi2;
+    midi2.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+    juce::AudioBuffer<float> buf2(1, 128);
+    buf2.clear();
+    engine.render(buf2, midi2);
+
+    int secondIdx = -1;
+    for (int i = 0; i < FmSynthEngine::kMaxVoices; ++i)
+        if (i != firstIdx && engine.getVoiceMidiNoteForTest(i) == 60) { secondIdx = i; break; }
+    ASSERT_GE(secondIdx, 0);
+
+    for (int op = 0; op < 6; ++op)
+        EXPECT_EQ(engine.getVoicePhaseForTest(firstIdx, op),
+                  engine.getVoicePhaseForTest(secondIdx, op))
+            << "operator " << op << " phase mismatch after retrigger";
+}
+
 TEST_F(FmSynthTest, PeekVoiceStatusReportsCarrierAmps)
 {
     juce::MidiBuffer midi;

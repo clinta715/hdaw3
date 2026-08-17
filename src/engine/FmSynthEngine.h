@@ -47,6 +47,10 @@ public:
     bool peekVoiceStatus(FmVoiceStatus& status);
     const Controllers& getControllers() const { return controllers_; }
 
+    // Test-only inspection: operator phase and midi note per voice slot.
+    int32_t getVoicePhaseForTest(int voiceIndex, int op) const;
+    int getVoiceMidiNoteForTest(int voiceIndex) const;
+
 private:
     struct Voice
     {

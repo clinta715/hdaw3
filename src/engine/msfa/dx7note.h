@@ -62,6 +62,8 @@ public:
     void transferPhase(Dx7Note &src);
     void oscSync();
 
+    int32_t getOpPhaseForTest(int op) const { return (op >= 0 && op < 6) ? params_[op].phase : 0; }
+
     int mpePitchBend = 8192;
     int mpePressure = 0;
     int mpeTimbre = 0;
