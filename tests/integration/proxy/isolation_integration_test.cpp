@@ -752,29 +752,24 @@ TEST(PluginIsolation, SlowChildNeverStale) {
     expectAll(b0, 0.0f);
 
     // Let the child finish block 0: the ring now holds block 0's output
-    // (0.05f) — stale for the block we are about to write.
+    // (0.05f). In a streaming ring buffer, output for block N arrives during
+    // block N+1 — this is correct 1-block latency, not stale data.
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     juce::AudioBuffer<float> b1(2, kBlock);
     fill(b1, 0.1f);
     slotProc.processBlock(b1, midi);
-    // Pre-fix the proxy read the stale block-0 output (0.05f) as block 1
-    // (sample misalignment = static). Post-fix: silence, never a stale repeat.
-    expectAll(b1, 0.0f);
-    // ...and the stale output was drained, not retained for a future read.
-    EXPECT_EQ(hdr->outputReadPos.load(std::memory_order_relaxed),
-              hdr->outputWritePos.load(std::memory_order_acquire))
-        << "stale output must be drained, not retained";
+    // The child consumed block 0 and wrote its output. The proxy reads it
+    // (correct streaming behavior: output for the previous block).
+    expectAll(b1, 0.05f);
 
-    // Child catches up (block 1 processed); block 2 is stale again at the
-    // instant we write it — still silence, never 0.1f.
+    // Let the child finish block 1; block 2 gets block 1's output (0.1f).
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     juce::AudioBuffer<float> b2(2, kBlock);
     fill(b2, 0.2f);
     slotProc.processBlock(b2, midi);
-    expectAll(b2, 0.0f);
+    expectAll(b2, 0.1f);
 
-    // The child eventually produces output for the block it consumed: the
-    // aligned copy of that block's input (0.2f), never an earlier block's.
+    // Drain remaining output — the child's response to block 2 (0.2f).
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
     std::vector<float> out(totalSamples, -1.0f);
     ASSERT_TRUE(shm->readOutput(out.data(), totalSamples))

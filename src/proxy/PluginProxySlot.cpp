@@ -500,7 +500,11 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     // until this store is visible, and MIDI is already written above.
     hdr->inputWritePos.store(w + static_cast<uint32_t>(totalSamples),
                               std::memory_order_release);
-    const uint64_t inputPosWrittenThisCall = hdr->inputWritePos.load(std::memory_order_relaxed);
+    // Use inputPosBefore (position BEFORE this block's write) for the output
+    // resync check. The output ring holds the child's response to the
+    // PREVIOUS block — the child hasn't processed this block yet. Comparing
+    // against the post-write position would always be stale → permanent silence.
+    const uint64_t inputPosWrittenThisCall = inputPosBefore;
 
     MidiEvent* midiOut = shm->getMidiOutRing();
     if (midiOut) {
