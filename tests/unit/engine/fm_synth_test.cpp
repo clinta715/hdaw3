@@ -193,6 +193,32 @@ TEST_F(FmSynthTest, SmallChunkRendersBitIdenticalToSingleCall)
             << "mismatch at sample " << i;
 }
 
+TEST_F(FmSynthTest, PeekVoiceStatusReportsCarrierAmps)
+{
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 256);
+    buf.clear();
+    engine.render(buf, midi);
+
+    FmSynthEngine::FmVoiceStatus status;
+    ASSERT_TRUE(engine.peekVoiceStatus(status));
+    bool anyNonzero = false;
+    for (int i = 0; i < 6; ++i)
+        if (status.amp[i] > 0) { anyNonzero = true; break; }
+    EXPECT_TRUE(anyNonzero);
+}
+
+TEST_F(FmSynthTest, PeekVoiceStatusFalseWhenIdle)
+{
+    FmSynthEngine::FmVoiceStatus status;
+    juce::AudioBuffer<float> buf(1, 64);
+    buf.clear();
+    juce::MidiBuffer midi;
+    engine.render(buf, midi);
+    EXPECT_FALSE(engine.peekVoiceStatus(status));
+}
+
 TEST_F(FmSynthTest, DifferentAlgorithms) {
     // Test that algorithms 0, 15, 31 all produce output without crashing
     for (int algo : {0, 15, 31}) {

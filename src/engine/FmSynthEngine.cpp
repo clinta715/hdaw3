@@ -321,6 +321,30 @@ int FmSynthEngine::activeVoiceCount() const noexcept
     return n;
 }
 
+bool FmSynthEngine::peekVoiceStatus(FmVoiceStatus& status)
+{
+    std::memset(&status, 0, sizeof(status));
+    const Voice* best = nullptr;
+    const Voice* bestLive = nullptr;
+    int32_t bestSeq = -1, bestLiveSeq = -1;
+    for (auto& v : voices_)
+    {
+        if (v.note == nullptr || !v.live)
+            continue;
+        if (v.keydown && v.keydownSeq > bestSeq) { best = &v; bestSeq = v.keydownSeq; }
+        if (v.keydownSeq > bestLiveSeq) { bestLive = &v; bestLiveSeq = v.keydownSeq; }
+    }
+    const Voice* target = best ? best : bestLive;
+    if (target == nullptr)
+        return false;
+    VoiceStatus vs;
+    target->note->peekVoiceStatus(vs);
+    std::memcpy(status.amp, vs.amp, sizeof(status.amp));
+    std::memcpy(status.ampStep, vs.ampStep, sizeof(status.ampStep));
+    status.pitchStep = vs.pitchStep;
+    return true;
+}
+
 void FmSynthEngine::computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, int count)
 {
     for (auto& v : voices_)

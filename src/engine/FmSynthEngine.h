@@ -38,7 +38,13 @@ public:
     void loadPatch(const uint8_t patch[kPatchSize]);
 
     // Inspection
+    struct FmVoiceStatus {
+        uint32_t amp[6];
+        char ampStep[6];
+        char pitchStep;
+    };
     int activeVoiceCount() const noexcept;
+    bool peekVoiceStatus(FmVoiceStatus& status);
     const Controllers& getControllers() const { return controllers_; }
 
 private:
