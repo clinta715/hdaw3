@@ -102,6 +102,19 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     pipe->sendMsgBounded(msg, kPrepareTimeoutMs);
     ProxyResponse resp{};
     pipe->receiveRespBounded(resp, kPrepareTimeoutMs);
+
+    // Tell the child whether this slot belongs to an export render graph
+    // (child Sleep-paces its audio loop only in that mode). Reset the
+    // spin-timeout/failure state for the new streaming session.
+    if (shmHandle)
+    {
+        if (auto* hdr = shmHandle->getHeader())
+        {
+            hdr->renderMode.store(isRenderMode() ? 1u : 0u, std::memory_order_release);
+            slotFailed.store(false, std::memory_order_relaxed);
+            consecutiveSpinTimeouts = 0;
+        }
+    }
 }
 
 void PluginProxySlot::releaseResources() {
@@ -391,25 +404,44 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
 
     int totalSamples = buffer.getNumChannels() * buffer.getNumSamples();
 
+    const uint64_t inputPosBefore = hdr->inputWritePos.load(std::memory_order_relaxed);
+
     uint32_t w = hdr->inputWritePos.load(std::memory_order_relaxed);
     uint32_t r = hdr->inputReadPos.load(std::memory_order_acquire);
     if (static_cast<uint32_t>(totalSamples) > cap - (w - r)) {
-        // In render mode, spin-wait for the child to consume input.
+        // In render mode, spin-wait for the child to consume input. A
+        // slotFailed slot skips the spin entirely (behave as if the deadline
+        // hit immediately — the output section below outputs silence).
         if (isRenderMode()) {
+            if (slotFailed.load(std::memory_order_relaxed))
+                return;
             constexpr int kMaxSpinMs = 200;
             auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kMaxSpinMs);
             while (static_cast<uint32_t>(totalSamples) > cap - (w - r)) {
                 if (crashed.load()) return;
                 if (isRenderCancelRequested()) return;
-                if (std::chrono::steady_clock::now() >= deadline) return;
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    ++consecutiveSpinTimeouts;
+                    if (consecutiveSpinTimeouts >= 50)
+                        slotFailed.store(true, std::memory_order_relaxed);
+                    return;
+                }
                 std::this_thread::yield();
                 w = hdr->inputWritePos.load(std::memory_order_relaxed);
                 r = hdr->inputReadPos.load(std::memory_order_acquire);
             }
         } else {
+            // Live drop path: the ring is full — drop this block (caller
+            // passes dry audio through) and drain the output ring so no
+            // stale output survives for a future read.
+            hdr->outputReadPos.store(hdr->outputWritePos.load(std::memory_order_acquire),
+                                     std::memory_order_release);
             return;
         }
     }
+
+    // A successful (non-timeout) write resets the consecutive-timeout counter.
+    consecutiveSpinTimeouts = 0;
 
     float* inRing = shm->getInputRing();
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
@@ -468,6 +500,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     // until this store is visible, and MIDI is already written above.
     hdr->inputWritePos.store(w + static_cast<uint32_t>(totalSamples),
                               std::memory_order_release);
+    const uint64_t inputPosWrittenThisCall = hdr->inputWritePos.load(std::memory_order_relaxed);
 
     MidiEvent* midiOut = shm->getMidiOutRing();
     if (midiOut) {
@@ -550,25 +583,53 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     uint32_t ow = hdr->outputWritePos.load(std::memory_order_relaxed);
     uint32_t or_ = hdr->outputReadPos.load(std::memory_order_acquire);
     uint32_t available = (ow >= or_) ? (ow - or_) : 0;
+    const uint64_t consumedPos = hdr->lastConsumedInputPos.load(std::memory_order_acquire);
+    bool outputCurrent = proxyOutputIsCurrent(consumedPos, inputPosWrittenThisCall);
 
-    // In render mode, spin-wait for the child process to produce output.
-    // The render loop runs at CPU speed with no real-time pacing, so the
-    // child (separate OS process) needs explicit time to process each block.
-    if (isRenderMode() && available < static_cast<uint32_t>(totalSamples)) {
+    // In render mode, spin-wait for the child process to catch up — but only
+    // while the output is stale (not current), and never when the slot is
+    // marked failed (skip straight to silence). The render loop runs at CPU
+    // speed with no real-time pacing, so the child (separate OS process)
+    // needs explicit time to consume the input and produce its output; the
+    // ring may hold a PREVIOUS block's output while we wait, which is exactly
+    // the stale data we must never deliver.
+    if (isRenderMode() && !outputCurrent
+        && !slotFailed.load(std::memory_order_relaxed)) {
         constexpr int kMaxSpinMs = 200;
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kMaxSpinMs);
-        while (available < static_cast<uint32_t>(totalSamples)) {
+        bool spinTimedOut = false;
+        while (!outputCurrent) {
             if (crashed.load()) break;
             if (isRenderCancelRequested()) break;
-            if (std::chrono::steady_clock::now() >= deadline) break;
+            if (std::chrono::steady_clock::now() >= deadline) {
+                spinTimedOut = true;
+                break;
+            }
             std::this_thread::yield();
             ow = hdr->outputWritePos.load(std::memory_order_relaxed);
             or_ = hdr->outputReadPos.load(std::memory_order_acquire);
             available = (ow >= or_) ? (ow - or_) : 0;
+            const uint64_t freshConsumed = hdr->lastConsumedInputPos.load(std::memory_order_acquire);
+            outputCurrent = proxyOutputIsCurrent(freshConsumed, inputPosWrittenThisCall);
+        }
+        if (spinTimedOut) {
+            ++consecutiveSpinTimeouts;
+            if (consecutiveSpinTimeouts >= 50)
+                slotFailed.store(true, std::memory_order_relaxed);
         }
     }
 
-    if (available >= static_cast<uint32_t>(totalSamples)) {
+    if (!outputCurrent || available < static_cast<uint32_t>(totalSamples)) {
+        // Stale (misaligned) output or nothing available: never deliver it —
+        // drain the ring and output silence.
+        hdr->outputReadPos.store(hdr->outputWritePos.load(std::memory_order_acquire),
+                                 std::memory_order_release);
+        buffer.clear();
+        return;
+    }
+
+    consecutiveSpinTimeouts = 0;
+    {
         float* outRing = shm->getOutputRing();
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch) {
             for (int s = 0; s < buffer.getNumSamples(); ++s)
@@ -577,8 +638,6 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         }
         hdr->outputReadPos.store(or_ + static_cast<uint32_t>(totalSamples),
                                   std::memory_order_release);
-    } else {
-        buffer.clear();
     }
 }
 

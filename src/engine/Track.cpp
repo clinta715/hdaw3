@@ -379,9 +379,10 @@ void Track::rebuildMidiFXChain(const juce::ValueTree& midiFxChainTree)
 
 void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    static const bool audioDiag = juce::SystemStats::getEnvironmentVariable("HDAW_AUDIO_THREAD_DIAG", "") == "1";
     static std::atomic<int> trackPBCount{0};
     int tc = trackPBCount.fetch_add(1, std::memory_order_relaxed);
-    if (tc < 5 || (tc % 500) == 0)
+    if (audioDiag && (tc < 5 || (tc % 500) == 0))
         HDAW_LOG("TrackPB", "call=" + juce::String(tc)
             + " bufCh=" + juce::String(buffer.getNumChannels())
             + " bufS=" + juce::String(buffer.getNumSamples())

@@ -178,6 +178,14 @@ private:
 
     std::atomic<bool> crashed{false};
     std::atomic<bool> childAlive{true};
+    // Render-mode spin timeout counter. Consecutive 200ms spin timeouts mean
+    // the child is hung (e.g. a plugin whose processBlock stalls >1s); after
+    // 50 (10s) the slot is marked failed and all spin loops are skipped so a
+    // hung slot cannot stall the export for 200ms per block forever. Plain
+    // member: per-slot, touched only by the single audio/render thread that
+    // runs processBlock (reset from prepareToPlay before streaming starts).
+    int consecutiveSpinTimeouts = 0;
+    std::atomic<bool> slotFailed{false};
     std::shared_ptr<ShmRegion> shmHandle;
 
     double currentSampleRate = 44100.0;

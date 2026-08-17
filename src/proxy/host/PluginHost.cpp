@@ -8,6 +8,7 @@
 #include <cstring>
 #if JUCE_WINDOWS
 #include <windows.h>
+#include <mmsystem.h>
 #include <stdexcept>
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
@@ -223,6 +224,49 @@ public:
         d.name = "BlockSizeProbe";
         d.pluginFormatName = "Internal";
         d.fileOrIdentifier = "__blocksize__";
+    }
+};
+
+// Diagnostic processor for the output-resync tests: sleeps ~250ms per block
+// (far slower than the device cadence — Sleep granularity is ~15.6ms and the
+// parent's live blocks are 10ms) then copies input to output unchanged. The
+// parent must drop the stale output while the child is behind and never play
+// a previous block's samples as the current block.
+class SlowSlotProcessor : public juce::AudioPluginInstance
+{
+public:
+    SlowSlotProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {}
+
+    const juce::String getName() const override { return "SlowSlot"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        Sleep(250);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            for (int s = 0; s < buffer.getNumSamples(); ++s)
+                buffer.setSample(ch, s, buffer.getSample(ch, s));
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return {}; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock&) override {}
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "SlowSlot";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__slowslot__";
     }
 };
 
@@ -1233,7 +1277,20 @@ void PluginHost::audioLoop()
     juce::AudioBuffer<float> outputBuffer(preparedNumChannels, preparedBlockSize);
     juce::MidiBuffer midiBuffer;
 
+    // Render-mode pacing sleeps per block (real-time pacing); raise the timer
+    // resolution so Sleep is accurate (~1ms instead of ~15.6ms) and the child
+    // cannot lag the parent's 10ms blocks.
+#if JUCE_WINDOWS
+    timeBeginPeriod(1);
+#endif
+
     while (running.load()) {
+        // Parent tells us (per PREPARE) whether this slot belongs to an
+        // export render graph; only then do we Sleep-pace the loop. Live
+        // playback is paced by the device cadence — sleeping would lag the
+        // stream and the parent would drop blocks (stale/misaligned audio).
+        const bool isRender = hdr->renderMode.load(std::memory_order_acquire) != 0;
+
         // Drain parent->child param set ring BEFORE block processing so staged
         // parameter values take effect for this block. Single reader (audio
         // thread); bounds-checked against PARAM_RING_SIZE and the live param
@@ -1328,11 +1385,14 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // plugins (Vital, Dexed, JE8086) crash or hang when processBlock
             // is called faster than real-time because their internal timers
             // and on_main_thread callbacks assume real-time pacing.
+            // Render mode only: live playback must NOT sleep-pace (the device
+            // cadence paces the stream; Sleep granularity ~15.6ms would lag
+            // 10ms blocks and the parent would drop them).
             // Diagnostic knob: HDAW_NO_CHILD_PACING=1 disables the pacing
             // sleep.
             static thread_local const bool noChildPacing =
                 juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_PACING", "") == "1";
-            if (!noChildPacing)
+            if (isRender && !noChildPacing)
             {
                 static thread_local uint64_t lastPaceTimeNs = 0;
                 if (lastPaceTimeNs == 0) {
@@ -1473,6 +1533,14 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             }
             hdr->outputWritePos.store(ow + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels), std::memory_order_release);
 
+            // Output-alignment handshake: store AFTER the output write so the
+            // parent's acquire-load of lastConsumedInputPos also sees the
+            // output. The parent only reads output that is current for the
+            // input it wrote (r + block samples = the inputReadPos stored
+            // above), so a lagging child can never deliver stale audio.
+            hdr->lastConsumedInputPos.store(r + static_cast<uint32_t>(preparedBlockSize * preparedNumChannels),
+                                            std::memory_order_release);
+
             // Yield to give the main thread time to pump CLAP on_main_thread
             // callbacks. During export the audio loop runs at CPU speed and
             // the main thread (which dispatches request_callback via
@@ -1486,6 +1554,10 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
                 std::this_thread::yield();
         }
     }
+
+#if JUCE_WINDOWS
+    timeEndPeriod(1);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -1549,6 +1621,12 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__blocksize__") {
         plugin = std::make_unique<BlockSizeProbeProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+    if (path == "__slowslot__") {
+        plugin = std::make_unique<SlowSlotProcessor>();
         pluginLoaded.store(true);
         return true;
     }

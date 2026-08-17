@@ -4,7 +4,7 @@
 
 namespace proxy {
 
-constexpr uint32_t SHM_MAGIC = 0x4844415B; // bumped 2026-08-09 for transport playhead forwarding (was "HDAZ" for param set/notify SPSC rings)
+constexpr uint32_t SHM_MAGIC = 0x4844415C; // bumped 2026-08-16 for output-resync handshake (lastConsumedInputPos/renderMode; was "HDA[" for transport playhead forwarding)
 
 constexpr uint32_t PARAM_RING_SIZE = 256;
 
@@ -133,6 +133,18 @@ struct ShmHeader {
     // the 4-out Nord-2x port) get their full channel count in the child.
     uint32_t pluginNumInputChannels;
     uint32_t pluginNumOutputChannels;
+
+    // Output-alignment handshake. The child release-stores lastConsumedInputPos
+    // AFTER processing a block AND writing its output; the parent acquire-loads
+    // it and only reads output that is current for the input it just wrote —
+    // stale (misaligned) output is drained and silence delivered instead.
+    std::atomic<uint64_t> lastConsumedInputPos{0};
+
+    // Parent writes 1 while the slot belongs to an export render graph (see
+    // PluginProxySlot::prepareToPlay); the child reads it per loop iteration
+    // to decide whether to Sleep-pace its audio loop (render mode only — live
+    // playback is paced by the device cadence).
+    std::atomic<uint32_t> renderMode{0};
 };
 
 struct MidiEvent {
@@ -143,6 +155,14 @@ struct MidiEvent {
     uint8_t  flags;
     uint32_t sysexLen;
 };
+
+// True when the child has consumed input up to (or past) the position the
+// parent wrote this call — only then is the output in the ring current for
+// that input. A lagging child (Sleep-granularity pacing, hung processBlock)
+// leaves stale output in the ring; the parent must never deliver it.
+inline bool proxyOutputIsCurrent(uint64_t lastConsumedInputPos, uint64_t inputPosWrittenThisCall) {
+    return lastConsumedInputPos >= inputPosWrittenThisCall;
+}
 
 inline uint32_t computeShmSize(uint32_t numChannels, uint32_t blockSize) {
     uint32_t cap = 1;

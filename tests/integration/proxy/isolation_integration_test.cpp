@@ -702,6 +702,162 @@ TEST(PluginIsolation, MultiPortWidthHandoff) {
     mgr.killPluginHost(9160, KillMode::KillHard);
 }
 
+// ========================================================================
+// Output resync — a lagging child must never deliver stale (misaligned)
+// audio. __slowslot__ sleeps ~250ms per block (Sleep granularity ~15.6ms vs
+// the parent's 10ms blocks), so the child is always one or more blocks behind.
+// ========================================================================
+
+TEST(PluginIsolation, SlowChildNeverStale) {
+    // While the child lags, the proxy must output silence (cleared buffer),
+    // never a previous block's samples; the child's eventual output must be
+    // the aligned copy of the block it consumed (its input values).
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9170;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__slowslot__", slot));
+    for (int i = 0; i < 100 && !mgr.isAlive(slot); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(slot)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(slot);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    PluginProxySlot slotProc(mgr, slot, "SlowSlot");
+    slotProc.prepareToPlay(44100.0, 128);
+
+    constexpr int kBlock = 128;
+    constexpr int kChannels = 2;
+    const uint32_t totalSamples = static_cast<uint32_t>(kBlock * kChannels);
+
+    auto fill = [](juce::AudioBuffer<float>& b, float v) {
+        for (int ch = 0; ch < kChannels; ++ch)
+            for (int s = 0; s < kBlock; ++s)
+                b.setSample(ch, s, v);
+    };
+    auto expectAll = [](const juce::AudioBuffer<float>& b, float v) {
+        for (int ch = 0; ch < kChannels; ++ch)
+            for (int s = 0; s < kBlock; ++s)
+                EXPECT_FLOAT_EQ(b.getSample(ch, s), v);
+    };
+    juce::MidiBuffer midi;
+
+    // Block 0 (0.05f): the child has not consumed it yet — the output cannot
+    // be current; the proxy must deliver silence, not ring garbage.
+    juce::AudioBuffer<float> b0(2, kBlock);
+    fill(b0, 0.05f);
+    slotProc.processBlock(b0, midi);
+    expectAll(b0, 0.0f);
+
+    // Let the child finish block 0: the ring now holds block 0's output
+    // (0.05f) — stale for the block we are about to write.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    juce::AudioBuffer<float> b1(2, kBlock);
+    fill(b1, 0.1f);
+    slotProc.processBlock(b1, midi);
+    // Pre-fix the proxy read the stale block-0 output (0.05f) as block 1
+    // (sample misalignment = static). Post-fix: silence, never a stale repeat.
+    expectAll(b1, 0.0f);
+    // ...and the stale output was drained, not retained for a future read.
+    EXPECT_EQ(hdr->outputReadPos.load(std::memory_order_relaxed),
+              hdr->outputWritePos.load(std::memory_order_acquire))
+        << "stale output must be drained, not retained";
+
+    // Child catches up (block 1 processed); block 2 is stale again at the
+    // instant we write it — still silence, never 0.1f.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    juce::AudioBuffer<float> b2(2, kBlock);
+    fill(b2, 0.2f);
+    slotProc.processBlock(b2, midi);
+    expectAll(b2, 0.0f);
+
+    // The child eventually produces output for the block it consumed: the
+    // aligned copy of that block's input (0.2f), never an earlier block's.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    std::vector<float> out(totalSamples, -1.0f);
+    ASSERT_TRUE(shm->readOutput(out.data(), totalSamples))
+        << "child should produce aligned output after catching up";
+    for (uint32_t i = 0; i < totalSamples; ++i)
+        EXPECT_FLOAT_EQ(out[i], 0.2f)
+            << "child output must be the aligned copy of the input block";
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+}
+
+TEST(PluginIsolation, LiveDropDrainsStaleOutput) {
+    // Fill the input ring faster than the slow child consumes → the live
+    // drop path fires (ring full). The drop must drain the output ring so no
+    // stale output survives for a future read, and must leave the caller's
+    // buffer untouched (dry-audio passthrough contract preserved).
+    ProxyProcessManager mgr;
+    const uint32_t slot = 9171;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__slowslot__", slot));
+    for (int i = 0; i < 100 && !mgr.isAlive(slot); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(slot)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(slot);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    PluginProxySlot slotProc(mgr, slot, "SlowSlot");
+    slotProc.prepareToPlay(44100.0, 128);
+
+    constexpr int kBlock = 128;
+    constexpr int kChannels = 2;
+
+    auto fill = [](juce::AudioBuffer<float>& b, float v) {
+        for (int ch = 0; ch < kChannels; ++ch)
+            for (int s = 0; s < kBlock; ++s)
+                b.setSample(ch, s, v);
+    };
+    juce::MidiBuffer midi;
+
+    // Blocks 0 and 1 both fit while the child sleeps on block 0.
+    juce::AudioBuffer<float> b0(2, kBlock);
+    fill(b0, 0.05f);
+    slotProc.processBlock(b0, midi);
+    juce::AudioBuffer<float> b1(2, kBlock);
+    fill(b1, 0.1f);
+    slotProc.processBlock(b1, midi);
+
+    // Child wakes, writes block 0's output (stale), consumes block 1.
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    EXPECT_GT(hdr->outputWritePos.load(std::memory_order_acquire), 0u)
+        << "child should have produced output by now";
+
+    // Block 2: ring has room again (child consumed block 1) → written.
+    juce::AudioBuffer<float> b2(2, kBlock);
+    fill(b2, 0.2f);
+    slotProc.processBlock(b2, midi);
+
+    // Block 3: input ring full (child asleep on block 2) → live drop path.
+    juce::AudioBuffer<float> b3(2, kBlock);
+    fill(b3, 0.3f);
+    slotProc.processBlock(b3, midi);
+
+    // The drop leaves the caller's buffer untouched (dry audio passthrough) —
+    // it must not inject stale output into the buffer.
+    for (int ch = 0; ch < kChannels; ++ch)
+        for (int s = 0; s < kBlock; ++s)
+            EXPECT_FLOAT_EQ(b3.getSample(ch, s), 0.3f)
+                << "drop path must pass dry audio through, not stale output";
+
+    // ...and drains the output ring: no stale output survives for a future
+    // read (pre-fix outputReadPos lagged behind outputWritePos here).
+    EXPECT_EQ(hdr->outputReadPos.load(std::memory_order_relaxed),
+              hdr->outputWritePos.load(std::memory_order_acquire))
+        << "live drop must drain the output ring";
+    EXPECT_GT(hdr->outputWritePos.load(std::memory_order_acquire), 0u)
+        << "drain must be non-vacuous (child produced output before the drop)";
+
+    mgr.killPluginHost(slot, KillMode::KillHard);
+}
+
 TEST(PluginIsolation, ControlThreadPluginExceptionContained) {
     // A plugin throwing a C++ exception from prepareToPlay (control-thread
     // lifecycle call — the exact path where Odin2 aborts the child via

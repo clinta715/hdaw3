@@ -77,7 +77,9 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
-        HDAW_LOG("MidiClipEntry", "prepareToPlay sr=" + juce::String(sampleRate) + " spb=" + juce::String(samplesPerBlock));
+        static const bool audioDiag = juce::SystemStats::getEnvironmentVariable("HDAW_AUDIO_THREAD_DIAG", "") == "1";
+        if (audioDiag)
+            HDAW_LOG("MidiClipEntry", "prepareToPlay sr=" + juce::String(sampleRate) + " spb=" + juce::String(samplesPerBlock));
         juce::ignoreUnused(sampleRate, samplesPerBlock);
         std::fill(activeNotes.begin(), activeNotes.end(), false);
         std::fill(noteActive.begin(), noteActive.end(), false);
@@ -94,9 +96,10 @@ public:
 
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages) override
     {
+        static const bool audioDiag = juce::SystemStats::getEnvironmentVariable("HDAW_AUDIO_THREAD_DIAG", "") == "1";
         const int numSamples = buffer.getNumSamples();
 
-        if (procEntryCount < 5)
+        if (audioDiag && procEntryCount < 5)
             HDAW_LOG("MidiClipEntry", "call=" + juce::String(procEntryCount) + " bufS=" + juce::String(numSamples));
         ++procEntryCount;
 
@@ -155,7 +158,7 @@ public:
         int loopCount = (clipDurationBeats > 0.0) ? static_cast<int>(currentBeat / clipDurationBeats) : 0;
         uint64_t seed = clipSeed.load(std::memory_order_relaxed);
 
-        if (diagCount < 5)
+        if (audioDiag && diagCount < 5)
         {
             HDAW_LOG("MidiClipDiag", "call=" + juce::String(diagCount)
                 + " noteCount=" + juce::String(count)

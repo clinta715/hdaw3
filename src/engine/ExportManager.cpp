@@ -1,6 +1,7 @@
 #include "ExportManager.h"
 #include "PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
+#include "../common/DebugLog.h"
 
 namespace HDAW {
 
@@ -20,7 +21,10 @@ bool ExportManager::startExport(const juce::ValueTree& projectTree,
                                 Format format, int bitDepth)
 {
     if (active.load())
+    {
+        HDAW_LOG("Export", "startExport rejected: a previous export is still active");
         return false;
+    }
 
     cancelFlag = false;
     active = true;
@@ -77,6 +81,23 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
 
     proxy::setRenderMode(true);
     proxy::setRenderCancelRequested(false);
+
+    // RAII `active` guard: clear the in-flight flag on EVERY exit path of
+    // this thread — normal completion, the `goto finish` bail-outs, and any
+    // exception thrown before/during/after the render-graph scope (e.g. a
+    // wedged proxy that makes the render crawl, or a throw in
+    // createOfflineCopy below). Previously `active` was cleared only in the
+    // function tail, so a thread that threw outside the try/catch (or never
+    // reached the tail) permanently wedged the exporter: every subsequent
+    // startExport() returned false with no recovery short of killing the
+    // process. Declared at function scope so reverse destruction order keeps
+    // it alive across every path; it fires as the thread unwinds, after
+    // onComplete has run.
+    struct ActiveGuard {
+        std::atomic<bool>& flag;
+        explicit ActiveGuard(std::atomic<bool>& f) : flag(f) {}
+        ~ActiveGuard() { flag = false; }
+    } activeGate(active);
 
     // Layer 1: the export render graph gets its OWN plugin domain. Passing
     // the live PluginManager into the render RoutingManager shared the live
@@ -406,8 +427,6 @@ finish:
 
     proxy::setRenderCancelRequested(false);
     proxy::setRenderMode(false);
-
-    active = false;
 
     if (onComplete)
         onComplete(success, message);
