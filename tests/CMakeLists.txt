@@ -85,6 +85,8 @@ add_executable(hdaw_tests
     unit/engine/automation_test.cpp
     unit/engine/automation_units_test.cpp
     unit/engine/automation_mode_test.cpp
+    unit/engine/export_volume_bypass_test.cpp
+    unit/engine/export_bake_timeout_test.cpp
     unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp

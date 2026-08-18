@@ -2,6 +2,7 @@
 #include "PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
 #include "../common/DebugLog.h"
+#include <cstdlib>
 
 namespace HDAW {
 
@@ -68,6 +69,24 @@ double ExportManager::calculateProjectDuration(ProjectModel& model)
     }
 
     return (std::max)(maxEnd + 3.0, 4.0); // at least 4 seconds, add 3s tail
+}
+
+uint32_t ExportManager::computeBakeWaitMs(const juce::ValueTree& projectTree)
+{
+    uint32_t totalClips = 0;
+    auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    if (trackList.isValid())
+    {
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+        {
+            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+            if (clipList.isValid())
+                totalClips += static_cast<uint32_t>(clipList.getNumChildren());
+        }
+    }
+
+    const uint32_t scaled = 10000u + 50u * totalClips;
+    return static_cast<uint32_t>((std::max)(15000u, (std::min)(120000u, scaled)));
 }
 
 void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
@@ -264,7 +283,10 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
             // probe to fire. When it fires, every message queued before it —
             // including the render-sequence bake — has been processed, so the
             // first processBlock can no longer spin. On timeout the export
-            // FAILS with a clear message instead of hanging forever.
+            // FAILS with a clear message instead of hanging forever. The wait
+            // budget scales with project clip count (computeBakeWaitMs below:
+            // floor 15s, 50ms/clip, cap 120s); the HDAW_EXPORT_BAKE_TIMEOUT_MS
+            // env override takes precedence.
             {
                 // Heap-allocated with the message queue as SOLE owner: JUCE
                 // deletes posted MessageBase objects after dispatch (the
@@ -288,7 +310,18 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 auto* probe = new BakeProbeMessage(bakeLanded);
                 probe->post();
 
-                constexpr uint32_t kMaxBakeWaitMs = 15000;
+                // The bake wait scales with project size: large graphs take
+                // longer than the 15s floor (measured ~17-21s for a 771-clip
+                // project), so computeBakeWaitMs raises the default with clip
+                // count (50ms/clip, cap 120s). HDAW_EXPORT_BAKE_TIMEOUT_MS
+                // overrides the default at this call site.
+                uint32_t kMaxBakeWaitMs = ExportManager::computeBakeWaitMs(treeCopy);
+                if (const char* envMs = std::getenv("HDAW_EXPORT_BAKE_TIMEOUT_MS"))
+                {
+                    const int parsed = juce::String(envMs).getIntValue();
+                    if (parsed > 0)
+                        kMaxBakeWaitMs = static_cast<uint32_t>(parsed);
+                }
                 const auto bakeDeadline =
                     juce::Time::getMillisecondCounter() + kMaxBakeWaitMs;
                 while (!bakeLanded->load(std::memory_order_acquire)
@@ -303,7 +336,7 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                     success = false;
                     message = cancelFlag.load()
                         ? "Export cancelled."
-                        : "Render graph bake timed out after 15s - export aborted.";
+                        : "Render graph bake timed out after " + juce::String(kMaxBakeWaitMs) + "ms - export aborted.";
                     // Mirrors the cancel path: never leave a partial/zero-byte
                     // output file behind for a failed export.
                     outputPath.deleteFile();

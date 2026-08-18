@@ -32,6 +32,13 @@ public:
 
     static double calculateProjectDuration(ProjectModel& model);
 
+    // Returns the render-sequence bake wait budget (ms) for a project. Large
+    // graphs legitimately take >15s to bake on the JUCE message thread
+    // (measured ~17-21s for a 771-clip project), so the default scales with
+    // clip count: floor 15s, 50ms per clip, cap 120s. The env override
+    // HDAW_EXPORT_BAKE_TIMEOUT_MS takes precedence at the call site.
+    static uint32_t computeBakeWaitMs(const juce::ValueTree& projectTree);
+
 private:
     void renderThreadFunc(juce::ValueTree projectTree, juce::AudioFormatManager* formatManager,
                           PluginManager* pluginManager, juce::File outputPath,
