@@ -12,6 +12,7 @@ let childProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
 let crashCount = 0;
 let showingCrashDialog = false;
+let intentionalQuit = false;
 
 function getPort(): number {
   const idx = process.argv.indexOf("--port");
@@ -56,6 +57,7 @@ function enginePath(): string {
 }
 
 function spawnEngine(port: number): ChildProcess {
+  intentionalQuit = false;
   const ep = enginePath();
   const proc = spawn(ep, [`--port=${port}`], {
     stdio: ["ignore", "pipe", "pipe"],
@@ -76,6 +78,7 @@ function spawnEngine(port: number): ChildProcess {
 
   proc.on("exit", (code, signal) => {
     console.log(`[engine] exited code=${code} signal=${signal}`);
+    if (intentionalQuit) return; // normal quit — we killed it deliberately, not a crash
     if (mainWindow && !showingCrashDialog) {
       showingCrashDialog = true;
       crashCount++;
@@ -283,6 +286,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  intentionalQuit = true;
   if (childProcess) {
     childProcess.kill();
     childProcess = null;
@@ -291,6 +295,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  intentionalQuit = true;
   if (childProcess) {
     childProcess.kill();
     childProcess = null;
