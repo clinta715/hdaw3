@@ -22,6 +22,7 @@
 #include <QJsonArray>
 #include <QDateTime>
 #include <QSignalSpy>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 
@@ -50,6 +51,10 @@ public:
     }
 
     void close() { socket_.close(); }
+
+    // Abruptly drop the connection (like a killed client process) without the
+    // graceful close handshake. The server sees an immediate disconnect.
+    void abortConnection() { socket_.abort(); }
 
     // Send a JSON-RPC request and wait for the response with this id.
     // Push notifications arriving in the meantime are tolerated and skipped.
@@ -768,4 +773,77 @@ TEST(FrontendServer, ForceFullSyncKillSwitchBroadcastsFullSync) {
 
     client.close();
     s.tearDown();
+}
+
+// Regression: a client killed mid-export must not crash the server. The
+// export.audio handler blocks inside a nested QEventLoop (Router_Export.cpp
+// loop.exec()); a disconnect during it runs the server's `disconnected`
+// lambda re-entrantly, and the socket's DeferredDelete is processed by the
+// nested loop — so the raw `socket` pointer held across the dispatch is freed
+// before the response send. The guarded send (QPointer) turns that
+// use-after-free into a no-op. Without the fix this test crashes the engine.
+TEST(FrontendServer, DisconnectDuringExportDoesNotCrash) {
+    EngineAndServer env;
+    env.setUp();
+
+    TestClient c1;
+    ASSERT_TRUE(c1.connect(QUrl(QString("ws://127.0.0.1:%1").arg(env.port))));
+
+    // Abruptly kill the client shortly after the export handler enters its
+    // nested event loop. The timer fires from WITHIN that nested loop, so the
+    // disconnect + deleteLater + DeferredDelete all run while handleOneMessage
+    // is still on the stack. (A graceful close() does not reproduce the bug —
+    // the close handshake doesn't finish inside the export window; only an
+    // abrupt kill, like a killed browser tab, tears the connection down.)
+    QTimer closer;
+    closer.setSingleShot(true);
+    closer.setInterval(200);
+    QObject::connect(&closer, &QTimer::timeout, [&]() { c1.abortConnection(); });
+    closer.start();
+
+    auto outFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("hdaw_fs_disconnect_test.wav");
+    outFile.deleteFile();
+
+    QJsonObject params;
+    params.insert("outputPath", QString::fromUtf8(outFile.getFullPathName().toRawUTF8()));
+    params.insert("format", "wav");
+    params.insert("sampleRate", 44100.0);
+    params.insert("bitDepth", 16);
+    params.insert("start", 0.0);
+    params.insert("end", 60.0);
+
+    // Start a real export of the default (tiny, empty) project. The handler
+    // blocks inside loop.exec() for the export duration; the timer above
+    // closes the socket mid-way, so the response is lost. That is expected:
+    // do not assert on it.
+    c1.call(1001, "export.audio", params, 5000);
+
+    // The export handler excludes socket notifiers while it runs, so the
+    // server cannot accept new connections until it has fully unwound. Pump
+    // the loop until the engine reports the export finished (and the handler
+    // has returned), then connect the fresh client.
+    {
+        auto* proc = env.engine.getMainProcessor();
+        ASSERT_NE(proc, nullptr);
+        auto deadline = QDateTime::currentMSecsSinceEpoch() + 30000;
+        while (proc->isExporting() && QDateTime::currentMSecsSinceEpoch() < deadline)
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        EXPECT_FALSE(proc->isExporting())
+            << "export never finished after disconnect-during-export";
+    }
+
+    // The server must have survived: a brand-new client can connect, and a
+    // trivial request round-trips.
+    TestClient c2;
+    ASSERT_TRUE(c2.connect(QUrl(QString("ws://127.0.0.1:%1").arg(env.port))));
+
+    auto resp = c2.call(2001, "export.isExporting", {}, 5000);
+    EXPECT_FALSE(resp.isEmpty()) << "server died after disconnect-during-export";
+    if (!resp.isEmpty())
+        EXPECT_FALSE(resp.value("result").toBool());
+
+    c2.close();
+    outFile.deleteFile();
+    env.tearDown();
 }

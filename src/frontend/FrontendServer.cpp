@@ -11,6 +11,7 @@
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QTimer>
 #include <QFileSystemWatcher>
 #include <QCoreApplication>
@@ -189,18 +190,24 @@ void FrontendServer::onBinaryMessageReceived(const QByteArray& data) {
 }
 
 void FrontendServer::handleOneMessage(QWebSocket* socket, const QByteArray& bytes) {
+    QPointer<QWebSocket> liveSocket(socket);
+    auto send = [&](const QString& text) {
+        if (liveSocket != nullptr)
+            liveSocket->sendTextMessage(text);
+    };
+
     // Reuse the MCP framing helpers: JSON-RPC 2.0 over WebSocket is the same
     // line protocol as over stdio. parseLine accepts a single JSON value.
     auto parsed = mcp::parseLine(bytes);
     if (!parsed.has_value()) {
-        socket->sendTextMessage(mcp::serializeResponse(
+        send(mcp::serializeResponse(
             mcp::McpResponse::failure({}, mcp::err::ParseError,
                                       "invalid JSON")));
         return;
     }
     auto reqOrResp = mcp::validateRequest(parsed.value());
     if (!std::holds_alternative<mcp::McpRequest>(reqOrResp)) {
-        socket->sendTextMessage(mcp::serializeResponse(
+        send(mcp::serializeResponse(
             mcp::McpResponse::failure({}, mcp::err::InvalidRequest,
                                       "expected a JSON-RPC 2.0 request")));
         return;
@@ -217,11 +224,11 @@ void FrontendServer::handleOneMessage(QWebSocket* socket, const QByteArray& byte
 
     if (result.isError) {
         const auto errObj = result.payload.toObject();
-        socket->sendTextMessage(mcp::serializeResponse(mcp::McpResponse::failure(
+        send(mcp::serializeResponse(mcp::McpResponse::failure(
             req.id, errObj.value("code").toInt(mcp::err::InternalError),
             errObj.value("message").toString("internal error"))));
     } else {
-        socket->sendTextMessage(mcp::serializeResponse(
+        send(mcp::serializeResponse(
             mcp::McpResponse::success(req.id, result.payload)));
     }
 }

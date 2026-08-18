@@ -112,7 +112,16 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         // This dispatch call is still the only one in flight — every other
         // WebSocket request is queued behind it — but the event loop now
         // turns over, so the UI and other Qt timers keep working.
-        loop.exec();
+        //
+        // Socket notifiers are EXCLUDED from this nested loop on purpose: a
+        // client disconnect processed re-entrantly inside it frees the
+        // accepted QTcpSocket (QWebSocketServerPrivate::onSocketDisconnected
+        // deleteLater) while QWebSocketPrivate::processData is mid-iteration,
+        // which NULL-derefs in Qt 6.11.1 (qwebsocket_p.cpp:1374). Deferring
+        // socket events to the outer loop tears the connection down cleanly
+        // after the handler unwinds. Progress notifications are queued
+        // invocations, not socket events, so they still stream live.
+        loop.exec(QEventLoop::ExcludeSocketNotifiers);
 
         if (server != nullptr) {
             server->broadcastNotificationFromAnyThread(notify::ExportProgress,
