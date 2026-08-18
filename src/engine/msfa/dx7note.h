@@ -63,6 +63,7 @@ public:
     void oscSync();
 
     int32_t getOpPhaseForTest(int op) const { return (op >= 0 && op < 6) ? params_[op].phase : 0; }
+    int32_t getBasePitchForTest(int op) const { return (op >= 0 && op < 6) ? basepitch_[op] : 0; }
 
     float getEgLevel(int op) const;
 

@@ -56,6 +56,8 @@ void FmSynthEngine::prepare(double sampleRate, int /*maxBlockSize*/)
     }
     patchData_[134] = 0; // Algorithm 0
     patchData_[135] = 0; // Feedback 0
+    patchData_[126] = 99; patchData_[127] = 99; patchData_[128] = 99; patchData_[129] = 99; // Pitch EG rates (DX7 init)
+    patchData_[130] = 50; patchData_[131] = 50; patchData_[132] = 50; patchData_[133] = 50; // Pitch EG levels: 50 = neutral (no bend)
 
     for (auto& v : voices_)
     {
@@ -391,6 +393,14 @@ int FmSynthEngine::getVoiceMidiNoteForTest(int voiceIndex) const
     const Voice& v = voices_[voiceIndex];
     if (!v.live || v.note == nullptr) return 0;
     return v.midiNote;
+}
+
+int32_t FmSynthEngine::getVoiceBasePitchForTest(int voiceIndex, int op) const
+{
+    if (voiceIndex < 0 || voiceIndex >= kMaxVoices) return 0;
+    const Voice& v = voices_[voiceIndex];
+    if (v.note == nullptr) return 0;
+    return v.note->getBasePitchForTest(op);
 }
 
 bool FmSynthEngine::peekVoiceStatus(FmVoiceStatus& status)

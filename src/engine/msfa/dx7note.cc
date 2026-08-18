@@ -49,9 +49,10 @@ int32_t Dx7Note::osc_freq(int midinote, int mode, int coarse, int fine, int detu
     int32_t logfreq;
     if (mode == 0) {
         // Standard tuning: log2(freq) in Q24 format
-        // base = (1 << 24) * (log2(440) - 69/12) = 50857777
+        // base = (1 << 24) * (log2(440) - 69/12) = 50857777 already encodes
+        // the A4 (midi 69) reference, so midinote is NOT offset again.
         // step = (1 << 24) / 12 = 1398101
-        logfreq = 50857777 + 1398101 * (midinote - 69);
+        logfreq = 50857777 + 1398101 * midinote;
 
         // could use more precision, closer enough for now. those numbers comes from my DX7
         double detuneRatio = 0.0209 * exp(-0.396 * (((float)logfreq)/(1<<24))) / 7;

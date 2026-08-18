@@ -390,6 +390,28 @@ TEST(MidiDelay, DoesNotCrash)
     EXPECT_GE(notes.size(), 1u);
 }
 
+TEST(MidiDelay, FeedbackRescheduleDoesNotCorrupt)
+{
+    MidiDelay md;
+    md.delayBeats = 0.25;
+    md.feedback = 0.5;
+    md.mix = 0.5;
+    bool emitted = false;
+    for (int iter = 0; iter < 40; ++iter)
+    {
+        juce::MidiBuffer buf;
+        buf.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)100), 0);
+        buf.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8)90), 0);
+        buf.addEvent(juce::MidiMessage::noteOff(1, 64), 64);
+        buf.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8)80), 128);
+        auto pos = makePos(iter * 0.5, 120.0);
+        md.process(buf, &pos, 44100.0, 512);
+        if (!collectNoteOns(buf).empty())
+            emitted = true;
+    }
+    EXPECT_TRUE(emitted);
+}
+
 TEST(Humanize, DoesNotCrash)
 {
     Humanize hu;

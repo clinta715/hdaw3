@@ -1,4 +1,7 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
+#include <cmath>
+#include <iostream>
+#include <vector>
 #include "engine/FmSynthEngine.h"
 
 class FmSynthTest : public ::testing::Test {
@@ -193,6 +196,29 @@ TEST_F(FmSynthTest, SmallChunkRendersBitIdenticalToSingleCall)
             << "mismatch at sample " << i;
 }
 
+TEST_F(FmSynthTest, CorrectOperatorPitch)
+{
+    // Note 60 with the default patch (every op coarse=0 -> ratio 0.5) must sound
+    // at C4/2 = 261.626/2 ~= 130.8 Hz. The old code subtracted 69 twice and
+    // produced ~2.4 Hz (subsonic). See dx7note.cc Dx7Note::osc_freq.
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    juce::AudioBuffer<float> buf(1, 256);
+    buf.clear();
+    engine.render(buf, midi);
+
+    int idx = -1;
+    for (int i = 0; i < FmSynthEngine::kMaxVoices; ++i)
+        if (engine.getVoiceMidiNoteForTest(i) == 60) { idx = i; break; }
+    ASSERT_GE(idx, 0);
+
+    const int32_t basepitch = engine.getVoiceBasePitchForTest(idx, 0);
+    ASSERT_NE(basepitch, 0);
+    const double hz = std::pow(2.0, basepitch / 16777216.0);
+    EXPECT_GT(hz, 50.0) << "operator pitch is subsonic; buggy double -69 offset present";
+    EXPECT_NEAR(hz, 130.8, 1.5) << "operator 0 should be one octave below note 60";
+}
+
 TEST_F(FmSynthTest, SamePitchRetriggerTransfersPhase)
 {
     juce::MidiBuffer midi;
@@ -206,7 +232,7 @@ TEST_F(FmSynthTest, SamePitchRetriggerTransfersPhase)
         if (engine.getVoiceMidiNoteForTest(i) == 60) { firstIdx = i; break; }
     ASSERT_GE(firstIdx, 0);
 
-    // Retrigger the same pitch — the new voice lands in a different slot
+    // Retrigger the same pitch â€” the new voice lands in a different slot
     juce::MidiBuffer midi2;
     midi2.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
     juce::AudioBuffer<float> buf2(1, 128);
@@ -288,7 +314,7 @@ TEST_F(FmSynthTest, MonoLegatoTransfersEnvelopeState)
     ASSERT_TRUE(engine.peekVoiceStatus(before));
     EXPECT_EQ(engine.activeVoiceCount(), 1);
 
-    // Legato to E4 while C4 is still held — the envelope must CONTINUE, not restart.
+    // Legato to E4 while C4 is still held â€” the envelope must CONTINUE, not restart.
     juce::MidiBuffer midi2;
     midi2.addEvent(juce::MidiMessage::noteOn(1, 64, 0.8f), 0);
     juce::AudioBuffer<float> buf2(1, 64);
@@ -374,4 +400,65 @@ TEST_F(FmSynthTest, AnalysisCaptureZeroWhenIdle)
     for (int op = 0; op < 6; ++op)
         EXPECT_FLOAT_EQ(engine.getOpEgLevel(op), 0.0f);
     EXPECT_EQ(engine.getAnalysisVoiceCount(), 0);
+}
+
+
+
+TEST_F(FmSynthTest, RenderedOutputHasCorrectPitch)
+{
+    // Default patch: note 60, all ops coarse=0 -> ratio 0.5 -> carrier ~130.8 Hz.
+    // A zeroed pitch EG (level 0) bends every op down 4 octaves (~8-16 Hz).
+    // Measure the dominant spectral component of the ACTUAL rendered output via
+    // a Goertzel scan. Zero-crossing/period estimation cannot be used here:
+    // algorithm 0 with all six ops at full output level is a deep FM stack whose
+    // output is noise-like (it crosses zero dozens of times per carrier cycle),
+    // but its dominant spectral peak is still the carrier.
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.8f), 0);
+    std::vector<float> out;
+    out.reserve(352 * 64);
+    for (int block = 0; block < 352; ++block)
+    {
+        juce::AudioBuffer<float> buf(1, 64);
+        buf.clear();
+        juce::MidiBuffer blockMidi = (block == 0) ? midi : juce::MidiBuffer{};
+        engine.render(buf, blockMidi);
+        for (int i = 0; i < 64; ++i)
+            out.push_back(buf.getSample(0, i));
+    }
+    ASSERT_EQ(out.size(), 22528u);
+
+    auto dominantFrequency = [](const std::vector<float>& samples) {
+        const int n = static_cast<int>(samples.size());
+        double mean = 0.0;
+        for (int i = 0; i < n; ++i)
+            mean += samples[i];
+        mean /= n;
+        std::vector<double> x(n);
+        for (int i = 0; i < n; ++i)
+            x[i] = samples[i] - mean;
+        double bestHz = 0.0, bestMag = -1.0;
+        for (double f = 2.0; f <= 1000.0; f += 0.5)
+        {
+            const double w = 6.28318530717958647692 * f / 44100.0;
+            const double coeff = 2.0 * std::cos(w);
+            double s1 = 0.0, s2 = 0.0;
+            for (int i = 0; i < n; ++i)
+            {
+                const double s0 = x[i] + coeff * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            const double mag = std::sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2);
+            if (mag > bestMag) { bestMag = mag; bestHz = f; }
+        }
+        return bestHz;
+    };
+
+    std::vector<float> window(out.begin() + 4410, out.end()); // discard 0.1 s attack
+    const double measuredHz = dominantFrequency(window);
+    std::cout << "[RenderedOutputHasCorrectPitch] dominant frequency: " << measuredHz << " Hz\n";
+    EXPECT_GE(measuredHz, 100.0) << "dominant component is subsonic; pitch EG bytes left at zero (-4 octave bend)";
+    EXPECT_LE(measuredHz, 170.0) << "dominant component is too high";
+    EXPECT_NEAR(measuredHz, 130.8, 15.0) << "carrier should be note 60 at ratio 0.5";
 }

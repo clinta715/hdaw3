@@ -55,6 +55,7 @@ public:
     // Test-only inspection: operator phase and midi note per voice slot.
     int32_t getVoicePhaseForTest(int voiceIndex, int op) const;
     int getVoiceMidiNoteForTest(int voiceIndex) const;
+    int32_t getVoiceBasePitchForTest(int voiceIndex, int op) const;
 
 private:
     struct Voice

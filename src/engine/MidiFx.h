@@ -604,31 +604,32 @@ public:
 
         // Emit pending delayed notes whose trigger beat falls in this block
         juce::MidiBuffer out;
-        for (auto it = pending.begin(); it != pending.end(); )
+        for (size_t i = 0; i < pending.size(); )
         {
-            if (it->triggerBeat < blockEnd)
+            auto& note = pending[i];
+            if (note.triggerBeat < blockEnd)
             {
                 int sample = beatsPerSample > 0
-                    ? static_cast<int>((it->triggerBeat - blockStart) / beatsPerSample) : 0;
+                    ? static_cast<int>((note.triggerBeat - blockStart) / beatsPerSample) : 0;
                 sample = juce::jlimit(0, numSamples - 1, sample);
-                if (it->isNoteOn)
-                    out.addEvent(juce::MidiMessage::noteOn(it->channel, it->note,
-                                 static_cast<juce::uint8>(juce::jlimit(1, 127, it->velocity))), sample);
+                if (note.isNoteOn)
+                    out.addEvent(juce::MidiMessage::noteOn(note.channel, note.note,
+                                 static_cast<juce::uint8>(juce::jlimit(1, 127, note.velocity))), sample);
                 else
-                    out.addEvent(juce::MidiMessage::noteOff(it->channel, it->note), sample);
+                    out.addEvent(juce::MidiMessage::noteOff(note.channel, note.note), sample);
 
                 // Feedback: re-schedule at decreasing velocity
-                if (feedback > 0.0 && it->isNoteOn && it->velocity > 1)
+                if (feedback > 0.0 && note.isNoteOn && note.velocity > 1)
                 {
-                    int nextVel = juce::jlimit(1, 127, static_cast<int>(it->velocity * feedback));
-                    pending.push_back({ it->note, it->channel, nextVel, true,
-                                        it->triggerBeat + delayBeats });
+                    int nextVel = juce::jlimit(1, 127, static_cast<int>(note.velocity * feedback));
+                    pending.push_back({ note.note, note.channel, nextVel, true,
+                                        note.triggerBeat + delayBeats });
                 }
-                it = pending.erase(it);
+                pending.erase(pending.begin() + i);
             }
             else
             {
-                ++it;
+                ++i;
             }
         }
 
