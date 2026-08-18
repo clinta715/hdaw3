@@ -28,6 +28,7 @@ const makeClip = (clipId: number, trackIndex: number): ClipSnapshot => ({
 describe("uiStore", () => {
   beforeEach(() => {
     localStorage.removeItem("hdaw_bottom_panel_h");
+    localStorage.removeItem("hdaw_bottom_panel_h_per_tab");
     localStorage.removeItem("hdaw_view_mode");
     localStorage.removeItem("hdaw_last_bottom_tab");
     useUiStore.setState({
@@ -41,6 +42,7 @@ describe("uiStore", () => {
       snapGridOffset: false,
       snapToEvents: false,
       showPhraseGenerator: false,
+      bottomPanelHeights: {},
       viewMode: "arrange",
       statusHint: null,
     });
@@ -116,6 +118,47 @@ describe("uiStore", () => {
     useUiStore.getState().setBottomPanelHeight(320);
     expect(useUiStore.getState().bottomPanelHeight).toBe(320);
     expect(localStorage.getItem("hdaw_bottom_panel_h")).toBe("320");
+  });
+
+  it("sets and persists a per-tab bottom panel height", () => {
+    useUiStore.getState().setBottomPanelHeightForTab("piano-roll", 340);
+    expect(useUiStore.getState().bottomPanelHeights["piano-roll"]).toBe(340);
+    expect(localStorage.getItem("hdaw_bottom_panel_h_per_tab")).toBe(
+      JSON.stringify({ "piano-roll": 340 })
+    );
+  });
+
+  it("effectiveBottomPanelHeight prefers per-tab, then tab default, then global", () => {
+    useUiStore.setState({ bottomPanelHeight: 200 });
+    expect(useUiStore.getState().effectiveBottomPanelHeight("piano-roll")).toBe(300);
+    expect(useUiStore.getState().effectiveBottomPanelHeight("mixer")).toBe(200);
+
+    useUiStore.getState().setBottomPanelHeight(260);
+    expect(useUiStore.getState().effectiveBottomPanelHeight("mixer")).toBe(260);
+
+    useUiStore.getState().setBottomPanelHeightForTab("piano-roll", 340);
+    expect(useUiStore.getState().effectiveBottomPanelHeight("piano-roll")).toBe(340);
+  });
+
+  it("ignores an invalid tab id in setBottomPanelHeightForTab", () => {
+    useUiStore.getState().setBottomPanelHeightForTab("not-a-real-tab", 400);
+    expect(useUiStore.getState().bottomPanelHeights).toEqual({});
+    expect(localStorage.getItem("hdaw_bottom_panel_h_per_tab")).toBeNull();
+  });
+
+  it("clamps per-tab heights below the minimum", () => {
+    useUiStore.getState().setBottomPanelHeightForTab("mixer", 50);
+    expect(useUiStore.getState().bottomPanelHeights["mixer"]).toBe(MIN_BOTTOM_PANEL_H);
+  });
+
+  it("filters invalid entries when loading persisted per-tab heights", async () => {
+    localStorage.setItem(
+      "hdaw_bottom_panel_h_per_tab",
+      JSON.stringify({ "piano-roll": 320, "bogus-tab": 400, "mixer": -5, "automation": "tall" })
+    );
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().bottomPanelHeights).toEqual({ "piano-roll": 320 });
   });
 
   it("exposes a sane minimum for the bottom panel", () => {

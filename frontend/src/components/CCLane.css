@@ -1,5 +1,7 @@
 .cc-lane { display: flex; align-items: center; gap: 4px; }
-.cc-label { display: flex; align-items: center; justify-content: flex-end; gap: 2px; font-size: 10px; color: var(--text-muted); width: 44px; text-align: right; }
+.cc-lane--collapsed { min-height: 16px; }
+.cc-label { display: flex; align-items: center; justify-content: flex-end; gap: 2px; font-size: 10px; color: var(--text-muted); width: 44px; text-align: right; cursor: pointer; user-select: none; }
+.cc-toggle-ind { font-size: 8px; line-height: 1; width: 8px; flex-shrink: 0; color: var(--text-muted); }
 .cc-remove { font-size: 10px; line-height: 1; padding: 0 2px; background: transparent; color: var(--text-muted); border: none; cursor: pointer; }
 .cc-remove:hover { color: var(--text-secondary); }
 .cc-canvas { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 2px; cursor: crosshair; }

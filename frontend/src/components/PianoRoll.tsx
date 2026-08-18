@@ -15,8 +15,13 @@ export default function PianoRoll() {
   const keysRef = useRef<HTMLDivElement>(null);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<number>>(new Set());
   const [gridScrollLeft, setGridScrollLeft] = useState(0);
-  const [ccLanes, setCcLanes] = useState<number[]>([1]);
+  const [ccLanes, setCcLanes] = useState<number[]>([]);
   const [ccToAdd, setCcToAdd] = useState(7);
+  const [ccOpen, setCcOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [velOpen, setVelOpen] = useState(false);
+  const ccWrapRef = useRef<HTMLDivElement>(null);
+  const editWrapRef = useRef<HTMLDivElement>(null);
   const [chordEnabled, setChordEnabled] = useState(false);
   const [chordType, setChordType] = useState("major");
   const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
@@ -62,6 +67,36 @@ export default function PianoRoll() {
       }
     }
   }, [activeClip?.clipId, rpc]);
+
+  useEffect(() => {
+    if (!ccOpen && !editOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ccOpen && ccWrapRef.current && !ccWrapRef.current.contains(t)) setCcOpen(false);
+      if (editOpen && editWrapRef.current && !editWrapRef.current.contains(t)) setEditOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setCcOpen(false);
+        setEditOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ccOpen, editOpen]);
+
+  useEffect(() => {
+    setCcOpen(false);
+    setEditOpen(false);
+  }, [activeClip?.clipId]);
+
+  useEffect(() => {
+    if (selectedNoteIds.size === 0) setEditOpen(false);
+  }, [selectedNoteIds]);
 
   const notes = activeClip ? notesByClip.get(activeClip.clipId) ?? [] : [];
   const gridWidth = useMemo(() => {
@@ -198,15 +233,17 @@ export default function PianoRoll() {
     <div className="piano-roll">
       <div className="pr-toolbar">
         {midiClips.length === 0 && <span className="pr-empty">No MIDI clips</span>}
-        {midiClips.map((c) => (
-          <button
-            key={c.clipId}
-            className={`pr-clip-btn ${c.clipId === activeClip?.clipId ? "active" : ""}`}
-            onClick={() => loadNotes(c.clipId)}
+        {midiClips.length > 0 && (
+          <select
+            className="pr-clip-select"
+            value={activeClip?.clipId ?? ""}
+            onChange={(e) => loadNotes(Number(e.target.value))}
           >
-            {c.name ?? `Clip ${c.clipId}`}
-          </button>
-        ))}
+            {midiClips.map((c) => (
+              <option key={c.clipId} value={c.clipId}>{c.name ?? `Clip ${c.clipId}`}</option>
+            ))}
+          </select>
+        )}
         <span className="pr-toolbar-sep" />
         <div className="pr-zoom-group">
           <button className="pr-zoom-btn" onClick={() => zoomBy(1 / 1.25)} title="Zoom Out (Ctrl+wheel to zoom)">−</button>
@@ -242,65 +279,113 @@ export default function PianoRoll() {
             </label>
           </>
         )}
-        {selectedNoteIds.size > 0 && (
-          <>
-            <span className="pr-toolbar-sep" />
-            <label className="pr-slider-ctrl">
-              <span className="pr-slider-label">Vel</span>
-              <input
-                type="range"
-                min={10}
-                max={200}
-                defaultValue={100}
-                className="pr-slider"
-                onMouseUp={(e) => {
-                  const factor = Number((e.target as HTMLInputElement).value) / 100;
-                  handleScaleVelocity(factor);
-                  (e.target as HTMLInputElement).value = "100";
-                }}
-              />
-            </label>
-            <label className="pr-slider-ctrl">
-              <span className="pr-slider-label">Dur</span>
-              <input
-                type="range"
-                min={10}
-                max={200}
-                defaultValue={100}
-                className="pr-slider"
-                onMouseUp={(e) => {
-                  const factor = Number((e.target as HTMLInputElement).value) / 100;
-                  handleScaleDuration(factor);
-                  (e.target as HTMLInputElement).value = "100";
-                }}
-              />
-            </label>
-            <label className="pr-slider-ctrl">
-              <span className="pr-slider-label">Q.Str</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={quantizeStrength}
-                className="pr-slider"
-                onChange={(e) => setQuantizeStrength(Number(e.target.value))}
-              />
-              <span className="pr-slider-val">{quantizeStrength}%</span>
-            </label>
-            <label className="pr-slider-ctrl">
-              <span className="pr-slider-label">Swing</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(swing * 100)}
-                className="pr-slider"
-                onChange={(e) => setSwing(Number(e.target.value) / 100)}
-              />
-              <span className="pr-slider-val">{Math.round(swing * 100)}%</span>
-            </label>
-          </>
-        )}
+        <div className="pr-pill-group">
+          <button
+            className={`pr-pill ${velOpen ? "pr-pill--active" : ""}`}
+            aria-pressed={velOpen}
+            title="Toggle velocity lane"
+            aria-label="Toggle velocity lane"
+            onClick={() => setVelOpen((v) => !v)}
+          >Vel</button>
+          <div className="pr-popover-wrap" ref={ccWrapRef}>
+            <button
+              className={`pr-pill ${ccOpen ? "pr-pill--active" : ""}`}
+              aria-pressed={ccOpen}
+              aria-haspopup="true"
+              aria-expanded={ccOpen}
+              title="Add CC lane"
+              aria-label="Add CC lane"
+              onClick={() => setCcOpen((o) => !o)}
+            >+CC</button>
+            {ccOpen && (
+              <div className="pr-cc-popover">
+                <select value={ccToAdd} onChange={(e) => setCcToAdd(Number(e.target.value))}>
+                  {Array.from({ length: 128 }, (_, i) => (
+                    <option key={i} value={i}>CC{i}</option>
+                  ))}
+                </select>
+                <button
+                  className="pr-cc-add-btn"
+                  onClick={() => {
+                    setCcLanes((prev) => (prev.includes(ccToAdd) ? prev : [...prev, ccToAdd]));
+                    setCcOpen(false);
+                  }}
+                >Add</button>
+              </div>
+            )}
+          </div>
+          {selectedNoteIds.size > 0 && (
+            <div className="pr-popover-wrap" ref={editWrapRef}>
+              <button
+                className={`pr-pill ${editOpen ? "pr-pill--active" : ""}`}
+                aria-pressed={editOpen}
+                aria-haspopup="true"
+                aria-expanded={editOpen}
+                title="Edit selected notes"
+                aria-label="Edit selected notes"
+                onClick={() => setEditOpen((o) => !o)}
+              >Edit</button>
+              {editOpen && (
+                <div className="pr-edit-popover">
+                  <label className="pr-slider-ctrl">
+                    <span className="pr-slider-label">Vel</span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={200}
+                      defaultValue={100}
+                      className="pr-slider"
+                      onMouseUp={(e) => {
+                        const factor = Number((e.target as HTMLInputElement).value) / 100;
+                        handleScaleVelocity(factor);
+                        (e.target as HTMLInputElement).value = "100";
+                      }}
+                    />
+                  </label>
+                  <label className="pr-slider-ctrl">
+                    <span className="pr-slider-label">Dur</span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={200}
+                      defaultValue={100}
+                      className="pr-slider"
+                      onMouseUp={(e) => {
+                        const factor = Number((e.target as HTMLInputElement).value) / 100;
+                        handleScaleDuration(factor);
+                        (e.target as HTMLInputElement).value = "100";
+                      }}
+                    />
+                  </label>
+                  <label className="pr-slider-ctrl">
+                    <span className="pr-slider-label">Q.Str</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={quantizeStrength}
+                      className="pr-slider"
+                      onChange={(e) => setQuantizeStrength(Number(e.target.value))}
+                    />
+                    <span className="pr-slider-val">{quantizeStrength}%</span>
+                  </label>
+                  <label className="pr-slider-ctrl">
+                    <span className="pr-slider-label">Swing</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(swing * 100)}
+                      className="pr-slider"
+                      onChange={(e) => setSwing(Number(e.target.value) / 100)}
+                    />
+                    <span className="pr-slider-val">{Math.round(swing * 100)}%</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="pr-editor">
         <div className="pr-keys" ref={keysRef}>
@@ -328,39 +413,38 @@ export default function PianoRoll() {
             quantizeStrength={quantizeStrength}
             swing={swing}
           />
-          <VelocityLane
-            notes={notes}
-            selectedNoteIds={selectedNoteIds}
-            rpc={rpc}
-            pixelsPerBeat={pixelsPerBeat}
-            onVelocityChange={handleVelocityChange}
-            scrollLeft={gridScrollLeft}
-            onScrollChange={setGridScrollLeft}
+          <button
+            className="pr-lane-handle"
+            title={velOpen ? "Hide velocity lane" : "Show velocity lane"}
+            aria-label={velOpen ? "Hide velocity lane" : "Show velocity lane"}
+            onClick={() => setVelOpen((v) => !v)}
           />
-          <div className="pr-cc-row">
-            <div className="pr-cc-add">
-              <select value={ccToAdd} onChange={(e) => setCcToAdd(Number(e.target.value))}>
-                {Array.from({ length: 128 }, (_, i) => (
-                  <option key={i} value={i}>CC{i}</option>
-                ))}
-              </select>
-              <button
-                className="pr-cc-add-btn"
-                onClick={() => setCcLanes((prev) => (prev.includes(ccToAdd) ? prev : [...prev, ccToAdd]))}
-              >+ Lane</button>
+          {velOpen && (
+            <VelocityLane
+              notes={notes}
+              selectedNoteIds={selectedNoteIds}
+              rpc={rpc}
+              pixelsPerBeat={pixelsPerBeat}
+              onVelocityChange={handleVelocityChange}
+              scrollLeft={gridScrollLeft}
+              onScrollChange={setGridScrollLeft}
+            />
+          )}
+          {ccLanes.length > 0 && activeClip && (
+            <div className="pr-cc-row">
+              {ccLanes.map((cc) => (
+                <CCLane
+                  key={cc}
+                  clipId={activeClip.clipId}
+                  controllerNumber={cc}
+                  width={gridWidth}
+                  pixelsPerBeat={pixelsPerBeat}
+                  scrollX={gridScrollLeft}
+                  onRemove={() => setCcLanes((prev) => prev.filter((c) => c !== cc))}
+                />
+              ))}
             </div>
-            {activeClip && ccLanes.map((cc) => (
-              <CCLane
-                key={cc}
-                clipId={activeClip.clipId}
-                controllerNumber={cc}
-                width={gridWidth}
-                pixelsPerBeat={pixelsPerBeat}
-                scrollX={gridScrollLeft}
-                onRemove={() => setCcLanes((prev) => prev.filter((c) => c !== cc))}
-              />
-            ))}
-          </div>
+          )}
         </div>
       </div>
     </div>

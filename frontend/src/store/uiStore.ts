@@ -3,6 +3,7 @@ import { ClipSnapshot } from "../rpc/types";
 
 export const MIN_BOTTOM_PANEL_H = 120;
 const BOTTOM_PANEL_H_KEY = "hdaw_bottom_panel_h";
+const BOTTOM_PANEL_H_PER_TAB_KEY = "hdaw_bottom_panel_h_per_tab";
 const HDAW_VIEWMODE_KEY = "hdaw_view_mode";
 const HDAW_LAST_TAB_KEY = "hdaw_last_bottom_tab";
 
@@ -25,6 +26,8 @@ export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";
 export const DEFAULT_VIEW_MODE = "arrange" as const;
 
+export const TAB_DEFAULT_HEIGHTS: Partial<Record<BottomTabId, number>> = { "piano-roll": 300 };
+
 function loadBottomPanelHeight(): number {
   try {
     const raw = localStorage.getItem(BOTTOM_PANEL_H_KEY);
@@ -36,6 +39,33 @@ function loadBottomPanelHeight(): number {
     /* storage unavailable (e.g. test env) — fall through to default */
   }
   return 200;
+}
+
+function loadBottomPanelHeights(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(BOTTOM_PANEL_H_PER_TAB_KEY);
+    if (raw != null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const out: Record<string, number> = {};
+        for (const [tab, h] of Object.entries(parsed as Record<string, unknown>)) {
+          if (
+            (BOTTOM_TAB_IDS as readonly string[]).includes(tab) &&
+            typeof h === "number" &&
+            Number.isFinite(h) &&
+            Number.isInteger(h) &&
+            h >= MIN_BOTTOM_PANEL_H
+          ) {
+            out[tab] = h;
+          }
+        }
+        return out;
+      }
+    }
+  } catch {
+    /* storage unavailable or corrupt — fall through to default */
+  }
+  return {};
 }
 
 function loadViewMode(): "arrange" | "session" {
@@ -70,6 +100,7 @@ interface UiState {
   snapToEvents: boolean;
   showPhraseGenerator: boolean;
   bottomPanelHeight: number;
+  bottomPanelHeights: Record<string, number>;
   viewMode: "arrange" | "session";
   statusHint: string | null;
   crashedFxSlots: Record<string, { pluginName: string }>;
@@ -88,6 +119,8 @@ interface UiState {
   setSnapToEvents: (enabled: boolean) => void;
   setShowPhraseGenerator: (show: boolean) => void;
   setBottomPanelHeight: (h: number) => void;
+  setBottomPanelHeightForTab: (tab: string, h: number) => void;
+  effectiveBottomPanelHeight: (tab: string) => number;
   setViewMode: (mode: "arrange" | "session") => void;
   setStatusHint: (h: string | null) => void;
   setSlotCrashed: (trackIndex: number, pluginId: string, pluginName: string) => void;
@@ -106,6 +139,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   snapToEvents: false,
   showPhraseGenerator: false,
   bottomPanelHeight: loadBottomPanelHeight(),
+  bottomPanelHeights: loadBottomPanelHeights(),
   viewMode: loadViewMode(),
   statusHint: null,
   crashedFxSlots: {},
@@ -171,6 +205,24 @@ export const useUiStore = create<UiState>((set, get) => ({
       /* storage unavailable — height still applies for this session */
     }
     set({ bottomPanelHeight: h });
+  },
+  setBottomPanelHeightForTab: (tab, h) => {
+    if (!(BOTTOM_TAB_IDS as readonly string[]).includes(tab)) return;
+    const next = { ...get().bottomPanelHeights, [tab]: Math.max(MIN_BOTTOM_PANEL_H, h) };
+    try {
+      localStorage.setItem(BOTTOM_PANEL_H_PER_TAB_KEY, JSON.stringify(next));
+    } catch {
+      /* storage unavailable — height still applies for this session */
+    }
+    set({ bottomPanelHeights: next });
+  },
+  effectiveBottomPanelHeight: (tab) => {
+    const state = get();
+    return (
+      state.bottomPanelHeights[tab] ??
+      TAB_DEFAULT_HEIGHTS[tab as BottomTabId] ??
+      state.bottomPanelHeight
+    );
   },
   setViewMode: (mode) => {
     try {

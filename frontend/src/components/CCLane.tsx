@@ -50,6 +50,7 @@ function beatValueAt(
 export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat, scrollX, onRemove }: CCLaneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [points, setPoints] = useState<CcPoint[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
   const dragRef = useRef<{ ccId: number; beat: number; value: number } | null>(null);
   const movedRef = useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -167,30 +168,46 @@ export default function CCLane({ clipId, controllerNumber, width, pixelsPerBeat,
   }, [points, pixelsPerBeat, scrollX]);
 
   return (
-    <div className="cc-lane">
-      <div className="cc-label">
+    <div className={`cc-lane${collapsed ? " cc-lane--collapsed" : ""}`}>
+      <div
+        className="cc-label"
+        onClick={() => setCollapsed((c) => !c)}
+        title={collapsed ? "Expand lane" : "Collapse lane"}
+      >
+        <span className="cc-toggle-ind">{collapsed ? "▸" : "▾"}</span>
         CC{controllerNumber}
         {onRemove && (
-          <button className="cc-remove" onClick={onRemove} title="Remove lane">×</button>
+          <button
+            className="cc-remove"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Remove lane"
+          >×</button>
         )}
       </div>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={H}
-        className="cc-canvas"
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onContextMenu={handleContextMenu}
-      />
-      <EnvelopeGenerateControl
-        collapsed
-        defaultValueRange={[0, 127]}
-        onGenerate={async (params) => {
-          await rpc.call("project.generateClipCcLane", { clipId, controllerNumber, ...params });
-          setRefreshKey((k) => k + 1);
-        }}
-      />
+      {!collapsed && (
+        <>
+          <canvas
+            ref={canvasRef}
+            width={width}
+            height={H}
+            className="cc-canvas"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onContextMenu={handleContextMenu}
+          />
+          <EnvelopeGenerateControl
+            collapsed
+            defaultValueRange={[0, 127]}
+            onGenerate={async (params) => {
+              await rpc.call("project.generateClipCcLane", { clipId, controllerNumber, ...params });
+              setRefreshKey((k) => k + 1);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

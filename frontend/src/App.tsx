@@ -26,7 +26,7 @@ import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
 import Toaster from "./components/Toaster";
-import { useUiStore, MIN_BOTTOM_PANEL_H } from "./store/uiStore";
+import { useUiStore, MIN_BOTTOM_PANEL_H, BOTTOM_TAB_IDS, TAB_DEFAULT_HEIGHTS, type BottomTabId } from "./store/uiStore";
 import { useProjectStore } from "./store/projectStore";
 import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
@@ -55,9 +55,17 @@ function App() {
   const prevTabRef = useRef(activeBottomTab);
   const browserVisible = useBrowserStore((s) => s.visible);
   const bottomPanelHeight = useUiStore((s) => s.bottomPanelHeight);
-  const setBottomPanelHeight = useUiStore((s) => s.setBottomPanelHeight);
+  const bottomPanelHeights = useUiStore((s) => s.bottomPanelHeights);
+  const setBottomPanelHeightForTab = useUiStore((s) => s.setBottomPanelHeightForTab);
   const viewMode = useUiStore((s) => s.viewMode);
   const [panelResizing, setPanelResizing] = useState(false);
+
+  const panelHeight =
+    bottomPanelHeights[activeBottomTab] ??
+    ((BOTTOM_TAB_IDS as readonly string[]).includes(activeBottomTab)
+      ? TAB_DEFAULT_HEIGHTS[activeBottomTab as BottomTabId]
+      : undefined) ??
+    bottomPanelHeight;
 
   // Drag the divider above the bottom panel to resize it. The height feeds
   // the --bottom-h CSS variable that sizes the panel's grid row; it persists
@@ -65,12 +73,13 @@ function App() {
   const startPanelResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
-    const startH = useUiStore.getState().bottomPanelHeight;
+    const activeTab = useUiStore.getState().activeBottomTab;
+    const startH = useUiStore.getState().effectiveBottomPanelHeight(activeTab);
     setPanelResizing(true);
     const onMove = (ev: MouseEvent) => {
       const max = Math.max(MIN_BOTTOM_PANEL_H, window.innerHeight - 48 - 24 - 120);
       const next = Math.min(max, Math.max(MIN_BOTTOM_PANEL_H, startH + (startY - ev.clientY)));
-      setBottomPanelHeight(Math.round(next));
+      setBottomPanelHeightForTab(activeTab, Math.round(next));
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -79,7 +88,7 @@ function App() {
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [setBottomPanelHeight]);
+  }, [setBottomPanelHeightForTab]);
 
   const handleTabChange = useCallback((t: string) => {
     useUiStore.getState().selectBottomTab(t);
@@ -217,7 +226,7 @@ function App() {
   return (
     <div
       className="app-shell"
-      style={{ "--bottom-h": `${bottomPanelHeight}px` } as React.CSSProperties}
+      style={{ "--bottom-h": `${panelHeight}px` } as React.CSSProperties}
     >
       <header className="transport-bar">
         <TransportBar />

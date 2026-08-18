@@ -54,9 +54,15 @@ test.describe("Piano Roll (user journeys)", () => {
     }
   });
 
-  test("velocity lane is visible below the note grid", async ({ page }) => {
-    const velLane = page.locator(".velocity-lane, [class*='velocity']");
-    await expect(velLane.first()).toBeVisible({ timeout: 5000 });
+  test("velocity lane is collapsed by default; Vel pill opens it", async ({ page }) => {
+    await expect(page.locator(".pr-lane-handle")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".velocity-lane")).toHaveCount(0);
+    await page.getByRole("button", { name: "Toggle velocity lane", exact: true }).click();
+    await expect(page.locator(".velocity-lane").first()).toBeVisible({ timeout: 5000 });
+    await page.locator(".pr-lane-handle").click();
+    await expect(page.locator(".velocity-lane")).toHaveCount(0, { timeout: 5000 });
+    await page.locator(".pr-lane-handle").click();
+    await expect(page.locator(".velocity-lane").first()).toBeVisible({ timeout: 5000 });
   });
 
   test("clicking a note selects it", async ({ page }) => {
@@ -68,9 +74,68 @@ test.describe("Piano Roll (user journeys)", () => {
     }
   });
 
-  test("CC lane is present", async ({ page }) => {
-    const ccLane = page.locator(".cc-lane, [class*='cc-lane']");
-    await expect(ccLane.first()).toBeVisible({ timeout: 5000 });
+  test("CC lane is added on demand via the +CC popover", async ({ page }) => {
+    await expect(page.locator(".cc-lane")).toHaveCount(0);
+    await page.getByRole("button", { name: "Add CC lane", exact: true }).click();
+    const popover = page.locator(".pr-cc-popover");
+    await expect(popover).toBeVisible();
+    await popover.locator("button", { hasText: "Add" }).click();
+    const lane = page.locator(".cc-lane");
+    await expect(lane).toHaveCount(1, { timeout: 5000 });
+    await expect(lane.locator(".cc-label")).toContainText("CC7");
+    await lane.locator(".cc-remove").click();
+    await expect(page.locator(".cc-lane")).toHaveCount(0, { timeout: 5000 });
+  });
+
+  test("clip picker dropdown switches clips", async ({ page }) => {
+    await rpcCall(page, "project.addMidiClip", { trackIndex: 0, start: 8, duration: 4, name: "E2E MIDI 2" });
+    const select = page.locator(".pr-clip-select");
+    await expect(select).toBeVisible({ timeout: 10000 });
+    // The second clip arrives via a debounced tree delta, so poll for it.
+    await expect(async () => {
+      expect(await select.locator("option").count()).toBe(2);
+    }).toPass({ timeout: 10000 });
+    // Clear the timeline clip selection so the dropdown's internal selection wins
+    // (timelineSelectedId takes precedence over internalClipId in PianoRoll).
+    await page.locator(".tl-track-row").nth(1).click({ position: { x: 40, y: 10 } });
+    const firstValue = await select.inputValue();
+    const secondValue = await select.locator("option").nth(1).getAttribute("value");
+    expect(secondValue).not.toBe(firstValue);
+    await select.selectOption({ value: secondValue ?? "" });
+    await expect(async () => {
+      expect(await select.inputValue()).toBe(secondValue);
+    }).toPass({ timeout: 10000 });
+  });
+
+  test("edit popover opens on note selection", async ({ page }) => {
+    const grid = page.locator(".note-grid");
+    await expect(grid).toBeVisible({ timeout: 5000 });
+    await grid.dblclick({ position: { x: 60, y: 50 } });
+    const notes = page.locator(".ng-note");
+    await expect(notes).toHaveCount(1, { timeout: 5000 });
+    await notes.first().click();
+    await expect(notes.first()).toHaveClass(/selected/, { timeout: 2000 });
+    const editPill = page.getByRole("button", { name: "Edit selected notes", exact: true });
+    await expect(editPill).toBeVisible();
+    await editPill.click();
+    const popover = page.locator(".pr-edit-popover");
+    await expect(popover).toBeVisible();
+    await expect(popover.locator(".pr-slider")).toHaveCount(4);
+    await expect(popover.locator(".pr-slider").first()).toBeVisible();
+    const box = await grid.boundingBox();
+    if (!box) return;
+    const cx = Math.min(300, box.width - 20);
+    const cy = Math.min(200, box.height - 20);
+    await grid.click({ position: { x: cx, y: cy } });
+    await expect(page.locator(".pr-edit-popover")).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByRole("button", { name: "Edit selected notes", exact: true })).toHaveCount(0);
+  });
+
+  test("default view is decluttered", async ({ page }) => {
+    await expect(page.locator(".pr-clip-btn")).toHaveCount(0);
+    await expect(page.locator(".pr-cc-add")).toHaveCount(0);
+    await expect(page.locator(".velocity-lane")).toHaveCount(0);
+    await expect(page.locator(".note-grid")).toBeVisible({ timeout: 5000 });
   });
 
   test("marquee selection selects multiple notes", async ({ page }) => {
