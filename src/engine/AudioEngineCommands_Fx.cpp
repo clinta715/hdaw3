@@ -62,6 +62,14 @@ void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
 void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
                                     int position, const std::string& pluginId)
 {
+    addFxSlotInternal(trackIndex, type, position, pluginId);
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::addFxSlotInternal(int trackIndex, const std::string& type,
+                                            int position, const std::string& pluginId)
+{
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
@@ -89,9 +97,6 @@ void AudioEngineCommands::addFxSlot(int trackIndex, const std::string& type,
     int n = fxChain.getNumChildren();
     int insertIdx = (position < 0 || position > n) ? n : position;
     fxChain.addChild(slot, insertIdx, &um);
-
-    if (auto* proc = engine_.getMainProcessor())
-        proc->rebuildTrackFX(trackIndex);
 }
 
 void AudioEngineCommands::addMidiFxSlot(int trackIndex, const std::string& type, int position)

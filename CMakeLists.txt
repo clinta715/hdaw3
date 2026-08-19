@@ -83,6 +83,7 @@ add_library(HDAW_lib STATIC
     src/engine/AudioEngineCommands_Automation.cpp
     src/engine/AudioEngineCommands_Envelope.cpp
     src/engine/AudioEngineCommands_GhostPaint.cpp
+    src/engine/AudioEngineCommands_Composition.cpp
     src/engine/AudioEngineCommands_Markers.cpp
     src/engine/AudioEngineCommands_Arranger.cpp
     src/engine/AudioEngineCommands_Tracks.cpp

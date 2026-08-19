@@ -313,6 +313,57 @@ public:
     };
     virtual ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) = 0;
 
+    // ── Instrument part composer ──
+    // One command that builds a complete "instrument part": a track with an
+    // instrument FX slot, a generated phrase, ghost copies painted across the
+    // arrangement, and (optionally) gain-staging to a target RMS. All in beats
+    // at this boundary (lesson #1); only the gain-staging render window is in
+    // seconds. The composite is ONE undo unit ("Add instrument part"); the
+    // gain-stage fader write is a SEPARATE undo unit ("Auto gain stage").
+    struct InstrumentPartParams {
+        std::string trackName;
+        std::string style;              // PhraseGenerator style name
+        std::string pluginId;           // empty = internal "fm_synth"
+        double lengthBeats = 4.0;
+        std::string placement = "region"; // "wholeSong" | "region"
+        double startBeat = 0.0;
+        int count = 1;                  // "region": total copies to paint (>=1)
+        int scaleRoot = -1;             // -1 = use project scale root
+        int scaleMode = -1;             // -1 = use project scale mode
+        int density = 8;
+        double noteDuration = 0.5;
+        int lowNote = 48;
+        int highNote = 84;
+        int minVelocity = 60;
+        int maxVelocity = 110;
+        uint64_t seed = 0;
+        float targetRms = 0.0f;         // >0 → run autoGainToTarget after building
+        double windowSeconds = 4.0;
+        bool verify = false;
+    };
+
+    struct GainStageResult {
+        bool ok = false;
+        float fader = 1.0f;             // applied track volume
+        float measuredRms = 0.0f;
+        float peak = 0.0f;
+        bool clamped = false;           // true if fader would exceed 1.0
+        std::string error;
+    };
+
+    struct InstrumentPartResult {
+        int trackIndex = -1;
+        std::vector<int> clipIds;
+        int noteCount = 0;
+        std::string error;
+        GainStageResult gain;           // populated only when targetRms > 0
+    };
+
+    virtual InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) = 0;
+    virtual GainStageResult autoGainToTarget(int trackIndex, float targetRms,
+                                             double windowSeconds = 4.0,
+                                             bool verify = false) = 0;
+
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same
     // basename with a different audio extension (wav/aiff/aif/mp3/flac/ogg).

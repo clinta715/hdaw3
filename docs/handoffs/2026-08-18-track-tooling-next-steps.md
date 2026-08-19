@@ -24,31 +24,21 @@ except gitignored `projects/`. Commits:
 
 ## The remaining agenda (priority order)
 
-### 1. `composition.addInstrumentPart` + auto gain staging (the big one) — design Q1/Q3
-The natural unit of work done by hand. Candidate shape (from the track-tooling
-handoff):
-
-```
-composition.addInstrumentPart {
-  trackName, style ("Lead"/"Arpeggio"/"Pad"/…),
-  pluginId (optional → default "internal fm_synth"),
-  lengthBeats, placement ("wholeSong" | startBeat+count),
-  targetRms, verify: bool
-}
-```
-
-- All building blocks already exist and are RPC+MCP+UI: `PhraseGenerator`,
-  `ArrangementGenerator`, `RhythmPatternGenerator`, `composition.generatePhrase`,
-  `project.paintClips`, `project.addFxSlot`, `project.addTrack`.
-- **Auto gain staging** is the biggest hand-coded step: solo-render a window →
-  measure RMS → fader = target/measured. Edge cases found this session: FM
-  instruments clip at fader 1.0 (preL up to 8) → need a global-scale +
-  post-scale step (we re-rendered at ×0.85 then post-scaled); transient
-  percussion (peak vs RMS targets differ). See `docs/plans/2026-08-18-export-bake-timeout-scale.md`
-  for the solo-render/export path.
-- Decide the surface first (Q5): engine command (scriptable + testable, gtest +
-  MCP in one change) is likely the right primary surface; UI can wrap later
-  (`PhraseGeneratorDialog` is the existing pattern).
+### 1. `composition.addInstrumentPart` + auto gain staging — **DONE (do not redo)**
+Shipped in this session: `composition.addInstrumentPart` (composite: addTrack →
+instrument FX slot `fm_synth`/pluginId → `generatePhrase` → inline paint
+`wholeSong`/`region` → ONE undo unit + ONE rebuild) + `composition.autoGainToTarget`
+(solo-render window on a tree copy → measure RMS/peak → `fader = target/measured`,
+clamped at 1.0 → `setTrackVolume`). MCP twins `add_instrument_part` /
+`auto_gain_to_target` share the same engine commands. Plan:
+`docs/plans/2026-08-18-instrument-part-composer.md`. 917/917 tests (was 908).
+**New lesson (pan law):** the gain stage measures the ACTUAL solo render, not the
+source WAV's nominal RMS — a center-panned track is scaled by cos(π/4)=0.7071
+per channel (`Track.cpp:638-640`), so a 0.5-amp sine renders at RMS 0.25, not
+0.3536. The implementation is correct (it measures); any test/preset that assumes
+source RMS must account for the pan law. Edge cases still open (from the original
+handoff): FM clipping at fader 1.0 needs a global-scale + post-scale step; transient
+percussion may want peak (not RMS) targets. Both are follow-ups, not blockers.
 
 ### 2. Plugin preset selection / audition — design Q2 / handoff bug #4
 Default presets are hit-or-miss (Identity/sampler near-silent; we probed

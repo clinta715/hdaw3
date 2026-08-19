@@ -451,6 +451,41 @@ TEST(FrontendServer, FmSynthImportSysexCartridgeVoices) {
     s.tearDown();
 }
 
+// RPC round-trip: composition.addInstrumentPart builds a complete instrument
+// part (track + instrument FX + phrase clip) in one engine command and returns
+// { trackIndex, clipIds, noteCount } — the G4 contract.
+TEST(FrontendServer, AddInstrumentPartRpc) {
+    EngineAndServer s;
+    s.setUp();
+    const int before = s.engine.getReadModel().getTrackCount();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject params{
+        { "trackName", "RPC Lead" },
+        { "style", "Lead" },
+        { "lengthBeats", 4.0 },
+        { "placement", "region" },
+        { "count", 1 },
+    };
+    auto resp = client.call(1, "composition.addInstrumentPart", params, 5000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
+                                               .value("message").toString().toStdString();
+    auto result = resp.value("result").toObject();
+    EXPECT_GE(result.value("trackIndex").toInt(-1), 0);
+    EXPECT_TRUE(result.value("clipIds").isArray());
+    EXPECT_GE(result.value("clipIds").toArray().size(), 1);
+    EXPECT_GT(result.value("noteCount").toInt(), 0);
+
+    // The composite added exactly one track (fullSync path — no extra wiring).
+    EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before + 1);
+
+    client.close();
+    s.tearDown();
+}
+
 // JSON-RPC notification (no id): fire-and-forget. The server must not send a
 // response. Verify by sending a notification then a request; confirm only the
 // request gets a response (the notification may produce a push notification

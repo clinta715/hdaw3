@@ -79,6 +79,11 @@ public:
     // ProjectCommands — generative arrangement
     ArrangementResult generateArrangement(const HDAW::ArrangementParams& params) override;
 
+    // ProjectCommands — instrument part composer
+    InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
+    GainStageResult autoGainToTarget(int trackIndex, float targetRms,
+                                     double windowSeconds, bool verify) override;
+
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;
     void setClipStretchMode(int clipId, int mode) override;
@@ -332,6 +337,14 @@ private:
 
     // Add a new track ValueTree to the project. Returns the new index.
     juce::ValueTree createTrackValueTree(const std::string& name, int color, int parentBus, int trackType = 0);
+
+    // Build an FX slot's ValueTree (type/plugin properties) and add it to the
+    // track's FX_CHAIN under the undo manager — WITHOUT triggering the per-op
+    // rebuildTrackFX. The public addFxSlot(string) overload calls this then
+    // rebuilds; batched composite commands (addInstrumentPart) call this and
+    // issue a single rebuildRoutingGraph at the end (lesson 6).
+    void addFxSlotInternal(int trackIndex, const std::string& type, int position,
+                           const std::string& pluginId);
 
     // Gain envelope helpers
     std::vector<ProjectModel::GainEnvelopePoint> getGainEnvelopePoints(int clipId);

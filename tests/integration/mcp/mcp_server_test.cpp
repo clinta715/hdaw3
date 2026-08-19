@@ -686,6 +686,61 @@ TEST(McpServer, GenerateRhythmPattern) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, AddInstrumentPartTool) {
+    AudioEngine engine;
+    engine.initialize();  // default project: 3 tracks
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const int before = engine.getReadModel().getTrackCount();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"add_instrument_part","arguments":{"trackName":"MCP Lead","style":"Lead","lengthBeats":4,"placement":"region","count":1}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r).contains("trackIndex=")) << "got: [" << textOf(r).toStdString() << "]";
+    EXPECT_TRUE(textOf(r).contains("notes=")) << "got: [" << textOf(r).toStdString() << "]";
+
+    // The composite added exactly one track.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before + 1);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, AutoGainToTargetTool) {
+    AudioEngine engine;
+    engine.initialize();
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const QString srcPath = writeSineWav("gainstage");
+    ASSERT_FALSE(srcPath.isEmpty());
+    // Default project track 0 (audio) — add the sine as an audio clip (2 s
+    // of content at 120 BPM; the 1.0 s window is fully covered by signal).
+    const int clipId = engine.getProjectCommands().addAudioClip(
+        0, 0.0, 4.0, srcPath.toStdString(), "sine");
+    ASSERT_GE(clipId, 0);
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"auto_gain_to_target","arguments":{"trackId":0,"targetRms":0.05,"windowSeconds":1.0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QString txt = textOf(r);
+    EXPECT_TRUE(txt.contains("ok=1")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("fader=")) << "got: [" << txt.toStdString() << "]";
+
+    QFile::remove(srcPath);
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, ExportAudioRendersDefaultProject) {
     AudioEngine engine;
     mcp::TransportLoopback tp;

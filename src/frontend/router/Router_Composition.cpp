@@ -264,6 +264,85 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return generateIntoClip(trackIndex, startBeat, totalBeats, "Rhythm Pattern", converted);
     }
 
+    if (m == "addInstrumentPart") {
+        // Composite: add track + instrument FX + phrase + paint (+ optional
+        // gain staging). One engine command = one undo unit / one rebuild.
+        // Synchronous RPC that blocks the channel for the gain-stage render
+        // duration (windowSeconds + bake) when targetRms > 0 — same shape as
+        // export.audio. Beats are accepted at this boundary (lesson #1).
+        ProjectCommands::InstrumentPartParams p;
+        if (!requireString(o, "trackName", p.trackName, nullptr))
+            return makeError(-32602, "trackName required");
+        if (!requireString(o, "style", p.style, nullptr))
+            return makeError(-32602, "style required");
+        p.pluginId      = optString(o, "pluginId", "");
+        p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
+        p.placement     = optString(o, "placement", "region");
+        p.startBeat     = optDouble(o, "startBeat", 0.0, nullptr);
+        p.count         = optInt(o, "count", 1, nullptr);
+        p.scaleRoot     = optInt(o, "scaleRoot", -1, nullptr);
+        p.scaleMode     = optInt(o, "scaleMode", -1, nullptr);
+        p.density       = optInt(o, "density", 8, nullptr);
+        p.noteDuration  = optDouble(o, "noteDuration", 0.5, nullptr);
+        p.lowNote       = optInt(o, "lowNote", 48, nullptr);
+        p.highNote      = optInt(o, "highNote", 84, nullptr);
+        p.minVelocity   = optInt(o, "minVelocity", 60, nullptr);
+        p.maxVelocity   = optInt(o, "maxVelocity", 110, nullptr);
+        p.seed          = optInt<uint64_t>(o, "seed", 0, nullptr);
+        p.targetRms     = optFloat(o, "targetRms", 0.0f, nullptr);
+        p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
+        p.verify        = optBool(o, "verify", false, nullptr);
+
+        auto r = c.addInstrumentPart(p);
+        QJsonArray clipIds;
+        for (int id : r.clipIds) clipIds.append(id);
+        QJsonObject res{
+            { "trackIndex", r.trackIndex },
+            { "clipIds", clipIds },
+            { "noteCount", r.noteCount }
+        };
+        if (!r.error.empty())
+            res.insert("error", QString::fromStdString(r.error));
+        if (p.targetRms > 0.0f) {   // engine populated r.gain only when staged
+            QJsonObject gain{
+                { "ok", r.gain.ok },
+                { "fader", static_cast<double>(r.gain.fader) },
+                { "measuredRms", static_cast<double>(r.gain.measuredRms) },
+                { "peak", static_cast<double>(r.gain.peak) },
+                { "clamped", r.gain.clamped }
+            };
+            if (!r.gain.error.empty())
+                gain.insert("error", QString::fromStdString(r.gain.error));
+            res.insert("gain", gain);
+        }
+        return { false, res };
+    }
+
+    if (m == "autoGainToTarget") {
+        // Gain-stage primitive: solo-render the track's first window, measure,
+        // set the fader. Synchronous RPC that blocks for the render duration.
+        int trackIndex;
+        float targetRms;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        if (!requireFloat(o, "targetRms", targetRms, nullptr))
+            return makeError(-32602, "targetRms required");
+        const double windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
+        const bool verify = optBool(o, "verify", false, nullptr);
+
+        auto r = c.autoGainToTarget(trackIndex, targetRms, windowSeconds, verify);
+        QJsonObject res{
+            { "ok", r.ok },
+            { "fader", static_cast<double>(r.fader) },
+            { "measuredRms", static_cast<double>(r.measuredRms) },
+            { "peak", static_cast<double>(r.peak) },
+            { "clamped", r.clamped }
+        };
+        if (!r.error.empty())
+            res.insert("error", QString::fromStdString(r.error));
+        return { false, res };
+    }
+
     return makeError(-32601, "unknown composition method: " + m);
 }
 

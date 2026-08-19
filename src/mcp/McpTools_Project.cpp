@@ -1034,6 +1034,83 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                 .arg(r.trackIndices.size()).arg(r.clipIds.size()).arg(r.noteCount)
                 .arg(static_cast<qulonglong>(r.seed)));
         }});
+
+    s.registerTool({"add_instrument_part",
+        "Compose a complete instrument part in one command: add a track with an instrument FX slot, generate a phrase, paint it across the arrangement, and optionally gain-stage to a target RMS. One undo unit. Calls the same engine command as the composition.addInstrumentPart RPC.",
+        objSchema({{"trackName",    QJsonObject{{"type","string"}}},
+                  {"style",        QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
+                  {"pluginId",     QJsonObject{{"type","string"}}},
+                  {"lengthBeats",  QJsonObject{{"type","number"},{"minimum",0.25}}},
+                  {"placement",    QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"wholeSong","region"}}}},
+                  {"startBeat",    QJsonObject{{"type","number"},{"minimum",0.0}}},
+                  {"count",        QJsonObject{{"type","integer"},{"minimum",1}}},
+                  {"scaleRoot",    QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",11}}},
+                  {"scaleMode",    QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",20}}},
+                  {"density",      QJsonObject{{"type","integer"},{"minimum",1}}},
+                  {"noteDuration", QJsonObject{{"type","number"},{"minimum",0.01}}},
+                  {"lowNote",      QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"highNote",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"minVelocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"maxVelocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"seed",         QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"targetRms",    QJsonObject{{"type","number"},{"minimum",0.0}}},
+                  {"windowSeconds",QJsonObject{{"type","number"},{"minimum",0.1}}},
+                  {"verify",       QJsonObject{{"type","boolean"}}}},
+                 {"trackName","style"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            ProjectCommands::InstrumentPartParams p;
+            p.trackName = a.value("trackName").toString().toStdString();
+            p.style = a.value("style").toString().toStdString();
+            p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
+            p.lengthBeats = a.value("lengthBeats").toDouble(4.0);
+            p.placement = a.contains("placement") ? a.value("placement").toString().toStdString() : "region";
+            p.startBeat = a.value("startBeat").toDouble(0.0);
+            p.count = a.value("count").toInt(1);
+            p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : -1;
+            p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : -1;
+            p.density = a.value("density").toInt(8);
+            p.noteDuration = a.value("noteDuration").toDouble(0.5);
+            p.lowNote = a.value("lowNote").toInt(48);
+            p.highNote = a.value("highNote").toInt(84);
+            p.minVelocity = a.value("minVelocity").toInt(60);
+            p.maxVelocity = a.value("maxVelocity").toInt(110);
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
+            p.targetRms = a.contains("targetRms") ? static_cast<float>(a.value("targetRms").toDouble()) : 0.0f;
+            p.windowSeconds = a.value("windowSeconds").toDouble(4.0);
+            p.verify = a.contains("verify") ? a.value("verify").toBool() : false;
+            auto r = e->getProjectCommands().addInstrumentPart(p);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            QString out = QString("trackIndex=%1 clips=%2 notes=%3")
+                              .arg(r.trackIndex).arg((int) r.clipIds.size()).arg(r.noteCount);
+            if (p.targetRms > 0.0f) {
+                out += QString(" gainOk=%1 fader=%2 rms=%3 peak=%4 clamped=%5")
+                           .arg(r.gain.ok).arg(r.gain.fader).arg(r.gain.measuredRms)
+                           .arg(r.gain.peak).arg(r.gain.clamped);
+            }
+            return McpToolResult::text(out);
+        }});
+
+    s.registerTool({"auto_gain_to_target",
+        "Gain-stage a track to a target RMS: solo-render its first window to a temp WAV, measure, and set the track fader (clamped at 1.0). Calls the same engine command as the composition.autoGainToTarget RPC.",
+        objSchema({{"trackId",        QJsonObject{{"type","integer"}}},
+                  {"targetRms",      QJsonObject{{"type","number"},{"minimum",0.000001}}},
+                  {"windowSeconds",  QJsonObject{{"type","number"},{"minimum",0.1}}},
+                  {"verify",         QJsonObject{{"type","boolean"}}}},
+                 {"trackId","targetRms"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto r = e->getProjectCommands().autoGainToTarget(
+                a.value("trackId").toInt(),
+                static_cast<float>(a.value("targetRms").toDouble()),
+                a.value("windowSeconds").toDouble(4.0),
+                a.contains("verify") ? a.value("verify").toBool() : false);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString("ok=%1 fader=%2 rms=%3 peak=%4 clamped=%5")
+                .arg(r.ok).arg(r.fader).arg(r.measuredRms).arg(r.peak).arg(r.clamped));
+        }});
 }
 
 static void registerArrangerTools(McpServer& s, AudioEngine* e)
