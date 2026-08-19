@@ -351,6 +351,40 @@ TEST(FrontendServer, FmSynthImportSysexRpc) {
     s.tearDown();
 }
 
+TEST(FrontendServer, FxSlotPluginFormatExposed) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject addParams{ { "trackIndex", 0 }, { "fxType", "eq" } };
+    auto addResp = client.call(1, "project.addFxSlot", addParams);
+    ASSERT_FALSE(addResp.contains("error"));
+
+    QJsonObject setParams{ { "trackIndex", 0 }, { "slotIndex", 0 },
+                           { "fxType", "plugin" }, { "pluginID", "test.plugin" },
+                           { "pluginFormat", "VST3" }, { "pluginPath", "/path/test.vst3" } };
+    auto setResp = client.call(2, "project.setFxSlotPlugin", setParams);
+    ASSERT_FALSE(setResp.contains("error"));
+
+    QJsonObject readParams{ { "trackIndex", 0 } };
+    auto readResp = client.call(3, "read.getFxSlots", readParams);
+    ASSERT_FALSE(readResp.contains("error"));
+    bool found = false;
+    for (const auto& v : readResp.value("result").toArray()) {
+        auto o = v.toObject();
+        if (o.value("fxType").toString() == "plugin") {
+            EXPECT_EQ(o.value("pluginFormat").toString().toStdString(), "VST3");
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+
+    client.close();
+    s.tearDown();
+}
+
 // 32-voice cartridge import: the response must carry the full parsed voice
 // list (index/name/algorithm), totalVoices, and the resolved voiceIndex so the
 // frontend can render a voice picker. Exercises the same path the drop handler

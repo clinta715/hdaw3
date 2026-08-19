@@ -615,6 +615,7 @@ TEST(Commands, SetFxSlotPlugin)
     auto fxSlots = engine.getReadModel().getFxSlots(0);
     ASSERT_FALSE(fxSlots.empty());
     EXPECT_EQ(fxSlots[0].fxType, "plugin");
+    EXPECT_EQ(fxSlots[0].pluginFormat, "VST3");
 }
 
 TEST(Commands, AddCcPoint)

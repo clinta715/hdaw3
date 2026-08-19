@@ -136,6 +136,7 @@ export interface FxSlotSnapshot {
   fxType: string;
   pluginId: string;
   pluginName: string;
+  pluginFormat: string;
   bypassed: boolean;
   paramCount: number;
 }

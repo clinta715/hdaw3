@@ -114,6 +114,7 @@ struct FxSlotSnapshot {
     std::string fxType;
     std::string pluginId;
     std::string pluginName;
+    std::string pluginFormat;
     bool bypassed = false;
     int paramCount = 0;
 };

@@ -422,6 +422,7 @@ std::vector<FxSlotSnapshot> ReadModelImpl::getFxSlots(int trackIndex) const
         s.fxType = slot.getProperty(IDs::fxType, "").toString().toStdString();
         s.pluginId = slot.getProperty(IDs::pluginID, "").toString().toStdString();
         s.pluginName = slot.getProperty(IDs::name, "").toString().toStdString();
+        s.pluginFormat = slot.getProperty(IDs::pluginFormat, "").toString().toStdString();
         s.bypassed = slot.getProperty(IDs::bypassed, false);
         s.paramCount = slot.getNumChildren();
         result.push_back(s);

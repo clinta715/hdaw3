@@ -179,6 +179,7 @@ inline QJsonObject toJson(const FxSlotSnapshot& f) {
         { "fxType",     QString::fromStdString(f.fxType) },
         { "pluginId",   QString::fromStdString(f.pluginId) },
         { "pluginName", QString::fromStdString(f.pluginName) },
+        { "pluginFormat", QString::fromStdString(f.pluginFormat) },
         { "bypassed",   f.bypassed },
         { "paramCount", f.paramCount },
     };

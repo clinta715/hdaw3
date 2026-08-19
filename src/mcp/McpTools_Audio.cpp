@@ -51,6 +51,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
                               {"type", QString::fromStdString(s2.fxType)}};
                 if (isPlugin) {
                     o["pluginId"] = QString::fromStdString(s2.pluginId);
+                    o["pluginFormat"] = QString::fromStdString(s2.pluginFormat);
                     o["paramCount"] = s2.paramCount;
                 }
                 o["bypassed"] = s2.bypassed;
