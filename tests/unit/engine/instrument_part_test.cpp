@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <string>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "engine/AudioEngine.h"
 #include "engine/MainAudioProcessor.h"
@@ -65,6 +67,22 @@ double clipListMaxEndSec(const juce::ValueTree& trackList, int trackIndex)
         maxEnd = std::max(maxEnd, start + dur);
     }
     return maxEnd;
+}
+
+// TyrellN6 is the deterministic real-plugin test subject (installed at
+// C:\Program Files\Common Files\VST3\TyrellN6(x64).vst3, present in the plugin
+// cache with 128 programs). The real-plugin suites only run when
+// HDAW_REAL_PLUGIN_TESTS is set AND the VST3 file exists — otherwise they skip
+// (GTEST_SKIP pattern from export_volume_bypass_test.cpp).
+bool tyrellN6Available()
+{
+    const char* env = getenv("HDAW_REAL_PLUGIN_TESTS");
+    if (env == nullptr)
+        return false;
+    const juce::String s(env);
+    if (s.trim().isEmpty() || s.trim() == "0")
+        return false;
+    return juce::File("C:\\Program Files\\Common Files\\VST3\\TyrellN6(x64).vst3").existsAsFile();
 }
 
 } // namespace
@@ -233,4 +251,96 @@ TEST(AutoGain, SilentTrackErrors)
     EXPECT_FALSE(gain.error.empty());
     EXPECT_TRUE(std::isfinite(gain.fader));
     EXPECT_TRUE(std::isfinite(gain.measuredRms));
+}
+
+// ─── G2 — programIndex ─────────────────────────────────────────────
+
+TEST(InstrumentPart, ProgramIndexRequiresPluginId)
+{
+    AudioEngine engine;
+    engine.initialize();
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.programIndex = 0;   // no pluginId → rejected at the boundary
+
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    EXPECT_FALSE(res.error.empty());
+    EXPECT_NE(res.error.find("pluginId"), std::string::npos);
+    EXPECT_EQ(res.trackIndex, -1);
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+}
+
+TEST(InstrumentPart, ProgramIndexOutOfRangeErrors)
+{
+    AudioEngine engine;
+    engine.initialize();
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.pluginId = "test.plugin.id";   // fake — never instantiates
+    params.programIndex = 0;
+    params.seed = 7;
+
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    // The composite commits the track, then the fake plugin's slot becomes
+    // "none" at rebuild — applyPluginProgram sees a non-plugin slot and fails.
+    // The command rolls the WHOLE composite back (undo + close transaction),
+    // so the project is left untouched — no dead track with a broken slot.
+    EXPECT_FALSE(res.error.empty()) << "applyPluginProgram must reject a non-plugin slot";
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+
+    // The engine is still healthy: a follow-up composite succeeds.
+    ProjectCommands::InstrumentPartParams ok2;
+    ok2.trackName = "Bass";
+    ok2.style = "BassLine";
+    ok2.seed = 8;
+    auto res2 = engine.getProjectCommands().addInstrumentPart(ok2);
+    EXPECT_TRUE(res2.error.empty()) << res2.error;
+}
+
+TEST(InstrumentPart, ProgramIndexSetsLiveProgram)
+{
+    if (!tyrellN6Available())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or TyrellN6 missing";
+
+    AudioEngine engine;
+    engine.initialize();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.pluginId = "C:\\Program Files\\Common Files\\VST3\\TyrellN6(x64).vst3";
+    params.programIndex = 1;
+    params.seed = 9;
+
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    // Gate 1/10: assert the LIVE processor (not just the read model).
+    auto* track = engine.getMainProcessor()->getTrack(res.trackIndex);
+    ASSERT_NE(track, nullptr);
+    ASSERT_FALSE(track->getFXChain().empty());
+    auto& slot = track->getFXChain()[0];
+    ASSERT_NE(slot, nullptr);
+    ASSERT_TRUE(slot->isPlugin());
+    ASSERT_NE(slot->getPluginInstance(), nullptr);
+    EXPECT_EQ(slot->getCurrentProgram(), 1);
+
+    // The tree snapshot must carry the pick so tree-copy renders (gain stage,
+    // audition, export) and save/load capture it (Gate 1/10).
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto fxChain = trackList.getChild(res.trackIndex).getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChain.isValid());
+    ASSERT_GT(fxChain.getNumChildren(), 0);
+    EXPECT_FALSE(fxChain.getChild(0).getProperty(IDs::pluginState).toString().isEmpty());
+
+    // Existing behavior: one undo removes the whole part.
+    engine.getProjectCommands().undo();
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), 3);
 }

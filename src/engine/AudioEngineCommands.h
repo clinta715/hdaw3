@@ -83,6 +83,7 @@ public:
     InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify) override;
+    AuditionResult auditionPlugin(const AuditionParams& params) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;

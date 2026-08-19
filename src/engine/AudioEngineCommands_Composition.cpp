@@ -8,8 +8,10 @@
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
+#include <string>
 
 namespace
 {
@@ -139,6 +141,193 @@ std::vector<int> paintGhostCopies(AudioEngine& engine, int trackIndex,
     return ids;
 }
 
+struct RenderWindowResult
+{
+    juce::File wavPath;   // only set on success (after measureWav); caller owns deletion
+    float rms = 0.0f;
+    float peak = 0.0f;
+    std::string error;
+};
+
+// Unique temp render target for a track window. The counter keeps consecutive
+// (and concurrent) renders from colliding on the same filename.
+std::atomic<int> s_renderCounter{ 0 };
+
+// The shared solo-render + measure loop (handoff #5): renders the target
+// track's clips over [windowStart, windowStart + windowSeconds) from a SOLO
+// TREE COPY — every other track muted, all solos cleared — and measures the
+// rendered WAV. `fader` is applied to the target track's volume only when
+// `applyFader` is true. Never mutates the live graph (Gate 12). Errors are
+// reported via `error`; the caller owns deleting `wavPath`.
+RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
+                                     double windowSeconds, float fader,
+                                     bool applyFader)
+{
+    RenderWindowResult result;
+
+    auto& model = engine.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    if (!(windowSeconds > 0.0))
+    {
+        result.error = "windowSeconds must be > 0";
+        return result;
+    }
+
+    auto* proc = engine.getMainProcessor();
+    if (proc == nullptr)
+    {
+        result.error = "audio processor unavailable";
+        return result;
+    }
+    auto& em = proc->getExportManager();
+    if (em.isExporting())
+    {
+        result.error = "export already in progress";
+        return result;
+    }
+
+    // Window start = the target track's earliest clip startTime (seconds).
+    double windowStart = std::numeric_limits<double>::max();
+    auto clipList = trackList.getChild(trackIndex).getChildWithName(IDs::CLIP_LIST);
+    bool hasClip = false;
+    if (clipList.isValid())
+    {
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            const double s = static_cast<double>(clipList.getChild(c).getProperty(IDs::startTime, 0.0));
+            windowStart = std::min(windowStart, s);
+            hasClip = true;
+        }
+    }
+    if (!hasClip)
+    {
+        result.error = "track has no clips";
+        return result;
+    }
+
+    // Solo tree copy: only the target track renders, regardless of live
+    // mute/solo state. The copy is never written back to the live tree.
+    juce::ValueTree treeCopy = model.getTree().createCopy();
+    auto copyTrackList = treeCopy.getChildWithName(IDs::TRACK_LIST);
+    if (copyTrackList.isValid())
+    {
+        for (int t = 0; t < copyTrackList.getNumChildren(); ++t)
+        {
+            auto track = copyTrackList.getChild(t);
+            track.setProperty(IDs::isSoloed, false, nullptr);
+            if (t != trackIndex)
+                track.setProperty(IDs::isMuted, true, nullptr);
+            else if (applyFader)
+                track.setProperty(IDs::volume, static_cast<double>(fader), nullptr);
+        }
+    }
+
+    auto& fm = engine.getProjectPool().getFormatManager();
+    const juce::File tempFile =
+        juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("hdaw_render_" + juce::String(trackIndex) + "_"
+                          + juce::String(s_renderCounter.fetch_add(1)) + ".wav");
+    tempFile.deleteFile();
+
+    if (!em.startExport(treeCopy, fm, &engine.getPluginManager(), tempFile,
+                        48000.0, windowStart, windowSeconds,
+                        HDAW::ExportManager::WAV, 24))
+    {
+        result.error = "failed to start render";
+        return result;
+    }
+
+    // Block-wait for the bake + render. The message pump is a separate thread
+    // so the render still completes (proven pattern from
+    // export_bake_timeout_test.cpp).
+    const uint32_t waitMs = HDAW::ExportManager::computeBakeWaitMs(treeCopy)
+                            + static_cast<uint32_t>(windowSeconds * 1000.0) + 5000u;
+    const auto deadline = juce::Time::getMillisecondCounter() + waitMs;
+    while (em.isExporting() && juce::Time::getMillisecondCounter() < deadline)
+        juce::Thread::sleep(10);
+    if (em.isExporting())
+    {
+        em.cancel();
+        result.error = "render timed out";
+        return result;
+    }
+
+    if (!measureWav(fm, tempFile, result.rms, result.peak))
+    {
+        result.error = "failed to read render";
+        return result;
+    }
+
+    result.wavPath = tempFile;
+    return result;
+}
+
+// Set a plugin program on a LIVE slot and snapshot its state back into the
+// ValueTree so tree-copy renders (gain stage, audition, export) and save/load
+// capture the selection. The write uses nullptr undo — plugin state is volatile
+// cache, not a user edit (mirrors Track::rebuildFXChain). Program/state calls
+// run on the command/MCP thread — the proven load_plugin_preset path (Gate 16).
+bool applyPluginProgram(AudioEngine& engine, int trackIndex, int slotIndex,
+                        int programIndex, std::string& error)
+{
+    auto* proc = engine.getMainProcessor();
+    if (proc == nullptr)
+    {
+        error = "plugin instance unavailable";
+        return false;
+    }
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr || slotIndex < 0
+        || static_cast<size_t>(slotIndex) >= track->getFXChain().size())
+    {
+        error = "plugin instance unavailable";
+        return false;
+    }
+    auto& slot = track->getFXChain()[static_cast<size_t>(slotIndex)];
+    if (slot == nullptr || !slot->isPlugin() || slot->getPluginInstance() == nullptr)
+    {
+        error = "plugin instance unavailable";
+        return false;
+    }
+
+    const int numPrograms = slot->getNumPrograms();
+    if (programIndex < 0 || programIndex >= numPrograms)
+    {
+        error = "programIndex out of range (" + std::to_string(numPrograms) + " programs)";
+        return false;
+    }
+
+    slot->setCurrentProgram(programIndex);
+    auto* inst = slot->getPluginInstance();
+    juce::MemoryBlock state;
+    inst->getStateInformation(state);
+    if (state.getSize() == 0)
+    {
+        error = "plugin produced empty state";
+        return false;
+    }
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    {
+        error = "plugin instance unavailable";
+        return false;
+    }
+    auto fxChain = trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+    if (!fxChain.isValid() || slotIndex < 0 || slotIndex >= fxChain.getNumChildren())
+    {
+        error = "plugin instance unavailable";
+        return false;
+    }
+    fxChain.getChild(slotIndex).setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+    return true;
+}
+
 } // namespace
 
 // ─── ProjectCommands — instrument part composer ───────────────────
@@ -172,6 +361,11 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     if (!(params.lengthBeats > 0.0))
     {
         result.error = "lengthBeats must be > 0";
+        return result;
+    }
+    if (params.programIndex >= 0 && params.pluginId.empty())
+    {
+        result.error = "programIndex requires a pluginId";
         return result;
     }
 
@@ -248,6 +442,31 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     }
 
     rebuildRoutingGraph();
+
+    // Program pick rides the SAME undo unit as the composite: applied on the
+    // live slot (it exists after the rebuild above) and snapshotted into the
+    // slot's pluginState so the gain-stage tree-copy render hears it. On
+    // failure the composite is closed with an error, matching the existing
+    // mid-composite error path (addTrack/addMidiClip failures).
+    if (params.programIndex >= 0)
+    {
+        std::string progErr;
+        if (!applyPluginProgram(engine_, trackIndex, 0, params.programIndex, progErr))
+        {
+            // Roll the whole composite back so a bad program pick leaves no
+            // dead track behind: undo() reverts every ValueTree action since
+            // beginTransaction (track + slot + clip + notes), then close the
+            // (now empty) transaction. The live graph still holds the track
+            // until the tree-change listener's async rebuild runs — later
+            // commands trigger their own rebuild from the tree, which is
+            // consistent.
+            undo();
+            endTransaction();
+            result.error = progErr;
+            return result;
+        }
+    }
+
     endTransaction();
 
     result.trackIndex = trackIndex;
@@ -264,9 +483,8 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
 {
     GainStageResult result;
 
-    auto& model = engine_.getProjectModel();
-    auto trackList = model.getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    // Validate (Gate 9 — bounds-check every param at the command boundary).
+    if (trackIndex < 0 || trackIndex >= engine_.getProjectModel().getTrackListTree().getNumChildren())
     {
         result.error = "trackIndex out of range";
         return result;
@@ -277,6 +495,85 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
         return result;
     }
     if (!(windowSeconds > 0.0))
+    {
+        result.error = "windowSeconds must be > 0";
+        return result;
+    }
+
+    // Raw render at unity. renderTrackWindow validates the processor/export
+    // state, computes the window from the earliest clip, renders a solo tree
+    // copy, and measures the WAV (the shared render loop, handoff #5).
+    auto raw = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false);
+    if (!raw.error.empty())
+    {
+        result.error = raw.error;
+        return result;
+    }
+
+    if (raw.rms <= 1e-6f)
+    {
+        raw.wavPath.deleteFile();
+        result.error = "track is silent";
+        return result;
+    }
+
+    float fader = targetRms / raw.rms;
+    result.clamped = (fader > 1.0f);
+    if (result.clamped)
+        fader = 1.0f;
+    result.fader = fader;
+
+    beginTransaction("Auto gain stage");
+    setTrackVolume(trackIndex, fader);
+    endTransaction();
+
+    if (verify)
+    {
+        // Re-render the same window with the fader applied, from a fresh tree
+        // copy, and report the verified RMS/peak. Best-effort: a failed verify
+        // keeps the fader write; only the measured values stay unset.
+        auto check = renderTrackWindow(engine_, trackIndex, windowSeconds, fader, true);
+        if (check.error.empty())
+        {
+            result.measuredRms = check.rms;
+            result.peak = check.peak;
+        }
+        check.wavPath.deleteFile();
+    }
+    else
+    {
+        result.measuredRms = raw.rms;
+        result.peak = raw.peak;
+    }
+
+    raw.wavPath.deleteFile();
+    result.ok = true;
+    return result;
+}
+
+ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const AuditionParams& params)
+{
+    AuditionResult result;
+
+    // Validate (Gate 9 — bounds-check every param at the command boundary).
+    const bool tempProbe = (params.trackIndex < 0);
+    if (tempProbe && params.pluginId.empty())
+    {
+        result.error = "pluginId is required when trackIndex < 0";
+        return result;
+    }
+    PhraseGenerator::Style style;
+    if (!styleFromName(params.style, style))
+    {
+        result.error = "unknown style: " + params.style;
+        return result;
+    }
+    if (!(params.lengthBeats > 0.0))
+    {
+        result.error = "lengthBeats must be > 0";
+        return result;
+    }
+    if (!(params.windowSeconds > 0.0))
     {
         result.error = "windowSeconds must be > 0";
         return result;
@@ -295,144 +592,158 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
         return result;
     }
 
-    // Window start = the target track's earliest clip startTime (seconds).
-    double windowStart = std::numeric_limits<double>::max();
-    auto clipList = trackList.getChild(trackIndex).getChildWithName(IDs::CLIP_LIST);
-    bool hasClip = false;
-    if (clipList.isValid())
+    int trackIndex = params.trackIndex;
+    int slotIndex = params.slotIndex;
+    bool probeCommitted = false;
+
+    if (tempProbe)
     {
-        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        auto& model = engine_.getProjectModel();
+        beginTransaction("Audition probe");
+        trackIndex = addTrack("Audition", -1, -1, 0);
+        if (trackIndex < 0)
         {
-            const double s = static_cast<double>(clipList.getChild(c).getProperty(IDs::startTime, 0.0));
-            windowStart = std::min(windowStart, s);
-            hasClip = true;
+            endTransaction();
+            result.error = "failed to add track";
+            return result;
         }
-    }
-    if (!hasClip)
-    {
-        result.error = "track has no clips";
-        return result;
-    }
+        addFxSlotInternal(trackIndex, "plugin", -1, params.pluginId);
+        slotIndex = 0;
 
-    // Solo tree copy: only the target track renders, regardless of live
-    // mute/solo state. The copy is never written back to the live tree.
-    juce::ValueTree treeCopy = model.getTree().createCopy();
-    auto copyTrackList = treeCopy.getChildWithName(IDs::TRACK_LIST);
-    if (copyTrackList.isValid())
-    {
-        for (int t = 0; t < copyTrackList.getNumChildren(); ++t)
+        PhraseGenerator::PhraseParams pp;
+        pp.style = style;
+        pp.lengthBeats = params.lengthBeats;
+        pp.density = params.density;
+        pp.noteDuration = params.noteDuration;
+        pp.scaleRoot = model.getScaleRoot();
+        pp.scaleMode = model.getScaleMode();
+        pp.lowNote = params.lowNote;
+        pp.highNote = params.highNote;
+        pp.minVelocity = params.minVelocity;
+        pp.maxVelocity = params.maxVelocity;
+        pp.seed = params.seed;
+        const auto notes = PhraseGenerator::generatePhrase(pp);
+
+        const int clipId = addMidiClip(trackIndex, 0.0, params.lengthBeats, "Audition");
+        if (clipId < 0)
         {
-            auto track = copyTrackList.getChild(t);
-            track.setProperty(IDs::isSoloed, false, nullptr);
-            if (t != trackIndex)
-                track.setProperty(IDs::isMuted, true, nullptr);
+            endTransaction();
+            result.error = "failed to add MIDI clip";
+            return result;
         }
-    }
+        for (const auto& n : notes)
+            addNote(clipId, n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
 
-    auto& fm = engine_.getProjectPool().getFormatManager();
-    const juce::File tempFile =
-        juce::File::getSpecialLocation(juce::File::tempDirectory)
-            .getChildFile("hdaw_gainstage_" + juce::String(trackIndex) + ".wav");
-    tempFile.deleteFile();
-
-    if (!em.startExport(treeCopy, fm, &engine_.getPluginManager(), tempFile,
-                        48000.0, windowStart, windowSeconds,
-                        HDAW::ExportManager::WAV, 24))
-    {
-        result.error = "failed to start gain-stage render";
-        return result;
-    }
-
-    // Block-wait for the bake + render. The message pump is a separate thread
-    // so the render still completes (proven pattern from
-    // export_bake_timeout_test.cpp).
-    const uint32_t waitMs = HDAW::ExportManager::computeBakeWaitMs(treeCopy)
-                            + static_cast<uint32_t>(windowSeconds * 1000.0) + 5000u;
-    const auto deadline = juce::Time::getMillisecondCounter() + waitMs;
-    while (em.isExporting() && juce::Time::getMillisecondCounter() < deadline)
-        juce::Thread::sleep(10);
-    if (em.isExporting())
-    {
-        em.cancel();
-        result.error = "gain-stage render timed out";
-        return result;
-    }
-
-    float measuredRms = 0.0f, measuredPeak = 0.0f;
-    if (!measureWav(fm, tempFile, measuredRms, measuredPeak))
-    {
-        result.error = "failed to read gain-stage render";
-        return result;
-    }
-
-    if (measuredRms <= 1e-6f)
-    {
-        result.error = "track is silent";
-        return result;
-    }
-
-    float fader = targetRms / measuredRms;
-    result.clamped = (fader > 1.0f);
-    if (result.clamped)
-        fader = 1.0f;
-    result.fader = fader;
-
-    beginTransaction("Auto gain stage");
-    setTrackVolume(trackIndex, fader);
-    endTransaction();
-
-    if (verify)
-    {
-        // Re-render the same window with the fader applied, from a fresh tree
-        // copy, and report the verified RMS/peak.
-        juce::ValueTree verifyCopy = model.getTree().createCopy();
-        auto vTrackList = verifyCopy.getChildWithName(IDs::TRACK_LIST);
-        if (vTrackList.isValid())
-        {
-            for (int t = 0; t < vTrackList.getNumChildren(); ++t)
-            {
-                auto track = vTrackList.getChild(t);
-                track.setProperty(IDs::isSoloed, false, nullptr);
-                if (t != trackIndex)
-                    track.setProperty(IDs::isMuted, true, nullptr);
-                else
-                    track.setProperty(IDs::volume, static_cast<double>(fader), nullptr);
-            }
-        }
-
-        const juce::File verifyFile =
-            juce::File::getSpecialLocation(juce::File::tempDirectory)
-                .getChildFile("hdaw_gainstage_verify_" + juce::String(trackIndex) + ".wav");
-        verifyFile.deleteFile();
-
-        if (em.startExport(verifyCopy, fm, &engine_.getPluginManager(), verifyFile,
-                           48000.0, windowStart, windowSeconds,
-                           HDAW::ExportManager::WAV, 24))
-        {
-            const auto vDeadline = juce::Time::getMillisecondCounter()
-                + HDAW::ExportManager::computeBakeWaitMs(verifyCopy)
-                + static_cast<uint32_t>(windowSeconds * 1000.0) + 5000u;
-            while (em.isExporting() && juce::Time::getMillisecondCounter() < vDeadline)
-                juce::Thread::sleep(10);
-            if (!em.isExporting())
-            {
-                float vRms = 0.0f, vPeak = 0.0f;
-                if (measureWav(fm, verifyFile, vRms, vPeak))
-                {
-                    result.measuredRms = vRms;
-                    result.peak = vPeak;
-                }
-            }
-            verifyFile.deleteFile();
-        }
+        rebuildRoutingGraph();
+        endTransaction();
+        probeCommitted = true;
     }
     else
     {
-        result.measuredRms = measuredRms;
-        result.peak = measuredPeak;
+        auto trackList = engine_.getProjectModel().getTrackListTree();
+        if (params.trackIndex < 0 || params.trackIndex >= trackList.getNumChildren())
+        {
+            result.error = "trackIndex out of range";
+            return result;
+        }
+        auto* track = proc->getTrack(params.trackIndex);
+        if (track == nullptr || params.slotIndex < 0
+            || static_cast<size_t>(params.slotIndex) >= track->getFXChain().size())
+        {
+            result.error = "slotIndex out of range";
+            return result;
+        }
+        auto& slot = track->getFXChain()[static_cast<size_t>(params.slotIndex)];
+        if (slot == nullptr || !slot->isPlugin())
+        {
+            result.error = "slot is not a plugin";
+            return result;
+        }
+        auto clipList = trackList.getChild(params.trackIndex).getChildWithName(IDs::CLIP_LIST);
+        if (!clipList.isValid() || clipList.getNumChildren() == 0)
+        {
+            result.error = "track has no clips";
+            return result;
+        }
     }
 
-    tempFile.deleteFile();
+    // Roll back a committed probe: one undo() reverts the whole "Audition
+    // probe" transaction, then the graph is rebuilt from the tree so the live
+    // processors match. A failed probe must leave the project untouched.
+    auto rollbackProbe = [&]() {
+        if (tempProbe && probeCommitted)
+        {
+            undo();
+            if (auto* p = engine_.getMainProcessor())
+                p->rebuildRoutingGraph();
+            probeCommitted = false;
+        }
+    };
+
+    // Apply the requested program on the LIVE slot and snapshot its state into
+    // the tree (applyPluginProgram). programIndex == -1 reports the current
+    // program without touching it.
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr
+        || slotIndex < 0 || static_cast<size_t>(slotIndex) >= track->getFXChain().size()
+        || track->getFXChain()[static_cast<size_t>(slotIndex)] == nullptr)
+    {
+        rollbackProbe();
+        result.error = "plugin instance unavailable";
+        return result;
+    }
+    auto& slot = track->getFXChain()[static_cast<size_t>(slotIndex)];
+    result.numPrograms = slot->getNumPrograms();
+    if (params.programIndex >= 0)
+    {
+        if (params.programIndex >= result.numPrograms)
+        {
+            rollbackProbe();
+            result.error = "programIndex out of range (" + std::to_string(result.numPrograms) + " programs)";
+            return result;
+        }
+        std::string progErr;
+        if (!applyPluginProgram(engine_, trackIndex, slotIndex, params.programIndex, progErr))
+        {
+            rollbackProbe();
+            result.error = progErr;
+            return result;
+        }
+        result.programIndex = params.programIndex;
+        result.programName = slot->getProgramName(params.programIndex).toStdString();
+    }
+    else
+    {
+        result.programIndex = slot->getCurrentProgram();
+        if (result.programIndex >= 0 && result.programIndex < result.numPrograms)
+            result.programName = slot->getProgramName(result.programIndex).toStdString();
+    }
+
+    // Solo-render the window and report the level (audible ≈ peak > -80 dBFS).
+    auto r = renderTrackWindow(engine_, trackIndex, params.windowSeconds, 1.0f, false);
+    if (!r.error.empty())
+    {
+        rollbackProbe();
+        result.error = r.error;
+        return result;
+    }
+    result.rms = r.rms;
+    result.peak = r.peak;
+    result.durationSeconds = params.windowSeconds;
+    result.audible = (r.peak > 1e-4f);
+    r.wavPath.deleteFile();
+
+    if (tempProbe && !params.keepTrack)
+    {
+        rollbackProbe();
+        result.trackIndex = -1;
+    }
+    else
+    {
+        result.trackIndex = trackIndex;
+        result.slotIndex = slotIndex;
+    }
+
     result.ok = true;
     return result;
 }

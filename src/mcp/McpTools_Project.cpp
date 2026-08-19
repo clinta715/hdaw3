@@ -1041,6 +1041,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"style",        QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
                   {"pluginId",     QJsonObject{{"type","string"}}},
+                  {"programIndex", QJsonObject{{"type","integer"},{"minimum",-1}}},
                   {"lengthBeats",  QJsonObject{{"type","number"},{"minimum",0.25}}},
                   {"placement",    QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"wholeSong","region"}}}},
@@ -1064,6 +1065,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.trackName = a.value("trackName").toString().toStdString();
             p.style = a.value("style").toString().toStdString();
             p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
+            p.programIndex = a.contains("programIndex") ? a.value("programIndex").toInt() : -1;
             p.lengthBeats = a.value("lengthBeats").toDouble(4.0);
             p.placement = a.contains("placement") ? a.value("placement").toString().toStdString() : "region";
             p.startBeat = a.value("startBeat").toDouble(0.0);
@@ -1110,6 +1112,49 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text(QString::fromStdString(r.error), true);
             return McpToolResult::text(QString("ok=%1 fader=%2 rms=%3 peak=%4 clamped=%5")
                 .arg(r.ok).arg(r.fader).arg(r.measuredRms).arg(r.peak).arg(r.clamped));
+        }});
+
+    s.registerTool({"audition_plugin",
+        "Solo-render a plugin — on a temp probe track (trackIndex < 0) or an existing plugin slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Calls the same engine command as the composition.auditionPlugin RPC.",
+        objSchema({{"pluginId",     QJsonObject{{"type","string"}}},
+                  {"programIndex",  QJsonObject{{"type","integer"},{"minimum",-1}}},
+                  {"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"slotIndex",     QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"style",         QJsonObject{{"type","string"}}},
+                  {"lengthBeats",   QJsonObject{{"type","number"},{"minimum",0.25}}},
+                  {"density",       QJsonObject{{"type","integer"},{"minimum",1}}},
+                  {"noteDuration",  QJsonObject{{"type","number"},{"minimum",0.01}}},
+                  {"lowNote",       QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"highNote",      QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"minVelocity",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"maxVelocity",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"seed",          QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}},
+                  {"keepTrack",     QJsonObject{{"type","boolean"}}}}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            ProjectCommands::AuditionParams p;
+            p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
+            p.programIndex = a.contains("programIndex") ? a.value("programIndex").toInt() : -1;
+            p.trackIndex = a.contains("trackIndex") ? a.value("trackIndex").toInt() : -1;
+            p.slotIndex = a.value("slotIndex").toInt(0);
+            p.style = a.contains("style") ? a.value("style").toString().toStdString() : "Arpeggio";
+            p.lengthBeats = a.value("lengthBeats").toDouble(4.0);
+            p.density = a.value("density").toInt(8);
+            p.noteDuration = a.value("noteDuration").toDouble(0.5);
+            p.lowNote = a.value("lowNote").toInt(48);
+            p.highNote = a.value("highNote").toInt(84);
+            p.minVelocity = a.value("minVelocity").toInt(60);
+            p.maxVelocity = a.value("maxVelocity").toInt(110);
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
+            p.windowSeconds = a.value("windowSeconds").toDouble(4.0);
+            p.keepTrack = a.contains("keepTrack") ? a.value("keepTrack").toBool() : false;
+            auto r = e->getProjectCommands().auditionPlugin(p);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString("ok=%1 trackIndex=%2 slotIndex=%3 program=%4 name=%5 numPrograms=%6 rms=%7 peak=%8 duration=%9 audible=%10")
+                .arg(r.ok).arg(r.trackIndex).arg(r.slotIndex).arg(r.programIndex)
+                .arg(QString::fromStdString(r.programName)).arg(r.numPrograms)
+                .arg(r.rms).arg(r.peak).arg(r.durationSeconds).arg(r.audible));
         }});
 }
 

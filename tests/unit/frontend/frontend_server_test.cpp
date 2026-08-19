@@ -482,6 +482,62 @@ TEST(FrontendServer, AddInstrumentPartRpc) {
     // The composite added exactly one track (fullSync path — no extra wiring).
     EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before + 1);
 
+    // Extend the round-trip to pass programIndex through the RPC. Per the plan's
+    // G2 contract, programIndex >= 0 without a pluginId is rejected at the
+    // command boundary; the rejection must round-trip in-band (result.error, not
+    // a JSON-RPC error) and add no track.
+    QJsonObject params2{
+        { "trackName", "RPC Program" },
+        { "style", "Lead" },
+        { "lengthBeats", 4.0 },
+        { "placement", "region" },
+        { "count", 1 },
+        { "programIndex", 0 },
+    };
+    auto resp2 = client.call(2, "composition.addInstrumentPart", params2, 5000);
+    ASSERT_FALSE(resp2.isEmpty()) << "no response";
+    ASSERT_FALSE(resp2.contains("error")) << resp2.value("error").toObject()
+                                                .value("message").toString().toStdString();
+    auto result2 = resp2.value("result").toObject();
+    EXPECT_EQ(result2.value("error").toString().toStdString(), "programIndex requires a pluginId");
+
+    // Rejected before any tree mutation — the composite's track is the only
+    // addition.
+    EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before + 1);
+
+    client.close();
+    s.tearDown();
+}
+
+// RPC round-trip: composition.auditionPlugin solo-renders a plugin probe track
+// over a short window and returns the full AuditionResult mapping. The fake
+// plugin id completes the probe (audible=false) and it is reverted — track
+// count unchanged (temp-probe cleanup contract).
+TEST(FrontendServer, AuditionPluginRpc) {
+    EngineAndServer s;
+    s.setUp();
+    const int before = s.engine.getReadModel().getTrackCount();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject params{
+        { "pluginId", "test.plugin.id" },
+        { "windowSeconds", 1.0 },
+    };
+    auto resp = client.call(1, "composition.auditionPlugin", params, 20000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
+                                               .value("message").toString().toStdString();
+    auto result = resp.value("result").toObject();
+    EXPECT_TRUE(result.value("ok").isBool());
+    EXPECT_TRUE(result.value("peak").isDouble());
+    EXPECT_TRUE(result.value("rms").isDouble());
+    EXPECT_TRUE(result.value("numPrograms").isDouble());
+
+    // The probe track was cleaned up (temp-probe contract).
+    EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before);
+
     client.close();
     s.tearDown();
 }

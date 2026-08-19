@@ -324,6 +324,7 @@ public:
         std::string trackName;
         std::string style;              // PhraseGenerator style name
         std::string pluginId;           // empty = internal "fm_synth"
+        int programIndex = -1;          // -1 = default program; >=0 requires pluginId
         double lengthBeats = 4.0;
         std::string placement = "region"; // "wholeSong" | "region"
         double startBeat = 0.0;
@@ -363,6 +364,47 @@ public:
     virtual GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                              double windowSeconds = 4.0,
                                              bool verify = false) = 0;
+
+    // ── Plugin preset audition ──
+    // Solo-renders a plugin (on a temp probe track when trackIndex < 0, or an
+    // existing plugin slot) over a short window and reports peak/rms/audible so
+    // silent-at-default plugins stop being a blocker for composition. Probe
+    // mode wraps the whole build in one undo unit that is reverted when
+    // keepTrack=false (reporting trackIndex=-1) or on any failure — a failed
+    // probe leaves the project untouched. Existing-slot mode (trackIndex >= 0)
+    // sets the program + persists its state snapshot (same semantics as
+    // load_plugin_preset) and does not roll back.
+    struct AuditionParams {
+        std::string pluginId;        // required when trackIndex < 0
+        int programIndex = -1;       // -1 = current/default
+        int trackIndex = -1;         // <0 = temp probe track
+        int slotIndex = 0;           // used with trackIndex (existing plugin slot)
+        std::string style = "Arpeggio";
+        double lengthBeats = 4.0;
+        int density = 8;
+        double noteDuration = 0.5;
+        int lowNote = 48;
+        int highNote = 84;
+        int minVelocity = 60;
+        int maxVelocity = 110;
+        uint64_t seed = 0;
+        double windowSeconds = 4.0;
+        bool keepTrack = false;
+    };
+    struct AuditionResult {
+        bool ok = false;
+        int trackIndex = -1;         // -1 when the probe track was removed
+        int slotIndex = 0;
+        int programIndex = -1;
+        std::string programName;
+        int numPrograms = 0;
+        float rms = 0.0f;
+        float peak = 0.0f;
+        double durationSeconds = 0.0;
+        bool audible = false;
+        std::string error;
+    };
+    virtual AuditionResult auditionPlugin(const AuditionParams& params) = 0;
 
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same

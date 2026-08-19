@@ -276,6 +276,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireString(o, "style", p.style, nullptr))
             return makeError(-32602, "style required");
         p.pluginId      = optString(o, "pluginId", "");
+        p.programIndex  = optInt(o, "programIndex", -1, nullptr);
         p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
         p.placement     = optString(o, "placement", "region");
         p.startBeat     = optDouble(o, "startBeat", 0.0, nullptr);
@@ -337,6 +338,46 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "measuredRms", static_cast<double>(r.measuredRms) },
             { "peak", static_cast<double>(r.peak) },
             { "clamped", r.clamped }
+        };
+        if (!r.error.empty())
+            res.insert("error", QString::fromStdString(r.error));
+        return { false, res };
+    }
+
+    if (m == "auditionPlugin") {
+        // Solo-render a plugin over a short window and report peak/rms/audible
+        // so silent-at-default plugins stop being a blocker. Probe mode
+        // (trackIndex < 0) is one self-reverting undo unit; errors return
+        // in-band via the result's error field like the cases above.
+        ProjectCommands::AuditionParams p;
+        p.pluginId      = optString(o, "pluginId", "");
+        p.programIndex  = optInt(o, "programIndex", -1, nullptr);
+        p.trackIndex    = optInt(o, "trackIndex", -1, nullptr);
+        p.slotIndex     = optInt(o, "slotIndex", 0, nullptr);
+        p.style         = optString(o, "style", "Arpeggio");
+        p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
+        p.density       = optInt(o, "density", 8, nullptr);
+        p.noteDuration  = optDouble(o, "noteDuration", 0.5, nullptr);
+        p.lowNote       = optInt(o, "lowNote", 48, nullptr);
+        p.highNote      = optInt(o, "highNote", 84, nullptr);
+        p.minVelocity   = optInt(o, "minVelocity", 60, nullptr);
+        p.maxVelocity   = optInt(o, "maxVelocity", 110, nullptr);
+        p.seed          = optInt<uint64_t>(o, "seed", 0, nullptr);
+        p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
+        p.keepTrack     = optBool(o, "keepTrack", false, nullptr);
+
+        auto r = c.auditionPlugin(p);
+        QJsonObject res{
+            { "ok", r.ok },
+            { "trackIndex", r.trackIndex },
+            { "slotIndex", r.slotIndex },
+            { "programIndex", r.programIndex },
+            { "programName", QString::fromStdString(r.programName) },
+            { "numPrograms", r.numPrograms },
+            { "rms", static_cast<double>(r.rms) },
+            { "peak", static_cast<double>(r.peak) },
+            { "durationSeconds", r.durationSeconds },
+            { "audible", r.audible }
         };
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));

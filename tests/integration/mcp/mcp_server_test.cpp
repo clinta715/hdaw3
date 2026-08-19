@@ -741,6 +741,64 @@ TEST(McpServer, AutoGainToTargetTool) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, AuditionPluginTool) {
+    AudioEngine engine;
+    engine.initialize();
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    // A fake plugin id: the probe completes, renders silence (audible=false),
+    // and is reverted — the tool must not crash and the project must be left
+    // untouched (temp-probe cleanup contract).
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"audition_plugin","arguments":{"pluginId":"test.plugin.id","windowSeconds":1.0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QString txt = textOf(r);
+    EXPECT_TRUE(txt.contains("ok=1")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("audible=0")) << "got: [" << txt.toStdString() << "]";
+
+    // The probe track was cleaned up.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, AddInstrumentPartProgramIndex) {
+    AudioEngine engine;
+    engine.initialize();  // default project: 3 tracks
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const int before = engine.getReadModel().getTrackCount();
+
+    // programIndex is passed through the tool into the engine command. Per the
+    // plan's G2 contract, programIndex >= 0 without a pluginId is rejected at
+    // the command boundary — the composite is NOT built, so the project is left
+    // untouched.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"add_instrument_part","arguments":{"trackName":"MCP P","style":"Lead","lengthBeats":4,"placement":"region","count":1,"programIndex":0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_TRUE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r).contains("programIndex requires a pluginId"))
+        << "got: [" << textOf(r).toStdString() << "]";
+
+    // Rejected before any tree mutation — track count unchanged.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, ExportAudioRendersDefaultProject) {
     AudioEngine engine;
     mcp::TransportLoopback tp;
