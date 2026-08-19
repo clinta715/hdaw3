@@ -224,6 +224,13 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"set_master_gain", "Set the master bus gain (linear, >= 0).",
+        objSchema({{"gain", QJsonObject{{"type","number"},{"minimum",0}}}}, {"gain"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            e->getProjectCommands().setMasterGain(static_cast<float>(a.value("gain").toDouble(1.0)));
+            return McpToolResult::text("ok");
+        }});
+
     s.registerTool({"move_track", "Move a track to a new index.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),

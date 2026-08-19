@@ -215,6 +215,9 @@ namespace IDs {
     DECLARE_ID(scaleMode)
     DECLARE_ID(SCALE_INFO)
 
+    // Master bus (root property; restored on routing-graph rebuild)
+    DECLARE_ID(masterGain)
+
     // Modulation
     DECLARE_ID(MODULATION_LIST)
     DECLARE_ID(MODULATION)
@@ -267,6 +270,9 @@ public:
     int getScaleMode() const;
     void setScaleRoot(int root);
     void setScaleMode(int mode);
+
+    // Master-bus gain (linear, >= 0). Root property; defaults to 1.0.
+    float getMasterGain() const;
 
     juce::UndoManager& getUndoManager() { return undoManager; }
     bool isDirty() const { return dirty; }

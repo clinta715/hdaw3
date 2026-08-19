@@ -612,6 +612,26 @@ TEST(McpServer, SetTempo) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, SetMasterGainTool) {
+    AudioEngine engine;
+    engine.initialize();  // getProjectCommands() requires initialize()
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"set_master_gain","arguments":{"gain":0.5}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_EQ(textOf(r).toStdString(), "ok");
+    EXPECT_NEAR(engine.getProjectModel().getMasterGain(), 0.5f, 1e-6f);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, SetTimeSignature) {
     AudioEngine engine;
     engine.initialize();  // getProjectCommands() requires initialize()

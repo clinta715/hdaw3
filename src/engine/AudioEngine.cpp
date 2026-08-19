@@ -833,6 +833,16 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                 mainProcessor->rebuildRoutingGraph();
             }
         }
+        else if (property == IDs::masterGain)
+        {
+            // Live master-gain update: scalar atomic on the master bus — no
+            // DSP object swap, so no stateLock needed (contrast lesson 13).
+            float g = static_cast<float>(treeWhosePropertyHasChanged.getProperty(IDs::masterGain, 1.0));
+            if (mainProcessor != nullptr)
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    if (auto* mb = rm->getMasterBus())
+                        mb->setGain(g);
+        }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TEMPO_POINT))
     {

@@ -100,6 +100,7 @@ struct ProjectSnapshot {
     std::vector<ClipSnapshot> clips;
     int scaleRoot = 0;
     int scaleMode = 0;
+    float masterGain = 1.0f;
     int launchedScene = -1;  // currently active session scene, -1 = none
     int sceneCount = 8;      // number of scene rows
     // Project-file metadata (read-only view of the root ValueTree properties

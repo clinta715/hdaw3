@@ -88,6 +88,11 @@ int ProjectModel::getScaleMode() const
     return tree.isValid() ? static_cast<int>(tree.getProperty(IDs::scaleMode, 0)) : 0;
 }
 
+float ProjectModel::getMasterGain() const
+{
+    return static_cast<float>(projectTree.getProperty(IDs::masterGain, 1.0));
+}
+
 void ProjectModel::setScaleRoot(int root)
 {
     auto tree = getScaleInfoTree();
@@ -287,6 +292,10 @@ void ProjectModel::createDefaultProject()
 
     projectTree.setProperty(IDs::name, "New Project", &undoManager);
     projectTree.setProperty(IDs::tempo, 120.0, &undoManager);
+    // Root property (like tempo): persisted by the whole-tree serializer and
+    // restored on routing-graph rebuild. nullptr: the default stamp is not an
+    // undoable action, so the first setMasterGain undo restores exactly 1.0.
+    projectTree.setProperty(IDs::masterGain, 1.0, nullptr);
 
     // Stamp project-file metadata on first creation. createdWithApp / formatVersion
     // / createdAt are provenance — never overwritten on load or save-if-present.

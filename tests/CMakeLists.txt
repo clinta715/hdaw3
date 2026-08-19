@@ -90,6 +90,7 @@ add_executable(hdaw_tests
     unit/engine/instrument_part_test.cpp
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
+    unit/engine/master_gain_test.cpp
     unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp

@@ -23,6 +23,7 @@ public:
     void setTrackName(int trackIndex, const std::string& name) override;
     void setTrackColor(int trackIndex, int color) override;
     void setTrackVolume(int trackIndex, float volume) override;
+    void setMasterGain(float gain) override;
     void setTrackPan(int trackIndex, float pan) override;
     void setTrackMuted(int trackIndex, bool muted) override;
     void setTrackSoloed(int trackIndex, bool soloed) override;

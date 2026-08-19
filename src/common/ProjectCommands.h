@@ -18,6 +18,9 @@ public:
     virtual void setTrackName(int trackIndex, const std::string& name) = 0;
     virtual void setTrackColor(int trackIndex, int color) = 0;
     virtual void setTrackVolume(int trackIndex, float volume) = 0;
+    // Master-bus gain (linear, clamped >= 0). Undoable root-tree write; the
+    // live processor follows via the AudioEngine listener, rebuilds restore it.
+    virtual void setMasterGain(float gain) = 0;
     virtual void setTrackPan(int trackIndex, float pan) = 0;
     virtual void setTrackMuted(int trackIndex, bool muted) = 0;
     virtual void setTrackSoloed(int trackIndex, bool soloed) = 0;

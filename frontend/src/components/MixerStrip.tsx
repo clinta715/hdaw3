@@ -29,7 +29,10 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
   const lufsVal = meter.lufs ?? -70;
 
   const commitVolume = () => {
-    if (volume !== track.volume)
+    if (volume === track.volume) return;
+    if (isMaster)
+      rpc.call("project.setMasterGain", { gain: volume }).catch(console.error);
+    else
       rpc.call("project.setTrackVolume", { trackIndex: track.index, volume }).catch(console.error);
   };
   const commitPan = () => {
@@ -82,19 +85,21 @@ export default function MixerStrip({ track, meter, isMaster }: Props) {
       </div>
       <div className="ms-lufs">{lufsVal > -70 ? lufsVal.toFixed(1) : "-"}</div>
       <div className="ms-readout">{Math.round(volume * 100)}%</div>
-      <input
-        type="range"
-        className="ms-pan-fader"
-        min={-1}
-        max={1}
-        step={0.01}
-        value={pan}
-        onChange={(e) => setPan(parseFloat(e.target.value))}
-        onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(2)}
-        onMouseUp={commitPan}
-        onBlur={commitPan}
-        title={`Pan ${formatPan(pan)}`}
-      />
+      {!isMaster && (
+        <input
+          type="range"
+          className="ms-pan-fader"
+          min={-1}
+          max={1}
+          step={0.01}
+          value={pan}
+          onChange={(e) => setPan(parseFloat(e.target.value))}
+          onMouseDown={() => useAutomationStore.getState().setLastClickedParamID(2)}
+          onMouseUp={commitPan}
+          onBlur={commitPan}
+          title={`Pan ${formatPan(pan)}`}
+        />
+      )}
       {!isMaster && (
         <div className="ms-buttons">
           <button

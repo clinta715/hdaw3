@@ -99,6 +99,7 @@ export interface ProjectSnapshot {
   clips: ClipSnapshot[];
   scaleRoot: number;
   scaleMode: number;
+  masterGain?: number;
   launchedScene?: number;
   sceneCount?: number;
 }

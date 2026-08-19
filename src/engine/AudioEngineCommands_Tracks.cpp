@@ -61,6 +61,12 @@ void AudioEngineCommands::setTrackVolume(int trackIndex, float volume)
         trackList.getChild(trackIndex).setProperty(IDs::volume, static_cast<double>(volume), &um);
 }
 
+void AudioEngineCommands::setMasterGain(float gain)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    engine_.getProjectModel().getTree().setProperty(IDs::masterGain, static_cast<double>(gain), &um);
+}
+
 void AudioEngineCommands::setTrackPan(int trackIndex, float pan)
 {
     auto& um = engine_.getProjectModel().getUndoManager();

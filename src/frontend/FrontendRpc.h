@@ -330,6 +330,7 @@ inline QJsonObject toJson(const ProjectSnapshot& s) {
         { "transport", toJson(s.transport) },
         { "scaleRoot", s.scaleRoot },
         { "scaleMode", s.scaleMode },
+        { "masterGain", static_cast<double>(s.masterGain) },
         { "launchedScene", s.launchedScene },
         { "sceneCount",    s.sceneCount },
         { "createdWithApp", QString::fromStdString(s.createdWithApp) },

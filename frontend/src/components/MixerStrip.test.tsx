@@ -65,6 +65,27 @@ describe("MixerStrip", () => {
     expect(screen.queryByText("R")).toBeNull();
   });
 
+  it("hides the pan fader on the master strip", () => {
+    const { container } = render(
+      <MixerStrip track={mkTrack({ index: -1, name: "Master" })} meter={meter} isMaster />
+    );
+    expect(container.querySelector(".ms-pan-fader")).toBeNull();
+  });
+
+  it("master strip fader commit calls project.setMasterGain", () => {
+    const { container } = render(
+      <MixerStrip track={mkTrack({ index: -1, name: "Master", volume: 1 })} meter={meter} isMaster />
+    );
+    const fader = container.querySelector(".ms-fader") as HTMLInputElement;
+    fireEvent.change(fader, { target: { value: "0.5" } });
+    fireEvent.mouseUp(fader);
+    expect(mockedCall).toHaveBeenCalledWith("project.setMasterGain", { gain: 0.5 });
+    expect(mockedCall).not.toHaveBeenCalledWith(
+      "project.setTrackVolume",
+      expect.anything()
+    );
+  });
+
   it("clicking M calls project.setTrackMuted with the toggled value", () => {
     render(<MixerStrip track={mkTrack({ index: 2, muted: false })} meter={meter} />);
     fireEvent.click(screen.getByText("M"));

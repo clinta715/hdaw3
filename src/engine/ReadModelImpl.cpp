@@ -108,6 +108,7 @@ ProjectSnapshot ReadModelImpl::snapshot() const
     snap.transport = getTransport();
     snap.scaleRoot = model_.getScaleRoot();
     snap.scaleMode = model_.getScaleMode();
+    snap.masterGain = model_.getMasterGain();
 
     // Project-file metadata (defaults surface when loading legacy metadata-less files).
     snap.createdWithApp = model_.getTree().getProperty(IDs::createdWithApp, "unknown").toString().toStdString();

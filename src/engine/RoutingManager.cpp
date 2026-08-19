@@ -92,6 +92,9 @@ void RoutingManager::rebuildFromValueTree()
     auto masterProc = std::make_unique<MasterBusProcessor>();
     masterNode = graph.addNode(std::move(masterProc));
     masterBus = static_cast<MasterBusProcessor*>(masterNode->getProcessor());
+    // Gate 1/10 restore: a fresh MasterBusProcessor starts at unity; re-apply
+    // the persisted gain so rebuilds (clip edits, load, export) keep it.
+    masterBus->setGain(projectModel.getMasterGain());
 
     // Master-bus → audio-output connections are established by
     // reconnectMasterToOutput(), which must run after graph.prepareToPlay()

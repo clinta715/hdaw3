@@ -233,6 +233,28 @@ TEST(FrontendServer, SetTrackNameAndRead) {
     s.tearDown();
 }
 
+// Master-gain round-trip: project.setMasterGain writes the root property and
+// read.snapshot surfaces it (the mixer master strip's data source).
+TEST(FrontendServer, SetMasterGainRpc) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject setParams{ { "gain", 0.5 } };
+    auto setResp = client.call(1, "project.setMasterGain", setParams);
+    ASSERT_FALSE(setResp.isEmpty());
+    ASSERT_FALSE(setResp.contains("error")) << setResp.value("error").toObject()
+                                                   .value("message").toString().toStdString();
+
+    auto snap = client.call(2, "read.snapshot").value("result").toObject();
+    EXPECT_NEAR(snap.value("masterGain").toDouble(1.0), 0.5, 1e-6);
+
+    client.close();
+    s.tearDown();
+}
+
 // Unknown method → JSON-RPC error with code -32601 (MethodNotFound).
 // Mirrors the contract mcp::McpServer exposes over stdio/HTTP.
 TEST(FrontendServer, UnknownMethodReturnsError) {
