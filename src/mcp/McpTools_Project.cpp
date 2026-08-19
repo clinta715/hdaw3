@@ -1065,7 +1065,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"seed",         QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"targetRms",    QJsonObject{{"type","number"},{"minimum",0.0}}},
                   {"windowSeconds",QJsonObject{{"type","number"},{"minimum",0.1}}},
-                  {"verify",       QJsonObject{{"type","boolean"}}}},
+                  {"verify",       QJsonObject{{"type","boolean"}}},
+                  {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
                  {"trackName","style"}),
         [e](const QJsonObject& a) -> McpToolResult {
             ProjectCommands::InstrumentPartParams p;
@@ -1089,36 +1090,41 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.targetRms = a.contains("targetRms") ? static_cast<float>(a.value("targetRms").toDouble()) : 0.0f;
             p.windowSeconds = a.value("windowSeconds").toDouble(4.0);
             p.verify = a.contains("verify") ? a.value("verify").toBool() : false;
+            p.allowGlobalScale = a.contains("allowGlobalScale") ? a.value("allowGlobalScale").toBool() : false;
             auto r = e->getProjectCommands().addInstrumentPart(p);
             if (!r.error.empty())
                 return McpToolResult::text(QString::fromStdString(r.error), true);
             QString out = QString("trackIndex=%1 clips=%2 notes=%3")
                               .arg(r.trackIndex).arg((int) r.clipIds.size()).arg(r.noteCount);
             if (p.targetRms > 0.0f) {
-                out += QString(" gainOk=%1 fader=%2 rms=%3 peak=%4 clamped=%5")
+                out += QString(" gainOk=%1 fader=%2 rms=%3 peak=%4 clamped=%5 globalScale=%6 masterGain=%7 mixPeak=%8")
                            .arg(r.gain.ok).arg(r.gain.fader).arg(r.gain.measuredRms)
-                           .arg(r.gain.peak).arg(r.gain.clamped);
+                           .arg(r.gain.peak).arg(r.gain.clamped).arg(r.gain.globalScale)
+                           .arg(r.gain.masterGain).arg(r.gain.mixPeak);
             }
             return McpToolResult::text(out);
         }});
 
     s.registerTool({"auto_gain_to_target",
-        "Gain-stage a track to a target RMS: solo-render its first window to a temp WAV, measure, and set the track fader (clamped at 1.0). Calls the same engine command as the composition.autoGainToTarget RPC.",
+        "Gain-stage a track to a target RMS: solo-render its first window to a temp WAV, measure, and set the track fader (clamped at 1.0). With allowGlobalScale, when the fader clamps and the full mix clips, the master bus gain is scaled down and the fader raised into the created headroom (one undo unit). Calls the same engine command as the composition.autoGainToTarget RPC.",
         objSchema({{"trackId",        QJsonObject{{"type","integer"}}},
                   {"targetRms",      QJsonObject{{"type","number"},{"minimum",0.000001}}},
                   {"windowSeconds",  QJsonObject{{"type","number"},{"minimum",0.1}}},
-                  {"verify",         QJsonObject{{"type","boolean"}}}},
+                  {"verify",         QJsonObject{{"type","boolean"}}},
+                  {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
                  {"trackId","targetRms"}),
         [e](const QJsonObject& a) -> McpToolResult {
             auto r = e->getProjectCommands().autoGainToTarget(
                 a.value("trackId").toInt(),
                 static_cast<float>(a.value("targetRms").toDouble()),
                 a.value("windowSeconds").toDouble(4.0),
-                a.contains("verify") ? a.value("verify").toBool() : false);
+                a.contains("verify") ? a.value("verify").toBool() : false,
+                a.contains("allowGlobalScale") ? a.value("allowGlobalScale").toBool() : false);
             if (!r.error.empty())
                 return McpToolResult::text(QString::fromStdString(r.error), true);
-            return McpToolResult::text(QString("ok=%1 fader=%2 rms=%3 peak=%4 clamped=%5")
-                .arg(r.ok).arg(r.fader).arg(r.measuredRms).arg(r.peak).arg(r.clamped));
+            return McpToolResult::text(QString("ok=%1 fader=%2 rms=%3 peak=%4 clamped=%5 globalScale=%6 masterGain=%7 mixPeak=%8")
+                .arg(r.ok).arg(r.fader).arg(r.measuredRms).arg(r.peak).arg(r.clamped)
+                .arg(r.globalScale).arg(r.masterGain).arg(r.mixPeak));
         }});
 
     s.registerTool({"audition_plugin",

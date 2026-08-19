@@ -293,6 +293,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.targetRms     = optFloat(o, "targetRms", 0.0f, nullptr);
         p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         p.verify        = optBool(o, "verify", false, nullptr);
+        p.allowGlobalScale = optBool(o, "allowGlobalScale", false, nullptr);
 
         auto r = c.addInstrumentPart(p);
         QJsonArray clipIds;
@@ -310,7 +311,10 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
                 { "fader", static_cast<double>(r.gain.fader) },
                 { "measuredRms", static_cast<double>(r.gain.measuredRms) },
                 { "peak", static_cast<double>(r.gain.peak) },
-                { "clamped", r.gain.clamped }
+                { "clamped", r.gain.clamped },
+                { "globalScale", static_cast<double>(r.gain.globalScale) },
+                { "masterGain", static_cast<double>(r.gain.masterGain) },
+                { "mixPeak", static_cast<double>(r.gain.mixPeak) }
             };
             if (!r.gain.error.empty())
                 gain.insert("error", QString::fromStdString(r.gain.error));
@@ -330,14 +334,18 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             return makeError(-32602, "targetRms required");
         const double windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         const bool verify = optBool(o, "verify", false, nullptr);
+        const bool allowGlobalScale = optBool(o, "allowGlobalScale", false, nullptr);
 
-        auto r = c.autoGainToTarget(trackIndex, targetRms, windowSeconds, verify);
+        auto r = c.autoGainToTarget(trackIndex, targetRms, windowSeconds, verify, allowGlobalScale);
         QJsonObject res{
             { "ok", r.ok },
             { "fader", static_cast<double>(r.fader) },
             { "measuredRms", static_cast<double>(r.measuredRms) },
             { "peak", static_cast<double>(r.peak) },
-            { "clamped", r.clamped }
+            { "clamped", r.clamped },
+            { "globalScale", static_cast<double>(r.globalScale) },
+            { "masterGain", static_cast<double>(r.masterGain) },
+            { "mixPeak", static_cast<double>(r.mixPeak) }
         };
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));

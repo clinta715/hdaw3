@@ -1,7 +1,14 @@
 # Plan — master gain + global-scale gain staging (handoff item #1)
 
 Date: 2026-08-19
-Status: approved for implementation
+Status: COMPLETE (2026-08-19) — Task A committed `5a10e6f` (941 tests green),
+Task B committed on top (946 tests, 943 passed / 3 env-skips / 0 failures).
+Task B deviations (empirically forced): attenuated probe at masterScale 0.125
+(24-bit WAV clamps at full scale — a unity probe of a clipping mix always reads
+1.0, killing the feature); post-scale mixPeak lands AT 1.0 (mathematically
+inevitable — the raise exactly cancels the scale for the target), so the
+no-clipping contract is peak <= 1.0; non-clipping test uses a sine WAV because
+the default fm_synth patch is velocity-insensitive.
 
 ## Goal
 

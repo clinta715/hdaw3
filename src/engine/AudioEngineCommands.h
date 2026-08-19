@@ -83,7 +83,8 @@ public:
     // ProjectCommands — instrument part composer
     InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
-                                     double windowSeconds, bool verify) override;
+                                     double windowSeconds, bool verify,
+                                     bool allowGlobalScale) override;
     AuditionResult auditionPlugin(const AuditionParams& params) override;
     VerifyPartResult verifyPart(int trackIndex, double windowSeconds) override;
 

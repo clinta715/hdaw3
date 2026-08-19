@@ -643,6 +643,53 @@ TEST(FrontendServer, VerifyPartRpc) {
     s.tearDown();
 }
 
+// RPC round-trip: composition.autoGainToTarget with allowGlobalScale scales
+// the master bus down on a clipping mix (deterministic loud Lead seed 42 part)
+// and surfaces globalScale/masterGain/mixPeak; read.snapshot reflects the new
+// master gain.
+TEST(FrontendServer, AutoGainGlobalScaleRpc) {
+    EngineAndServer s;
+    s.setUp();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.lengthBeats = 4.0;
+    params.placement = "region";
+    params.count = 1;
+    params.seed = 42;
+    auto res = s.engine.getProjectCommands().addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject gainParams{
+        { "trackIndex", res.trackIndex },
+        { "targetRms", 0.5 },
+        { "windowSeconds", 4.0 },
+        { "allowGlobalScale", true },
+    };
+    auto resp = client.call(1, "composition.autoGainToTarget", gainParams, 30000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
+                                                .value("message").toString().toStdString();
+    auto result = resp.value("result").toObject();
+    EXPECT_TRUE(result.value("ok").toBool());
+    EXPECT_TRUE(result.value("clamped").toBool());
+    EXPECT_GT(result.value("fader").toDouble(), 1.0);
+    EXPECT_LT(result.value("globalScale").toDouble(1.0), 1.0);
+    EXPECT_LT(result.value("masterGain").toDouble(1.0), 1.0);
+    EXPECT_GT(result.value("mixPeak").toDouble(0.0), 0.0);
+
+    auto snap = client.call(2, "read.snapshot").value("result").toObject();
+    EXPECT_NEAR(snap.value("masterGain").toDouble(1.0),
+                result.value("masterGain").toDouble(), 1e-6);
+
+    client.close();
+    s.tearDown();
+}
+
 // JSON-RPC notification (no id): fire-and-forget. The server must not send a
 // response. Verify by sending a notification then a request; confirm only the
 // request gets a response (the notification may produce a push notification

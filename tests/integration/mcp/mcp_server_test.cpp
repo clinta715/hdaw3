@@ -761,6 +761,47 @@ TEST(McpServer, AutoGainToTargetTool) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, AutoGainGlobalScale) {
+    AudioEngine engine;
+    engine.initialize();
+
+    // Deterministic loud part: Lead seed 42 clips the full mix at unity and
+    // wants a fader > 1 for targetRms 0.5 → the global-scale path fires.
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.lengthBeats = 4.0;
+    params.placement = "region";
+    params.count = 1;
+    params.seed = 42;
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",)"
+        R"("params":{"name":"auto_gain_to_target","arguments":{"trackId":%1,)"
+        R"("targetRms":0.5,"windowSeconds":4.0,"allowGlobalScale":true}}})")
+        .arg(res.trackIndex);
+    tp.pumpIncoming(req.toUtf8());
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QString txt = textOf(r);
+    EXPECT_TRUE(txt.contains("ok=1")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("clamped=1")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("globalScale=")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("masterGain=")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("mixPeak=")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_LT(engine.getProjectModel().getMasterGain(), 1.0f);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, AuditionPluginTool) {
     AudioEngine engine;
     engine.initialize();

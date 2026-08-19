@@ -344,3 +344,118 @@ TEST(InstrumentPart, ProgramIndexSetsLiveProgram)
     engine.getProjectCommands().undo();
     EXPECT_EQ(engine.getReadModel().getTrackCount(), 3);
 }
+
+// ─── Task B — autoGainToTarget global-scale fallback ────────────────
+
+namespace {
+
+ProjectCommands::InstrumentPartParams loudLeadPart(uint64_t seed)
+{
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.lengthBeats = 4.0;
+    params.placement = "region";
+    params.count = 1;
+    params.seed = seed;
+    return params;
+}
+
+} // namespace
+
+// Deterministic loud part: Lead seed 42 clips the full mix at unity (true
+// peak ≈ 1.13, measured 0.5657 at master 0.5 in MasterGain.RenderAttenuation)
+// and its raw solo RMS is well below 0.5, so targetRms 0.5 wants a fader > 1
+// → clamps → the global-scale path scales the master bus down and raises the
+// fader into the created headroom, in ONE undo unit.
+TEST(GlobalScale, ClippedMixScaledDown)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    auto res = pc.addInstrumentPart(loudLeadPart(42));
+    ASSERT_TRUE(res.error.empty()) << res.error;
+
+    auto gain = pc.autoGainToTarget(res.trackIndex, 0.5f, 4.0, false, true);
+    std::cout << "[GlobalScale] fader=" << gain.fader << " clamped=" << gain.clamped
+              << " globalScale=" << gain.globalScale << " masterGain=" << gain.masterGain
+              << " mixPeak=" << gain.mixPeak << " rawRms=" << gain.measuredRms << std::endl;
+    ASSERT_TRUE(gain.error.empty()) << gain.error;
+    ASSERT_TRUE(gain.ok);
+    EXPECT_TRUE(gain.clamped);
+    EXPECT_GT(gain.globalScale, 0.0f);
+    EXPECT_LT(gain.globalScale, 1.0f);
+    EXPECT_GT(gain.masterGain, 0.0f);
+    EXPECT_LT(gain.masterGain, 1.0f);
+    EXPECT_NEAR(gain.masterGain, gain.globalScale, 1e-6f);   // baseline master was 1.0
+    EXPECT_GT(gain.fader, 1.0f);                             // raised into the headroom
+    // Single-track mix: the fader raise exactly compensates the master scale
+    // (the target track IS the mix), so the post-scale mix still touches full
+    // scale and the 24-bit WAV measures exactly 1.0 (JUCE reads int24 full
+    // scale as 1/0x7fffff). mixPeak < 1.0 is unreachable after a global
+    // scale: the moment that set the pre-scale peak renders at >= full scale
+    // (target silent there: exactly 1.0; target active: the fader raise adds).
+    EXPECT_GT(gain.mixPeak, 0.0f);
+    EXPECT_FLOAT_EQ(gain.mixPeak, 1.0f);
+
+    // One undo unit: fader + master gain revert together.
+    pc.undo();
+    EXPECT_NEAR(engine.getProjectModel().getMasterGain(), 1.0f, 1e-6f);
+    const auto snap = engine.getReadModel().snapshot();
+    ASSERT_GT(static_cast<int>(snap.tracks.size()), res.trackIndex);
+    EXPECT_NEAR(snap.tracks[res.trackIndex].volume, 1.0, 1e-6);
+}
+
+// Default path (allowGlobalScale=false): clamps at unity exactly as before,
+// master bus untouched.
+TEST(GlobalScale, DefaultLeavesMasterUntouched)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    auto res = pc.addInstrumentPart(loudLeadPart(42));
+    ASSERT_TRUE(res.error.empty()) << res.error;
+
+    auto gain = pc.autoGainToTarget(res.trackIndex, 0.5f, 4.0, false, false);
+    ASSERT_TRUE(gain.error.empty()) << gain.error;
+    ASSERT_TRUE(gain.ok);
+    EXPECT_TRUE(gain.clamped);
+    EXPECT_FLOAT_EQ(gain.fader, 1.0f);
+    EXPECT_FLOAT_EQ(gain.globalScale, 1.0f);
+    EXPECT_NEAR(gain.masterGain, 1.0f, 1e-6f);
+    EXPECT_FLOAT_EQ(gain.mixPeak, 0.0f);
+    EXPECT_NEAR(engine.getProjectModel().getMasterGain(), 1.0f, 1e-6f);
+}
+
+// A track whose fader clamps (raw RMS below target) but whose full mix stays
+// under 1.0: the global-scale path must NOT fire. The 0.5-amp sine renders at
+// RMS 0.25 / peak ≈ 0.35 (center-pan law), so targetRms 0.4 wants fader 1.6
+// (clamps) while the mix probe measures a true peak ≈ 0.35 < 1.0. (The fm_synth
+// default patch is velocity-insensitive, so an instrument part can't be quieted
+// this way — the sine is the deterministic quiet source.)
+TEST(GlobalScale, NonClippingMixUntouched)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const juce::File sine = writeSineWav(2.0);
+    const int trackIndex = pc.addTrack("QuietSine", -1, -1, 0);
+    const int clipId = pc.addAudioClip(trackIndex, 0.0, 4.0,
+                                       sine.getFullPathName().toStdString(), "sine");
+    ASSERT_GE(clipId, 0);
+
+    auto gain = pc.autoGainToTarget(trackIndex, 0.4f, 1.0, false, true);
+    ASSERT_TRUE(gain.error.empty()) << gain.error;
+    ASSERT_TRUE(gain.ok);
+    EXPECT_TRUE(gain.clamped);
+    EXPECT_FLOAT_EQ(gain.fader, 1.0f);
+    EXPECT_FLOAT_EQ(gain.globalScale, 1.0f);
+    EXPECT_NEAR(gain.masterGain, 1.0f, 1e-6f);
+    EXPECT_FLOAT_EQ(gain.mixPeak, 0.0f);
+    EXPECT_NEAR(engine.getProjectModel().getMasterGain(), 1.0f, 1e-6f);
+
+    sine.deleteFile();
+}

@@ -344,6 +344,7 @@ public:
         float targetRms = 0.0f;         // >0 → run autoGainToTarget after building
         double windowSeconds = 4.0;
         bool verify = false;
+        bool allowGlobalScale = false;  // permit the master-bus global-scale fallback
     };
 
     struct GainStageResult {
@@ -352,6 +353,9 @@ public:
         float measuredRms = 0.0f;
         float peak = 0.0f;
         bool clamped = false;           // true if fader would exceed 1.0
+        float globalScale = 1.0f;       // <1.0 when the master bus was scaled down
+        float masterGain = 1.0f;        // resulting master gain (baseline when not scaled)
+        float mixPeak = 0.0f;           // post-scale full-mix peak; 0 = not measured
         std::string error;
     };
 
@@ -366,7 +370,8 @@ public:
     virtual InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) = 0;
     virtual GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                              double windowSeconds = 4.0,
-                                             bool verify = false) = 0;
+                                             bool verify = false,
+                                             bool allowGlobalScale = false) = 0;
 
     // ── Plugin preset audition ──
     // Solo-renders a plugin (on a temp probe track when trackIndex < 0, or an

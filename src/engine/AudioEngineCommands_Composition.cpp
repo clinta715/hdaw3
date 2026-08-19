@@ -224,12 +224,16 @@ std::atomic<int> s_renderCounter{ 0 };
 // other track is muted and all solos cleared — a SOLO render; with it false,
 // solos are cleared but live mutes are kept — a FULL-MIX render (verifyPart).
 // `fader` is applied to the target track's volume only when `applyFader` is
-// true. Never mutates the live graph (Gate 12). Errors are reported via
-// `error`; the caller owns deleting `wavPath`.
+// true. `masterScale` (!= 1.0) multiplies the tree copy's root masterGain —
+// an attenuated probe so a clipping mix's TRUE peak survives the 24-bit WAV
+// clamp (anything >= 1.0 writes as full scale and reads back exactly 1.0,
+// hiding how far over the mix is). Never mutates the live graph (Gate 12).
+// Errors are reported via `error`; the caller owns deleting `wavPath`.
 RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                                      double windowSeconds, float fader,
                                      bool applyFader, bool soloMuteOthers = true,
-                                     BandPresence* outBands = nullptr)
+                                     BandPresence* outBands = nullptr,
+                                     float masterScale = 1.0f)
 {
     RenderWindowResult result;
 
@@ -297,6 +301,12 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
             else if (applyFader)
                 track.setProperty(IDs::volume, static_cast<double>(fader), nullptr);
         }
+    }
+
+    if (masterScale != 1.0f)
+    {
+        const double current = static_cast<double>(treeCopy.getProperty(IDs::masterGain, 1.0));
+        treeCopy.setProperty(IDs::masterGain, current * static_cast<double>(masterScale), nullptr);
     }
 
     auto& fm = engine.getProjectPool().getFormatManager();
@@ -546,12 +556,12 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     // Optional gain staging — a SEPARATE undo unit ("Auto gain stage"), so
     // undo #1 removes the part and undo #2 removes the fader.
     if (params.targetRms > 0.0f)
-        result.gain = autoGainToTarget(trackIndex, params.targetRms, params.windowSeconds, params.verify);
+        result.gain = autoGainToTarget(trackIndex, params.targetRms, params.windowSeconds, params.verify, params.allowGlobalScale);
 
     return result;
 }
 
-ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int trackIndex, float targetRms, double windowSeconds, bool verify)
+ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int trackIndex, float targetRms, double windowSeconds, bool verify, bool allowGlobalScale)
 {
     GainStageResult result;
 
@@ -589,14 +599,46 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
         return result;
     }
 
-    float fader = targetRms / raw.rms;
+    const float unclamped = targetRms / raw.rms;
+    float fader = unclamped;
     result.clamped = (fader > 1.0f);
     if (result.clamped)
         fader = 1.0f;
+    result.masterGain = engine_.getProjectModel().getMasterGain();
+
+    // Opt-in global scale: a clamped fader means the track alone wants > unity,
+    // so the full mix at that fader may clip. A unity full-mix probe cannot show
+    // how far over 1.0 it goes (the 24-bit WAV clamps at full scale), so probe at
+    // an attenuated masterScale to recover the TRUE peak, then scale the master
+    // bus down by 1/truePeak and raise the fader into the created headroom —
+    // capped at the original unclamped target fader.
+    if (result.clamped && allowGlobalScale)
+    {
+        constexpr float kProbeScale = 0.125f;   // measures true peaks up to 8.0
+        auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, true,
+                                     false, nullptr, kProbeScale);
+        if (!mix.error.empty())
+        {
+            raw.wavPath.deleteFile();
+            result.error = mix.error;
+            return result;
+        }
+        const float trueMixPeak = mix.peak / kProbeScale;
+        mix.wavPath.deleteFile();
+        if (trueMixPeak >= 1.0f)
+        {
+            const float scale = 1.0f / trueMixPeak;
+            result.globalScale = scale;
+            result.masterGain = engine_.getProjectModel().getMasterGain() * scale;
+            fader = std::min(unclamped, trueMixPeak);
+        }
+    }
     result.fader = fader;
 
     beginTransaction("Auto gain stage");
     setTrackVolume(trackIndex, fader);
+    if (result.globalScale < 1.0f)
+        setMasterGain(result.masterGain);
     endTransaction();
 
     if (verify)
@@ -616,6 +658,16 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
     {
         result.measuredRms = raw.rms;
         result.peak = raw.peak;
+    }
+
+    if (result.globalScale < 1.0f)
+    {
+        // Re-render the full mix to confirm the created headroom. Runs regardless
+        // of `verify` — the global scale must always be confirmed.
+        auto check = renderTrackWindow(engine_, trackIndex, windowSeconds, fader, true, false);
+        if (check.error.empty())
+            result.mixPeak = check.peak;
+        check.wavPath.deleteFile();
     }
 
     raw.wavPath.deleteFile();
