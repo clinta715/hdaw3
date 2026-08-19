@@ -576,6 +576,51 @@ TEST(FrontendServer, AuditionPluginRpc) {
     s.tearDown();
 }
 
+// RPC round-trip: composition.verifyPart solo+full-mix renders a composed
+// part's window and returns the full VerifyPartResult mapping — the composer
+// self-verification contract (read-only, errors in-band).
+TEST(FrontendServer, VerifyPartRpc) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject composeParams{
+        { "trackName", "RPC Verify" },
+        { "style", "Standard" },
+        { "lengthBeats", 4.0 },
+        { "seed", 7 },
+        { "targetRms", 0.15 },
+        { "windowSeconds", 4.0 },
+    };
+    auto composeResp = client.call(1, "composition.addInstrumentPart", composeParams, 20000);
+    ASSERT_FALSE(composeResp.isEmpty()) << "no response";
+    ASSERT_FALSE(composeResp.contains("error")) << composeResp.value("error").toObject()
+                                                     .value("message").toString().toStdString();
+    const int trackIndex = composeResp.value("result").toObject().value("trackIndex").toInt(-1);
+    ASSERT_GE(trackIndex, 0);
+
+    QJsonObject verifyParams{
+        { "trackIndex", trackIndex },
+        { "windowSeconds", 4.0 },
+    };
+    auto resp = client.call(2, "composition.verifyPart", verifyParams, 30000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
+                                                .value("message").toString().toStdString();
+    auto result = resp.value("result").toObject();
+    EXPECT_TRUE(result.value("ok").toBool())
+        << result.value("error").toString().toStdString();
+    EXPECT_TRUE(result.value("audible").toBool());
+    EXPECT_TRUE(result.value("nonClipping").toBool());
+    EXPECT_TRUE(result.value("soloRms").isDouble());
+    EXPECT_TRUE(result.value("mixPeak").isDouble());
+
+    client.close();
+    s.tearDown();
+}
+
 // JSON-RPC notification (no id): fire-and-forget. The server must not send a
 // response. Verify by sending a notification then a request; confirm only the
 // request gets a response (the notification may produce a push notification

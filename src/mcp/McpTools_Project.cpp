@@ -1156,6 +1156,22 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                 .arg(QString::fromStdString(r.programName)).arg(r.numPrograms)
                 .arg(r.rms).arg(r.peak).arg(r.durationSeconds).arg(r.audible));
         }});
+
+    s.registerTool({"verify_part",
+        "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (mix peak < 1.0), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy). Read-only. Calls the same engine command as the composition.verifyPart RPC.",
+        objSchema({{"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
+                   {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}}},
+                  {"trackIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            const int trackIndex = a.value("trackIndex").toInt(-1);
+            const double windowSeconds = a.value("windowSeconds").toDouble(4.0);
+            auto r = e->getProjectCommands().verifyPart(trackIndex, windowSeconds);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString("ok=%1 soloRms=%2 soloPeak=%3 mixRms=%4 mixPeak=%5 nonClipping=%6 audible=%7 bandsPresent=%8")
+                .arg(r.ok).arg(r.soloRms).arg(r.soloPeak).arg(r.mixRms).arg(r.mixPeak)
+                .arg(r.nonClipping).arg(r.audible).arg(r.bandsPresent));
+        }});
 }
 
 static void registerArrangerTools(McpServer& s, AudioEngine* e)

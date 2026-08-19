@@ -406,6 +406,25 @@ public:
     };
     virtual AuditionResult auditionPlugin(const AuditionParams& params) = 0;
 
+    // ── Part verification ──
+    // Self-verification for composed parts: solo-renders the track's window AND
+    // renders the full mix at the same window (both via the shared
+    // renderTrackWindow), then reports levels, clipping, audibility and spectral
+    // band presence. Read-only — never mutates the project.
+    struct VerifyPartResult {
+        bool ok = false;
+        float soloRms = 0.0f, soloPeak = 0.0f;
+        float mixRms = 0.0f, mixPeak = 0.0f;
+        bool nonClipping = false;   // mixPeak < 1.0
+        bool audible = false;       // soloPeak > 1e-4 (~ -80 dBFS)
+        bool bandsPresent = false;  // bandLow && bandMid && bandHigh
+        bool bandLow = false, bandMid = false, bandHigh = false;
+        double windowStart = 0.0;
+        double durationSeconds = 0.0;
+        std::string error;
+    };
+    virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0) = 0;
+
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same
     // basename with a different audio extension (wav/aiff/aif/mp3/flac/ogg).

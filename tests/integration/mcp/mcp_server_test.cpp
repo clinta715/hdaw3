@@ -770,6 +770,44 @@ TEST(McpServer, AuditionPluginTool) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, VerifyPartTool) {
+    AudioEngine engine;
+    engine.initialize();
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    // Compose a gain-staged part first (internal fm_synth), then verify it.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"add_instrument_part","arguments":{"trackName":"MCP Verify","style":"Standard","lengthBeats":4,"seed":7,"targetRms":0.15,"windowSeconds":4.0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QString txt = textOf(r);
+    ASSERT_TRUE(txt.contains("trackIndex=")) << "got: [" << txt.toStdString() << "]";
+    QString tiStr = txt.mid(txt.indexOf("trackIndex=") + 11);
+    tiStr = tiStr.left(tiStr.indexOf(' '));
+    const int trackIndex = tiStr.toInt();
+    ASSERT_GE(trackIndex, 0);
+
+    tp.drainOutgoing();
+    const QString req = QString(R"({"jsonrpc":"2.0","id":2,"method":"tools/call",)"
+                                R"("params":{"name":"verify_part","arguments":{"trackIndex":%1,"windowSeconds":4.0}}})")
+                            .arg(trackIndex);
+    tp.pumpIncoming(req.toUtf8());
+    QByteArray out2; ASSERT_TRUE(tp.waitForOutgoing(30000, &out2));
+    auto r2 = parseOne(out2);
+    EXPECT_FALSE(r2.value("error").isObject());
+    EXPECT_FALSE(r2.value("result").toObject().value("isError").toBool(true));
+    QString txt2 = textOf(r2);
+    EXPECT_TRUE(txt2.contains("ok=1")) << "got: [" << txt2.toStdString() << "]";
+    EXPECT_TRUE(txt2.contains("nonClipping=1")) << "got: [" << txt2.toStdString() << "]";
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, AddInstrumentPartProgramIndex) {
     AudioEngine engine;
     engine.initialize();  // default project: 3 tracks

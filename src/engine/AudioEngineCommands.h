@@ -84,6 +84,7 @@ public:
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify) override;
     AuditionResult auditionPlugin(const AuditionParams& params) override;
+    VerifyPartResult verifyPart(int trackIndex, double windowSeconds) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;

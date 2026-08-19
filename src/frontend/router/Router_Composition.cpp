@@ -384,6 +384,36 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return { false, res };
     }
 
+    if (m == "verifyPart") {
+        // Self-verify a composed part: solo + full-mix render of the track's
+        // window. Synchronous RPC that blocks for both renders. Errors return
+        // in-band via the result's error field like the cases above.
+        int trackIndex;
+        if (!requireInt(o, "trackIndex", trackIndex, nullptr))
+            return makeError(-32602, "trackIndex required");
+        const double windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
+
+        auto r = c.verifyPart(trackIndex, windowSeconds);
+        QJsonObject res{
+            { "ok", r.ok },
+            { "soloRms", static_cast<double>(r.soloRms) },
+            { "soloPeak", static_cast<double>(r.soloPeak) },
+            { "mixRms", static_cast<double>(r.mixRms) },
+            { "mixPeak", static_cast<double>(r.mixPeak) },
+            { "nonClipping", r.nonClipping },
+            { "audible", r.audible },
+            { "bandsPresent", r.bandsPresent },
+            { "bandLow", r.bandLow },
+            { "bandMid", r.bandMid },
+            { "bandHigh", r.bandHigh },
+            { "windowStart", r.windowStart },
+            { "durationSeconds", r.durationSeconds }
+        };
+        if (!r.error.empty())
+            res.insert("error", QString::fromStdString(r.error));
+        return { false, res };
+    }
+
     return makeError(-32601, "unknown composition method: " + m);
 }
 

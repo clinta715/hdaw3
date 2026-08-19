@@ -7,6 +7,7 @@
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -32,11 +33,19 @@ bool styleFromName(const std::string& name, PhraseGenerator::Style& out)
     return false;
 }
 
+// Spectral band presence for verifyPart (low/mid/high energy fractions).
+struct BandPresence { bool low = false, mid = false, high = false; };
+
+constexpr int kBandFftOrder = 12;            // 2^12 = 4096-point FFT
+constexpr int kBandFftSize = 1 << kBandFftOrder;
+
 // Read a rendered WAV and compute its RMS (sqrt of mean sample^2 across all
 // channels) and peak (max |sample|) over the whole file. Returns false when
-// the file can't be read or is empty.
+// the file can't be read or is empty. When outBands != nullptr, also analyses
+// spectral band presence (offline FFT on the command thread — same pattern as
+// FileLibraryManager's key detection).
 bool measureWav(juce::AudioFormatManager& fm, const juce::File& file,
-                float& outRms, float& outPeak)
+                float& outRms, float& outPeak, BandPresence* outBands = nullptr)
 {
     std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(file));
     if (reader == nullptr || reader->lengthInSamples <= 0)
@@ -66,6 +75,61 @@ bool measureWav(juce::AudioFormatManager& fm, const juce::File& file,
 
     outRms = static_cast<float>(std::sqrt(sumSq / count));
     outPeak = peak;
+
+    if (outBands != nullptr && peak > 1e-6f && numSamples >= kBandFftSize)
+    {
+        std::vector<float> mono(static_cast<size_t>(numSamples), 0.0f);
+        for (int c = 0; c < numChannels; ++c)
+        {
+            const float* data = buf.getReadPointer(c);
+            for (int s = 0; s < numSamples; ++s)
+                mono[static_cast<size_t>(s)] += data[s];
+        }
+        const float invCh = 1.0f / static_cast<float>(numChannels);
+        for (auto& v : mono)
+            v *= invCh;
+
+        juce::dsp::FFT fft(kBandFftOrder);
+        std::vector<float> fftBuffer(kBandFftSize * 2, 0.0f);
+        std::vector<float> window(kBandFftSize);
+        for (int i = 0; i < kBandFftSize; ++i)
+            window[static_cast<size_t>(i)] = 0.5f * (1.0f - std::cos(2.0 * juce::MathConstants<float>::pi * i / (kBandFftSize - 1)));
+
+        const double sampleRate = reader->sampleRate;
+        const double highTop = std::min(20000.0, sampleRate * 0.5);
+        double lowE = 0.0, midE = 0.0, highE = 0.0, totalE = 0.0;
+
+        const int space = numSamples - kBandFftSize;
+        const int frames = std::min(8, std::max(1, space + 1));
+        for (int f = 0; f < frames; ++f)
+        {
+            const int offset = (frames <= 1) ? 0 : (space * f) / (frames - 1);
+            for (int i = 0; i < kBandFftSize; ++i)
+                fftBuffer[static_cast<size_t>(i)] = mono[static_cast<size_t>(offset + i)] * window[static_cast<size_t>(i)];
+            std::fill(fftBuffer.begin() + kBandFftSize, fftBuffer.end(), 0.0f);
+            fft.performRealOnlyForwardTransform(fftBuffer.data());
+            for (int bin = 1; bin < kBandFftSize / 2; ++bin)
+            {
+                const double re = fftBuffer[static_cast<size_t>(bin * 2)];
+                const double im = fftBuffer[static_cast<size_t>(bin * 2 + 1)];
+                const double magSq = re * re + im * im;
+                totalE += magSq;
+                const double freq = static_cast<double>(bin) * sampleRate / kBandFftSize;
+                if (freq >= 20.0 && freq < 250.0)
+                    lowE += magSq;
+                else if (freq >= 250.0 && freq < 4000.0)
+                    midE += magSq;
+                else if (freq >= 4000.0 && freq <= highTop)
+                    highE += magSq;
+            }
+        }
+
+        const bool enough = totalE > 1e-12;
+        outBands->low = enough && lowE > 0.005 * totalE;
+        outBands->mid = enough && midE > 0.005 * totalE;
+        outBands->high = enough && highE > 0.005 * totalE;
+    }
+
     return true;
 }
 
@@ -146,6 +210,7 @@ struct RenderWindowResult
     juce::File wavPath;   // only set on success (after measureWav); caller owns deletion
     float rms = 0.0f;
     float peak = 0.0f;
+    double windowStart = 0.0;   // seconds — the target track's earliest clip start
     std::string error;
 };
 
@@ -154,14 +219,17 @@ struct RenderWindowResult
 std::atomic<int> s_renderCounter{ 0 };
 
 // The shared solo-render + measure loop (handoff #5): renders the target
-// track's clips over [windowStart, windowStart + windowSeconds) from a SOLO
-// TREE COPY — every other track muted, all solos cleared — and measures the
-// rendered WAV. `fader` is applied to the target track's volume only when
-// `applyFader` is true. Never mutates the live graph (Gate 12). Errors are
-// reported via `error`; the caller owns deleting `wavPath`.
+// track's clips over [windowStart, windowStart + windowSeconds) from a tree
+// copy and measures the rendered WAV. With `soloMuteOthers` (default) every
+// other track is muted and all solos cleared — a SOLO render; with it false,
+// solos are cleared but live mutes are kept — a FULL-MIX render (verifyPart).
+// `fader` is applied to the target track's volume only when `applyFader` is
+// true. Never mutates the live graph (Gate 12). Errors are reported via
+// `error`; the caller owns deleting `wavPath`.
 RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                                      double windowSeconds, float fader,
-                                     bool applyFader)
+                                     bool applyFader, bool soloMuteOthers = true,
+                                     BandPresence* outBands = nullptr)
 {
     RenderWindowResult result;
 
@@ -209,9 +277,10 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
         result.error = "track has no clips";
         return result;
     }
+    result.windowStart = windowStart;
 
-    // Solo tree copy: only the target track renders, regardless of live
-    // mute/solo state. The copy is never written back to the live tree.
+    // Tree copy: solos always cleared; other tracks muted only in solo mode.
+    // The copy is never written back to the live tree.
     juce::ValueTree treeCopy = model.getTree().createCopy();
     auto copyTrackList = treeCopy.getChildWithName(IDs::TRACK_LIST);
     if (copyTrackList.isValid())
@@ -221,7 +290,10 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
             auto track = copyTrackList.getChild(t);
             track.setProperty(IDs::isSoloed, false, nullptr);
             if (t != trackIndex)
-                track.setProperty(IDs::isMuted, true, nullptr);
+            {
+                if (soloMuteOthers)
+                    track.setProperty(IDs::isMuted, true, nullptr);
+            }
             else if (applyFader)
                 track.setProperty(IDs::volume, static_cast<double>(fader), nullptr);
         }
@@ -257,7 +329,7 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
         return result;
     }
 
-    if (!measureWav(fm, tempFile, result.rms, result.peak))
+    if (!measureWav(fm, tempFile, result.rms, result.peak, outBands))
     {
         result.error = "failed to read render";
         return result;
@@ -745,5 +817,60 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
     }
 
     result.ok = true;
+    return result;
+}
+
+ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex, double windowSeconds)
+{
+    VerifyPartResult result;
+
+    // Validate (Gate 9 — bounds-check every param at the command boundary).
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    if (!(windowSeconds > 0.0))
+    {
+        result.error = "windowSeconds must be > 0";
+        return result;
+    }
+
+    // Solo render (with band analysis) + full-mix render of the same window —
+    // both via the shared renderTrackWindow. Read-only: no tree writes, no
+    // undo, no rebuild.
+    BandPresence bands;
+    auto solo = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, true, &bands);
+    if (!solo.error.empty())
+    {
+        result.error = solo.error;
+        return result;
+    }
+
+    auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, false);
+    if (!mix.error.empty())
+    {
+        solo.wavPath.deleteFile();
+        result.error = mix.error;
+        return result;
+    }
+
+    result.soloRms = solo.rms;
+    result.soloPeak = solo.peak;
+    result.mixRms = mix.rms;
+    result.mixPeak = mix.peak;
+    result.windowStart = solo.windowStart;
+    result.durationSeconds = windowSeconds;
+    result.audible = (solo.peak > 1e-4f);
+    result.nonClipping = (mix.peak < 1.0f);
+    result.bandLow = bands.low;
+    result.bandMid = bands.mid;
+    result.bandHigh = bands.high;
+    result.bandsPresent = bands.low && bands.mid && bands.high;
+    result.ok = true;
+
+    solo.wavPath.deleteFile();
+    mix.wavPath.deleteFile();
     return result;
 }
