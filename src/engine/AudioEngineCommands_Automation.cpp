@@ -122,6 +122,44 @@ void AudioEngineCommands::setAutomationEnabled(int trackIndex, const std::string
     }
 }
 
+void AudioEngineCommands::setFaderAuthoritative(int trackIndex, bool authoritative)
+{
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    auto& um = engine_.getProjectModel().getUndoManager();
+
+    auto disableTrack = [&](int ti) {
+        if (ti < 0 || ti >= trackList.getNumChildren()) return;
+        auto autoList = trackList.getChild(ti).getChildWithName(IDs::AUTOMATION_LIST);
+        if (!autoList.isValid()) return;
+        bool changed = false;
+        for (int i = 0; i < autoList.getNumChildren(); ++i)
+        {
+            auto lane = autoList.getChild(i);
+            const juce::String laneName = lane.getProperty(IDs::name, "").toString();
+            const int paramID = lane.getProperty(IDs::paramID, 0);
+            if (laneName == "Volume" || paramID == 1) // the volume target
+            {
+                // authoritative=true means the fader wins -> automation OFF.
+                const bool targetEnabled = !authoritative;
+                if (static_cast<bool>(lane.getProperty(IDs::automationEnabled, true)) != targetEnabled)
+                {
+                    lane.setProperty(IDs::automationEnabled, targetEnabled, &um);
+                    changed = true;
+                }
+            }
+        }
+        if (changed)
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildAutomationCache(ti);
+    };
+
+    if (trackIndex == -1)
+        for (int t = 0; t < trackList.getNumChildren(); ++t)
+            disableTrack(t);
+    else
+        disableTrack(trackIndex);
+}
+
 void AudioEngineCommands::setAutomationMode(int trackIndex, const std::string& laneName,
                                              const std::string& mode)
 {

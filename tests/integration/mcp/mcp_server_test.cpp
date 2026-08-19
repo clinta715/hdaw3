@@ -332,6 +332,56 @@ TEST(McpServer, FxAddRemoveBypass) {
     s.setTransport(nullptr);
 }
 
+TEST(McpServer, SetFaderAuthoritativeDisablesVolumeAutomation) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+
+    // The default project's track 0 already has a "Volume" (paramID 1) lane but
+    // it starts DISABLED; enable it first so the tool's disable is observable.
+    engine.getProjectCommands().setAutomationEnabled(0, "Volume", true);
+
+    auto r = callTool(1, "set_fader_authoritative", R"({"trackId":0,"authoritative":true})");
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_EQ(text(r).toStdString(), std::string("ok"));
+
+    // Read model: Volume lane disabled; non-volume lanes untouched.
+    auto lanes = engine.getReadModel().getAutomationLanes(0);
+    bool foundVolume = false;
+    for (const auto& l : lanes)
+    {
+        if (l.name == "Volume")
+        {
+            EXPECT_FALSE(l.enabled);
+            foundVolume = true;
+        }
+    }
+    EXPECT_TRUE(foundVolume);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, NotificationsCancelledSetsFlagAndProducesNoResponse) {
     AudioEngine engine;
     mcp::TransportLoopback tp;

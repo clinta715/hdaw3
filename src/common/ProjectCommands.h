@@ -164,6 +164,10 @@ public:
                                         double time) = 0;
     virtual void setAutomationEnabled(int trackIndex, const std::string& lane,
                                        bool enabled) = 0;
+    // Disable/enable ALL Volume automation lanes on a track so the fader is
+    // authoritative again (trackIndex -1 = every track). Non-destructive: only
+    // toggles automationEnabled; automation points are kept. One undo unit.
+    virtual void setFaderAuthoritative(int trackIndex, bool authoritative) = 0;
     virtual void setAutomationMode(int trackIndex, const std::string& laneName,
                                     const std::string& mode) = 0;
     virtual void notifyAutomationTouch(int trackIndex, int paramID, bool touching) = 0;

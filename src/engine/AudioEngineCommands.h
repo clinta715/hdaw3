@@ -188,6 +188,7 @@ public:
                                double time) override;
     void setAutomationEnabled(int trackIndex, const std::string& lane,
                               bool enabled) override;
+    void setFaderAuthoritative(int trackIndex, bool authoritative);
     void setAutomationMode(int trackIndex, const std::string& laneName,
                            const std::string& mode) override;
     void notifyAutomationTouch(int trackIndex, int paramID, bool touching) override;

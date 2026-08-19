@@ -112,3 +112,109 @@ TEST(Automation, MultipleUnboundLanesAllowed)
     EXPECT_NE(findLane(lanes, "UnboundA"), nullptr);
     EXPECT_NE(findLane(lanes, "UnboundB"), nullptr);
 }
+
+// setFaderAuthoritative disables ALL Volume automation on a track so the fader
+// is authoritative again in playback/export. Non-destructive: only the
+// enabled flag toggles; the lane and its points are kept. Re-enabling
+// (authoritative=false) restores Volume automation.
+TEST(Automation, SetFaderAuthoritativeDisablesVolumeLanes)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // The default project ships a "Volume" (paramID 1) lane on every track
+    // starting DISABLED, and addAutomationLane is a no-op on a duplicate name,
+    // so enable it explicitly; add a distinct non-volume lane too.
+    cmds.setAutomationEnabled(0, "Volume", true);
+    cmds.addAutomationLane(0, "S0 Cutoff", 105);
+    cmds.addAutomationPoint(0, "Volume", 0.0, 0.5);
+
+    auto lanes = engine.getReadModel().getAutomationLanes(0);
+    const auto* vol = findLane(lanes, "Volume");
+    const auto* cutoff = findLane(lanes, "S0 Cutoff");
+    ASSERT_NE(vol, nullptr);
+    ASSERT_NE(cutoff, nullptr);
+    EXPECT_EQ(vol->paramID, 1);
+    EXPECT_TRUE(vol->enabled);
+    EXPECT_TRUE(cutoff->enabled);
+
+    // Fader authoritative: Volume automation off, non-volume lane untouched.
+    cmds.setFaderAuthoritative(0, true);
+    lanes = engine.getReadModel().getAutomationLanes(0);
+    vol = findLane(lanes, "Volume");
+    cutoff = findLane(lanes, "S0 Cutoff");
+    ASSERT_NE(vol, nullptr);
+    ASSERT_NE(cutoff, nullptr);
+    EXPECT_FALSE(vol->enabled);
+    EXPECT_TRUE(cutoff->enabled);
+
+    // Non-destructive: the Volume lane's point list still exists (points kept).
+    {
+        auto track = engine.getProjectModel().getTrackListTree().getChild(0);
+        auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
+        auto volLaneTree = autoList.getChildWithProperty(IDs::name, juce::String("Volume"));
+        ASSERT_TRUE(volLaneTree.isValid());
+        EXPECT_TRUE(volLaneTree.getChildWithName(IDs::POINT_LIST).isValid());
+    }
+
+    // Re-enable Volume automation.
+    cmds.setFaderAuthoritative(0, false);
+    lanes = engine.getReadModel().getAutomationLanes(0);
+    vol = findLane(lanes, "Volume");
+    ASSERT_NE(vol, nullptr);
+    EXPECT_TRUE(vol->enabled);
+}
+
+// trackIndex -1 = project-wide: Volume lanes on ALL tracks get disabled,
+// non-volume lanes untouched.
+TEST(Automation, SetFaderAuthoritativeProjectWide)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    const int numTracks = engine.getProjectModel().getTrackListTree().getNumChildren();
+    ASSERT_GE(numTracks, 1);
+
+    // Enable every track's Volume lane first so the disable is observable
+    // (default project lanes start disabled).
+    for (int t = 0; t < numTracks; ++t)
+        cmds.setAutomationEnabled(t, "Volume", true);
+
+    cmds.setFaderAuthoritative(-1, true);
+
+    for (int t = 0; t < numTracks; ++t)
+    {
+        auto lanes = engine.getReadModel().getAutomationLanes(t);
+        const auto* vol = findLane(lanes, "Volume");
+        ASSERT_NE(vol, nullptr);
+        EXPECT_FALSE(vol->enabled) << "track " << t << " Volume still enabled";
+        // Non-volume lanes untouched (default Pan/Mute start disabled).
+        for (const auto& l : lanes)
+            if (l.name != "Volume")
+                EXPECT_FALSE(l.enabled) << "track " << t << " lane " << l.name
+                                        << " unexpectedly enabled";
+    }
+}
+
+// Out-of-range trackIndex is a no-op: no crash, no lane changes.
+TEST(Automation, SetFaderAuthoritativeOutOfRangeIsNoOp)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    auto before = engine.getReadModel().getAutomationLanes(0);
+
+    cmds.setFaderAuthoritative(999, true);
+    cmds.setFaderAuthoritative(-2, true);
+
+    auto after = engine.getReadModel().getAutomationLanes(0);
+    ASSERT_EQ(before.size(), after.size());
+    for (size_t i = 0; i < before.size(); ++i)
+    {
+        EXPECT_EQ(before[i].name, after[i].name);
+        EXPECT_EQ(before[i].enabled, after[i].enabled);
+    }
+}

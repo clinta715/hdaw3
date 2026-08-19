@@ -898,6 +898,16 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"set_fader_authoritative",
+        "Disable (or re-enable) ALL Volume automation lanes on a track so the fader is authoritative in playback/export. trackId -1 = every track. Automation points are kept; only the enabled flag toggles. Mirrors project.setFaderAuthoritative (one shared command path).",
+        objSchema({{"trackId",        QJsonObject{{"type","integer"}}},
+                  {"authoritative",  QJsonObject{{"type","boolean"}}}}, {"trackId","authoritative"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            e->getProjectCommands().setFaderAuthoritative(
+                a.value("trackId").toInt(-1), a.value("authoritative").toBool());
+            return McpToolResult::text("ok");
+        }});
+
     // add_automation_lane / remove_automation_lane â€” the lane-authoring surface.
     // paramID 0 leaves the lane unbound (legacy default); for FX-parameter
     // automation pass the compound id (100 + slotIndex*100 + paramIndex).
