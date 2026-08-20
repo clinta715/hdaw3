@@ -10,6 +10,7 @@
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
 #include "../engine/Dx7SysexImport.h"
+#include "../engine/MidiFx.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -233,6 +234,44 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                 arr.append(QJsonObject{{"index", p.index}, {"name", QString::fromStdString(p.name)}});
             return McpToolResult::text(
                 QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"search_plugin_presets",
+        "Search for presets across all scanned plugins by name (case-insensitive substring match).",
+        objSchema({{"query", QJsonObject{{"type","string"}}},
+                   {"limit", QJsonObject{{"type","integer"}}}}, {"query"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            QString query = a.value("query").toString().toLower();
+            if (query.isEmpty()) return McpToolResult::text("query required", true);
+            int limit = a.value("limit").toInt(50);
+            if (limit < 1) limit = 1;
+            if (limit > 200) limit = 200;
+            auto& pm = e->getPluginManager();
+            QJsonArray matches;
+            for (const auto& pd : pm.getPlugins()) {
+                if (static_cast<int>(matches.size()) >= limit) break;
+                juce::String pluginId = pd.createIdentifierString();
+                auto* presetInfo = pm.getPresetInfo(pluginId);
+                if (!presetInfo || presetInfo->numPrograms <= 1) continue;
+                QString pluginName = QString::fromStdString(pd.name.toStdString());
+                for (int i = 0; i < presetInfo->numPrograms; ++i) {
+                    if (static_cast<int>(matches.size()) >= limit) break;
+                    juce::String name = i < presetInfo->programNames.size()
+                        ? presetInfo->programNames[i]
+                        : juce::String("Preset ") + juce::String(i);
+                    QString presetName = QString::fromStdString(name.toStdString());
+                    if (presetName.toLower().contains(query)) {
+                        matches.append(QJsonObject{
+                            {"pluginId", QString::fromStdString(pluginId.toStdString())},
+                            {"pluginName", pluginName},
+                            {"presetIndex", i},
+                            {"presetName", presetName}
+                        });
+                    }
+                }
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(matches).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"load_plugin_preset",
@@ -883,6 +922,47 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    {
+        QJsonObject pointProps{{"time", QJsonObject{{"type","number"}}},
+                               {"value", QJsonObject{{"type","number"}}}};
+        QJsonObject pointItem{{"type","object"}, {"properties", pointProps}};
+        QJsonObject pointsSchema{{"type","array"}, {"items", pointItem}};
+        QJsonObject laneSchema{{"oneOf", QJsonArray{QJsonObject{{"type","integer"}}, QJsonObject{{"type","string"}}}}};
+        QJsonObject modeSchema{{"type","string"}, {"enum", QJsonArray{"replace","append"}}};
+        QJsonObject props{{"trackId", QJsonObject{{"type","integer"}}},
+                          {"lane", laneSchema},
+                          {"points", pointsSchema},
+                          {"mode", modeSchema}};
+        s.registerTool({"set_automation_points",
+            "Set multiple automation points on a lane at once (bulk). Replaces all existing points or appends.",
+            objSchema(props, QJsonArray{"trackId","lane","points"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int trackId = a.value("trackId").toInt();
+            auto lane = findLane(e, trackId, a.value("lane"));
+            if (!lane.isValid()) return McpToolResult::text("lane not found", true);
+            auto& um = e->getProjectModel().getUndoManager();
+            auto pl = lane.getChildWithName(IDs::POINT_LIST);
+            if (!pl.isValid()) { pl = juce::ValueTree(IDs::POINT_LIST); lane.addChild(pl, -1, &um); }
+            double bpm = e->getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+            QString mode = a.value("mode").toString("replace");
+            if (mode == "replace") {
+                while (pl.getNumChildren() > 0)
+                    pl.removeChild(0, &um);
+            }
+            auto pointsArray = a.value("points").toArray();
+            for (const auto& ptVal : pointsArray) {
+                auto pt = ptVal.toObject();
+                juce::ValueTree p(IDs::POINT);
+                p.setProperty(IDs::startTime, HDAW::beatsToSeconds(pt.value("time").toDouble(), bpm), &um);
+                p.setProperty(IDs::gain, pt.value("value").toDouble(), &um);
+                pl.addChild(p, -1, &um);
+            }
+            if (auto* proc = e->getMainProcessor())
+                proc->rebuildAutomationCache(trackId);
+            return McpToolResult::text(QString("%1 points set").arg(pointsArray.size()));
+        }});
+    }
+
     s.registerTool({"set_automation_enabled", "Enable or disable an automation lane.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
@@ -1090,6 +1170,49 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
             chain[slotIndex]->setAutomationParam(paramIndex, value);
             return McpToolResult::text("ok");
         }});
+
+    {
+        QJsonObject midiFxProps{{"trackId", QJsonObject{{"type","integer"}}},
+                                {"slotIndex", QJsonObject{{"type","integer"}}}};
+        s.registerTool({"list_midi_fx_params",
+            "List all parameters of a MIDI FX slot with their names, ranges, and current values.",
+            objSchema(midiFxProps, QJsonArray{"trackId","slotIndex"}),
+            [e](const QJsonObject& a) -> McpToolResult {
+                int ti = a.value("trackId").toInt();
+                int si = a.value("slotIndex").toInt();
+                auto allSlots = e->getReadModel().getMidiFxSlots(ti);
+                int numSlots = static_cast<int>(allSlots.size());
+                if (si < 0 || si >= numSlots)
+                    return McpToolResult::text("MIDI FX slot not found", true);
+                const MidiFxSlotSnapshot& slot = allSlots[static_cast<size_t>(si)];
+                auto defs = HDAW::getMidiFxParamDefs(juce::String(slot.fxType));
+                QJsonArray params;
+                for (size_t i = 0; i < defs.size(); ++i) {
+                    const auto& d = defs[i];
+                    QJsonObject p;
+                    p["index"] = static_cast<int>(i);
+                    p["name"] = QString::fromUtf8(d.name);
+                    p["defaultValue"] = d.defaultValue;
+                    p["minValue"] = d.minValue;
+                    p["maxValue"] = d.maxValue;
+                    auto it = slot.params.find(d.name);
+                    if (it != slot.params.end()) {
+                        if (std::holds_alternative<double>(it->second))
+                            p["value"] = std::get<double>(it->second);
+                        else
+                            p["value"] = d.defaultValue;
+                    } else {
+                        p["value"] = static_cast<double>(d.defaultValue);
+                    }
+                    params.append(p);
+                }
+                QJsonObject result;
+                result["fxType"] = QString::fromStdString(slot.fxType);
+                result["bypassed"] = slot.bypassed;
+                result["params"] = params;
+                return McpToolResult::text(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            }});
+    }
 }
 
 static void registerEnvelopeTools(McpServer& s, AudioEngine* e)

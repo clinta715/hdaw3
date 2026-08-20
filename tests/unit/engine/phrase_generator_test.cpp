@@ -23,7 +23,7 @@ void expectSameNotes(const std::vector<PhraseGenerator::GeneratedNote>& a,
 
 TEST(PhraseGeneratorDeterminism, EveryStyleSameSeedSameOutput)
 {
-    for (int style = 0; style <= static_cast<int>(PhraseGenerator::Euclidean); ++style)
+    for (int style = 0; style <= static_cast<int>(PhraseGenerator::Percussion); ++style)
     {
         PhraseGenerator::PhraseParams p;
         p.style = static_cast<PhraseGenerator::Style>(style);

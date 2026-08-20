@@ -1,5 +1,6 @@
 #include "ReadModelImpl.h"
 #include "AudioEngine.h"
+#include "AudioEngineCommands_Helpers.h"
 #include "MainAudioProcessor.h"
 #include "Track.h"
 #include "TrackFXSlot.h"
@@ -20,8 +21,8 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
     cs.sourceFile    = clipTree.getProperty(IDs::sourceFile, "").toString().toStdString();
     double startTimeSec = clipTree.getProperty(IDs::startTime, 0.0);
     double durationSec  = clipTree.getProperty(IDs::duration, 0.0);
-    cs.startBeat     = (bpm > 0) ? startTimeSec * bpm / 60.0 : startTimeSec;
-    cs.durationBeats = (bpm > 0) ? durationSec * bpm / 60.0 : durationSec;
+    cs.startBeat     = HDAW::secondsToBeats(startTimeSec, bpm);
+    cs.durationBeats = HDAW::secondsToBeats(durationSec, bpm);
     cs.offset        = clipTree.getProperty(IDs::offset, 0.0);
     cs.gain          = clipTree.getProperty(IDs::gain, 1.0);
     cs.fadeIn        = clipTree.getProperty(IDs::fadeIn, 0.0);
@@ -49,7 +50,7 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
             {
                 ClipSnapshot::GainEnvelopePoint p;
                 double tSec = pt.getProperty(IDs::pointTime, 0.0);
-                p.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
+                p.time = HDAW::secondsToBeats(tSec, bpm);
                 p.gain = pt.getProperty(IDs::pointGain, 1.0);
                 cs.gainEnvelope.push_back(p);
             }
@@ -225,8 +226,8 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 double bpm = model_.getTree().getProperty(IDs::tempo, 120.0);
                 double startTimeSec = clipTree.getProperty(IDs::startTime, 0.0);
                 double durationSec = clipTree.getProperty(IDs::duration, 0.0);
-                cs.startBeat = (bpm > 0) ? startTimeSec * bpm / 60.0 : startTimeSec;
-                cs.durationBeats = (bpm > 0) ? durationSec * bpm / 60.0 : durationSec;
+                cs.startBeat = HDAW::secondsToBeats(startTimeSec, bpm);
+                cs.durationBeats = HDAW::secondsToBeats(durationSec, bpm);
                 cs.offset = clipTree.getProperty(IDs::offset, 0.0);
                 cs.gain = clipTree.getProperty(IDs::gain, 1.0);
                 cs.fadeIn = clipTree.getProperty(IDs::fadeIn, 0.0);
@@ -354,7 +355,7 @@ std::vector<ClipSnapshot::GainEnvelopePoint> ReadModelImpl::getClipGainEnvelope(
                 auto pt = envelope.getChild(i);
                 ClipSnapshot::GainEnvelopePoint p;
                 double tSec = pt.getProperty(IDs::pointTime, 0.0);
-                p.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
+                p.time = HDAW::secondsToBeats(tSec, bpm);
                 p.gain = pt.getProperty(IDs::pointGain);
                 points.push_back(p);
             }
@@ -378,8 +379,8 @@ TransportSnapshot ReadModelImpl::getTransport() const
         // the frontend expects beats. Convert seconds → beats.
         double ls = transport.getProperty(IDs::loopStart, 0.0);
         double le = transport.getProperty(IDs::loopEnd, 8.0);
-        ts.loopStart = (ts.bpm > 0) ? ls * ts.bpm / 60.0 : ls;
-        ts.loopEnd   = (ts.bpm > 0) ? le * ts.bpm / 60.0 : le;
+        ts.loopStart = HDAW::secondsToBeats(ls, ts.bpm);
+        ts.loopEnd   = HDAW::secondsToBeats(le, ts.bpm);
         // Use the live TransportManager position (audio-thread atomic advanced
         // each processBlock) instead of the ValueTree position property, which
         // is only written on seek/stop and never updated during playback.
@@ -618,7 +619,7 @@ std::vector<AutomationPointSnapshot> ReadModelImpl::getAutomationPoints(
             auto pt = pointList.getChild(p);
             AutomationPointSnapshot aps;
             double tSec = pt.getProperty(IDs::startTime, 0.0);
-            aps.time = (bpm > 0) ? tSec * bpm / 60.0 : tSec;
+            aps.time = HDAW::secondsToBeats(tSec, bpm);
             aps.value = static_cast<float>(
                 static_cast<double>(pt.getProperty(IDs::gain, 0.0)));
             result.push_back(aps);

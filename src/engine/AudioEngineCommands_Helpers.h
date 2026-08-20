@@ -43,4 +43,11 @@ inline double beatsToSeconds(double beats, double bpm)
     return (bpm > 0) ? beats * 60.0 / bpm : beats;
 }
 
+// Convert seconds to beats using the given BPM.
+// The reverse of beatsToSeconds — used when building snapshots for the frontend.
+inline double secondsToBeats(double seconds, double bpm)
+{
+    return (bpm > 0) ? seconds * bpm / 60.0 : seconds;
+}
+
 } // namespace HDAW

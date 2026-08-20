@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,6 +76,8 @@ struct ArrangementParams
     bool enableBass = true;
     bool enableLead = false;
     bool enableChords = false;
+
+    std::map<std::string, int> targetTrackIds;
 };
 
 struct Arrangement

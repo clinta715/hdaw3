@@ -102,8 +102,9 @@ const char* PhraseGenerator::styleName(Style s)
         case Lead:      return "Lead";
         case RandomWalk: return "Random Walk";
         case Buildup:   return "Buildup";
-        case Euclidean: return "Euclidean";
-        default:        return "Standard";
+        case Euclidean:   return "Euclidean";
+        case Percussion:  return "Percussion";
+        default:          return "Standard";
     }
 }
 
@@ -258,6 +259,11 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
 {
     auto pitches = buildScalePitches(params.scaleRoot, params.scaleMode,
                                      params.lowNote, params.highNote);
+    if (pitches.empty())
+    {
+        for (int n = params.lowNote; n <= params.highNote; ++n)
+            pitches.push_back(n);
+    }
     if (pitches.empty())
         return {};
 
@@ -465,6 +471,38 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
                 n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
             result.push_back(n);
             idx = HDAW::nextMarkovDegree(rng, idx, static_cast<int>(pitches.size()));
+        }
+        break;
+    }
+
+    case Percussion:
+    {
+        struct PercVoice { int pitch; int hits; int rotation; };
+        std::vector<PercVoice> percVoices = {
+            {36, 4, 0},
+            {42, 4, 0},
+            {38, 2, 0},
+        };
+        const int effLow = (std::min)(params.lowNote, 36);
+        const int effHigh = (std::max)(params.highNote, 42);
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        for (const auto& v : percVoices)
+        {
+            if (v.pitch < effLow || v.pitch > effHigh)
+                continue;
+            int k = std::clamp(v.hits, 1, totalSteps);
+            auto onsets = HDAW::euclideanSteps(k, totalSteps, v.rotation);
+            for (size_t oi = 0; oi < onsets.size(); ++oi)
+            {
+                GeneratedNote n;
+                n.startBeat = onsets[oi] * beatPerStep;
+                n.noteNumber = v.pitch;
+                n.velocity = (oi == 0) ? params.maxVelocity
+                                       : randomInt(params.minVelocity, params.maxVelocity);
+                n.durationBeats = params.noteDuration > 0.0 ? params.noteDuration : beatPerStep * 0.5;
+                result.push_back(n);
+            }
         }
         break;
     }

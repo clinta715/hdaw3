@@ -7,14 +7,6 @@
 
 #include <limits>
 
-// Convert beats to seconds using the current project BPM.
-// The frontend sends clip positions/durations in beats; the audio engine
-// stores them in seconds (processors, timeline, auto-stop all use seconds).
-static double beatsToSeconds(double beats, double bpm)
-{
-    return (bpm > 0) ? beats * 60.0 / bpm : beats;
-}
-
 // ─── ProjectCommands — Clip operations ────────────────────────────
 
 int AudioEngineCommands::addAudioClip(int trackIndex, double start, double duration,
@@ -26,8 +18,8 @@ int AudioEngineCommands::addAudioClip(int trackIndex, double start, double durat
 
     // Convert beats → seconds (frontend sends beats, processors expect seconds)
     double bpm = engine_.getTransportManager().getBPM();
-    double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
-    double durSec = (bpm > 0) ? duration * 60.0 / bpm : duration;
+    double startSec = HDAW::beatsToSeconds(start, bpm);
+    double durSec = HDAW::beatsToSeconds(duration, bpm);
 
     auto clip = ProjectModel::createAudioClip(
         juce::String(name), startSec, durSec, juce::String(sourceFile));
@@ -53,8 +45,8 @@ int AudioEngineCommands::addMidiClip(int trackIndex, double start, double durati
 
     // Convert beats → seconds (frontend sends beats, processors expect seconds)
     double bpm = engine_.getTransportManager().getBPM();
-    double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
-    double durSec = (bpm > 0) ? duration * 60.0 / bpm : duration;
+    double startSec = HDAW::beatsToSeconds(start, bpm);
+    double durSec = HDAW::beatsToSeconds(duration, bpm);
 
     auto clip = ProjectModel::createMidiClipEmpty(
         juce::String(name), startSec, durSec);
@@ -89,7 +81,7 @@ void AudioEngineCommands::moveClip(int clipId, int newTrackIndex, double newStar
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
 
-    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    double newStartSec = HDAW::beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
     clip.setProperty(IDs::startTime, newStartSec, &um);
 
     if (newTrackIndex != oldTrackIdx)
@@ -116,7 +108,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
     auto trackList = engine_.getProjectModel().getTrackListTree();
     if (newTrackIndex < 0 || newTrackIndex >= trackList.getNumChildren()) return;
 
-    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    double newStartSec = HDAW::beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
     double clipDur = clip.getProperty(IDs::duration);
     double newEnd = newStartSec + clipDur;
 
@@ -234,7 +226,7 @@ void AudioEngineCommands::setClipStart(int clipId, double start)
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
     {
-        double startSec = beatsToSeconds(start, engine_.getTransportManager().getBPM());
+        double startSec = HDAW::beatsToSeconds(start, engine_.getTransportManager().getBPM());
         clip.setProperty(IDs::startTime, startSec, &um);
     }
 }
@@ -246,7 +238,7 @@ void AudioEngineCommands::setClipDuration(int clipId, double duration)
     auto clip = findClipById(clipId, trackIdx);
     if (clip.isValid())
     {
-        double durSec = beatsToSeconds(duration, engine_.getTransportManager().getBPM());
+        double durSec = HDAW::beatsToSeconds(duration, engine_.getTransportManager().getBPM());
         clip.setProperty(IDs::duration, durSec, &um);
     }
 }
@@ -346,7 +338,7 @@ int AudioEngineCommands::duplicateClipTo(int clipId, double newStart, int newTra
     // positioning + target-track logic of createGhostClip, without the ghost
     // re-parenting). Unlike duplicateClip this is a direct placement, so the
     // frontend doesn't need a follow-up moveClipWithOverlap round trip.
-    double newStartSec = beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
+    double newStartSec = HDAW::beatsToSeconds(newStart, engine_.getTransportManager().getBPM());
     newClip.setProperty(IDs::startTime, newStartSec, nullptr);
 
     auto trackList = engine_.getProjectModel().getTrackListTree();
@@ -387,7 +379,7 @@ std::vector<int> AudioEngineCommands::duplicateClips(const std::vector<int>& cli
         juce::String origName = newClip.getProperty(IDs::name).toString();
         if (!origName.endsWith(" copy"))
             newClip.setProperty(IDs::name, origName + " copy", nullptr);
-        double newStartSec = beatsToSeconds(newStarts[i], engine_.getTransportManager().getBPM());
+        double newStartSec = HDAW::beatsToSeconds(newStarts[i], engine_.getTransportManager().getBPM());
         newClip.setProperty(IDs::startTime, newStartSec, nullptr);
 
         auto clipList = trackList.getChild(targetTrack).getChildWithName(IDs::CLIP_LIST);
@@ -432,8 +424,8 @@ void AudioEngineCommands::rippleDelete(double startBeat, double endBeat)
     if (endBeat <= startBeat) return;  // empty/invalid range: no-op
 
     double bpm = engine_.getTransportManager().getBPM();
-    double rs = beatsToSeconds(startBeat, bpm);   // range start, seconds
-    double re = beatsToSeconds(endBeat, bpm);     // range end, seconds
+    double rs = HDAW::beatsToSeconds(startBeat, bpm);   // range start, seconds
+    double re = HDAW::beatsToSeconds(endBeat, bpm);     // range end, seconds
     double rangeLen = re - rs;
     if (rangeLen <= 0.0) return;
 
@@ -518,8 +510,8 @@ void AudioEngineCommands::insertSilence(double startBeat, double endBeat)
     if (endBeat <= startBeat) return;  // empty/invalid range: no-op
 
     double bpm = engine_.getTransportManager().getBPM();
-    double rs = beatsToSeconds(startBeat, bpm);   // insertion point, seconds
-    double re = beatsToSeconds(endBeat, bpm);
+    double rs = HDAW::beatsToSeconds(startBeat, bpm);   // insertion point, seconds
+    double re = HDAW::beatsToSeconds(endBeat, bpm);
     double gapLen = re - rs;
     if (gapLen <= 0.0) return;
 
@@ -581,8 +573,8 @@ void AudioEngineCommands::duplicateRegion(double startBeat, double endBeat)
     if (endBeat <= startBeat) return;  // empty/invalid range: no-op
 
     double bpm = engine_.getTransportManager().getBPM();
-    double rs = beatsToSeconds(startBeat, bpm);
-    double re = beatsToSeconds(endBeat, bpm);
+    double rs = HDAW::beatsToSeconds(startBeat, bpm);
+    double re = HDAW::beatsToSeconds(endBeat, bpm);
     double regionLen = re - rs;
     if (regionLen <= 0.0) return;
 
@@ -693,13 +685,12 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
 
     // Convert beats → seconds (frontend sends beats, processors expect seconds)
     double bpm = engine_.getTransportManager().getBPM();
-    double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
 
     beginTransaction("Add clips");
     for (size_t i = 0; i < starts.size(); ++i)
     {
-        double startSec = starts[i] * factor;
-        double durSec = durations[i] * factor;
+        double startSec = HDAW::beatsToSeconds(starts[i], bpm);
+        double durSec = HDAW::beatsToSeconds(durations[i], bpm);
 
         juce::ValueTree clip;
         if (i < sourceFiles.size() && !sourceFiles[i].empty())
@@ -740,14 +731,21 @@ ProjectCommands::ArrangementResult AudioEngineCommands::generateArrangement(cons
 
     for (const auto& part : arr.parts)
     {
-        // Find an existing track with this name, else create one.
         int trackIdx = -1;
-        for (int i = 0; i < trackList.getNumChildren(); ++i)
-        {
-            if (trackList.getChild(i).getProperty(IDs::name, "").toString().toStdString() == part.name)
+        auto it = params.targetTrackIds.find(part.name);
+        if (it != params.targetTrackIds.end()) {
+            trackIdx = it->second;
+            if (trackIdx < 0 || trackIdx >= trackList.getNumChildren())
+                trackIdx = -1;
+        }
+        if (trackIdx < 0) {
+            for (int i = 0; i < trackList.getNumChildren(); ++i)
             {
-                trackIdx = i;
-                break;
+                if (trackList.getChild(i).getProperty(IDs::name, "").toString().toStdString() == part.name)
+                {
+                    trackIdx = i;
+                    break;
+                }
             }
         }
         if (trackIdx < 0)
@@ -818,7 +816,7 @@ int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
     {
         double clipStart = static_cast<double>(info.tree.getProperty(IDs::startTime));
         double offsetSec = clipStart - newStart;
-        double offsetBeats = (bpm > 0) ? offsetSec * bpm / 60.0 : offsetSec;
+        double offsetBeats = HDAW::secondsToBeats(offsetSec, bpm);
 
         auto noteList = info.tree.getChildWithName(IDs::MIDI_NOTE_LIST);
         for (int n = 0; n < noteList.getNumChildren(); ++n)

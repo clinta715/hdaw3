@@ -4,6 +4,24 @@ project(HDAW VERSION 0.23.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ── Build Performance Optimizations ──────────────────────────────────────────
+# 1. Skip FetchContent network checks when sources are already populated.
+#    Prevents CMake from contacting GitHub on every configure, which adds
+#    2-5 seconds per configure even when nothing changed.
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
+# 2. Use sccache (Windows ccache equivalent) if available.
+#    Caches compilation results across builds, reducing rebuild time by 50-80%
+#    for unchanged files. Falls back gracefully if not installed.
+find_program(SCCACHE_EXECUTABLE sccache)
+if(SCCACHE_EXECUTABLE)
+    message(STATUS "Found sccache: ${SCCACHE_EXECUTABLE}")
+    set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
+else()
+    message(STATUS "sccache not found; install via 'scoop install sccache' for faster rebuilds")
+endif()
+
 # Generate common/Version.h with the project version so C++ code can
 # #include "common/Version.h" and use the HDAW_VERSION macro.
 # CMake's project(HDAW VERSION ...) is the single source of truth.
@@ -215,6 +233,47 @@ target_compile_definitions(HDAW_lib PUBLIC
     JUCE_REPORT_APP_USAGE=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
 )
+
+# ── Precompiled Headers (PCH) ────────────────────────────────────────────────
+# Pre-compile heavy headers to reduce per-TU compilation time by 30-50%.
+# The PCH is shared across all .cpp files in HDAW_lib, so each file only
+# compiles its own unique code instead of re-parsing JUCE/Qt/STL headers.
+#
+# NOTE: JUCE and Qt headers are excluded from PCH because they have complex
+# macro dependencies and platform-specific configurations that can conflict
+# with the PCH approach. The standard library headers provide the most benefit.
+target_precompile_headers(HDAW_lib PRIVATE
+    # Standard library (most frequently included)
+    <string>
+    <vector>
+    <memory>
+    <functional>
+    <algorithm>
+    <array>
+    <span>
+    <optional>
+    <variant>
+    <unordered_map>
+    <map>
+    <set>
+    <mutex>
+    <atomic>
+    <thread>
+    <chrono>
+    <cassert>
+    <cstring>
+    <cmath>
+)
+
+# ── Unity Build ──────────────────────────────────────────────────────────────
+# Unity builds are disabled for now because the codebase has files with
+# conflicting definitions (msfa headers without include guards, MCP tools
+# with aggregate initialization issues) that cause compilation errors when
+# combined. This can be revisited after those issues are resolved.
+# set_target_properties(HDAW_lib PROPERTIES
+#     UNITY_BUILD ON
+#     UNITY_BUILD_BATCH_SIZE 0
+# )
 
 # --- HDAW: main executable ---
 add_executable(HDAW

@@ -1,4 +1,5 @@
 #include "AudioEngine.h"
+#include "AudioEngineCommands_Helpers.h"
 #include <juce_events/juce_events.h>
 #include <QSettings>
 #include <cstdlib>
@@ -443,8 +444,8 @@ int AudioEngine::ensureMidiRecClip(int trackIndex, int64_t startSample)
     double startSec = sr > 0 ? static_cast<double>(startSample) / sr : 0.0;
     // addMidiClip expects beats; convert seconds → beats
     double bpm = transportManager.getBPM();
-    double startBeat = (bpm > 0) ? startSec * bpm / 60.0 : startSec;
-    double durBeats = (bpm > 0) ? 8.0 * bpm / 60.0 : 8.0;
+    double startBeat = HDAW::secondsToBeats(startSec, bpm);
+    double durBeats = HDAW::secondsToBeats(8.0, bpm);
     int clipId = commands->addMidiClip(trackIndex, startBeat, durBeats, "Recording");
     if (clipId < 0) return -1;
     midiNoteRecClips.push_back({ clipId, trackIndex, startSample, startSample });

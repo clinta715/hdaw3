@@ -47,7 +47,8 @@ public:
         Lead,
         RandomWalk,
         Buildup,
-        Euclidean
+        Euclidean,
+        Percussion
     };
     static const char* styleName(Style s);
 

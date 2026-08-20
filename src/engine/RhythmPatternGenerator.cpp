@@ -29,8 +29,13 @@ std::vector<RhythmPatternGenerator::Note> RhythmPatternGenerator::generate(const
             emit(s, pitch, velocity, duration);
     };
 
-    emitPulse(p.pulseA, p.rotationA, p.pitchA, p.velocityA, 0.2);
-    emitPulse(p.pulseB, p.rotationB, p.pitchB, p.velocityB, 0.1);
+    if (!p.voices.empty()) {
+        for (const auto& v : p.voices)
+            emitPulse(v.hits, v.rotation, v.pitch, v.velocity, v.duration);
+    } else {
+        emitPulse(p.pulseA, p.rotationA, p.pitchA, p.velocityA, 0.2);
+        emitPulse(p.pulseB, p.rotationB, p.pitchB, p.velocityB, 0.1);
+    }
     if (!p.dsl.empty())
         for (int s : HDAW::expandToDivision(p.dsl, loop)) // may throw std::invalid_argument
             emit(s, p.dslPitch, p.dslVelocity, 0.1);

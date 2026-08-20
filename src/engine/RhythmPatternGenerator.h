@@ -12,6 +12,15 @@
 class RhythmPatternGenerator
 {
 public:
+    struct Voice
+    {
+        int hits = 4;
+        int rotation = 0;
+        int pitch = 36;
+        int velocity = 112;
+        double duration = 0.2;
+    };
+
     struct Params
     {
         int grid = 16;           // steps per bar (16 = 16th notes)
@@ -25,6 +34,8 @@ public:
         int pitchB = 42;         // F#2 closed hat
         int velocityA = 112;
         int velocityB = 96;
+
+        std::vector<Voice> voices;  // if non-empty, overrides pulseA/pulseB
 
         std::string dsl;         // optional DSL voice, e.g. "E(3,8,1) [x-]x2"
         int dslPitch = 39;       // C#2 clap

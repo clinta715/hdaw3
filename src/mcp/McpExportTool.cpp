@@ -119,7 +119,12 @@ void registerExportTool(McpServer& s) {
                 s.notifyFromBackground(serializeNotification(n));
             }
 
-            return McpToolResult::text(QString("export started: %1").arg(path));
+            return McpToolResult::text(QString("export started: %1 (format=%2, rate=%3, bits=%4, duration=%5s)")
+                .arg(path)
+                .arg(formatStr)
+                .arg(sampleRate)
+                .arg(bitDepth)
+                .arg(duration, 0, 'f', 2));
         }});
 }
 

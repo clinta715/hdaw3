@@ -4,6 +4,7 @@
 #include "MainAudioProcessor.h"
 #include "ExportManager.h"
 #include "PhraseGenerator.h"
+#include "RhythmPatternGenerator.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -31,6 +32,7 @@ bool styleFromName(const std::string& name, PhraseGenerator::Style& out)
     else if (name == "RandomWalk") { out = PhraseGenerator::RandomWalk; return true; }
     else if (name == "Buildup")    { out = PhraseGenerator::Buildup;    return true; }
     else if (name == "Euclidean")  { out = PhraseGenerator::Euclidean;  return true; }
+    else if (name == "Percussion") { out = PhraseGenerator::Percussion; return true; }
     return false;
 }
 
@@ -64,6 +66,11 @@ const RoleDefaults kRoleDefaults[] = {
     { "Lead",      60,  76,  6, 0.25, 70, 110, 0.0f,   false }, // lead
     { "ChordStab", 48,  72,  5, 2.0,  60, 100, 0.0f,   false }, // chords
     { "Euclidean", 36,  60, 12, 0.25, 90, 120, 0.0f,   false }, // drums
+    // NOTE: FM synth role presets are deliberately deferred. The DX7 init
+    // patch (all-99 EG, full output level) is velocity-insensitive — velocity
+    // ranges in the role defaults above affect note velocity but the synth
+    // ignores it. Shipping guessed DX7 algorithms without timbre-testing
+    // would produce unreliable results. See handoff #5, item 3.
 };
 
 int roleIndex(const std::string& role)
@@ -490,6 +497,10 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
         return result;
     }
 
+    // Drums role: route to RhythmPatternGenerator (multi-voice polyrhythm)
+    // instead of PhraseGenerator (single-voice melodic).
+    const bool isDrumsRole = (toLowerAscii(p.role) == "drums");
+
     // Validate (Gate 9 — bounds-check every param at the command boundary).
     if (p.trackName.empty())
     {
@@ -545,20 +556,56 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     const int scaleRoot = (p.scaleRoot >= 0) ? p.scaleRoot : model.getScaleRoot();
     const int scaleMode = (p.scaleMode >= 0) ? p.scaleMode : model.getScaleMode();
 
-    PhraseGenerator::PhraseParams pp;
-    pp.style = style;
-    pp.lengthBeats = p.lengthBeats;
-    pp.density = p.density;
-    pp.noteDuration = p.noteDuration;
-    pp.scaleRoot = scaleRoot;
-    pp.scaleMode = scaleMode;
-    pp.lowNote = p.lowNote;
-    pp.highNote = p.highNote;
-    pp.minVelocity = p.minVelocity;
-    pp.maxVelocity = p.maxVelocity;
-    pp.seed = p.seed;
+    std::vector<PhraseGenerator::GeneratedNote> notes;
 
-    const auto notes = PhraseGenerator::generatePhrase(pp);
+    if (isDrumsRole)
+    {
+        // Map role params to RhythmPatternGenerator.
+        // density → pulseA (kick voice), default pulseB (hat) = density/2 or 3.
+        RhythmPatternGenerator::Params rp;
+        rp.grid = 16;                           // 16th-note grid
+        rp.bars = static_cast<int>(std::ceil(p.lengthBeats / 4.0)); // 4 beats per bar
+        rp.pulseA = p.density;                   // kick density
+        rp.pulseB = std::max(3, p.density / 2); // hat density = half of kick, min 3
+        rp.rotationA = 1;
+        rp.rotationB = 1;
+        rp.pitchA = p.lowNote;                   // default C2=36
+        rp.pitchB = std::min(42, p.highNote);   // F#2=42 closed hat
+        rp.velocityA = p.maxVelocity;
+        rp.velocityB = (p.minVelocity + p.maxVelocity) / 2;
+        rp.dsl = "";                             // no DSL by default
+        rp.dslPitch = 39;                        // C#2 clap
+        rp.dslVelocity = (p.minVelocity + p.maxVelocity) / 2;
+
+        const auto drumNotes = RhythmPatternGenerator::generate(rp);
+        notes.reserve(drumNotes.size());
+        for (const auto& dn : drumNotes)
+        {
+            PhraseGenerator::GeneratedNote gn;
+            gn.noteNumber = dn.pitch;
+            gn.velocity = dn.velocity;
+            gn.startBeat = dn.startBeat;
+            gn.durationBeats = dn.durationBeats;
+            notes.push_back(gn);
+        }
+    }
+    else
+    {
+        PhraseGenerator::PhraseParams pp;
+        pp.style = style;
+        pp.lengthBeats = p.lengthBeats;
+        pp.density = p.density;
+        pp.noteDuration = p.noteDuration;
+        pp.scaleRoot = scaleRoot;
+        pp.scaleMode = scaleMode;
+        pp.lowNote = p.lowNote;
+        pp.highNote = p.highNote;
+        pp.minVelocity = p.minVelocity;
+        pp.maxVelocity = p.maxVelocity;
+        pp.seed = p.seed;
+
+        notes = PhraseGenerator::generatePhrase(pp);
+    }
 
     const int clipId = addMidiClip(trackIndex, p.startBeat, p.lengthBeats,
                                    "Part: " + p.trackName);

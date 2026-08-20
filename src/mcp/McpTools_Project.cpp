@@ -4,6 +4,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
+#include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/PluginManager.h"
 #include "../engine/Track.h"
@@ -81,7 +82,6 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
             int wanted = a.value("trackId").toInt(-1);
             QJsonArray arr;
             double bpm = e->getReadModel().getTransport().bpm;
-            double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
             for (int i = 0; i < tl.getNumChildren(); ++i) {
                 if (wanted >= 0 && wanted != i) continue;
                 auto cl = tl.getChild(i).getChildWithName(IDs::CLIP_LIST);
@@ -91,8 +91,8 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                         {"id", static_cast<int>(c.getProperty(IDs::clipID))},
                         {"trackId", i},
                         {"name", jstr(c.getProperty(IDs::name).toString())},
-                        {"start", static_cast<double>(c.getProperty(IDs::startTime)) * toBeats},
-                        {"duration", static_cast<double>(c.getProperty(IDs::duration)) * toBeats},
+                        {"start", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::startTime)), bpm)},
+                        {"duration", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::duration)), bpm)},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
                         {"gain", static_cast<double>(c.getProperty(IDs::gain))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
@@ -118,12 +118,11 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                     auto c = cl.getChild(j);
                     if (static_cast<int>(c.getProperty(IDs::clipID)) != cid) continue;
                     double bpm = e->getReadModel().getTransport().bpm;
-                    double toBeats = (bpm > 0) ? bpm / 60.0 : 1.0;
                     QJsonObject out{
                         {"id", cid}, {"trackId", i},
                         {"name", jstr(c.getProperty(IDs::name).toString())},
-                        {"start", static_cast<double>(c.getProperty(IDs::startTime)) * toBeats},
-                        {"duration", static_cast<double>(c.getProperty(IDs::duration)) * toBeats},
+                        {"start", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::startTime)), bpm)},
+                        {"duration", HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::duration)), bpm)},
                         {"type", jstr(c.getProperty(IDs::clipType).toString())},
                         {"gain", static_cast<double>(c.getProperty(IDs::gain))},
                         {"fadeIn", static_cast<double>(c.getProperty(IDs::fadeIn))},
@@ -186,17 +185,32 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"remove_track", "Remove a track (destructive).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
-                  {"dryRun",  QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+                  {"dryRun",  QJsonObject{{"type","boolean"}}},
+                  {"force",   QJsonObject{{"type","boolean"}}}}, {"trackId"}),
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto tl = m.getTrackListTree();
             int id = a.value("trackId").toInt();
             if (id < 0 || id >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
-            QString name = jstr(tl.getChild(id).getProperty(IDs::name).toString());
+            auto track = tl.getChild(id);
+            QString name = jstr(track.getProperty(IDs::name).toString());
+            auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+            int clipCount = clipList.isValid() ? clipList.getNumChildren() : 0;
             if (a.value("dryRun").toBool(false))
-                return McpToolResult::text(QString("would remove track %1 (%2)").arg(id).arg(name));
+            {
+                QString info = QString("would remove track %1 (%2), %3 clips").arg(id).arg(name).arg(clipCount);
+                if (clipCount > 0)
+                    info += ". Pass force:true to confirm deletion of clips.";
+                return McpToolResult::text(info);
+            }
+            if (clipCount > 0 && !a.value("force").toBool(false))
+                return McpToolResult::text(QString("track %1 (%2) has %3 clips. Pass force:true to confirm deletion.").arg(id).arg(name).arg(clipCount), true);
             tl.removeChild(id, &m.getUndoManager());
-            return McpToolResult::text(QString("removed track %1").arg(id));
+            int totalTracks = tl.getNumChildren();
+            QString result = QString("removed track %1 (%2)").arg(id).arg(name);
+            if (id < totalTracks)
+                result += QString(". Note: track IDs above %1 have shifted down by 1.").arg(id);
+            return McpToolResult::text(result);
         }});
 
     s.registerTool({"set_track", "Update track properties (partial).",
@@ -319,8 +333,8 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             auto tl = m.getTrackListTree();
             if (ti < 0 || ti >= tl.getNumChildren()) return McpToolResult::text("track not found", true);
             double bpm = e->getReadModel().getTransport().bpm;
-            double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
-            double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
+            double startSec = HDAW::beatsToSeconds(a.value("start").toDouble(), bpm);
+            double durSec = HDAW::beatsToSeconds(a.value("length").toDouble(), bpm);
             auto c = ProjectModel::createMidiClipEmpty(
                 juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()),
                 startSec, durSec);
@@ -344,8 +358,8 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             juce::File src(QString::fromUtf8(a.value("sourceFile").toString().toUtf8()).toStdString());
             if (!src.existsAsFile()) return McpToolResult::text("source file not found", true);
             double bpm = e->getReadModel().getTransport().bpm;
-            double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
-            double durSec = (bpm > 0) ? a.value("length").toDouble() * 60.0 / bpm : a.value("length").toDouble();
+            double startSec = HDAW::beatsToSeconds(a.value("start").toDouble(), bpm);
+            double durSec = HDAW::beatsToSeconds(a.value("length").toDouble(), bpm);
             auto c = ProjectModel::createAudioClip(
                 juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()),
                 startSec, durSec,
@@ -380,7 +394,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             auto& um = e->getProjectModel().getUndoManager();
             if (a.contains("start")) {
                 double bpm = e->getReadModel().getTransport().bpm;
-                double startSec = (bpm > 0) ? a.value("start").toDouble() * 60.0 / bpm : a.value("start").toDouble();
+                double startSec = HDAW::beatsToSeconds(a.value("start").toDouble(), bpm);
                 c.setProperty(IDs::startTime, startSec, &um);
             }
             if (a.contains("trackId")) {
@@ -456,10 +470,9 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
             auto& um = e->getProjectModel().getUndoManager();
             double bpm = e->getReadModel().getTransport().bpm;
-            double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
             if (a.contains("name"))     c.setProperty(IDs::name, juce::String(a.value("name").toString().toUtf8().constData()), &um);
-            if (a.contains("start"))    c.setProperty(IDs::startTime, a.value("start").toDouble() * factor, &um);
-            if (a.contains("duration")) c.setProperty(IDs::duration, a.value("duration").toDouble() * factor, &um);
+            if (a.contains("start"))    c.setProperty(IDs::startTime, HDAW::beatsToSeconds(a.value("start").toDouble(), bpm), &um);
+            if (a.contains("duration")) c.setProperty(IDs::duration, HDAW::beatsToSeconds(a.value("duration").toDouble(), bpm), &um);
             if (a.contains("gain"))     c.setProperty(IDs::gain, a.value("gain").toDouble(), &um);
             if (a.contains("fadeIn"))   c.setProperty(IDs::fadeIn, a.value("fadeIn").toDouble(), &um);
             if (a.contains("fadeOut"))  c.setProperty(IDs::fadeOut, a.value("fadeOut").toDouble(), &um);
@@ -478,8 +491,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             if (!src.isValid()) return McpToolResult::text("clip not found", true);
             int nti = a.contains("trackId") ? a.value("trackId").toInt() : ti;
             double bpm = e->getReadModel().getTransport().bpm;
-            double factor = (bpm > 0) ? 60.0 / bpm : 1.0;
-            double ns = a.contains("start") ? a.value("start").toDouble() * factor
+            double ns = a.contains("start") ? HDAW::beatsToSeconds(a.value("start").toDouble(), bpm)
                                             : static_cast<double>(src.getProperty(IDs::startTime));
             if (a.value("dryRun").toBool(false))
                 return McpToolResult::text(QString("would duplicate clip %1 to track %2 @ %3")
@@ -494,6 +506,45 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             copy.setProperty(IDs::startTime, ns, nullptr);
             tl.getChild(nti).getChildWithName(IDs::CLIP_LIST).addChild(copy, -1, &um);
             return McpToolResult::text(QString("clipId=%1").arg(newId));
+        }});
+
+    s.registerTool({"loop_clip", "Loop a clip's notes within the clip: repeats the note pattern N times, extending the clip duration. Each repetition offsets notes by the original clip duration.",
+        objSchema({{"clipId",      QJsonObject{{"type","integer"}}},
+                  {"repetitions", QJsonObject{{"type","integer"},{"minimum",1}}}},
+                 {"clipId","repetitions"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto c = findClip(e, a.value("clipId").toInt(), nullptr);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
+                return McpToolResult::text("clip is not MIDI", true);
+            int reps = a.value("repetitions").toInt();
+            if (reps < 1) return McpToolResult::text("repetitions must be >= 1", true);
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid() || nl.getNumChildren() == 0)
+                return McpToolResult::text("clip has no notes");
+            auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+            double bpm = e->getReadModel().getTransport().bpm;
+            double durSec = static_cast<double>(c.getProperty(IDs::duration));
+            double durBeats = HDAW::secondsToBeats(durSec, bpm);
+            int origCount = nl.getNumChildren();
+            um.beginNewTransaction();
+            for (int rep = 1; rep < reps; ++rep) {
+                double offset = rep * durBeats;
+                for (int k = 0; k < origCount; ++k) {
+                    auto src = nl.getChild(k);
+                    juce::ValueTree n(IDs::MIDI_NOTE);
+                    n.setProperty(IDs::noteID, m.allocateNoteID(), nullptr);
+                    n.setProperty(IDs::noteNumber, src.getProperty(IDs::noteNumber), &um);
+                    n.setProperty(IDs::startBeat, static_cast<double>(src.getProperty(IDs::startBeat)) + offset, &um);
+                    n.setProperty(IDs::durationBeats, src.getProperty(IDs::durationBeats), &um);
+                    n.setProperty(IDs::velocity, src.getProperty(IDs::velocity), &um);
+                    nl.addChild(n, -1, &um);
+                }
+            }
+            c.setProperty(IDs::duration, durSec * reps, &um);
+            int totalNotes = nl.getNumChildren();
+            return McpToolResult::text(QString("looped clip %1, now %2 notes, duration %3s")
+                .arg(static_cast<int>(c.getProperty(IDs::clipID))).arg(totalNotes).arg(durSec * reps));
         }});
 }
 
@@ -540,6 +591,66 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
             if (a.contains("duration")) n.setProperty(IDs::durationBeats, a.value("duration").toDouble(), &um);
             if (a.contains("velocity")) n.setProperty(IDs::velocity, a.value("velocity").toInt(), &um);
             return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_note_velocities", "Set velocities on notes in a clip (bulk). Supports absolute, relative, and random modes.",
+        objSchema({{"clipId",         QJsonObject{{"type","integer"}}},
+                  {"noteIds",        QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"}}}}},
+                  {"pitches",        QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}}},
+                  {"startGte",       QJsonObject{{"type","number"}}},
+                  {"startLt",        QJsonObject{{"type","number"}}},
+                  {"velocity",       QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"velocityOffset", QJsonObject{{"type","integer"}}},
+                  {"velocityMin",    QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"velocityMax",    QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
+                 {"clipId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            auto c = findClip(e, a.value("clipId").toInt(), nullptr);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid()) return McpToolResult::text("ok");
+            bool hasAbs = a.contains("velocity");
+            bool hasRel = a.contains("velocityOffset");
+            bool hasRng = a.contains("velocityMin") && a.contains("velocityMax");
+            if (!hasAbs && !hasRel && !hasRng)
+                return McpToolResult::text("provide velocity, velocityOffset, or velocityMin+velocityMax", true);
+            QSet<int> pitches; for (const auto& p : a.value("pitches").toArray()) pitches.insert(p.toInt());
+            QSet<int> ids;     for (const auto& i : a.value("noteIds").toArray()) ids.insert(i.toInt());
+            bool hasGte = a.contains("startGte"); bool hasLt = a.contains("startLt");
+            double gte = a.value("startGte").toDouble(); double lt = a.value("startLt").toDouble();
+            int vAbs = a.value("velocity").toInt();
+            int vOff = a.value("velocityOffset").toInt();
+            int vMin = a.value("velocityMin").toInt();
+            int vMax = a.value("velocityMax").toInt();
+            auto& um = e->getProjectModel().getUndoManager();
+            um.beginNewTransaction();
+            int modified = 0;
+            for (int k = 0; k < nl.getNumChildren(); ++k) {
+                auto n = nl.getChild(k);
+                int nid = static_cast<int>(n.getProperty(IDs::noteID));
+                int p   = static_cast<int>(n.getProperty(IDs::noteNumber));
+                double s= static_cast<double>(n.getProperty(IDs::startBeat));
+                bool match = false;
+                if (!ids.isEmpty() && ids.contains(nid)) match = true;
+                if (!pitches.isEmpty() && pitches.contains(p)) match = true;
+                if (hasGte && s < gte) match = false;
+                if (hasLt  && s >= lt) match = false;
+                if (!match) continue;
+                int newVel = 0;
+                if (hasAbs) {
+                    newVel = vAbs;
+                } else if (hasRel) {
+                    newVel = static_cast<int>(n.getProperty(IDs::velocity)) + vOff;
+                } else {
+                    newVel = vMin + (std::rand() % (vMax - vMin + 1));
+                }
+                newVel = (std::max)(1, (std::min)(127, newVel));
+                n.setProperty(IDs::velocity, newVel, &um);
+                ++modified;
+            }
+            return McpToolResult::text(QString("modified %1 notes").arg(modified));
         }});
 
     s.registerTool({"remove_notes", "Remove notes by filter or by noteIds (destructive).",
@@ -740,7 +851,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         {"Lead",       PhraseGenerator::Lead},
         {"RandomWalk", PhraseGenerator::RandomWalk},
         {"Buildup",    PhraseGenerator::Buildup},
-        {"Euclidean",  PhraseGenerator::Euclidean}
+        {"Euclidean",  PhraseGenerator::Euclidean},
+        {"Percussion", PhraseGenerator::Percussion}
     };
 
     s.registerTool({"set_scale", "Set the project scale (root 0..11, mode 0..20).",
@@ -825,13 +937,13 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         if (trackId < 0 || trackId >= tl.getNumChildren())
             return McpToolResult::text("track not found", true);
         double bpm = e->getReadModel().getTransport().bpm;
-        double startSec = (bpm > 0) ? start * 60.0 / bpm : start;
-        double durSec = (bpm > 0) ? length * 60.0 / bpm : length;
+        double startSec = HDAW::beatsToSeconds(start, bpm);
+        double durSec = HDAW::beatsToSeconds(length, bpm);
         auto c = ProjectModel::createMidiClipEmpty("Generated", startSec, durSec);
         c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), nullptr);
         auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
         for (const auto& gn : notes)
-            nl.addChild(ProjectModel::createMidiNote(gn.noteNumber, gn.velocity, gn.startBeat, gn.durationBeats), -1, nullptr);
+            nl.addChild(ProjectModel::createMidiNote(gn.noteNumber, static_cast<float>(gn.velocity) / 127.0f, gn.startBeat, gn.durationBeats), -1, nullptr);
         int cid = static_cast<int>(c.getProperty(IDs::clipID));
         tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
         return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg((int) notes.size()));
@@ -840,7 +952,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"style",       QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion"}},
+                      {"description","Phrase style: Standard (mixed), Arpeggio (sequential), BassLine (low range), ChordStab (short chords), Pad (sustained), Lead (high melody), RandomWalk (step-wise), Buildup (crescendo), Euclidean (rhythmic), Percussion (drums)."}}},
                   {"length",      QJsonObject{{"type","number"}}},
                   {"density",     QJsonObject{{"type","integer"}}},
                   {"start",       QJsonObject{{"type","number"}}},
@@ -869,6 +982,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
             p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
             auto notes = PhraseGenerator::generatePhrase(p);
+            if (notes.empty())
+                return McpToolResult::text("phrase generator produced 0 notes — check scale/range settings", true);
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0),
                           a.value("length").toDouble(), notes);
@@ -956,8 +1071,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pattern into a new MIDI clip: two euclidean pulses (polyrhythm, e.g. 4-over-3) plus an optional rhythm-DSL voice ('x' '-' '[..]xN' 'E(k,n[,rot])'). Pure function of its params (no seed).",
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"start",       QJsonObject{{"type","number"}}},
-                  {"grid",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",64}}},
-                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}},
+                  {"grid",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",64},{"description","Steps per bar (16 = 16th notes). Notes align to beat grid positions."}}},
+                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16},{"description","Number of bars (not seconds). Each bar = 4 beats."}}},
                   {"pulseA",      QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"pulseB",      QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"rotationA",   QJsonObject{{"type","integer"},{"minimum",0}}},
@@ -1017,7 +1132,10 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"enableSnare",     QJsonObject{{"type","boolean"}}},
                   {"enableBass",      QJsonObject{{"type","boolean"}}},
                   {"enableLead",      QJsonObject{{"type","boolean"}}},
-                  {"enableChords",    QJsonObject{{"type","boolean"}}}},
+                  {"enableChords",    QJsonObject{{"type","boolean"}}},
+                  {"targetTrackIds", QJsonObject{{"type","object"},
+                      {"description","Map role names to track indices: {\"Kick\":0, \"Bass\":1, ...}. Roles without mapping create new tracks."},
+                      {"additionalProperties", QJsonObject{{"type","integer"}}}}}},
                  {"bars"}),
         [e](const QJsonObject& a) -> McpToolResult {
             HDAW::ArrangementParams p;
@@ -1036,6 +1154,11 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.enableBass = a.contains("enableBass") ? a.value("enableBass").toBool() : true;
             p.enableLead = a.contains("enableLead") ? a.value("enableLead").toBool() : false;
             p.enableChords = a.contains("enableChords") ? a.value("enableChords").toBool() : false;
+            if (a.contains("targetTrackIds")) {
+                auto obj = a.value("targetTrackIds").toObject();
+                for (auto it = obj.begin(); it != obj.end(); ++it)
+                    p.targetTrackIds[it.key().toStdString()] = it.value().toInt();
+            }
             auto r = e->getProjectCommands().generateArrangement(p);
             return McpToolResult::text(QString("tracks=%1 clips=%2 notes=%3 seed=%4")
                 .arg(r.trackIndices.size()).arg(r.clipIds.size()).arg(r.noteCount)
@@ -1046,7 +1169,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Compose a complete instrument part in one command: add a track with an instrument FX slot, generate a phrase, paint it across the arrangement, and optionally gain-stage to a target RMS. One undo unit. Calls the same engine command as the composition.addInstrumentPart RPC.",
         objSchema({{"trackName",    QJsonObject{{"type","string"}}},
                   {"style",        QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion"}}}},
                   {"role",         QJsonObject{{"type","string"},{"description","Part template: bass | lead | chords | drums (case-insensitive). When provided, fills unset phrase params with role defaults; explicit params always win."}}},
                   {"pluginId",     QJsonObject{{"type","string"}}},
                   {"programIndex", QJsonObject{{"type","integer"},{"minimum",-1}}},
