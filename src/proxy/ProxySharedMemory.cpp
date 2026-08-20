@@ -6,6 +6,11 @@ namespace proxy {
 ShmRegion::~ShmRegion() { close(); }
 
 bool ShmRegion::create(const std::string& name, uint32_t size) {
+    // Clear the last-error slot first so the ERROR_ALREADY_EXISTS check below
+    // is deterministic: GetLastError is only guaranteed meaningful when it
+    // distinguishes the two success outcomes documented for CreateFileMapping
+    // (newly created vs. already existing).
+    SetLastError(ERROR_SUCCESS);
     hMap = CreateFileMappingA(
         INVALID_HANDLE_VALUE,
         nullptr,
@@ -14,6 +19,17 @@ bool ShmRegion::create(const std::string& name, uint32_t size) {
         size,
         name.c_str());
     if (hMap == INVALID_HANDLE_VALUE) return false;
+
+    // A same-size stale region is silently OPENED and shared by
+    // CreateFileMappingA — never acceptable for a fresh spawn: the parent
+    // would memset the OTHER domain's/process's rings and hang its child.
+    // Treat an existing region as a hard failure so callers can retry with a
+    // different name instead of corrupting a live region.
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(hMap);
+        hMap = INVALID_HANDLE_VALUE;
+        return false;
+    }
 
     basePtr = MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, size);
     if (!basePtr) {

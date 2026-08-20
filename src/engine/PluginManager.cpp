@@ -120,9 +120,22 @@ std::unique_ptr<PluginManager> PluginManager::createOfflineCopy(const PluginMana
 void PluginManager::setProxyNamespacePrefix(const juce::String& prefix)
 {
 #if HDAW_PLUGIN_ISOLATION
+    // Callers declare the DOMAIN LABEL; uniqueness is enforced by
+    // construction. Appending the pid hex + process-wide instance counter
+    // guarantees no two managers (live or offline copies) ever share an OS
+    // name namespace, even for the same label ("export_", ...).
     if (proxyProcessMgr)
-        proxyProcessMgr->setNamePrefix(prefix.toStdString());
+        proxyProcessMgr->setNamePrefix(proxy::ProxyProcessManager::makeUniqueNamespacePrefix(prefix.toStdString()));
 #endif
+}
+
+juce::String PluginManager::getProxyNamespacePrefix() const
+{
+#if HDAW_PLUGIN_ISOLATION
+    if (proxyProcessMgr)
+        return proxyProcessMgr->getNamePrefix();
+#endif
+    return {};
 }
 
 PluginManager::~PluginManager()
@@ -629,7 +642,7 @@ std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(
         auto resolvedDesc = resolveIdentifierToPath(desc, knownPluginList);
 
         if (!proxyProcessMgr->spawnPluginHost(
-                resolvedDesc.fileOrIdentifier.toStdString(), slotId))
+                resolvedDesc.fileOrIdentifier.toStdString(), slotId, &slotId))
         {
             errorMessage = "Failed to spawn isolated plugin process";
             return nullptr;
@@ -951,7 +964,7 @@ bool PluginManager::respawnIsolatedSlot(uint32_t oldSlotId, const juce::String& 
     //    silence until PREPARE lands on the new region, so this gap is benign.
     auto newSlotId = nextProxySlotId.fetch_add(1, std::memory_order_relaxed);
 
-    if (!proxyProcessMgr->spawnPluginHost(resolvedPath.toStdString(), newSlotId))
+    if (!proxyProcessMgr->spawnPluginHost(resolvedPath.toStdString(), newSlotId, &newSlotId))
         return false;
 
     proxyProcessMgr->setSlotCrashCallback(newSlotId,

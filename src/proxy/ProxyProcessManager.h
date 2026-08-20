@@ -73,7 +73,7 @@ public:
     ProxyProcessManager(const ProxyProcessManager&) = delete;
     ProxyProcessManager& operator=(const ProxyProcessManager&) = delete;
 
-    bool spawnPluginHost(const std::string& pluginPath, uint32_t slotId);
+    bool spawnPluginHost(const std::string& pluginPath, uint32_t slotId, uint32_t* actualSlotId = nullptr);
     bool killPluginHost(uint32_t slotId, KillMode mode);
     bool isAlive(uint32_t slotId);
     bool isChildAlive(uint32_t slotId) const;
@@ -94,19 +94,26 @@ public:
     void stopHealthMonitor();
 
     // Per-domain namespace for the OS named objects (pipes/shm) this manager
-    // creates. Empty for the live domain; the offline-export domain uses a
-    // distinct prefix so its slot ids can never collide with live slots on
-    // the OS namespace even though both counters start at 1. Must be set
-    // before any spawnPluginHost call. Children are agnostic: they receive
-    // the exact pipe/shm names on their command line.
+    // creates. The constructor AUTO-GENERATES a unique prefix (pid hex +
+    // process-wide instance counter) via makeUniqueNamespacePrefix, so every
+    // ProxyProcessManager owns a distinct OS name namespace by construction
+    // and the old "must be set before any spawnPluginHost call" contract is
+    // already satisfied from the ctor. This raw setter remains an escape hatch
+    // for callers that need a specific prefix verbatim; for domain labels
+    // (e.g. "export_") prefer PluginManager::setProxyNamespacePrefix, which
+    // ALWAYS appends uniqueness on top of the label. Children are agnostic:
+    // they receive the exact pipe/shm names on their command line.
     void setNamePrefix(const std::string& prefix) { namePrefix = prefix; }
     const std::string& getNamePrefix() const { return namePrefix; }
 
+    // Returns domainLabel + "<pid-hex>_" + "<process-wide instance counter>_" so
+    // every ProxyProcessManager gets a unique OS name namespace by construction.
+    static std::string makeUniqueNamespacePrefix(const std::string& domainLabel);
+
     static std::string getHostExePath();
 
-private:
-    std::string makePipeName(uint32_t slotId);
-    std::string makeShmName(uint32_t slotId);
+    std::string makePipeName(uint32_t slotId) const;
+    std::string makeShmName(uint32_t slotId) const;
 
     std::string namePrefix;
 

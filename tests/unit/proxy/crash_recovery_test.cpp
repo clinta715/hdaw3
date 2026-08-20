@@ -486,10 +486,12 @@ TEST(CrashRecovery, OfflinePluginDomainIsolatedFromLive) {
     // SAME id must not clobber the live slot's state file.
     {
         auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+        const auto livePrefix = livePm.getProxyNamespacePrefix();
+        const auto exportPrefix = offlinePm->getProxyNamespacePrefix();
         const auto liveStateFile = tempDir.getChildFile(
-            "hdaw_proxy_state_" + juce::String((int)liveSlotId) + ".bin");
+            "hdaw_proxy_state_" + livePrefix + juce::String((int)liveSlotId) + ".bin");
         const auto exportStateFile = tempDir.getChildFile(
-            "hdaw_proxy_state_export_" + juce::String((int)offlineProxy1->getSlotId()) + ".bin");
+            "hdaw_proxy_state_" + exportPrefix + juce::String((int)offlineProxy1->getSlotId()) + ".bin");
         liveStateFile.deleteFile();
         exportStateFile.deleteFile();
 

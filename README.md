@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.23.1
+**Current version**: 0.23.2
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.23.1)
+## What works today (v0.23.2)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -321,6 +321,27 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.23.2 — Part templates (role defaults), proxy namespace collision fix
+
+**Proxy namespace fix (lesson-20 permanent guard):**
+- Every `ProxyProcessManager` now auto-generates a unique namespace prefix
+  (`<pid-hex>_<instance-counter>`) in its constructor — two managers in one
+  process (or overlapping exports across processes) can never collide on
+  pipe/shm/state-file names. `spawnPluginHost` retries with a bumped slot id
+  (up to 8 times) when a name is detected as held at spawn time. `KillGraceful`
+  now waits for child termination to ensure same-slot re-spawn never hits a
+  lingering mapping from the prior child.
+- `ShmRegion::create` treats `ERROR_ALREADY_EXISTS` as a hard failure — never
+  silently opens a same-size existing region.
+- The five CrashRecovery tests + `PluginIsolation.LiveDropDrainsStaleOutput`
+  now pass in the **full** suite without needing to kill stale engines first.
+
+**Part templates (typed track presets):**
+- `addInstrumentPart` accepts a `role` parameter (`Bass`, `Lead`, `Chords`,
+  `Drums`) with sensible defaults (style, note range, density, velocity, target
+  RMS, scale mode). Explicit params always win. Exposed via RPC + MCP.
+- 963 gtest suite / 0 failures.
 
 ### v0.23.1 — WASAPI device enumeration fix (COM init), choppy-audio fix
 

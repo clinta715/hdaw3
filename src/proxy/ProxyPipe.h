@@ -13,7 +13,7 @@ public:
     PipeServer(const PipeServer&) = delete;
     PipeServer& operator=(const PipeServer&) = delete;
 
-    bool start();
+    bool start(DWORD* errorOut = nullptr);
     void stop();
     bool receive(ProxyMessage& msg);
     bool send(const ProxyResponse& resp);

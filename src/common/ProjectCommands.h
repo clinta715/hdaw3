@@ -323,6 +323,22 @@ public:
     // at this boundary (lesson #1); only the gain-staging render window is in
     // seconds. The composite is ONE undo unit ("Add instrument part"); the
     // gain-stage fader write is a SEPARATE undo unit ("Auto gain stage").
+    // Role presets: a role turns one word into a full typed preset (Bass/Lead/
+    // Chords/Drums → style + range + density + velocities + gain staging).
+    // explicitMask marks which of the 9 role-defaultable fields the caller
+    // explicitly provided; explicit values always win over role defaults.
+    enum InstrumentPartRoleBit : uint32_t {
+        kRoleBitStyle            = 1u << 0,
+        kRoleBitLowNote          = 1u << 1,
+        kRoleBitHighNote         = 1u << 2,
+        kRoleBitDensity          = 1u << 3,
+        kRoleBitNoteDuration     = 1u << 4,
+        kRoleBitMinVelocity      = 1u << 5,
+        kRoleBitMaxVelocity      = 1u << 6,
+        kRoleBitTargetRms        = 1u << 7,
+        kRoleBitAllowGlobalScale = 1u << 8,
+    };
+
     struct InstrumentPartParams {
         std::string trackName;
         std::string style;              // PhraseGenerator style name
@@ -345,6 +361,8 @@ public:
         double windowSeconds = 4.0;
         bool verify = false;
         bool allowGlobalScale = false;  // permit the master-bus global-scale fallback
+        std::string role;               // "" = none; else "bass"|"lead"|"chords"|"drums" (case-insensitive)
+        uint32_t explicitMask = 0;      // bits set = caller explicitly provided the field
     };
 
     struct GainStageResult {

@@ -565,6 +565,70 @@ TEST(FrontendServer, AddInstrumentPartRpc) {
     s.tearDown();
 }
 
+// RPC round-trip: composition.addInstrumentPart accepts role (typed preset)
+// with NO style — the engine fills the bass defaults and the composite
+// succeeds exactly like the explicit path (G2 contract).
+TEST(FrontendServer, AddInstrumentPartRoleRpc) {
+    EngineAndServer s;
+    s.setUp();
+    const int before = s.engine.getReadModel().getTrackCount();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject params{
+        { "trackName", "RPC Bass" },
+        { "role", "bass" },
+        { "lengthBeats", 4.0 },
+        { "placement", "region" },
+        { "count", 1 },
+        { "targetRms", 0 },
+    };
+    auto resp = client.call(1, "composition.addInstrumentPart", params, 5000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_FALSE(resp.contains("error")) << resp.value("error").toObject()
+                                               .value("message").toString().toStdString();
+    auto result = resp.value("result").toObject();
+    EXPECT_GE(result.value("trackIndex").toInt(-1), 0);
+    EXPECT_TRUE(result.value("clipIds").isArray());
+    EXPECT_GE(result.value("clipIds").toArray().size(), 1);
+    EXPECT_GT(result.value("noteCount").toInt(), 0);
+
+    // The composite added exactly one track.
+    EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before + 1);
+
+    client.close();
+    s.tearDown();
+}
+
+// RPC guard: no style and no role → JSON-RPC InvalidParams (-32602) before any
+// engine call (preserves the old missing-style contract shape).
+TEST(FrontendServer, AddInstrumentPartMissingStyleAndRole) {
+    EngineAndServer s;
+    s.setUp();
+    const int before = s.engine.getReadModel().getTrackCount();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject params{
+        { "trackName", "RPC Nothing" },
+        { "lengthBeats", 4.0 },
+    };
+    auto resp = client.call(1, "composition.addInstrumentPart", params, 5000);
+    ASSERT_FALSE(resp.isEmpty()) << "no response";
+    ASSERT_TRUE(resp.contains("error"));
+    auto err = resp.value("error").toObject();
+    EXPECT_EQ(err.value("code").toInt(), -32602);
+    EXPECT_TRUE(err.value("message").toString().contains("style required (or provide role)"));
+
+    // Rejected at the router — no engine mutation.
+    EXPECT_EQ(s.engine.getReadModel().getTrackCount(), before);
+
+    client.close();
+    s.tearDown();
+}
+
 // RPC round-trip: composition.auditionPlugin solo-renders a plugin probe track
 // over a short window and returns the full AuditionResult mapping. The fake
 // plugin id completes the probe (audible=false) and it is reverted — track

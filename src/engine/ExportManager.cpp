@@ -130,9 +130,13 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
     // cache IO) so createPluginInstance / resolveIdentifierToPath work
     // offline, and its ProxyProcessManager gets its own OS name namespace
     // (pipes/shm/crash-state files) so its slot ids can never collide with
-    // live slots even though both counters start at 1. Its health monitor is
-    // never started (createPluginInstance skips it for offline domains) and
-    // its crash callbacks land only in its own registry.
+    // live slots even though both counters start at 1. The "export_" domain
+    // label below is made UNIQUE PER OFFLINE COPY by setProxyNamespacePrefix
+    // → makeUniqueNamespacePrefix ("export_<pidhex>_<n>_"), so overlapping
+    // exports can never share a static "export_" domain — a stale engine's
+    // children could otherwise hold every export slot's pipe/shm names. Its
+    // health monitor is never started (createPluginInstance skips it for
+    // offline domains) and its crash callbacks land only in its own registry.
     //
     // Declared BEFORE the render-graph scope so C++ reverse destruction
     // order guarantees it outlives every ~PluginProxySlot (which calls back

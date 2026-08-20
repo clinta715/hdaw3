@@ -10,6 +10,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -31,6 +32,47 @@ bool styleFromName(const std::string& name, PhraseGenerator::Style& out)
     else if (name == "Buildup")    { out = PhraseGenerator::Buildup;    return true; }
     else if (name == "Euclidean")  { out = PhraseGenerator::Euclidean;  return true; }
     return false;
+}
+
+// ASCII lowercase for role normalization (role names are ASCII).
+std::string toLowerAscii(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+
+// Role → typed-preset defaults for the 9 role-defaultable InstrumentPartParams
+// fields. Indexed 0=bass, 1=lead, 2=chords, 3=drums. A field whose explicitMask
+// bit is NOT set receives its role default; explicit values always win.
+struct RoleDefaults
+{
+    const char* style;
+    int lowNote;
+    int highNote;
+    int density;
+    double noteDuration;
+    int minVelocity;
+    int maxVelocity;
+    float targetRms;
+    bool allowGlobalScale;
+};
+
+const RoleDefaults kRoleDefaults[] = {
+    //        style       low high den dur   min max rms     scale
+    { "BassLine",  36,  48, 10, 0.5,  70, 110, 0.126f, true  }, // bass
+    { "Lead",      60,  76,  6, 0.25, 70, 110, 0.0f,   false }, // lead
+    { "ChordStab", 48,  72,  5, 2.0,  60, 100, 0.0f,   false }, // chords
+    { "Euclidean", 36,  60, 12, 0.25, 90, 120, 0.0f,   false }, // drums
+};
+
+int roleIndex(const std::string& role)
+{
+    if      (role == "bass")   return 0;
+    else if (role == "lead")   return 1;
+    else if (role == "chords") return 2;
+    else if (role == "drums")  return 3;
+    return -1;
 }
 
 // Spectral band presence for verifyPart (low/mid/high energy fractions).
@@ -418,34 +460,64 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
 {
     InstrumentPartResult result;
 
+    // Role presets resolve BEFORE any mutation (Gate 9): normalize + validate
+    // the role, then fill defaults for any role-defaultable field the caller
+    // did not explicitly provide (explicitMask). A role guarantees a style, so
+    // the pipeline below runs exactly as before with a filled-in params copy.
+    auto p = params;
+    if (!p.role.empty())
+    {
+        const int idx = roleIndex(toLowerAscii(p.role));
+        if (idx < 0)
+        {
+            result.error = "unknown role: " + p.role;
+            return result;
+        }
+        const RoleDefaults& d = kRoleDefaults[idx];
+        if ((p.explicitMask & kRoleBitStyle) == 0)            p.style = d.style;
+        if ((p.explicitMask & kRoleBitLowNote) == 0)          p.lowNote = d.lowNote;
+        if ((p.explicitMask & kRoleBitHighNote) == 0)         p.highNote = d.highNote;
+        if ((p.explicitMask & kRoleBitDensity) == 0)          p.density = d.density;
+        if ((p.explicitMask & kRoleBitNoteDuration) == 0)     p.noteDuration = d.noteDuration;
+        if ((p.explicitMask & kRoleBitMinVelocity) == 0)      p.minVelocity = d.minVelocity;
+        if ((p.explicitMask & kRoleBitMaxVelocity) == 0)      p.maxVelocity = d.maxVelocity;
+        if ((p.explicitMask & kRoleBitTargetRms) == 0)        p.targetRms = d.targetRms;
+        if ((p.explicitMask & kRoleBitAllowGlobalScale) == 0) p.allowGlobalScale = d.allowGlobalScale;
+    }
+    else if (p.style.empty())
+    {
+        result.error = "style or role required";
+        return result;
+    }
+
     // Validate (Gate 9 — bounds-check every param at the command boundary).
-    if (params.trackName.empty())
+    if (p.trackName.empty())
     {
         result.error = "trackName is required";
         return result;
     }
     PhraseGenerator::Style style;
-    if (!styleFromName(params.style, style))
+    if (!styleFromName(p.style, style))
     {
-        result.error = "unknown style: " + params.style;
+        result.error = "unknown style: " + p.style;
         return result;
     }
-    if (params.placement != "region" && params.placement != "wholeSong")
+    if (p.placement != "region" && p.placement != "wholeSong")
     {
         result.error = "placement must be 'region' or 'wholeSong'";
         return result;
     }
-    if (params.count < 1)
+    if (p.count < 1)
     {
         result.error = "count must be >= 1";
         return result;
     }
-    if (!(params.lengthBeats > 0.0))
+    if (!(p.lengthBeats > 0.0))
     {
         result.error = "lengthBeats must be > 0";
         return result;
     }
-    if (params.programIndex >= 0 && params.pluginId.empty())
+    if (p.programIndex >= 0 && p.pluginId.empty())
     {
         result.error = "programIndex requires a pluginId";
         return result;
@@ -456,7 +528,7 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
 
     beginTransaction("Add instrument part");
 
-    const int trackIndex = addTrack(params.trackName, -1, -1, 0);
+    const int trackIndex = addTrack(p.trackName, -1, -1, 0);
     if (trackIndex < 0)
     {
         endTransaction();
@@ -467,29 +539,29 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     // Instrument FX slot (internal fm_synth by default, or a hosted plugin).
     // addFxSlotInternal builds the slot tree without a per-op rebuild; the
     // single rebuildRoutingGraph at the end covers it (lesson 6).
-    addFxSlotInternal(trackIndex, params.pluginId.empty() ? "fm_synth" : "plugin",
-                      -1, params.pluginId);
+    addFxSlotInternal(trackIndex, p.pluginId.empty() ? "fm_synth" : "plugin",
+                      -1, p.pluginId);
 
-    const int scaleRoot = (params.scaleRoot >= 0) ? params.scaleRoot : model.getScaleRoot();
-    const int scaleMode = (params.scaleMode >= 0) ? params.scaleMode : model.getScaleMode();
+    const int scaleRoot = (p.scaleRoot >= 0) ? p.scaleRoot : model.getScaleRoot();
+    const int scaleMode = (p.scaleMode >= 0) ? p.scaleMode : model.getScaleMode();
 
     PhraseGenerator::PhraseParams pp;
     pp.style = style;
-    pp.lengthBeats = params.lengthBeats;
-    pp.density = params.density;
-    pp.noteDuration = params.noteDuration;
+    pp.lengthBeats = p.lengthBeats;
+    pp.density = p.density;
+    pp.noteDuration = p.noteDuration;
     pp.scaleRoot = scaleRoot;
     pp.scaleMode = scaleMode;
-    pp.lowNote = params.lowNote;
-    pp.highNote = params.highNote;
-    pp.minVelocity = params.minVelocity;
-    pp.maxVelocity = params.maxVelocity;
-    pp.seed = params.seed;
+    pp.lowNote = p.lowNote;
+    pp.highNote = p.highNote;
+    pp.minVelocity = p.minVelocity;
+    pp.maxVelocity = p.maxVelocity;
+    pp.seed = p.seed;
 
     const auto notes = PhraseGenerator::generatePhrase(pp);
 
-    const int clipId = addMidiClip(trackIndex, params.startBeat, params.lengthBeats,
-                                   "Part: " + params.trackName);
+    const int clipId = addMidiClip(trackIndex, p.startBeat, p.lengthBeats,
+                                   "Part: " + p.trackName);
     if (clipId < 0)
     {
         endTransaction();
@@ -506,20 +578,20 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     // Placement — paint ghost copies inline in the SAME transaction so the
     // whole part is one undo unit and one graph rebuild.
     int copies = 0;
-    if (params.placement == "region")
+    if (p.placement == "region")
     {
-        copies = params.count - 1;
+        copies = p.count - 1;
     }
     else // wholeSong: cover the whole project with lengthBeats-spaced copies
     {
         const double projectDurSec = HDAW::ExportManager::calculateProjectDuration(model);
         const double projectDurBeats = (bpm > 0) ? projectDurSec * bpm / 60.0 : projectDurSec;
-        copies = std::max(0, static_cast<int>(std::ceil(projectDurBeats / params.lengthBeats)) - 1);
+        copies = std::max(0, static_cast<int>(std::ceil(projectDurBeats / p.lengthBeats)) - 1);
     }
     if (copies > 0)
     {
         const auto copyIds = paintGhostCopies(engine_, trackIndex, clipId, copies,
-                                              params.lengthBeats, params.startBeat);
+                                              p.lengthBeats, p.startBeat);
         result.clipIds.insert(result.clipIds.end(), copyIds.begin(), copyIds.end());
     }
 
@@ -530,10 +602,10 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
     // slot's pluginState so the gain-stage tree-copy render hears it. On
     // failure the composite is closed with an error, matching the existing
     // mid-composite error path (addTrack/addMidiClip failures).
-    if (params.programIndex >= 0)
+    if (p.programIndex >= 0)
     {
         std::string progErr;
-        if (!applyPluginProgram(engine_, trackIndex, 0, params.programIndex, progErr))
+        if (!applyPluginProgram(engine_, trackIndex, 0, p.programIndex, progErr))
         {
             // Roll the whole composite back so a bad program pick leaves no
             // dead track behind: undo() reverts every ValueTree action since
@@ -555,8 +627,8 @@ ProjectCommands::InstrumentPartResult AudioEngineCommands::addInstrumentPart(con
 
     // Optional gain staging — a SEPARATE undo unit ("Auto gain stage"), so
     // undo #1 removes the part and undo #2 removes the fader.
-    if (params.targetRms > 0.0f)
-        result.gain = autoGainToTarget(trackIndex, params.targetRms, params.windowSeconds, params.verify, params.allowGlobalScale);
+    if (p.targetRms > 0.0f)
+        result.gain = autoGainToTarget(trackIndex, p.targetRms, p.windowSeconds, p.verify, p.allowGlobalScale);
 
     return result;
 }

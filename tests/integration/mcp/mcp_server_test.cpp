@@ -731,6 +731,103 @@ TEST(McpServer, AddInstrumentPartTool) {
     s.setTransport(nullptr);
 }
 
+// role:"bass" with NO style → the engine fills the typed bass preset
+// (BassLine, low range, density, velocities). Explicit targetRms:0 wins over
+// the role's ~-18 dB default, so no gain-stage render runs. The produced notes
+// must match a hand-configured bass phrase.
+TEST(McpServer, AddInstrumentPartRole) {
+    AudioEngine engine;
+    engine.initialize();  // default project: 3 tracks
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const int before = engine.getReadModel().getTrackCount();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"add_instrument_part","arguments":{"trackName":"MCP Bass","role":"bass","lengthBeats":4,"placement":"region","count":1,"targetRms":0,"seed":11}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    const QString txt = textOf(r);
+    ASSERT_TRUE(txt.contains("trackIndex=")) << "got: [" << txt.toStdString() << "]";
+    QString tiStr = txt.mid(txt.indexOf("trackIndex=") + 11);
+    tiStr = tiStr.left(tiStr.indexOf(' '));
+    const int trackIndex = tiStr.toInt();
+    ASSERT_GE(trackIndex, 0);
+
+    // The composite added exactly one track.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before + 1);
+
+    // Locate the tool-created clip (the composite's only clip on that track).
+    int roleClip = -1;
+    for (const auto& c : engine.getReadModel().snapshot().clips)
+        if (c.trackIndex == trackIndex) { roleClip = c.clipId; break; }
+    ASSERT_GE(roleClip, 0);
+
+    // Hand-configured bass part with the same seed: the role defaults must
+    // reproduce the exact same phrase.
+    ProjectCommands::InstrumentPartParams hand;
+    hand.trackName = "BassHand";
+    hand.style = "BassLine";
+    hand.lengthBeats = 4.0;
+    hand.placement = "region";
+    hand.count = 1;
+    hand.lowNote = 36;
+    hand.highNote = 48;
+    hand.density = 10;
+    hand.noteDuration = 0.5;
+    hand.minVelocity = 70;
+    hand.maxVelocity = 110;
+    hand.targetRms = 0.0f;
+    hand.seed = 11;
+    auto handRes = engine.getProjectCommands().addInstrumentPart(hand);
+    ASSERT_TRUE(handRes.error.empty()) << handRes.error;
+
+    const auto roleNotes = engine.getReadModel().getNotes(roleClip);
+    const auto handNotes = engine.getReadModel().getNotes(handRes.clipIds[0]);
+    EXPECT_EQ(roleNotes.size(), handNotes.size());
+    ASSERT_GT(roleNotes.size(), 0u);
+
+    // The bass range [36,48] — proving the role preset, not another style.
+    int minPitch = 128, maxPitch = -1;
+    for (const auto& n : roleNotes)
+    {
+        if (n.pitch < minPitch) minPitch = n.pitch;
+        if (n.pitch > maxPitch) maxPitch = n.pitch;
+    }
+    EXPECT_GE(minPitch, 36);
+    EXPECT_LE(maxPitch, 48);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+// Unknown role → clean in-band tool error ("unknown role"), project untouched.
+TEST(McpServer, AddInstrumentPartUnknownRole) {
+    AudioEngine engine;
+    engine.initialize();
+    const int before = engine.getReadModel().getTrackCount();
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"add_instrument_part","arguments":{"trackName":"Electric","role":"Electric","count":1}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_TRUE(r.value("result").toObject().value("isError").toBool(true));
+    EXPECT_TRUE(textOf(r).contains("unknown role")) << "got: [" << textOf(r).toStdString() << "]";
+
+    // Rejected before any tree mutation — no track added.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, AutoGainToTargetTool) {
     AudioEngine engine;
     engine.initialize();

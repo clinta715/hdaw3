@@ -9,7 +9,7 @@ PipeServer::PipeServer(const std::string& pipeName) : name(pipeName) {}
 
 PipeServer::~PipeServer() { stop(); }
 
-bool PipeServer::start() {
+bool PipeServer::start(DWORD* errorOut) {
     // FILE_FLAG_OVERLAPPED is mandatory for the bounded (WaitForSingleObject)
     // IO used in receiveResp — a synchronous pipe handle cannot be given a
     // per-call timeout. Because the handle is overlapped, EVERY read/write on
@@ -23,7 +23,10 @@ bool PipeServer::start() {
         sizeof(ProxyMessage),
         0,
         nullptr);
-    if (hPipe == INVALID_HANDLE_VALUE) return false;
+    if (hPipe == INVALID_HANDLE_VALUE) {
+        if (errorOut) *errorOut = GetLastError();
+        return false;
+    }
     running = true;
     return true;
 }

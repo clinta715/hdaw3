@@ -6,7 +6,20 @@
 
 namespace proxy {
 
-ProxyProcessManager::ProxyProcessManager() = default;
+// Process-wide instance counter backing makeUniqueNamespacePrefix: every
+// ProxyProcessManager (live + each offline/export copy) consumes one value,
+// so no two managers in one process ever share an OS name namespace.
+static std::atomic<uint32_t> gNamespaceInstanceCounter{0};
+
+ProxyProcessManager::ProxyProcessManager() {
+    namePrefix = makeUniqueNamespacePrefix("");
+}
+
+std::string ProxyProcessManager::makeUniqueNamespacePrefix(const std::string& domainLabel) {
+    char pidHex[16];
+    std::snprintf(pidHex, sizeof(pidHex), "%x", static_cast<unsigned>(::GetCurrentProcessId()));
+    return domainLabel + pidHex + "_" + std::to_string(gNamespaceInstanceCounter.fetch_add(1)) + "_";
+}
 
 ProxyProcessManager::~ProxyProcessManager() {
     stopHealthMonitor();
@@ -20,42 +33,68 @@ ProxyProcessManager::~ProxyProcessManager() {
     }
 }
 
-bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_t slotId) {
+bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_t slotId, uint32_t* actualSlotId) {
     HDAW_LOG("proxy", "spawnPluginHost: slotId=" + std::to_string(slotId) + " plugin=" + pluginPath);
 
-    // Defensively terminate + release any orphaned child/pipe/shm for this slot
-    // before creating new ones. killPluginHost takes the mutex internally, so we
-    // must NOT already hold it here. Returns false if none — harmless. This
-    // guards against a stale child from a previous spawn that was never reaped
-    // (e.g. an orphaned process still holding the pipe/shm names), which would
-    // otherwise make CreateNamedPipe/ShmRegion::create collide and fail.
-    // fullCleanup=true: the old pipe/shm names must be freed before new ones
-    // can be created with the same slot id. Safe because spawnPluginHost runs
-    // on the message thread during graph rebuild (audio callback completed).
-    killPluginHost(slotId, KillMode::KillHard);
-
-    // Create pipe and shm outside the lock
-    auto pipeName = makePipeName(slotId);
-    auto shmNameStr = makeShmName(slotId);
     auto hostExe = getHostExePath();
 
     HDAW_LOG("proxy", "spawnPluginHost: hostExe=" + hostExe + " plugin=" + pluginPath);
 
-    auto pipeServer = std::make_unique<PipeServer>(pipeName);
-    if (!pipeServer->start()) {
-        HDAW_LOG("proxy", "spawnPluginHost: PipeServer::start() FAILED for " + pipeName);
-        return false;
+    // Create pipe and shm outside the lock. The names are derived from the
+    // slot id; if a name is still held at spawn time (an orphaned child from a
+    // stale engine tree, or a same-slot squatter), creation fails and we bump
+    // the slot id and retry with a fresh name, up to a bounded number of
+    // attempts. Without this, any held name would fail the whole spawn even
+    // though a later slot id is free.
+    std::unique_ptr<PipeServer> pipeServer;
+    std::unique_ptr<ShmRegion> shmRegion;
+    std::string pipeName;
+    std::string shmNameStr;
+
+    constexpr int kMaxSpawnNameAttempts = 8;
+    for (int attempt = 0; attempt < kMaxSpawnNameAttempts; ++attempt) {
+        // Defensively terminate + release any orphaned child/pipe/shm for this
+        // slot before creating new ones. killPluginHost takes the mutex
+        // internally, so we must NOT already hold it here. Returns false if
+        // none — harmless. This guards against a stale child from a previous
+        // spawn that was never reaped (e.g. an orphaned process still holding
+        // the pipe/shm names), which would otherwise make CreateNamedPipe/
+        // ShmRegion::create collide and fail. One defensive kill per attempted
+        // slot: preserves the existing behavior for the first attempt and is
+        // harmless for bumped attempts.
+        killPluginHost(slotId, KillMode::KillHard);
+
+        pipeName = makePipeName(slotId);
+        shmNameStr = makeShmName(slotId);
+
+        pipeServer = std::make_unique<PipeServer>(pipeName);
+        DWORD pipeErr = 0;
+        if (!pipeServer->start(&pipeErr)) {
+            HDAW_LOG("proxy", "spawnPluginHost: PipeServer::start() FAILED for " + pipeName + " error=" + std::to_string(static_cast<int>(pipeErr)));
+            pipeServer.reset();
+            ++slotId;
+            continue;
+        }
+
+        shmRegion = std::make_unique<ShmRegion>();
+        // Size the mapping for the worst-case config (see kMaxShm* in
+        // ProxyCommon.h) — the child grows hdr->capacity at PREPARE for
+        // multi-channel plugins / large device block sizes, and both sides
+        // index the rings with hdr->capacity, so the mapping must cover it.
+        uint32_t shmSize = computeShmSize(kMaxShmChannels, kMaxShmBlockSize);
+        if (!shmRegion->create(shmNameStr, shmSize)) {
+            HDAW_LOG("proxy", "spawnPluginHost: ShmRegion::create() FAILED for " + shmNameStr);
+            pipeServer->stop();
+            pipeServer.reset();
+            shmRegion.reset();
+            ++slotId;
+            continue;
+        }
+        break;
     }
 
-    auto shmRegion = std::make_unique<ShmRegion>();
-    // Size the mapping for the worst-case config (see kMaxShm* in
-    // ProxyCommon.h) — the child grows hdr->capacity at PREPARE for
-    // multi-channel plugins / large device block sizes, and both sides
-    // index the rings with hdr->capacity, so the mapping must cover it.
-    uint32_t shmSize = computeShmSize(kMaxShmChannels, kMaxShmBlockSize);
-    if (!shmRegion->create(shmNameStr, shmSize)) {
-        HDAW_LOG("proxy", "spawnPluginHost: ShmRegion::create() FAILED for " + shmNameStr);
-        pipeServer->stop();
+    if (!pipeServer || !shmRegion) {
+        HDAW_LOG("proxy", "spawnPluginHost: exhausted " + std::to_string(kMaxSpawnNameAttempts) + " attempts creating pipe/shm names");
         return false;
     }
 
@@ -129,6 +168,8 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
         children.erase(slotId);
         children.emplace(slotId, std::move(info));
     }
+
+    if (actualSlotId) *actualSlotId = slotId;
     return true;
 }
 
@@ -152,6 +193,7 @@ bool ProxyProcessManager::killPluginHost(uint32_t slotId, KillMode mode) {
     if (handle != INVALID_HANDLE_VALUE) {
         if (mode == KillMode::KillGraceful) {
             TerminateProcess(handle, proxy::GRACEFUL_EXIT_CODE);
+            WaitForSingleObject(handle, 1000);
         } else {
             TerminateProcess(handle, 0);
             WaitForSingleObject(handle, 1000);
@@ -326,11 +368,11 @@ std::string ProxyProcessManager::getHostExePath() {
     return path + "hdaw_plugin_host.exe";
 }
 
-std::string ProxyProcessManager::makePipeName(uint32_t slotId) {
+std::string ProxyProcessManager::makePipeName(uint32_t slotId) const {
     return "\\\\.\\pipe\\hdaw_plugin_" + namePrefix + std::to_string(slotId);
 }
 
-std::string ProxyProcessManager::makeShmName(uint32_t slotId) {
+std::string ProxyProcessManager::makeShmName(uint32_t slotId) const {
     return "hdaw_plugin_shm_" + namePrefix + std::to_string(slotId);
 }
 

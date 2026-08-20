@@ -1047,6 +1047,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackName",    QJsonObject{{"type","string"}}},
                   {"style",        QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean"}}}},
+                  {"role",         QJsonObject{{"type","string"},{"description","Part template: bass | lead | chords | drums (case-insensitive). When provided, fills unset phrase params with role defaults; explicit params always win."}}},
                   {"pluginId",     QJsonObject{{"type","string"}}},
                   {"programIndex", QJsonObject{{"type","integer"},{"minimum",-1}}},
                   {"lengthBeats",  QJsonObject{{"type","number"},{"minimum",0.25}}},
@@ -1067,11 +1068,12 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"windowSeconds",QJsonObject{{"type","number"},{"minimum",0.1}}},
                   {"verify",       QJsonObject{{"type","boolean"}}},
                   {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
-                 {"trackName","style"}),
+                 {"trackName"}),
         [e](const QJsonObject& a) -> McpToolResult {
             ProjectCommands::InstrumentPartParams p;
             p.trackName = a.value("trackName").toString().toStdString();
-            p.style = a.value("style").toString().toStdString();
+            p.style = a.contains("style") ? a.value("style").toString().toStdString() : std::string();
+            p.role = a.contains("role") ? a.value("role").toString().toStdString() : std::string();
             p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
             p.programIndex = a.contains("programIndex") ? a.value("programIndex").toInt() : -1;
             p.lengthBeats = a.value("lengthBeats").toDouble(4.0);
@@ -1091,6 +1093,15 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.windowSeconds = a.value("windowSeconds").toDouble(4.0);
             p.verify = a.contains("verify") ? a.value("verify").toBool() : false;
             p.allowGlobalScale = a.contains("allowGlobalScale") ? a.value("allowGlobalScale").toBool() : false;
+            if (a.contains("style"))            p.explicitMask |= ProjectCommands::kRoleBitStyle;
+            if (a.contains("lowNote"))          p.explicitMask |= ProjectCommands::kRoleBitLowNote;
+            if (a.contains("highNote"))         p.explicitMask |= ProjectCommands::kRoleBitHighNote;
+            if (a.contains("density"))          p.explicitMask |= ProjectCommands::kRoleBitDensity;
+            if (a.contains("noteDuration"))     p.explicitMask |= ProjectCommands::kRoleBitNoteDuration;
+            if (a.contains("minVelocity"))      p.explicitMask |= ProjectCommands::kRoleBitMinVelocity;
+            if (a.contains("maxVelocity"))      p.explicitMask |= ProjectCommands::kRoleBitMaxVelocity;
+            if (a.contains("targetRms"))        p.explicitMask |= ProjectCommands::kRoleBitTargetRms;
+            if (a.contains("allowGlobalScale")) p.explicitMask |= ProjectCommands::kRoleBitAllowGlobalScale;
             auto r = e->getProjectCommands().addInstrumentPart(p);
             if (!r.error.empty())
                 return McpToolResult::text(QString::fromStdString(r.error), true);

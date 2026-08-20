@@ -50,6 +50,11 @@ public:
     // before any createPluginInstance call.
     void setProxyNamespacePrefix(const juce::String& prefix);
 
+    // Returns the OS name namespace prefix currently configured on this
+    // manager's ProxyProcessManager (e.g. "<pidhex>_<n>_" or
+    // "export_<pidhex>_<n>_"). Empty when plugin isolation is compiled out.
+    juce::String getProxyNamespacePrefix() const;
+
     bool isolationEnabled = true;
 
     std::atomic<uint32_t> nextProxySlotId{ 1 };

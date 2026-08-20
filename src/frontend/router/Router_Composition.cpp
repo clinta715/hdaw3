@@ -273,8 +273,10 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         ProjectCommands::InstrumentPartParams p;
         if (!requireString(o, "trackName", p.trackName, nullptr))
             return makeError(-32602, "trackName required");
-        if (!requireString(o, "style", p.style, nullptr))
-            return makeError(-32602, "style required");
+        p.style = optString(o, "style", "");
+        p.role  = optString(o, "role", "");
+        if (p.style.empty() && p.role.empty())
+            return makeError(-32602, "style required (or provide role)");
         p.pluginId      = optString(o, "pluginId", "");
         p.programIndex  = optInt(o, "programIndex", -1, nullptr);
         p.lengthBeats   = optDouble(o, "lengthBeats", 4.0, nullptr);
@@ -294,6 +296,15 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
         p.verify        = optBool(o, "verify", false, nullptr);
         p.allowGlobalScale = optBool(o, "allowGlobalScale", false, nullptr);
+        if (o.contains("style"))            p.explicitMask |= ProjectCommands::kRoleBitStyle;
+        if (o.contains("lowNote"))          p.explicitMask |= ProjectCommands::kRoleBitLowNote;
+        if (o.contains("highNote"))         p.explicitMask |= ProjectCommands::kRoleBitHighNote;
+        if (o.contains("density"))          p.explicitMask |= ProjectCommands::kRoleBitDensity;
+        if (o.contains("noteDuration"))     p.explicitMask |= ProjectCommands::kRoleBitNoteDuration;
+        if (o.contains("minVelocity"))      p.explicitMask |= ProjectCommands::kRoleBitMinVelocity;
+        if (o.contains("maxVelocity"))      p.explicitMask |= ProjectCommands::kRoleBitMaxVelocity;
+        if (o.contains("targetRms"))        p.explicitMask |= ProjectCommands::kRoleBitTargetRms;
+        if (o.contains("allowGlobalScale")) p.explicitMask |= ProjectCommands::kRoleBitAllowGlobalScale;
 
         auto r = c.addInstrumentPart(p);
         QJsonArray clipIds;

@@ -10,7 +10,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.23.1** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.23.2** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -327,16 +327,23 @@ These cost real debugging time — read before touching the relevant area:
     and goes as engines start/stop. Diagnosis: `Get-CimInstance
     Win32_Process -Filter "Name='hdaw_plugin_host.exe'"` and look for
     children whose parent (`HDAW_headless_mcp.exe`/`HDAW.exe`) has been
-    running for hours/days. Fix: kill the engine tree (`Stop-Process -Id
-    <enginePid> -Force` + `Get-Process hdaw_plugin_host | Stop-Process
-    -Force` — killing the parent does NOT kill the children on Windows,
-    they survive and keep the names), then re-run; verified 5/5 PASS after
-    cleanup (2026-08-14). Note: killing `HDAW_headless_mcp.exe` kills the
-    session's hdaw MCP backend. **Rule:** before debugging any
+    running for hours/days. **Permanent guard (v0.23.2):** every
+    `ProxyProcessManager` instance auto-generates a unique namespace prefix
+    (`<pid-hex>_<instance-counter>_`) in its constructor via
+    `makeUniqueNamespacePrefix`, so no two managers in a process ever share
+    pipe/shm names — even bare-`PluginManager` tests with no explicit prefix.
+    Offline/export domains call `setProxyNamespacePrefix("export_")` which
+    now appends the unique suffix (`export_<pidhex>_<n>_`), so overlapping
+    exports across processes can never collide. `spawnPluginHost` also
+    retries with a bumped slot id (up to 8 times) when a name is detected as
+    held (pipe create fails with ERROR_PIPE_BUSY, shm create fails with
+    ERROR_ALREADY_EXISTS), making the system resilient to any external
+    squatter. `KillGraceful` now waits for child termination
+    (`WaitForSingleObject`) to ensure same-slot re-spawn never hits a
+    lingering mapping from the prior child. **Rule:** before debugging any
     proxy-spawn failure, check for live engines; if the run's slot ids
     could collide with a running engine, either stop it or expect these
-     tests to fail. A permanent guard (per-run pipe/shm namespace or a
-    held-name skip) is a standing follow-up.
+     tests to fail.
 
 21. **Render sequence pins old graph after `graph.clear()` until next
     `processBlock` re-bake — load with stopped transport leaked all previous
@@ -571,8 +578,8 @@ for a fix marker) before trusting the package.
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.23.1 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.23.1"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.23.2 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.23.2"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 

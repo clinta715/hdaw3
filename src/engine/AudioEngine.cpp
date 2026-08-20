@@ -77,8 +77,9 @@ void AudioEngine::initialize()
     mainProcessor->setProjectModel(&projectModel);
     mainProcessor->setFormatManager(projectPool.getFormatManager());
     mainProcessor->setPluginManager(&pluginManager);
-    pluginManager.setProxyNamespacePrefix(
-        juce::String::formatted("%x_", static_cast<int>(::GetCurrentProcessId())));
+    // The proxy name namespace is now auto-unique per PluginManager instance
+    // (pid hex + process-wide instance counter) via
+    // ProxyProcessManager::makeUniqueNamespacePrefix — no explicit prefix call.
     pluginManager.setGraphLock(&mainProcessor->getGraphLock());
     mainProcessor->setStretchCache(&stretchCache);
     mainProcessor->setDecodedSoundPool(&projectPool.getDecodedSoundPool());

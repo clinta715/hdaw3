@@ -111,6 +111,7 @@ add_executable(hdaw_tests
     unit/frontend/rhythm_generation_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
+    integration/proxy/namespace_collision_test.cpp
 )
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

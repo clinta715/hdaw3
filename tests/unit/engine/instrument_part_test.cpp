@@ -459,3 +459,292 @@ TEST(GlobalScale, NonClippingMixUntouched)
 
     sine.deleteFile();
 }
+
+// ─── Task A — role presets (typed track defaults) ──────────────────
+
+namespace {
+
+int minPitch(const std::vector<NoteSnapshot>& notes)
+{
+    int lo = 127;
+    for (const auto& n : notes)
+        lo = std::min(lo, n.pitch);
+    return lo;
+}
+
+int maxPitch(const std::vector<NoteSnapshot>& notes)
+{
+    int hi = 0;
+    for (const auto& n : notes)
+        hi = std::max(hi, n.pitch);
+    return hi;
+}
+
+} // namespace
+
+// role:"Bass" with no explicit params fills the 9 role-defaultable fields
+// exactly like a hand-configured bass part (BassLine, low range, tight
+// noteDuration, velocities, targetRms). Same seed + same effective params →
+// identical notes, and gain staging renders the same fader / measured RMS.
+TEST(InstrumentPartRole, RoleBassEqualsHandConfigured)
+{
+    AudioEngine roleEngine;
+    roleEngine.initialize();
+
+    ProjectCommands::InstrumentPartParams roleParams;
+    roleParams.trackName = "Bass";
+    roleParams.role = "Bass";
+    roleParams.windowSeconds = 1.0;   // keep the gain-stage render small
+    roleParams.seed = 11;
+    roleParams.count = 1;
+
+    auto roleRes = roleEngine.getProjectCommands().addInstrumentPart(roleParams);
+    ASSERT_TRUE(roleRes.error.empty()) << roleRes.error;
+
+    AudioEngine handEngine;
+    handEngine.initialize();
+
+    ProjectCommands::InstrumentPartParams handParams;
+    handParams.trackName = "Bass";
+    handParams.style = "BassLine";
+    handParams.lengthBeats = 4.0;
+    handParams.placement = "region";
+    handParams.count = 1;
+    handParams.lowNote = 36;
+    handParams.highNote = 48;
+    handParams.density = 10;
+    handParams.noteDuration = 0.5;
+    handParams.minVelocity = 70;
+    handParams.maxVelocity = 110;
+    handParams.targetRms = 0.126f;
+    handParams.allowGlobalScale = true;
+    handParams.windowSeconds = 1.0;
+    handParams.seed = 11;
+
+    auto handRes = handEngine.getProjectCommands().addInstrumentPart(handParams);
+    ASSERT_TRUE(handRes.error.empty()) << handRes.error;
+
+    // Identical effective params → identical notes, element by element.
+    const auto roleNotes = roleEngine.getReadModel().getNotes(roleRes.clipIds[0]);
+    const auto handNotes = handEngine.getReadModel().getNotes(handRes.clipIds[0]);
+    ASSERT_EQ(roleNotes.size(), handNotes.size());
+    ASSERT_GT(roleNotes.size(), 0u);
+    for (size_t i = 0; i < roleNotes.size(); ++i)
+    {
+        EXPECT_EQ(roleNotes[i].pitch, handNotes[i].pitch);
+        EXPECT_EQ(roleNotes[i].velocity, handNotes[i].velocity);
+        EXPECT_DOUBLE_EQ(roleNotes[i].startBeat, handNotes[i].startBeat);
+        EXPECT_DOUBLE_EQ(roleNotes[i].durationBeats, handNotes[i].durationBeats);
+    }
+
+    // Same bass range [36,48] on both sides.
+    EXPECT_GE(minPitch(roleNotes), 36);
+    EXPECT_LE(maxPitch(roleNotes), 48);
+
+    // Same gain staging on identical content → same outcome.
+    EXPECT_EQ(roleRes.gain.ok, handRes.gain.ok);
+    EXPECT_TRUE(roleRes.gain.ok);
+    EXPECT_NEAR(roleRes.gain.fader, handRes.gain.fader, handRes.gain.fader * 0.05f);
+    EXPECT_NEAR(roleRes.gain.measuredRms, handRes.gain.measuredRms, handRes.gain.measuredRms * 0.05f + 1e-4f);
+
+    // Same track shape: fm_synth slot at the same index (default project = 3).
+    ASSERT_EQ(roleRes.trackIndex, handRes.trackIndex);
+    auto fx = roleEngine.getReadModel().getFxSlots(roleRes.trackIndex);
+    ASSERT_FALSE(fx.empty());
+    EXPECT_EQ(fx[0].fxType, "fm_synth");
+}
+
+// role:"Bass" + explicit style/density/range/velocities (bits set) → the
+// explicit values win over the role defaults; explicit targetRms=0 skips the
+// gain-stage render entirely.
+TEST(InstrumentPartRole, ExplicitParamsOverrideRoleDefaults)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Lead";
+    params.style = "Lead";
+    params.role = "Bass";
+    params.density = 6;
+    params.lowNote = 60;
+    params.highNote = 76;
+    params.minVelocity = 60;
+    params.maxVelocity = 110;
+    params.targetRms = 0.0f;
+    params.explicitMask = ProjectCommands::kRoleBitStyle |
+                          ProjectCommands::kRoleBitDensity |
+                          ProjectCommands::kRoleBitLowNote |
+                          ProjectCommands::kRoleBitHighNote |
+                          ProjectCommands::kRoleBitMinVelocity |
+                          ProjectCommands::kRoleBitMaxVelocity |
+                          ProjectCommands::kRoleBitTargetRms;
+    params.seed = 22;
+    params.count = 1;
+
+    auto res = pc.addInstrumentPart(params);
+    ASSERT_TRUE(res.error.empty()) << res.error;
+    ASSERT_GE(res.trackIndex, 0);
+
+    // Same part hand-configured with no role: the explicit values are the
+    // ground truth the role path must reproduce.
+    ProjectCommands::InstrumentPartParams hand;
+    hand.trackName = "Lead";
+    hand.style = "Lead";
+    hand.density = 6;
+    hand.lowNote = 60;
+    hand.highNote = 76;
+    hand.minVelocity = 60;
+    hand.maxVelocity = 110;
+    hand.seed = 22;
+    hand.count = 1;
+    auto handRes = pc.addInstrumentPart(hand);
+    ASSERT_TRUE(handRes.error.empty()) << handRes.error;
+
+    const auto roleNotes = engine.getReadModel().getNotes(res.clipIds[0]);
+    const auto handNotes = engine.getReadModel().getNotes(handRes.clipIds[0]);
+    ASSERT_EQ(roleNotes.size(), handNotes.size());
+    ASSERT_GT(roleNotes.size(), 0u);
+    for (size_t i = 0; i < roleNotes.size(); ++i)
+    {
+        EXPECT_EQ(roleNotes[i].pitch, handNotes[i].pitch);
+        EXPECT_EQ(roleNotes[i].velocity, handNotes[i].velocity);
+    }
+    // The explicit Lead range (60..76) won — not the role's bass range (36..48).
+    EXPECT_GE(minPitch(roleNotes), 60);
+    EXPECT_LE(maxPitch(roleNotes), 76);
+
+    // Explicit targetRms=0 → no gain staging → fader untouched at unity.
+    EXPECT_FALSE(res.gain.ok);
+    EXPECT_FLOAT_EQ(res.gain.fader, 1.0f);
+    auto snap = engine.getReadModel().snapshot();
+    ASSERT_GT(static_cast<int>(snap.tracks.size()), res.trackIndex);
+    EXPECT_NEAR(snap.tracks[res.trackIndex].volume, 1.0, 1e-6);
+
+    // Cross-check that a pure role:"Bass" part really is the low-range bass
+    // preset — proving the role defaults were NOT applied to the explicit part.
+    ProjectCommands::InstrumentPartParams pureBass;
+    pureBass.trackName = "PureBass";
+    pureBass.role = "Bass";
+    pureBass.targetRms = 0.0f;   // explicit → skip the gain-stage render
+    pureBass.explicitMask = ProjectCommands::kRoleBitTargetRms;
+    pureBass.seed = 22;
+    pureBass.count = 1;
+    auto pureBassRes = pc.addInstrumentPart(pureBass);
+    ASSERT_TRUE(pureBassRes.error.empty()) << pureBassRes.error;
+    const auto bassNotes = engine.getReadModel().getNotes(pureBassRes.clipIds[0]);
+    ASSERT_GT(bassNotes.size(), 0u);
+    EXPECT_LE(maxPitch(bassNotes), 48);
+}
+
+// Unknown role → clean validation error BEFORE any mutation: the project is
+// untouched (track count unchanged, no clip added).
+TEST(InstrumentPartRole, UnknownRoleRejectedCleanly)
+{
+    AudioEngine engine;
+    engine.initialize();
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    ProjectCommands::InstrumentPartParams params;
+    params.trackName = "Electric";
+    params.role = "Electric";
+    params.seed = 1;
+
+    auto res = engine.getProjectCommands().addInstrumentPart(params);
+    EXPECT_FALSE(res.error.empty());
+    EXPECT_NE(res.error.find("unknown role"), std::string::npos) << res.error;
+    EXPECT_EQ(res.trackIndex, -1);
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+}
+
+// Role matching is case-insensitive: "bass", "BASS" and "Bass" all resolve to
+// the same preset and produce identical parts.
+TEST(InstrumentPartRole, RoleCaseInsensitive)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    auto addBass = [&](const std::string& role, uint64_t seed) {
+        ProjectCommands::InstrumentPartParams params;
+        params.trackName = "Bass";
+        params.role = role;
+        params.targetRms = 0.0f;   // explicit → skip gain staging (fast)
+        params.explicitMask = ProjectCommands::kRoleBitTargetRms;
+        params.seed = seed;
+        params.count = 1;
+        return pc.addInstrumentPart(params);
+    };
+
+    const auto lower = addBass("bass", 33);
+    const auto upper = addBass("BASS", 33);
+    const auto mixed = addBass("Bass", 33);
+    ASSERT_TRUE(lower.error.empty()) << lower.error;
+    ASSERT_TRUE(upper.error.empty()) << upper.error;
+    ASSERT_TRUE(mixed.error.empty()) << mixed.error;
+
+    const auto nLower = engine.getReadModel().getNotes(lower.clipIds[0]);
+    const auto nUpper = engine.getReadModel().getNotes(upper.clipIds[0]);
+    const auto nMixed = engine.getReadModel().getNotes(mixed.clipIds[0]);
+    EXPECT_EQ(nLower.size(), nUpper.size());
+    EXPECT_EQ(nLower.size(), nMixed.size());
+    ASSERT_GT(nLower.size(), 0u);
+    // Same effective preset on all three: the bass range.
+    EXPECT_GE(minPitch(nLower), 36);
+    EXPECT_LE(maxPitch(nLower), 48);
+}
+
+// role:"" is the legacy path: with every role-defaultable field explicitly
+// provided, role:"bass" (all bits set) is byte-identical to role:"" with the
+// same explicit values.
+TEST(InstrumentPartRole, EmptyRoleLegacyBehavior)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    auto addPart = [&](const std::string& role, uint32_t mask) {
+        ProjectCommands::InstrumentPartParams params;
+        params.trackName = "Lead";
+        params.style = "Lead";
+        params.role = role;
+        params.explicitMask = mask;
+        params.density = 6;
+        params.lowNote = 60;
+        params.highNote = 76;
+        params.minVelocity = 60;
+        params.maxVelocity = 110;
+        params.noteDuration = 0.25;
+        params.targetRms = 0.0f;
+        params.allowGlobalScale = false;
+        params.seed = 41;
+        params.count = 1;
+        return pc.addInstrumentPart(params);
+    };
+
+    const uint32_t allBits = ProjectCommands::kRoleBitStyle |
+                             ProjectCommands::kRoleBitLowNote |
+                             ProjectCommands::kRoleBitHighNote |
+                             ProjectCommands::kRoleBitDensity |
+                             ProjectCommands::kRoleBitNoteDuration |
+                             ProjectCommands::kRoleBitMinVelocity |
+                             ProjectCommands::kRoleBitMaxVelocity |
+                             ProjectCommands::kRoleBitTargetRms |
+                             ProjectCommands::kRoleBitAllowGlobalScale;
+
+    const auto legacy = addPart("", 0);
+    const auto fullyExplicit = addPart("bass", allBits);
+    ASSERT_TRUE(legacy.error.empty()) << legacy.error;
+    ASSERT_TRUE(fullyExplicit.error.empty()) << fullyExplicit.error;
+
+    const auto legacyNotes = engine.getReadModel().getNotes(legacy.clipIds[0]);
+    const auto explicitNotes = engine.getReadModel().getNotes(fullyExplicit.clipIds[0]);
+    ASSERT_EQ(legacyNotes.size(), explicitNotes.size());
+    ASSERT_GT(legacyNotes.size(), 0u);
+    for (size_t i = 0; i < legacyNotes.size(); ++i)
+    {
+        EXPECT_EQ(legacyNotes[i].pitch, explicitNotes[i].pitch);
+        EXPECT_EQ(legacyNotes[i].velocity, explicitNotes[i].velocity);
+    }
+}
