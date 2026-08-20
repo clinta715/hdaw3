@@ -817,8 +817,39 @@ void PluginProxySlot::startEditorWatcher() {
     editorWatcherThread = std::thread([this]{ waitForEditorClosed(); });
 }
 
+void PluginProxySlot::pollProgramCount() {
+    // CLAP preset databases build asynchronously in the child (a u-he crawl
+    // is ~10s, far beyond the bounded pipe exchanges), so the construction-time
+    // GET_PROGRAM_COUNT returns the 1-program default. Re-query until the child
+    // reports the real list. Bounded: stops once resolved or after the cap.
+    if (numProgramsCached_ > 1 || crashed.load())
+        return;
+    if (programPollAttempts_ >= 45)
+        return;
+    if ((++programPollTicks_ % 10) != 0)   // ~1s cadence on the 100ms timer
+        return;
+    ++programPollAttempts_;
+
+    auto* pipe = processManager.getPipe(slotId);
+    if (!pipe) return;
+    ProxyMessage msg{};
+    msg.type = MessageType::GET_PROGRAM_COUNT;
+    msg.slotId = slotId;
+    static constexpr DWORD kT = 1500;
+    if (!pipe->sendMsgBounded(msg, kT)) return;
+    ProxyResponse resp{};
+    if (!pipe->receiveRespBounded(resp, kT)) return;
+    if (resp.type != MessageType::GET_PROGRAM_COUNT_RESULT || resp.result != 1) return;
+    if (resp.dataSize < sizeof(uint32_t)) return;
+    uint32_t count = 0;
+    std::memcpy(&count, resp.data, sizeof(uint32_t));
+    if (count > 1)
+        numProgramsCached_ = static_cast<int>(count);
+}
+
 void PluginProxySlot::timerCallback() {
     drainParamNotifications();
+    pollProgramCount();
     static uint32_t tick = 0;
     if ((++tick % 50) == 0 && !crashed.load())
         saveStateToTemp();

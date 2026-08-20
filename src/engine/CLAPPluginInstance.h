@@ -8,11 +8,14 @@
 #include <clap/ext/state.h>
 #include <clap/ext/gui.h>
 #include <clap/ext/latency.h>
+#include <clap/ext/preset-load.h>
 #include "CLAPPluginFormat.h"
+#include "CLAPPresetDatabase.h"
 #include <atomic>
 #include <vector>
 #include <array>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 class CLAPPluginInstance;
@@ -77,6 +80,16 @@ private:
     static bool CLAP_ABI registerTimerFn(const clap_host_t* host, uint32_t period_ms, clap_id* timer_id);
     static bool CLAP_ABI unregisterTimerFn(const clap_host_t* host, clap_id timer_id);
     clap_host_timer_support_t timerHub{ registerTimerFn, unregisterTimerFn };
+
+    // clap-helpers has no preset-load host support — wired manually, same
+    // pattern as timerHub. Diagnostics only; from_location's return value is
+    // the authoritative result.
+    static void CLAP_ABI presetLoadOnErrorFn(const clap_host_t* host,
+        uint32_t location_kind, const char* location, const char* load_key,
+        int32_t os_error, const char* msg);
+    static void CLAP_ABI presetLoadLoadedFn(const clap_host_t* host,
+        uint32_t location_kind, const char* location, const char* load_key);
+    clap_host_preset_load_t presetLoadHub{ presetLoadOnErrorFn, presetLoadLoadedFn };
 
     struct TimerInfo : public juce::Timer
     {
@@ -199,11 +212,13 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
 
-    // Programs — single program, no-ops for hosted plugins
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram(int) override {}
-    const juce::String getProgramName(int) override { return {}; }
+    // Programs — backed by the preset-discovery database + the preset-load
+    // extension. While the (async) database build is in flight the instance
+    // reports the VST3-parity default of one program.
+    int getNumPrograms() override;
+    int getCurrentProgram() override;
+    void setCurrentProgram(int) override;
+    const juce::String getProgramName(int) override;
     void changeProgramName(int, const juce::String&) override {}
 
     // State
@@ -234,6 +249,10 @@ private:
     void processMidiToClap(const juce::MidiBuffer& midi,
                            CLAPInputEvents& inEvents,
                            uint32_t framesCount);
+    // Lazy registry fetch + async build kickoff on first program access.
+    void ensurePresets() const;
+    // The ready preset list for this plugin id, or null.
+    const std::vector<CLAPPresetEntry>* presetList() const;
 
     std::shared_ptr<CLAPModule> module;
     const clap_plugin_t* plugin;
@@ -245,6 +264,17 @@ private:
     const clap_plugin_gui_t* guiExt = nullptr;
     const clap_plugin_audio_ports_t* audioPortsExt = nullptr;
     const clap_plugin_note_ports_t* notePortsExt = nullptr;
+    const clap_plugin_preset_load_t* presetLoadExt = nullptr;
+
+    // Preset/program state. The preset vector is immutable once the database
+    // is ready; currentProgram is volatile across rebuilds (VST3-parity) —
+    // the program's AUDIO persists via the pluginState blob, which
+    // applyPluginProgram snapshots after setCurrentProgram.
+    mutable std::shared_ptr<CLAPPresetDatabase::ModulePresets> presets;
+    // Guards first-access races on presets (control vs message thread in the isolated child).
+    mutable std::mutex presetsMutex;
+    std::atomic<int> currentProgram{ 0 };
+    juce::String clapPluginId;
 
     // Parameters (raw pointers — JUCE owns via addHostedParameter)
     std::vector<CLAPParameter*> parameters;
@@ -256,6 +286,8 @@ private:
     // Lifecycle state
     bool activated = false;
     bool processing = false;
+    // Cleared first in the dtor; posted preset-load lambdas hold a copy and bail if the instance is gone (UAF guard).
+    std::shared_ptr<std::atomic<bool>> alive;
 
     // Reusable event lists (pre-allocated)
     CLAPInputEvents inEvents;

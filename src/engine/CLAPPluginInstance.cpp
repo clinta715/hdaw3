@@ -2,6 +2,7 @@
 #include "CLAPPluginEditor.h"
 #include "../proxy/PluginProxySlot.h"
 #include "../common/DebugLog.h"
+#include "../common/RunOnMessageThreadBounded.h"
 #include <juce_core/juce_core.h>
 #include <clap/helpers/host.hxx>
 
@@ -73,7 +74,33 @@ const void* CLAPHost::getExtension(const char* id) const noexcept
 {
     if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0)
         return &timerHub;
+    if (std::strcmp(id, CLAP_EXT_PRESET_LOAD) == 0)
+        return &presetLoadHub;
+    // Plugins advertising only the compat id (e.g. Altitude) may query with it too.
+    if (std::strcmp(id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0)
+        return &presetLoadHub;
     return Host::getExtension(id);
+}
+
+void CLAP_ABI CLAPHost::presetLoadOnErrorFn(const clap_host_t*,
+    uint32_t location_kind, const char* location, const char* load_key,
+    int32_t os_error, const char* msg)
+{
+    HDAW_LOG("clap_preset_load", juce::String("on_error: ")
+        + (msg != nullptr ? msg : "")
+        + " os=" + juce::String(os_error)
+        + " kind=" + juce::String(static_cast<int>(location_kind))
+        + " location=" + (location != nullptr ? location : "")
+        + " load_key=" + (load_key != nullptr ? load_key : ""));
+}
+
+void CLAP_ABI CLAPHost::presetLoadLoadedFn(const clap_host_t*,
+    uint32_t location_kind, const char* location, const char* load_key)
+{
+    HDAW_LOG("clap_preset_load", juce::String("loaded: kind=")
+        + juce::String(static_cast<int>(location_kind))
+        + " location=" + (location != nullptr ? location : "")
+        + " load_key=" + (load_key != nullptr ? load_key : ""));
 }
 
 void CLAPHost::paramsRescan(clap_param_rescan_flags flags) noexcept
@@ -373,6 +400,8 @@ CLAPPluginInstance::CLAPPluginInstance(std::shared_ptr<CLAPModule> mod,
       plugin(p),
       host(std::move(h))
 {
+    alive = std::make_shared<std::atomic<bool>>(true);
+
     paramsExt = static_cast<const clap_plugin_params_t*>(
         plugin->get_extension(plugin, CLAP_EXT_PARAMS));
     stateExt = static_cast<const clap_plugin_state_t*>(
@@ -383,10 +412,21 @@ CLAPPluginInstance::CLAPPluginInstance(std::shared_ptr<CLAPModule> mod,
         plugin->get_extension(plugin, CLAP_EXT_AUDIO_PORTS));
     notePortsExt = static_cast<const clap_plugin_note_ports_t*>(
         plugin->get_extension(plugin, CLAP_EXT_NOTE_PORTS));
+    presetLoadExt = static_cast<const clap_plugin_preset_load_t*>(
+        plugin->get_extension(plugin, CLAP_EXT_PRESET_LOAD));
+    if (presetLoadExt == nullptr)
+        presetLoadExt = static_cast<const clap_plugin_preset_load_t*>(
+            plugin->get_extension(plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
+
+    if (plugin->desc != nullptr && plugin->desc->id != nullptr)
+        clapPluginId = juce::String::fromUTF8(plugin->desc->id);
 }
 
 CLAPPluginInstance::~CLAPPluginInstance()
 {
+    // First: invalidate any preset-load lambda still queued from a timed-out marshal.
+    if (alive) alive->store(false, std::memory_order_release);
+
     releaseResources();
 
     if (plugin != nullptr)
@@ -423,6 +463,104 @@ const juce::String CLAPPluginInstance::getName() const
     if (plugin != nullptr && plugin->desc != nullptr)
         return juce::String(plugin->desc->name);
     return "CLAP Plugin";
+}
+
+// ── Programs (preset-discovery database + preset-load extension) ──
+
+void CLAPPluginInstance::ensurePresets() const
+{
+    if (presets != nullptr || module == nullptr || module->loadedPath.isEmpty())
+        return;
+    // Double-checked: concurrent first access from control vs message thread (isolated child).
+    const std::lock_guard<std::mutex> lock(presetsMutex);
+    if (presets != nullptr)
+        return;
+    presets = CLAPPresetDatabase::ModulePresets::getForModule(module->loadedPath, module);
+    if (presets != nullptr)
+        presets->startBuildAsync();
+}
+
+const std::vector<CLAPPresetEntry>* CLAPPluginInstance::presetList() const
+{
+    ensurePresets();
+    if (presets == nullptr || !presets->isReady())
+        return nullptr;
+    return presets->presetsFor(clapPluginId);
+}
+
+int CLAPPluginInstance::getNumPrograms()
+{
+    if (const auto* list = presetList())
+        return static_cast<int>(list->size());
+    return 1; // VST3-parity default (also while the async build is in flight)
+}
+
+int CLAPPluginInstance::getCurrentProgram()
+{
+    return currentProgram.load(std::memory_order_relaxed);
+}
+
+const juce::String CLAPPluginInstance::getProgramName(int index)
+{
+    if (const auto* list = presetList())
+        if (index >= 0 && index < static_cast<int>(list->size()))
+            return (*list)[static_cast<size_t>(index)].name;
+    return {};
+}
+
+void CLAPPluginInstance::setCurrentProgram(int index)
+{
+    // Missing extension or list: silent no-op (VST3-parity).
+    if (presetLoadExt == nullptr || presetLoadExt->from_location == nullptr)
+        return;
+    const auto* list = presetList();
+    if (list == nullptr || index < 0 || index >= static_cast<int>(list->size()))
+        return;
+
+    // Copy: the lambda may outlive this call on the timeout path.
+    const CLAPPresetEntry entry = (*list)[static_cast<size_t>(index)];
+    const clap_plugin_preset_load_t* loadExt = presetLoadExt;
+    const clap_plugin_t* p = plugin;
+    // Alive-flag idiom: on marshal timeout the posted lambda STILL runs later;
+    // it must never touch a destroyed instance, so no `this` capture.
+    auto aliveFlag = alive;
+    std::atomic<int>* programOut = &currentProgram;
+    auto doLoad = [aliveFlag, programOut, index, entry, loadExt, p]() {
+        if (aliveFlag == nullptr || !aliveFlag->load(std::memory_order_acquire))
+            return;
+        bool ok = false;
+        try
+        {
+            ok = loadExt->from_location(p, entry.locationKind,
+                entry.location.isEmpty() ? nullptr : entry.location.toRawUTF8(),
+                entry.loadKey.isEmpty() ? nullptr : entry.loadKey.toRawUTF8());
+        }
+        catch (...)
+        {
+            HDAW_LOG("clap_preset_load", "from_location threw for '" + entry.name + "'");
+            ok = false;
+        }
+        if (ok)
+        {
+            // Re-check before the store; same-thread serialization makes the window negligible.
+            if (aliveFlag != nullptr && aliveFlag->load(std::memory_order_acquire))
+                programOut->store(index, std::memory_order_relaxed);
+        }
+        else
+            HDAW_LOG("clap_preset_load", "from_location failed for '" + entry.name + "'");
+    };
+
+    // from_location is [main-thread] (preset-load.h). In-process callers may
+    // run on the command/MCP thread — self-marshal with a bounded wait so a
+    // stuck plugin can never hang the caller.
+    if (host != nullptr && host->threadCheckIsMainThread())
+    {
+        doLoad();
+        return;
+    }
+    if (!runOnMessageThreadBounded(doLoad, 5000))
+        HDAW_LOG("clap_preset_load", "marshal timed out for '" + entry.name
+            + "' — program unchanged");
 }
 
 void CLAPPluginInstance::buildParameters()

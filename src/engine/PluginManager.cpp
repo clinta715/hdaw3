@@ -507,8 +507,9 @@ juce::Array<juce::File> PluginManager::findPluginFiles(const juce::StringArray& 
         // bundle plugins are invisible to the scan.
         d.findChildFiles(result, juce::File::findFiles, false, "*.vst3");
         d.findChildFiles(result, juce::File::findDirectories, false, "*.vst3");
-        // CLAP files
-        d.findChildFiles(result, juce::File::findFiles, false, "*.clap");
+        // CLAP files — recursive: vendors (u-he, ...) install into per-vendor
+        // subfolders of the CLAP directory.
+        d.findChildFiles(result, juce::File::findFiles, true, "*.clap");
     }
     return result;
 }

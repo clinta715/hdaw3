@@ -502,13 +502,22 @@ void ProjectModel::clearGainEnvelope(juce::ValueTree envelope, juce::UndoManager
 
 std::string ProjectModel::resolvePluginFormat(const std::string& pluginID) const
 {
-    if (pluginManager_ == nullptr) return {};
     juce::String jid(pluginID);
-    for (const auto& p : pluginManager_->getPlugins())
+    if (pluginManager_ != nullptr)
     {
-        if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
-            return p.pluginFormatName.toStdString();
+        for (const auto& p : pluginManager_->getPlugins())
+        {
+            if (p.fileOrIdentifier == jid || p.createIdentifierString() == jid)
+                return p.pluginFormatName.toStdString();
+        }
     }
+    // Path-based ids resolve by extension even when the scan cache is stale —
+    // the load path accepts raw .clap/.vst3 paths without a cache entry.
+    auto lower = jid.toLowerCase();
+    if (lower.endsWith(".clap"))
+        return "CLAP";
+    if (lower.endsWith(".vst3"))
+        return "VST3";
     return {};
 }
 

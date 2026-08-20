@@ -91,6 +91,9 @@ add_executable(hdaw_tests
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
     unit/engine/master_gain_test.cpp
+    unit/engine/clap_preset_probe_test.cpp
+    unit/engine/clap_preset_database_test.cpp
+    unit/engine/clap_program_test.cpp
     unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp
@@ -112,6 +115,13 @@ add_executable(hdaw_tests
 
 target_include_directories(hdaw_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_options(hdaw_tests PRIVATE /FI${CMAKE_SOURCE_DIR}/tests/cstdio_compat.h)
+# clap_preset_probe_test.cpp installs an SEH translator around plugin init()
+# (containment guard); _set_se_translator only takes effect with /EHa. The
+# rest of the suite keeps the default exception-handling mode.
+if(MSVC)
+    set_source_files_properties(unit/engine/clap_preset_probe_test.cpp
+        PROPERTIES COMPILE_OPTIONS "/EHa")
+endif()
 target_link_libraries(hdaw_tests PRIVATE
     Qt6::Core
     Qt6::Network

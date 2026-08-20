@@ -1136,6 +1136,9 @@ void PluginHost::controlLoop()
                 break;
             }
 
+            // GET_PROGRAM_COUNT/NAME/CURRENT_PROGRAM run unmarshaled on the
+            // control thread: they read the immutable preset cache (built
+            // once) and an atomic index — control-thread-safe.
             case proxy::MessageType::GET_PROGRAM_COUNT: {
                 proxy::ProxyResponse resp{};
                 resp.type = proxy::MessageType::GET_PROGRAM_COUNT_RESULT;
@@ -1190,8 +1193,26 @@ void PluginHost::controlLoop()
                 if (plugin && msg.dataSize >= sizeof(uint32_t)) {
                     uint32_t index = 0;
                     std::memcpy(&index, msg.data, sizeof(uint32_t));
-                    plugin->setCurrentProgram(static_cast<int>(index));
-                    resp.result = 1;
+                    // CLAP preset-load from_location is [main-thread]: marshal
+                    // to the message thread exactly like SET_STATE (lesson 16).
+                    uint32_t result = 0;
+                    try {
+                        if (runLifecycleOnMessageThread([this, index]() {
+                                plugin->setCurrentProgram(static_cast<int>(index));
+                            }, 5000))
+                        {
+                            result = 1;
+                        } else {
+                            HDAW_LOG("plugin_host", "setCurrentProgram marshal timed out");
+                        }
+                    } catch (const std::exception& e) {
+                        HDAW_LOG("plugin_host", "setCurrentProgram threw: " + juce::String(e.what()));
+                        pluginFailed.store(true);
+                    } catch (...) {
+                        HDAW_LOG("plugin_host", "setCurrentProgram threw (unknown exception)");
+                        pluginFailed.store(true);
+                    }
+                    resp.result = result;
                 } else {
                     resp.result = 0;
                 }

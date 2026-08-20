@@ -10,6 +10,10 @@ struct CLAPModule
     clap_plugin_entry_t* entry = nullptr;
     const clap_plugin_factory_t* factory = nullptr;
     bool initialized = false;
+    // The path this module was loaded from. fillInPluginDescription clears
+    // fileOrIdentifier, so instances cannot recover it any other way; the
+    // preset database registry is keyed by it.
+    juce::String loadedPath;
 
     ~CLAPModule() { unload(); }
 

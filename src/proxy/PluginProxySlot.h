@@ -195,6 +195,10 @@ private:
     int reportedNumOutputs = 0;
 
     void fetchParamMetadata();
+    // CLAP preset databases build asynchronously in the child (the crawl can
+    // take ~10s, far beyond the 3s bounded pipe exchanges); refresh the
+    // program count until the child reports more than the default program.
+    void pollProgramCount();
     void timerCallback() override;
 
     EditorClosedCallback editorClosedCb;
@@ -214,6 +218,8 @@ private:
     std::unique_ptr<std::atomic<uint32_t>[]> paramDirty_;
     uint32_t paramCacheSize_ = 0;
     int numProgramsCached_ = 1;
+    int programPollTicks_ = 0;
+    int programPollAttempts_ = 0;
 
     // Parent-local bounded SPSC queue bridging child param notifications from
     // the paramNotify shm ring (consumed by processBlock on the audio thread)

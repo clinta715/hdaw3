@@ -60,6 +60,7 @@ bool CLAPModule::load(const juce::String& path)
         return false;
     }
 
+    loadedPath = path;
     return true;
 }
 
@@ -70,6 +71,7 @@ void CLAPModule::unload()
     initialized = false;
     entry = nullptr;
     factory = nullptr;
+    loadedPath = {};
 
 #if JUCE_WINDOWS
     if (handle != nullptr)

@@ -96,6 +96,7 @@ add_library(HDAW_lib STATIC
     src/engine/CLAPPluginEditor.cpp
     src/engine/CLAPPluginFormat.cpp
     src/engine/CLAPPluginInstance.cpp
+    src/engine/CLAPPresetDatabase.cpp
     src/engine/ExportManager.cpp
     src/engine/MainAudioProcessor.cpp
     src/engine/PhraseGenerator.cpp
