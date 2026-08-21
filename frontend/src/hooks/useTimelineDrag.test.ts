@@ -33,6 +33,9 @@ const makeClip = (clipId: number, trackIndex: number, startBeat: number): ClipSn
   isGhost: false,
   ghostSourceId: 0,
   gainEnvelope: [],
+  activeTake: 0,
+  takeCount: 0,
+  takes: [],
 });
 
 const makeTracksRef = () => {

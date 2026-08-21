@@ -25,6 +25,11 @@ struct TrackSnapshot {
     int clipCount = 0;
 };
 
+struct TakeInfo {
+    std::string name;
+    std::string sourceFile;
+};
+
 struct ClipSnapshot {
     int clipId = 0;
     int trackIndex = 0;
@@ -51,6 +56,11 @@ struct ClipSnapshot {
     // Gain envelope
     struct GainEnvelopePoint { double time; double gain; };
     std::vector<GainEnvelopePoint> gainEnvelope;
+
+    // Take system
+    int activeTake = 0;
+    int takeCount = 0;
+    std::vector<TakeInfo> takes;
 };
 
 struct NoteSnapshot {

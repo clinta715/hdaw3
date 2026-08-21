@@ -30,6 +30,9 @@ function mkClip(clipId: number): ClipSnapshot {
     isGhost: false,
     ghostSourceId: -1,
     gainEnvelope: [],
+    activeTake: 0,
+    takeCount: 0,
+    takes: [],
   };
 }
 

@@ -74,6 +74,9 @@ const mockSnapshot: ProjectSnapshot = {
       isGhost: false,
       ghostSourceId: 0,
       gainEnvelope: [],
+      activeTake: 0,
+      takeCount: 0,
+      takes: [],
     },
   ],
   scaleRoot: 0,
@@ -136,6 +139,7 @@ const mkClip = (clipId: number, trackIndex: number, startBeat: number): ClipSnap
   durationBeats: 4, offset: 0, gain: 1, fadeIn: 0, fadeOut: 0, looping: false,
   muted: false, isMidi: true, sourceBpm: 0, stretchMode: 0, stretchRatio: 1,
   sourceDuration: 0, isGhost: false, ghostSourceId: -1, gainEnvelope: [],
+  activeTake: 0, takeCount: 0, takes: [],
 });
 
 describe("applyDelta", () => {

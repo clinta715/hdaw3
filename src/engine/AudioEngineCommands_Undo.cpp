@@ -181,27 +181,69 @@ void AudioEngineCommands::switchClipTake(int clipId)
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid() || trackIdx < 0) return;
 
-    auto trackList = engine_.getProjectModel().getTrackListTree();
-    auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
-    if (!clipList.isValid()) return;
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto takeList = clip.getChildWithName(IDs::TAKE_LIST);
+    if (!takeList.isValid() || takeList.getNumChildren() < 2) return;
 
-    int clipIdx = -1;
-    for (int c = 0; c < clipList.getNumChildren(); ++c)
-    {
-        if (static_cast<int>(clipList.getChild(c).getProperty(IDs::clipID, 0)) == clipId)
-        {
-            clipIdx = c;
-            break;
-        }
-    }
-    if (clipIdx < 0) return;
+    int activeIdx = static_cast<int>(clip.getProperty(IDs::activeTake, 0));
+    int nextIdx = (activeIdx + 1) % takeList.getNumChildren();
+    juce::String newSource = takeList.getChild(nextIdx).getProperty(IDs::sourceFile).toString();
 
-    juce::String sourceFile = clip.getProperty(IDs::sourceFile, "").toString();
+    clip.setProperty(IDs::activeTake, nextIdx, &um);
 
     if (auto* proc = engine_.getMainProcessor())
     {
         if (auto* rm = proc->getRoutingManager())
-            rm->switchClipTake(trackIdx, clipIdx, sourceFile);
+        {
+            auto trackList = engine_.getProjectModel().getTrackListTree();
+            auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
+            int clipIdx = -1;
+            for (int c = 0; c < clipList.getNumChildren(); ++c)
+            {
+                if (static_cast<int>(clipList.getChild(c).getProperty(IDs::clipID, 0)) == clipId)
+                {
+                    clipIdx = c;
+                    break;
+                }
+            }
+            if (clipIdx >= 0)
+                rm->switchClipTake(trackIdx, clipIdx, newSource);
+        }
+    }
+}
+
+void AudioEngineCommands::switchClipTakeToIndex(int clipId, int takeIndex)
+{
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid() || trackIdx < 0) return;
+
+    auto takeList = clip.getChildWithName(IDs::TAKE_LIST);
+    if (!takeList.isValid()) return;
+    if (takeIndex < 0 || takeIndex >= takeList.getNumChildren()) return;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    juce::String newSource = takeList.getChild(takeIndex).getProperty(IDs::sourceFile).toString();
+    clip.setProperty(IDs::activeTake, takeIndex, &um);
+
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        if (auto* rm = proc->getRoutingManager())
+        {
+            auto trackList = engine_.getProjectModel().getTrackListTree();
+            auto clipList = trackList.getChild(trackIdx).getChildWithName(IDs::CLIP_LIST);
+            int clipIdx = -1;
+            for (int c = 0; c < clipList.getNumChildren(); ++c)
+            {
+                if (static_cast<int>(clipList.getChild(c).getProperty(IDs::clipID, 0)) == clipId)
+                {
+                    clipIdx = c;
+                    break;
+                }
+            }
+            if (clipIdx >= 0)
+                rm->switchClipTake(trackIdx, clipIdx, newSource);
+        }
     }
 }
 

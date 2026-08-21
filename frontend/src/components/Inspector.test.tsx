@@ -25,7 +25,9 @@ function mkClip(over: Partial<ClipSnapshot> = {}): ClipSnapshot {
     startBeat: 1, durationBeats: 4, offset: 0, gain: 1, fadeIn: 0, fadeOut: 0,
     looping: false, muted: false, isMidi: false, sourceBpm: 120,
     stretchMode: 0, stretchRatio: 1, sourceDuration: 4, isGhost: false,
-    ghostSourceId: -1, gainEnvelope: [], ...over,
+    ghostSourceId: -1, gainEnvelope: [],
+    activeTake: 0, takeCount: 0, takes: [],
+    ...over,
   };
 }
 
@@ -137,5 +139,49 @@ describe("Inspector", () => {
     useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ gainEnvelope: [] })]) });
     render(<Inspector />);
     expect(screen.getAllByText("none").length).toBeGreaterThan(0);
+  });
+
+  it("renders take selector for audio clip with multiple takes", () => {
+    useUiStore.setState({ selectedTrackIndex: 1, selectedClipIds: new Set([100]) });
+    const takes = [{ name: "Take 1", sourceFile: "a.wav" }, { name: "Take 2", sourceFile: "b.wav" }];
+    useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ activeTake: 0, takeCount: 2, takes })]) });
+    render(<Inspector />);
+    expect(screen.getByText("Takes")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Take 1")).toBeInTheDocument();
+    expect(screen.getByText("◀")).toBeInTheDocument();
+    expect(screen.getByText("▶")).toBeInTheDocument();
+  });
+
+  it("does not render take selector when takeCount is 0", () => {
+    useUiStore.setState({ selectedTrackIndex: 1, selectedClipIds: new Set([100]) });
+    useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ takeCount: 0 })]) });
+    render(<Inspector />);
+    expect(screen.queryByText("Takes")).not.toBeInTheDocument();
+  });
+
+  it("does not render take selector for MIDI clips", () => {
+    useUiStore.setState({ selectedTrackIndex: 1, selectedClipIds: new Set([100]) });
+    const takes = [{ name: "Take 1", sourceFile: "a.wav" }, { name: "Take 2", sourceFile: "b.wav" }];
+    useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ isMidi: true, activeTake: 0, takeCount: 2, takes })]) });
+    render(<Inspector />);
+    expect(screen.queryByText("Takes")).not.toBeInTheDocument();
+  });
+
+  it("clicking next take button calls switchClipTakeToIndex", () => {
+    useUiStore.setState({ selectedTrackIndex: 1, selectedClipIds: new Set([100]) });
+    const takes = [{ name: "Take 1", sourceFile: "a.wav" }, { name: "Take 2", sourceFile: "b.wav" }];
+    useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ activeTake: 0, takeCount: 2, takes })]) });
+    render(<Inspector />);
+    fireEvent.click(screen.getByText("▶"));
+    expect(mockedCall).toHaveBeenCalledWith("audioGraph.switchClipTakeToIndex", { clipId: 100, takeIndex: 1 });
+  });
+
+  it("clicking prev take button wraps around", () => {
+    useUiStore.setState({ selectedTrackIndex: 1, selectedClipIds: new Set([100]) });
+    const takes = [{ name: "Take 1", sourceFile: "a.wav" }, { name: "Take 2", sourceFile: "b.wav" }];
+    useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip({ activeTake: 0, takeCount: 2, takes })]) });
+    render(<Inspector />);
+    fireEvent.click(screen.getByText("◀"));
+    expect(mockedCall).toHaveBeenCalledWith("audioGraph.switchClipTakeToIndex", { clipId: 100, takeIndex: 1 });
   });
 });

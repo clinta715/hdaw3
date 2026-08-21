@@ -23,6 +23,9 @@ const makeClip = (clipId: number, trackIndex: number): ClipSnapshot => ({
   isGhost: false,
   ghostSourceId: 0,
   gainEnvelope: [],
+  activeTake: 0,
+  takeCount: 0,
+  takes: [],
 });
 
 describe("uiStore", () => {

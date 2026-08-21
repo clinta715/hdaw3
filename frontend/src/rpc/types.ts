@@ -49,6 +49,11 @@ export interface SendSnapshot {
   bypassed: boolean;
 }
 
+export interface TakeInfo {
+  name: string;
+  sourceFile: string;
+}
+
 export interface ClipSnapshot {
   clipId: number;
   trackIndex: number;
@@ -71,6 +76,9 @@ export interface ClipSnapshot {
   ghostSourceId: number;
   sceneIndex?: number;  // -1 or undefined = arrangement only, 0–7 = session scene
   gainEnvelope: GainEnvelopePoint[];
+  activeTake: number;    // 0-based index of active take
+  takeCount: number;     // number of takes (0 = no takes)
+  takes: TakeInfo[];     // array of take info
 }
 
 export interface NoteSnapshot {

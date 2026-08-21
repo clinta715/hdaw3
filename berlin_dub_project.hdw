@@ -1,0 +1,946 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<PROJECT name="New Project" tempo="124.0" masterGain="0.8500000238418579"
+         createdWithApp="0.23.1" formatVersion="1" createdAt="2026-08-20T10:49:18.061-05:00"
+         savedWithApp="0.23.1" lastSavedAt="2026-08-20T11:14:23.434-05:00">
+  <TRANSPORT position="0.0" isPlaying="0" loopStart="0.0" loopEnd="8.0" isLooping="0"
+             timeSigNumerator="4" timeSigDenominator="4" arrangerEnabled="0"
+             arrangerChainPosition="0" arrangerRepeatIndex="0"/>
+  <TRACK_LIST>
+    <TRACK name="Track 1" volume="1.0" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="-10773547" midiChannel="1">
+      <CLIP_LIST/>
+      <FX_CHAIN/>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Synth" volume="0.85" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="-1213135" midiChannel="1">
+      <CLIP_LIST/>
+      <FX_CHAIN/>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Vocals" volume="0.9" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="-9392825">
+      <CLIP_LIST/>
+      <FX_CHAIN/>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Kick" volume="0.85" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="0">
+      <CLIP_LIST>
+        <CLIP clipID="20" name="Kick" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-3372988">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="148" noteNumber="36" velocity="112" startBeat="0.0" durationBeats="0.2"/>
+            <MIDI_NOTE noteID="149" noteNumber="36" velocity="112" startBeat="8.0" durationBeats="0.2"/>
+            <MIDI_NOTE noteID="150" noteNumber="36" velocity="112" startBeat="12.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="151" noteNumber="36" velocity="112" startBeat="17.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="152" noteNumber="36" velocity="112" startBeat="18.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="153" noteNumber="36" velocity="112" startBeat="19.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="154" noteNumber="36" velocity="100" startBeat="23.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="155" noteNumber="36" velocity="112" startBeat="26.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="156" noteNumber="36" velocity="112" startBeat="28.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="157" noteNumber="36" velocity="100" startBeat="30.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="158" noteNumber="36" velocity="112" startBeat="31.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="159" noteNumber="36" velocity="112" startBeat="32.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="160" noteNumber="36" velocity="112" startBeat="33.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="161" noteNumber="36" velocity="112" startBeat="34.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="162" noteNumber="36" velocity="112" startBeat="35.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="163" noteNumber="36" velocity="100" startBeat="38.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="164" noteNumber="36" velocity="112" startBeat="42.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="165" noteNumber="36" velocity="112" startBeat="43.25"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="166" noteNumber="36" velocity="100" startBeat="46.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="167" noteNumber="36" velocity="112" startBeat="49.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="168" noteNumber="36" velocity="112" startBeat="50.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="169" noteNumber="36" velocity="112" startBeat="52.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="170" noteNumber="36" velocity="112" startBeat="53.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="171" noteNumber="36" velocity="100" startBeat="55.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="172" noteNumber="36" velocity="112" startBeat="58.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="173" noteNumber="36" velocity="112" startBeat="59.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="174" noteNumber="36" velocity="100" startBeat="63.0"
+                       durationBeats="0.2"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 01 (Bassdrum)\Fred's 808 49Hz (G).wav"
+                 rootNote="60"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.4000000059604645" param_1="0.6000000238418579"
+                 param_2="0.2000000029802322"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Delay Feedback" automationEnabled="1" paramID="2001">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.3"/>
+            <POINT startTime="7.258064516129032" gain="0.6"/>
+            <POINT startTime="15.0" gain="0.8"/>
+            <POINT startTime="22.25806451612903" gain="0.5"/>
+            <POINT startTime="30.0" gain="0.3"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="humanize" bypassed="0" humanizeTiming="0.0" humanizeVelocity="0.0"
+                      humanizePitch="0.0"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+    <TRACK name="Snare" volume="0.7" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="4">
+      <CLIP_LIST>
+        <CLIP clipID="24" name="Snare" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-3372988">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="365" noteNumber="38" velocity="105" startBeat="1.0" durationBeats="0.1"/>
+            <MIDI_NOTE noteID="366" noteNumber="38" velocity="105" startBeat="3.0" durationBeats="0.1"/>
+            <MIDI_NOTE noteID="367" noteNumber="38" velocity="105" startBeat="5.0" durationBeats="0.1"/>
+            <MIDI_NOTE noteID="368" noteNumber="38" velocity="105" startBeat="7.0" durationBeats="0.1"/>
+            <MIDI_NOTE noteID="369" noteNumber="38" velocity="105" startBeat="9.0" durationBeats="0.1"/>
+            <MIDI_NOTE noteID="370" noteNumber="38" velocity="105" startBeat="11.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="371" noteNumber="38" velocity="105" startBeat="13.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="372" noteNumber="38" velocity="105" startBeat="15.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="373" noteNumber="38" velocity="105" startBeat="17.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="374" noteNumber="38" velocity="105" startBeat="19.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="375" noteNumber="38" velocity="105" startBeat="21.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="376" noteNumber="38" velocity="105" startBeat="23.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="377" noteNumber="38" velocity="105" startBeat="25.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="378" noteNumber="38" velocity="105" startBeat="27.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="379" noteNumber="38" velocity="105" startBeat="29.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="380" noteNumber="38" velocity="105" startBeat="31.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="381" noteNumber="38" velocity="105" startBeat="33.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="382" noteNumber="38" velocity="105" startBeat="35.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="383" noteNumber="38" velocity="105" startBeat="37.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="384" noteNumber="38" velocity="105" startBeat="39.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="385" noteNumber="38" velocity="105" startBeat="41.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="386" noteNumber="38" velocity="105" startBeat="43.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="387" noteNumber="38" velocity="105" startBeat="45.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="388" noteNumber="38" velocity="105" startBeat="47.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="389" noteNumber="38" velocity="105" startBeat="49.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="390" noteNumber="38" velocity="105" startBeat="51.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="391" noteNumber="38" velocity="105" startBeat="53.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="392" noteNumber="38" velocity="105" startBeat="55.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="393" noteNumber="38" velocity="105" startBeat="57.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="394" noteNumber="38" velocity="105" startBeat="59.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="395" noteNumber="38" velocity="105" startBeat="61.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="396" noteNumber="38" velocity="105" startBeat="63.0"
+                       durationBeats="0.1"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 03 (Snaredrum)\7x Kompressor.wav"
+                 rootNote="60"/>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 04 (Handclap)\808 Ghost Flanged.wav"
+                 rootNote="72"/>
+        <FX_SLOT fxType="delay" bypassed="0" param_0="0.25" param_1="0.6499999761581421"
+                 param_2="0.3499999940395355"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.75" param_2="0.550000011920929"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="humanize" bypassed="0" humanizeTiming="0.0" humanizeVelocity="0.0"
+                      humanizePitch="0.0"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+    <TRACK name="Sub Bass" volume="0.85" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="6">
+      <CLIP_LIST/>
+      <FX_CHAIN>
+        <FX_SLOT fxType="plugin" pluginID="VST3-TyrellN6-d3d5f21b-656ad32f" pluginFormat="VST3"
+                 name="" bypassed="0" pluginState="7569.VMjLgfXG...O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9HyM3DiKo4hLYMGLSoEcqYzXuUjQg81aWkEclwFS18lcHEDLT8DUq0lXqcmQg4TVoITZXUUV30zUOkmKCwjctjlPoQkZgo1ZVgEcvLTXuE0QiIWUrITZyXUX3PTdMoDSREVdvjVX0QiUYoDSREVdvL0T0EULU41crITZ5EiX33RUZoWSFo0UuYGRy0zUOMTTsIlbEolPooWLhgCSDMFd2wFTJwjTgkGL4E0YQcUVJwjTgkGLoU0Z2ESXoslQiQya1gzbMc0SPkzUYkWSWMFdUwlPooWLhgibTkEMYoWXxcWLgIya1gzbMc0SKUkUjYDNFElb3DyX34lcHMWSW8TP2YzXqkTagcVTWkkRLIUX4ASZTcFMFkUcvvlPooWLhgCSEM1YMEiVVgiUZkVUrITZ5EiX3PDQQMURUwjRLIUX4AyTPQTSqQEdtYGRy0zUOwTV5M0ctYGRy0zUOwTV5MEdtYGRzk0UOgma1gzbYc0SGUjQis1a1gzbYc0SAEkdTIUQoITZLYUX3nmUX8FMrIzPMEyT1AyTLYmKosjctjlPowDQZgWSWwDNtjlPowjUggiKv.UcIcUVJoGUSQUQS8Dc3vVXq81TXkWSWoUazXUVp8FTS0TSUwDNtjlPMACQQcmdCwDctLDSJoGUSYUSUwDNtjlPMAiZUQTQS8jcyHDS14FTS0TTqwDNyDSXzUEaNcVSxH1aiwVXqEEaB0DL5QEd5MDSJoGUSQTRS8jcyHDS14FTS0TVvPEd5MDSJoGUSYUTpwDNtj1R14RZBMURTgUdUY0S54lcTIyZrEVavLDSz4xPLoDSEUEdqESV3PTZBAUPqIVcuY0S14lKTYDNFElZvLDSJ4xZQ81cVkENDklPGkEUZIWUV8DdtYWTS0jUXIWUV8jctYGTtcGUXQCLCwjRLU0X3kjLSgiKoIjTUw1X3PTZMQiXo0jR1QUTDAyPLQmKCwjRtTETGUEUOYmatP0YiYUV4giZggiKoIzP3vlXqQCUOkma1QkbqECVqAyPMoDUUIUY3XjX33RZB0zZFk0aEQ0Sv3FTS8VTVoETvjVSJAkZQU2cFkENhklPCEUahIWQT8DdtYGT5kzQgIDLSwzctYWTS0TLTsVTW8jctYGTtgidPgCRoIDSYQUT33RZBMTUrEFNtjlPMgCagU2ZpEFNtjlPowjUggCVv.0PuYVU0sVLX8FMwjENDklPMgiQYsFLCwjRt.SX3E0UX0DLCwjRt.SX3E0UXgiKosjctjlPPgCahoWQrwDNtj1R14RZBAURUgEciYUV3PzPLY2LBwjct4BUBASZLojKqAEQvjFSJAkZhwVTW8zctA0TTUUagMELCwjR5QTUvPCaSgiYoITSQU0XzEUUOQiatTEdMcjX3nmTLgmatPEdqESX3AyPLojdTM1P3vlXqAyPLoDS5EFcQcUTzAyTLoDRqMUcQcUV33RZBIUVUkkbvLDSJwDdXMGLSEkSYUESJQDQiEGLSwDctLDSJAEUYkFLS0jcyHDS14lcTASSW8zctLDSz4xPLoDVpQENtj1R14RZBIUUFEFNHMDSz4xPLoDVUkkbvLDSz4xPLoDRUMUcQY0S1MiPLYmatL0YIYUVxAyTLYmatTEdqESV33RZBkFSVEFNTo1TVkTZBETTxnENDk1R14RZBQTUwfENTMDSz4xPLoDSUMVdvLES14RZKYmKoIjQIU0S1MiPLYmalQ0Z2Y0S34RZKYmKoIjUUYTX33RZKYmKoIjTvnWXpAyPLQmKCwjR1QEVnUkQggCQSwjRPslXuMlUOYma1gTZvX0SLkkdScma1QEMzDCV3fTZBQURWoUavLESJIVUXESUV8zct4BUt0zUYgiKosjctjlPPgiQgcVRW8jct4RTxs1UOY2LBwjct4RTM0TULgCQoIDQvPTT2o2TLYmKosjctjlPRUjQisFLCwDctLDSJgEUSMUQS8jctYVTMEEULgiKosjctjlPowjUggicpE0SIklPSsVagkFLo0jRPslXuMlUOcma1U0YYcUV3PTZBA0YwH1ZvLDSz4xPLojKvDlbEwlX33RZBQzcVQFNtj1R14RZBQDL5Q0c5MESJAEUSQTQS8jcyHDS14lYTcVTWkENtj1R14RZBYDL5Q0c5MDSJgEUSQTQS8jcyHDS14lcHkFLV8DUq0lXqcmQgoDSEokcEM0S4MiPLYmatTUSMslXoUzTOYmatTUSQQjX5UzTOY2LBwjctYGUtETaLgCRosjctjlPTUUagsVRS8jcyHDS14lYQ8FMVkEd5MDSz4xPLoDTUM0TIICV3o2TLomatTUSQQjX5kzTOY2LBwjct4BUWEEQhoGLCwDctLDSJ4BLUMURxfENDkVSJAEUYoWUsE1ZvLDSz4xPLoDSUQFcMY0S1MiPLYmalUkd3XTT33RZKYmKoIjTvPkV2o2PLoDRUM0aIM0S24lYQIzZrEFNtjlPNgiUZkWUV8zcyHDS14lcSkWSrUUc2YES3nGdLY2LBwjctY2T40DaUU2crwDN5gGS1MiPLYma1QELIwVU0cmUOMGQCwjcyHDS14lYSkWUrUUc2Y0SyQzPLY2LBwjctYFUMkELgIGLSszctLDSz4xPLoDVpAkU3XTX3nmTLYmKosjctjlPV0jZQMGNFkENtjlPV0jZQAENFEFNDklPCU0QiUWVrkENDMUS1MiPLYmalEUSMslXoUzTOcGToIjQvPTT1E0ULgiKosjctjlPFAidTgWSrwDNDMUSJgEUSQTPGMFd5MDSz4xPLojbTkEMYoWXxAyPLQmKCwjRHUUV4AyPLQmKCwjR5QDYSEzUOY2LBwjctA0TyzTQhMURxfENtjlPAkDLTgWSV8jctAETREEUYkWTW8jctAETREEQhoGLCwDctLDSJQjZT0DNFkENtjlPowjUggCVv.UPEklPV0DUPgCQoITPQczXSAyTLoDS3g0bvjGTtkjLhcmatTEMAcUV33RZBIUQFM1ZvLUS1MiPLYmatD0ZAczXtAyTMY2LBwjctYWUqE0UOcmKCwDctLDSJ4lYBozM3sjYLUUVoE0UZUGMFgDa3vlXlQkLYI2ZGgTZ3XUX1kzUYkWSWkkZAgFVuQiUXg2ZGgDQEYzXm8lcKUmKBE0SznWRTEjPU8TUv.ERAITUHsldTojatjjZPITR2oVZLoma18TaQESVoUEagsVRr4zZEYEVmUjUXcVQr4zYEYEVnUjUXcVQr4zYEYEVmslUXoVPs4zYEYEVmUjUXsVQr4zYEYEVmUkUXsVQr4zYEYEVmslUXsVQr4jRDYEVmUTLZcVUVgUMDYEVmUjUgcVUVgUMDYEVmUTLgcVUVgUMDYEV0PULXUCUrgUMLYEV0HFaZUCQVkUMHYEV0.kUXUCTwfUMTYUV0XlUXUiZVgUMDwlPo81TX81aSg0bukFVq8VZX81aog0bukFVz8VdXs1a4g0aukGVy8VdXU2aCkEZuMTVq81PY8VQRIVdEoFSwvzThgWQ50TQiESXEclUYUzXrgUavXUTt8lcZ0VVwTUaqYkTKUDQMQCQsIVPiMES2kzUPIiKsElc3XjX1UDUXgFLTgkZYQEVrUTLYc1YrM0YuYEVwUjQg8TQrE1Y3XEV1MlZXgVRwfEZQYDUnkEaXojXrgkaEsFVvkTLZg1crQ0TIESXnEzQQkVRwfUZMYTVT0DaYk1XwfkaUACVv0TLZk1crUUZzDSUoEzQRg0ZDkkZqUTVrEULYo1YrYkZuYTVwEkQgoFLrIzcYQET24RdTETRSIVdEoFSwvzThwTQTwTdlMkX4UjZLECSSIFdEQTS4A0UiEyXGQFMuckXAACUPACTWAUdPc0XwL1QjQyaWAEdLQET2IldPETQCE0PuAET2YldPETQSk0YMQET2gkUXMTQTwTaEECTAUTdRMTQTwDSMQET2olUZMTQTwDbEECTAUTZZ8VSTA0cxYEVCUDULE2Zw.UPEMTXm0DUPcmcVo0PEQESJomUXMTQTwzbqECTAUTZgcVSTA0cyXkVCUDULUWQw.UPEkWXu0DUPcmKWg0PEQES1sVLPETRoAUPEkVTBUDUL4TRTA0c2nFTAUTdQITQTwDTIQET2QzZBITQTwjTIQET2AkZPETQCUkPEQESUkDUPcGVqAUPEMjTBUDULkURTA0ctsFTAUzPYMWRTA0cTYEVBUDULoTRTA0cTYkVBUDULsFLrAUPEkVVmkDUPcmalk0ZIQET2gkUZITQTwDavvFTAUTdYcVRTA0chYUVBUDUL01ZrAUPEkWVykDUPcmbpAUPEMjVqkDUPcmYVokPEQEStACaPETQCMkPEQESu0DaPETQSokRTwFTAUzTZ0VRTA0cpYkVBUDUL81brAUPEMkVykDUPcmZwDlPEQESvUDaPETQooUZIQET24lUYITQTwDbiwFTAUTZZ8VRTA0ctEiVBUDULAGLrAUPEklPvgCaPETQ4o0YIQET2IWLXITQTwTbUwFTAUTdZ0VRTA0cxYkVBUDULE2brAUPEkmVykDUPcmbwDlPEQESxUDaPETQCEVZIQET2YmUYITQTwjbiwFTA8FTLI2ZrAUPEMTXwkDUPcmcVElPEQESxgCaPETQSE1YIQET2oWLXITQTwzbUwFTAUzTg0VRTA0c5YkVBUDULM2brAUPEMUXykDUPcmdwDlPEQESzUDaPoDQTwDcMwFTAUTZgsVRTA0cyDSVBUDULQ2ZrAUPEkVXwkDUPc2LVElPEQESzgCaPETQ4E1YIQET2cSLXITQTwTcUwFTAUTdg0VRTA0c2XkVBUDULU2brIjPEQES0ACaPETQ4EVcIQET24xUXITQTwjcMwFTAUzPhsVRTA0ctHSVBUDULY2ZrAUPEMjXwkDUPcmKWElPEQES1gCaPcWTTA0ctjGTJkkQYwVSFEEVuAET3Q0ThQTQTwjcLolTrEEaYkVTTIUPIMUS3X1PLYGRS0jRt3hK77RRC8Vav8lak4Fc9vSREQVZzMzatQmbuwFakImOxbCNw3RZtHSVyAyTZQ2ZFM1aEYTXu81UYQmYrwjcuYGRAACUOQ0ZsI1Z2YTXNkUZBkFVUkEdMc0S44xPLYmKoITZToVXpslUXQGLCE1aQczXxUEaBk1LVEFNDkWSJwjTgkGLoEVczXUVJwjTgkGLSMUcQESUtcGaBkldwHFNtTkV50jQZc0a1gzbMc0SCEUahIWQpITZ5EiX3vDQig2crAkRLIUX4ASdQcVTWkkRLIUX4ASZUs1cwDVZqYzXz7lcHMWSW8DTIcUV40zUigWUrITZ5EiX3HGUYQSV5Elb2ESXx7lcHMWSW8zRUYEYFgiQgIGNwLFdtYGRy0zUOEzcFM1ZI0VXmE0UYoDSREVdvjFUmQiQYUGLrITZ5EiX3vTQicVSwnkU3XkVoUEaBkldwHFNDQTTSkTULoDSREVdvLETD0zZTgma1gzbMc0SLkkdScma1gzbMc0SLkkdSgma1gDcYc0S34lcHMWVW8zQEYzXq8lcHMWVW8TPQoGURUTZBkFSVEFN5YEVuQCaBMTSwLkcvLES14RZKYmKoITZLQjV30zULgiKoITZLYUX33BLPUWRWkkR5Q0TTUzTOQGNrE1ZuMEV40zUZ0FMVkkZuA0TM0TULgiKoITSvPTT2o2PLQmKCwjR5Q0TV0TULgiKoITSvnVUDUzTOY2LBwjctA0TME0ZLgyLwDFcUwlSm0jLh81XrE1ZQwlPMAidTgmdCwjR5Q0TDkzTOY2LBwjctA0TMkELTgmdCwjR5Q0TVEkZLgiKosjctjlPSkDUXkWUV8jdtYGUxrFag0FLCwDctLDSJwTQUg2ZwjENDklPPEzZhU2aV8jct4BUFgiQgoFLCwjRtrVTucmUYgCQoIzQYQkVxUkUOgma1E0TMYEVxUkUOYma1Aka2QEVz.yPLoDSUMFdIIyT33RZBIUUrMFNDkVSzHVZMojcTEEQvLDSz4xPLojKUA0QUQ0S14lKTc1XVkUd3nVX33RZBMDNrI1ZzP0S44lcTI2Zwf0ZvLTSJQUURUFNFIFNtjlPMslQY8VQT8DLtA0TuEkUZAELo0jRPoVT0cmQYgiXoIzPQ0lXxUDUOgma1AkdIcTXBAyTLcma1E0TMECUqE0UOYma1Aka3nGT3fTZBwTVTEENtjlPCUEaggiKoITS3vVX0slZggiKoITZLYUX3fELPMzalUUcqECVuQSLYgCQoITS3XTVqAyPLojKvDFdQcEVMAyPLojKvDFdQcEV33RZKYmKoIDT3vlX5UDaLgiKosjctjlPPkTUXQ2XVkENDMDS1MiPLYmatPkPvjFSJ4xZPQDLowjRPolXrE0UOcmaPMEUU0VXSAyPLojdDUELzv1T3XVZB0TTUMFcQU0Sz3lKUgWSGIFN5IES34lKTg2ZwDFdvLDSJoGUiMDNrI1ZvLDSJwjdgQWTWEEcvLESJgzZSUWTWkENtjlPRkUUYIGLCwjRLgGVyAyTQ4TVUwjRDQzXwAyTLQmKCwjRPQUVoAyTMY2LBwjctYGUvzzUOcmKCwDctLDSJgkZTgiKosjctjlPRUkQggCRCwDctLDSJgUUYIGLCwDctLDSJgTUSUWTV8jcyHDS14lKScVRVkkbvLES14lKUg2ZwjENtjlPowjUggCUpMkUIklPAEkLZgCQosjctjlPDUULXgCUCwDctLDSJwTUikGLSwjctj1R14RZBYTRU8jcyHDS14lYTs1cV8Ddtj1R14RZBYUUFEFNtj1R14RZBIEL5ElZvLDSz4xPLojcTgEZUYTX3PzTLoDTqI1aiY0S14lcHkFLV8DSYo2T24lcTQCMwfENHklPTkzUZ0FLSwjRhUEVwTkUOcmatPkaMcUV33RZKYmKoIDT3XTXmkzUOYmatDkbqc0S1MiPLYmatDUSMUES3PTZBQDLDE0c5MES14RZKYmKoIjTEYzXqAyPLQmKCwjRXQ0TSUzTOYmalEUSQQES33RZKYmKoITZLYUX3XmZQ8TRoIzTq0VXoASZMoDTqI1aiY0S24lcUcVVWkENDklPPcVLhsFLCwDctLDSJ4BLgIWQrIFNtjlPDcmUjgiKosjctjlPDAidTcmdSwjRPQ0TDUzTOY2LBwjctYFUmE0UYgiKosjctjlPFAidTcmdCwjRXQ0TDUzTOY2LBwjctYGRoAiUOQ0ZsI1Z2YTXJwTQZYWQS8TdyHDS14lKU0TSqIVZEM0S14lKU0TTDIldEM0S1MiPLYma1QkaA0FS3fTZKYmKoIDUU0VXqkzTOY2LBwjctYVTuQiUYgmdCwDctLDSJAUUSMURxfEd5MES54lKU0TTDIldIM0S1MiPLYmatP0UQQjX5AyPLQmKCwjRt.SUSkjLXgCQo0jRPQUV5UUagsFLCwDctLDSJwTUjQWSV8jcyHDS14lYUoGNFEENtj1R14RZBIELTo0c5MDSJgTUS8VRS8zctYVTBsFaggiKoIjS3XkV4UkUOc2LBwjctY2T40DaUU2cVwDN5gGS1MiPLYma1MUdMwVU0cGaLgid3wjcyHDS14lcTASRrUUc2Y0SyQzPLY2LBwjctY1T4UEaUU2cV8zbDMDS1MiPLYmalQUSYASXxAyTKcmKCwDctLDSJgkZPYENFEFN5IES14RZKYmKoIjUMoVTygiQYgiKoIjUMoVTPgiQggCQoIzPUczX0kEaYgCQS0jcyHDS14lYQ0TSqIVZEM0S2AUZBYDLDEkcQcES33RZKYmKoIjQvnGU30DaLgCQS0jRXQ0TDEzQigmdCwDctLDSJIGUYQSV5ElbvLDSz4xPLoDRUkUdvLDSz4xPLojdDQ1TAc0S1MiPLYmaPM0LMUjXSkjLXgiKoITPIACU30jUOYmaPAkTQQUV4E0UOYmaPAkTQQjX5AyPLQmKCwjRDoFUMgiQYgiKoITZLYUX3fELPETQoIjUMQET3PTZBETTGM1TvLESJwDdXMGL4AkaIIiX24lKUQSPWkENtjlPRUjQisFLS0jcyHDS14lKQsVPGMlavLUS1MiPLYma1U0ZQc0S24xPLQmKCwjRtYlPJcCdKYFSUkUZQckV0QiQHwFNrIlYTISVxs1QHkFNVElcIcUV40zUYoVPng0azXEV3s1QHQTQFM1YuY2R04hPQ8DM5kDUAITUOUELPgTPBUERqoGUJ4lKIoFTBkzcpkFS54lcO0VTwjUZUwVXqkDaNsVQVg0YEYEVmUDaNcVQVgEZEYEVmUDaNcVQVg0YqYEVpETaNcVQVg0YEYEVqUDaNcVQVg0YUYEVqUDaNcVQVg0YqYEVqUDaNoDQVg0YEEiVmUkUXUCQVg0YEYUXmUkUXUCQVg0YEESXmUkUXUCQVgUMTECV0PEaXUCSVgUMhwlV0PjUYUCRVgUMPYEV0.ULXUCUVkUMlYEV0nlUXUCQrITZuMEVu81TXM2aog0ZukFVu8VZXM2aogEcukGVq8VdX81a4g0bukGV081PYg1aCk0ZuMTVuUjThkWQpwTLLMkX3UjdMUzXwDVQmYUVEMFaX0FLVEkauYmVskULU01ZVI0REQTSzPTahEzXSwzcIcETx3RagYGNFIlcEQEVnACUXoVVTgEaEESVmcFaSc1aVgUbEYTXOUDagcFNVgkcioFVnkTLXgVTFQEZYwFVJIFaX4VQqgEbIEiVncGaTMURwDFZAcTTokTLXkVSFkEUMwVVoMVLX4VUvfEbMEiVocGaUkFMwTUZAcjTXsFQYo1ZEkEaQESVpcFaVo1aFkUbQYTXpACaBcWVTA0ctjGUAkzThkWQpwTLLMkXLUDULkmYSIVdEoFSwvzThgWQD0TdPc0XwL1QjQyaWIVPvPETv.0UPkGTWMVLicDYz71UPgGSTA0choGTAUzPQMzaPA0cloGTAUzTYcVSTA0cXYEVCUDUL0VQw.UPEkmTCUDULwTSTA0cpYkVCUDULAWQw.UPEklVu0DUPcmbVg0PEQESwsVLPETQCE1YMQET2YmUZMTQTwjR5YEVCUDULM2Zw.UPEkVXm0DUPc2LVo0PEQES0UTLPETQ4E1aMQET24xUXMTQTwjcqECTAkTZPETQoEkPEQESNkDUPc2MpAUPEkWTBUDULAURTA0cDslPBUDULIURTA0cPoFTAUzPUITQTwTUIQET2g0ZPETQCIkPEQESYkDUPcmaqAUPEMTVykDUPcGUVgkPEQESJkDUPcGUVokPEQESqACaPETQok0YIQET24lYYsVRTA0cXYkVBUDULwFLrAUPEkWVmkDUPcmXVkkPEQESssFaPETQ4k0bIQET2ImZPETQCo0ZIQET2YlUZITQTwjavvFTAUzPSITQTwzaMwFTAUzTZoDUrAUPEMkVskDUPcmZVokPEQESuMGaPETQSo0bIQET2oVLgITQTwDbEwFTAUTZZkVRTA0ctYUVBUDULA2XrAUPEklVukDUPcmawnkPEQESvACaPETQoIDb3vFTAUTdZcVRTA0cxECVBUDULEWUrAUPEkmVskDUPcmbVokPEQESwMGaPETQ4o0bIQET2IWLgITQTwjbEwFTAUzPgkVRTA0c1YUVBUDULI2XrAUPuAESxsFaPETQCEVbIQET2YmUgITQTwjb3vFTAUzTgcVRTA0c5ECVBUDULMWUrAUPEMUXskDUPcmdVokPEQESyMGaPETQSE1bIQET2oWLgITQTwDcEwFTJQDULQWSrAUPEkVXqkDUPc2LwjkPEQESzsFaPETQoEVbIQET2MiUgITQTwDc3vFTAUTdgcVRTA0c2DCVBUDULUWUrAUPEkWXskDUPc2MVokPEQES0MGaBITQTwTcvvFTAUTdgUWRTA0ctbEVBUDULYWSrAUPEMjXqkDUPcmKxjkPEQES1sFaPETQCIVbIQET24xUgITQTwjc3vFT2EEUPcmK4AkRYYTVr0jQQg0aPAEdTMkXDUDULYGSpIEaQwVVoEEURETRS0DNlMDS1gzTMojKt3BOujTQjkFcC8lazI2arwVYx4COuX0TTMCTrU2Yo41TzEFck4C."/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Pad" volume="0.85" pan="0.0" isMuted="0" isSoloed="0" parentBus="0"
+           color="10">
+      <CLIP_LIST/>
+      <FX_CHAIN>
+        <FX_SLOT fxType="plugin" pluginID="VST3-Podolski-d5c847aa-4180c968" pluginFormat="VST3"
+                 name="" bypassed="0" pluginState="8809.VMjLg.lH...O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9LiLzXiKvgmKt3BSBIVavX0SuQiUZo2ZVgkbqwFYqQiPZgmKsITZDQ0T33BLgoFNFEVdyYkVJwDZUsVRxHFNDMDS34RdLoDSREEcQYkVmQiUOI2ZFMld2YUVJwDZgMGLSwjLtYGRy0zUOQGNrE1ZuYGRy0zUO0DNFk0UmYUVqcGaBkldwHFNtTkV50jQZc0YVk0Z2wlPooWLhgCS5EFcQ0lX0cmQHEza1gzbMc0SCgCagoWRxDlbAgFTJwjTgkGLCMkQ3nWVxgCaXc1crITZ5EiX3HFUXoWUrITZ5EiX3fUUYIGNwf0aQcEYJwjTgkGLCQEdUEiX4UUahs1a1gzbMc0SKUkUjYDNFElb3DyXJwjTgkGL4I0Zq0VT0cmQgU2XswjRLIUX4AyTPIWTWkEdzXEV5UEaBkldwHFNHUEVzEULgM2a1gzbMc0SCgCagkWTWgEcQ0lPooWLhgCQpIlcvnWXpU0QgcVTxDFduYGRy0zUOUDMrM1Z2ESX1UkULoDSREVdvLzTFgCULoDSnEVLvjFSJwjTgECL4E0YQcUVJwjTgECLSEEcYcUVxgiQhsVQoITZLYUX3nmUX8FMrIzPMEyT1AyTLYmKosjctjlPoYmZQ8zXT8zctYGRCcFahkGLSwjRLITTxs1ULgCQoITZLYUX33BLPUWRWkkRLUTU3sVLYgCQoIDTAslX08lUOYmatPkQ3XTXpAyPLojKqE0a2YUV3PTZBcTVTokbUY0S34lcQMUSVgkbUY0S14lcP41cTgEMvLDSJwTUigWRxLENtjlPRUEaigCQowjcpkFSJYGUQQDLCwDctLDSJ4RUPcTUT8jct4BUmMlUYkGNpEFNtjlPCgCahsFMT8TdtYGUxsVLXsFLC0jRTUkTkgiQhgiKoITSqYTVuUDUOAiaPM0aQYkVPASZMoDTpEUc2YTV3HVZBMTTsIlbEQ0S34lcPoWRGElPvLES24lcHkFLV8DSYo2TG8lcTQCMwfENHklPTkzUZ0FLCwjRhUEVwTkUOcmatPkaMcUV33RZKYmKoIDT3XTXmkzUOYma1gTZvX0SV0jdPoDSBMkQ3PES3PTZBYENVoUZUEiX3PTZBYENVoUZqwVXsAyTLojd5ElZUY0S14lKTUWRGM1YvLDSz4xPLojKqAENHklPPkDQQgCRoITSQU0XzQCUOMiaPMEUU0VXTAyTNoDTqIVdAc0SyQTZLoDVDUELzX0S1MiPLYmaPAEdMACV3.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.iULgCUCwDctLDSJIVQTMURxfENtjlPWETQQYWTW8jcyHDS14lYUoGNFEENtj1R14RZBkFSVEFNXACTFETZBQ0ZGIFNtjlPCU0QigCQS0jcyHDS14lYTsVSW8jcyHDS14lKQgWVW8jcyHDS14lYQ0TQS8jcyHDS14lYQMUQS8jctYVTMkzTOY2LBwjctYVTSkzTOYma1I0ZqICUocmUOAiKosjctjlPAkEUSgiKosjctjlPCcWLZgiKosjctjlPowjUggCVv.UPEklPPUDaggiKosjctjlPVgiQggCSCwDctLDSJgELPEDLSwjR5oWXp0zZhkFLCwjR5oWXpEEQhoGLCwDctLDSJ4RUXQWSqIVZvLDSJwDdXMGL4AkaIIiXJwDUYQWTW8Ddtj1R14RZBMUPWkkZvLUS1MiPLYmatDkcQcjV3P0PLQmKCwjRXQUVqkDUOY2LBwjctA0Tuc1UOY2LBwjctYGRoAiUOQzcVQ1ctYGUz0jQSgCToIzTzDCVRAyPMoDVTk0ZIQ0S1MiPLYma1AEdM0FT33RZKYmKoITSqYDY33RZKYmKoIjRtYlP0ciPHMUUwfkdqESXzEDZYUWRGgDLiYTXzDDdXUGLFIFdUEiX4UkQYYFRVoEcEwlXzDjPQcVTWgkR2f2RlAkdS4zXBUkYPAyTU0DQRYFTEIURMslPJAkPIoFTRwzLHMjSJcSdYo1Xwf0ZzXUVn81TYcVQVg0YEYEVm81TXcVQrg0YEYEVm81TXcVQVg0aEYTV181TXcVQVg0YEYUVm81TXcVQVg0ZEYUVm81TXcVQVg0aEYUVm8VZBcVQVg0YyYEVqUDaNcVQVg0YvXEVqUDaNcVQVg0Y3XEVqUDaNcVQr4zZMwlSqkDaN01ar4zYUwlSnUDaNkVQr4jZEwlStUDaN8VQr4zYMwlSmsFaNc1aPEVMHYUV0fjUZUCRVEVMHwVX0vjUYUCSVoUMLYUX0vTLgUCTwfUMPYUV0.kUZUCUVgUMXYEVmQjLhETRo0TdD0lXAM1PQ0FNFEkaUYTTskTLYMWTDokRxESVrUELY8VVUIUPQMkS2kzUPICQSIFdEoWS18lQhEWPGElcvXjXzEjLgYWPWA0YIEiTmEkUQcVVVgUaEYjVLUDaZc1bVgkbvPEVzUTLgcVPsEEZIwlPn0DaXoFMpgEaIESVncVLSg1argUbIYTXPUzZXUWRFI1QMwFVo0TLXoVRvfEaMESVocVLTk1awfUbMYTXT0DagUUSFIFRQwFVVEkQYcUTrkkZiYTVt8lKVcWUTA0ctLEUAkzThkWQpwTLLMkXJUDULkmYSIVdEoFSwvzThgWQD0TdPc0XwL1QjQyaWIVPyQETv.0UPkGTWMVLicDYz71UPgGSTA0cXoGTAUTdQoDSTA0cloGTAUzTVMTQTwjVMQET2IlUXMTQTwTRMQET24ldPETQSo0aMQET24lUXMTQTwDbqECTAUTdZcVSTA0cxYkVCUDULIWQw.UPEMTXu0DUPcmdrIzYMQET2omUZMTQTwDcEECTAUTZg8VSTA0c2XEVCUDULU2Zw.UPEMjXm0DUPcmKWo0PEoFSBUDULUTRTA0c1oFTAUzTSITQTwjQIQET2MiZPETQ4MkPuAET24xZPETQ4EkPEQESRkDUPcGSqAUPEMTUBUDULgTRTA0chsFTAUzPVITQTwjZvvFTAUzTVITQTwzZUwFTAUzTY8VRTA0cTYUXBUDULoURTA0cXYUVJgDUPcGVVokPEQESrACaPETQ4k0YIQET2IlUYITQTwTaqwFTAUTdYMWRTA0cpoFTAUzPZsVRTA0clYkVBUDUL4FLrAUPEklTBUDUL8VSrAUPEMkVqkjZBETQSoUaIQET2olUZITQTwzaywFTAUzTZMWRTA0cpESXBUDULAWQrAUPEklVokDUPcmaVkkPEQESvMFaPETQoo0aIQET24VLZITQTwDbvvFTAUTZZU2alAUPEkmVmkDUPcmbwfkPEQESwUEaPETQ4oUaIQET2ImUZITQTwTbywFTAUTdZMWRTA0cxESXBUDULIWQrAUPEMTXokDUPcmcVkkPEQESxMFaPETQCElRpwFTAUzPgEWRTA0c1YUXBUDULIGNrAUPEMUXmkDUPcmdwfkPEQESyUEaPETQSEVaIQET2omUZITQTwzbywFTAUzTgMWRTA0c5ESXBUDULQWQrAUPEklPz0DaPETQoE1ZIQET2MSLYITQTwDcqwFTAUTZgEWRTA0cyXUXBUDULQGNrAUPEkWXmkDUPc2MwfkPEQES0UEaPETQ4EVaIQET2ciUZITQTwTcywFTA8FTLUGLrAUPEkWX0kDUPcmKWgkPEQES10DaPETQCI1ZIQET24hLYITQTwjcqwFTAUzPhEWRTA0ctbUXBUDULYGNrAENhkWS5gTZMojKt3BOujzPu0Fbu4VYtQmO7jTQjkFcC8lazI2arwVYx4yLxPiMt.Gdt3hKLIjXsAiUO8FMVokdqYEVxsFajsFMBoEdtzlPoQDUSgiKvDlZ3XTX4MmUZoDSnU0ZIIiX3PzPLgmK4wjRLIUTzEkUZcFMV8jbqYzX5cmUYoDSnE1bvLESx3lcHMWSW8Dc3vVXq8lcHMWSW8TS3XTVWclUYs1crITZ5EiX33RUZoWSFo0UmYUVqcGaBkldwHFNLoWXzEUahU2cFgTPuYGRy0zUOMDNrEldIISXxEDZPoDSREVdvLzTFgidYIGNrg0Y2wlPooWLhgiXTgkdUwlPooWLhgCVUkkb3DCVuE0UjoDSREVdvLDU3UULhkWUsI1ZuYGRy0zUOsTUVQlQ3XTXxgSLioDSREVdvjmTqsVaQU2cFEVci0FSJwjTgkGLSAkbQcUV3QiUXoWUrITZ5EiX3fTUXQWTwD1buYGRy0zUOMDNrEVdQcEVzEUaBkldwHFNDolX1AidgoVUGE1YQISX38lcHMWSW8TQzv1XqcWLgYWUVwjRLIUX4AyPSYDNTwjRLgVXw.SZLoDSREVLvjWTmE0UYoDSREVLvLUTzk0UYIGNFI1ZEklPowjUggidVg0azvlPC0TLSYGLSwjctj1R14RZBklcpE0SiQ0S24lcHMzYrIVdvLESJwjPQI2ZWwDNDklPowjUggiKv.UcIcUVJwTQUg2ZwjENDklPPEzZhU2aV8jct4BUFgiQgoFLCwjRtrVTucmUYgCQoIzQYQkVxUkUOgma1E0TMYEVxUkUOYma1Aka2QEVz.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.SXxUDahgiKoIDQ2YEY33RZKYmKoIDQvnGU2o2TLoDTTMEQEM0S24xPLQmKCwjRHUEV5UkUOY2LBwjctYVTMEEULgiKosjctjlPowjUggyM5Q0PEklPTUUagsFLCwDctLDSJIGUYQSSvfkbvLES14RZKYmKoIDUvnGU30jUOYmatTUSQQjX5AyPLQmKCwjRtTjV4UkUOAiKosjctjlPPcVLh0TSqIVZvLDSJ4RQZkGLDEkcQc0S1MiPLYmaPIEcY0VU0cmUOMGQCwjcyHDS14lcTQCLVwDNTMDSz4xPLojXEQ0TIICV33RZBcUPEEkcQc0S1MiPLYmalUkd3XTT33RZKYmKoITZLYUX3fELPYTPoIDUqcjX33RZBMTUGMFNDMUS1MiPLYmalQ0ZMc0S1MiPLYmatDEdYc0S1MiPLYmalEUSEM0S1MiPLYmalE0TEM0S14lYQ0TRS8jcyHDS14lYQMURS8jctYmTqslLTk1cV8DLtj1R14RZBETVTMENtj1R14RZBMzcwnENtj1R14RZBkFSVEFNXACTAUTZBAUQrEFNtj1R14RZBYENFEFNLMDSz4xPLoDVv.UPvLESJomdgoVSqIVZvLDSJomdgoVTDIldvLDSz4xPLojKUgEcMslXoAyPLoDS3g0bvjGTtkjLhoDSTkEcQc0S34RZKYmKoIzTAcUVpAyTMY2LBwjct4RT1E0QZgCUCwDctLDSJgEUYsVRT8jcyHDS14FTS81YW8jcyHDS14lcHkFLV8DQ2YEY24lcTQWSFMENPklPSQSLXIELC0jRXQUVqkDUOY2LBwjctYGT30TaPgiKosjctjlPMslQjgiKosjctjlPJ4lYBU2MBgzTUECV5sVLgQWPnkUcIcDRvLlQgQSP3gUcvXjX3UULhkWUFkkYHYkVzUDahQSPBE0YQcEVJcCdKYFT5MkSiITUlAELSUUSDIkYPUjTI0zZBoDTBkjZPIESyfzPNozM4kkZiECVqQiUYg1aSk0YEYEVmUjUXc1aSg0YEwFVmUjUXc1aSg0YEYEVuUjQYY2aSg0YEYEVmUjUYc1aSg0YEYEVqUjUYc1aSg0YEYEVuUjUYc1aoIzYEYEVmMmUXsVQr4zYEYEVmAiUXsVQr4zYEYEVmgiUXsVQr4zYEwlSq0DaNsVRr4TauwlSmUEaNgVQr4TZEwlSpUDaN4VQr4zaEwlSm0DaNc1Zr4zYuAUX0fjUYUCRVoUMHYUX0fDagUCSVkUMLYkV0vjUgUCSwDVMPECV0.kUYUCTVoUMTYEV0fkUXcFQxHVPIkVS4QTahEzXCEUa3XTTtUkQQ0VRwj0bQQjVJIWLYwVUvj0aYUkTAE0TNcWRWAkLDMkX3UjdMY2aFIVbAcTX1AiQhQWPxDlcAcETmkTLRcVTVE0YYYEVsUjQZwTQro0YyYEVxACUXQWQwD1YA0VTnkDaBgVSrgkZznFVrkTLYg1YwLEZuwFVwkjQgAUQqgUcIYjXG0DaXkVSwfkZIACVr0TLYk1YwPUZuECVw0jQgQUSrEVUMYjXHEEaXYUTFk0UQwVVpMlQY41atX0cUQET24xTTETRSIVdEoFSwvzThoTQTwTdlMkX4UjZLECSSIFdEQTS4A0UiEyXGQFMuckXAMGUPACTWAUdPc0XwL1QjQyaWAEdLQET2gkdPETQ4EkRLQET2YldPETQSY0PEQESZ0DUPcmXVg0PEQESI0DUPcma5AUPEMkVu0DUPcmaVg0PEQESvsVLPETQ4o0YMQET2ImUZMTQTwjbEECTAUzPg8VSTA0c5wlPm0DUPcmdVo0PEQESzUTLPETQoE1aMQET2ciUXMTQTwTcqECTAUzPhcVSTA0ctbkVCUjZLITQTwTQIQET2YmZPETQSMkPEQESFkDUPc2LpAUPEk2TB8FTPcmKqAUPEkWTBUDULIURTA0cLsFTAUzPUITQTwDRIQET2I1ZPETQCYkPEQESpACaPETQSYkPEQESqUEaPETQSk0aIQET2QkUgITQTwjVIQET2gkUYoDRTA0cXYkVBUDULwFLrAUPEkWVmkDUPcmXVkkPEQESssFaPETQ4k0bIQET2olZPETQCo0ZIQET2YlUZITQTwjavvFTAUTZRITQTwzaMwFTAUzTZsVRpITPEMkVskDUPcmZVokPEQESuMGaPETQSo0bIQET2oVLgITQTwDbEwFTAUTZZkVRTA0ctYUVBUDULA2XrAUPEklVukDUPcmawnkPEQESvACaPETQooUcuYFTAUTdZcVRTA0cxECVBUDULEWUrAUPEkmVskDUPcmbVokPEQESwMGaPETQ4o0bIQET2IWLgITQTwjbEwFTAUzPgkVRTA0c1YUVBUDULI2XrAUPEMTXJoFaPETQCEVbIQET2YmUgITQTwjb3vFTAUzTgcVRTA0c5ECVBUDULMWUrAUPEMUXskDUPcmdVokPEQESyMGaPETQSE1bIQET2oWLgITQTwDcEwFTAUTZBQWSrAUPEkVXqkDUPc2LwjkPEQESzsFaPETQoEVbIQET2MiUgITQTwDc3vFTAUTdgcVRTA0c2DCVBUDULUWUrAUPEkWXskDUPc2MVokPEQES0MGaPEzaPwTcvvFTAUTdgUWRTA0ctbEVBUDULYWSrAUPEMjXqkDUPcmKxjkPEQES1sFaPETQCIVbIQET24xUgITQTwjc3vFT3HVdMoGRo0jRt3hK77RREQVZzMzatQmbuwFakImO77hUSQ0LPwVcmklaSQWXzUlO.."/>
+        <FX_SLOT fxType="chorus" bypassed="0" param_0="0.5"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.8999999761581421" param_1="0.2000000029802322"
+                 param_2="0.699999988079071"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="FX Perc" volume="0.85" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="12">
+      <CLIP_LIST/>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 05 (High Percussion)\808 Bell ART Vla.wav"
+                 rootNote="60"/>
+        <FX_SLOT fxType="delay" bypassed="0" param_0="0.5" param_1="0.6000000238418579"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.8500000238418579" param_2="0.6499999761581421"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Open Hat" volume="0.5" pan="0.0" isMuted="0" isSoloed="0"
+           isArm="0" inputMonitor="0" midiChannel="1" trackHeight="80.0"
+           trackType="0" color="-16384">
+      <CLIP_LIST>
+        <CLIP clipID="22" name="Open Hat" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-3372988">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="313" noteNumber="46" velocity="95" startBeat="0.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="314" noteNumber="46" velocity="90" startBeat="3.75" durationBeats="0.15"/>
+            <MIDI_NOTE noteID="315" noteNumber="46" velocity="95" startBeat="7.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="316" noteNumber="46" velocity="95" startBeat="9.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="317" noteNumber="46" velocity="95" startBeat="11.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="318" noteNumber="46" velocity="90" startBeat="12.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="319" noteNumber="46" velocity="95" startBeat="13.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="320" noteNumber="46" velocity="90" startBeat="15.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="321" noteNumber="46" velocity="95" startBeat="19.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="322" noteNumber="46" velocity="90" startBeat="19.75"
+                       durationBeats="0.15"/>
+            <MIDI_NOTE noteID="323" noteNumber="46" velocity="95" startBeat="30.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="324" noteNumber="46" velocity="95" startBeat="32.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="325" noteNumber="46" velocity="95" startBeat="36.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="326" noteNumber="46" velocity="90" startBeat="38.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="327" noteNumber="46" velocity="95" startBeat="39.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="328" noteNumber="46" velocity="90" startBeat="40.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="329" noteNumber="46" velocity="95" startBeat="41.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="330" noteNumber="46" velocity="90" startBeat="43.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="331" noteNumber="46" velocity="95" startBeat="46.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="332" noteNumber="46" velocity="95" startBeat="48.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="333" noteNumber="46" velocity="95" startBeat="49.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="334" noteNumber="46" velocity="90" startBeat="50.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="335" noteNumber="46" velocity="95" startBeat="51.75"
+                       durationBeats="0.15"/>
+            <MIDI_NOTE noteID="336" noteNumber="46" velocity="90" startBeat="53.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="337" noteNumber="46" velocity="95" startBeat="54.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="338" noteNumber="46" velocity="90" startBeat="55.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="339" noteNumber="46" velocity="95" startBeat="57.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="340" noteNumber="46" velocity="90" startBeat="60.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="341" noteNumber="46" velocity="95" startBeat="63.525"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="342" noteNumber="46" velocity="90" startBeat="63.75"
+                       durationBeats="0.15"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 02 (Hihats)\7x Kompressor (Open).wav"
+                 rootNote="60"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Bass" volume="0.8" pan="0.0" isMuted="0" isSoloed="0" isArm="0"
+           inputMonitor="0" midiChannel="1" trackHeight="80.0" trackType="0"
+           color="-16732000">
+      <CLIP_LIST>
+        <CLIP clipID="25" name="Bass" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-3372988">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="397" noteNumber="38" velocity="100" startBeat="0.75"
+                       durationBeats="0.3610018850087847"/>
+            <MIDI_NOTE noteID="398" noteNumber="38" velocity="95" startBeat="1.5" durationBeats="0.1868514508205973"/>
+            <MIDI_NOTE noteID="399" noteNumber="48" velocity="105" startBeat="2.0" durationBeats="0.7366816114367277"/>
+            <MIDI_NOTE noteID="400" noteNumber="48" velocity="110" startBeat="4.0" durationBeats="0.9832641676877047"/>
+            <MIDI_NOTE noteID="401" noteNumber="48" velocity="90" startBeat="6.5" durationBeats="0.08995014055423201"/>
+            <MIDI_NOTE noteID="402" noteNumber="45" velocity="95" startBeat="6.75" durationBeats="0.3013170553745221"/>
+            <MIDI_NOTE noteID="403" noteNumber="46" velocity="100" startBeat="7.5" durationBeats="0.1863128832674045"/>
+            <MIDI_NOTE noteID="404" noteNumber="48" velocity="105" startBeat="8.75"
+                       durationBeats="0.3193589146637275"/>
+            <MIDI_NOTE noteID="405" noteNumber="48" velocity="95" startBeat="9.5" durationBeats="0.2470513145773372"/>
+            <MIDI_NOTE noteID="406" noteNumber="48" velocity="110" startBeat="10.0"
+                       durationBeats="0.743434295149935"/>
+            <MIDI_NOTE noteID="407" noteNumber="48" velocity="90" startBeat="11.5" durationBeats="0.196025849843934"/>
+            <MIDI_NOTE noteID="408" noteNumber="46" velocity="100" startBeat="13.5"
+                       durationBeats="0.249772427633374"/>
+            <MIDI_NOTE noteID="409" noteNumber="46" velocity="95" startBeat="14.0" durationBeats="0.3418832630383929"/>
+            <MIDI_NOTE noteID="410" noteNumber="46" velocity="105" startBeat="14.75"
+                       durationBeats="0.3747809840049015"/>
+            <MIDI_NOTE noteID="411" noteNumber="46" velocity="90" startBeat="15.5" durationBeats="0.2042963918158029"/>
+            <MIDI_NOTE noteID="412" noteNumber="46" velocity="100" startBeat="16.0"
+                       durationBeats="0.3407853973028683"/>
+            <MIDI_NOTE noteID="413" noteNumber="46" velocity="95" startBeat="16.75"
+                       durationBeats="0.3533645242228523"/>
+            <MIDI_NOTE noteID="414" noteNumber="45" velocity="105" startBeat="17.5"
+                       durationBeats="0.6466518153133917"/>
+            <MIDI_NOTE noteID="415" noteNumber="43" velocity="90" startBeat="18.75"
+                       durationBeats="0.3187623093550072"/>
+            <MIDI_NOTE noteID="416" noteNumber="43" velocity="95" startBeat="19.5" durationBeats="0.1986137787178409"/>
+            <MIDI_NOTE noteID="417" noteNumber="43" velocity="100" startBeat="20.0"
+                       durationBeats="0.2979605628048574"/>
+            <MIDI_NOTE noteID="418" noteNumber="45" velocity="95" startBeat="20.75"
+                       durationBeats="0.1884210067526798"/>
+            <MIDI_NOTE noteID="419" noteNumber="45" velocity="105" startBeat="21.25"
+                       durationBeats="0.2880280479776753"/>
+            <MIDI_NOTE noteID="420" noteNumber="43" velocity="90" startBeat="22.0" durationBeats="0.2235247962241893"/>
+            <MIDI_NOTE noteID="421" noteNumber="41" velocity="100" startBeat="22.5"
+                       durationBeats="0.4442044260802491"/>
+            <MIDI_NOTE noteID="422" noteNumber="43" velocity="95" startBeat="23.5" durationBeats="0.2435072822262465"/>
+            <MIDI_NOTE noteID="423" noteNumber="48" velocity="110" startBeat="24.5"
+                       durationBeats="0.133483551265442"/>
+            <MIDI_NOTE noteID="424" noteNumber="46" velocity="100" startBeat="24.75"
+                       durationBeats="0.3992229871250681"/>
+            <MIDI_NOTE noteID="425" noteNumber="46" velocity="90" startBeat="25.5" durationBeats="0.1199741264174997"/>
+            <MIDI_NOTE noteID="426" noteNumber="46" velocity="95" startBeat="25.75"
+                       durationBeats="0.1209115521939932"/>
+            <MIDI_NOTE noteID="427" noteNumber="46" velocity="105" startBeat="26.0"
+                       durationBeats="0.8205673359092318"/>
+            <MIDI_NOTE noteID="428" noteNumber="48" velocity="100" startBeat="27.5"
+                       durationBeats="0.220636257607938"/>
+            <MIDI_NOTE noteID="429" noteNumber="46" velocity="95" startBeat="28.5" durationBeats="0.3961807552379313"/>
+            <MIDI_NOTE noteID="430" noteNumber="46" velocity="100" startBeat="29.5"
+                       durationBeats="0.3749443508227067"/>
+            <MIDI_NOTE noteID="431" noteNumber="48" velocity="105" startBeat="30.5"
+                       durationBeats="0.2018246220906617"/>
+            <MIDI_NOTE noteID="432" noteNumber="48" velocity="110" startBeat="31.0"
+                       durationBeats="0.3700563286010173"/>
+            <MIDI_NOTE noteID="433" noteNumber="48" velocity="90" startBeat="31.75"
+                       durationBeats="0.1231411326724125"/>
+            <MIDI_NOTE noteID="434" noteNumber="48" velocity="95" startBeat="32.5" durationBeats="0.1064708119081162"/>
+            <MIDI_NOTE noteID="435" noteNumber="45" velocity="100" startBeat="32.75"
+                       durationBeats="0.5395377665356234"/>
+            <MIDI_NOTE noteID="436" noteNumber="43" velocity="105" startBeat="34.75"
+                       durationBeats="0.2948304402329294"/>
+            <MIDI_NOTE noteID="437" noteNumber="43" velocity="90" startBeat="35.5" durationBeats="0.2321283037646245"/>
+            <MIDI_NOTE noteID="438" noteNumber="43" velocity="100" startBeat="36.0"
+                       durationBeats="0.4062098604868453"/>
+            <MIDI_NOTE noteID="439" noteNumber="43" velocity="95" startBeat="36.75"
+                       durationBeats="0.3903253697229556"/>
+            <MIDI_NOTE noteID="440" noteNumber="45" velocity="105" startBeat="37.5"
+                       durationBeats="0.1058961527274237"/>
+            <MIDI_NOTE noteID="441" noteNumber="43" velocity="100" startBeat="37.75"
+                       durationBeats="0.4506806994797505"/>
+            <MIDI_NOTE noteID="442" noteNumber="48" velocity="110" startBeat="39.25"
+                       durationBeats="0.4067422877646752"/>
+            <MIDI_NOTE noteID="443" noteNumber="45" velocity="95" startBeat="40.0" durationBeats="0.3564513788413454"/>
+            <MIDI_NOTE noteID="444" noteNumber="45" velocity="100" startBeat="40.75"
+                       durationBeats="0.3050840425130994"/>
+            <MIDI_NOTE noteID="445" noteNumber="45" velocity="90" startBeat="41.5" durationBeats="0.2602063980703094"/>
+            <MIDI_NOTE noteID="446" noteNumber="46" velocity="105" startBeat="42.75"
+                       durationBeats="0.3982288952710092"/>
+            <MIDI_NOTE noteID="447" noteNumber="46" velocity="100" startBeat="43.5"
+                       durationBeats="0.2259015426810619"/>
+            <MIDI_NOTE noteID="448" noteNumber="46" velocity="95" startBeat="44.0" durationBeats="0.2877326718518312"/>
+            <MIDI_NOTE noteID="449" noteNumber="46" velocity="100" startBeat="44.75"
+                       durationBeats="0.3209688040292062"/>
+            <MIDI_NOTE noteID="450" noteNumber="45" velocity="90" startBeat="45.5" durationBeats="0.215261672224695"/>
+            <MIDI_NOTE noteID="451" noteNumber="46" velocity="105" startBeat="46.0"
+                       durationBeats="0.3703344825134273"/>
+            <MIDI_NOTE noteID="452" noteNumber="46" velocity="100" startBeat="46.75"
+                       durationBeats="0.3383660766391392"/>
+            <MIDI_NOTE noteID="453" noteNumber="45" velocity="95" startBeat="47.5" durationBeats="0.186052545413386"/>
+            <MIDI_NOTE noteID="454" noteNumber="45" velocity="90" startBeat="48.0" durationBeats="0.226341802576271"/>
+            <MIDI_NOTE noteID="455" noteNumber="46" velocity="100" startBeat="48.5"
+                       durationBeats="0.3864532776212004"/>
+            <MIDI_NOTE noteID="456" noteNumber="45" velocity="105" startBeat="49.5"
+                       durationBeats="0.5411168282992577"/>
+            <MIDI_NOTE noteID="457" noteNumber="46" velocity="95" startBeat="50.5" durationBeats="0.2336969946935037"/>
+            <MIDI_NOTE noteID="458" noteNumber="45" velocity="100" startBeat="51.0"
+                       durationBeats="0.2175991522908901"/>
+            <MIDI_NOTE noteID="459" noteNumber="45" velocity="90" startBeat="51.5" durationBeats="0.2036581703061688"/>
+            <MIDI_NOTE noteID="460" noteNumber="45" velocity="105" startBeat="52.75"
+                       durationBeats="0.3125826721046344"/>
+            <MIDI_NOTE noteID="461" noteNumber="45" velocity="100" startBeat="53.5"
+                       durationBeats="0.5063624404498236"/>
+            <MIDI_NOTE noteID="462" noteNumber="45" velocity="95" startBeat="54.75"
+                       durationBeats="0.3743811054580543"/>
+            <MIDI_NOTE noteID="463" noteNumber="45" velocity="90" startBeat="55.5" durationBeats="0.1293863570459522"/>
+            <MIDI_NOTE noteID="464" noteNumber="46" velocity="100" startBeat="55.75"
+                       durationBeats="0.1327560601478206"/>
+            <MIDI_NOTE noteID="465" noteNumber="46" velocity="105" startBeat="56.0"
+                       durationBeats="0.2877583089836768"/>
+            <MIDI_NOTE noteID="466" noteNumber="48" velocity="110" startBeat="56.75"
+                       durationBeats="0.3295391895285178"/>
+            <MIDI_NOTE noteID="467" noteNumber="48" velocity="100" startBeat="57.5"
+                       durationBeats="0.2579523147856226"/>
+            <MIDI_NOTE noteID="468" noteNumber="45" velocity="95" startBeat="58.75"
+                       durationBeats="0.3869167706565806"/>
+            <MIDI_NOTE noteID="469" noteNumber="45" velocity="90" startBeat="59.5" durationBeats="0.2030117276564238"/>
+            <MIDI_NOTE noteID="470" noteNumber="43" velocity="100" startBeat="60.0"
+                       durationBeats="0.3153737656098442"/>
+            <MIDI_NOTE noteID="471" noteNumber="43" velocity="105" startBeat="60.75"
+                       durationBeats="0.5393957541483001"/>
+            <MIDI_NOTE noteID="472" noteNumber="43" velocity="100" startBeat="62.0"
+                       durationBeats="0.4105947927519621"/>
+            <MIDI_NOTE noteID="473" noteNumber="43" velocity="95" startBeat="62.75"
+                       durationBeats="0.35590089668242"/>
+            <MIDI_NOTE noteID="474" noteNumber="43" velocity="90" startBeat="63.75"
+                       durationBeats="0.1080714619350193"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="plugin" pluginID="VST3-TyrellN6-d3d5f21b-656ad32f" pluginFormat="VST3"
+                 name="" bypassed="0" pluginState="7569.VMjLgfXG...O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9HyM3DiKo4hLYMGLSoEcqYzXuUjQg81aWkEclwFS18lcHEDLT8DUq0lXqcmQg4TVoITZXUUV30zUOkmKCwjctjlPoQkZgo1ZVgEcvLTXuE0QiIWUrITZyXUX3PTdMoDSREVdvjVX0QiUYoDSREVdvL0T0EULU41crITZ5EiX33RUZoWSFo0UuYGRy0zUOMTTsIlbEolPooWLhgCSDMFd2wFTJwjTgkGL4E0YQcUVJwjTgkGLoU0Z2ESXoslQiQya1gzbMc0SPkzUYkWSWMFdUwlPooWLhgibTkEMYoWXxcWLgIya1gzbMc0SKUkUjYDNFElb3DyX34lcHMWSW8TP2YzXqkTagcVTWkkRLIUX4ASZTcFMFkUcvvlPooWLhgCSEM1YMEiVVgiUZkVUrITZ5EiX3PDQQMURUwjRLIUX4AyTPQTSqQEdtYGRy0zUOwTV5M0ctYGRy0zUOwTV5MEdtYGRzk0UOgma1gzbYc0SGUjQis1a1gzbYc0SAEkdTIUQoITZLYUX3nmUX8FMrIzPMEyT1AyTLYmKosjctjlPowDQZgWSWwDNtjlPowjUggiKv.UcIcUVJoGUSQUQS8Dc3vVXq81TXkWSWoUazXUVp8FTS0TSUwDNtjlPMACQQcmdCwDctLDSJoGUSYUSUwDNtjlPMAiZUQTQS8jcyHDS14FTS0TTqwDNyDSXzUEaNcVSxH1aiwVXqEEaB0DL5QEd5MDSJoGUSQTRS8jcyHDS14FTS0TVvPEd5MDSJoGUSYUTpwDNtj1R14RZBMURTgUdUY0S54lcTIyZrEVavLDSz4xPLoDSEUEdqESV3PTZBAUPqIVcuY0S14lKTYDNFElZvLDSJ4xZQ81cVkENDklPGkEUZIWUV8DdtYWTS0jUXIWUV8jctYGTtcGUXQCLCwjRLU0X3kjLSgiKoIjTUw1X3PTZMQiXo0jR1QUTDAyPLQmKCwjRtTETGUEUOYmatP0YiYUV4giZggiKoIzP3vlXqQCUOkma1QkbqECVqAyPMoDUUIUY3XjX33RZB0zZFk0aEQ0Sv3FTS8VTVoETvjVSJAkZQU2cFkENhklPCEUahIWQT8DdtYGT5kzQgIDLSwzctYWTS0TLTsVTW8jctYGTtgidPgCRoIDSYQUT33RZBMTUrEFNtjlPMgCagU2ZpEFNtjlPowjUggCVv.0PuYVU0sVLX8FMwjENDklPMgiQYsFLCwjRt.SX3E0UX0DLCwjRt.SX3E0UXgiKosjctjlPPgCahoWQrwDNtj1R14RZBAURUgEciYUV3PzPLY2LBwjct4BUBASZLojKqAEQvjFSJAkZhwVTW8zctA0TTUUagMELCwjR5QTUvPCaSgiYoITSQU0XzEUUOQiatTEdMcjX3nmTLgmatPEdqESX3AyPLojdTM1P3vlXqAyPLoDS5EFcQcUTzAyTLoDRqMUcQcUV33RZBIUVUkkbvLDSJwDdXMGLSEkSYUESJQDQiEGLSwDctLDSJAEUYkFLS0jcyHDS14lcTASSW8zctLDSz4xPLoDVpQENtj1R14RZBIUUFEFNHMDSz4xPLoDVUkkbvLDSz4xPLoDRUMUcQY0S1MiPLYmatL0YIYUVxAyTLYmatTEdqESV33RZBkFSVEFNTo1TVkTZBETTxnENDk1R14RZBQTUwfENTMDSz4xPLoDSUMVdvLES14RZKYmKoIjQIU0S1MiPLYmalQ0Z2Y0S34RZKYmKoIjUUYTX33RZKYmKoIjTvnWXpAyPLQmKCwjR1QEVnUkQggCQSwjRPslXuMlUOYma1gTZvX0SLkkdScma1QEMzDCV3fTZBQURWoUavLESJIVUXESUV8zct4BUt0zUYgiKosjctjlPPgiQgcVRW8jct4RTxs1UOY2LBwjct4RTM0TULgCQoIDQvPTT2o2TLYmKosjctjlPRUjQisFLCwDctLDSJgEUSMUQS8jctYVTMEEULgiKosjctjlPowjUggicpE0SIklPSsVagkFLo0jRPslXuMlUOcma1U0YYcUV3PTZBA0YwH1ZvLDSz4xPLojKvDlbEwlX33RZBQzcVQFNtj1R14RZBQDL5Q0c5MESJAEUSQTQS8jcyHDS14lYTcVTWkENtj1R14RZBYDL5Q0c5MDSJgEUSQTQS8jcyHDS14lcHkFLV8DUq0lXqcmQgoDSEokcEM0S4MiPLYmatTUSMslXoUzTOYmatTUSQQjX5UzTOY2LBwjctYGUtETaLgCRosjctjlPTUUagsVRS8jcyHDS14lYQ8FMVkEd5MDSz4xPLoDTUM0TIICV3o2TLomatTUSQQjX5kzTOY2LBwjct4BUWEEQhoGLCwDctLDSJ4BLUMURxfENDkVSJAEUYoWUsE1ZvLDSz4xPLoDSUQFcMY0S1MiPLYmalUkd3XTT33RZKYmKoIjTvPkV2o2PLoDRUM0aIM0S24lYQIzZrEFNtjlPNgiUZkWUV8zcyHDS14lcSkWSrUUc2YES3nGdLY2LBwjctY2T40DaUU2crwDN5gGS1MiPLYma1QELIwVU0cmUOMGQCwjcyHDS14lYSkWUrUUc2Y0SyQzPLY2LBwjctYFUMkELgIGLSszctLDSz4xPLoDVpAkU3XTX3nmTLYmKosjctjlPV0jZQMGNFkENtjlPV0jZQAENFEFNDklPCU0QiUWVrkENDMUS1MiPLYmalEUSMslXoUzTOcGToIjQvPTT1E0ULgiKosjctjlPFAidTgWSrwDNDMUSJgEUSQTPGMFd5MDSz4xPLojbTkEMYoWXxAyPLQmKCwjRHUUV4AyPLQmKCwjR5QDYSEzUOY2LBwjctA0TyzTQhMURxfENtjlPAkDLTgWSV8jctAETREEUYkWTW8jctAETREEQhoGLCwDctLDSJQjZT0DNFkENtjlPowjUggCVv.UPEklPV0DUPgCQoITPQczXSAyTLoDS3g0bvjGTtkjLhcmatTEMAcUV33RZBIUQFM1ZvLUS1MiPLYmatD0ZAczXtAyTMY2LBwjctYWUqE0UOcmKCwDctLDSJ4lYBozM3sjYLUUVoE0UZUGMFgDa3vlXlQkLYI2ZGgTZ3XUX1kzUYkWSWkkZAgFVuQiUXg2ZGgDQEYzXm8lcKUmKBE0SznWRTEjPU8TUv.ERAITUHsldTojatjjZPITR2oVZLoma18TaQESVoUEagsVRr4zZEYEVmUjUXcVQr4zYEYEVnUjUXcVQr4zYEYEVmslUXoVPs4zYEYEVmUjUXsVQr4zYEYEVmUkUXsVQr4zYEYEVmslUXsVQr4jRDYEVmUTLZcVUVgUMDYEVmUjUgcVUVgUMDYEVmUTLgcVUVgUMDYEV0PULXUCUrgUMLYEV0HFaZUCQVkUMHYEV0.kUXUCTwfUMTYUV0XlUXUiZVgUMDwlPo81TX81aSg0bukFVq8VZX81aog0bukFVz8VdXs1a4g0aukGVy8VdXU2aCkEZuMTVq81PY8VQRIVdEoFSwvzThgWQ50TQiESXEclUYUzXrgUavXUTt8lcZ0VVwTUaqYkTKUDQMQCQsIVPiMES2kzUPIiKsElc3XjX1UDUXgFLTgkZYQEVrUTLYc1YrM0YuYEVwUjQg8TQrE1Y3XEV1MlZXgVRwfEZQYDUnkEaXojXrgkaEsFVvkTLZg1crQ0TIESXnEzQQkVRwfUZMYTVT0DaYk1XwfkaUACVv0TLZk1crUUZzDSUoEzQRg0ZDkkZqUTVrEULYo1YrYkZuYTVwEkQgoFLrIzcYQET24RdTETRSIVdEoFSwvzThwTQTwTdlMkX4UjZLECSSIFdEQTS4A0UiEyXGQFMuckXAACUPACTWAUdPc0XwL1QjQyaWAEdLQET2IldPETQCE0PuAET2YldPETQSk0YMQET2gkUXMTQTwTaEECTAUTdRMTQTwDSMQET2olUZMTQTwDbEECTAUTZZ8VSTA0cxYEVCUDULE2Zw.UPEMTXm0DUPcmcVo0PEQESJomUXMTQTwzbqECTAUTZgcVSTA0cyXkVCUDULUWQw.UPEkWXu0DUPcmKWg0PEQES1sVLPETRoAUPEkVTBUDUL4TRTA0c2nFTAUTdQITQTwDTIQET2QzZBITQTwjTIQET2AkZPETQCUkPEQESUkDUPcGVqAUPEMjTBUDULkURTA0ctsFTAUzPYMWRTA0cTYEVBUDULoTRTA0cTYkVBUDULsFLrAUPEkVVmkDUPcmalk0ZIQET2gkUZITQTwDavvFTAUTdYcVRTA0chYUVBUDUL01ZrAUPEkWVykDUPcmbpAUPEMjVqkDUPcmYVokPEQEStACaPETQCMkPEQESu0DaPETQSokRTwFTAUzTZ0VRTA0cpYkVBUDUL81brAUPEMkVykDUPcmZwDlPEQESvUDaPETQooUZIQET24lUYITQTwDbiwFTAUTZZ8VRTA0ctEiVBUDULAGLrAUPEklPvgCaPETQ4o0YIQET2IWLXITQTwTbUwFTAUTdZ0VRTA0cxYkVBUDULE2brAUPEkmVykDUPcmbwDlPEQESxUDaPETQCEVZIQET2YmUYITQTwjbiwFTA8FTLI2ZrAUPEMTXwkDUPcmcVElPEQESxgCaPETQSE1YIQET2oWLXITQTwzbUwFTAUzTg0VRTA0c5YkVBUDULM2brAUPEMUXykDUPcmdwDlPEQESzUDaPoDQTwDcMwFTAUTZgsVRTA0cyDSVBUDULQ2ZrAUPEkVXwkDUPc2LVElPEQESzgCaPETQ4E1YIQET2cSLXITQTwTcUwFTAUTdg0VRTA0c2XkVBUDULU2brIjPEQES0ACaPETQ4EVcIQET24xUXITQTwjcMwFTAUzPhsVRTA0ctHSVBUDULY2ZrAUPEMjXwkDUPcmKWElPEQES1gCaPcWTTA0ctjGTJkkQYwVSFEEVuAET3Q0ThQTQTwjcLolTrEEaYkVTTIUPIMUS3X1PLYGRS0jRt3hK77RRC8Vav8lak4Fc9vSREQVZzMzatQmbuwFakImOxbCNw3RZtHSVyAyTZQ2ZFM1aEYTXu81UYQmYrwjcuYGRAACUOQ0ZsI1Z2YTXNkUZBkFVUkEdMc0S44xPLYmKoITZToVXpslUXQGLCE1aQczXxUEaBk1LVEFNDkWSJwjTgkGLoEVczXUVJwjTgkGLSMUcQESUtcGaBkldwHFNtTkV50jQZc0a1gzbMc0SCEUahIWQpITZ5EiX3vDQig2crAkRLIUX4ASdQcVTWkkRLIUX4ASZUs1cwDVZqYzXz7lcHMWSW8DTIcUV40zUigWUrITZ5EiX3HGUYQSV5Elb2ESXx7lcHMWSW8zRUYEYFgiQgIGNwLFdtYGRy0zUOEzcFM1ZI0VXmE0UYoDSREVdvjFUmQiQYUGLrITZ5EiX3vTQicVSwnkU3XkVoUEaBkldwHFNDQTTSkTULoDSREVdvLETD0zZTgma1gzbMc0SLkkdScma1gzbMc0SLkkdSgma1gDcYc0S34lcHMWVW8zQEYzXq8lcHMWVW8TPQoGURUTZBkFSVEFN5YEVuQCaBMTSwLkcvLES14RZKYmKoITZLQjV30zULgiKoITZLYUX33BLPUWRWkkR5Q0TTUzTOQGNrE1ZuMEV40zUZ0FMVkkZuA0TM0TULgiKoITSvPTT2o2PLQmKCwjR5Q0TV0TULgiKoITSvnVUDUzTOY2LBwjctA0TME0ZLgyLwDFcUwlSm0jLh81XrE1ZQwlPMAidTgmdCwjR5Q0TDkzTOY2LBwjctA0TMkELTgmdCwjR5Q0TVEkZLgiKosjctjlPSkDUXkWUV8jdtYGUxrFag0FLCwDctLDSJwTQUg2ZwjENDklPPEzZhU2aV8jct4BUFgiQgoFLCwjRtrVTucmUYgCQoIzQYQkVxUkUOgma1E0TMYEVxUkUOYma1Aka2QEVz.yPLoDSUMFdIIyT33RZBIUUrMFNDkVSzHVZMojcTEEQvLDSz4xPLojKUA0QUQ0S14lKTc1XVkUd3nVX33RZBMDNrI1ZzP0S44lcTI2Zwf0ZvLTSJQUURUFNFIFNtjlPMslQY8VQT8DLtA0TuEkUZAELo0jRPoVT0cmQYgiXoIzPQ0lXxUDUOgma1AkdIcTXBAyTLcma1E0TMECUqE0UOYma1Aka3nGT3fTZBwTVTEENtjlPCUEaggiKoITS3vVX0slZggiKoITZLYUX3fELPMzalUUcqECVuQSLYgCQoITS3XTVqAyPLojKvDFdQcEVMAyPLojKvDFdQcEV33RZKYmKoIDT3vlX5UDaLgiKosjctjlPPkTUXQ2XVkENDMDS1MiPLYmatPkPvjFSJ4xZPQDLowjRPolXrE0UOcmaPMEUU0VXSAyPLojdDUELzv1T3XVZB0TTUMFcQU0Sz3lKUgWSGIFN5IES34lKTg2ZwDFdvLDSJoGUiMDNrI1ZvLDSJwjdgQWTWEEcvLESJgzZSUWTWkENtjlPRkUUYIGLCwjRLgGVyAyTQ4TVUwjRDQzXwAyTLQmKCwjRPQUVoAyTMY2LBwjctYGUvzzUOcmKCwDctLDSJgkZTgiKosjctjlPRUkQggCRCwDctLDSJgUUYIGLCwDctLDSJgTUSUWTV8jcyHDS14lKScVRVkkbvLES14lKUg2ZwjENtjlPowjUggCUpMkUIklPAEkLZgCQosjctjlPDUULXgCUCwDctLDSJwTUikGLSwjctj1R14RZBYTRU8jcyHDS14lYTs1cV8Ddtj1R14RZBYUUFEFNtj1R14RZBIEL5ElZvLDSz4xPLojcTgEZUYTX3PzTLoDTqI1aiY0S14lcHkFLV8DSYo2T24lcTQCMwfENHklPTkzUZ0FLSwjRhUEVwTkUOcmatPkaMcUV33RZKYmKoIDT3XTXmkzUOYmatDkbqc0S1MiPLYmatDUSMUES3PTZBQDLDE0c5MES14RZKYmKoIjTEYzXqAyPLQmKCwjRXQ0TSUzTOYmalEUSQQES33RZKYmKoITZLYUX3XmZQ8TRoIzTq0VXoASZMoDTqI1aiY0S24lcUcVVWkENDklPPcVLhsFLCwDctLDSJ4BLgIWQrIFNtjlPDcmUjgiKosjctjlPDAidTcmdSwjRPQ0TDUzTOY2LBwjctYFUmE0UYgiKosjctjlPFAidTcmdCwjRXQ0TDUzTOY2LBwjctYGRoAiUOQ0ZsI1Z2YTXJwTQZYWQS8TdyHDS14lKU0TSqIVZEM0S14lKU0TTDIldEM0S1MiPLYma1QkaA0FS3fTZKYmKoIDUU0VXqkzTOY2LBwjctYVTuQiUYgmdCwDctLDSJAUUSMURxfEd5MES54lKU0TTDIldIM0S1MiPLYmatP0UQQjX5AyPLQmKCwjRt.SUSkjLXgCQo0jRPQUV5UUagsFLCwDctLDSJwTUjQWSV8jcyHDS14lYUoGNFEENtj1R14RZBIELTo0c5MDSJgTUS8VRS8zctYVTBsFaggiKoIjS3XkV4UkUOc2LBwjctY2T40DaUU2cVwDN5gGS1MiPLYma1MUdMwVU0cGaLgid3wjcyHDS14lcTASRrUUc2Y0SyQzPLY2LBwjctY1T4UEaUU2cV8zbDMDS1MiPLYmalQUSYASXxAyTKcmKCwDctLDSJgkZPYENFEFN5IES14RZKYmKoIjUMoVTygiQYgiKoIjUMoVTPgiQggCQoIzPUczX0kEaYgCQS0jcyHDS14lYQ0TSqIVZEM0S2AUZBYDLDEkcQcES33RZKYmKoIjQvnGU30DaLgCQS0jRXQ0TDEzQigmdCwDctLDSJIGUYQSV5ElbvLDSz4xPLoDRUkUdvLDSz4xPLojdDQ1TAc0S1MiPLYmaPM0LMUjXSkjLXgiKoITPIACU30jUOYmaPAkTQQUV4E0UOYmaPAkTQQjX5AyPLQmKCwjRDoFUMgiQYgiKoITZLYUX3fELPETQoIjUMQET3PTZBETTGM1TvLESJwDdXMGL4AkaIIiX24lKUQSPWkENtjlPRUjQisFLS0jcyHDS14lKQsVPGMlavLUS1MiPLYma1U0ZQc0S24xPLQmKCwjRtYlPJcCdKYFSUkUZQckV0QiQHwFNrIlYTISVxs1QHkFNVElcIcUV40zUYoVPng0azXEV3s1QHQTQFM1YuY2R04hPQ8DM5kDUAITUOUELPgTPBUERqoGUJ4lKIoFTBkzcpkFS54lcO0VTwjUZUwVXqkDaNsVQVg0YEYEVmUDaNcVQVgEZEYEVmUDaNcVQVg0YqYEVpETaNcVQVg0YEYEVqUDaNcVQVg0YUYEVqUDaNcVQVg0YqYEVqUDaNoDQVg0YEEiVmUkUXUCQVg0YEYUXmUkUXUCQVg0YEESXmUkUXUCQVgUMTECV0PEaXUCSVgUMhwlV0PjUYUCRVgUMPYEV0.ULXUCUVkUMlYEV0nlUXUCQrITZuMEVu81TXM2aog0ZukFVu8VZXM2aogEcukGVq8VdX81a4g0bukGV081PYg1aCk0ZuMTVuUjThkWQpwTLLMkX3UjdMUzXwDVQmYUVEMFaX0FLVEkauYmVskULU01ZVI0REQTSzPTahEzXSwzcIcETx3RagYGNFIlcEQEVnACUXoVVTgEaEESVmcFaSc1aVgUbEYTXOUDagcFNVgkcioFVnkTLXgVTFQEZYwFVJIFaX4VQqgEbIEiVncGaTMURwDFZAcTTokTLXkVSFkEUMwVVoMVLX4VUvfEbMEiVocGaUkFMwTUZAcjTXsFQYo1ZEkEaQESVpcFaVo1aFkUbQYTXpACaBcWVTA0ctjGUAkzThkWQpwTLLMkXLUDULkmYSIVdEoFSwvzThgWQD0TdPc0XwL1QjQyaWIVPvPETv.0UPkGTWMVLicDYz71UPgGSTA0choGTAUzPQMzaPA0cloGTAUzTYcVSTA0cXYEVCUDUL0VQw.UPEkmTCUDULwTSTA0cpYkVCUDULAWQw.UPEklVu0DUPcmbVg0PEQESwsVLPETQCE1YMQET2YmUZMTQTwjR5YEVCUDULM2Zw.UPEkVXm0DUPc2LVo0PEQES0UTLPETQ4E1aMQET24xUXMTQTwjcqECTAkTZPETQoEkPEQESNkDUPc2MpAUPEkWTBUDULAURTA0cDslPBUDULIURTA0cPoFTAUzPUITQTwTUIQET2g0ZPETQCIkPEQESYkDUPcmaqAUPEMTVykDUPcGUVgkPEQESJkDUPcGUVokPEQESqACaPETQok0YIQET24lYYsVRTA0cXYkVBUDULwFLrAUPEkWVmkDUPcmXVkkPEQESssFaPETQ4k0bIQET2ImZPETQCo0ZIQET2YlUZITQTwjavvFTAUzPSITQTwzaMwFTAUzTZoDUrAUPEMkVskDUPcmZVokPEQESuMGaPETQSo0bIQET2oVLgITQTwDbEwFTAUTZZkVRTA0ctYUVBUDULA2XrAUPEklVukDUPcmawnkPEQESvACaPETQoIDb3vFTAUTdZcVRTA0cxECVBUDULEWUrAUPEkmVskDUPcmbVokPEQESwMGaPETQ4o0bIQET2IWLgITQTwjbEwFTAUzPgkVRTA0c1YUVBUDULI2XrAUPuAESxsFaPETQCEVbIQET2YmUgITQTwjb3vFTAUzTgcVRTA0c5ECVBUDULMWUrAUPEMUXskDUPcmdVokPEQESyMGaPETQSE1bIQET2oWLgITQTwDcEwFTJQDULQWSrAUPEkVXqkDUPc2LwjkPEQESzsFaPETQoEVbIQET2MiUgITQTwDc3vFTAUTdgcVRTA0c2DCVBUDULUWUrAUPEkWXskDUPc2MVokPEQES0MGaBITQTwTcvvFTAUTdgUWRTA0ctbEVBUDULYWSrAUPEMjXqkDUPcmKxjkPEQES1sFaPETQCIVbIQET24xUgITQTwjc3vFT2EEUPcmK4AkRYYTVr0jQQg0aPAEdTMkXDUDULYGSpIEaQwVVoEEURETRS0DNlMDS1gzTMojKt3BOujTQjkFcC8lazI2arwVYx4COuX0TTMCTrU2Yo41TzEFck4C."/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Filter Cutoff" automationEnabled="1" paramID="1001">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.15"/>
+            <POINT startTime="7.258064516129032" gain="0.4"/>
+            <POINT startTime="15.0" gain="0.7"/>
+            <POINT startTime="22.25806451612903" gain="0.85"/>
+            <POINT startTime="30.0" gain="0.6"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="velocitycurve" bypassed="0" curveType="0" curveAmount="0.5"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+    <TRACK name="Chords" volume="0.6" pan="0.0" isMuted="0" isSoloed="0"
+           isArm="0" inputMonitor="0" midiChannel="1" trackHeight="80.0"
+           trackType="0" color="-2007156">
+      <CLIP_LIST>
+        <CLIP clipID="27" name="Chords" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-3372988">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="549" noteNumber="62" velocity="85" startBeat="0.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="550" noteNumber="64" velocity="85" startBeat="0.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="551" noteNumber="69" velocity="85" startBeat="0.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="552" noteNumber="62" velocity="80" startBeat="0.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="553" noteNumber="64" velocity="80" startBeat="0.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="554" noteNumber="69" velocity="80" startBeat="0.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="555" noteNumber="62" velocity="85" startBeat="6.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="556" noteNumber="69" velocity="85" startBeat="6.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="557" noteNumber="62" velocity="90" startBeat="8.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="558" noteNumber="65" velocity="90" startBeat="8.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="559" noteNumber="81" velocity="90" startBeat="8.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="560" noteNumber="62" velocity="85" startBeat="8.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="561" noteNumber="65" velocity="85" startBeat="8.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="562" noteNumber="81" velocity="85" startBeat="8.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="563" noteNumber="62" velocity="80" startBeat="12.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="564" noteNumber="81" velocity="80" startBeat="12.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="565" noteNumber="62" velocity="85" startBeat="13.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="566" noteNumber="81" velocity="85" startBeat="13.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="567" noteNumber="62" velocity="90" startBeat="16.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="568" noteNumber="69" velocity="90" startBeat="16.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="569" noteNumber="62" velocity="85" startBeat="17.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="570" noteNumber="69" velocity="85" startBeat="17.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="571" noteNumber="62" velocity="80" startBeat="20.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="572" noteNumber="81" velocity="80" startBeat="20.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="573" noteNumber="62" velocity="85" startBeat="26.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="574" noteNumber="69" velocity="85" startBeat="26.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="575" noteNumber="62" velocity="90" startBeat="28.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="576" noteNumber="65" velocity="90" startBeat="28.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="577" noteNumber="81" velocity="90" startBeat="28.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="578" noteNumber="62" velocity="85" startBeat="30.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="579" noteNumber="65" velocity="85" startBeat="30.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="580" noteNumber="81" velocity="85" startBeat="30.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="581" noteNumber="62" velocity="80" startBeat="36.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="582" noteNumber="64" velocity="80" startBeat="36.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="583" noteNumber="69" velocity="80" startBeat="36.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="584" noteNumber="62" velocity="85" startBeat="40.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="585" noteNumber="64" velocity="85" startBeat="40.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="586" noteNumber="81" velocity="85" startBeat="40.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="587" noteNumber="62" velocity="90" startBeat="45.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="588" noteNumber="69" velocity="90" startBeat="45.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="589" noteNumber="62" velocity="85" startBeat="47.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="590" noteNumber="69" velocity="85" startBeat="47.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="591" noteNumber="62" velocity="80" startBeat="52.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="592" noteNumber="69" velocity="80" startBeat="52.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="593" noteNumber="62" velocity="85" startBeat="57.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="594" noteNumber="69" velocity="85" startBeat="57.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="595" noteNumber="62" velocity="90" startBeat="58.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="596" noteNumber="69" velocity="90" startBeat="58.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="597" noteNumber="62" velocity="85" startBeat="59.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="598" noteNumber="69" velocity="85" startBeat="59.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="599" noteNumber="62" velocity="80" startBeat="60.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="600" noteNumber="69" velocity="80" startBeat="60.0" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="601" noteNumber="62" velocity="85" startBeat="62.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="602" noteNumber="69" velocity="85" startBeat="62.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="603" noteNumber="62" velocity="90" startBeat="63.5" durationBeats="0.3"/>
+            <MIDI_NOTE noteID="604" noteNumber="69" velocity="90" startBeat="63.5" durationBeats="0.3"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="plugin" pluginID="VST3-Podolski-d5c847aa-4180c968" pluginFormat="VST3"
+                 name="" bypassed="0" pluginState="8809.VMjLg.lH...O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9LiLzXiKvgmKt3BSBIVavX0SuQiUZo2ZVgkbqwFYqQiPZgmKsITZDQ0T33BLgoFNFEVdyYkVJwDZUsVRxHFNDMDS34RdLoDSREEcQYkVmQiUOI2ZFMld2YUVJwDZgMGLSwjLtYGRy0zUOQGNrE1ZuYGRy0zUO0DNFk0UmYUVqcGaBkldwHFNtTkV50jQZc0YVk0Z2wlPooWLhgCS5EFcQ0lX0cmQHEza1gzbMc0SCgCagoWRxDlbAgFTJwjTgkGLCMkQ3nWVxgCaXc1crITZ5EiX3HFUXoWUrITZ5EiX3fUUYIGNwf0aQcEYJwjTgkGLCQEdUEiX4UUahs1a1gzbMc0SKUkUjYDNFElb3DyXJwjTgkGL4I0Zq0VT0cmQgU2XswjRLIUX4AyTPIWTWkEdzXEV5UEaBkldwHFNHUEVzEULgM2a1gzbMc0SCgCagkWTWgEcQ0lPooWLhgCQpIlcvnWXpU0QgcVTxDFduYGRy0zUOUDMrM1Z2ESX1UkULoDSREVdvLzTFgCULoDSnEVLvjFSJwjTgECL4E0YQcUVJwjTgECLSEEcYcUVxgiQhsVQoITZLYUX3nmUX8FMrIzPMEyT1AyTLYmKosjctjlPoYmZQ8zXT8zctYGRCcFahkGLSwjRLITTxs1ULgCQoITZLYUX33BLPUWRWkkRLUTU3sVLYgCQoIDTAslX08lUOYmatPkQ3XTXpAyPLojKqE0a2YUV3PTZBcTVTokbUY0S34lcQMUSVgkbUY0S14lcP41cTgEMvLDSJwTUigWRxLENtjlPRUEaigCQowjcpkFSJYGUQQDLCwDctLDSJ4RUPcTUT8jct4BUmMlUYkGNpEFNtjlPCgCahsFMT8TdtYGUxsVLXsFLC0jRTUkTkgiQhgiKoITSqYTVuUDUOAiaPM0aQYkVPASZMoDTpEUc2YTV3HVZBMTTsIlbEQ0S34lcPoWRGElPvLES24lcHkFLV8DSYo2TG8lcTQCMwfENHklPTkzUZ0FLCwjRhUEVwTkUOcmatPkaMcUV33RZKYmKoIDT3XTXmkzUOYma1gTZvX0SV0jdPoDSBMkQ3PES3PTZBYENVoUZUEiX3PTZBYENVoUZqwVXsAyTLojd5ElZUY0S14lKTUWRGM1YvLDSz4xPLojKqAENHklPPkDQQgCRoITSQU0XzQCUOMiaPMEUU0VXTAyTNoDTqIVdAc0SyQTZLoDVDUELzX0S1MiPLYmaPAEdMACV3.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.iULgCUCwDctLDSJIVQTMURxfENtjlPWETQQYWTW8jcyHDS14lYUoGNFEENtj1R14RZBkFSVEFNXACTFETZBQ0ZGIFNtjlPCU0QigCQS0jcyHDS14lYTsVSW8jcyHDS14lKQgWVW8jcyHDS14lYQ0TQS8jcyHDS14lYQMUQS8jctYVTMkzTOY2LBwjctYVTSkzTOYma1I0ZqICUocmUOAiKosjctjlPAkEUSgiKosjctjlPCcWLZgiKosjctjlPowjUggCVv.UPEklPPUDaggiKosjctjlPVgiQggCSCwDctLDSJgELPEDLSwjR5oWXp0zZhkFLCwjR5oWXpEEQhoGLCwDctLDSJ4RUXQWSqIVZvLDSJwDdXMGL4AkaIIiXJwDUYQWTW8Ddtj1R14RZBMUPWkkZvLUS1MiPLYmatDkcQcjV3P0PLQmKCwjRXQUVqkDUOY2LBwjctA0Tuc1UOY2LBwjctYGRoAiUOQzcVQ1ctYGUz0jQSgCToIzTzDCVRAyPMoDVTk0ZIQ0S1MiPLYma1AEdM0FT33RZKYmKoITSqYDY33RZKYmKoIjRtYlP0ciPHMUUwfkdqESXzEDZYUWRGgDLiYTXzDDdXUGLFIFdUEiX4UkQYYFRVoEcEwlXzDjPQcVTWgkR2f2RlAkdS4zXBUkYPAyTU0DQRYFTEIURMslPJAkPIoFTRwzLHMjSJcSdYo1Xwf0ZzXUVn81TYcVQVg0YEYEVm81TXcVQrg0YEYEVm81TXcVQVg0aEYTV181TXcVQVg0YEYUVm81TXcVQVg0ZEYUVm81TXcVQVg0aEYUVm8VZBcVQVg0YyYEVqUDaNcVQVg0YvXEVqUDaNcVQVg0Y3XEVqUDaNcVQr4zZMwlSqkDaN01ar4zYUwlSnUDaNkVQr4jZEwlStUDaN8VQr4zYMwlSmsFaNc1aPEVMHYUV0fjUZUCRVEVMHwVX0vjUYUCSVoUMLYUX0vTLgUCTwfUMPYUV0.kUZUCUVgUMXYEVmQjLhETRo0TdD0lXAM1PQ0FNFEkaUYTTskTLYMWTDokRxESVrUELY8VVUIUPQMkS2kzUPICQSIFdEoWS18lQhEWPGElcvXjXzEjLgYWPWA0YIEiTmEkUQcVVVgUaEYjVLUDaZc1bVgkbvPEVzUTLgcVPsEEZIwlPn0DaXoFMpgEaIESVncVLSg1argUbIYTXPUzZXUWRFI1QMwFVo0TLXoVRvfEaMESVocVLTk1awfUbMYTXT0DagUUSFIFRQwFVVEkQYcUTrkkZiYTVt8lKVcWUTA0ctLEUAkzThkWQpwTLLMkXJUDULkmYSIVdEoFSwvzThgWQD0TdPc0XwL1QjQyaWIVPyQETv.0UPkGTWMVLicDYz71UPgGSTA0cXoGTAUTdQoDSTA0cloGTAUzTVMTQTwjVMQET2IlUXMTQTwTRMQET24ldPETQSo0aMQET24lUXMTQTwDbqECTAUTdZcVSTA0cxYkVCUDULIWQw.UPEMTXu0DUPcmdrIzYMQET2omUZMTQTwDcEECTAUTZg8VSTA0c2XEVCUDULU2Zw.UPEMjXm0DUPcmKWo0PEoFSBUDULUTRTA0c1oFTAUzTSITQTwjQIQET2MiZPETQ4MkPuAET24xZPETQ4EkPEQESRkDUPcGSqAUPEMTUBUDULgTRTA0chsFTAUzPVITQTwjZvvFTAUzTVITQTwzZUwFTAUzTY8VRTA0cTYUXBUDULoURTA0cXYUVJgDUPcGVVokPEQESrACaPETQ4k0YIQET2IlUYITQTwTaqwFTAUTdYMWRTA0cpoFTAUzPZsVRTA0clYkVBUDUL4FLrAUPEklTBUDUL8VSrAUPEMkVqkjZBETQSoUaIQET2olUZITQTwzaywFTAUzTZMWRTA0cpESXBUDULAWQrAUPEklVokDUPcmaVkkPEQESvMFaPETQoo0aIQET24VLZITQTwDbvvFTAUTZZU2alAUPEkmVmkDUPcmbwfkPEQESwUEaPETQ4oUaIQET2ImUZITQTwTbywFTAUTdZMWRTA0cxESXBUDULIWQrAUPEMTXokDUPcmcVkkPEQESxMFaPETQCElRpwFTAUzPgEWRTA0c1YUXBUDULIGNrAUPEMUXmkDUPcmdwfkPEQESyUEaPETQSEVaIQET2omUZITQTwzbywFTAUzTgMWRTA0c5ESXBUDULQWQrAUPEklPz0DaPETQoE1ZIQET2MSLYITQTwDcqwFTAUTZgEWRTA0cyXUXBUDULQGNrAUPEkWXmkDUPc2MwfkPEQES0UEaPETQ4EVaIQET2ciUZITQTwTcywFTA8FTLUGLrAUPEkWX0kDUPcmKWgkPEQES10DaPETQCI1ZIQET24hLYITQTwjcqwFTAUzPhEWRTA0ctbUXBUDULYGNrAENhkWS5gTZMojKt3BOujzPu0Fbu4VYtQmO7jTQjkFcC8lazI2arwVYx4yLxPiMt.Gdt3hKLIjXsAiUO8FMVokdqYEVxsFajsFMBoEdtzlPoQDUSgiKvDlZ3XTX4MmUZoDSnU0ZIIiX3PzPLgmK4wjRLIUTzEkUZcFMV8jbqYzX5cmUYoDSnE1bvLESx3lcHMWSW8Dc3vVXq8lcHMWSW8TS3XTVWclUYs1crITZ5EiX33RUZoWSFo0UmYUVqcGaBkldwHFNLoWXzEUahU2cFgTPuYGRy0zUOMDNrEldIISXxEDZPoDSREVdvLzTFgidYIGNrg0Y2wlPooWLhgiXTgkdUwlPooWLhgCVUkkb3DCVuE0UjoDSREVdvLDU3UULhkWUsI1ZuYGRy0zUOsTUVQlQ3XTXxgSLioDSREVdvjmTqsVaQU2cFEVci0FSJwjTgkGLSAkbQcUV3QiUXoWUrITZ5EiX3fTUXQWTwD1buYGRy0zUOMDNrEVdQcEVzEUaBkldwHFNDolX1AidgoVUGE1YQISX38lcHMWSW8TQzv1XqcWLgYWUVwjRLIUX4AyPSYDNTwjRLgVXw.SZLoDSREVLvjWTmE0UYoDSREVLvLUTzk0UYIGNFI1ZEklPowjUggidVg0azvlPC0TLSYGLSwjctj1R14RZBklcpE0SiQ0S24lcHMzYrIVdvLESJwjPQI2ZWwDNDklPowjUggiKv.UcIcUVJwTQUg2ZwjENDklPPEzZhU2aV8jct4BUFgiQgoFLCwjRtrVTucmUYgCQoIzQYQkVxUkUOgma1E0TMYEVxUkUOYma1Aka2QEVz.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.SXxUDahgiKoIDQ2YEY33RZKYmKoIDQvnGU2o2TLoDTTMEQEM0S24xPLQmKCwjRHUEV5UkUOY2LBwjctYVTMEEULgiKosjctjlPowjUggyM5Q0PEklPTUUagsFLCwDctLDSJIGUYQSSvfkbvLES14RZKYmKoIDUvnGU30jUOYmatTUSQQjX5AyPLQmKCwjRtTjV4UkUOAiKosjctjlPPcVLh0TSqIVZvLDSJ4RQZkGLDEkcQc0S1MiPLYmaPIEcY0VU0cmUOMGQCwjcyHDS14lcTQCLVwDNTMDSz4xPLojXEQ0TIICV33RZBcUPEEkcQc0S1MiPLYmalUkd3XTT33RZKYmKoITZLYUX3fELPYTPoIDUqcjX33RZBMTUGMFNDMUS1MiPLYmalQ0ZMc0S1MiPLYmatDEdYc0S1MiPLYmalEUSEM0S1MiPLYmalE0TEM0S14lYQ0TRS8jcyHDS14lYQMURS8jctYmTqslLTk1cV8DLtj1R14RZBETVTMENtj1R14RZBMzcwnENtj1R14RZBkFSVEFNXACTAUTZBAUQrEFNtj1R14RZBYENFEFNLMDSz4xPLoDVv.UPvLESJomdgoVSqIVZvLDSJomdgoVTDIldvLDSz4xPLojKUgEcMslXoAyPLoDS3g0bvjGTtkjLhoDSTkEcQc0S34RZKYmKoIzTAcUVpAyTMY2LBwjct4RT1E0QZgCUCwDctLDSJgEUYsVRT8jcyHDS14FTS81YW8jcyHDS14lcHkFLV8DQ2YEY24lcTQWSFMENPklPSQSLXIELC0jRXQUVqkDUOY2LBwjctYGT30TaPgiKosjctjlPMslQjgiKosjctjlPJ4lYBU2MBgzTUECV5sVLgQWPnkUcIcDRvLlQgQSP3gUcvXjX3UULhkWUFkkYHYkVzUDahQSPBE0YQcEVJcCdKYFT5MkSiITUlAELSUUSDIkYPUjTI0zZBoDTBkjZPIESyfzPNozM4kkZiECVqQiUYg1aSk0YEYEVmUjUXc1aSg0YEwFVmUjUXc1aSg0YEYEVuUjQYY2aSg0YEYEVmUjUYc1aSg0YEYEVqUjUYc1aSg0YEYEVuUjUYc1aoIzYEYEVmMmUXsVQr4zYEYEVmAiUXsVQr4zYEYEVmgiUXsVQr4zYEwlSq0DaNsVRr4TauwlSmUEaNgVQr4TZEwlSpUDaN4VQr4zaEwlSm0DaNc1Zr4zYuAUX0fjUYUCRVoUMHYUX0fDagUCSVkUMLYkV0vjUgUCSwDVMPECV0.kUYUCTVoUMTYEV0fkUXcFQxHVPIkVS4QTahEzXCEUa3XTTtUkQQ0VRwj0bQQjVJIWLYwVUvj0aYUkTAE0TNcWRWAkLDMkX3UjdMY2aFIVbAcTX1AiQhQWPxDlcAcETmkTLRcVTVE0YYYEVsUjQZwTQro0YyYEVxACUXQWQwD1YA0VTnkDaBgVSrgkZznFVrkTLYg1YwLEZuwFVwkjQgAUQqgUcIYjXG0DaXkVSwfkZIACVr0TLYk1YwPUZuECVw0jQgQUSrEVUMYjXHEEaXYUTFk0UQwVVpMlQY41atX0cUQET24xTTETRSIVdEoFSwvzThoTQTwTdlMkX4UjZLECSSIFdEQTS4A0UiEyXGQFMuckXAMGUPACTWAUdPc0XwL1QjQyaWAEdLQET2gkdPETQ4EkRLQET2YldPETQSY0PEQESZ0DUPcmXVg0PEQESI0DUPcma5AUPEMkVu0DUPcmaVg0PEQESvsVLPETQ4o0YMQET2ImUZMTQTwjbEECTAUzPg8VSTA0c5wlPm0DUPcmdVo0PEQESzUTLPETQoE1aMQET2ciUXMTQTwTcqECTAUzPhcVSTA0ctbkVCUjZLITQTwTQIQET2YmZPETQSMkPEQESFkDUPc2LpAUPEk2TB8FTPcmKqAUPEkWTBUDULIURTA0cLsFTAUzPUITQTwDRIQET2I1ZPETQCYkPEQESpACaPETQSYkPEQESqUEaPETQSk0aIQET2QkUgITQTwjVIQET2gkUYoDRTA0cXYkVBUDULwFLrAUPEkWVmkDUPcmXVkkPEQESssFaPETQ4k0bIQET2olZPETQCo0ZIQET2YlUZITQTwjavvFTAUTZRITQTwzaMwFTAUzTZsVRpITPEMkVskDUPcmZVokPEQESuMGaPETQSo0bIQET2oVLgITQTwDbEwFTAUTZZkVRTA0ctYUVBUDULA2XrAUPEklVukDUPcmawnkPEQESvACaPETQooUcuYFTAUTdZcVRTA0cxECVBUDULEWUrAUPEkmVskDUPcmbVokPEQESwMGaPETQ4o0bIQET2IWLgITQTwjbEwFTAUzPgkVRTA0c1YUVBUDULI2XrAUPEMTXJoFaPETQCEVbIQET2YmUgITQTwjb3vFTAUzTgcVRTA0c5ECVBUDULMWUrAUPEMUXskDUPcmdVokPEQESyMGaPETQSE1bIQET2oWLgITQTwDcEwFTAUTZBQWSrAUPEkVXqkDUPc2LwjkPEQESzsFaPETQoEVbIQET2MiUgITQTwDc3vFTAUTdgcVRTA0c2DCVBUDULUWUrAUPEkWXskDUPc2MVokPEQES0MGaPEzaPwTcvvFTAUTdgUWRTA0ctbEVBUDULYWSrAUPEMjXqkDUPcmKxjkPEQES1sFaPETQCIVbIQET24xUgITQTwjc3vFT3HVdMoGRo0jRt3hK77RREQVZzMzatQmbuwFakImO77hUSQ0LPwVcmklaSQWXzUlO.."/>
+        <FX_SLOT fxType="delay" bypassed="0"/>
+        <FX_SLOT fxType="reverb" bypassed="0"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Filter Cutoff" automationEnabled="1" paramID="1001">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.2"/>
+            <POINT startTime="9.67741935483871" gain="0.6"/>
+            <POINT startTime="19.35483870967742" gain="0.8"/>
+            <POINT startTime="30.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+    </TRACK>
+    <TRACK name="Closed Hat" volume="0.55" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="2">
+      <CLIP_LIST>
+        <CLIP clipID="28" name="Generated" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-16384">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="605" noteNumber="60" velocity="112.0" startBeat="0.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="606" noteNumber="60" velocity="112.0" startBeat="5.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="607" noteNumber="60" velocity="112.0" startBeat="10.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="608" noteNumber="60" velocity="112.0" startBeat="16.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="609" noteNumber="60" velocity="112.0" startBeat="21.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="610" noteNumber="60" velocity="112.0" startBeat="26.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="611" noteNumber="60" velocity="112.0" startBeat="32.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="612" noteNumber="60" velocity="112.0" startBeat="37.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="613" noteNumber="60" velocity="112.0" startBeat="42.75"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="614" noteNumber="60" velocity="112.0" startBeat="48.0"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="615" noteNumber="60" velocity="112.0" startBeat="53.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="616" noteNumber="60" velocity="112.0" startBeat="58.75"
+                       durationBeats="0.2"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 02 (Hihats)\Bossen 6k  (Closed).wav"
+                 rootNote="60"/>
+        <FX_SLOT fxType="delay" bypassed="0" param_0="0.375" param_1="0.6499999761581421"
+                 param_2="0.4000000059604645"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.800000011920929" param_2="0.550000011920929"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="humanize" bypassed="0" humanizeTiming="0.0" humanizeVelocity="0.0"
+                      humanizePitch="0.0"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+    <TRACK name="Clap" volume="0.65" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="14">
+      <CLIP_LIST>
+        <CLIP clipID="29" name="Generated" startTime="0.0" duration="30.96774193548387"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-8689498">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="617" noteNumber="42" velocity="96.0" startBeat="0.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="618" noteNumber="60" velocity="112.0" startBeat="0.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="619" noteNumber="60" velocity="112.0" startBeat="16.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="620" noteNumber="42" velocity="96.0" startBeat="21.5"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="621" noteNumber="60" velocity="112.0" startBeat="32.5"
+                       durationBeats="0.2"/>
+            <MIDI_NOTE noteID="622" noteNumber="42" velocity="96.0" startBeat="43.0"
+                       durationBeats="0.1"/>
+            <MIDI_NOTE noteID="623" noteNumber="60" velocity="112.0" startBeat="48.5"
+                       durationBeats="0.2"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="sampler" bypassed="0" sampleFile="E:\samples\_lekebusch\Cari Lekebusch SAE 04 (Handclap)\Billig &amp; Nasal.wav"
+                 rootNote="60"/>
+        <FX_SLOT fxType="delay" bypassed="0" param_0="0.5" param_1="0.6000000238418579"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.8500000238418579" param_2="0.6000000238418579"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="humanize" bypassed="0" humanizeTiming="0.0" humanizeVelocity="0.0"
+                      humanizePitch="0.0"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+    <TRACK name="Lead Synth" volume="0.7" pan="0.0" isMuted="0" isSoloed="0"
+           parentBus="0" color="8">
+      <CLIP_LIST>
+        <CLIP clipID="30" name="Generated" startTime="0.0" duration="15.48387096774194"
+              offset="0.0" clipType="midi" gain="1.0" fadeIn="0.0" fadeOut="0.0"
+              looping="0" color="-16732000">
+          <MIDI_NOTE_LIST>
+            <MIDI_NOTE noteID="624" noteNumber="74" velocity="80.0" startBeat="0.0"
+                       durationBeats="3.345387294229336"/>
+            <MIDI_NOTE noteID="625" noteNumber="64" velocity="103.0" startBeat="9.921482317753297"
+                       durationBeats="4.363255624635665"/>
+            <MIDI_NOTE noteID="626" noteNumber="66" velocity="93.0" startBeat="15.04782722523147"
+                       durationBeats="5.537871862096939"/>
+            <MIDI_NOTE noteID="627" noteNumber="64" velocity="92.0" startBeat="22.32407362913575"
+                       durationBeats="4.970496908389777"/>
+          </MIDI_NOTE_LIST>
+        </CLIP>
+      </CLIP_LIST>
+      <FX_CHAIN>
+        <FX_SLOT fxType="plugin" pluginID="VST3-Serum 2-97d12514-c441d38e" pluginFormat="VST3"
+                 name="" bypassed="0" pluginState="3076.VMjLgr+B...O+fWarAhckI2bo8la8HRLt.iHfTlai8FYo41Y8HRUTYTK3HxO9.BOVMEUy.Ea0cVZtMEcgQWY9vSRC8Vav8lak4Fc9DiL0fiKXkkUYg2a5IVczXjKxHjKt3hKt3hKtXGYnwTLgMWPxDFcUwVX5kDZNglKsIVcMYUV40jLggWRBsDZlYEV4cFaHUCR30TdlMUVrUzTXQCQwzzZAMES4Y1PYYGS4wzcPwFS5QzTYs1XS0jdDYkSokjPKglKsIVcQY0XoEUaHUCR3Q0ZIc0XykTZHIGRBIFd3XTVvzjQiYUUrIVdqESXzkDZNgFRoszcyHUSnYGZHASRGEFZtkFRtE0QiYWSs4Tc2HDYrUEahgWUwfUcIcTV4QCdXUGLwrDZ1gFRwTEagoFNrIFZtkFRXkkUYgWPnQ0ZMESX3EULhglcngTLUwlX4sVLgQWRn4zcDk1R1o2U4PkKt3hPt3hKtXlTyUmdOgEMOE0Yl4hYYgmQJ8DTyEidFY1TLMkVNckLLMTaqsjc2TCSUs1RKQmbZM1TnEyLrYkVgMEcIQkR3kVRNUjbZImMXMWQ4wVcOgUc2ECRDgFQzHEUVUUaNYFSisRTRUkP1klKHkjKRUWVSMUXF0FUrUEUSI0SWYSc1wFZUQDRUQ0JqrhZ5kWVy0jXFUzcsIEcNU1RUwFV2cTPRUDLpoWdvnFMwnDN5QCcBMidBEUUrgUT5Mzb4MyaHYGL2fTPLwlZ20laMYWNBYzTzQFcwXCd3gGdRMzRFMyPNgjaDA0YGokSsEFap0DUKY2ajYFVEgFcNQjVvsVSQYFUQ0TR3HFdzHGM24za1MSaHYyXB81QLYUYgsDLYM0bgIFVsQURN0VVFEiV4PTV0MEQ0AkQnMzQrEjdIkWQkYTVzMmdTshVmIETDg0QwU2T1gGbS4hYuQ1bwHURXkELMQVMyPUbtYTVzYGZwHCS5MGVtokXvUTb2wTd5wjROQzUzDidxoUYQ4RUo4lMsElRiIzcUECRqgWaoAWTEEURo4xanokT0zDMro0TQMEdHAEbtwlZpQlTN8FaTolZLIjZJA2asomM3HVcwrTMIklKugFdMQiZh8Ta4AiXQ4TVDgTUTMkTOIiXwf2SEM0MugTZt7FZZozLvHCZ3X2aWE1RgoUV0HFZC0VYC4FapQFcwT0XrkWNKQ0SxjESWsRMZQVd4r1J4nkVJQWZvrDVBETPDQDTP4RTA0VLPIWXm4VbGcVVzESVLAkP4M0ROQzUIkFSLcUYpoEVYI0QRw1LAYjSwgCLyIkSn4jKtHkKJg0PZgjPh4hLmIzMmYSamgCQ0w1Z3fTUocDY4rDV4PCMh4Ta4AiVyYUbUEjQnYWd3TjbF4DNColK1DiUncWTrwFLVQVQOYmSMklSS4BTPE0TybVMOUGcyLSMVgET0Ulb0HlbjYFNPkjc2YyP3XCLyUyMyDTP1EiXVYjYNoWXFQjP5IiTwPidWwTatjCb4E0SOACMDgyLzTmQqXVcwfUZIYVc3LlTnwFQNUWNScCLgAELms1XiwjUYgkU2TWLw4lKybEL4Hkb0P0LVwzQxEkbj4hLn8VP0nkVUUVRzUTXzEkdx3RYKUCS0QCaRcyc4nkUF0TXhUUaW01Tq0jcsoUcOYjM1shVsQiVt3BbNA2cRcjTDEEQQQTRI8lap4DTooVVSIUMlQjYCcDRNgDSDQDRJIlUDQDQDAERKU2YTIDbgQEUmAGaUMzLw3BQtj2UqMiahokSJ0TTsklURI0QtYyQikEVSkEcEAkTWEibqbkcScmb3QUZ3nkRUc1QCgSYlkkMPAWXJYkUYcWUF0FLHgzPIETdz8TQuECV3XlPK0jaFMDSkMlS1.WTkkjPvLkZH01PAIVRBQCRiszSPkjTqEib2LDVwwzauAEaE4RSzHkZtHjZUkCarMGM4YiYrM1azEyZqfma1IWYp0DNhkVLLkGaKQTXuYWVqbSZ5ETPTgWPN4FQ5MSVCM0ZQgDb3QCN27lQBAkawIzYrMkLyUTN5UUPDsDan8Fd34BTBwjdLsRPDkUagMFZnQUcVAmX5EjLZA0aiAyPuUTRocERmYmYrc2QtQUQjAEa4U2QzX1Zl8zX2D2UHQEYGs1XUsDanAkZNklSVg2TFg1LYkTMw4lLPgTMzUkaqPEc1g2c14BS1c2bNUictkVNZICckcCdoQTN3DyY2ICdnMyUjMTcQ4RTDEDTJEEUPMUb2ESVvLiYgMFMtEmSy3xLlUEUWYiPqHTTXQGQlcyU4ciLgokROEiSwrRQJwVPEkTaIUVStz1UwLycHUyMLUmP4YlKYIjPIQlPPUSP2UWcSoVc0glYx4BQjkGakg0JAwyKIMzasA2atUlaz4COIUDYoQ2Pu4Fcx8FarUlb9jyLz3BVYYUV38ldhUGMF4hSD4hKt3hKt3hK1QFZLESXyEjLgQWUrEldIglSnwTLgQWTsIVc2YTXqkTaHIGRBo0YMcjVn4VZHsVSowjcTYTS4gUZMkmZ40zcXYTVrkzPLMiYSkEaikGVy.EaYcGRr0jLpkFRxgjPhgWUwH1ZQcETvD0QZUWRsgTMHgFRxgjPhgWUwH1ZQICT0AiUgsFMFMFZtkFRnYGZHYWRWkUdUYzXDUULhkVRWokcQckV0QCaHUCRngjbHIjX3UULhsVTsM0YvXUVn4VZHYldBgTRzXkV5EjTKYFRBsDZtzlX0EkUikVTsgTMHgGUqkzUiMWRogjbHIjX3giQYASSFMlUUwlX4sVLgQWRn4DZHk1R2MiTMglcngDLIcTXn4VZH4VTGMlcM0lS0ciPjwVUrIFdUECV0kzQYkGM3gUcvDyRnYGZHESUrElZ3vlXn4VZHgUVVkEdAgFUq0TLggWTwHFZ1gFRwTEahk2ZwDFcIglS2QTZKYmdsU0Qt3hKB4hKt3hYRMWc58DVVkETwMkKlUUYuEiSlMlQsMjKFMjPBIjPnEFTTIjcCQjZTszPwDCV0slTJozTREULUkSLrY0awDkdIYmK1T1XqDCVgM2YMkic3wVVyshLKckMFgFUjYlUAkzLNckK5UjKVEjKMgWV4rTcyXTRJgCNUYzctkUUAAWaLcjTxImVokUXq4VLlIWaHYGQJEWc1YULXIyau81aKI2TS0jctbESQcjM0T2TkMlSR8lM28lXxkmZkQWZFcTLDYVaEU1Tns1XFgSUmgGQIEkY2XGbnoTNUgSTUklTFAWcEEUQyDTVuQ1M3kGRvfmLg8TcYIzUDYTSBklTLgzZDwVYzHGSmUjStnUclc1LOM2Z4IyMiIiK2nUVigGV2EmZgMDNwIzZIIEZtPyYUUDLtUGbOAGVVI1TLITUtwTTRQDROIGbn4BLEwFQpMFMvQUSJgDZKM1Zt4hV0QlU3EEMOkmULEDNz41RssVXgYScJshUJgyJRM1LtszbuQ1X0XGVTIzbWEia2HDLssBQ43RTBQ1Z43RTKElRx71YQsxYyICL03jQn4xLUETQPYyZpsxRxEGVgcUVOYCSlQUZlEVQZIFR4olMgwTTYomQz8TY2cySSIyUPM0TTYEctsjZGYTYwUzY2fCSZIyazfUM1YTLxIyY3rxbr01PGQjcVU2UQ4hcSkiX1gTSvoEVvP0SZsRNAA2ZwTDdqQSYMQzPEgkXoQUSLQkY24FY3IlQAclb4XTdZYVL3HjU43hUPAyLCMGNEkjKi8FNhUCSD4VQvETdU8FRAIUSTAEUlQkTRclSt.GR34lT5MDRA4hTswlPuA2QIEjZBojalIjRqTlb5gESxYkTrUmTrwDRoQCUHYGVwwzZWgiPpkTZ3TyQEITZ4nDbhcmdm0TdKkkMHoVM1gTYMcyTjk2bt.yQR0FMrMTZMM2azvDaxXjdtQCc4kjX0Q0UpgzYksBLBg0S3MiKIEWbUE1c3cDQS8FMFUmTx7VQpMSNyUCVGECcxPUbEAEVzIGQHk1Y2EVdDgyXoYCMUUja3HiR2YCavIycxoWdJgGNjY1QzgSU2PmQv0TNQYSdpACcmQkZh8FYvoVQLgEaH8lcJUGb4zTcoACVIECL5E0ZVQiYnMmc1vjK77RREQVZzMzatQmbuwFakImO77hUSQ0LPwVcmklaSQWXzUlO.."/>
+        <FX_SLOT fxType="delay" bypassed="0" param_0="0.449999988079071" param_1="0.699999988079071"
+                 param_2="0.449999988079071"/>
+        <FX_SLOT fxType="reverb" bypassed="0" param_0="0.75" param_2="0.5"/>
+        <FX_SLOT fxType="chorus" bypassed="0" param_0="0.4000000059604645"/>
+      </FX_CHAIN>
+      <AUTOMATION_LIST>
+        <AUTOMATION name="Volume" paramID="1" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="1.0"/>
+            <POINT startTime="16.0" gain="1.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Pan" paramID="2" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.5"/>
+            <POINT startTime="16.0" gain="0.5"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Mute" paramID="3" curveType="linear" automationEnabled="0">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.0"/>
+            <POINT startTime="16.0" gain="0.0"/>
+          </POINT_LIST>
+        </AUTOMATION>
+        <AUTOMATION name="Filter Cutoff" automationEnabled="1" paramID="1001">
+          <POINT_LIST>
+            <POINT startTime="0.0" gain="0.3"/>
+            <POINT startTime="3.870967741935484" gain="0.7"/>
+            <POINT startTime="7.741935483870968" gain="0.3"/>
+            <POINT startTime="11.61290322580645" gain="0.8"/>
+            <POINT startTime="15.0" gain="0.35"/>
+          </POINT_LIST>
+        </AUTOMATION>
+      </AUTOMATION_LIST>
+      <MIDI_FX_CHAIN>
+        <MIDI_FX_SLOT fxType="arpeggiator" bypassed="0" arpRate="0.25" arpPattern="0"
+                      arpOctaves="1" arpGate="0.5"/>
+      </MIDI_FX_CHAIN>
+    </TRACK>
+  </TRACK_LIST>
+  <SCALE_INFO scaleRoot="2" scaleMode="0"/>
+  <SESSION_STATE launchedScene="-1" sceneCount="8"/>
+  <TEMPO_POINT_LIST>
+    <TEMPO_POINT startTime="0.0" tempo="120.0"/>
+  </TEMPO_POINT_LIST>
+  <ROUTING_GRAPH>
+    <BUS_LIST>
+      <BUS name="Master" busID="0" busType="master" busTarget="-1" fxType="none"/>
+      <BUS name="Reverb" busID="1" busType="fx" busTarget="0" fxType="reverb"/>
+    </BUS_LIST>
+  </ROUTING_GRAPH>
+</PROJECT>

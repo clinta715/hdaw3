@@ -200,6 +200,50 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
+
+    s.registerTool({"list_clip_takes",
+        "List all takes for an audio clip, showing which is active.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            auto& model = e->getProjectModel();
+            auto trackList = model.getTrackListTree();
+
+            for (int t = 0; t < trackList.getNumChildren(); ++t) {
+                auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+                for (int c = 0; c < clipList.getNumChildren(); ++c) {
+                    auto clip = clipList.getChild(c);
+                    if (static_cast<int>(clip.getProperty(IDs::clipID, 0)) == clipId) {
+                        auto takeList = clip.getChildWithName(IDs::TAKE_LIST);
+                        int activeIdx = static_cast<int>(clip.getProperty(IDs::activeTake, 0));
+                        QJsonArray arr;
+                        for (int i = 0; i < takeList.getNumChildren(); ++i) {
+                            auto tk = takeList.getChild(i);
+                            arr.append(QJsonObject{
+                                {"index", i},
+                                {"name", jstr(tk.getProperty(IDs::name, "").toString())},
+                                {"sourceFile", jstr(tk.getProperty(IDs::sourceFile, "").toString())},
+                                {"active", i == activeIdx}
+                            });
+                        }
+                        return McpToolResult::text(QString::fromUtf8(
+                            QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+                    }
+                }
+            }
+            return McpToolResult::text("clip not found", true);
+        }});
+
+    s.registerTool({"switch_clip_take",
+        "Switch an audio clip to a specific take index.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                   {"takeIndex", QJsonObject{{"type","integer"}}}}, {"clipId","takeIndex"}),
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            int takeIndex = a.value("takeIndex").toInt();
+            e->getAudioGraphCommands().switchClipTakeToIndex(clipId, takeIndex);
+            return McpToolResult::text("ok");
+        }});
 }
 
 static void registerFxTools(McpServer& s, AudioEngine* e)

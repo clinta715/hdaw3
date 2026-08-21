@@ -308,6 +308,7 @@ public:
     void rebuildModulation(int trackIndex) override;
     void toggleFXEditor(int trackIndex, int slotIndex) override;
     void switchClipTake(int clipId) override;
+    void switchClipTakeToIndex(int clipId, int takeIndex) override;
 
     // Modulation (LFO) — concrete-class mutation methods. These mutate the
     // track's MODULATION_LIST ValueTree via the UndoManager but take a

@@ -239,6 +239,15 @@ export function TimelineContextMenu({
                 </div>
               </div>
               <div className="ctx-separator" />
+              {!contextMenu.clip.isMidi && contextMenu.clip.takeCount > 1 && (
+                <button onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("audioGraph.switchClipTake", { clipId: contextMenu.clip!.clipId }).catch(console.error);
+                  onClose();
+                }}>
+                  Next Take ({contextMenu.clip.activeTake + 1}/{contextMenu.clip.takeCount})
+                </button>
+              )}
               <button onMouseDown={(e) => {
                 e.stopPropagation();
                 const clipId = [...selectedClipIds][0];
@@ -331,6 +340,7 @@ export function TimelineContextMenu({
               fadeIn: 0, fadeOut: 0, looping: false, muted: false, isMidi: true,
               sourceBpm: 0, stretchMode: 0, stretchRatio: 1, sourceDuration: 0,
               isGhost: false, ghostSourceId: -1, gainEnvelope: [],
+              activeTake: 0, takeCount: 0, takes: [],
             });
             setTimeout(() => {
               if (useProjectStore.getState().pendingTempIds.has(tempId)) useProjectStore.getState().removePending(tempId);

@@ -346,6 +346,48 @@ function ClipInspector({ clip }: { clip: ClipSnapshot }) {
         </div>
       </fieldset>
 
+      {!clip.isMidi && clip.takeCount > 1 && (
+        <fieldset className="insp-group">
+          <legend className="insp-group-legend">Takes</legend>
+          <div className="insp-takes">
+            <div className="insp-take-selector">
+              <button
+                className="insp-take-btn"
+                onClick={() => rpc.call("audioGraph.switchClipTakeToIndex", {
+                  clipId: clip.clipId,
+                  takeIndex: (clip.activeTake - 1 + clip.takeCount) % clip.takeCount,
+                }).catch(console.error)}
+                title="Previous take"
+              >
+                ◀
+              </button>
+              <select
+                className="insp-take-select"
+                value={clip.activeTake}
+                onChange={(e) => rpc.call("audioGraph.switchClipTakeToIndex", {
+                  clipId: clip.clipId,
+                  takeIndex: parseInt(e.target.value, 10),
+                }).catch(console.error)}
+              >
+                {clip.takes.map((t, i) => (
+                  <option key={i} value={i}>{t.name || `Take ${i + 1}`}</option>
+                ))}
+              </select>
+              <button
+                className="insp-take-btn"
+                onClick={() => rpc.call("audioGraph.switchClipTakeToIndex", {
+                  clipId: clip.clipId,
+                  takeIndex: (clip.activeTake + 1) % clip.takeCount,
+                }).catch(console.error)}
+                title="Next take"
+              >
+                ▶
+              </button>
+            </div>
+          </div>
+        </fieldset>
+      )}
+
       <fieldset className="insp-group">
         <legend className="insp-group-legend">Structure</legend>
         <ReadOnly label="Track Index" value={String(clip.trackIndex)} />

@@ -38,6 +38,28 @@ ClipSnapshot buildClipSnapshotFromTree(const juce::ValueTree& clipTree, double b
     cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
     cs.sceneIndex    = static_cast<int>(clipTree.getProperty(IDs::sceneIndex, -1));
 
+    // Take system
+    auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+    if (takeList.isValid())
+    {
+        cs.activeTake = static_cast<int>(clipTree.getProperty(IDs::activeTake, 0));
+        cs.takeCount = takeList.getNumChildren();
+        cs.takes.reserve(takeList.getNumChildren());
+        for (int t = 0; t < takeList.getNumChildren(); ++t)
+        {
+            auto takeNode = takeList.getChild(t);
+            TakeInfo ti;
+            ti.name = takeNode.getProperty(IDs::name, "").toString().toStdString();
+            ti.sourceFile = takeNode.getProperty(IDs::sourceFile, "").toString().toStdString();
+            cs.takes.push_back(std::move(ti));
+        }
+    }
+    else
+    {
+        cs.activeTake = 0;
+        cs.takeCount = 0;
+    }
+
     // Populate gain envelope from GAIN_ENVELOPE child tree
     auto envTree = clipTree.getChildWithName(IDs::GAIN_ENVELOPE);
     if (envTree.isValid())
@@ -242,6 +264,29 @@ ClipSnapshot ReadModelImpl::getClip(int clipId) const
                 cs.isGhost = static_cast<bool>(clipTree.getProperty(IDs::isGhost, 0));
                 cs.ghostSourceId = static_cast<int>(clipTree.getProperty(IDs::ghostSourceId, -1));
                 cs.sceneIndex = static_cast<int>(clipTree.getProperty(IDs::sceneIndex, -1));
+
+                // Take system
+                auto takeList = clipTree.getChildWithName(IDs::TAKE_LIST);
+                if (takeList.isValid())
+                {
+                    cs.activeTake = static_cast<int>(clipTree.getProperty(IDs::activeTake, 0));
+                    cs.takeCount = takeList.getNumChildren();
+                    cs.takes.reserve(takeList.getNumChildren());
+                    for (int tk = 0; tk < takeList.getNumChildren(); ++tk)
+                    {
+                        auto takeNode = takeList.getChild(tk);
+                        TakeInfo ti;
+                        ti.name = takeNode.getProperty(IDs::name, "").toString().toStdString();
+                        ti.sourceFile = takeNode.getProperty(IDs::sourceFile, "").toString().toStdString();
+                        cs.takes.push_back(std::move(ti));
+                    }
+                }
+                else
+                {
+                    cs.activeTake = 0;
+                    cs.takeCount = 0;
+                }
+
                 return cs;
             }
         }

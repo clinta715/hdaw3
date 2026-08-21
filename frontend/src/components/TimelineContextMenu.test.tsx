@@ -19,8 +19,11 @@ function mkClip(clipId: number): ClipSnapshot {
     clipId, trackIndex: 0, name: `Clip ${clipId}`, sourceFile: "",
     startBeat: 0, durationBeats: 4, offset: 0, gain: 1, fadeIn: 0, fadeOut: 0,
     looping: false, muted: false, isMidi: true, sourceBpm: 0, stretchMode: 0,
-    stretchRatio: 1, sourceDuration: 0, isGhost: false, ghostSourceId: -1,
+    stretchRatio: 1, sourceDuration: 0, isGhost: false,     ghostSourceId: -1,
     gainEnvelope: [],
+    activeTake: 0,
+    takeCount: 0,
+    takes: [],
   };
 }
 
