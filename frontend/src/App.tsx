@@ -10,7 +10,6 @@ import Mixer from "./components/Mixer";
 import PianoRoll from "./components/PianoRoll";
 import TimelineMinimal from "./components/TimelineMinimal";
 import SessionView from "./components/SessionView";
-import ClipEditor from "./components/ClipEditor";
 import AudioClipEditor from "./components/AudioClipEditor";
 import StepSequencer from "./components/StepSequencer";
 import AutomationPanel from "./components/AutomationPanel";
@@ -33,7 +32,6 @@ import { useProjectStore } from "./store/projectStore";
 import { useBrowserStore } from "./store/browserStore";
 import { rpc } from "./rpc";
 
-const SClipEditor = withHookSentinel(ClipEditor, "ClipEditor");
 const SAudioClipEditor = withHookSentinel(AudioClipEditor, "AudioClipEditor");
 const SPianoRoll = withHookSentinel(PianoRoll, "PianoRoll");
 const SMixer = withHookSentinel(Mixer, "Mixer");
@@ -249,11 +247,6 @@ function App() {
         <aside className="file-browser">
           <FileBrowser />
         </aside>
-      )}
-      {useUiStore((s) => s.selectedClipIds.size === 1) && (
-        <div className="clip-editor-container">
-          <SClipEditor />
-        </div>
       )}
       <div
         className={`panel-resize-handle${panelResizing ? " panel-resize-handle--active" : ""}`}

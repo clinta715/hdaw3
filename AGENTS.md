@@ -483,8 +483,22 @@ over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
 - Outputs: `build/Debug/HDAW.exe`, `build/Debug/HDAW_headless.exe`, `build/Debug/hdaw_tests.exe`
 - Do NOT run `build/Release/HDAW.exe` — stale binary, contains none of the fixes.
 - **Two launch modes:** Default (browser), Headless (Electron).
-- **Frontend build:** `cd frontend && npm run build`, then rebuild the C++ project.
+- **Frontend build:** `cd frontend; npm run build`, then rebuild the C++ project.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
+
+### Shell: PowerShell only (no `&&` or `&`)
+
+This development system runs **Windows PowerShell 5.1**, where `&&` and `&` (as a command separator) are **not valid**. Every command in AGENTS.md, scripts, and docs must use PowerShell-native syntax:
+
+| Goal | Use this | Not this |
+|------|----------|----------|
+| Run commands sequentially (fail on error) | `cmd1; if ($?) { cmd2 }` | `cmd1 && cmd2` |
+| Run commands sequentially (ignore errors) | `cmd1; cmd2` | `cmd1 & cmd2` |
+| Run in subshell / change dir | Use the `workdir` parameter on tool calls, or `Set-Location` | `cd dir && cmd` |
+| Background jobs | `Start-Job { ... }` | `cmd &` |
+| Boolean AND / OR | `if ($?) { ... }` / `if ($LASTEXITCODE -eq 0) { ... }` | `&&` / `||` |
+
+**When writing new commands in this project**, always prefer PowerShell-compatible forms. Existing references to `&&` in documentation (including this file, `README.md`, and `docs/`) are legacy from bash-originated docs and should be updated on sight.
 
 ### How frontend changes reach the running app (the stale-frontend trap)
 
@@ -494,7 +508,7 @@ rebuilding," this is almost certainly why:
 
 | Run mode | Binary | Frontend source | To pick up frontend changes |
 |----------|--------|-----------------|------------------------------|
-| **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen in `resources/app.asar` | **Repackage:** `frontend\build.bat` (or `npm run build && npm run package:dir`). Ctrl+Shift+R does nothing here. |
+| **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen in `resources/app.asar` | **Repackage:** `frontend\build.bat` (or `npm run build; if ($?) { npm run package:dir }`). Ctrl+Shift+R does nothing here. |
 | **Browser (standalone exe)** | `build/Debug/HDAW.exe` | Embedded via `frontend.qrc` | `frontend\build.bat` forces a clean C++ rebuild when `dist/` is newer (AUTORCC under the VS generator does NOT treat changed `dist/` as a rebuild trigger). |
 | **Vite dev server** | `npm run dev` (+ engine for WS on 8766) | Live from `frontend/src` | Hard-refresh the browser (Ctrl+Shift+R). No build needed. |
 
@@ -532,14 +546,14 @@ for a fix marker) before trusting the package.
     coverage, add a gtest — the suite is the contract the frontend and MCP
     server rely on; (3) run `build/Debug/hdaw_tests.exe` to confirm no
     regression. An engine change with no test consideration is incomplete.
-- **Frontend unit tests (Vitest):** `cd frontend && npm test`
+- **Frontend unit tests (Vitest):** `cd frontend; npm test`
   - ~177 tests: Zustand stores (transport, ui, project, notify, meter, browser),
     hooks (useTimelineDrag), utils (rowLayout, theme, grooveUtils), and
     components (StatusBar, Toaster, BottomTabs, MidiFxChain, WaveformCanvas,
     MidiThumbnailCanvas, StepSequencer, TimelineContextMenu, MixerStrip,
     TrackHeaders, Icons).
   - Watch: `npm run test:watch` · Coverage: `npm run test:coverage`
-- **Frontend E2E tests (Playwright):** `cd frontend && npm run test:e2e`
+- **Frontend E2E tests (Playwright):** `cd frontend; npm run test:e2e`
   - ~197 tests in `e2e/*.spec.ts`. `app.spec.ts` = render smoke; the rest are
     user-journey regressions that drive the real app (click/drag/keyboard) and
     assert on DOM/canvas/snapshot state — the layer that catches the recurring

@@ -4,12 +4,11 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .app-shell {
   display: grid;
-  grid-template-rows: 48px 1fr auto var(--bottom-h, 200px) 24px;
+  grid-template-rows: 48px 1fr var(--bottom-h, 200px) 24px;
   grid-template-columns: 220px 1fr auto;
   grid-template-areas:
     "transport transport transport"
     "headers   timeline  browser"
-    "clipedit  clipedit  clipedit"
     "bottom    bottom    bottom"
     "status    status    status";
   height: 100%;
@@ -41,13 +40,6 @@ html, body, #root { height: 100%; overflow: hidden; }
   grid-area: timeline;
   background: var(--bg-window);
   overflow: auto;
-}
-
-.clip-editor-container {
-  grid-area: clipedit;
-  min-height: 0;
-  max-height: 160px;
-  overflow-y: auto;
 }
 
 .bottom-panel {

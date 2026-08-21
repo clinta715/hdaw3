@@ -233,7 +233,8 @@
 }
 
 .pr-cc-popover,
-.pr-edit-popover {
+.pr-edit-popover,
+.pr-clip-popover {
   position: absolute;
   top: 100%;
   right: 0;
@@ -257,6 +258,69 @@
   flex-direction: column;
   gap: 4px;
   min-width: 190px;
+}
+
+.pr-clip-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 320px;
+}
+
+.pr-clip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pr-clip-row label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  min-width: 56px;
+  text-align: right;
+}
+
+.pr-clip-row input[type="range"] {
+  flex: 1;
+  height: 12px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.pr-clip-slider {
+  width: 60px;
+}
+
+.pr-clip-num {
+  width: 44px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.pr-clip-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pr-clip-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.pr-clip-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .pr-lane-handle {

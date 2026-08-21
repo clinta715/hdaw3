@@ -75,11 +75,27 @@
 }
 
 .pool-view-item {
-  cursor: default;
+  cursor: grab;
   color: var(--text-primary);
 }
 
 .pool-view-item:hover {
+  background: var(--bg-elevated);
+}
+
+.pool-view-item:active {
+  cursor: grabbing;
+}
+
+.pool-view-item--unused {
+  opacity: 0.55;
+}
+
+.pool-view-item--unused:hover {
+  opacity: 0.8;
+}
+
+.pool-view-item--previewing {
   background: var(--bg-elevated);
 }
 
@@ -88,12 +104,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pool-col-usage {
-  width: 36px;
+  width: 56px;
   text-align: center;
   flex-shrink: 0;
+  position: relative;
+}
+
+.pool-unused-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  line-height: 1.4;
 }
 
 .pool-col-duration {
@@ -114,6 +149,26 @@
   width: 24px;
   text-align: center;
   flex-shrink: 0;
+}
+
+.pool-preview-icon {
+  font-size: 9px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.pool-preview-icon--play {
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 100ms ease-in;
+}
+
+.pool-view-item:hover .pool-preview-icon--play {
+  opacity: 1;
+}
+
+.pool-view-item--previewing .pool-preview-icon {
+  opacity: 1;
 }
 
 .pool-view-empty {

@@ -2,11 +2,14 @@ import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { rpc } from "../rpc";
+import { quantizeWithGroove } from "./grooveUtils";
 import NoteGrid from "./NoteGrid";
 import VelocityLane from "./VelocityLane";
 import CCLane from "./CCLane";
 import NoteOperatorsPane from "./NoteOperatorsPane";
 import "./PianoRoll.css";
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
 export default function PianoRoll() {
   const snapshot = useProjectStore((s) => s.snapshot);
@@ -28,6 +31,12 @@ export default function PianoRoll() {
   const [pixelsPerBeat, setPixelsPerBeat] = useState(80);
   const [quantizeStrength, setQuantizeStrength] = useState(100);
   const [swing, setSwing] = useState(0);
+  const [clipOpen, setClipOpen] = useState(false);
+  const clipWrapRef = useRef<HTMLDivElement>(null);
+  const [clipGain, setClipGain] = useState(1);
+  const [transposeAmt, setTransposeAmt] = useState(12);
+  const [clipQuantStrength, setClipQuantStrength] = useState(100);
+  const [velOffset, setVelOffset] = useState(0);
 
   const CHORD_SHAPES: Record<string, number[]> = {
     major: [0, 4, 7],
@@ -70,16 +79,18 @@ export default function PianoRoll() {
   }, [activeClip?.clipId, rpc]);
 
   useEffect(() => {
-    if (!ccOpen && !editOpen) return;
+    if (!ccOpen && !editOpen && !clipOpen) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (ccOpen && ccWrapRef.current && !ccWrapRef.current.contains(t)) setCcOpen(false);
       if (editOpen && editWrapRef.current && !editWrapRef.current.contains(t)) setEditOpen(false);
+      if (clipOpen && clipWrapRef.current && !clipWrapRef.current.contains(t)) setClipOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setCcOpen(false);
         setEditOpen(false);
+        setClipOpen(false);
       }
     };
     window.addEventListener("mousedown", onDown);
@@ -88,12 +99,20 @@ export default function PianoRoll() {
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("keydown", onKey);
     };
-  }, [ccOpen, editOpen]);
+  }, [ccOpen, editOpen, clipOpen]);
 
   useEffect(() => {
     setCcOpen(false);
     setEditOpen(false);
+    setClipOpen(false);
   }, [activeClip?.clipId]);
+
+  // Sync local clip gain state when active clip changes
+  useEffect(() => {
+    if (activeClip) {
+      setClipGain(activeClip.gain);
+    }
+  }, [activeClip?.clipId, activeClip?.gain]);
 
   useEffect(() => {
     if (selectedNoteIds.size === 0) setEditOpen(false);
@@ -220,6 +239,87 @@ export default function PianoRoll() {
     [activeClip, selectedNoteIds]
   );
 
+  // ---- Clip-level operations (from former ClipEditor) ----
+  const handleClipGain = useCallback(async (v: number) => {
+    if (!activeClip) return;
+    await rpc.call("project.setClipGain", { clipId: activeClip.clipId, gain: v }).catch(() => {});
+  }, [activeClip]);
+
+  const handleTransposeAll = useCallback(async (semitones: number) => {
+    if (!activeClip || semitones === 0) return;
+    const notes = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+    if (notes.length === 0) return;
+    try {
+      await rpc.call("project.beginTransaction", { name: `transpose ${semitones >= 0 ? "+" : ""}${semitones}` });
+      for (const n of notes) {
+        await rpc.call("project.setNotePitch", { noteId: n.noteId, pitch: clamp(n.pitch + semitones, 0, 127) });
+      }
+      await rpc.call("project.endTransaction");
+      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+      useProjectStore.setState({ isDirty: true });
+    } catch (err) {
+      console.warn("clip transpose failed", err);
+    }
+  }, [activeClip]);
+
+  const handleQuantizeAll = useCallback(async () => {
+    if (!activeClip) return;
+    const { snapEnabled, snapDivision } = useUiStore.getState();
+    if (!snapEnabled) return;
+    const notes = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+    if (notes.length === 0) return;
+    const strength = clipQuantStrength / 100;
+    try {
+      await rpc.call("project.beginTransaction", { name: "quantize clip" });
+      for (const n of notes) {
+        const newStart = quantizeWithGroove(n.startBeat, snapDivision, strength, 0);
+        await rpc.call("project.setNoteStart", { noteId: n.noteId, startBeat: newStart });
+      }
+      await rpc.call("project.endTransaction");
+      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+      useProjectStore.setState({ isDirty: true });
+    } catch (err) {
+      console.warn("clip quantize failed", err);
+    }
+  }, [activeClip, clipQuantStrength]);
+
+  const handleApplyVelOffset = useCallback(async () => {
+    if (!activeClip || velOffset === 0) return;
+    const notes = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+    if (notes.length === 0) return;
+    try {
+      await rpc.call("project.beginTransaction", { name: `velocity ${velOffset >= 0 ? "+" : ""}${velOffset}` });
+      for (const n of notes) {
+        await rpc.call("project.setNoteVelocity", { noteId: n.noteId, velocity: clamp(n.velocity + velOffset, 1, 127) });
+      }
+      await rpc.call("project.endTransaction");
+      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+      useProjectStore.setState({ isDirty: true });
+    } catch (err) {
+      console.warn("clip velocity offset failed", err);
+    }
+  }, [activeClip, velOffset]);
+
+  const handleHumanizeAll = useCallback(async () => {
+    if (!activeClip) return;
+    const notes = useProjectStore.getState().notesByClip.get(activeClip.clipId) ?? [];
+    if (notes.length === 0) return;
+    try {
+      await rpc.call("project.beginTransaction", { name: "humanize clip" });
+      for (const n of notes) {
+        const beatOffset = (Math.random() - 0.5) * 0.06;
+        const velOff = Math.round((Math.random() - 0.5) * 10);
+        await rpc.call("project.setNoteStart", { noteId: n.noteId, startBeat: Math.max(0, n.startBeat + beatOffset) });
+        await rpc.call("project.setNoteVelocity", { noteId: n.noteId, velocity: clamp(n.velocity + velOff, 1, 127) });
+      }
+      await rpc.call("project.endTransaction");
+      useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+      useProjectStore.setState({ isDirty: true });
+    } catch (err) {
+      console.warn("clip humanize failed", err);
+    }
+  }, [activeClip]);
+
   const keys = useMemo(() => {
     const k: { note: number; name: string; isBlack: boolean }[] = [];
     for (let n = 127; n >= 0; n--) {
@@ -281,6 +381,63 @@ export default function PianoRoll() {
           </>
         )}
         <div className="pr-pill-group">
+          {activeClip && (
+            <div className="pr-popover-wrap" ref={clipWrapRef}>
+              <button
+                className={`pr-pill ${clipOpen ? "pr-pill--active" : ""}`}
+                aria-pressed={clipOpen}
+                aria-haspopup="true"
+                aria-expanded={clipOpen}
+                title="Clip controls (gain, transpose, quantize, humanize)"
+                aria-label="Clip controls"
+                onClick={() => setClipOpen((o) => !o)}
+              >Clip</button>
+              {clipOpen && (
+                <div className="pr-clip-popover">
+                  <div className="pr-clip-row">
+                    <label>Gain</label>
+                    <input type="range" min={0} max={2} step={0.01} value={clipGain}
+                      onChange={(e) => { const v = parseFloat(e.target.value); setClipGain(v); handleClipGain(v); }} />
+                    <span className="pr-slider-val">{clipGain.toFixed(2)}x</span>
+                  </div>
+                  <div className="pr-clip-row">
+                    <label>Transpose</label>
+                    <button className="pr-clip-btn" onClick={() => handleTransposeAll(-12)} title="Down an octave">-12</button>
+                    <button className="pr-clip-btn" onClick={() => handleTransposeAll(-1)} title="Down a semitone">-1</button>
+                    <button className="pr-clip-btn" onClick={() => handleTransposeAll(1)} title="Up a semitone">+1</button>
+                    <button className="pr-clip-btn" onClick={() => handleTransposeAll(12)} title="Up an octave">+12</button>
+                    <input type="number" min={-48} max={48} step={1} value={transposeAmt}
+                      onChange={(e) => setTransposeAmt(parseInt(e.target.value) || 0)} className="pr-clip-num" />
+                    <button className="pr-clip-btn" onClick={() => handleTransposeAll(transposeAmt)}>Apply</button>
+                  </div>
+                  <div className="pr-clip-row">
+                    <label>Quantize</label>
+                    <input type="range" min={0} max={100} step={1} value={clipQuantStrength}
+                      onChange={(e) => setClipQuantStrength(Number(e.target.value))} className="pr-clip-slider" />
+                    <span className="pr-slider-val">{clipQuantStrength}%</span>
+                    <button className="pr-clip-btn" onClick={handleQuantizeAll}
+                      title={useUiStore.getState().snapEnabled ? "Quantize all notes to snap grid" : "Enable snap first"}>
+                      Apply
+                    </button>
+                  </div>
+                  <div className="pr-clip-row">
+                    <label>Velocity</label>
+                    <input type="range" min={-50} max={50} step={1} value={velOffset}
+                      onChange={(e) => setVelOffset(Number(e.target.value))} className="pr-clip-slider" />
+                    <span className="pr-slider-val">{velOffset >= 0 ? `+${velOffset}` : velOffset}</span>
+                    <button className="pr-clip-btn" onClick={handleApplyVelOffset} disabled={velOffset === 0}>Apply</button>
+                  </div>
+                  <div className="pr-clip-row">
+                    <label>Humanize</label>
+                    <button className="pr-clip-btn" onClick={handleHumanizeAll}
+                      title="Add slight timing + velocity randomness to all notes">
+                      Humanize All
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <button
             className={`pr-pill ${velOpen ? "pr-pill--active" : ""}`}
             aria-pressed={velOpen}
