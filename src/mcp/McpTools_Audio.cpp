@@ -153,6 +153,53 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
+
+    s.registerTool({"pool_list",
+        "List all audio files used in the project with usage counts and metadata. "
+        "Derived from clips in the arrangement — no persistent pool.",
+        objSchema({}, {}),
+        [e](const QJsonObject&) {
+            auto snapshot = e->getReadModel().snapshot();
+            auto& fm = e->getProjectPool().getFormatManager();
+
+            struct PoolEntry { std::string sourceFile, name; int usageCount; double duration; int sampleRate, channels; };
+            std::map<std::string, PoolEntry> poolMap;
+
+            for (const auto& clip : snapshot.clips) {
+                if (clip.sourceFile.empty()) continue;
+                auto it = poolMap.find(clip.sourceFile);
+                if (it == poolMap.end()) {
+                    PoolEntry entry{clip.sourceFile, clip.name, 1, 0.0, 0, 0};
+                    juce::File file(clip.sourceFile);
+                    if (file.existsAsFile()) {
+                        std::unique_ptr<juce::AudioFormatReader> reader(fm.createReaderFor(file));
+                        if (reader) {
+                            entry.duration = reader->lengthInSamples / reader->sampleRate;
+                            entry.sampleRate = static_cast<int>(reader->sampleRate);
+                            entry.channels = static_cast<int>(reader->numChannels);
+                        }
+                    }
+                    poolMap[clip.sourceFile] = std::move(entry);
+                } else {
+                    it->second.usageCount++;
+                }
+            }
+
+            QJsonArray arr;
+            for (const auto& [path, entry] : poolMap) {
+                (void)path;
+                arr.append(QJsonObject{
+                    {"sourceFile",  QString::fromStdString(entry.sourceFile)},
+                    {"name",        QString::fromStdString(entry.name)},
+                    {"usageCount",  entry.usageCount},
+                    {"duration",    entry.duration},
+                    {"sampleRate",  entry.sampleRate},
+                    {"channels",    entry.channels}
+                });
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        }});
 }
 
 static void registerFxTools(McpServer& s, AudioEngine* e)

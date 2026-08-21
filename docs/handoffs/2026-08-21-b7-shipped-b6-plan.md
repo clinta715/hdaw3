@@ -1,15 +1,14 @@
-# Handoff — v0.24.0: Batch B + B7 shipped, B6 plan (2026-08-21)
+# Handoff — v0.24.0: Batch B + B6 + B7 shipped, B5 plan (2026-08-21)
 
 ## Purpose
 
-This session completed B7 (Cross-Plugin Preset Browser) from the Batch C plan,
-and committed all Batch B + B7 work as v0.24.0. This file is the briefing for
-the next session tackling B6 (Audio Pool).
+This session completed B7 (Cross-Plugin Preset Browser) and B6 (Audio Pool)
+from the Batch C plan, plus all Batch B items. Committed as v0.24.0. This file
+briefs the next session tackling B5 (Takes/Comps).
 
 ## What was shipped (v0.24.0)
 
-All Batch B items (B1–B4, B8, B9) from the previous handoff plus B7. Committed
-and pushed.
+All Batch B items (B1–B4, B8, B9) plus B6 and B7. Committed and pushed.
 
 ### Items included
 
@@ -25,6 +24,7 @@ and pushed.
 | B2-7 | MIDI device persistence | `MidiService.h`, `PreferencesDialog.tsx` |
 | B3 | Track drag-to-reorder | `TrackHeaders.tsx` |
 | B4 | Tempo track UI + RPC wiring | `TempoEditor.tsx`, `Router_Project.cpp` |
+| B6 | Audio Pool | `PoolView.tsx`, `Router_Pool.cpp`, `FileBrowser.tsx` |
 | B7 | Cross-plugin preset browser | `PresetBrowser.tsx`, `PluginService.h`, `Router_Plugin.cpp` |
 | B8 | MCP parity (30 tools) | `McpTools_Settings.cpp`, `McpTools.cpp` |
 | B9 | Export range options | `ExportDialog.tsx` |
@@ -36,63 +36,41 @@ and pushed.
 | `cmake --build build --config Debug` | passed |
 | `Commands.*` gtests | 41/41 passed |
 | `Mcp*` gtests | 27/28 passed (1 pre-existing) |
-| `cd frontend && npm test` | 387/387 passed (41 files) |
+| `cd frontend && npm test` | 391/391 passed (42 files) |
 | `cd frontend && npm run build` | passed |
 
-## B6 — Audio Pool (next work item)
+## B5 — Takes/Comps (last remaining item)
 
-### Design (from AGENTS.md)
+### Current state
 
-Project media follows **Cubase's Audio Pool model** — a centralized pool of all
-audio in the project, independent of the arrangement:
+From the previous handoff: "`audioGraph.switchClipTake` exists. No take UI."
 
-- Every imported/recorded audio file appears **once**, with name, source path,
-  length, and **usage/reference count** — regardless of how many clips use it.
-- Clips **reference** pool items; dragging from the pool to the timeline mints
-  a clip. Deleting a clip does not delete the pool item.
-- The pool surfaces **unused items** for cleanup and is the single place to see
-  what media the project actually carries.
-- This lives in / alongside the file-browser region as the project-media side.
+### Design questions to resolve (from previous handoff)
 
-### Engine work needed
+1. How are takes stored in the ValueTree? (Check `IDs::takeIndex` or similar)
+2. Does `switchClipTake` swap the entire clip or just the audio source?
+3. How do takes interact with recording (punch in/out creates new takes)?
+4. What's the UX for comping (assembling best parts from multiple takes)?
 
-1. **Define `PoolEntry` snapshot struct** — name, sourcePath, duration,
-   usageCount, sampleRate, channels
-2. **Add RPCs** in a new `Router_Pool.cpp` (or extend `Router_Project.cpp`):
-   - `pool.list` — return all pool entries
-   - `pool.getEntry` — return single entry by id/path
-   - `pool.cleanup` — remove unused entries
-   - `pool.import` — import a file into the pool
-3. **Expose `ProjectPool` via service interface** — either a new `PoolService`
-   in `src/common/` or extend `ReadModel` to include pool data
-4. **Track usage counts** — how many clips reference each pool item
-5. **Add MCP parity tools** for pool operations
+### Design options (from previous handoff)
 
-### Frontend work needed
-
-1. **`PoolPanel.tsx`** — list of pool entries with name, path, duration,
-   usage count. Search/filter. "Cleanup unused" button.
-2. **Tab registration** — add as a tab in the file browser region (right panel),
-   NOT a bottom panel tab. Per AGENTS.md: "Probably a tab in the file browser
-   region (right panel)."
-3. **Drag from pool to timeline** — creates clip referencing the pool item
-4. **Types** — add `PoolEntry` to `types.ts`
+- **Bitwig-style take lanes** — visual lanes below the main lane per track
+- **Clip "takes" dropdown** — in the Inspector or clip context menu
+- **A "Takes" tab** — in the bottom panel
 
 ### Files to explore
 
-- `src/engine/ProjectPool.h` / `.cpp` — existing pool implementation
-- `src/engine/RoutingManager.cpp` — how clips reference pool items
-- `src/model/ProjectModel.h` — pool-related ValueTree nodes
-- `src/frontend/components/FileBrowser.tsx` — existing file browser for tab
-  integration pattern
+- `src/engine/AudioEngineCommands_Clips.cpp` — `switchClipTake` implementation
+- `src/model/ProjectModel.h` — take-related IDs (`IDs::takeIndex` etc.)
+- `src/frontend/router/Router_AudioGraph.cpp` — `switchClipTake` RPC
+- `src/engine/RoutingManager.cpp` — how takes are handled in the audio graph
+- `src/engine/ClipSourceProcessor.cpp` — how the audio source is swapped
 
-### Key questions to resolve
+### Approach
 
-1. Does `ProjectPool` already exist as a class? What's its API?
-2. How do clips reference pool items today? (ValueTree property? Clip ID?)
-3. Where does the pool data live in the ValueTree?
-4. Is the pool persisted in the .hdaw file?
-5. What's the file browser tab pattern? (How are tabs registered there?)
+1. **Explore first** — understand the existing engine take infrastructure
+2. **Design discussion** — present options to user, get decision
+3. **Implement** — based on chosen design
 
 ## Architecture notes
 
@@ -105,17 +83,12 @@ audio in the project, independent of the arrangement:
 - **MCP parity rule:** Any user-facing feature must also be an MCP tool.
 - **QSettings pattern:** Engine-side settings use `SettingsKeys.h` constants +
   `QSettings` read/write. Frontend reads via RPC, never directly.
-- **PluginService interface:** Custom methods go in `src/common/PluginService.h`
-  as pure virtuals, implemented in
-  `src/engine/PluginServiceImpl.h/.cpp`, called from `Router_Plugin.cpp` and
-  `McpTools_Settings.cpp`.
 - **Bottom panel tabs:** `BOTTOM_TAB_IDS` in `uiStore.ts`, registered in
   `App.tsx` `bottomTabs` array. Default is "mixer".
-- **File browser tabs:** Check `FileBrowser.tsx` for the tab pattern — likely
-  similar to bottom panel but in the right sidebar.
+- **File browser filter chips:** `FileKindFilter` in `browserStore.ts`, chips
+  rendered in `FileBrowser.tsx`. "Pool" was added for B6.
 
 ## Version management
 
 - `CMakeLists.txt` → `project(HDAW VERSION 0.24.0 ...)` — canonical for C++
 - `frontend/package.json` → `"version": "0.24.0"` — canonical for frontend
-- Both bumped in this commit.

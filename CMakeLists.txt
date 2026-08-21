@@ -190,6 +190,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Composition.cpp
     src/frontend/router/Router_Library.cpp
     src/frontend/router/Router_Sampler.cpp
+    src/frontend/router/Router_Pool.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

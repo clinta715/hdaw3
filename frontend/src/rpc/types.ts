@@ -221,3 +221,12 @@ export interface PresetSearchResult {
   presetIndex: number;
   presetName: string;
 }
+
+export interface PoolEntry {
+  sourceFile: string;
+  name: string;
+  usageCount: number;
+  duration: number;
+  sampleRate: number;
+  channels: number;
+}

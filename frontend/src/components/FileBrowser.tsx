@@ -6,6 +6,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { reportRpcError } from "../store/notifyStore";
 import { rpc } from "../rpc";
+import PoolView from "./PoolView";
 import "./FileBrowser.css";
 
 interface DirEntry {
@@ -68,6 +69,7 @@ const KIND_CHIPS: { label: string; value: FileKindFilter }[] = [
   { label: "Presets", value: "presets" },
   { label: "Clips", value: "clips" },
   { label: "Library", value: "library" },
+  { label: "Pool", value: "pool" },
 ];
 
 function FilterChips() {
@@ -540,6 +542,8 @@ export default function FileBrowser() {
       <FilterChips />
       {kindFilter === "library" ? (
         <LibraryView />
+      ) : kindFilter === "pool" ? (
+        <PoolView />
       ) : (
         <>
           {favorites.length > 0 && (
