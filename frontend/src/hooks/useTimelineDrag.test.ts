@@ -59,6 +59,7 @@ describe("useTimelineDrag", () => {
         transport: {
           bpm: 120, isPlaying: false, isLooping: false, isRecording: false,
           loopStart: 0, loopEnd: 8, currentTimeSeconds: 0, sampleRate: 44100,
+          timeSigNumerator: 4, timeSigDenominator: 4,
         },
         tracks: [
           {
@@ -248,6 +249,111 @@ describe("useTimelineDrag", () => {
       });
       expect(mockRpc.call).not.toHaveBeenCalledWith("project.beginTransaction", expect.anything());
       expect(mockRpc.call).not.toHaveBeenCalledWith("project.endTransaction", expect.anything());
+    });
+  });
+
+  describe("ctrl+shift-drag (ghost clone) — createGhostClip in a transaction", () => {
+    it("creates the ghost via beginTransaction + createGhostClip + endTransaction, never duplicateClips", async () => {
+      const clips = [makeClip(1, 0, 0)];
+      const tracksRef = makeTracksRef();
+      withRpc((m) => (m === "project.createGhostClip" ? 7 : null));
+
+      const { result } = renderHook(() =>
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+      );
+
+      act(() => {
+        result.current.handleClipMouseDown(
+          { preventDefault: () => {}, currentTarget: document.createElement("div"), clientX: 50, clientY: 28, ctrlKey: true, shiftKey: true } as any,
+          1, 0, 0
+        );
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250, clientY: 28 }));
+        window.dispatchEvent(new MouseEvent("mouseup"));
+      });
+
+      await vi.waitFor(() => {
+        expect(mockRpc.call).toHaveBeenCalledWith(
+          "project.createGhostClip",
+          expect.objectContaining({ sourceClipId: 1, newStart: 2, newTrackIndex: 0 })
+        );
+      });
+      expect(mockRpc.call).toHaveBeenCalledWith("project.beginTransaction", { name: "Ghost clone" });
+      expect(mockRpc.call).toHaveBeenCalledWith("project.endTransaction", {});
+      expect(mockRpc.call).not.toHaveBeenCalledWith("project.duplicateClips", expect.anything());
+
+      const methods = (mockRpc.call as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(methods.indexOf("project.beginTransaction")).toBeLessThan(methods.indexOf("project.createGhostClip"));
+      expect(methods.indexOf("project.createGhostClip")).toBeLessThan(methods.indexOf("project.endTransaction"));
+    });
+
+    it("swaps selection to the new ghost id", async () => {
+      const clips = [makeClip(1, 0, 0)];
+      const tracksRef = makeTracksRef();
+      withRpc((m) => (m === "project.createGhostClip" ? 7 : null));
+
+      const { result } = renderHook(() =>
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+      );
+
+      act(() => {
+        result.current.handleClipMouseDown(
+          { preventDefault: () => {}, currentTarget: document.createElement("div"), clientX: 50, clientY: 28, ctrlKey: true, shiftKey: true } as any,
+          1, 0, 0
+        );
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250, clientY: 28 }));
+        window.dispatchEvent(new MouseEvent("mouseup"));
+      });
+
+      await vi.waitFor(() => {
+        expect(useUiStore.getState().selectedClipIds.has(7)).toBe(true);
+      });
+      expect(useUiStore.getState().selectedClipIds.has(1)).toBe(false);
+    });
+
+    it("ghosts every selected clip in one transaction, keeping relative offsets", async () => {
+      const clips = [makeClip(1, 0, 0), makeClip(2, 0, 8)];
+      const tracksRef = makeTracksRef();
+      useUiStore.setState({ selectedClipIds: new Set([1, 2]) });
+      let nextGhostId = 10;
+      (mockRpc.call as ReturnType<typeof vi.fn>).mockImplementation((method: string) =>
+        Promise.resolve(method === "project.createGhostClip" ? nextGhostId++ : null)
+      );
+
+      const { result } = renderHook(() =>
+        useTimelineDrag({ clips, pps: 100, layout: buildRowLayout([56]), tracksRef, trackCount: 1, rpc: mockRpc as any, engagementRef: makeEngagementRef() })
+      );
+
+      act(() => {
+        result.current.handleClipMouseDown(
+          { preventDefault: () => {}, currentTarget: document.createElement("div"), clientX: 50, clientY: 28, ctrlKey: true, shiftKey: true } as any,
+          1, 0, 0
+        );
+        window.dispatchEvent(new MouseEvent("mousemove", { clientX: 250, clientY: 28 }));
+        window.dispatchEvent(new MouseEvent("mouseup"));
+      });
+
+      await vi.waitFor(() => {
+        expect(mockRpc.call).toHaveBeenCalledWith(
+          "project.createGhostClip",
+          expect.objectContaining({ sourceClipId: 2 })
+        );
+      });
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        "project.createGhostClip",
+        expect.objectContaining({ sourceClipId: 1, newStart: 2, newTrackIndex: 0 })
+      );
+      expect(mockRpc.call).toHaveBeenCalledWith(
+        "project.createGhostClip",
+        expect.objectContaining({ sourceClipId: 2, newStart: 10, newTrackIndex: 0 })
+      );
+      expect((mockRpc.call as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "project.beginTransaction")).toHaveLength(1);
+      expect((mockRpc.call as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "project.endTransaction")).toHaveLength(1);
+
+      await vi.waitFor(() => {
+        expect(useUiStore.getState().selectedClipIds.has(10)).toBe(true);
+        expect(useUiStore.getState().selectedClipIds.has(11)).toBe(true);
+      });
+      expect(useProjectStore.getState().isDirty).toBe(true);
     });
   });
 

@@ -52,7 +52,7 @@ void FmSynthEngine::prepare(double sampleRate, int /*maxBlockSize*/)
         patchData_[off + 5] = 99; // EG Level 2
         patchData_[off + 6] = 99; // EG Level 3
         patchData_[off + 7] = 0;  // EG Level 4 (silence)
-        patchData_[off + 16] = 99; // Output level (full)
+        patchData_[off + 16] = 60; // Output level (moderate — was 99, caused clipping)
     }
     patchData_[134] = 0; // Algorithm 0
     patchData_[135] = 0; // Feedback 0
@@ -429,6 +429,13 @@ bool FmSynthEngine::peekVoiceStatus(FmVoiceStatus& status)
 
 void FmSynthEngine::computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, int count)
 {
+    // Count live voices for polyphony normalization — prevents additive
+    // accumulation from clipping when multiple voices sum together.
+    int liveCount = 0;
+    for (auto& v : voices_)
+        if (v.live && v.note != nullptr) ++liveCount;
+    const float voiceScale = (liveCount > 0) ? (1.0f / static_cast<float>(liveCount)) : 1.0f;
+
     for (auto& v : voices_)
     {
         if (! v.live || v.note == nullptr)
@@ -449,13 +456,13 @@ void FmSynthEngine::computeBlock(int32_t lfoVal, int32_t lfoDelay, float* dest, 
         {
             int32_t val = tempBuf[k] >> 4;
             val = std::max(-32768, std::min(32767, val));
-            dest[k] += static_cast<float>(val) / 32768.0f;
+            dest[k] += static_cast<float>(val) / 32768.0f * voiceScale;
         }
         for (int k = count; k < kBlockSize; ++k)
         {
             int32_t val = tempBuf[k] >> 4;
             val = std::max(-32768, std::min(32767, val));
-            extra_buf_[k - count] += static_cast<float>(val) / 32768.0f;
+            extra_buf_[k - count] += static_cast<float>(val) / 32768.0f * voiceScale;
         }
     }
 }
@@ -550,7 +557,7 @@ void FmSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& m
         extra_buf_size_ = kBlockSize - n;
     }
 
-    if (outputLevel < 1.0f)
+    // Always apply output level (even at 1.0, for consistency)
     {
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.applyGain(ch, 0, numSamples, outputLevel);

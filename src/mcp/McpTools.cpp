@@ -102,6 +102,7 @@ void registerAllTools(McpServer& s) {
     registerAudioDomain(s, e);
     registerSessionDomain(s, e);
     registerLibraryDomain(s, e);
+    registerSettingsDomain(s, e);
     registerExportTool(s);
     registerCancelExportTool(s);
 }

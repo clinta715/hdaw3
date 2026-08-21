@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
 import { reportRpcError } from "../store/notifyStore";
+import { useNotifyStore } from "../store/notifyStore";
 import ImportDialog from "./ImportDialog";
 import ExportDialog from "./ExportDialog";
 import "./FileMenu.css";
@@ -184,6 +185,36 @@ export default function FileMenu() {
     setShowExport(true);
   };
 
+  const handleRelinkAll = async () => {
+    setOpen(false);
+    let searchDir = "";
+    if (window.hdaw) {
+      const result = await window.hdaw.showOpenDialog({
+        title: "Search directory for missing files",
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return;
+      searchDir = result.filePaths[0];
+    } else {
+      searchDir = prompt("Search directory:", "") ?? "";
+      if (!searchDir) return;
+    }
+    try {
+      const res = await rpc.call("project.relinkAllMissingFiles", { searchDir }) as { found: number; totalMissing: number };
+      if (res.totalMissing === 0) {
+        useNotifyStore.getState().push({ level: "info", message: "No missing files" });
+      } else {
+        useNotifyStore.getState().push({
+          level: res.found === res.totalMissing ? "success" : "info",
+          message: `Relinked ${res.found} of ${res.totalMissing} missing file(s)`,
+        });
+        await useProjectStore.getState().syncSnapshot(rpc);
+      }
+    } catch (err) {
+      reportRpcError("project.relinkAllMissingFiles", err);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -260,6 +291,10 @@ export default function FileMenu() {
           <button onClick={handleExportAudio}>
             <span>Export Audio...</span>
             <span className="fm-shortcut">Ctrl+E</span>
+          </button>
+          <div className="fm-separator" />
+          <button onClick={handleRelinkAll}>
+            <span>Relink All Missing Files...</span>
           </button>
         </div>
       )}

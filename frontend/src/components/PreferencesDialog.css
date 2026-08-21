@@ -8,6 +8,7 @@
 .pref-section label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
 .pref-section select { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; color: var(--text-primary); }
 .pref-note { font-size: 12px; color: var(--text-muted); }
+.pref-conn-value { font-size: 12px; color: var(--text-primary); background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px; margin: 0 0 8px; user-select: all; }
 .pref-libraries-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .pref-library-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .pref-library-name { font-weight: 500; min-width: 120px; color: var(--text-primary); }

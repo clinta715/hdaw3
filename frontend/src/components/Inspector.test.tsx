@@ -66,7 +66,7 @@ describe("Inspector", () => {
     useProjectStore.setState({ snapshot: mkSnapshot([mkTrack()], [mkClip()]) });
     render(<Inspector />);
     expect(screen.getByText("Clip 100")).toBeInTheDocument();
-    expect(screen.getByText("Kick")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Kick")).toBeInTheDocument();
   });
 
   it("falls back to TrackInspector when multiple clips and a track are selected", () => {

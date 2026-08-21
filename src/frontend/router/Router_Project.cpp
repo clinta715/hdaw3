@@ -2,6 +2,7 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ProjectCommands.h"
+#include "../../common/SettingsKeys.h"
 #include "../../engine/PhraseGenerator.h"
 #include "../../engine/ArrangementGenerator.h"
 #include "../../engine/EnvelopeGenerator.h"
@@ -9,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QSettings>
 #include <QString>
 
 #include <algorithm>
@@ -357,6 +359,34 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
 
     // --- Transport properties ---
     if (m == "setTempo")            { double v; if (!requireDouble(o, "bpm", v, nullptr)) return makeError(-32602, "bpm required"); c.setTempo(v); return { false, QJsonValue::Null }; }
+    if (m == "addTempoPoint") {
+        double time, bpm;
+        if (!requireDouble(o, "timeSeconds", time, nullptr) || !requireDouble(o, "bpm", bpm, nullptr))
+            return makeError(-32602, "timeSeconds and bpm required");
+        int idx = c.addTempoPoint(time, bpm);
+        return { false, idx };
+    }
+    if (m == "removeTempoPoint") {
+        int idx;
+        if (!requireInt(o, "index", idx, nullptr))
+            return makeError(-32602, "index required");
+        c.removeTempoPoint(idx);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setTempoPointBpm") {
+        int idx; double bpm;
+        if (!requireInt(o, "index", idx, nullptr) || !requireDouble(o, "bpm", bpm, nullptr))
+            return makeError(-32602, "index and bpm required");
+        c.setTempoPointBpm(idx, bpm);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "setTempoPointTime") {
+        int idx; double time;
+        if (!requireInt(o, "index", idx, nullptr) || !requireDouble(o, "timeSeconds", time, nullptr))
+            return makeError(-32602, "index and timeSeconds required");
+        c.setTempoPointTime(idx, time);
+        return { false, QJsonValue::Null };
+    }
     if (m == "setLoopStart")        { double v; if (!requireDouble(o, "beat", v, nullptr)) return makeError(-32602, "beat required"); c.setLoopStart(v); return { false, QJsonValue::Null }; }
     if (m == "setLoopEnd")          { double v; if (!requireDouble(o, "beat", v, nullptr)) return makeError(-32602, "beat required"); c.setLoopEnd(v); return { false, QJsonValue::Null }; }
     if (m == "setLooping")          { bool b; if (!requireBool(o, "looping", b, nullptr)) return makeError(-32602, "looping required"); c.setLooping(b); return { false, QJsonValue::Null }; }
@@ -368,6 +398,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "removeMarker")   { int i; if (!requireInt(o, "index", i, nullptr)) return makeError(-32602, "index required"); c.removeMarker(i); return { false, QJsonValue::Null }; }
     if (m == "setMarkerName")  { int i; std::string s; if (!requireInt(o, "index", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "index and name required"); c.setMarkerName(i, s); return { false, QJsonValue::Null }; }
     if (m == "setMarkerTime")  { int i; double t; if (!requireInt(o, "index", i, nullptr) || !requireDouble(o, "time", t, nullptr)) return makeError(-32602, "index and time required"); c.setMarkerTime(i, t); return { false, QJsonValue::Null }; }
+    if (m == "setClipName")    { int i; std::string s; if (!requireInt(o, "clipId", i, nullptr) || !requireString(o, "name", s, nullptr)) return makeError(-32602, "clipId and name required"); c.setClipName(i, s); return { false, QJsonValue::Null }; }
 
     // --- Arranger Regions ---
     if (m == "addArrangerRegion") {
@@ -654,6 +685,28 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         std::string d; if (!requireString(o, "searchDir", d, nullptr)) return makeError(-32602, "searchDir required");
         auto r = c.relinkAllMissingFiles(d);
         return { false, QJsonObject{ { "found", r.found }, { "totalMissing", r.totalMissing } } };
+    }
+
+    // --- Settings RPCs ---
+    if (m == "settings.getMaxBackups") { QSettings s; return { false, s.value(SettingsKeys::kKeyMaxBackups, 10).toInt() }; }
+    if (m == "settings.setMaxBackups") { int v; if (!requireInt(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyMaxBackups, v); return { false, QJsonValue::Null }; }
+    if (m == "settings.getDefaultTempo") { QSettings s; return { false, s.value(SettingsKeys::kKeyDefaultTempo, 120.0).toDouble() }; }
+    if (m == "settings.setDefaultTempo") { double v; if (!requireDouble(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyDefaultTempo, v); return { false, QJsonValue::Null }; }
+    if (m == "settings.getDefaultTimeSignature") {
+        QSettings s;
+        QJsonObject ts;
+        ts["numerator"] = s.value(SettingsKeys::kKeyDefaultTimeSigNum, 4).toInt();
+        ts["denominator"] = s.value(SettingsKeys::kKeyDefaultTimeSigDen, 4).toInt();
+        return { false, ts };
+    }
+    if (m == "settings.setDefaultTimeSignature") {
+        int num, den;
+        if (!requireInt(o, "numerator", num, nullptr) || !requireInt(o, "denominator", den, nullptr))
+            return makeError(-32602, "numerator and denominator required");
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyDefaultTimeSigNum, num);
+        s.setValue(SettingsKeys::kKeyDefaultTimeSigDen, den);
+        return { false, QJsonValue::Null };
     }
 
     return makeError(-32601, "unknown project method: " + m);

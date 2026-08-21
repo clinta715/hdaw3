@@ -56,6 +56,13 @@ export default function SessionView() {
             Scene {i + 1}
           </button>
         ))}
+        <button
+          className="sv-scene-btn sv-stop-all-btn"
+          onClick={() => rpc.call("session.stopAll", {}).catch(console.error)}
+          title="Stop all playing session clips"
+        >
+          Stop All
+        </button>
       </div>
       <div className="sv-grid">
         {visibleTracks.map((track) => (

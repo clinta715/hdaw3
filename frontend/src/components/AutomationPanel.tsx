@@ -227,6 +227,20 @@ export default function AutomationPanel({ rpc }: Props) {
         {lanes.map((lane) => (
           <div key={lane.laneIndex} className="ap-lane-row">
             <div className="ap-mode-btns">
+              <button
+                className={`ap-enable-btn${lane.enabled !== false ? " ap-enable-btn--on" : ""}`}
+                onClick={() => {
+                  rpc.call("project.setAutomationEnabled", {
+                    trackIndex: activeTrackIndex,
+                    lane: lane.name,
+                    enabled: lane.enabled === false,
+                  });
+                  fetchForTrack(activeTrackIndex!, rpc);
+                }}
+                title={lane.enabled !== false ? "Disable lane" : "Enable lane"}
+              >
+                {lane.enabled !== false ? "ON" : "OFF"}
+              </button>
               {(["read", "write", "touch", "latch"] as const).map((m) => (
                 <button
                   key={m}

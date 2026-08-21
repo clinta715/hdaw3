@@ -4,6 +4,7 @@
 
 #include "../engine/AudioEngine.h"
 #include "../common/ReadModel.h"
+#include "../common/SettingsKeys.h"
 #include "../mcp/McpJsonRpc.h"
 
 #include <QtWebSockets/QWebSocketServer>
@@ -12,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
+#include <QSettings>
 #include <QTimer>
 #include <QFileSystemWatcher>
 #include <QCoreApplication>
@@ -112,13 +114,16 @@ bool FrontendServer::start(quint16 port) {
         if (v == nullptr) return true;              // default: on
         return v[0] != '0' && v[0] != 'f' && v[0] != 'F';
     }();
-    if (watchPlugins)
+    bool effectiveWatchPlugins = watchPlugins;
     {
-        juce::StringArray watchedDirs;
-        for (const auto& dir : engine_.getPluginManager().getVst3Dirs())
-            watchedDirs.add(dir);
-        for (const auto& dir : engine_.getPluginManager().getClapDirs())
-            watchedDirs.add(dir);
+        QSettings qs;
+        if (qs.contains(SettingsKeys::kKeyWatchPlugins)) {
+            effectiveWatchPlugins = qs.value(SettingsKeys::kKeyWatchPlugins, true).toBool();
+        }
+    }
+    if (effectiveWatchPlugins)
+    {
+        auto watchedDirs = engine_.getPluginManager().getAllScanDirs();
 
         auto addDirWatcher = [&](const juce::String& dirPath) {
             auto dir = juce::File(dirPath);
@@ -320,11 +325,7 @@ void FrontendServer::onPluginDirDebounceExpired() {
     // (Defender, indexer, plugin hosts). Only rescan when the VST3/CLAP
     // file count actually changed since the last baseline — this skips
     // the frequent false-positive events without missing real installs.
-    juce::StringArray watchedDirs;
-    for (const auto& dir : engine_.getPluginManager().getVst3Dirs())
-        watchedDirs.add(dir);
-    for (const auto& dir : engine_.getPluginManager().getClapDirs())
-        watchedDirs.add(dir);
+    auto watchedDirs = engine_.getPluginManager().getAllScanDirs();
     const int currentCount = engine_.getPluginManager()
         .findPluginFiles(watchedDirs).size();
     if (currentCount == lastPluginFileCount_)

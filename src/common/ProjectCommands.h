@@ -197,6 +197,7 @@ public:
     virtual void removeMarker(int index) = 0;
     virtual void setMarkerName(int index, const std::string& name) = 0;
     virtual void setMarkerTime(int index, double time) = 0;
+    virtual void setClipName(int clipId, const std::string& name) = 0;
 
     // Arranger Regions
     virtual std::string addArrangerRegion(const std::string& name, double startTime, double duration, int color = 0xFFd97706) = 0;

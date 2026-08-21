@@ -22,3 +22,8 @@ void MidiServiceImpl::closeDevice()
 {
     mgr_.closeDevice();
 }
+
+std::string MidiServiceImpl::getOpenDevice() const
+{
+    return mgr_.getOpenDeviceName().toStdString();
+}

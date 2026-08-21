@@ -11,7 +11,10 @@ import PluginManagerDialog from "./PluginManagerDialog";
 import PreferencesDialog from "./PreferencesDialog";
 import PhraseGeneratorDialog from "./PhraseGeneratorDialog";
 import { FolderIcon, KnobIcon, NoteIcon, SlidersIcon } from "./Icons";
+import type { ScaleModeInfo } from "../rpc/types";
 import "./TransportBar.css";
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export default function TransportBar() {
   const transport = useTransportStore((s) => s.transport);
@@ -24,12 +27,18 @@ export default function TransportBar() {
   const setSnapGridOffset = useUiStore((s) => s.setSnapGridOffset);
   const setSnapToEvents = useUiStore((s) => s.setSnapToEvents);
   const isDirty = useProjectStore((s) => s.isDirty);
+  const scaleRoot = useProjectStore((s) => s.snapshot?.scaleRoot ?? 0);
+  const scaleMode = useProjectStore((s) => s.snapshot?.scaleMode ?? 0);
   const metronomeEnabled = useTransportExtrasStore((s) => s.metronomeEnabled);
-  const countInEnabled = useTransportExtrasStore((s) => s.countInEnabled);
   const followPlayhead = useTransportExtrasStore((s) => s.followPlayhead);
   const setExtras = useTransportExtrasStore((s) => s.set);
   const [bpmInput, setBpmInput] = useState<string | null>(null);
   const [tsEdit, setTsEdit] = useState<{ n: number; d: number } | null>(null);
+  const [scaleModes, setScaleModes] = useState<ScaleModeInfo[]>([]);
+  const [ksOpen, setKsOpen] = useState(false);
+  const [ksRoot, setKsRoot] = useState(0);
+  const [ksMode, setKsMode] = useState(0);
+  const ksRef = useRef<HTMLDivElement>(null);
   const [showPluginManager, setShowPluginManager] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
   const [ccRecArmed, setCcRecArmed] = useState(false);
@@ -88,6 +97,47 @@ export default function TransportBar() {
     setTsEdit(null);
   }, [tsEdit]);
 
+  useEffect(() => {
+    (rpc.call("composition.getScaleModes") as Promise<ScaleModeInfo[]>)
+      .then(setScaleModes)
+      .catch((err) => reportRpcError("composition.getScaleModes", err));
+  }, []);
+
+  useEffect(() => {
+    if (!ksOpen) return;
+    const close = (e: MouseEvent) => {
+      if (ksRef.current && !ksRef.current.contains(e.target as Node)) setKsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setKsOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [ksOpen]);
+
+  const openKeyScale = useCallback(() => {
+    const snap = useProjectStore.getState().snapshot;
+    setKsRoot(snap?.scaleRoot ?? 0);
+    setKsMode(snap?.scaleMode ?? 0);
+    setKsOpen(true);
+  }, []);
+
+  const handleKsRoot = useCallback((root: number) => {
+    setKsRoot(root);
+    rpc.call("project.setScaleRoot", { root })
+      .catch((err) => reportRpcError("project.setScaleRoot", err));
+  }, []);
+
+  const handleKsMode = useCallback((mode: number) => {
+    setKsMode(mode);
+    rpc.call("project.setScaleMode", { mode })
+      .catch((err) => reportRpcError("project.setScaleMode", err));
+  }, []);
+
   // Poll the dirty flag on an interval. Snapshot updates arrive via the
   // notify.treeChanged push (debounced to ~16 ms in FrontendTreeWatcher), so
   // we don't poll the snapshot here anymore — that was redundant load on
@@ -112,6 +162,12 @@ export default function TransportBar() {
     const bar = Math.floor(totalBeats / transport.timeSigNumerator) + 1;
     const beat = Math.floor(totalBeats % transport.timeSigNumerator) + 1;
     return `${bar}.${beat}`;
+  })();
+
+  const keyScaleLabel = (() => {
+    const rootName = NOTE_NAMES[scaleRoot] ?? "C";
+    const modeName = scaleModes.find((sm) => sm.index === scaleMode)?.name;
+    return modeName ? `${rootName} ${modeName}` : rootName;
   })();
 
   return (
@@ -241,6 +297,47 @@ export default function TransportBar() {
               `${transport.timeSigNumerator}/${transport.timeSigDenominator}`
             )}
           </span>
+          <div className="tb-key-scale-wrap" ref={ksRef}>
+            <button
+              className="tb-key-scale"
+              title="Project key and scale"
+              aria-haspopup="true"
+              aria-expanded={ksOpen}
+              onClick={() => (ksOpen ? setKsOpen(false) : openKeyScale())}
+            >
+              {keyScaleLabel}
+            </button>
+            {ksOpen && (
+              <div className="tb-key-scale-popover">
+                <label className="tb-key-scale-row">
+                  <span>Key</span>
+                  <select
+                    className="tb-snap-select"
+                    aria-label="Key root"
+                    value={ksRoot}
+                    onChange={(e) => handleKsRoot(Number(e.target.value))}
+                  >
+                    {NOTE_NAMES.map((n, i) => (
+                      <option key={n} value={i}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="tb-key-scale-row">
+                  <span>Scale</span>
+                  <select
+                    className="tb-snap-select"
+                    aria-label="Scale mode"
+                    value={ksMode}
+                    onChange={(e) => handleKsMode(Number(e.target.value))}
+                  >
+                    {scaleModes.map((sm) => (
+                      <option key={sm.index} value={sm.index}>{sm.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -314,14 +411,8 @@ export default function TransportBar() {
           Met
         </button>
         <button
-          className={`tb-toggle ${countInEnabled ? "active" : ""}`}
-          onClick={() => setExtras({ countInEnabled: !countInEnabled })}
-          title="Count-in (1 bar)"
-        >
-          1Bar
-        </button>
-        <button
           className={`tb-toggle ${followPlayhead ? "active" : ""}`}
+          aria-pressed={followPlayhead}
           onClick={() => setExtras({ followPlayhead: !followPlayhead })}
           title="Follow Playhead"
         >

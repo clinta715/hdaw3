@@ -108,6 +108,14 @@ graphify-out/
 # Build/test log scratch
 build_output*.txt
 test_output*.txt
+build_log*.txt
+fe_build_log*.txt
+fe_test_log*.txt
+test_log*.txt
+/*.hdaw
+
+# Sample projects directory (large media files, not part of the engine)
+/projects/
 
 # Root-level repro/export artifacts (WAV/MP3 renders, driver scripts, test
 # projects, diagnostics from the silent-export investigation). Root-scoped so

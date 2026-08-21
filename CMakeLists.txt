@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.23.2 LANGUAGES CXX)
+project(HDAW VERSION 0.24.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -169,6 +169,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Audio.cpp
     src/mcp/McpTools_Session.cpp
     src/mcp/McpTools_Library.cpp
+    src/mcp/McpTools_Settings.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp

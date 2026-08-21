@@ -5,6 +5,7 @@ import {
   ArrangerChainSnapshot,
 } from "../store/arrangerStore";
 import { rpc } from "../rpc";
+import { useNotifyStore, reportRpcError } from "../store/notifyStore";
 import "./ArrangerChainEditor.css";
 
 export const ArrangerChainEditor: React.FC = () => {
@@ -88,6 +89,17 @@ export const ArrangerChainEditor: React.FC = () => {
     setDragEntryIdx(null);
   }, []);
 
+  const canFlatten = !!activeChain && activeChain.entries.length > 0;
+
+  const handleFlatten = useCallback(async () => {
+    try {
+      await rpc.call("project.flattenArranger", {});
+      useNotifyStore.getState().push({ level: "success", message: "Arranger flattened to timeline" });
+    } catch (err) {
+      reportRpcError("project.flattenArranger", err);
+    }
+  }, []);
+
   return (
     <div className="arranger-chain-editor">
       <div className="arranger-chain-toolbar">
@@ -105,6 +117,14 @@ export const ArrangerChainEditor: React.FC = () => {
         <button onClick={handleNewChain}>+ New</button>
         <button onClick={handleDeleteChain} disabled={!activeChain || chains.length <= 1}>
           Delete
+        </button>
+        <button
+          className="arranger-chain-flatten"
+          onClick={handleFlatten}
+          disabled={!canFlatten}
+          title="Expand active chain into real clips on the timeline"
+        >
+          Flatten
         </button>
         <div style={{ flex: 1 }} />
       </div>

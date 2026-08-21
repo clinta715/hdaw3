@@ -116,8 +116,13 @@
   color: var(--text-primary);
 }
 
-.ed-btn-cancel:hover {
+.ed-btn-cancel:hover:not(:disabled) {
   background: var(--bg-panel);
+}
+
+.ed-btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .ed-btn-export {

@@ -11,6 +11,7 @@ public:
     std::vector<std::string> getAvailableDevices() override;
     bool openDevice(const std::string& identifier) override;
     void closeDevice() override;
+    std::string getOpenDevice() const override;
 
 private:
     HDAW::MidiInputManager& mgr_;

@@ -297,6 +297,15 @@ void AudioEngineCommands::setClipMuted(int clipId, bool muted)
         clip.setProperty(IDs::muted, muted, &um);
 }
 
+void AudioEngineCommands::setClipName(int clipId, const std::string& name)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+        clip.setProperty(IDs::name, juce::String(name), &um);
+}
+
 int AudioEngineCommands::duplicateClip(int clipId)
 {
     auto& um = engine_.getProjectModel().getUndoManager();

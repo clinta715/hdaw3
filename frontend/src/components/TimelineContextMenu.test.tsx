@@ -112,6 +112,37 @@ describe("TimelineContextMenu", () => {
       fireEvent.mouseDown(screen.getByText("Duplicate"));
       expect(onDuplicateClip).toHaveBeenCalled();
     });
+
+    it("shows Rename option for clips", () => {
+      renderMenu({
+        contextMenu: { x: 10, y: 10, type: "clip", clip: mkClip(1) },
+        clips: [mkClip(1)],
+      });
+      expect(screen.getByText("Rename…")).toBeInTheDocument();
+    });
+
+    it("Rename calls project.setClipName with prompt value", () => {
+      vi.spyOn(window, "prompt").mockReturnValue("NewName");
+      const { onClose } = renderMenu({
+        contextMenu: { x: 10, y: 10, type: "clip", clip: mkClip(1) },
+        clips: [mkClip(1)],
+      });
+      fireEvent.mouseDown(screen.getByText("Rename…"));
+      expect(mockedCall).toHaveBeenCalledWith("project.setClipName", { clipId: 1, name: "NewName" });
+      expect(onClose).toHaveBeenCalled();
+      vi.restoreAllMocks();
+    });
+
+    it("shows Assign to Scene submenu", () => {
+      renderMenu({
+        contextMenu: { x: 10, y: 10, type: "clip", clip: mkClip(1) },
+        clips: [mkClip(1)],
+      });
+      expect(screen.getByText("Assign to Scene")).toBeInTheDocument();
+      expect(screen.getByText("Scene 1")).toBeInTheDocument();
+      expect(screen.getByText("Scene 8")).toBeInTheDocument();
+      expect(screen.getByText("Remove from Session")).toBeInTheDocument();
+    });
   });
 
   describe("marker menu", () => {

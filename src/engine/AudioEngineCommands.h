@@ -250,6 +250,7 @@ public:
     void removeMarker(int index) override;
     void setMarkerName(int index, const std::string& name) override;
     void setMarkerTime(int index, double time) override;
+    void setClipName(int clipId, const std::string& name) override;
 
     // ProjectCommands — Arranger Regions
     std::string addArrangerRegion(const std::string& name, double startTime, double duration, int color) override;

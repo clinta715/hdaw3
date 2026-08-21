@@ -6,6 +6,10 @@ const BOTTOM_PANEL_H_KEY = "hdaw_bottom_panel_h";
 const BOTTOM_PANEL_H_PER_TAB_KEY = "hdaw_bottom_panel_h_per_tab";
 const HDAW_VIEWMODE_KEY = "hdaw_view_mode";
 const HDAW_LAST_TAB_KEY = "hdaw_last_bottom_tab";
+const SNAP_ENABLED_KEY = "hdaw_snapEnabled";
+const SNAP_DIVISION_KEY = "hdaw_snapDivision";
+const SNAP_GRID_OFFSET_KEY = "hdaw_snapGridOffset";
+const SNAP_TO_EVENTS_KEY = "hdaw_snapToEvents";
 
 export const BOTTOM_TAB_IDS = [
   "mixer",
@@ -21,6 +25,8 @@ export const BOTTOM_TAB_IDS = [
   "sampler",
   "arranger",
   "fm-analysis",
+  "tempo",
+  "presets",
 ] as const;
 export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";
@@ -88,6 +94,39 @@ function loadLastBottomTab(): string {
   return DEFAULT_BOTTOM_TAB;
 }
 
+function loadSnapEnabled(): boolean {
+  try {
+    return localStorage.getItem(SNAP_ENABLED_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function loadSnapDivision(): number {
+  try {
+    const v = localStorage.getItem(SNAP_DIVISION_KEY);
+    return v != null ? Number(v) || 1 : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function loadSnapGridOffset(): boolean {
+  try {
+    return localStorage.getItem(SNAP_GRID_OFFSET_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function loadSnapToEvents(): boolean {
+  try {
+    return localStorage.getItem(SNAP_TO_EVENTS_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 interface UiState {
   selectedClipIds: Set<number>;
   lastSelectedClipId: number | null;
@@ -133,10 +172,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   selectedTrackIndex: null,
   clipClipboard: [],
   activeBottomTab: loadLastBottomTab(),
-  snapEnabled: true,
-  snapDivision: 1,
-  snapGridOffset: false,
-  snapToEvents: false,
+  snapEnabled: loadSnapEnabled(),
+  snapDivision: loadSnapDivision(),
+  snapGridOffset: loadSnapGridOffset(),
+  snapToEvents: loadSnapToEvents(),
   showPhraseGenerator: false,
   bottomPanelHeight: loadBottomPanelHeight(),
   bottomPanelHeights: loadBottomPanelHeights(),
@@ -193,10 +232,22 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ activeBottomTab: tab });
   },
 
-  setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
-  setSnapDivision: (division) => set({ snapDivision: division }),
-  setSnapGridOffset: (enabled) => set({ snapGridOffset: enabled }),
-  setSnapToEvents: (enabled) => set({ snapToEvents: enabled }),
+  setSnapEnabled: (enabled) => {
+    try { localStorage.setItem(SNAP_ENABLED_KEY, String(enabled)); } catch {}
+    set({ snapEnabled: enabled });
+  },
+  setSnapDivision: (division) => {
+    try { localStorage.setItem(SNAP_DIVISION_KEY, String(division)); } catch {}
+    set({ snapDivision: division });
+  },
+  setSnapGridOffset: (enabled) => {
+    try { localStorage.setItem(SNAP_GRID_OFFSET_KEY, String(enabled)); } catch {}
+    set({ snapGridOffset: enabled });
+  },
+  setSnapToEvents: (enabled) => {
+    try { localStorage.setItem(SNAP_TO_EVENTS_KEY, String(enabled)); } catch {}
+    set({ snapToEvents: enabled });
+  },
   setShowPhraseGenerator: (show) => set({ showPhraseGenerator: show }),
   setBottomPanelHeight: (h) => {
     try {

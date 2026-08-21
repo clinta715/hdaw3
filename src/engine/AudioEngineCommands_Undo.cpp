@@ -5,11 +5,13 @@
 #include "../engine/ProjectBackup.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
+#include "../common/SettingsKeys.h"
 #include "../frontend/FrontendServer.h"
 #include "../frontend/FrontendRpc.h"
 #include <juce_core/juce_core.h>
 #include <QCoreApplication>
 #include <QJsonObject>
+#include <QSettings>
 
 // ─── ProjectCommands — Undo/redo ──────────────────────────────────
 
@@ -49,6 +51,23 @@ void AudioEngineCommands::endTransaction()
 void AudioEngineCommands::newProject()
 {
     HDAW::ProjectSerializer::createNew(engine_.getProjectModel());
+
+    QSettings s;
+    double defaultTempo = s.value(SettingsKeys::kKeyDefaultTempo, 120.0).toDouble();
+    int defaultNum = s.value(SettingsKeys::kKeyDefaultTimeSigNum, 4).toInt();
+    int defaultDen = s.value(SettingsKeys::kKeyDefaultTimeSigDen, 4).toInt();
+
+    auto& model = engine_.getProjectModel();
+    if (defaultTempo != 120.0)
+        model.getTree().setProperty(IDs::tempo, defaultTempo, nullptr);
+    auto transport = model.getTransportTree();
+    if (transport.isValid()) {
+        if (defaultNum != 4)
+            transport.setProperty(IDs::timeSigNumerator, defaultNum, nullptr);
+        if (defaultDen != 4)
+            transport.setProperty(IDs::timeSigDenominator, defaultDen, nullptr);
+    }
+
     auto* proc = engine_.getMainProcessor();
     if (proc) proc->rebuildRoutingGraph();
 }
@@ -57,8 +76,11 @@ bool AudioEngineCommands::saveProject(const std::string& filePath)
 {
     auto f = juce::File(filePath);
     bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f, engine_.getMainProcessor());
-    if (ok)
-        HDAW::backupProject(f);
+    if (ok) {
+        QSettings s;
+        int maxBackups = s.value(SettingsKeys::kKeyMaxBackups, 10).toInt();
+        HDAW::backupProject(f, maxBackups);
+    }
     return ok;
 }
 

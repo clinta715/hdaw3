@@ -5,11 +5,13 @@
 
 #include "../../common/PluginService.h"
 #include "../../common/PluginParamService.h"
+#include "../../common/SettingsKeys.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QSettings>
 #include <QString>
 
 #include <string>
@@ -84,6 +86,48 @@ DispatchResult dispatchPlugin(PluginService& s, const QString& m, const QJsonVal
     if (m == "blacklistPlugin")    { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); s.blacklistPlugin(id); return { false, QJsonValue::Null }; }
     if (m == "unblacklistPlugin")  { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); s.unblacklistPlugin(id); return { false, QJsonValue::Null }; }
     if (m == "getBlacklistReason") { std::string id; if (!requireString(o, "pluginID", id, nullptr)) return makeError(-32602, "pluginID required"); return { false, QString::fromStdString(s.getBlacklistReason(id)) }; }
+    if (m == "getIsolationEnabled") { QSettings qs; return { false, qs.value(SettingsKeys::kKeyPluginIsolation, true).toBool() }; }
+    if (m == "setIsolationEnabled") { bool v; if (!requireBool(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings qs; qs.setValue(SettingsKeys::kKeyPluginIsolation, v); return { false, QJsonValue::Null }; }
+    if (m == "getWatchPlugins") { QSettings qs; return { false, qs.value(SettingsKeys::kKeyWatchPlugins, true).toBool() }; }
+    if (m == "setWatchPlugins") { bool v; if (!requireBool(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings qs; qs.setValue(SettingsKeys::kKeyWatchPlugins, v); return { false, QJsonValue::Null }; }
+    if (m == "getCustomScanDirs") {
+        QJsonArray arr;
+        for (const auto& d : s.getCustomScanDirs())
+            arr.append(QString::fromStdString(d));
+        return { false, arr };
+    }
+    if (m == "addCustomScanDir") {
+        std::string dir;
+        if (!requireString(o, "dir", dir, nullptr))
+            return makeError(-32602, "dir required");
+        s.addCustomScanDir(dir);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "removeCustomScanDir") {
+        std::string dir;
+        if (!requireString(o, "dir", dir, nullptr))
+            return makeError(-32602, "dir required");
+        s.removeCustomScanDir(dir);
+        return { false, QJsonValue::Null };
+    }
+    if (m == "searchPresets") {
+        std::string query;
+        if (!requireString(o, "query", query, nullptr))
+            return makeError(-32602, "query required");
+        int limit = 50;
+        requireInt(o, "limit", limit, nullptr);
+        auto results = s.searchPresets(query, limit);
+        QJsonArray arr;
+        for (const auto& r : results) {
+            arr.append(QJsonObject{
+                {"pluginId", QString::fromStdString(r.pluginId)},
+                {"pluginName", QString::fromStdString(r.pluginName)},
+                {"presetIndex", r.presetIndex},
+                {"presetName", QString::fromStdString(r.presetName)}
+            });
+        }
+        return {false, arr};
+    }
     return makeError(-32601, "unknown plugin method: " + m);
 }
 

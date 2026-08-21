@@ -25,6 +25,10 @@ export default function PluginManagerDialog({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [showBlacklisted, setShowBlacklisted] = useState(true);
 
+  // Custom scan paths state
+  const [customPaths, setCustomPaths] = useState<string[]>([]);
+  const [newPath, setNewPath] = useState("");
+
   // Scan progress state
   const [scanCompleted, setScanCompleted] = useState(0);
   const [scanTotal, setScanTotal] = useState(0);
@@ -70,7 +74,14 @@ export default function PluginManagerDialog({ onClose }: Props) {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchPlugins(); }, [fetchPlugins]);
+  const fetchCustomPaths = useCallback(async () => {
+    try {
+      const result = await rpc.call("plugin.getCustomScanDirs") as string[];
+      setCustomPaths(result);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => { fetchPlugins(); fetchCustomPaths(); }, [fetchPlugins, fetchCustomPaths]);
 
   // Subscribe to scan progress notifications
   useEffect(() => {
@@ -116,6 +127,19 @@ export default function PluginManagerDialog({ onClose }: Props) {
       await rpc.call("plugin.blacklistPlugin", { pluginID });
     }
     fetchPlugins();
+  };
+
+  const handleAddPath = async () => {
+    const dir = newPath.trim();
+    if (!dir) return;
+    await rpc.call("plugin.addCustomScanDir", { dir });
+    setNewPath("");
+    fetchCustomPaths();
+  };
+
+  const handleRemovePath = async (dir: string) => {
+    await rpc.call("plugin.removeCustomScanDir", { dir });
+    fetchCustomPaths();
   };
 
   const filtered = plugins.filter((p) => {
@@ -194,6 +218,34 @@ export default function PluginManagerDialog({ onClose }: Props) {
           <button className="pm-scan-btn" onClick={handleScan} disabled={loading}>
             {loading ? (scanTotal > 0 ? `Scanning ${scanCompleted}/${scanTotal}...` : "Scanning...") : "Rescan"}
           </button>
+        </div>
+
+        {/* Custom scan paths */}
+        <div className="pm-scan-paths">
+          <div className="pm-scan-paths-header">Scan Paths</div>
+          {customPaths.length > 0 && (
+            <div className="pm-scan-paths-list">
+              {customPaths.map((dir) => (
+                <div key={dir} className="pm-scan-path-item">
+                  <span className="pm-scan-path-dir">{dir}</span>
+                  <button className="pm-scan-path-remove" onClick={() => handleRemovePath(dir)}>Remove</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {customPaths.length === 0 && (
+            <div className="pm-scan-paths-empty">No custom scan paths added</div>
+          )}
+          <div className="pm-scan-paths-add">
+            <input
+              className="pm-scan-paths-input"
+              placeholder="Add plugin directory path..."
+              value={newPath}
+              onChange={(e) => setNewPath(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAddPath(); }}
+            />
+            <button className="pm-scan-paths-add-btn" onClick={handleAddPath} disabled={!newPath.trim()}>Add</button>
+          </div>
         </div>
 
         {/* Progress bar */}

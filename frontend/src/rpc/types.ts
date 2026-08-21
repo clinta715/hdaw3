@@ -209,3 +209,15 @@ export interface FmAnalysisSnapshot {
 export interface FmAnalysisPayload {
   tracks: FmAnalysisSnapshot[];
 }
+
+export interface TempoPointSnapshot {
+  timeSeconds: number;
+  bpm: number;
+}
+
+export interface PresetSearchResult {
+  pluginId: string;
+  pluginName: string;
+  presetIndex: number;
+  presetName: string;
+}

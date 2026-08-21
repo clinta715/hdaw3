@@ -22,6 +22,12 @@ public:
     void unblacklistPlugin(const std::string& pluginID) override;
     std::string getBlacklistReason(const std::string& pluginID) const override;
 
+    std::vector<std::string> getCustomScanDirs() const override;
+    void addCustomScanDir(const std::string& dir) override;
+    void removeCustomScanDir(const std::string& dir) override;
+
+    std::vector<PresetSearchResult> searchPresets(const std::string& query, int limit = 50) const override;
+
     void setScanCompleteCallback(ScanCallback cb) override;
     ScanCallback getScanCompleteCallback() const override;
 

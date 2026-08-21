@@ -162,6 +162,13 @@ function TrackInspector({ track }: { track: TrackSnapshot }) {
 }
 
 function ClipInspector({ clip }: { clip: ClipSnapshot }) {
+  const handleName = (e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>) => {
+    const val = (e.target as HTMLInputElement).value.trim();
+    if (val && val !== clip.name) {
+      rpc.call("project.setClipName", { clipId: clip.clipId, name: val }).catch(console.error);
+    }
+  };
+
   const ToggleBtn = ({ label, value, rpcMethod, paramName }: { label: string; value: boolean; rpcMethod: string; paramName: string }) => (
     <button
       className={`insp-toggle${value ? " insp-toggle--active" : ""}`}
@@ -184,7 +191,16 @@ function ClipInspector({ clip }: { clip: ClipSnapshot }) {
 
       <fieldset className="insp-group">
         <legend className="insp-group-legend">Identity</legend>
-        <ReadOnly label="Name" value={clip.name} />
+        <div className="insp-row">
+          <span className="insp-label">Name</span>
+          <input
+            type="text"
+            className="insp-input"
+            defaultValue={clip.name}
+            onBlur={handleName}
+            onKeyDown={(e) => { if (e.key === "Enter") handleName(e); }}
+          />
+        </div>
         <ReadOnly label="Source" value={clip.sourceFile ? clip.sourceFile.split(/[\\/]/).pop() ?? clip.sourceFile : ""} />
         <ReadOnly label="Type" value={clip.isMidi ? "MIDI" : "Audio"} />
         <ReadOnly label="Clip ID" value={String(clip.clipId)} />

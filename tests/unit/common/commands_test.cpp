@@ -518,6 +518,36 @@ TEST(Commands, SetMarkerName)
     }
 }
 
+TEST(Commands, SetClipName)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    int clipId = cmds.addMidiClip(0, 0.0, 4.0, "OriginalName");
+    ASSERT_GT(clipId, 0);
+    ASSERT_EQ(engine.getReadModel().getClip(clipId).name, "OriginalName");
+
+    cmds.setClipName(clipId, "RenamedClip");
+
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    auto clipList = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
+    juce::ValueTree clipTree;
+    for (int i = 0; i < clipList.getNumChildren(); ++i)
+        if (static_cast<int>(clipList.getChild(i).getProperty(IDs::clipID, -1)) == clipId)
+            clipTree = clipList.getChild(i);
+    ASSERT_TRUE(clipTree.isValid());
+    EXPECT_EQ(clipTree.getProperty(IDs::name).toString().toStdString(), "RenamedClip");
+    EXPECT_EQ(engine.getReadModel().getClip(clipId).name, "RenamedClip");
+
+    cmds.undo();
+    // Name reverts to the value before setClipName was called. Since addMidiClip
+    // sets the name via createMidiClipEmpty (not through the undo manager), the
+    // undo manager records "" as the prior value.
+    EXPECT_EQ(engine.getReadModel().getClip(clipId).name, "");
+
+    cmds.setClipName(9999, "NoCrash");
+}
+
 TEST(Commands, ReadModelExtensions)
 {
     AudioEngine engine;

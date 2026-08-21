@@ -105,6 +105,29 @@
   border-color: var(--accent);
 }
 
+.ap-enable-btn {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 600;
+  background: var(--bg-elevated, #2a2a2a);
+  color: var(--text-secondary, #999);
+  border: 1px solid var(--border, #333);
+  border-radius: 2px;
+  cursor: pointer;
+  min-width: 30px;
+}
+
+.ap-enable-btn--on {
+  background: color-mix(in srgb, var(--success, #4ade80) 20%, transparent);
+  color: var(--success, #4ade80);
+  border-color: color-mix(in srgb, var(--success, #4ade80) 40%, transparent);
+}
+
+.ap-enable-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
 .ap-pin-btn {
   padding: 3px 8px;
   background: var(--bg-elevated, #2a2a2a);

@@ -871,6 +871,43 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text("ok");
         }});
 
+    s.registerTool({"add_tempo_point", "Add a tempo point at the given time (seconds) with the given BPM. Returns the new point index.",
+        objSchema({{"timeSeconds", QJsonObject{{"type","number"},{"description","Time in seconds"}}},
+                   {"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}},
+                  {"timeSeconds","bpm"}),
+        [e](const QJsonObject& a) {
+            int idx = e->getProjectCommands().addTempoPoint(
+                a.value("timeSeconds").toDouble(), a.value("bpm").toDouble());
+            return McpToolResult::text(QString("added at index %1").arg(idx));
+        }});
+
+    s.registerTool({"remove_tempo_point", "Remove a tempo point by index.",
+        objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"index"}),
+        [e](const QJsonObject& a) {
+            e->getProjectCommands().removeTempoPoint(a.value("index").toInt());
+            return McpToolResult::text("removed");
+        }});
+
+    s.registerTool({"set_tempo_point_bpm", "Set the BPM of a tempo point.",
+        objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}},
+                   {"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}},
+                  {"index","bpm"}),
+        [e](const QJsonObject& a) {
+            e->getProjectCommands().setTempoPointBpm(
+                a.value("index").toInt(), a.value("bpm").toDouble());
+            return McpToolResult::text("ok");
+        }});
+
+    s.registerTool({"set_tempo_point_time", "Set the time (seconds) of a tempo point.",
+        objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}},
+                   {"timeSeconds", QJsonObject{{"type","number"},{"description","Time in seconds"}}}},
+                  {"index","timeSeconds"}),
+        [e](const QJsonObject& a) {
+            e->getProjectCommands().setTempoPointTime(
+                a.value("index").toInt(), a.value("timeSeconds").toDouble());
+            return McpToolResult::text("ok");
+        }});
+
     s.registerTool({"set_time_signature", "Set the project time signature (numerator/denominator).",
         objSchema({{"numerator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}},
                   {"denominator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}}}, {"numerator","denominator"}),

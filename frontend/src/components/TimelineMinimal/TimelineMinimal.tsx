@@ -1,6 +1,7 @@
 import { useMemo, useRef, useCallback, useEffect, useState } from "react";
 import { useProjectStore } from "../../store/projectStore";
 import { useTransportStore } from "../../store/transportStore";
+import { useTransportExtrasStore } from "../../store/transportExtrasStore";
 import { useMarkerStore } from "../../store/markerStore";
 import { rpc } from "../../rpc";
 import { useUiStore } from "../../store/uiStore";
@@ -29,6 +30,7 @@ import "../TimelineMinimal.css";
 export default function TimelineMinimal() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const transport = useTransportStore((s) => s.transport);
+  const followPlayhead = useTransportExtrasStore((s) => s.followPlayhead);
   const selectedClipIds = useUiStore((s) => s.selectedClipIds);
   const pendingTempIds = useProjectStore((s) => s.pendingTempIds);
   const markers = useMarkerStore((s) => s.markers);
@@ -154,6 +156,21 @@ export default function TimelineMinimal() {
   // --- Playhead ---
   const playheadBeats = transport.currentTimeSeconds * (transport.bpm / 60);
   const playheadX = playheadBeats * pps;
+
+  // --- Playhead auto-follow ---
+  // While enabled and playing, keep the playhead inside the visible scroll
+  // range (with a small right margin); re-center it ~20% from the left edge.
+  // Setting scrollLeft fires onTracksScroll, which syncs ruler/arranger lane.
+  useEffect(() => {
+    if (!followPlayhead || !transport.isPlaying) return;
+    const el = tracksRef.current;
+    if (!el || el.clientWidth <= 0) return;
+    const viewW = el.clientWidth;
+    const x = playheadBeats * pps;
+    const left = el.scrollLeft;
+    if (x >= left && x <= left + viewW * 0.9) return;
+    el.scrollLeft = Math.max(0, x - viewW * 0.2);
+  }, [followPlayhead, transport.isPlaying, playheadBeats, pps]);
 
   // --- Ruler markers ---
   const rulerMarkers = useMemo(() => {

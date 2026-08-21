@@ -33,6 +33,20 @@ public:
     virtual void unblacklistPlugin(const std::string& pluginID) = 0;
     virtual std::string getBlacklistReason(const std::string& pluginID) const = 0;
 
+    // Custom scan paths
+    virtual std::vector<std::string> getCustomScanDirs() const = 0;
+    virtual void addCustomScanDir(const std::string& dir) = 0;
+    virtual void removeCustomScanDir(const std::string& dir) = 0;
+
+    // Preset search
+    struct PresetSearchResult {
+        std::string pluginId;
+        std::string pluginName;
+        int presetIndex = 0;
+        std::string presetName;
+    };
+    virtual std::vector<PresetSearchResult> searchPresets(const std::string& query, int limit = 50) const = 0;
+
     // Scan-complete notification
     using ScanCallback = std::function<void()>;
     virtual void setScanCompleteCallback(ScanCallback cb) = 0;

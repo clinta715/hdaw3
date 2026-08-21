@@ -89,9 +89,9 @@ private:
     // Atomic mirrors
     std::atomic<int>   algorithmAtom_{ 0 };
     std::atomic<int>   feedbackAtom_{ 5 };
-    std::atomic<float> outputLevelAtom_{ 0.8f };
+    std::atomic<float> outputLevelAtom_{ 0.4f };
     std::atomic<bool>  monoModeAtom_{ false };
-    std::atomic<float> opLevelAtom_[6]{ 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f };
+    std::atomic<float> opLevelAtom_[6]{ 0.6f, 0.6f, 0.6f, 0.6f, 0.6f, 0.6f };
     std::atomic<int>   opCoarseAtom_[6]{};
     std::atomic<int>   opFineAtom_[6]{};
     std::atomic<int>   opDetuneAtom_[6]{ 7,7,7,7,7,7 };

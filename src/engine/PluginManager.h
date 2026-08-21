@@ -76,6 +76,14 @@ public:
     static juce::StringArray getVst3Dirs();
     static juce::StringArray getClapDirs();
 
+    // Custom scan paths (persisted to QSettings)
+    void addCustomScanDir(const juce::String& dir);
+    void removeCustomScanDir(const juce::String& dir);
+    juce::StringArray getCustomScanDirs() const;
+
+    // Merged: defaults + custom
+    juce::StringArray getAllScanDirs() const;
+
     std::vector<juce::PluginDescription> getInstrumentPlugins() const;
     std::vector<juce::PluginDescription> getEffectPlugins() const;
 
@@ -168,6 +176,9 @@ private:
     std::vector<juce::String> blacklistedIDs;
     std::unordered_map<juce::String, juce::String> blacklistReasons;
     juce::File blacklistFile;
+
+    // Custom scan directories (persisted to QSettings)
+    juce::StringArray customScanDirs_;
 
     // Preset cache
     std::unordered_map<juce::String, PluginPresetInfo> presetCache;

@@ -126,4 +126,25 @@ describe("TrackHeaders", () => {
     const hideBtns = container.querySelectorAll(".th-hide");
     expect(hideBtns).toHaveLength(3);
   });
+
+  it("renders a drag handle for each track", () => {
+    setTracks([mkTrack(0), mkTrack(1)]);
+    const { container } = render(<TrackHeaders />);
+    const handles = container.querySelectorAll(".th-drag-handle");
+    expect(handles).toHaveLength(2);
+  });
+
+  it("context menu shows Move Out of Folder for child tracks", () => {
+    setTracks([mkTrack(0, { trackType: 2 }), mkTrack(1, { parentId: 0 })]);
+    const { container } = render(<TrackHeaders />);
+    fireEvent.contextMenu(container.querySelectorAll(".th-row")[1]);
+    expect(screen.getByText("Move Out of Folder")).toBeInTheDocument();
+  });
+
+  it("context menu shows Move Into options when folder tracks exist", () => {
+    setTracks([mkTrack(0, { trackType: 2, name: "Drums" }), mkTrack(1)]);
+    const { container } = render(<TrackHeaders />);
+    fireEvent.contextMenu(container.querySelectorAll(".th-row")[1]);
+    expect(screen.getByText("Move Into: Drums")).toBeInTheDocument();
+  });
 });

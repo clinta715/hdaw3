@@ -1,11 +1,13 @@
 #include "PluginManager.h"
 #include "../common/DebugLog.h"
 #include "../common/PluginBinaryInfo.h"
+#include "../common/SettingsKeys.h"
 #include "../frontend/FrontendServer.h"
 #include "../frontend/FrontendRpc.h"
 #include <cstdlib>
 #include <stdexcept>
 #include <QJsonObject>
+#include <QSettings>
 #include <QString>
 
 #if HDAW_PLUGIN_ISOLATION
@@ -70,6 +72,22 @@ PluginManager::PluginManager(bool offline)
     {
         isolationEnabled = false;
         HDAW_LOG("PluginMgr", "HDAW_NO_PLUGIN_ISOLATION set - CLAP plugins run IN-PROCESS (isolation disabled)");
+    }
+
+    {
+        QSettings s;
+        if (s.contains(SettingsKeys::kKeyPluginIsolation)) {
+            isolationEnabled = s.value(SettingsKeys::kKeyPluginIsolation, true).toBool();
+            HDAW_LOG("PluginMgr", std::string("Plugin isolation ") + (isolationEnabled ? "enabled" : "disabled") + " (from settings)");
+        }
+    }
+
+    // Load custom scan paths from settings
+    {
+        QSettings s;
+        QStringList list = s.value("plugin/customScanPaths").toStringList();
+        for (const auto& qs : list)
+            customScanDirs_.add(juce::String::fromUTF8(qs.toUtf8().constData()));
     }
 
     formatManager.addFormat(new juce::VST3PluginFormat());
@@ -196,6 +214,38 @@ juce::StringArray PluginManager::getClapDirs()
     return dirs;
 }
 
+void PluginManager::addCustomScanDir(const juce::String& dir)
+{
+    if (customScanDirs_.contains(dir)) return;
+    customScanDirs_.add(dir);
+    QSettings s;
+    QStringList list;
+    for (const auto& d : customScanDirs_) list.append(QString::fromUtf8(d.toRawUTF8()));
+    s.setValue("plugin/customScanPaths", list);
+}
+
+void PluginManager::removeCustomScanDir(const juce::String& dir)
+{
+    customScanDirs_.removeString(dir);
+    QSettings s;
+    QStringList list;
+    for (const auto& d : customScanDirs_) list.append(QString::fromUtf8(d.toRawUTF8()));
+    s.setValue("plugin/customScanPaths", list);
+}
+
+juce::StringArray PluginManager::getCustomScanDirs() const
+{
+    return customScanDirs_;
+}
+
+juce::StringArray PluginManager::getAllScanDirs() const
+{
+    juce::StringArray dirs = getVst3Dirs();
+    dirs.addArray(getClapDirs());
+    dirs.addArray(customScanDirs_);
+    return dirs;
+}
+
 void PluginManager::saveCache()
 {
     cacheFile.getParentDirectory().createDirectory();
@@ -219,24 +269,7 @@ void PluginManager::scanAll(ScanProgressCallback progressCb)
                       .getParentDirectory();
     scannerExePath = exeDir.getChildFile("hdaw_plugin_scanner.exe");
 
-    juce::StringArray defaultDirs;
-#if JUCE_WINDOWS
-    auto programsDir = juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory);
-    defaultDirs.add(programsDir.getChildFile("Common Files\\VST3").getFullPathName());
-    defaultDirs.add(programsDir.getChildFile("Common Files\\CLAP").getFullPathName());
-#elif JUCE_MAC
-    defaultDirs.add("/Library/Audio/Plug-Ins/VST3");
-    defaultDirs.add("~/Library/Audio/Plug-Ins/VST3");
-    defaultDirs.add("/Library/Audio/Plug-Ins/CLAP");
-    defaultDirs.add("~/Library/Audio/Plug-Ins/CLAP");
-#elif JUCE_LINUX
-    defaultDirs.add("/usr/lib/vst3");
-    defaultDirs.add("/usr/local/lib/vst3");
-    defaultDirs.add("~/.vst3");
-    defaultDirs.add("/usr/lib/clap");
-    defaultDirs.add("/usr/local/lib/clap");
-    defaultDirs.add("~/.clap");
-#endif
+    auto defaultDirs = getAllScanDirs();
 
     auto hdawDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                        .getChildFile("HDAW");

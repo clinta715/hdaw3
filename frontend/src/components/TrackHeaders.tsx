@@ -34,6 +34,8 @@ export default function TrackHeaders() {
 
   const [expandedTracks, setExpandedTracks] = useState<Set<number>>(new Set());
   const [editingMidiCh, setEditingMidiCh] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ index: number; position: "before" | "after" | "into" } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef(false);
@@ -163,7 +165,7 @@ export default function TrackHeaders() {
           return (
           <div
             key={track.index}
-            className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}${track.isHidden ? " th-row--hidden" : ""}`}
+            className={`th-row th-row--${TRACK_TYPE_CLASSES[track.trackType] ?? "audio"}${track.isHidden ? " th-row--hidden" : ""}${dragIndex === track.index ? " th-row--dragging" : ""}${dropTarget?.index === track.index ? ` th-row--drop-${dropTarget.position}` : ""}`}
             style={{ height: layout.heights[idx], paddingLeft: track.parentId != null && track.parentId >= 0 ? 20 : 0 }}
             onClick={() => selectClip(null, track.index)}
             onContextMenu={(e) => {
@@ -171,7 +173,58 @@ export default function TrackHeaders() {
               e.stopPropagation();
               setHeaderMenu({ x: e.clientX, y: e.clientY, trackIndex: track.index });
             }}
+            onDragOver={(e) => {
+              if (dragIndex === null || dragIndex === track.index) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const y = e.clientY - rect.top;
+              const h = rect.height;
+              if (y < h * 0.25) {
+                setDropTarget({ index: track.index, position: "before" });
+              } else if (y > h * 0.75) {
+                setDropTarget({ index: track.index, position: "after" });
+              } else if (track.trackType === 2) {
+                setDropTarget({ index: track.index, position: "into" });
+              } else {
+                setDropTarget({ index: track.index, position: y < h * 0.5 ? "before" : "after" });
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex === null || dropTarget === null) return;
+              const fromIndex = dragIndex;
+              const toIndex = dropTarget.index;
+              if (dropTarget.position === "into" && track.trackType === 2) {
+                rpc.call("project.moveTrackIntoFolder", { trackIndex: fromIndex, folderIndex: toIndex }).catch(console.error);
+              } else {
+                let newIndex = toIndex;
+                if (dropTarget.position === "after") newIndex = toIndex + 1;
+                if (fromIndex < newIndex) newIndex--;
+                if (fromIndex !== newIndex) {
+                  rpc.call("project.moveTrack", { trackIndex: fromIndex, newIndex }).catch(console.error);
+                }
+              }
+              setDragIndex(null);
+              setDropTarget(null);
+            }}
           >
+          <div
+            className="th-drag-handle"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", String(track.index));
+              setDragIndex(track.index);
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setDropTarget(null);
+            }}
+            title="Drag to reorder"
+          >
+            ⠿
+          </div>
           {track.trackType === 2 && (
             <span
               className="th-chevron"
@@ -347,6 +400,28 @@ export default function TrackHeaders() {
               }}>
                 Duplicate Track
               </button>
+              {menuTrack && menuTrack.parentId != null && menuTrack.parentId >= 0 && (
+                <button onMouseDown={(e) => {
+                  e.stopPropagation();
+                  rpc.call("project.moveTrackOutOfFolder", { trackIndex: headerMenu.trackIndex }).catch(() => {});
+                  setHeaderMenu(null);
+                }}>
+                  Move Out of Folder
+                </button>
+              )}
+              {menuTrack && tracks.some(t => t.trackType === 2 && t.index !== headerMenu.trackIndex) && (
+                <>
+                  {tracks.filter(t => t.trackType === 2 && t.index !== headerMenu.trackIndex).map(folder => (
+                    <button key={folder.index} onMouseDown={(e) => {
+                      e.stopPropagation();
+                      rpc.call("project.moveTrackIntoFolder", { trackIndex: headerMenu.trackIndex, folderIndex: folder.index }).catch(() => {});
+                      setHeaderMenu(null);
+                    }}>
+                      Move Into: {folder.name}
+                    </button>
+                  ))}
+                </>
+              )}
               <div className="ctx-separator" />
               <button
                 className={menuType === 0 ? "ctx-checked" : ""}

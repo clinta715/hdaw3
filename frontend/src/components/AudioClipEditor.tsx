@@ -3,6 +3,7 @@ import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { useUiStore } from "../store/uiStore";
 import { reportRpcError } from "../store/notifyStore";
+import { useNotifyStore } from "../store/notifyStore";
 import { WaveformCanvas } from "./WaveformCanvas";
 import { rpc } from "../rpc";
 import "./AudioClipEditor.css";
@@ -198,6 +199,34 @@ export default function AudioClipEditor() {
   const sliceAtPlayhead = () => call("project.sliceClipAtPlayhead", { clipId });
   const sliceAtTransients = () => call("project.sliceClipAtTransients", { clipId });
 
+  const handleSearchMissing = useCallback(async () => {
+    if (clipId == null) return;
+    let searchDir = "";
+    if (window.hdaw) {
+      const result = await window.hdaw.showOpenDialog({
+        title: "Search for missing audio file",
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return;
+      searchDir = result.filePaths[0];
+    } else {
+      searchDir = prompt("Search directory:", "") ?? "";
+      if (!searchDir) return;
+    }
+    try {
+      const found = await rpc.call("project.findMissingClipSourceFile", { clipId, searchDir }) as string;
+      if (found) {
+        useNotifyStore.getState().push({ level: "success", message: `Found: ${found}` });
+        setFileMissing(false);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      } else {
+        useNotifyStore.getState().push({ level: "info", message: "File not found in selected directory" });
+      }
+    } catch (err) {
+      reportRpcError("project.findMissingClipSourceFile", err);
+    }
+  }, [clipId]);
+
   const gainDb = gainToDb(gain);
 
   return (
@@ -230,9 +259,10 @@ export default function AudioClipEditor() {
       {/* Waveform display */}
       <div className="ace-waveform" ref={waveformRef}>
         {fileMissing ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 80, gap: 4 }}>
-            <span style={{ fontSize: 13, color: "#e05555", fontWeight: 600 }}>Source file not found</span>
-            <span style={{ fontSize: 11, color: "#999" }}>{clip.sourceFile || "unknown path"}</span>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 80, gap: 6 }}>
+            <span style={{ fontSize: 13, color: "var(--danger)", fontWeight: 600 }}>Source file not found</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{clip.sourceFile || "unknown path"}</span>
+            <button className="ace-btn ace-btn--accent" onClick={handleSearchMissing}>Search...</button>
           </div>
         ) : (
           <div className="ace-waveform-inner" style={{ width: effectiveWidth }}>

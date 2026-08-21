@@ -5,6 +5,7 @@ import { rpc } from "../rpc";
 import NoteGrid from "./NoteGrid";
 import VelocityLane from "./VelocityLane";
 import CCLane from "./CCLane";
+import NoteOperatorsPane from "./NoteOperatorsPane";
 import "./PianoRoll.css";
 
 export default function PianoRoll() {
@@ -446,6 +447,19 @@ export default function PianoRoll() {
             </div>
           )}
         </div>
+        {selectedNoteIds.size > 0 && activeClip && (
+          <NoteOperatorsPane
+            selectedNoteIds={selectedNoteIds}
+            notes={notes}
+            activeClip={activeClip}
+            rpc={rpc}
+            onRefresh={() => {
+              if (activeClip) {
+                useProjectStore.getState().syncNotes(rpc, activeClip.clipId);
+              }
+            }}
+          />
+        )}
       </div>
     </div>
   );

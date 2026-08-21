@@ -226,6 +226,28 @@ export function useTimelineDrag({
         newTrackIndices.push(Math.min(Math.max(0, orig.trackIndex + deltaTrack), trackCount - 1));
       }
       if (clipIds.length === 0) return;
+      if (d.isGhostClone) {
+        (async () => {
+          await rpc.call("project.beginTransaction", { name: "Ghost clone" }).catch(() => {});
+          const newIds: number[] = [];
+          for (let i = 0; i < clipIds.length; i++) {
+            const res = await rpc.call("project.createGhostClip", {
+              sourceClipId: clipIds[i],
+              newStart: newStarts[i],
+              newTrackIndex: newTrackIndices[i],
+            }).catch(() => null);
+            const id = parseBareInt(res);
+            if (id >= 0) newIds.push(id);
+          }
+          await rpc.call("project.endTransaction", {}).catch(() => {});
+          if (newIds.length > 0) {
+            useUiStore.setState({ selectedClipIds: new Set(newIds) });
+            dragSelectedIdsRef.current = new Set(newIds);
+          }
+          useProjectStore.setState({ isDirty: true });
+        })();
+        return;
+      }
       (async () => {
         const res = await rpc.call("project.duplicateClips", {
           clipIds, newStarts, newTrackIndices,

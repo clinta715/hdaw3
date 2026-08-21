@@ -86,6 +86,13 @@ interface Props {
   onClose: () => void;
 }
 
+function engineRpcUrl(): string {
+  const api = (window as any).__HDAW_ELECTRON_API__ as { rpcPort?: number } | undefined;
+  const injected = (window as any).__HDAW_WS_PORT__ as number | undefined;
+  const port = api?.rpcPort ?? injected ?? 8766;
+  return `ws://127.0.0.1:${port}`;
+}
+
 interface AudioSetup {
   driver: string;
   output: string;
@@ -106,6 +113,13 @@ export default function PreferencesDialog({ onClose }: Props) {
   const [bufferSizes, setBufferSizes] = useState<number[]>([]);
   const [setup, setSetup] = useState<AudioSetup | null>(null);
 
+  const [defaultTempo, setDefaultTempo] = useState(120);
+  const [defaultTimeSigNum, setDefaultTimeSigNum] = useState(4);
+  const [defaultTimeSigDen, setDefaultTimeSigDen] = useState(4);
+  const [maxBackups, setMaxBackups] = useState(10);
+  const [pluginIsolation, setPluginIsolation] = useState(true);
+  const [watchPlugins, setWatchPlugins] = useState(true);
+
   const loadAudioSetup = useCallback(async () => {
     const [types, s, outputs, inputs, rates, bufs] = await Promise.all([
       rpc.call("audio.getDeviceTypes").catch(() => []),
@@ -123,12 +137,41 @@ export default function PreferencesDialog({ onClose }: Props) {
     setBufferSizes(bufs as number[]);
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    const [tempo, ts, backups, isolation, watch] = await Promise.all([
+      rpc.call("settings.getDefaultTempo").catch(() => 120),
+      rpc.call("settings.getDefaultTimeSignature").catch(() => ({ numerator: 4, denominator: 4 })),
+      rpc.call("settings.getMaxBackups").catch(() => 10),
+      rpc.call("plugin.getIsolationEnabled").catch(() => true),
+      rpc.call("plugin.getWatchPlugins").catch(() => true),
+    ]);
+    setDefaultTempo(tempo as number);
+    const tsObj = ts as { numerator: number; denominator: number };
+    setDefaultTimeSigNum(tsObj.numerator);
+    setDefaultTimeSigDen(tsObj.denominator);
+    setMaxBackups(backups as number);
+    setPluginIsolation(isolation as boolean);
+    setWatchPlugins(watch as boolean);
+  }, []);
+
   useEffect(() => {
-    rpc.call("midi.getAvailableDevices").then((d: any) => setMidiDevices(d)).catch(() => {});
+    Promise.all([
+      rpc.call("midi.getAvailableDevices").catch(() => []),
+      rpc.call("midi.getOpenDevice").catch(() => ""),
+    ]).then(([devices, current]) => {
+      setMidiDevices(devices as string[]);
+      setActiveDevice(current as string);
+    });
     loadAudioSetup();
-  }, [loadAudioSetup]);
+    loadSettings();
+  }, [loadAudioSetup, loadSettings]);
 
   const handleOpenDevice = async (device: string) => {
+    if (device === "") {
+      await rpc.call("midi.closeDevice", {});
+      setActiveDevice("");
+      return;
+    }
     await rpc.call("midi.openDevice", { identifier: device });
     setActiveDevice(device);
   };
@@ -156,6 +199,36 @@ export default function PreferencesDialog({ onClose }: Props) {
   const handleSetBufferSize = async (size: number) => {
     await rpc.call("audio.setBufferSize", { size }).catch(() => {});
     await loadAudioSetup();
+  };
+
+  const handleSetDefaultTempo = async (v: number) => {
+    setDefaultTempo(v);
+    await rpc.call("settings.setDefaultTempo", { value: v }).catch(() => {});
+  };
+
+  const handleSetTimeSigNum = async (v: number) => {
+    setDefaultTimeSigNum(v);
+    await rpc.call("settings.setDefaultTimeSignature", { numerator: v, denominator: defaultTimeSigDen }).catch(() => {});
+  };
+
+  const handleSetTimeSigDen = async (v: number) => {
+    setDefaultTimeSigDen(v);
+    await rpc.call("settings.setDefaultTimeSignature", { numerator: defaultTimeSigNum, denominator: v }).catch(() => {});
+  };
+
+  const handleSetMaxBackups = async (v: number) => {
+    setMaxBackups(v);
+    await rpc.call("settings.setMaxBackups", { value: v }).catch(() => {});
+  };
+
+  const handleSetPluginIsolation = async (v: boolean) => {
+    setPluginIsolation(v);
+    await rpc.call("plugin.setIsolationEnabled", { value: v }).catch(() => {});
+  };
+
+  const handleSetWatchPlugins = async (v: boolean) => {
+    setWatchPlugins(v);
+    await rpc.call("plugin.setWatchPlugins", { value: v }).catch(() => {});
   };
 
   return (
@@ -228,6 +301,29 @@ export default function PreferencesDialog({ onClose }: Props) {
             )}
           </section>
           <section className="pref-section">
+            <h3>General</h3>
+            <label>
+              Default Tempo (BPM)
+              <input type="number" min={20} max={999} value={defaultTempo}
+                onChange={(e) => handleSetDefaultTempo(Number(e.target.value))} />
+            </label>
+            <label>
+              Default Time Signature
+              <select value={defaultTimeSigNum} onChange={(e) => handleSetTimeSigNum(Number(e.target.value))}>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              /
+              <select value={defaultTimeSigDen} onChange={(e) => handleSetTimeSigDen(Number(e.target.value))}>
+                {[1,2,4,8,16,32].map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>
+              Max Backups
+              <input type="number" min={0} max={100} value={maxBackups}
+                onChange={(e) => handleSetMaxBackups(Number(e.target.value))} />
+            </label>
+          </section>
+          <section className="pref-section">
             <h3>MIDI</h3>
             <label>
               Input Device
@@ -243,8 +339,22 @@ export default function PreferencesDialog({ onClose }: Props) {
             </label>
           </section>
           <section className="pref-section">
-            <h3>MCP Server</h3>
-            <p className="pref-note">MCP server settings are configured via the C++ backend.</p>
+            <h3>Plugins</h3>
+            <label>
+              <input type="checkbox" checked={pluginIsolation}
+                onChange={(e) => handleSetPluginIsolation(e.target.checked)} />
+              Plugin Isolation (requires restart)
+            </label>
+            <label>
+              <input type="checkbox" checked={watchPlugins}
+                onChange={(e) => handleSetWatchPlugins(e.target.checked)} />
+              Watch Plugin Directories
+            </label>
+          </section>
+          <section className="pref-section">
+            <h3>Engine Connection</h3>
+            <p className="pref-conn-value">{engineRpcUrl()}</p>
+            <p className="pref-note">WebSocket RPC endpoint this session is connected to. Ports are set via engine command-line flags.</p>
           </section>
           <LibrarySettings />
         </div>

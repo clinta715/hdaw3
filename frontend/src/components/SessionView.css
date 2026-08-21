@@ -103,6 +103,17 @@
   }
 }
 
+.sv-stop-all-btn {
+  margin-top: auto;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.sv-stop-all-btn:hover {
+  opacity: 0.85;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sv-slot--playing {
     animation: none;

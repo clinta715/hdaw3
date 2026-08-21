@@ -1,0 +1,79 @@
+.preset-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.preset-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle, #333);
+  flex-shrink: 0;
+}
+
+.preset-browser-search {
+  flex: 1;
+  background: var(--bg-input, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.preset-browser-search:focus {
+  border-color: var(--accent, #d97706);
+}
+
+.preset-browser-status {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+.preset-browser-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.preset-browser-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
+
+.preset-browser-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  gap: 12px;
+}
+
+.preset-browser-item:hover {
+  background: var(--bg-hover, #333);
+}
+
+.preset-browser-item-name {
+  color: var(--text-primary, #e0e0e0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.preset-browser-item-plugin {
+  color: var(--text-muted, #888);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

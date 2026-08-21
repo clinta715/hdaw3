@@ -193,6 +193,51 @@ export function TimelineContextMenu({
               }}>
                 Slice at Transients
               </button>
+              <button onMouseDown={(e) => {
+                e.stopPropagation();
+                const name = prompt("Clip name:", contextMenu.clip!.name);
+                if (name != null) {
+                  rpc.call("project.setClipName", { clipId: contextMenu.clip!.clipId, name }).catch(() => {});
+                }
+                onClose();
+              }}>
+                Rename…
+              </button>
+              <div className="ctx-separator" />
+              <div className="ctx-submenu-wrap">
+                <button className="ctx-submenu-trigger">Assign to Scene</button>
+                <div className="ctx-submenu">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <button key={i} onMouseDown={(e) => {
+                      e.stopPropagation();
+                      const { selectedClipIds } = useUiStore.getState();
+                      const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                      rpc.call("project.beginTransaction", { name: "setClipScene" });
+                      for (const cid of ids) {
+                        rpc.call("session.setClipScene", { clipId: cid, sceneIndex: i });
+                      }
+                      rpc.call("project.endTransaction");
+                      onClose();
+                    }}>
+                      Scene {i + 1}
+                    </button>
+                  ))}
+                  <div className="ctx-separator" />
+                  <button onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const { selectedClipIds } = useUiStore.getState();
+                    const ids = selectedClipIds.size > 0 ? [...selectedClipIds] : [contextMenu.clip!.clipId];
+                    rpc.call("project.beginTransaction", { name: "removeFromSession" });
+                    for (const cid of ids) {
+                      rpc.call("session.setClipScene", { clipId: cid, sceneIndex: -1 });
+                    }
+                    rpc.call("project.endTransaction");
+                    onClose();
+                  }}>
+                    Remove from Session
+                  </button>
+                </div>
+              </div>
               <div className="ctx-separator" />
               <button onMouseDown={(e) => {
                 e.stopPropagation();

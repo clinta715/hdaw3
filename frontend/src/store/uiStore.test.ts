@@ -31,6 +31,10 @@ describe("uiStore", () => {
     localStorage.removeItem("hdaw_bottom_panel_h_per_tab");
     localStorage.removeItem("hdaw_view_mode");
     localStorage.removeItem("hdaw_last_bottom_tab");
+    localStorage.removeItem("hdaw_snapEnabled");
+    localStorage.removeItem("hdaw_snapDivision");
+    localStorage.removeItem("hdaw_snapGridOffset");
+    localStorage.removeItem("hdaw_snapToEvents");
     useUiStore.setState({
       selectedClipIds: new Set(),
       lastSelectedClipId: null,
@@ -215,5 +219,55 @@ describe("uiStore", () => {
     useUiStore.getState().setActiveBottomTab("piano-roll");
     expect(useUiStore.getState().activeBottomTab).toBe("piano-roll");
     expect(localStorage.getItem("hdaw_last_bottom_tab")).toBeNull();
+  });
+
+  it("setSnapEnabled persists to localStorage", () => {
+    useUiStore.getState().setSnapEnabled(false);
+    expect(useUiStore.getState().snapEnabled).toBe(false);
+    expect(localStorage.getItem("hdaw_snapEnabled")).toBe("false");
+
+    useUiStore.getState().setSnapEnabled(true);
+    expect(useUiStore.getState().snapEnabled).toBe(true);
+    expect(localStorage.getItem("hdaw_snapEnabled")).toBe("true");
+  });
+
+  it("setSnapDivision persists to localStorage", () => {
+    useUiStore.getState().setSnapDivision(4);
+    expect(useUiStore.getState().snapDivision).toBe(4);
+    expect(localStorage.getItem("hdaw_snapDivision")).toBe("4");
+  });
+
+  it("setSnapGridOffset persists to localStorage", () => {
+    useUiStore.getState().setSnapGridOffset(true);
+    expect(useUiStore.getState().snapGridOffset).toBe(true);
+    expect(localStorage.getItem("hdaw_snapGridOffset")).toBe("true");
+  });
+
+  it("setSnapToEvents persists to localStorage", () => {
+    useUiStore.getState().setSnapToEvents(true);
+    expect(useUiStore.getState().snapToEvents).toBe(true);
+    expect(localStorage.getItem("hdaw_snapToEvents")).toBe("true");
+  });
+
+  it("restores snap settings from localStorage on init", async () => {
+    localStorage.setItem("hdaw_snapEnabled", "false");
+    localStorage.setItem("hdaw_snapDivision", "8");
+    localStorage.setItem("hdaw_snapGridOffset", "true");
+    localStorage.setItem("hdaw_snapToEvents", "true");
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().snapEnabled).toBe(false);
+    expect(fresh.useUiStore.getState().snapDivision).toBe(8);
+    expect(fresh.useUiStore.getState().snapGridOffset).toBe(true);
+    expect(fresh.useUiStore.getState().snapToEvents).toBe(true);
+  });
+
+  it("uses defaults when localStorage is empty", async () => {
+    vi.resetModules();
+    const fresh = await import("../store/uiStore");
+    expect(fresh.useUiStore.getState().snapEnabled).toBe(true);
+    expect(fresh.useUiStore.getState().snapDivision).toBe(1);
+    expect(fresh.useUiStore.getState().snapGridOffset).toBe(false);
+    expect(fresh.useUiStore.getState().snapToEvents).toBe(false);
   });
 });

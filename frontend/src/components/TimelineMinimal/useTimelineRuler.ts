@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { useTransportStore } from "../../store/transportStore";
+import { useMarkerStore } from "../../store/markerStore";
+import { useUiStore } from "../../store/uiStore";
+import { snap } from "../snapUtils";
 import { rpc } from "../../rpc";
 
 interface UseTimelineRulerOpts {
@@ -27,6 +30,93 @@ export function useTimelineRuler(opts: UseTimelineRulerOpts) {
       if (!rect) return;
       const scroll = tracksRef.current?.scrollLeft ?? 0;
       const beat = Math.max(0, (e.clientX - rect.left + scroll) / pps);
+
+      // Marker pin drag wins over seek/scrub/marquee when the gesture starts
+      // on a pin. A release without movement falls through to the pin's
+      // click-to-seek; Escape cancels and restores the original position.
+      const pin = (e.target as HTMLElement).closest?.(".tl-marker-pin") as HTMLElement | null;
+      if (pin && e.button === 0) {
+        const pins = Array.from(pin.parentElement?.querySelectorAll(".tl-marker-pin") ?? []);
+        const grabbed = useMarkerStore.getState().markers[pins.indexOf(pin)];
+        if (!grabbed) return;
+        e.preventDefault();
+        const markerIndex = grabbed.index;
+        const originalTime = grabbed.time;
+        let moved = false;
+        let cancelled = false;
+
+        const applyTime = (time: number) => {
+          useMarkerStore.setState({
+            markers: useMarkerStore.getState().markers.map((m) =>
+              m.index === markerIndex ? { ...m, time } : m
+            ),
+          });
+        };
+
+        const onMove = (ev: globalThis.MouseEvent) => {
+          if (cancelled) return;
+          const r = tracksRef.current?.getBoundingClientRect();
+          if (!r) return;
+          const s = tracksRef.current?.scrollLeft ?? 0;
+          const b = Math.max(0, (ev.clientX - r.left + s) / pps);
+          const { snapEnabled, snapDivision, snapGridOffset, snapToEvents } = useUiStore.getState();
+          const snapped = Math.max(
+            0,
+            snap(
+              b,
+              { enabled: snapEnabled, division: snapDivision, gridOffset: snapGridOffset, events: snapToEvents },
+              { originalStart: originalTime }
+            )
+          );
+          if (snapped !== originalTime) moved = true;
+          applyTime(snapped);
+        };
+
+        const onUp = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          window.removeEventListener("keydown", onKey);
+          if (cancelled || !moved) {
+            window.removeEventListener("click", swallowClick, true);
+            return;
+          }
+          const current = useMarkerStore.getState().markers.find((m) => m.index === markerIndex);
+          if (current && current.time !== originalTime) {
+            rpc
+              .call("project.setMarkerTime", { index: markerIndex, time: current.time })
+              .then(() => useMarkerStore.getState().syncMarkers(rpc))
+              .catch(() => {});
+            window.setTimeout(() => window.removeEventListener("click", swallowClick, true), 0);
+          } else {
+            window.removeEventListener("click", swallowClick, true);
+          }
+        };
+
+        const onKey = (ev: globalThis.KeyboardEvent) => {
+          if (ev.key !== "Escape") return;
+          cancelled = true;
+          applyTime(originalTime);
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          window.removeEventListener("keydown", onKey);
+        };
+
+        // A moved drag would otherwise fire the pin's click-to-seek on
+        // release; swallow that one click in the capture phase.
+        const swallowClick = (ev: globalThis.MouseEvent) => {
+          window.removeEventListener("click", swallowClick, true);
+          if (moved || cancelled) {
+            ev.stopPropagation();
+            ev.preventDefault();
+          }
+        };
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        window.addEventListener("keydown", onKey);
+        window.addEventListener("click", swallowClick, true);
+        return;
+      }
 
       // Ctrl+Alt+drag = marquee zoom. Must precede the Ctrl+click / Alt+click
       // loop-set branches below so it wins that gesture collision.

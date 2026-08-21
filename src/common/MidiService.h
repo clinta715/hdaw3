@@ -9,4 +9,5 @@ public:
     virtual std::vector<std::string> getAvailableDevices() = 0;
     virtual bool openDevice(const std::string& identifier) = 0;
     virtual void closeDevice() = 0;
+    virtual std::string getOpenDevice() const = 0;
 };

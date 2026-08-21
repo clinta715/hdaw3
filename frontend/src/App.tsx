@@ -22,6 +22,8 @@ import FmAnalysisPanel from "./components/FmAnalysisPanel";
 import UndoHistory from "./components/UndoHistory";
 import Inspector from "./components/Inspector";
 import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
+import TempoEditor from "./components/TempoEditor";
+import PresetBrowser from "./components/PresetBrowser";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
@@ -44,6 +46,8 @@ const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
 const SSamplerEditor = withHookSentinel(SamplerEditor, "SamplerEditor");
 const SFmAnalysisPanel = withHookSentinel(FmAnalysisPanel, "FmAnalysisPanel");
 const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
+const STempoEditor = withHookSentinel(TempoEditor, "TempoEditor");
+const SPresetBrowser = withHookSentinel(PresetBrowser, "PresetBrowser");
 
 function App() {
   useKeyboardShortcuts();
@@ -221,6 +225,8 @@ function App() {
     { id: "inspector", label: "Inspector", content: <Inspector /> },
     { id: "arranger", label: "Arranger", content: <SArrangerChainEditor /> },
     { id: "fm-analysis", label: "FM Analysis", content: <SFmAnalysisPanel /> },
+    { id: "tempo", label: "Tempo", content: <STempoEditor rpc={rpc} /> },
+    { id: "presets", label: "Presets", content: <SPresetBrowser /> },
   ], []);
 
   return (
