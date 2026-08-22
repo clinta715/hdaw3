@@ -523,10 +523,351 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     }
 
     case TrapHiHat:
+    {
+        // 32nd-note grid with ratchet bursts
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        const int rollDensity = (std::max)(1, params.trapHiHat.rollDensity);
+        const double velocityDecay = std::clamp(params.trapHiHat.velocityDecay, 0.1, 1.0);
+        const double ratchetChance = std::clamp(params.trapHiHat.ratchetChance, 0.0, 1.0);
+
+        // Place regular hits based on density (every N steps)
+        int hitInterval = (std::max)(1, totalSteps / rollDensity);
+        for (int step = 0; step < totalSteps; step += hitInterval)
+        {
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep;
+            n.noteNumber = pitches.empty() ? 42 : pitches[pitches.size() / 2];
+            n.velocity = params.maxVelocity;
+            n.durationBeats = beatPerStep * 0.5;
+            result.push_back(n);
+
+            // Optional ratchet burst (2-8 rapid repeats)
+            if (randomDouble(0.0, 1.0) < ratchetChance)
+            {
+                int ratchetCount = randomInt(2, 8);
+                double ratchetBeatLen = beatPerStep / static_cast<double>(ratchetCount + 1);
+                for (int r = 1; r <= ratchetCount; ++r)
+                {
+                    GeneratedNote rn;
+                    rn.startBeat = n.startBeat + r * ratchetBeatLen;
+                    rn.noteNumber = n.noteNumber;
+                    rn.velocity = static_cast<int>(params.maxVelocity * std::pow(velocityDecay, static_cast<double>(r)));
+                    rn.velocity = (std::max)(params.minVelocity, rn.velocity);
+                    rn.durationBeats = ratchetBeatLen * 0.5;
+                    result.push_back(rn);
+                }
+            }
+        }
+        break;
+    }
+
     case DrillBass:
-    case Counterpoint:
+    {
+        // Displaced 808 patterns, root/fifth heavy, low register
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        const double displacement = std::clamp(params.drillBass.displacement, 0.0, 1.0);
+        const bool sustainTail = params.drillBass.sustainTail;
+
+        // Find root and fifth in scale pitches
+        int rootPitch = pitches.empty() ? params.lowNote : pitches[0];
+        int fifthPitch = rootPitch + 7;
+        // Clamp fifth to range
+        if (fifthPitch > params.highNote)
+            fifthPitch = rootPitch - 5;
+
+        // Regular placement: every 4 steps with displacement offset
+        int displacementSteps = static_cast<int>(std::lround(displacement * 4.0));
+        for (int step = displacementSteps; step < totalSteps; step += 4)
+        {
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep;
+            n.velocity = params.maxVelocity;
+            n.durationBeats = sustainTail ? beatPerStep * 3.5 : beatPerStep * 1.5;
+
+            // Pitch preference: root 45%, fifth 25%, random scale 30%
+            double r = randomDouble(0.0, 1.0);
+            if (r < 0.45)
+                n.noteNumber = rootPitch;
+            else if (r < 0.70)
+                n.noteNumber = fifthPitch;
+            else
+                n.noteNumber = pitches[randomInt(0, static_cast<int>(pitches.size()) - 1)];
+
+            // Force into low range
+            while (n.noteNumber - 12 >= params.lowNote && n.noteNumber - 12 > 0)
+                n.noteNumber -= 12;
+
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+        break;
+    }
+
     case WalkingBass:
+    {
+        // Stepwise root-5th approach-note bass on quarter-note grid
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        const bool useApproach = params.walkingBass.approachNotes;
+        const double ghostProb = std::clamp(params.walkingBass.ghostNotes, 0.0, 1.0);
+        const double chromaticism = std::clamp(params.walkingBass.chromaticism, 0.0, 1.0);
+
+        int rootPitch = pitches.empty() ? params.lowNote : pitches[0];
+        int fifthPitch = rootPitch + 7;
+
+        // Targets on downbeats (every 4 steps)
+        std::vector<int> targets;
+        for (int i = 0; i < totalSteps; i += 4)
+        {
+            double r = randomDouble(0.0, 1.0);
+            int target = (r < 0.6) ? rootPitch : fifthPitch;
+            // Clamp to range
+            while (target > params.highNote) target -= 12;
+            while (target < params.lowNote) target += 12;
+            targets.push_back(target);
+        }
+
+        int pitchIdx = 0;
+        for (int step = 0; step < totalSteps; ++step)
+        {
+            bool isDownbeat = (step % 4 == 0);
+            int targetIdx = step / 4;
+
+            if (isDownbeat)
+            {
+                // Downbeat: play the target
+                GeneratedNote n;
+                n.startBeat = step * beatPerStep;
+                n.noteNumber = (targetIdx < static_cast<int>(targets.size())) ? targets[targetIdx] : rootPitch;
+                n.velocity = params.maxVelocity;
+                n.durationBeats = beatPerStep * 3.5;
+                result.push_back(n);
+                pitchIdx = n.noteNumber;
+            }
+            else if (useApproach)
+            {
+                // Approach note: step toward next downbeat target
+                int nextTarget = ((targetIdx + 1) < static_cast<int>(targets.size())) ? targets[targetIdx + 1] : rootPitch;
+                int diff = nextTarget - pitchIdx;
+                int step_dir = (diff > 0) ? 1 : -1;
+
+                // Chromatic approach or scalar approach
+                int approach;
+                if (randomDouble(0.0, 1.0) < chromaticism)
+                    approach = pitchIdx + step_dir; // chromatic
+                else
+                {
+                    // Scalar approach: find nearest scale pitch in direction
+                    approach = pitchIdx + step_dir;
+                    // Snap to nearest scale pitch
+                    int bestDist = 999;
+                    for (int p : pitches)
+                    {
+                        int dist = std::abs(p - approach);
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            approach = p;
+                        }
+                    }
+                }
+
+                GeneratedNote n;
+                n.startBeat = step * beatPerStep;
+                n.noteNumber = approach;
+                n.velocity = params.maxVelocity - 15;
+                n.durationBeats = beatPerStep * 0.8;
+                pitchIdx = approach;
+                result.push_back(n);
+            }
+
+            // Optional ghost note
+            if (!isDownbeat && useApproach && randomDouble(0.0, 1.0) < ghostProb)
+            {
+                GeneratedNote gn;
+                gn.startBeat = step * beatPerStep + beatPerStep * 0.5;
+                gn.noteNumber = pitchIdx;
+                gn.velocity = params.minVelocity;
+                gn.durationBeats = beatPerStep * 0.3;
+                if (gn.startBeat + gn.durationBeats <= params.lengthBeats)
+                    result.push_back(gn);
+            }
+        }
+        break;
+    }
+
+    case Counterpoint:
+    {
+        // Multi-voice species counterpoint
+        const int voiceCount = std::clamp(params.counterpoint.voiceCount, 1, 4);
+        const int species = std::clamp(params.counterpoint.species, 1, 5);
+        const int intervalConstraint = std::clamp(params.counterpoint.intervalConstraint, 0, 3);
+
+        // Species determines note density: 1=whole, 2=half, 3=quarter, 4=eighth, 5=mixed
+        int notesPerBar;
+        switch (species) {
+            case 1: notesPerBar = 1; break;
+            case 2: notesPerBar = 2; break;
+            case 3: notesPerBar = 4; break;
+            case 4: notesPerBar = 8; break;
+            default: notesPerBar = 4; break;
+        }
+
+        const int totalNotes = static_cast<int>(std::lround(params.lengthBeats * notesPerBar / 4.0));
+        const double beatPerNote = params.lengthBeats / static_cast<double>((std::max)(1, totalNotes));
+
+        // Build each voice
+        for (int voice = 0; voice < voiceCount; ++voice)
+        {
+            int octaveOffset = voice * 12; // voices offset by octaves
+            int currentIdx = static_cast<int>(pitches.size()) / 2 + voice;
+
+            for (int i = 0; i < totalNotes; ++i)
+            {
+                GeneratedNote n;
+                n.startBeat = i * beatPerNote;
+
+                // Species 4+ can have variable rhythm
+                if (species >= 4 && randomDouble(0.0, 1.0) < 0.3)
+                {
+                    // Some notes are longer (half notes in species 4)
+                    n.durationBeats = beatPerNote * 2.0;
+                }
+                else
+                {
+                    n.durationBeats = beatPerNote * 0.9;
+                }
+
+                n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+
+                // Motion: prefer stepwise, occasional leaps
+                int step;
+                double motionRoll = randomDouble(0.0, 1.0);
+                if (motionRoll < 0.7)
+                    step = randomInt(-1, 1); // stepwise
+                else if (motionRoll < 0.9)
+                    step = randomInt(-3, 3); // small leap
+                else
+                    step = randomInt(-5, 5); // large leap
+
+                currentIdx += step;
+                currentIdx = (std::max)(0, (std::min)(static_cast<int>(pitches.size()) - 1, currentIdx));
+
+                // Interval constraint: keep voices within interval limits
+                int pitch = pitches[currentIdx] + octaveOffset;
+                pitch = (std::max)(params.lowNote, (std::min)(params.highNote, pitch));
+                n.noteNumber = pitch;
+
+                result.push_back(n);
+            }
+        }
+        break;
+    }
+
     case SwingComping:
+    {
+        // Syncopated chord stabs with swing feel
+        const int swingPercent = std::clamp(params.swingComping.swingPercent, 50, 80);
+        const int compPattern = std::clamp(params.swingComping.compPattern, 0, 3);
+        const int voicingSpread = std::clamp(params.swingComping.voicingSpread, 0, 3);
+
+        // Comp patterns: which 16th-note positions have stabs (in a 4-beat bar)
+        // Pattern 0: Charleston (beat 1, & of 2)
+        // Pattern 1: Shifted (e of 1, beat 3)
+        // Pattern 2: Sparse (beat 1, beat 3)
+        // Pattern 3: Dense (multiple syncopations)
+        std::vector<int> stabPositions;
+        switch (compPattern) {
+            case 0: // Charleston
+                stabPositions = {0, 6};
+                break;
+            case 1: // Shifted
+                stabPositions = {2, 8};
+                break;
+            case 2: // Sparse
+                stabPositions = {0, 8};
+                break;
+            case 3: // Dense
+                stabPositions = {0, 3, 6, 10};
+                break;
+            default:
+                stabPositions = {0, 6};
+                break;
+        }
+
+        // Build chord: root + third + fifth
+        int rootPitch = pitches.empty() ? 60 : pitches[0];
+        int thirdPitch = rootPitch + 4; // major third
+        int fifthPitch = rootPitch + 7; // fifth
+
+        // Adjust voicing spread
+        if (voicingSpread == 0) // close
+        {
+            // keep as is
+        }
+        else if (voicingSpread == 1) // medium
+        {
+            thirdPitch += 12;
+        }
+        else if (voicingSpread == 2) // open
+        {
+            thirdPitch += 12;
+            fifthPitch += 12;
+        }
+        else // wide
+        {
+            rootPitch -= 12;
+            thirdPitch += 12;
+            fifthPitch += 12;
+        }
+
+        // Clamp to range
+        auto clampPitch = [&](int p) {
+            while (p < params.lowNote) p += 12;
+            while (p > params.highNote) p -= 12;
+            return p;
+        };
+        rootPitch = clampPitch(rootPitch);
+        thirdPitch = clampPitch(thirdPitch);
+        fifthPitch = clampPitch(fifthPitch);
+
+        int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+
+        for (int pos : stabPositions)
+        {
+            if (pos >= totalSteps) continue;
+
+            // Apply swing: delay off-beat 16ths
+            int actualTick = pos;
+            if (pos % 2 == 1) // off-beat
+            {
+                double swingOffset = (swingPercent - 50.0) / 50.0 * beatPerStep * 2.0;
+                actualTick = static_cast<int>(std::lround(pos + swingOffset / beatPerStep));
+            }
+
+            if (actualTick >= totalSteps) continue;
+
+            // Chord stab: all 3 notes at the same position
+            int chordNotes[] = {rootPitch, thirdPitch, fifthPitch};
+            for (int cn : chordNotes)
+            {
+                GeneratedNote n;
+                n.startBeat = actualTick * beatPerStep;
+                n.noteNumber = cn;
+                n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+                n.durationBeats = beatPerStep * 1.5;
+                if (n.startBeat + n.durationBeats > params.lengthBeats)
+                    n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+                result.push_back(n);
+            }
+        }
+        break;
+    }
+
     case MarkovMelody:
     case EvolvingTexture:
     case Aleatoric:
@@ -537,7 +878,7 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     case AdditiveRhythm:
     case MinimalistLoop:
     case Layered:
-        break; // stub: return empty (to be implemented in Tasks 7-9)
+        break; // stub: return empty (to be implemented in Tasks 8-9)
 
     default: // Standard
     {
