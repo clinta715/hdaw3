@@ -7,6 +7,7 @@
 #include "../../engine/RhythmPatternGenerator.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
+#include "../../engine/PatternLibrary.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -25,6 +26,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
     const auto o = paramsObject(params);
     auto& c = engine.getProjectCommands();
     auto& ag = engine.getAudioGraphCommands();
+
+    // Pattern library (initialized lazily)
+    static HDAW::PatternLibrary patternLib(
+        juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile("HDAW").getChildFile("patterns"));
 
     // --- Read-only queries (PhraseGenerator is a static utility) ---
 
@@ -69,6 +75,152 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireInt(o, "pitch", pitch, nullptr))
             return makeError(-32602, "pitch required");
         return { false, QString::fromUtf8(PhraseGenerator::noteName(pitch)) };
+    }
+
+    // --- Pattern Library ---
+
+    if (m == "listPatterns") {
+        std::string category, style, tag;
+        if (o.contains("category")) category = o.value("category").toString().toStdString();
+        if (o.contains("style"))    style    = o.value("style").toString().toStdString();
+        if (o.contains("tag"))      tag      = o.value("tag").toString().toStdString();
+        auto entries = patternLib.listPatterns(
+            juce::String(category), juce::String(style), juce::String(tag));
+        QJsonArray arr;
+        for (const auto& e : entries) {
+            QJsonArray tagsArr;
+            for (const auto& t : e.tags) tagsArr.append(QString::fromStdString(t.toStdString()));
+            arr.append(QJsonObject{
+                { "id", QString::fromStdString(e.id.toStdString()) },
+                { "name", QString::fromStdString(e.name.toStdString()) },
+                { "style", QString::fromStdString(e.style.toStdString()) },
+                { "category", QString::fromStdString(e.category.toStdString()) },
+                { "tags", tagsArr },
+                { "source", QString::fromStdString(e.source.toStdString()) }
+            });
+        }
+        return { false, arr };
+    }
+
+    if (m == "savePattern") {
+        std::string name, style, paramsStr, styleParamsStr;
+        if (!requireString(o, "name", name, nullptr))
+            return makeError(-32602, "name required");
+        if (!requireString(o, "style", style, nullptr))
+            return makeError(-32602, "style required");
+        if (!requireString(o, "params", paramsStr, nullptr))
+            return makeError(-32602, "params required");
+        if (!requireString(o, "styleParams", styleParamsStr, nullptr))
+            return makeError(-32602, "styleParams required");
+        HDAW::PatternPreset preset;
+        preset.name = juce::String(name);
+        preset.style = juce::String(style);
+        preset.paramsJson = juce::String(paramsStr);
+        preset.styleParamsJson = juce::String(styleParamsStr);
+        preset.description = optString(o, "description", "");
+        preset.category = optString(o, "category", "user");
+        if (o.contains("tags")) {
+            auto tagsArr = o.value("tags").toArray();
+            for (const auto& t : tagsArr)
+                preset.tags.add(juce::String(t.toString().toStdString()));
+        }
+        juce::String err;
+        if (!patternLib.savePattern(preset, err))
+            return makeError(-32603, QString::fromStdString(err.toStdString()));
+        return { false, QJsonObject{ { "id", QString::fromStdString(preset.name.toStdString()) }, { "success", true } } };
+    }
+
+    if (m == "loadPattern") {
+        std::string id;
+        if (!requireString(o, "id", id, nullptr))
+            return makeError(-32602, "id required");
+        HDAW::PatternPreset preset;
+        juce::String err;
+        if (!patternLib.loadPattern(juce::String(id), preset, err))
+            return makeError(-32603, QString::fromStdString(err.toStdString()));
+        QJsonArray tagsArr;
+        for (const auto& t : preset.tags) tagsArr.append(QString::fromStdString(t.toStdString()));
+        return { false, QJsonObject{
+            { "name", QString::fromStdString(preset.name.toStdString()) },
+            { "style", QString::fromStdString(preset.style.toStdString()) },
+            { "params", QString::fromStdString(preset.paramsJson.toStdString()) },
+            { "styleParams", QString::fromStdString(preset.styleParamsJson.toStdString()) },
+            { "description", QString::fromStdString(preset.description.toStdString()) },
+            { "tags", tagsArr }
+        } };
+    }
+
+    if (m == "deletePattern") {
+        std::string id;
+        if (!requireString(o, "id", id, nullptr))
+            return makeError(-32602, "id required");
+        juce::String err;
+        if (!patternLib.deletePattern(juce::String(id), err))
+            return makeError(-32603, QString::fromStdString(err.toStdString()));
+        return { false, QJsonObject{ { "success", true } } };
+    }
+
+    if (m == "importPattern") {
+        std::string json;
+        if (!requireString(o, "json", json, nullptr))
+            return makeError(-32602, "json required");
+        juce::String outId, err;
+        if (!patternLib.importPattern(juce::String(json), outId, err))
+            return makeError(-32603, QString::fromStdString(err.toStdString()));
+        return { false, QJsonObject{ { "id", QString::fromStdString(outId.toStdString()) }, { "success", true } } };
+    }
+
+    if (m == "exportPattern") {
+        std::string id;
+        if (!requireString(o, "id", id, nullptr))
+            return makeError(-32602, "id required");
+        juce::String outJson, err;
+        if (!patternLib.exportPattern(juce::String(id), outJson, err))
+            return makeError(-32603, QString::fromStdString(err.toStdString()));
+        return { false, QJsonObject{ { "json", QString::fromStdString(outJson.toStdString()) } } };
+    }
+
+    if (m == "getStyleParams") {
+        std::string styleStr;
+        if (!requireString(o, "style", styleStr, nullptr))
+            return makeError(-32602, "style required");
+        PhraseGenerator::Style style = PhraseGenerator::Standard;
+        if      (styleStr == "Arpeggio")   style = PhraseGenerator::Arpeggio;
+        else if (styleStr == "BassLine")   style = PhraseGenerator::BassLine;
+        else if (styleStr == "ChordStab")  style = PhraseGenerator::ChordStab;
+        else if (styleStr == "Pad")        style = PhraseGenerator::Pad;
+        else if (styleStr == "Lead")       style = PhraseGenerator::Lead;
+        else if (styleStr == "RandomWalk") style = PhraseGenerator::RandomWalk;
+        else if (styleStr == "Buildup")    style = PhraseGenerator::Buildup;
+        else if (styleStr == "Euclidean")  style = PhraseGenerator::Euclidean;
+        else if (styleStr == "TrapHiHat")       style = PhraseGenerator::TrapHiHat;
+        else if (styleStr == "DrillBass")       style = PhraseGenerator::DrillBass;
+        else if (styleStr == "Counterpoint")    style = PhraseGenerator::Counterpoint;
+        else if (styleStr == "WalkingBass")     style = PhraseGenerator::WalkingBass;
+        else if (styleStr == "SwingComping")    style = PhraseGenerator::SwingComping;
+        else if (styleStr == "MarkovMelody")    style = PhraseGenerator::MarkovMelody;
+        else if (styleStr == "EvolvingTexture") style = PhraseGenerator::EvolvingTexture;
+        else if (styleStr == "Aleatoric")       style = PhraseGenerator::Aleatoric;
+        else if (styleStr == "ScalarRun")       style = PhraseGenerator::ScalarRun;
+        else if (styleStr == "ChordToneSeq")    style = PhraseGenerator::ChordToneSeq;
+        else if (styleStr == "CallResponse")    style = PhraseGenerator::CallResponse;
+        else if (styleStr == "PhaseShift")      style = PhraseGenerator::PhaseShift;
+        else if (styleStr == "AdditiveRhythm")  style = PhraseGenerator::AdditiveRhythm;
+        else if (styleStr == "MinimalistLoop")  style = PhraseGenerator::MinimalistLoop;
+        else if (styleStr == "Layered")         style = PhraseGenerator::Layered;
+        auto schema = PhraseGenerator::getStyleParamsSchema(style);
+        QJsonArray fields;
+        for (const auto& f : schema) {
+            fields.append(QJsonObject{
+                { "name", QString::fromStdString(f.name) },
+                { "type", QString::fromStdString(f.type) },
+                { "min", f.min },
+                { "max", f.max },
+                { "default", f.defaultVal },
+                { "label", QString::fromStdString(f.label) }
+            });
+        }
+        return { false, QJsonObject{ { "fields", fields } } };
     }
 
     // --- Mutations: generate + insert MIDI clip ---
