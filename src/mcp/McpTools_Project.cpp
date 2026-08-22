@@ -632,7 +632,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                 int nid = static_cast<int>(n.getProperty(IDs::noteID));
                 int p   = static_cast<int>(n.getProperty(IDs::noteNumber));
                 double s= static_cast<double>(n.getProperty(IDs::startBeat));
-                bool match = false;
+                bool match = ids.isEmpty() && pitches.isEmpty();
                 if (!ids.isEmpty() && ids.contains(nid)) match = true;
                 if (!pitches.isEmpty() && pitches.contains(p)) match = true;
                 if (hasGte && s < gte) match = false;
@@ -677,7 +677,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                 int nid = static_cast<int>(n.getProperty(IDs::noteID));
                 int p   = static_cast<int>(n.getProperty(IDs::noteNumber));
                 double s= static_cast<double>(n.getProperty(IDs::startBeat));
-                bool match = false;
+                bool match = ids.isEmpty() && pitches.isEmpty();
                 if (!ids.isEmpty() && ids.contains(nid)) match = true;
                 if (!pitches.isEmpty() && pitches.contains(p)) match = true;
                 if (hasGte && s < gte) match = false;

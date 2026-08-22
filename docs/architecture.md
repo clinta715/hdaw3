@@ -14,7 +14,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the main window — these are the pitfalls that cost
 real debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.23.1**
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.24.1**
 with a **React 19 + TypeScript frontend** (Zustand state management,
 Vite build). The frontend runs in two contexts:
 system browser (default) or Electron shell. The C++ engine
@@ -96,8 +96,8 @@ full list of working features and the priority-ordered roadmap, see
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.23.1 ...)` — **canonical source** for C++ code
-- `frontend/package.json` → `"version": "0.23.1"` — **canonical source** for the React frontend
+- `CMakeLists.txt` → `project(HDAW VERSION 0.24.1 ...)` — **canonical source** for C++ code
+- `frontend/package.json` → `"version": "0.24.1"` — **canonical source** for the React frontend
 
 When bumping the version, update **both** files, then run:
 ```

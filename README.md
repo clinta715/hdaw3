@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.23.2
+**Current version**: 0.24.1
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.23.2)
+## What works today (v0.24.1)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -321,6 +321,23 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.24.1 — MCP test coverage, set_note_velocities bug fix
+
+**MCP test coverage (37 new tests, ~60 tools):**
+- New `tests/integration/mcp/mcp_coverage_test.cpp` with `McpCoverageTest`
+  fixture covering previously untested MCP tools: region ops (ripple_delete,
+  insert_silence, duplicate_region, loop_clip), track ops (move_track,
+  duplicate_track, add_track_with_fx), 12 note operators, tempo points,
+  arranger (16 tools), sends, MIDI FX (6 tools), session (5 tools),
+  library (7 tools), set_automation_points, generate_arrangement, project_info.
+- MCP tool test coverage: 30% → 63% (53/179 → ~113/179 tools with tests).
+- 1015 tests across 182 suites.
+
+**Bug fix:**
+- `set_note_velocities` and `remove_notes` MCP tools silently skipped all notes
+  when no filter (`noteIds`/`pitches`) was provided — defaulted to `match=false`
+  instead of `match=true`. Fixed: "all notes" is now the correct default.
 
 ### v0.23.2 — Part templates (role defaults), proxy namespace collision fix
 

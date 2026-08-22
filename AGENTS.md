@@ -10,7 +10,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.23.2** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.24.1** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -533,10 +533,11 @@ for a fix marker) before trusting the package.
 
 - **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
   - Filter: `--gtest_filter=SuiteName.*`
-  - 862 tests across 166 suites: MCP tools/server, transport, tracks, clips,
+  - 1015 tests across 182 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
     ripple delete, ghost clips, stretch, markers, error conditions, batch ops,
-    plugin isolation, audio pool, streaming.
+    plugin isolation, audio pool, streaming, arranger, session, library,
+    note operators, tempo points, sends, MIDI FX.
   - **Engine change test discipline:** when modifying the C++ core, RPC surface,
     or JUCE interfaces, assess test impact before finishing: (1) identify gtest
     suites that exercise the changed code (RPC handlers → MCP tool tests,
@@ -592,8 +593,8 @@ for a fix marker) before trusting the package.
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
-- `CMakeLists.txt` → `project(HDAW VERSION 0.23.2 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.23.2"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.24.1 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.24.1"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 
