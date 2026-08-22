@@ -95,16 +95,31 @@ const char* PhraseGenerator::modeName(int scaleModeIndex)
 const char* PhraseGenerator::styleName(Style s)
 {
     switch (s) {
-        case Arpeggio:  return "Arpeggio";
-        case BassLine:  return "Bass Line";
-        case ChordStab: return "Chord Stab";
-        case Pad:       return "Pad";
-        case Lead:      return "Lead";
-        case RandomWalk: return "Random Walk";
-        case Buildup:   return "Buildup";
-        case Euclidean:   return "Euclidean";
-        case Percussion:  return "Percussion";
-        default:          return "Standard";
+        case Arpeggio:        return "Arpeggio";
+        case BassLine:        return "Bass Line";
+        case ChordStab:       return "Chord Stab";
+        case Pad:             return "Pad";
+        case Lead:            return "Lead";
+        case RandomWalk:      return "Random Walk";
+        case Buildup:         return "Buildup";
+        case Euclidean:       return "Euclidean";
+        case Percussion:      return "Percussion";
+        case TrapHiHat:       return "Trap Hi-Hat";
+        case DrillBass:       return "Drill Bass";
+        case Counterpoint:    return "Counterpoint";
+        case WalkingBass:     return "Walking Bass";
+        case SwingComping:    return "Swing Comping";
+        case MarkovMelody:    return "Markov Melody";
+        case EvolvingTexture: return "Evolving Texture";
+        case Aleatoric:       return "Aleatoric";
+        case ScalarRun:       return "Scalar Run";
+        case ChordToneSeq:    return "Chord Tone Seq";
+        case CallResponse:    return "Call & Response";
+        case PhaseShift:      return "Phase Shift";
+        case AdditiveRhythm:  return "Additive Rhythm";
+        case MinimalistLoop:  return "Minimalist Loop";
+        case Layered:         return "Layered";
+        default:              return "Standard";
     }
 }
 
@@ -507,6 +522,23 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
         break;
     }
 
+    case TrapHiHat:
+    case DrillBass:
+    case Counterpoint:
+    case WalkingBass:
+    case SwingComping:
+    case MarkovMelody:
+    case EvolvingTexture:
+    case Aleatoric:
+    case ScalarRun:
+    case ChordToneSeq:
+    case CallResponse:
+    case PhaseShift:
+    case AdditiveRhythm:
+    case MinimalistLoop:
+    case Layered:
+        break; // stub: return empty (to be implemented in Tasks 7-9)
+
     default: // Standard
     {
         double beatStep = params.lengthBeats / static_cast<double>(numNotes);
@@ -565,6 +597,97 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     std::sort(result.begin(), result.end(),
         [](const GeneratedNote& a, const GeneratedNote& b) { return a.startBeat < b.startBeat; });
     return result;
+}
+
+// ── Style params schema ──
+
+std::vector<PhraseGenerator::ParamField> PhraseGenerator::getStyleParamsSchema(Style style)
+{
+    switch (style) {
+    case TrapHiHat:
+        return {
+            {"rollDensity", "integer", 2, 16, 4, "Roll Density"},
+            {"velocityDecay", "number", 0.0, 1.0, 0.7, "Velocity Decay"},
+            {"ratchetChance", "number", 0.0, 1.0, 0.3, "Ratchet Chance"}
+        };
+    case DrillBass:
+        return {
+            {"glideDuration", "number", 0.01, 1.0, 0.15, "Glide Duration"},
+            {"slideIntensity", "number", 0.0, 1.0, 0.8, "Slide Intensity"},
+            {"sustainTail", "boolean", 0, 1, 1, "Sustain Tail"},
+            {"displacement", "number", 0.0, 1.0, 0.5, "Displacement"}
+        };
+    case Counterpoint:
+        return {
+            {"voiceCount", "integer", 1, 4, 2, "Voice Count"},
+            {"species", "integer", 1, 5, 2, "Species"},
+            {"intervalConstraint", "integer", 0, 3, 1, "Interval Constraint"}
+        };
+    case WalkingBass:
+        return {
+            {"approachNotes", "boolean", 0, 1, 1, "Approach Notes"},
+            {"ghostNotes", "number", 0.0, 1.0, 0.1, "Ghost Notes"},
+            {"chromaticism", "number", 0.0, 1.0, 0.3, "Chromaticism"}
+        };
+    case SwingComping:
+        return {
+            {"swingPercent", "integer", 50, 80, 65, "Swing Percent"},
+            {"compPattern", "integer", 0, 4, 0, "Comp Pattern"},
+            {"voicingSpread", "integer", 0, 3, 1, "Voicing Spread"}
+        };
+    case MarkovMelody:
+        return {
+            {"rhythmGrid", "integer", 4, 32, 16, "Rhythm Grid"},
+            {"stateCount", "integer", 3, 12, 7, "State Count"}
+        };
+    case EvolvingTexture:
+        return {
+            {"layerCount", "integer", 1, 8, 4, "Layer Count"},
+            {"driftSpeed", "number", 0.0, 1.0, 0.5, "Drift Speed"},
+            {"densitySwell", "number", 0.0, 1.0, 0.5, "Density Swell"}
+        };
+    case Aleatoric:
+        return {
+            {"constraintTightness", "number", 0.0, 1.0, 0.5, "Constraint Tightness"},
+            {"rhythmVariety", "number", 0.0, 1.0, 0.7, "Rhythm Variety"},
+            {"restProbability", "number", 0.0, 1.0, 0.2, "Rest Probability"}
+        };
+    case ScalarRun:
+        return {
+            {"direction", "integer", 0, 2, 0, "Direction (0=up, 1=down, 2=both)"},
+            {"octaveSpan", "integer", 1, 4, 2, "Octave Span"},
+            {"runSpeed", "integer", 4, 32, 16, "Run Speed (grid)"}
+        };
+    case ChordToneSeq:
+        return {
+            {"approachType", "integer", 0, 3, 1, "Approach Type"},
+            {"patternShape", "integer", 0, 3, 0, "Pattern Shape"}
+        };
+    case CallResponse:
+        return {
+            {"phraseLength", "integer", 1, 8, 4, "Phrase Length (beats)"},
+            {"responseVariation", "number", 0.0, 1.0, 0.5, "Response Variation"},
+            {"restBeats", "number", 0.0, 4.0, 1.0, "Rest Between Phrases"}
+        };
+    case PhaseShift:
+        return {
+            {"voice1Grid", "integer", 2, 16, 8, "Voice 1 Grid"},
+            {"voice2Grid", "integer", 2, 16, 6, "Voice 2 Grid"},
+            {"phaseRate", "number", 0.0, 1.0, 0.3, "Phase Rate"}
+        };
+    case AdditiveRhythm:
+        return {
+            {"subdivision", "integer", 4, 32, 8, "Subdivision"}
+        };
+    case MinimalistLoop:
+        return {
+            {"cellLength", "integer", 2, 16, 6, "Cell Length"},
+            {"mutationRate", "number", 0.0, 1.0, 0.2, "Mutation Rate"},
+            {"phaseOffset", "integer", 0, 15, 0, "Phase Offset"}
+        };
+    default:
+        return {};
+    }
 }
 
 // ── Chord generation ──

@@ -852,7 +852,22 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         {"RandomWalk", PhraseGenerator::RandomWalk},
         {"Buildup",    PhraseGenerator::Buildup},
         {"Euclidean",  PhraseGenerator::Euclidean},
-        {"Percussion", PhraseGenerator::Percussion}
+        {"Percussion", PhraseGenerator::Percussion},
+        {"TrapHiHat",       PhraseGenerator::TrapHiHat},
+        {"DrillBass",       PhraseGenerator::DrillBass},
+        {"Counterpoint",    PhraseGenerator::Counterpoint},
+        {"WalkingBass",     PhraseGenerator::WalkingBass},
+        {"SwingComping",    PhraseGenerator::SwingComping},
+        {"MarkovMelody",    PhraseGenerator::MarkovMelody},
+        {"EvolvingTexture", PhraseGenerator::EvolvingTexture},
+        {"Aleatoric",       PhraseGenerator::Aleatoric},
+        {"ScalarRun",       PhraseGenerator::ScalarRun},
+        {"ChordToneSeq",    PhraseGenerator::ChordToneSeq},
+        {"CallResponse",    PhraseGenerator::CallResponse},
+        {"PhaseShift",      PhraseGenerator::PhaseShift},
+        {"AdditiveRhythm",  PhraseGenerator::AdditiveRhythm},
+        {"MinimalistLoop",  PhraseGenerator::MinimalistLoop},
+        {"Layered",         PhraseGenerator::Layered}
     };
 
     s.registerTool({"set_scale", "Set the project scale (root 0..11, mode 0..20).",
@@ -989,8 +1004,9 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"style",       QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion"}},
-                      {"description","Phrase style: Standard (mixed), Arpeggio (sequential), BassLine (low range), ChordStab (short chords), Pad (sustained), Lead (high melody), RandomWalk (step-wise), Buildup (crescendo), Euclidean (rhythmic), Percussion (drums)."}}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion","TrapHiHat","DrillBass","Counterpoint","WalkingBass","SwingComping","MarkovMelody","EvolvingTexture","Aleatoric","ScalarRun","ChordToneSeq","CallResponse","PhaseShift","AdditiveRhythm","MinimalistLoop","Layered"}},
+                      {"description","Phrase style."}}},
+                  {"styleParams", QJsonObject{{"type","object"},{"description","Style-specific parameters. See getStyleParamsSchema for per-style fields."}}},
                   {"length",      QJsonObject{{"type","number"}}},
                   {"density",     QJsonObject{{"type","integer"}}},
                   {"start",       QJsonObject{{"type","number"}}},
@@ -1018,6 +1034,81 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.scaleRoot = a.contains("scaleRoot") ? a.value("scaleRoot").toInt() : e->getProjectModel().getScaleRoot();
             p.scaleMode = a.contains("scaleMode") ? a.value("scaleMode").toInt() : e->getProjectModel().getScaleMode();
             p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toDouble()) : 0;
+            if (a.contains("styleParams")) {
+                auto sp = a.value("styleParams").toObject();
+                switch (p.style) {
+                    case PhraseGenerator::TrapHiHat:
+                        p.trapHiHat.rollDensity = sp.value("rollDensity").toInt(p.trapHiHat.rollDensity);
+                        p.trapHiHat.velocityDecay = sp.value("velocityDecay").toDouble(p.trapHiHat.velocityDecay);
+                        p.trapHiHat.ratchetChance = sp.value("ratchetChance").toDouble(p.trapHiHat.ratchetChance);
+                        break;
+                    case PhraseGenerator::DrillBass:
+                        p.drillBass.glideDuration = sp.value("glideDuration").toDouble(p.drillBass.glideDuration);
+                        p.drillBass.slideIntensity = sp.value("slideIntensity").toDouble(p.drillBass.slideIntensity);
+                        p.drillBass.sustainTail = sp.value("sustainTail").toBool(p.drillBass.sustainTail);
+                        p.drillBass.displacement = sp.value("displacement").toDouble(p.drillBass.displacement);
+                        break;
+                    case PhraseGenerator::Counterpoint:
+                        p.counterpoint.voiceCount = sp.value("voiceCount").toInt(p.counterpoint.voiceCount);
+                        p.counterpoint.species = sp.value("species").toInt(p.counterpoint.species);
+                        p.counterpoint.intervalConstraint = sp.value("intervalConstraint").toInt(p.counterpoint.intervalConstraint);
+                        break;
+                    case PhraseGenerator::WalkingBass:
+                        p.walkingBass.approachNotes = sp.value("approachNotes").toBool(p.walkingBass.approachNotes);
+                        p.walkingBass.ghostNotes = sp.value("ghostNotes").toDouble(p.walkingBass.ghostNotes);
+                        p.walkingBass.chromaticism = sp.value("chromaticism").toDouble(p.walkingBass.chromaticism);
+                        break;
+                    case PhraseGenerator::SwingComping:
+                        p.swingComping.swingPercent = sp.value("swingPercent").toInt(p.swingComping.swingPercent);
+                        p.swingComping.compPattern = sp.value("compPattern").toInt(p.swingComping.compPattern);
+                        p.swingComping.voicingSpread = sp.value("voicingSpread").toInt(p.swingComping.voicingSpread);
+                        break;
+                    case PhraseGenerator::MarkovMelody:
+                        p.markovMelody.rhythmGrid = sp.value("rhythmGrid").toInt(p.markovMelody.rhythmGrid);
+                        p.markovMelody.stateCount = sp.value("stateCount").toInt(p.markovMelody.stateCount);
+                        break;
+                    case PhraseGenerator::EvolvingTexture:
+                        p.evolvingTexture.layerCount = sp.value("layerCount").toInt(p.evolvingTexture.layerCount);
+                        p.evolvingTexture.driftSpeed = sp.value("driftSpeed").toDouble(p.evolvingTexture.driftSpeed);
+                        p.evolvingTexture.densitySwell = sp.value("densitySwell").toDouble(p.evolvingTexture.densitySwell);
+                        break;
+                    case PhraseGenerator::Aleatoric:
+                        p.aleatoric.constraintTightness = sp.value("constraintTightness").toDouble(p.aleatoric.constraintTightness);
+                        p.aleatoric.rhythmVariety = sp.value("rhythmVariety").toDouble(p.aleatoric.rhythmVariety);
+                        p.aleatoric.restProbability = sp.value("restProbability").toDouble(p.aleatoric.restProbability);
+                        break;
+                    case PhraseGenerator::ScalarRun:
+                        p.scalarRun.direction = sp.value("direction").toInt(p.scalarRun.direction);
+                        p.scalarRun.octaveSpan = sp.value("octaveSpan").toInt(p.scalarRun.octaveSpan);
+                        p.scalarRun.runSpeed = sp.value("runSpeed").toInt(p.scalarRun.runSpeed);
+                        break;
+                    case PhraseGenerator::ChordToneSeq:
+                        p.chordToneSeq.approachType = sp.value("approachType").toInt(p.chordToneSeq.approachType);
+                        p.chordToneSeq.patternShape = sp.value("patternShape").toInt(p.chordToneSeq.patternShape);
+                        break;
+                    case PhraseGenerator::CallResponse:
+                        p.callResponse.phraseLength = sp.value("phraseLength").toInt(p.callResponse.phraseLength);
+                        p.callResponse.responseVariation = sp.value("responseVariation").toDouble(p.callResponse.responseVariation);
+                        p.callResponse.restBeats = sp.value("restBeats").toDouble(p.callResponse.restBeats);
+                        break;
+                    case PhraseGenerator::PhaseShift:
+                        p.phaseShift.voice1Grid = sp.value("voice1Grid").toInt(p.phaseShift.voice1Grid);
+                        p.phaseShift.voice2Grid = sp.value("voice2Grid").toInt(p.phaseShift.voice2Grid);
+                        p.phaseShift.phaseRate = sp.value("phaseRate").toDouble(p.phaseShift.phaseRate);
+                        break;
+                    case PhraseGenerator::AdditiveRhythm:
+                        p.additiveRhythm.grouping = sp.value("grouping").toString(QString::fromStdString(p.additiveRhythm.grouping)).toStdString();
+                        p.additiveRhythm.subdivision = sp.value("subdivision").toInt(p.additiveRhythm.subdivision);
+                        break;
+                    case PhraseGenerator::MinimalistLoop:
+                        p.minimalistLoop.cellLength = sp.value("cellLength").toInt(p.minimalistLoop.cellLength);
+                        p.minimalistLoop.mutationRate = sp.value("mutationRate").toDouble(p.minimalistLoop.mutationRate);
+                        p.minimalistLoop.phaseOffset = sp.value("phaseOffset").toInt(p.minimalistLoop.phaseOffset);
+                        break;
+                    default:
+                        break;
+                }
+            }
             auto notes = PhraseGenerator::generatePhrase(p);
             if (notes.empty())
                 return McpToolResult::text("phrase generator produced 0 notes — check scale/range settings", true);
@@ -1206,7 +1297,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Compose a complete instrument part in one command: add a track with an instrument FX slot, generate a phrase, paint it across the arrangement, and optionally gain-stage to a target RMS. One undo unit. Calls the same engine command as the composition.addInstrumentPart RPC.",
         objSchema({{"trackName",    QJsonObject{{"type","string"}}},
                   {"style",        QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion"}}}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion","TrapHiHat","DrillBass","Counterpoint","WalkingBass","SwingComping","MarkovMelody","EvolvingTexture","Aleatoric","ScalarRun","ChordToneSeq","CallResponse","PhaseShift","AdditiveRhythm","MinimalistLoop","Layered"}}}},
                   {"role",         QJsonObject{{"type","string"},{"description","Part template: bass | lead | chords | drums (case-insensitive). When provided, fills unset phrase params with role defaults; explicit params always win."}}},
                   {"pluginId",     QJsonObject{{"type","string"}}},
                   {"programIndex", QJsonObject{{"type","integer"},{"minimum",-1}}},

@@ -59,7 +59,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
     }
     if (m == "getStyleNames") {
         QJsonArray arr;
-        for (int i = 0; i <= static_cast<int>(PhraseGenerator::Euclidean); ++i) {
+        for (int i = 0; i < static_cast<int>(PhraseGenerator::NumStyles); ++i) {
             arr.append(QJsonObject{ { "index", i }, { "name", PhraseGenerator::styleName(static_cast<PhraseGenerator::Style>(i)) } });
         }
         return { false, arr };
@@ -103,6 +103,21 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         else if (styleStr == "RandomWalk") style = PhraseGenerator::RandomWalk;
         else if (styleStr == "Buildup")    style = PhraseGenerator::Buildup;
         else if (styleStr == "Euclidean")  style = PhraseGenerator::Euclidean;
+        else if (styleStr == "TrapHiHat")       style = PhraseGenerator::TrapHiHat;
+        else if (styleStr == "DrillBass")       style = PhraseGenerator::DrillBass;
+        else if (styleStr == "Counterpoint")    style = PhraseGenerator::Counterpoint;
+        else if (styleStr == "WalkingBass")     style = PhraseGenerator::WalkingBass;
+        else if (styleStr == "SwingComping")    style = PhraseGenerator::SwingComping;
+        else if (styleStr == "MarkovMelody")    style = PhraseGenerator::MarkovMelody;
+        else if (styleStr == "EvolvingTexture") style = PhraseGenerator::EvolvingTexture;
+        else if (styleStr == "Aleatoric")       style = PhraseGenerator::Aleatoric;
+        else if (styleStr == "ScalarRun")       style = PhraseGenerator::ScalarRun;
+        else if (styleStr == "ChordToneSeq")    style = PhraseGenerator::ChordToneSeq;
+        else if (styleStr == "CallResponse")    style = PhraseGenerator::CallResponse;
+        else if (styleStr == "PhaseShift")      style = PhraseGenerator::PhaseShift;
+        else if (styleStr == "AdditiveRhythm")  style = PhraseGenerator::AdditiveRhythm;
+        else if (styleStr == "MinimalistLoop")  style = PhraseGenerator::MinimalistLoop;
+        else if (styleStr == "Layered")         style = PhraseGenerator::Layered;
 
         PhraseGenerator::PhraseParams pp;
         pp.style = style;
@@ -116,6 +131,83 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         pp.minVelocity = optInt(o, "minVelocity", 60, nullptr);
         pp.maxVelocity = optInt(o, "maxVelocity", 110, nullptr);
         pp.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+
+        // Parse styleParams for new styles
+        if (o.contains("styleParams")) {
+            auto sp = o.value("styleParams").toObject();
+            switch (style) {
+                case PhraseGenerator::TrapHiHat:
+                    pp.trapHiHat.rollDensity = sp.value("rollDensity").toInt(pp.trapHiHat.rollDensity);
+                    pp.trapHiHat.velocityDecay = sp.value("velocityDecay").toDouble(pp.trapHiHat.velocityDecay);
+                    pp.trapHiHat.ratchetChance = sp.value("ratchetChance").toDouble(pp.trapHiHat.ratchetChance);
+                    break;
+                case PhraseGenerator::DrillBass:
+                    pp.drillBass.glideDuration = sp.value("glideDuration").toDouble(pp.drillBass.glideDuration);
+                    pp.drillBass.slideIntensity = sp.value("slideIntensity").toDouble(pp.drillBass.slideIntensity);
+                    pp.drillBass.sustainTail = sp.value("sustainTail").toBool(pp.drillBass.sustainTail);
+                    pp.drillBass.displacement = sp.value("displacement").toDouble(pp.drillBass.displacement);
+                    break;
+                case PhraseGenerator::Counterpoint:
+                    pp.counterpoint.voiceCount = sp.value("voiceCount").toInt(pp.counterpoint.voiceCount);
+                    pp.counterpoint.species = sp.value("species").toInt(pp.counterpoint.species);
+                    pp.counterpoint.intervalConstraint = sp.value("intervalConstraint").toInt(pp.counterpoint.intervalConstraint);
+                    break;
+                case PhraseGenerator::WalkingBass:
+                    pp.walkingBass.approachNotes = sp.value("approachNotes").toBool(pp.walkingBass.approachNotes);
+                    pp.walkingBass.ghostNotes = sp.value("ghostNotes").toDouble(pp.walkingBass.ghostNotes);
+                    pp.walkingBass.chromaticism = sp.value("chromaticism").toDouble(pp.walkingBass.chromaticism);
+                    break;
+                case PhraseGenerator::SwingComping:
+                    pp.swingComping.swingPercent = sp.value("swingPercent").toInt(pp.swingComping.swingPercent);
+                    pp.swingComping.compPattern = sp.value("compPattern").toInt(pp.swingComping.compPattern);
+                    pp.swingComping.voicingSpread = sp.value("voicingSpread").toInt(pp.swingComping.voicingSpread);
+                    break;
+                case PhraseGenerator::MarkovMelody:
+                    pp.markovMelody.rhythmGrid = sp.value("rhythmGrid").toInt(pp.markovMelody.rhythmGrid);
+                    pp.markovMelody.stateCount = sp.value("stateCount").toInt(pp.markovMelody.stateCount);
+                    break;
+                case PhraseGenerator::EvolvingTexture:
+                    pp.evolvingTexture.layerCount = sp.value("layerCount").toInt(pp.evolvingTexture.layerCount);
+                    pp.evolvingTexture.driftSpeed = sp.value("driftSpeed").toDouble(pp.evolvingTexture.driftSpeed);
+                    pp.evolvingTexture.densitySwell = sp.value("densitySwell").toDouble(pp.evolvingTexture.densitySwell);
+                    break;
+                case PhraseGenerator::Aleatoric:
+                    pp.aleatoric.constraintTightness = sp.value("constraintTightness").toDouble(pp.aleatoric.constraintTightness);
+                    pp.aleatoric.rhythmVariety = sp.value("rhythmVariety").toDouble(pp.aleatoric.rhythmVariety);
+                    pp.aleatoric.restProbability = sp.value("restProbability").toDouble(pp.aleatoric.restProbability);
+                    break;
+                case PhraseGenerator::ScalarRun:
+                    pp.scalarRun.direction = sp.value("direction").toInt(pp.scalarRun.direction);
+                    pp.scalarRun.octaveSpan = sp.value("octaveSpan").toInt(pp.scalarRun.octaveSpan);
+                    pp.scalarRun.runSpeed = sp.value("runSpeed").toInt(pp.scalarRun.runSpeed);
+                    break;
+                case PhraseGenerator::ChordToneSeq:
+                    pp.chordToneSeq.approachType = sp.value("approachType").toInt(pp.chordToneSeq.approachType);
+                    pp.chordToneSeq.patternShape = sp.value("patternShape").toInt(pp.chordToneSeq.patternShape);
+                    break;
+                case PhraseGenerator::CallResponse:
+                    pp.callResponse.phraseLength = sp.value("phraseLength").toInt(pp.callResponse.phraseLength);
+                    pp.callResponse.responseVariation = sp.value("responseVariation").toDouble(pp.callResponse.responseVariation);
+                    pp.callResponse.restBeats = sp.value("restBeats").toDouble(pp.callResponse.restBeats);
+                    break;
+                case PhraseGenerator::PhaseShift:
+                    pp.phaseShift.voice1Grid = sp.value("voice1Grid").toInt(pp.phaseShift.voice1Grid);
+                    pp.phaseShift.voice2Grid = sp.value("voice2Grid").toInt(pp.phaseShift.voice2Grid);
+                    pp.phaseShift.phaseRate = sp.value("phaseRate").toDouble(pp.phaseShift.phaseRate);
+                    break;
+                case PhraseGenerator::AdditiveRhythm:
+                    pp.additiveRhythm.grouping = sp.value("grouping").toString(QString::fromStdString(pp.additiveRhythm.grouping)).toStdString();
+                    pp.additiveRhythm.subdivision = sp.value("subdivision").toInt(pp.additiveRhythm.subdivision);
+                    break;
+                case PhraseGenerator::MinimalistLoop:
+                    pp.minimalistLoop.cellLength = sp.value("cellLength").toInt(pp.minimalistLoop.cellLength);
+                    pp.minimalistLoop.mutationRate = sp.value("mutationRate").toDouble(pp.minimalistLoop.mutationRate);
+                    pp.minimalistLoop.phaseOffset = sp.value("phaseOffset").toInt(pp.minimalistLoop.phaseOffset);
+                    break;
+                default:
+                    break;
+            }
+        }
 
         double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
         auto notes = PhraseGenerator::generatePhrase(pp);
