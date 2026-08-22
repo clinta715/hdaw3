@@ -3,6 +3,7 @@ import { rpc } from "../rpc";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import type { ScaleModeInfo, ChordTypeInfo, ProgressionPatternInfo, StyleInfo, RhythmPatternResult } from "../rpc/types";
+import PresetBrowser from "./PresetBrowser";
 import "./PhraseGeneratorDialog.css";
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -85,6 +86,11 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [rhythmDsl, setRhythmDsl] = useState("");
   const [dslPitch, setDslPitch] = useState(39);
 
+  const [styleParams, setStyleParams] = useState<Record<string, unknown>>({});
+  const [styleParamSchema, setStyleParamSchema] = useState<Array<{
+    name: string; type: string; min: number; max: number; default: number; label: string;
+  }>>([]);
+
   const [preview, setPreview] = useState("");
   const [generating, setGenerating] = useState(false);
 
@@ -102,6 +108,21 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
       setStyles(st);
     }).catch(console.error);
   }, []);
+
+  // Load style-specific parameter schema when phrase style changes
+  useEffect(() => {
+    if (mode !== 0) return;
+    const styleName = styles[style]?.name;
+    if (!styleName) return;
+    rpc.call("composition.getStyleParams", { style: styleName })
+      .then((result: unknown) => {
+        if (result && typeof result === "object" && "fields" in (result as Record<string, unknown>)) {
+          setStyleParamSchema((result as { fields: Array<{
+            name: string; type: string; min: number; max: number; default: number; label: string;
+          }> }).fields || []);
+        }
+      });
+  }, [mode, style, styles]);
 
   // Sync root/mode from project when snapshot changes
   useEffect(() => {
@@ -124,6 +145,25 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
     else if (name === "Buildup")  { setLengthBeats(8); setDensity(32); }
     else if (name === "Euclidean") { setLengthBeats(4); setDensity(5); }
     else                          { setLengthBeats(4); setDensity(8); }
+  }, [styles]);
+
+  const handleLoadPreset = useCallback((preset: {
+    name: string; style: string;
+    params: Record<string, unknown>;
+    styleParams: Record<string, unknown>;
+  }) => {
+    const idx = styles.findIndex(s => s.name === preset.style);
+    if (idx >= 0) setStyle(idx);
+    const p = preset.params;
+    if (p.scaleRoot !== undefined) setScaleRoot(p.scaleRoot as number);
+    if (p.scaleMode !== undefined) setScaleMode(p.scaleMode as number);
+    if (p.lowNote !== undefined) setLowNote(p.lowNote as number);
+    if (p.highNote !== undefined) setHighNote(p.highNote as number);
+    if (p.minVelocity !== undefined) setVelocity(p.minVelocity as number);
+    if (p.seed !== undefined) setSeed(p.seed as number);
+    if (p.lengthBeats !== undefined) setLengthBeats(p.lengthBeats as number);
+    if (p.density !== undefined) setDensity(p.density as number);
+    setStyleParams(preset.styleParams || {});
   }, [styles]);
 
   const handleGenerate = async () => {
@@ -150,6 +190,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           lengthBeats,
           density,
           noteDuration: 0.5,
+          styleParams,
         }) as { clipId: number; noteCount: number };
       } else if (mode === 1) {
         result = await rpc.call("composition.generateChord", {
@@ -238,8 +279,10 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           <button className="pgd-close" onClick={onClose}>×</button>
         </div>
 
-        <div className="pgd-body">
-          {/* Mode selector */}
+        <div className="pgd-container">
+          <PresetBrowser onLoadPreset={handleLoadPreset} currentStyle={styles[style]?.name || ""} />
+          <div className="pgd-content">
+            {/* Mode selector */}
           <div className="pgd-row">
             <label className="pgd-label">Mode</label>
             <select className="pgd-select pgd-mode-select" aria-label="Mode" value={mode} onChange={(e) => setMode(Number(e.target.value))}>
@@ -342,6 +385,46 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
                   <span className="pgd-unit">notes</span>
                 </div>
               </div>
+              {styleParamSchema.length > 0 && (
+                <div className="pgd-style-params">
+                  <h4>{styles[style]?.name} Parameters</h4>
+                  {styleParamSchema.map((field) => (
+                    <div key={field.name} className="pgd-param-row">
+                      <label>{field.label}</label>
+                      {field.type === "bool" ? (
+                        <input
+                          type="checkbox"
+                          checked={(styleParams[field.name] as boolean) ?? (field.default === 1)}
+                          onChange={(e) =>
+                            setStyleParams((prev) => ({ ...prev, [field.name]: e.target.checked }))
+                          }
+                        />
+                      ) : field.type === "int" ? (
+                        <input
+                          type="number"
+                          min={field.min}
+                          max={field.max}
+                          value={(styleParams[field.name] as number) ?? field.default}
+                          onChange={(e) =>
+                            setStyleParams((prev) => ({ ...prev, [field.name]: parseInt(e.target.value) || field.default }))
+                          }
+                        />
+                      ) : (
+                        <input
+                          type="range"
+                          min={field.min}
+                          max={field.max}
+                          step={0.01}
+                          value={(styleParams[field.name] as number) ?? field.default}
+                          onChange={(e) =>
+                            setStyleParams((prev) => ({ ...prev, [field.name]: parseFloat(e.target.value) }))
+                          }
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -548,6 +631,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Footer */}
