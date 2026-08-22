@@ -66,6 +66,7 @@ add_executable(hdaw_tests
     unit/engine/bpm_detector_test.cpp
     unit/engine/generative_test.cpp
     unit/engine/phrase_generator_test.cpp
+    unit/engine/phrase_generator_new_styles_test.cpp
     unit/engine/envelope_generator_test.cpp
     unit/engine/arrangement_generator_test.cpp
     unit/engine/rhythm_pattern_generator_test.cpp

@@ -1158,10 +1158,168 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     }
 
     case PhaseShift:
+    {
+        const int voice1Grid = std::clamp(params.phaseShift.voice1Grid, 2, 16);
+        const int voice2Grid = std::clamp(params.phaseShift.voice2Grid, 2, 16);
+        const double phaseRate = std::clamp(params.phaseShift.phaseRate, 0.0, 1.0);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+
+        // Voice 1: euclidean pattern on voice1Grid subdivision
+        int k1 = std::clamp(numNotes / 2, 1, voice1Grid);
+        auto onsets1 = HDAW::euclideanSteps(k1, voice1Grid);
+        // Voice 2: euclidean pattern on voice2Grid subdivision
+        int k2 = std::clamp(numNotes / 2, 1, voice2Grid);
+        auto onsets2 = HDAW::euclideanSteps(k2, voice2Grid);
+
+        // Place voice 1 hits (root register)
+        for (int step : onsets1)
+        {
+            int gridStep = static_cast<int>(std::lround(static_cast<double>(step) * static_cast<double>(totalSteps) / static_cast<double>(voice1Grid)));
+            if (gridStep >= totalSteps) continue;
+            GeneratedNote n;
+            n.startBeat = gridStep * beatPerStep;
+            n.noteNumber = pitches[0]; // root
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * 0.8;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+
+        // Place voice 2 hits (fifth register, shifted by phaseRate)
+        int phaseOffset = static_cast<int>(std::lround(phaseRate * static_cast<double>(totalSteps)));
+        for (int step : onsets2)
+        {
+            int gridStep = static_cast<int>(std::lround(static_cast<double>(step) * static_cast<double>(totalSteps) / static_cast<double>(voice2Grid)));
+            gridStep = (gridStep + phaseOffset) % totalSteps;
+            GeneratedNote n;
+            n.startBeat = gridStep * beatPerStep;
+            // Fifth above root, clamped to range
+            int fifthIdx = (pitchCount > 4) ? 4 : (pitchCount - 1);
+            n.noteNumber = pitches[fifthIdx]; // fifth
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * 0.8;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+        break;
+    }
+
     case AdditiveRhythm:
+    {
+        const int subdivision = std::clamp(params.additiveRhythm.subdivision, 4, 32);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        const double beatPerStep = params.lengthBeats / static_cast<double>(subdivision);
+
+        // Parse grouping string: "3+3+2" -> [3, 3, 2]
+        std::vector<int> groups;
+        {
+            juce::StringArray tokens = juce::StringArray::fromTokens(
+                juce::String(params.additiveRhythm.grouping), "+", "");
+            for (const auto& token : tokens)
+            {
+                int val = token.getIntValue();
+                if (val > 0)
+                    groups.push_back(val);
+            }
+        }
+        if (groups.empty())
+            groups = { 3, 3, 2 }; // fallback
+
+        // Repeat the grouping pattern to fill the phrase
+        int pos = 0;
+        int groupIdx = 0;
+        int groupOffset = 0; // position within current group
+        while (pos < subdivision)
+        {
+            int currentGroupSize = groups[groupIdx % static_cast<int>(groups.size())];
+            bool isFirstInGroup = (groupOffset == 0);
+
+            GeneratedNote n;
+            n.startBeat = pos * beatPerStep;
+            n.noteNumber = pitches[randomInt(0, pitchCount - 1)];
+            // Accent notes on group boundaries (higher velocity)
+            n.velocity = isFirstInGroup
+                ? params.maxVelocity
+                : randomInt(params.minVelocity, params.maxVelocity - 20);
+            n.durationBeats = beatPerStep * (isFirstInGroup ? 0.9 : 0.6);
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+
+            ++pos;
+            ++groupOffset;
+            if (groupOffset >= currentGroupSize)
+            {
+                groupOffset = 0;
+                ++groupIdx;
+            }
+        }
+        break;
+    }
+
     case MinimalistLoop:
+    {
+        const int cellLength = std::clamp(params.minimalistLoop.cellLength, 3, 12);
+        const double mutationRate = std::clamp(params.minimalistLoop.mutationRate, 0.0, 1.0);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        // Generate initial cell (3-12 notes with random pitches and durations)
+        std::vector<GeneratedNote> cell(cellLength);
+        for (int i = 0; i < cellLength; ++i)
+        {
+            cell[i].noteNumber = pitches[randomInt(0, pitchCount - 1)];
+            cell[i].velocity = randomInt(params.minVelocity, params.maxVelocity);
+            cell[i].durationBeats = randomDouble(0.2, 1.0);
+        }
+
+        // Calculate how many steps fit in the phrase
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+
+        // Repeat the cell to fill the phrase, mutating on each repetition
+        int step = 0;
+        while (step < totalSteps)
+        {
+            int cellIdx = step % cellLength;
+            GeneratedNote n = cell[cellIdx];
+
+            // Mutate notes with probability mutationRate
+            if (randomDouble(0.0, 1.0) < mutationRate)
+            {
+                // Mutate pitch: shift by ±1 or ±2 scale steps
+                int pitchIdx = 0;
+                for (int p = 0; p < pitchCount; ++p)
+                {
+                    if (pitches[p] == n.noteNumber) { pitchIdx = p; break; }
+                }
+                int shift = randomInt(-2, 2);
+                if (shift == 0) shift = 1;
+                pitchIdx = (std::max)(0, (std::min)(pitchCount - 1, pitchIdx + shift));
+                n.noteNumber = pitches[pitchIdx];
+                n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            }
+
+            n.startBeat = step * beatPerStep;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+
+            ++step;
+        }
+        break;
+    }
+
     case Layered:
-        break; // stub: return empty (to be implemented in Task 9)
+        break; // deferred to future iteration
 
     default: // Standard
     {
@@ -1301,6 +1459,7 @@ std::vector<PhraseGenerator::ParamField> PhraseGenerator::getStyleParamsSchema(S
         };
     case AdditiveRhythm:
         return {
+            {"grouping", "string", 0, 0, 0, "Grouping (e.g. 3+3+2)"},
             {"subdivision", "integer", 4, 32, 8, "Subdivision"}
         };
     case MinimalistLoop:
