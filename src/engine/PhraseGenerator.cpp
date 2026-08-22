@@ -869,16 +869,299 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     }
 
     case MarkovMelody:
+    {
+        const int grid = std::clamp(params.markovMelody.rhythmGrid, 4, 32);
+        const int states = std::clamp(params.markovMelody.stateCount, 3, 12);
+        const double beatPerStep = params.lengthBeats / static_cast<double>(grid);
+        const int totalSteps = grid;
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        int currentIdx = pitchCount / 2;
+        for (int step = 0; step < totalSteps; ++step)
+        {
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep;
+            n.noteNumber = pitches[std::clamp(currentIdx, 0, pitchCount - 1)];
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * randomDouble(0.6, 1.0);
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+
+            currentIdx = HDAW::nextMarkovDegree(rng, currentIdx, (std::min)(states, pitchCount));
+        }
+        break;
+    }
+
     case EvolvingTexture:
+    {
+        const int layers = std::clamp(params.evolvingTexture.layerCount, 1, 8);
+        const double drift = std::clamp(params.evolvingTexture.driftSpeed, 0.0, 1.0);
+        const double swell = std::clamp(params.evolvingTexture.densitySwell, 0.0, 1.0);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        for (int layer = 0; layer < layers; ++layer)
+        {
+            double startFraction = static_cast<double>(layer) / static_cast<double>(layers);
+            double layerStart = startFraction * params.lengthBeats * (1.0 - swell * 0.5);
+
+            int pitchIdx = randomInt(0, pitchCount - 1);
+            double pos = layerStart;
+
+            while (pos < params.lengthBeats)
+            {
+                double noteLen = randomDouble(2.0, 6.0);
+                if (pos + noteLen > params.lengthBeats)
+                    noteLen = params.lengthBeats - pos;
+                if (noteLen < 0.1) break;
+
+                GeneratedNote n;
+                n.startBeat = pos;
+                n.noteNumber = pitches[std::clamp(pitchIdx, 0, pitchCount - 1)];
+                n.velocity = randomInt(params.minVelocity, params.maxVelocity - 20);
+                n.durationBeats = noteLen;
+                result.push_back(n);
+
+                pos += noteLen * randomDouble(0.8, 1.2);
+                if (randomDouble(0.0, 1.0) < drift)
+                    pitchIdx += randomInt(-1, 1);
+                pitchIdx = (std::max)(0, (std::min)(pitchCount - 1, pitchIdx));
+            }
+        }
+        break;
+    }
+
     case Aleatoric:
+    {
+        const double tightness = std::clamp(params.aleatoric.constraintTightness, 0.0, 1.0);
+        const double rhythmVar = std::clamp(params.aleatoric.rhythmVariety, 0.0, 1.0);
+        const double restProb = std::clamp(params.aleatoric.restProbability, 0.0, 1.0);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+
+        int centerIdx = pitchCount / 2;
+        for (int step = 0; step < totalSteps; ++step)
+        {
+            if (randomDouble(0.0, 1.0) < restProb)
+                continue;
+
+            double r = randomDouble(0.0, 1.0);
+            if (r > rhythmVar)
+                continue;
+
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep + randomDouble(-beatPerStep * 0.2, beatPerStep * 0.2);
+            if (n.startBeat < 0.0) n.startBeat = 0.0;
+
+            double pitchRoll = randomDouble(0.0, 1.0);
+            int pitchIdx;
+            if (pitchRoll < tightness)
+            {
+                pitchIdx = centerIdx + randomInt(-1, 1);
+            }
+            else
+            {
+                pitchIdx = randomInt(0, pitchCount - 1);
+            }
+            pitchIdx = (std::max)(0, (std::min)(pitchCount - 1, pitchIdx));
+            n.noteNumber = pitches[pitchIdx];
+
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * randomDouble(0.3, 1.0);
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+        break;
+    }
+
     case ScalarRun:
+    {
+        const int dir = std::clamp(params.scalarRun.direction, 0, 2);
+        const int octaves = std::clamp(params.scalarRun.octaveSpan, 1, 4);
+        const int speed = std::clamp(params.scalarRun.runSpeed, 4, 32);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        const int totalSteps = speed;
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        int scaleRange = pitchCount * octaves;
+
+        int pos = 0;
+        int direction = (dir == 1) ? -1 : 1;
+        for (int step = 0; step < totalSteps; ++step)
+        {
+            int pitchIdx = pos % pitchCount;
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep;
+            n.noteNumber = pitches[std::clamp(pitchIdx, 0, pitchCount - 1)];
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * 0.9;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+
+            pos += direction;
+            if (dir == 2)
+            {
+                if (pos >= scaleRange || pos < 0)
+                {
+                    direction = -direction;
+                    pos += direction * 2;
+                }
+            }
+            else
+            {
+                if (pos >= scaleRange)
+                    pos = 0;
+                if (pos < 0)
+                    pos = scaleRange - 1;
+            }
+        }
+        break;
+    }
+
     case ChordToneSeq:
+    {
+        const int approachType = std::clamp(params.chordToneSeq.approachType, 0, 3);
+        const int shape = std::clamp(params.chordToneSeq.patternShape, 0, 3);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        int chordTones[] = { 0, 2, 4, 6 };
+        int numChordTones = 4;
+
+        const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
+        const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+
+        for (int step = 0; step < totalSteps; ++step)
+        {
+            int seqIdx;
+            switch (shape)
+            {
+                case 0: seqIdx = step % numChordTones; break;
+                case 1: seqIdx = numChordTones - 1 - (step % numChordTones); break;
+                case 2:
+                {
+                    int cycle = step % (numChordTones * 2 - 2);
+                    seqIdx = cycle < numChordTones ? cycle : (numChordTones * 2 - 2 - cycle);
+                    break;
+                }
+                default: seqIdx = randomInt(0, numChordTones - 1); break;
+            }
+
+            int baseIdx = chordTones[seqIdx];
+            int pitchIdx = baseIdx % pitchCount;
+
+            if (approachType > 0 && step > 0 && randomDouble(0.0, 1.0) < 0.35)
+            {
+                GeneratedNote approach;
+                approach.startBeat = (step - 1) * beatPerStep + beatPerStep * 0.5;
+                switch (approachType)
+                {
+                    case 1:
+                        approach.noteNumber = pitches[std::clamp(pitchIdx - 1, 0, pitchCount - 1)];
+                        break;
+                    case 2:
+                        approach.noteNumber = pitches[std::clamp(pitchIdx, 0, pitchCount - 1)] + 1;
+                        break;
+                    case 3:
+                        approach.noteNumber = pitches[std::clamp(pitchIdx + ((randomDouble(0, 1) < 0.5) ? -1 : 1), 0, pitchCount - 1)];
+                        break;
+                    default:
+                        approach.noteNumber = pitches[pitchIdx];
+                        break;
+                }
+                approach.velocity = params.minVelocity + 10;
+                approach.durationBeats = beatPerStep * 0.4;
+                if (approach.startBeat + approach.durationBeats <= params.lengthBeats)
+                    result.push_back(approach);
+            }
+
+            GeneratedNote n;
+            n.startBeat = step * beatPerStep;
+            n.noteNumber = pitches[pitchIdx];
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = beatPerStep * 0.8;
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+        break;
+    }
+
     case CallResponse:
+    {
+        const int phraseLen = std::clamp(params.callResponse.phraseLength, 1, 8);
+        const double variation = std::clamp(params.callResponse.responseVariation, 0.0, 1.0);
+        const double rest = std::clamp(params.callResponse.restBeats, 0.0, 4.0);
+        const int pitchCount = static_cast<int>(pitches.size());
+        if (pitchCount == 0) break;
+
+        const double callEnd = static_cast<double>(phraseLen);
+        const double responseStart = callEnd + rest;
+
+        auto generatePhrase = [&](double startTime, double length) -> std::vector<GeneratedNote>
+        {
+            std::vector<GeneratedNote> phrase;
+            const int notesInPhrase = (std::max)(2, static_cast<int>(std::lround(length * 2.0)));
+            const double noteLen = length / static_cast<double>(notesInPhrase);
+            int idx = randomInt(pitchCount / 3, pitchCount * 2 / 3);
+
+            for (int i = 0; i < notesInPhrase; ++i)
+            {
+                GeneratedNote n;
+                n.startBeat = startTime + i * noteLen + randomDouble(-noteLen * 0.1, noteLen * 0.1);
+                if (n.startBeat < startTime) n.startBeat = startTime;
+
+                idx += randomInt(-1, 1);
+                idx = (std::max)(0, (std::min)(pitchCount - 1, idx));
+                n.noteNumber = pitches[idx];
+                n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+                n.durationBeats = noteLen * randomDouble(0.6, 1.0);
+                if (n.startBeat + n.durationBeats > startTime + length)
+                    n.durationBeats = (std::max)(0.05, startTime + length - n.startBeat);
+                phrase.push_back(n);
+            }
+            return phrase;
+        };
+
+        auto call = generatePhrase(0.0, callEnd);
+        result.insert(result.end(), call.begin(), call.end());
+
+        auto response = generatePhrase(responseStart, callEnd);
+        if (variation > 0.0)
+        {
+            for (auto& n : response)
+            {
+                if (randomDouble(0.0, 1.0) < variation)
+                {
+                    int shift = randomInt(-2, 2);
+                    int newIdx = 0;
+                    for (int p = 0; p < pitchCount; ++p)
+                    {
+                        if (pitches[p] == n.noteNumber) { newIdx = p; break; }
+                    }
+                    newIdx += shift;
+                    newIdx = (std::max)(0, (std::min)(pitchCount - 1, newIdx));
+                    n.noteNumber = pitches[newIdx];
+                }
+            }
+        }
+        result.insert(result.end(), response.begin(), response.end());
+        break;
+    }
+
     case PhaseShift:
     case AdditiveRhythm:
     case MinimalistLoop:
     case Layered:
-        break; // stub: return empty (to be implemented in Tasks 8-9)
+        break; // stub: return empty (to be implemented in Task 9)
 
     default: // Standard
     {
