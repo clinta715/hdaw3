@@ -77,7 +77,7 @@ bool PatternLibrary::savePattern(const PatternPreset& preset, juce::String& outE
         return false;
     }
 
-    rebuildIndex();
+    rebuildIndexUnlocked();
     return true;
 }
 
@@ -184,7 +184,7 @@ bool PatternLibrary::deletePattern(const juce::String& id, juce::String& outErro
         return false;
     }
 
-    rebuildIndex();
+    rebuildIndexUnlocked();
     return true;
 }
 
@@ -299,7 +299,7 @@ bool PatternLibrary::importPattern(const juce::String& jsonString, juce::String&
     }
 
     outId = generateId("user", category, sanitized);
-    rebuildIndex();
+    rebuildIndexUnlocked();
     return true;
 }
 
@@ -350,7 +350,11 @@ bool PatternLibrary::exportPattern(const juce::String& id, juce::String& outJson
 void PatternLibrary::rebuildIndex()
 {
     std::lock_guard<std::mutex> lock(mutex);
+    rebuildIndexUnlocked();
+}
 
+void PatternLibrary::rebuildIndexUnlocked()
+{
     index.clear();
 
     auto scanDir = [this](const juce::String& source, const juce::File& dir)

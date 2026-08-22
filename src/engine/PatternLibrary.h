@@ -68,6 +68,7 @@ private:
                             const juce::String& filename) const;
     void writeIndex();
     void readIndex();
+    void rebuildIndexUnlocked();
     bool validatePreset(const PatternPreset& preset, juce::String& outError) const;
 };
 
