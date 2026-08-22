@@ -1,9 +1,7 @@
 #pragma once
 #include <juce_core/juce_core.h>
-#include <string>
+#include <mutex>
 #include <vector>
-#include <cstdint>
-#include <optional>
 
 namespace HDAW {
 
@@ -60,6 +58,7 @@ public:
 
 private:
     juce::File root;
+    mutable std::mutex mutex;
     std::vector<PatternIndexEntry> index;
 
     void ensureDirectoriesExist();
