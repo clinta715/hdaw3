@@ -5,7 +5,7 @@ import React from "react";
 
 afterEach(() => cleanup());
 
-function ThrowingChild() {
+function ThrowingChild(): React.ReactNode {
   throw new Error("Test error");
 }
 

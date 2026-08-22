@@ -17,7 +17,7 @@ function mkTrack(over: Partial<TrackSnapshot> = {}): TrackSnapshot {
   };
 }
 
-const meter: MeterLevels = { l: 0.5, r: 0.4 };
+const meter: MeterLevels = { l: 0.5, r: 0.4, rmsL: 0, rmsR: 0, lufs: 0 };
 
 describe("MixerStrip", () => {
   beforeEach(() => {

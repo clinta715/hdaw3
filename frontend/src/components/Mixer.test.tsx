@@ -24,7 +24,7 @@ describe("Mixer", () => {
     mockedCall.mockReset();
     mockedCall.mockResolvedValue(null);
     useProjectStore.setState({ snapshot: null });
-    useMeterStore.setState({ master: { l: 0, r: 0 }, tracks: [] });
+    useMeterStore.setState({ master: { l: 0, r: 0, rmsL: 0, rmsR: 0, lufs: 0 }, tracks: [] });
   });
 
   afterEach(() => cleanup());
@@ -76,8 +76,8 @@ describe("Mixer", () => {
 
   it("passes meter data from meter store to strips", () => {
     const tracks = [mkTrack({ index: 0 })];
-    const masterMeter: MeterLevels = { l: 0.7, r: 0.6 };
-    const trackMeters: MeterLevels[] = [{ l: 0.5, r: 0.4 }];
+    const masterMeter: MeterLevels = { l: 0.7, r: 0.6, rmsL: 0, rmsR: 0, lufs: 0 };
+    const trackMeters: MeterLevels[] = [{ l: 0.5, r: 0.4, rmsL: 0, rmsR: 0, lufs: 0 }];
     useProjectStore.setState({ snapshot: { tracks } as any });
     useMeterStore.setState({ master: masterMeter, tracks: trackMeters });
     const { container } = render(<Mixer />);

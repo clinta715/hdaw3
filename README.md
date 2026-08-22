@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.24.1
+**Current version**: 0.24.2
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.24.1)
+## What works today (v0.24.2)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -586,6 +586,42 @@ or via MCP tools.
   callback, partitioning.
 - 17 frontend Vitest tests for the library store.
 - 6 new Vitest tests for FileBrowser library mode.
+
+### v0.24.2 — Frontend test coverage expansion
+
+Added comprehensive unit tests for 9 previously untested UI components and
+fixed TypeScript errors in 9 existing test files. Total test count increased
+from 539 to 840 (301 new tests).
+
+**New test files (9 components):**
+- TransportBar (44 tests): button clicks, BPM/time sig editing, key/scale
+  popover, store state transitions, RPC call verification
+- PianoRoll (28 tests): clip selection, note grid, velocity/CC lanes,
+  chord mode, quantize/swing controls
+- FXChain (32 tests): slot rendering, plugin loading, parameter display,
+  presets, A/B comparison, drag reorder
+- ArrangerLane (32 tests): region rendering, drag/resize, rename, delete
+- FileMenu (31 tests): menu toggle, items, keyboard shortcuts, recent projects
+- ImportDialog (27 tests): file selection, format options, import flow
+- ModulationPanel (24 tests): LFO display, target selection, rate/depth controls
+- PluginManagerDialog (35 tests): plugin list, scanning, search/filter
+- StepSequencer (48 tests): grid rendering, step interaction, pattern management
+
+**Fixed test files (9 files):**
+- AudioClipEditor.test.tsx: added missing ProjectSnapshot properties
+- ErrorBoundary.test.tsx: fixed ThrowingChild component type
+- meterStore.test.ts: added missing MeterLevels properties
+- projectStore.test.ts: added missing TransportSnapshot properties
+- ExportDialog.test.tsx: fixed Set<string> to Set<number>
+- Inspector.test.tsx: added missing transport properties
+- MidiThumbnailCanvas.test.tsx: added missing NoteSnapshot properties
+- Mixer.test.tsx: added missing MeterLevels properties
+- MixerStrip.test.tsx: added missing MeterLevels properties
+
+**Test results:**
+- 65 test files (up from 56)
+- 840 tests passing (up from 539)
+- Zero TypeScript errors in test files
 
 ### v0.17.0 — MIDI file import
 

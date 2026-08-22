@@ -15,6 +15,8 @@ const mockSnapshot: ProjectSnapshot = {
     loopEnd: 8,
     currentTimeSeconds: 0,
     sampleRate: 44100,
+    timeSigNumerator: 4,
+    timeSigDenominator: 4,
   },
   tracks: [
     {

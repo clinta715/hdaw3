@@ -34,7 +34,7 @@ function mkClip(over: Partial<ClipSnapshot> = {}): ClipSnapshot {
 function mkSnapshot(tracks: TrackSnapshot[], clips: ClipSnapshot[]): ProjectSnapshot {
   return {
     name: "test",
-    transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 0, currentTimeSeconds: 0, sampleRate: 44100 },
+    transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 0, currentTimeSeconds: 0, sampleRate: 44100, timeSigNumerator: 4, timeSigDenominator: 4 },
     tracks, clips,
     scaleRoot: 0, scaleMode: 0,
   };

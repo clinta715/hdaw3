@@ -33,8 +33,8 @@ describe("MidiThumbnailCanvas", () => {
   it("renders a canvas and does not fetch when notes are already loaded", () => {
     const clip = mkClip();
     const notes: NoteSnapshot[] = [
-      { noteId: 1, pitch: 60, velocity: 100, startBeat: 0, durationBeats: 1 },
-      { noteId: 2, pitch: 64, velocity: 80, startBeat: 1, durationBeats: 1 },
+      { noteId: 1, pitch: 60, velocity: 100, startBeat: 0, durationBeats: 1, chance: 100, repeatCount: 0, repeatRate: 0, repeatCurve: 0, occurrence: 0, recurrence: 0, noteGain: 1, notePan: 0, notePitch: 0, noteTimbre: 0, notePressure: 0 },
+      { noteId: 2, pitch: 64, velocity: 80, startBeat: 1, durationBeats: 1, chance: 100, repeatCount: 0, repeatRate: 0, repeatCurve: 0, occurrence: 0, recurrence: 0, noteGain: 1, notePan: 0, notePitch: 0, noteTimbre: 0, notePressure: 0 },
     ];
     useProjectStore.setState({ notesByClip: new Map([[clip.clipId, notes]]) });
 

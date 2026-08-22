@@ -77,8 +77,23 @@ describe("AudioClipEditor", () => {
   beforeEach(() => {
     useProjectStore.setState({
       snapshot: {
+        name: "Test Project",
+        transport: {
+          bpm: 120,
+          isPlaying: false,
+          isLooping: false,
+          isRecording: false,
+          loopStart: 0,
+          loopEnd: 8,
+          currentTimeSeconds: 0,
+          sampleRate: 44100,
+          timeSigNumerator: 4,
+          timeSigDenominator: 4,
+        },
         tracks: [mkTrack()],
         clips: [mkClip()],
+        scaleRoot: 0,
+        scaleMode: 0,
         masterGain: 1,
       },
     });
@@ -92,6 +107,8 @@ describe("AudioClipEditor", () => {
         loopEnd: 8,
         currentTimeSeconds: 0,
         sampleRate: 44100,
+        timeSigNumerator: 4,
+        timeSigDenominator: 4,
       },
     });
     useUiStore.setState({ selectedClipIds: new Set([1]) });
@@ -138,8 +155,12 @@ describe("AudioClipEditor", () => {
   it("gainToDb pure function works (indirectly via rendered dB display)", () => {
     useProjectStore.setState({
       snapshot: {
+        name: "Test Project",
+        transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 8, currentTimeSeconds: 0, sampleRate: 44100, timeSigNumerator: 4, timeSigDenominator: 4 },
         tracks: [mkTrack()],
         clips: [mkClip({ gain: 0.5 })],
+        scaleRoot: 0,
+        scaleMode: 0,
         masterGain: 1,
       },
     });
@@ -150,8 +171,12 @@ describe("AudioClipEditor", () => {
   it("dbToGain pure function works (indirectly via rendered dB display)", () => {
     useProjectStore.setState({
       snapshot: {
+        name: "Test Project",
+        transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 8, currentTimeSeconds: 0, sampleRate: 44100, timeSigNumerator: 4, timeSigDenominator: 4 },
         tracks: [mkTrack()],
         clips: [mkClip({ gain: 0 })],
+        scaleRoot: 0,
+        scaleMode: 0,
         masterGain: 1,
       },
     });
@@ -162,8 +187,12 @@ describe("AudioClipEditor", () => {
   it("shows file-missing banner when clip source missing", () => {
     useProjectStore.setState({
       snapshot: {
+        name: "Test Project",
+        transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 8, currentTimeSeconds: 0, sampleRate: 44100, timeSigNumerator: 4, timeSigDenominator: 4 },
         tracks: [mkTrack()],
         clips: [mkClip({ sourceFile: "" })],
+        scaleRoot: 0,
+        scaleMode: 0,
         masterGain: 1,
       },
     });
@@ -188,11 +217,15 @@ describe("AudioClipEditor", () => {
   it("renders without crashing with multiple clips selected", () => {
     useProjectStore.setState({
       snapshot: {
+        name: "Test Project",
+        transport: { bpm: 120, isPlaying: false, isLooping: false, isRecording: false, loopStart: 0, loopEnd: 8, currentTimeSeconds: 0, sampleRate: 44100, timeSigNumerator: 4, timeSigDenominator: 4 },
         tracks: [mkTrack()],
         clips: [
           mkClip({ clipId: 1, name: "Clip A" }),
           mkClip({ clipId: 2, name: "Clip B" }),
         ],
+        scaleRoot: 0,
+        scaleMode: 0,
         masterGain: 1,
       },
     });

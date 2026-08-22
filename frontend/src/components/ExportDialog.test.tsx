@@ -26,7 +26,7 @@ function getRowControl(labelText: string): HTMLInputElement | HTMLSelectElement 
 function seedStores(overrides?: {
   transport?: Partial<ReturnType<typeof useTransportStore.getState>["transport"]>;
   snapshot?: Partial<NonNullable<ReturnType<typeof useProjectStore.getState>["snapshot"]>>;
-  selectedClipIds?: Set<string>;
+  selectedClipIds?: Set<number>;
   markers?: Array<{ index: number; name: string; time: number; color: number }>;
 }) {
   useTransportStore.setState({
