@@ -104,6 +104,12 @@ bool PatternLibrary::loadPattern(const juce::String& id, PatternPreset& outPrese
     }
 
     juce::File file = root.getChildFile(entry.path);
+    if (!file.isAChildOf(root))
+    {
+        outError = "Invalid path in index";
+        return false;
+    }
+
     if (!file.existsAsFile())
     {
         outError = "File does not exist: " + file.getFullPathName();
@@ -292,7 +298,28 @@ bool PatternLibrary::importPattern(const juce::String& jsonString, juce::String&
         sanitized = file.getFileNameWithoutExtension();
     }
 
-    if (!file.replaceWithText(jsonString))
+    juce::DynamicObject::Ptr cleanObj = new juce::DynamicObject();
+    cleanObj->setProperty("version", preset.version);
+    cleanObj->setProperty("name", preset.name);
+    cleanObj->setProperty("description", preset.description);
+    cleanObj->setProperty("category", preset.category);
+    cleanObj->setProperty("author", preset.author);
+    cleanObj->setProperty("createdAt", preset.createdAt);
+    cleanObj->setProperty("style", preset.style);
+
+    juce::Array<juce::var> tagsArr;
+    for (const auto& tag : preset.tags)
+        tagsArr.add(tag);
+    cleanObj->setProperty("tags", tagsArr);
+
+    if (preset.paramsJson.isNotEmpty())
+        cleanObj->setProperty("params", juce::JSON::parse(preset.paramsJson));
+
+    if (preset.styleParamsJson.isNotEmpty())
+        cleanObj->setProperty("styleParams", juce::JSON::parse(preset.styleParamsJson));
+
+    juce::String cleanJson = juce::JSON::toString(cleanObj.get(), true);
+    if (!file.replaceWithText(cleanJson))
     {
         outError = "Failed to write file";
         return false;
