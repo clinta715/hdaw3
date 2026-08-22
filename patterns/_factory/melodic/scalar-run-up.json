@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Scalar Run Up",
+  "description": "Ascending scalar run spanning 2 octaves in 16th notes",
+  "category": "melodic",
+  "tags": ["scalar", "ascending", "run", "16th"],
+  "author": "HDAW",
+  "style": "ScalarRun",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 70,
+    "maxVelocity": 110,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 16,
+    "noteDuration": 0.125
+  },
+  "styleParams": {
+    "direction": 0,
+    "octaveSpan": 2,
+    "runSpeed": 16
+  }
+}

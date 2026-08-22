@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Chord Tone Sequence",
+  "description": "Ascending chord-tone sequence with chromatic approach notes",
+  "category": "melodic",
+  "tags": ["chord-tone", "sequence", "approach", "melodic"],
+  "author": "HDAW",
+  "style": "ChordToneSeq",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 65,
+    "maxVelocity": 105,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 8,
+    "noteDuration": 0.375
+  },
+  "styleParams": {
+    "approachType": 1,
+    "patternShape": 0
+  }
+}

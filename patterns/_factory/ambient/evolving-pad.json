@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Evolving Pad",
+  "description": "Slowly evolving 4-layer texture with gradual density drift",
+  "category": "ambient",
+  "tags": ["pad", "texture", "evolving", "ambient"],
+  "author": "HDAW",
+  "style": "EvolvingTexture",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 40,
+    "maxVelocity": 80,
+    "seed": 0,
+    "lengthBeats": 8.0,
+    "density": 6,
+    "noteDuration": 2.0
+  },
+  "styleParams": {
+    "layerCount": 4,
+    "driftSpeed": 0.3,
+    "densitySwell": 0.5
+  }
+}

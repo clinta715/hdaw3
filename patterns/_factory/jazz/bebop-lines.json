@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Bebop Lines",
+  "description": "Chromatic bebop walking bass with ghost notes for authentic swing feel",
+  "category": "jazz",
+  "tags": ["bebop", "walking", "chromatic", "ghost"],
+  "author": "HDAW",
+  "style": "WalkingBass",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 36,
+    "highNote": 60,
+    "minVelocity": 60,
+    "maxVelocity": 100,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 8,
+    "noteDuration": 0.4
+  },
+  "styleParams": {
+    "approachNotes": true,
+    "ghostNotes": 0.25,
+    "chromaticism": 0.5
+  }
+}

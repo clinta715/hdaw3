@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Markov Melody",
+  "description": "Markov-chain generated melody on major scale with 16th-note grid",
+  "category": "ambient",
+  "tags": ["markov", "melody", "generative", "seamless"],
+  "author": "HDAW",
+  "style": "MarkovMelody",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 55,
+    "maxVelocity": 95,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 10,
+    "noteDuration": 0.25
+  },
+  "styleParams": {
+    "rhythmGrid": 16,
+    "stateCount": 7
+  }
+}

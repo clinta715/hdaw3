@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Dark Drill Bass",
+  "description": "Menacing drill bassline in minor pentatonic, low register with heavy glide and slide",
+  "category": "trap",
+  "tags": ["drill", "bass", "dark", "low"],
+  "author": "HDAW",
+  "style": "DrillBass",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 5,
+    "lowNote": 36,
+    "highNote": 48,
+    "minVelocity": 80,
+    "maxVelocity": 120,
+    "seed": 0,
+    "lengthBeats": 8.0,
+    "density": 6,
+    "noteDuration": 0.75
+  },
+  "styleParams": {
+    "glideDuration": 0.2,
+    "slideIntensity": 0.9,
+    "sustainTail": true,
+    "displacement": 0.6
+  }
+}

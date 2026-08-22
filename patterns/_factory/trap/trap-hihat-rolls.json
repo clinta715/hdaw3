@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Trap Hi-Hat Rolls",
+  "description": "Classic trap hi-hats with 16th-note rolls and ratchet bursts",
+  "category": "trap",
+  "tags": ["hihat", "trap", "rolls", "ratchet"],
+  "author": "HDAW",
+  "style": "TrapHiHat",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 60,
+    "highNote": 72,
+    "minVelocity": 60,
+    "maxVelocity": 100,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 16,
+    "noteDuration": 0.125
+  },
+  "styleParams": {
+    "rollDensity": 4,
+    "velocityDecay": 0.65,
+    "ratchetChance": 0.35
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Call & Response Jazz",
+  "description": "Call-and-response phrases with 50% variation for jazz improvisation",
+  "category": "melodic",
+  "tags": ["call-response", "jazz", "phrasing", "improvisation"],
+  "author": "HDAW",
+  "style": "CallResponse",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 60,
+    "maxVelocity": 105,
+    "seed": 0,
+    "lengthBeats": 8.0,
+    "density": 8,
+    "noteDuration": 0.375
+  },
+  "styleParams": {
+    "phraseLength": 4,
+    "responseVariation": 0.5,
+    "restBeats": 1.0
+  }
+}

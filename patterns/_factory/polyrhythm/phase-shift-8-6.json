@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Phase Shift 8 vs 6",
+  "description": "Polyrhythmic phase shift between 8th and 6th note grids",
+  "category": "polyrhythm",
+  "tags": ["phase", "polyrhythm", "8vs6", "minimal"],
+  "author": "HDAW",
+  "style": "PhaseShift",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 84,
+    "minVelocity": 60,
+    "maxVelocity": 100,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 12,
+    "noteDuration": 0.25
+  },
+  "styleParams": {
+    "voice1Grid": 8,
+    "voice2Grid": 6,
+    "phaseRate": 0.3
+  }
+}

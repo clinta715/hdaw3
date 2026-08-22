@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Aggressive 808",
+  "description": "Hard-hitting 808 pattern, chromatic low end with high velocity",
+  "category": "trap",
+  "tags": ["808", "aggressive", "bass", "heavy"],
+  "author": "HDAW",
+  "style": "DrillBass",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 36,
+    "highNote": 48,
+    "minVelocity": 100,
+    "maxVelocity": 127,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 4,
+    "noteDuration": 0.9
+  },
+  "styleParams": {
+    "glideDuration": 0.25,
+    "slideIntensity": 1.0,
+    "sustainTail": true,
+    "displacement": 0.4
+  }
+}

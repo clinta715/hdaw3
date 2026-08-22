@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Aleatoric Cloud",
+  "description": "Sparse, aleatoric note cloud with loose constraints and high rest probability",
+  "category": "ambient",
+  "tags": ["aleatoric", "sparse", "cloud", "experimental"],
+  "author": "HDAW",
+  "style": "Aleatoric",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 96,
+    "minVelocity": 30,
+    "maxVelocity": 80,
+    "seed": 0,
+    "lengthBeats": 8.0,
+    "density": 4,
+    "noteDuration": 0.25
+  },
+  "styleParams": {
+    "constraintTightness": 0.3,
+    "rhythmVariety": 0.8,
+    "restProbability": 0.4
+  }
+}

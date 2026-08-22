@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Jazz Counterpoint",
+  "description": "Two-voice counterpoint with contrary motion for jazz arrangements",
+  "category": "jazz",
+  "tags": ["counterpoint", "voices", "contrary", "polyphonic"],
+  "author": "HDAW",
+  "style": "Counterpoint",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 36,
+    "highNote": 72,
+    "minVelocity": 65,
+    "maxVelocity": 100,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 8,
+    "noteDuration": 0.5
+  },
+  "styleParams": {
+    "voiceCount": 2,
+    "species": 2,
+    "intervalConstraint": 1
+  }
+}

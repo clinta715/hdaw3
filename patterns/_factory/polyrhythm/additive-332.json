@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Additive 3+3+2",
+  "description": "Additive rhythm with classic 3+3+2 grouping on 8th-note subdivision",
+  "category": "polyrhythm",
+  "tags": ["additive", "332", "tresillo", "rhythm"],
+  "author": "HDAW",
+  "style": "AdditiveRhythm",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 36,
+    "highNote": 60,
+    "minVelocity": 80,
+    "maxVelocity": 120,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 8,
+    "noteDuration": 0.25
+  },
+  "styleParams": {
+    "grouping": "3+3+2",
+    "subdivision": 8
+  }
+}

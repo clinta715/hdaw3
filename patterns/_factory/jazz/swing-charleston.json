@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Swing Charleston",
+  "description": "Classic Charleston comping pattern with 70% swing feel",
+  "category": "jazz",
+  "tags": ["charleston", "swing", "comping", "rhythm"],
+  "author": "HDAW",
+  "style": "SwingComping",
+  "params": {
+    "scaleRoot": 0,
+    "scaleMode": 0,
+    "lowNote": 48,
+    "highNote": 72,
+    "minVelocity": 70,
+    "maxVelocity": 110,
+    "seed": 0,
+    "lengthBeats": 4.0,
+    "density": 4,
+    "noteDuration": 0.5
+  },
+  "styleParams": {
+    "swingPercent": 70,
+    "compPattern": 0,
+    "voicingSpread": 1
+  }
+}
