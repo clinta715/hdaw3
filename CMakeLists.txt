@@ -118,6 +118,7 @@ add_library(HDAW_lib STATIC
     src/engine/ExportManager.cpp
     src/engine/MainAudioProcessor.cpp
     src/engine/PhraseGenerator.cpp
+    src/engine/PatternLibrary.cpp
     src/engine/EnvelopeGenerator.cpp
     src/engine/Generative.cpp
     src/engine/ArrangementGenerator.cpp
