@@ -147,7 +147,33 @@ int MidiAnalyzer::detectScale(const std::vector<TrackAnalysis>& tracks, int& roo
     for (int i = 1; i < 12; ++i)
         if (pitchBins[i] > pitchBins[bestBin])
             bestBin = i;
-    rootNote = bestBin;
+
+    // Find the most common octave for this pitch class to get an absolute MIDI note
+    int bestOctave = 4; // default to middle range
+    int bestOctaveCount = 0;
+    for (const auto& t : tracks) {
+        for (const auto& n : t.notes) {
+            if (((n.pitch % 12) + 12) % 12 == bestBin) {
+                int oct = n.pitch / 12;
+                // Count occurrences (simple histogram)
+                // We just need a reasonable octave, so find the one with most notes
+            }
+        }
+    }
+    // Simple approach: find the median pitch of notes with this pitch class
+    std::vector<int> octaves;
+    for (const auto& t : tracks) {
+        for (const auto& n : t.notes) {
+            if (((n.pitch % 12) + 12) % 12 == bestBin)
+                octaves.push_back(n.pitch);
+        }
+    }
+    if (!octaves.empty()) {
+        std::sort(octaves.begin(), octaves.end());
+        rootNote = octaves[octaves.size() / 2]; // median pitch
+    } else {
+        rootNote = bestBin + 60; // fallback to C4 range
+    }
 
     const auto& modes = PhraseGenerator::getScaleModes();
     int bestMode = -1;
