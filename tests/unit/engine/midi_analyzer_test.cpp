@@ -300,7 +300,7 @@ TEST(MidiAnalyzerTest, CreateRemixFromAnalyzedMidi)
     ASSERT_GT(midiFiles.size(), 0);
 
     // Use a deterministic index for reproducibility (change to random in production)
-    int fileIdx = 4; // Belleza_Gm — good candidate (3 tracks, G minor)
+    int fileIdx = 3; // Baile_Bm — 4 notes/bar, densest source
     auto midiFile = midiFiles[fileIdx];
 
     std::cout << "\n╔══════════════════════════════════════════╗\n";
@@ -329,14 +329,8 @@ TEST(MidiAnalyzerTest, CreateRemixFromAnalyzedMidi)
     int scaleMode = fp.scaleType >= 0 ? fp.scaleType : 1; // default Minor
     double bpm = analysis.sourceBpm;
 
-    // Choose style based on analysis — pick something complementary
-    PhraseGenerator::Style remixStyle;
-    if (fp.avgNoteDensity > 4.0)
-        remixStyle = PhraseGenerator::Arpeggio;
-    else if (fp.avgPolyphony > 2.5)
-        remixStyle = PhraseGenerator::ChordStab;
-    else
-        remixStyle = PhraseGenerator::Lead;
+    // For remix: always use rhythmic styles regardless of analysis
+    PhraseGenerator::Style remixStyle = PhraseGenerator::Arpeggio;
 
     std::cout << "── Remix Strategy ──\n";
     std::cout << "  Generating: " << PhraseGenerator::styleName(remixStyle) << "\n";
@@ -349,7 +343,7 @@ TEST(MidiAnalyzerTest, CreateRemixFromAnalyzedMidi)
     phraseParams.scaleMode = scaleMode;
     phraseParams.style = remixStyle;
     phraseParams.lengthBeats = 8.0; // 2 bars
-    phraseParams.density = static_cast<int>(fp.avgNoteDensity * 2.5); // busier for chord stabs
+    phraseParams.density = static_cast<int>(fp.avgNoteDensity * 3.0); // dense for remix
     phraseParams.noteDuration = fp.avgNoteDuration * 0.8; // slightly shorter
     phraseParams.lowNote = rootNote + 12; // octave above root
     phraseParams.highNote = rootNote + 36; // 3 octaves
@@ -374,7 +368,7 @@ TEST(MidiAnalyzerTest, CreateRemixFromAnalyzedMidi)
     PhraseGenerator::PhraseParams bassParams;
     bassParams.scaleRoot = rootNote;
     bassParams.scaleMode = scaleMode;
-    bassParams.style = PhraseGenerator::BassLine;
+    bassParams.style = PhraseGenerator::Arpeggio; // arpeggiated bass for movement
     bassParams.lengthBeats = 8.0;
     bassParams.density = 4;
     bassParams.noteDuration = 0.5;
