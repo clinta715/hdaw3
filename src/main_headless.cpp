@@ -89,26 +89,29 @@ int main(int argc, char *argv[])
 
     if (mcpStdio) {
         AudioEngine engine;
-        engine.initialize();
-        if (engine.getPluginManager().getPlugins().empty())
-        {
-            HDAW_LOG("main_headless", "Plugin cache empty; scanning...");
-            engine.getPluginManager().scanAll();
-            HDAW_LOG("main_headless", QString("Scan complete: %1 plugins").arg(
-                (int)engine.getPluginManager().getPlugins().size()));
-        }
         mcp::McpServer server;
         server.setEngine(&engine);
         mcp::registerAllTools(server);
-        // McpServer holds a non-owning pointer to the transport, so we keep
-        // ownership in a unique_ptr and stop+delete it on quit (mirroring the
-        // aboutToQuit hook). Using bare `new` here leaks the transport.
         auto transport = std::make_unique<mcp::TransportStdio>();
         server.setTransport(transport.get());
         QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
             server.stop();
         });
         server.start();
+
+        // Defer engine init + plugin scan so MCP can respond to initialize/tools/list
+        // immediately. Tools that need the engine will return errors until it's ready.
+        QTimer::singleShot(0, [&engine] {
+            engine.initialize();
+            if (engine.getPluginManager().getPlugins().empty())
+            {
+                HDAW_LOG("main_headless", "Plugin cache empty; scanning...");
+                engine.getPluginManager().scanAll();
+                HDAW_LOG("main_headless", QString("Scan complete: %1 plugins").arg(
+                    (int)engine.getPluginManager().getPlugins().size()));
+            }
+        });
+
         return app.exec();
     }
 

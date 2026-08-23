@@ -104,13 +104,6 @@ int main(int argc, char *argv[])
         QCoreApplication::setApplicationName("HDAW");
         QCoreApplication app(argc, argv);
         AudioEngine engine;
-        engine.initialize();
-        if (engine.getPluginManager().getPlugins().empty())
-        {
-            HDAW_LOG("main", "Plugin cache empty; scanning for VST3/CLAP plugins...");
-            engine.getPluginManager().scanAll();
-            HDAW_LOG("main", QString("Scan complete: %1 plugins found").arg((int)engine.getPluginManager().getPlugins().size()));
-        }
         mcp::McpServer server;
         server.setEngine(&engine);
         mcp::registerAllTools(server);
@@ -120,6 +113,18 @@ int main(int argc, char *argv[])
             server.stop();
         });
         server.start();
+
+        // Defer engine init + plugin scan so MCP can respond to initialize/tools/list
+        QTimer::singleShot(0, [&engine] {
+            engine.initialize();
+            if (engine.getPluginManager().getPlugins().empty())
+            {
+                HDAW_LOG("main", "Plugin cache empty; scanning for VST3/CLAP plugins...");
+                engine.getPluginManager().scanAll();
+                HDAW_LOG("main", QString("Scan complete: %1 plugins found").arg((int)engine.getPluginManager().getPlugins().size()));
+            }
+        });
+
         return app.exec();
     }
 
