@@ -8,6 +8,7 @@
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
 #include "../../engine/PatternLibrary.h"
+#include "../../engine/MidiAnalyzer.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -221,6 +222,78 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             });
         }
         return { false, QJsonObject{ { "fields", fields } } };
+    }
+
+    // --- MIDI Analysis ---
+
+    if (m == "analyzeMidiFile") {
+        std::string filePath;
+        if (!requireString(o, "path", filePath, nullptr))
+            return makeError(-32602, "path required");
+
+        juce::File file{ juce::String(filePath) };
+        if (!file.existsAsFile())
+            return makeError(-32602, QStringLiteral("file does not exist: %1").arg(QString::fromStdString(filePath)));
+
+        auto result = HDAW::MidiAnalyzer::analyze(file);
+        if (result.trackCount == 0)
+            return makeError(-32603, "no MIDI data found in file");
+
+        QJsonObject fpObj;
+        fpObj["avgNoteDensity"] = result.fingerprint.avgNoteDensity;
+        fpObj["rhythmComplexity"] = result.fingerprint.rhythmComplexity;
+        fpObj["syncopationScore"] = result.fingerprint.syncopationScore;
+        fpObj["swingAmount"] = result.fingerprint.swingAmount;
+        fpObj["pitchRange"] = result.fingerprint.pitchRange;
+        fpObj["rootNote"] = result.fingerprint.rootNote;
+        fpObj["scaleType"] = result.fingerprint.scaleType;
+        fpObj["chromaticism"] = result.fingerprint.chromaticism;
+        fpObj["avgVelocity"] = result.fingerprint.avgVelocity;
+        fpObj["velocityRange"] = result.fingerprint.velocityRange;
+        fpObj["velocityDynamicRange"] = result.fingerprint.velocityDynamicRange;
+        fpObj["quantizationStrength"] = result.fingerprint.quantizationStrength;
+        fpObj["avgNoteDuration"] = result.fingerprint.avgNoteDuration;
+        fpObj["barCount"] = result.fingerprint.barCount;
+        fpObj["voiceCount"] = result.fingerprint.voiceCount;
+        fpObj["avgPolyphony"] = result.fingerprint.avgPolyphony;
+
+        QJsonArray patternsArr;
+        for (const auto& p : result.patterns) {
+            QJsonArray notesArr;
+            for (const auto& n : p.notes) {
+                notesArr.append(QJsonObject{
+                    { "startBeat", n.startBeat },
+                    { "pitch", n.pitch },
+                    { "velocity", n.velocity },
+                    { "durationBeats", n.durationBeats }
+                });
+            }
+            patternsArr.append(QJsonObject{
+                { "name", QString::fromStdString(p.name.toStdString()) },
+                { "startBar", p.startBar },
+                { "lengthBars", p.lengthBars },
+                { "trackIndex", p.trackIndex },
+                { "notes", notesArr },
+                { "frequency", p.frequency },
+                { "isMotif", p.isMotif }
+            });
+        }
+
+        QJsonObject resultObj;
+        resultObj["fingerprint"] = fpObj;
+        resultObj["patterns"] = patternsArr;
+        resultObj["guessedStyle"] = PhraseGenerator::styleName(
+            static_cast<PhraseGenerator::Style>(result.guessedStyle));
+        resultObj["styleConfidence"] = result.styleConfidence;
+        resultObj["paramsJson"] = QString::fromStdString(result.paramsJson.toStdString());
+        resultObj["styleParamsJson"] = QString::fromStdString(result.styleParamsJson.toStdString());
+        resultObj["sourceBpm"] = result.sourceBpm;
+        resultObj["timeSignatureNum"] = result.timeSignatureNum;
+        resultObj["timeSignatureDen"] = result.timeSignatureDen;
+        resultObj["trackCount"] = result.trackCount;
+        resultObj["fileName"] = QString::fromStdString(result.fileName.toStdString());
+
+        return { false, resultObj };
     }
 
     // --- Mutations: generate + insert MIDI clip ---

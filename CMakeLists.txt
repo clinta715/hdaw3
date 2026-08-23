@@ -140,6 +140,7 @@ add_library(HDAW_lib STATIC
         src/engine/CrashRecoveryManager.cpp
     src/engine/MidiInputManager.cpp
     src/engine/MidiImport.cpp
+    src/engine/MidiAnalyzer.cpp
     src/engine/ProjectSerializer.cpp
     src/engine/ProjectBackup.cpp
     src/engine/RoutingManager.cpp
