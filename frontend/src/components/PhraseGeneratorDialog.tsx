@@ -94,6 +94,12 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [preview, setPreview] = useState("");
   const [generating, setGenerating] = useState(false);
 
+  // Analyze MIDI state
+  const [analyzePath, setAnalyzePath] = useState("");
+  const [analyzeResult, setAnalyzeResult] = useState<Record<string, unknown> | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+
   // Load metadata on mount
   useEffect(() => {
     Promise.all([
@@ -269,6 +275,40 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
     }
   };
 
+  const handleAnalyze = async () => {
+    if (!analyzePath.trim()) return;
+    setAnalyzing(true);
+    setAnalyzeError("");
+    setAnalyzeResult(null);
+    try {
+      const result = await rpc.call("composition.analyzeMidiFile", { path: analyzePath.trim() });
+      setAnalyzeResult(result as Record<string, unknown>);
+    } catch (err) {
+      setAnalyzeError(String(err));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleApplyAnalysis = () => {
+    if (!analyzeResult) return;
+    const fp = analyzeResult.fingerprint as Record<string, unknown> | undefined;
+    if (fp) {
+      if (typeof fp.rootNote === "number") setScaleRoot(fp.rootNote % 12);
+      if (typeof fp.scaleType === "number") setScaleMode(fp.scaleType);
+      if (typeof fp.lowNote === "number") setLowNote(fp.lowNote);
+      if (typeof fp.highNote === "number") setHighNote(fp.highNote);
+      if (typeof fp.avgVelocity === "number") setVelocity(Math.round(fp.avgVelocity * 127));
+    }
+    // Apply the guessed style
+    const styleName = analyzeResult.guessedStyle as string;
+    if (styleName) {
+      const idx = styles.findIndex(s => s.name === styleName);
+      if (idx >= 0) setStyle(idx);
+    }
+    setPreview("Analysis applied — switch to Phrase mode to generate");
+  };
+
   const trackCount = snapshot?.tracks.length ?? 0;
 
   return (
@@ -291,6 +331,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               <option value={2}>Chord Progression</option>
               <option value={3}>Arrangement</option>
               <option value={4}>Rhythm</option>
+              <option value={5}>Analyze MIDI</option>
             </select>
           </div>
 
@@ -629,6 +670,77 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* Analyze MIDI page */}
+          {mode === 5 && (
+            <div className="pgd-page">
+              <div className="pgd-row">
+                <label className="pgd-label">MIDI File Path</label>
+                <input className="pgd-input pgd-input-wide" type="text"
+                  value={analyzePath}
+                  placeholder='E:\midi\file.mid'
+                  onChange={(e) => setAnalyzePath(e.target.value)} />
+              </div>
+              <div className="pgd-row">
+                <button className="pgd-btn pgd-btn-analyze" onClick={handleAnalyze} disabled={analyzing || !analyzePath.trim()}>
+                  {analyzing ? "Analyzing..." : "Analyze"}
+                </button>
+              </div>
+              {analyzeError && (
+                <div className="pgd-row pgd-error">{analyzeError}</div>
+              )}
+              {analyzeResult && (() => {
+                const fp = (analyzeResult.fingerprint ?? null) as Record<string, number> | null;
+                const patterns = Array.isArray(analyzeResult.patterns) ? analyzeResult.patterns as Array<Record<string, unknown>> : [];
+                return (
+                  <div className="pgd-analyze-results">
+                    <div className="pgd-analyze-section">
+                      <h4>Analysis: {String(analyzeResult.fileName ?? "Unknown")}</h4>
+                      <div className="pgd-analyze-grid">
+                        <span>BPM: {String(analyzeResult.sourceBpm)}</span>
+                        <span>Time: {String(analyzeResult.timeSignature)}</span>
+                        <span>Tracks: {String(analyzeResult.trackCount)}</span>
+                        <span>Style: {String(analyzeResult.guessedStyle)}</span>
+                      </div>
+                    </div>
+                    {fp && (
+                      <div className="pgd-analyze-section">
+                        <h4>Fingerprint</h4>
+                        <div className="pgd-analyze-grid">
+                          <span>Density: {(fp.avgNoteDensity ?? 0).toFixed(1)} notes/bar</span>
+                          <span>Duration: {(fp.avgNoteDuration ?? 0).toFixed(2)} beats</span>
+                          <span>Velocity: {(fp.avgVelocity ?? 0).toFixed(2)}</span>
+                          <span>Swing: {(fp.swingAmount ?? 0).toFixed(2)}</span>
+                          <span>Syncopation: {(fp.syncopationScore ?? 0).toFixed(2)}</span>
+                          <span>Complexity: {(fp.rhythmComplexity ?? 0).toFixed(2)}</span>
+                          <span>Quantization: {(fp.quantizationStrength ?? 0).toFixed(2)}</span>
+                          <span>Chromaticism: {(fp.chromaticism ?? 0).toFixed(2)}</span>
+                          <span>Polyphony: {(fp.avgPolyphony ?? 0).toFixed(1)}</span>
+                        </div>
+                      </div>
+                    )}
+                    {patterns.length > 0 && (
+                      <div className="pgd-analyze-section">
+                        <h4>Patterns ({patterns.length})</h4>
+                        <div className="pgd-analyze-list">
+                          {patterns.slice(0, 5).map((p, i) => (
+                            <span key={i} className="pgd-analyze-tag">
+                              {String(p.name)} {(p.notes as unknown[])?.length || 0}n
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="pgd-row">
+                      <button className="pgd-btn pgd-btn-apply" onClick={handleApplyAnalysis}>
+                        Apply to Generator
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
           </div>

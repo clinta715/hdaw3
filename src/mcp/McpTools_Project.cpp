@@ -12,6 +12,7 @@
 #include "../engine/ArrangementGenerator.h"
 #include "engine/RhythmPatternGenerator.h"
 #include "../engine/PatternLibrary.h"
+#include "../engine/MidiAnalyzer.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
 #include <QJsonArray>
@@ -1447,6 +1448,84 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString("ok=%1 soloRms=%2 soloPeak=%3 mixRms=%4 mixPeak=%5 nonClipping=%6 audible=%7 bandsPresent=%8")
                 .arg(r.ok).arg(r.soloRms).arg(r.soloPeak).arg(r.mixRms).arg(r.mixPeak)
                 .arg(r.nonClipping).arg(r.audible).arg(r.bandsPresent));
+        }});
+
+    // --- MIDI Analysis ---
+
+    s.registerTool({"analyze_midi_file",
+        "Analyze a MIDI file: extract musical fingerprint (key, scale, rhythm, velocity), "
+        "bar-aligned patterns, sub-bar motifs, and PhraseGenerator-compatible style parameters. "
+        "Returns full analysis with generated params ready for regeneration.",
+        objSchema({{"path", QJsonObject{{"type","string"}}}},
+                   {"path"}),
+        [](const QJsonObject& a) -> McpToolResult {
+            auto filePath = a.value("path").toString().toStdString();
+            juce::File file{ juce::String(filePath) };
+            if (!file.existsAsFile())
+                return McpToolResult::text("file not found: " + QString::fromStdString(filePath), true);
+
+            auto result = HDAW::MidiAnalyzer::analyze(file);
+            if (result.trackCount == 0)
+                return McpToolResult::text("no MIDI data in file", true);
+
+            auto& fp = result.fingerprint;
+            QJsonObject root;
+
+            // Fingerprint
+            QJsonObject fpObj;
+            fpObj["avgNoteDensity"] = fp.avgNoteDensity;
+            fpObj["rhythmComplexity"] = fp.rhythmComplexity;
+            fpObj["syncopationScore"] = fp.syncopationScore;
+            fpObj["swingAmount"] = fp.swingAmount;
+            fpObj["pitchRange"] = fp.pitchRange;
+            fpObj["rootNote"] = fp.rootNote;
+            fpObj["scaleType"] = fp.scaleType;
+            fpObj["chromaticism"] = fp.chromaticism;
+            fpObj["avgVelocity"] = fp.avgVelocity;
+            fpObj["velocityRange"] = fp.velocityRange;
+            fpObj["velocityDynamicRange"] = fp.velocityDynamicRange;
+            fpObj["quantizationStrength"] = fp.quantizationStrength;
+            fpObj["avgNoteDuration"] = fp.avgNoteDuration;
+            fpObj["barCount"] = fp.barCount;
+            fpObj["voiceCount"] = fp.voiceCount;
+            fpObj["avgPolyphony"] = fp.avgPolyphony;
+            root["fingerprint"] = fpObj;
+
+            // Metadata
+            root["fileName"] = QString::fromStdString(result.fileName.toStdString());
+            root["sourceBpm"] = result.sourceBpm;
+            root["timeSignature"] = QString("%1/%2").arg(result.timeSignatureNum).arg(result.timeSignatureDen);
+            root["trackCount"] = result.trackCount;
+
+            // Style classification
+            root["guessedStyle"] = PhraseGenerator::styleName(
+                static_cast<PhraseGenerator::Style>(result.guessedStyle));
+            root["styleConfidence"] = result.styleConfidence;
+
+            // Patterns
+            QJsonArray patternsArr;
+            for (const auto& p : result.patterns) {
+                QJsonArray notesArr;
+                for (const auto& n : p.notes) {
+                    notesArr.append(QJsonObject{
+                        {"startBeat", n.startBeat}, {"pitch", n.pitch},
+                        {"velocity", n.velocity}, {"durationBeats", n.durationBeats}
+                    });
+                }
+                patternsArr.append(QJsonObject{
+                    {"name", jstr(p.name)}, {"startBar", p.startBar},
+                    {"lengthBars", p.lengthBars}, {"trackIndex", p.trackIndex},
+                    {"notes", notesArr}, {"frequency", p.frequency}, {"isMotif", p.isMotif}
+                });
+            }
+            root["patterns"] = patternsArr;
+            root["patternCount"] = static_cast<int>(result.patterns.size());
+
+            // Ready-to-use params
+            root["paramsJson"] = QString::fromStdString(result.paramsJson.toStdString());
+            root["styleParamsJson"] = QString::fromStdString(result.styleParamsJson.toStdString());
+
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
     // --- Pattern Library ---
