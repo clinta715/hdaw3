@@ -474,7 +474,7 @@ void MainAudioProcessor::stopRecording()
             }
             else
             {
-                auto clip = ProjectModel::createAudioClip(
+                auto clip = projectModel->createAudioClip(
                     "Recording", startTimeSec, recDuration, recordedFile.getFullPathName());
                 clipList.addChild(clip, -1, &um);
                 rebuildRoutingGraph();

@@ -87,7 +87,7 @@ TEST(IncrementalRoutingSpike, SiblingStatePreserved)
 
     // 1) Add an ISOLATED clip (start 7.0, far from everything). Sibling must
     //    be untouched: identical envelope, start, duration.
-    auto isolated = ProjectModel::createAudioClip(
+    auto isolated = h.model.createAudioClip(
         "isolated", 7.0, 1.0, file.getFullPathName());
     auto trackList = h.model.getTrackListTree();
     auto clipList = trackList.getChild(0).getChildWithName(IDs::CLIP_LIST);
@@ -107,7 +107,7 @@ TEST(IncrementalRoutingSpike, SiblingStatePreserved)
     // 2) Add a clip that DOES overlap the sibling (start 0.5, dur 1.0 →
     //    overlaps cA [0.0,1.0] by 0.5s). The sibling's crossfade points must
     //    change to exactly what a full rebuild produces.
-    auto overlapClip = ProjectModel::createAudioClip(
+    auto overlapClip = h.model.createAudioClip(
         "overlap", 0.5, 1.0, file.getFullPathName());
     clipList.addChild(overlapClip.createCopy(), -1, nullptr);
     h.addClipParked(0, 5, overlapClip);
@@ -191,7 +191,7 @@ TEST(IncrementalRoutingSpike, BenchmarkPrintsNumbers)
     // (d) graph latency before/after an incremental add (unchanged).
     const int latencyBefore = incHarness.graph.getLatencySamples();
     // One more incremental add on the now-128 clip graph.
-    auto extraClip = ProjectModel::createAudioClip(
+    auto extraClip = incHarness.model.createAudioClip(
         "extra", 999.0, 0.4, file.getFullPathName());
     incClipList.addChild(extraClip.createCopy(), -1, nullptr);
     incHarness.addClipParked(0, kNumClips, extraClip);

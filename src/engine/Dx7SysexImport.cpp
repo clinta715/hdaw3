@@ -100,21 +100,17 @@ void unpackVmemVoice(const uint8_t packed[128], uint8_t unpacked[156]) {
 }
 
 std::vector<Dx7Voice> parseCartridgeSysex(const uint8_t* data, size_t size) {
-    if (size < 6 || data[0] != 0xF0 || data[1] != 0x43)
+    if (size < 4104 || data[0] != 0xF0 || data[1] != 0x43)
         return {};
 
     if (data[3] != 0x09)
         return {};
 
-    size_t dataLen = (static_cast<size_t>(data[4]) << 7) | data[5];
-    if (dataLen != 4096)
-        return {};
+    // Accept both spec (0x20) and Dexed variant (0x10) at byte 4.
+    // File size is ground truth — 4104 = 6 header + 4096 data + 1 checksum + 1 F7.
+    constexpr size_t kVoiceDataLen = 4096;
 
-    size_t totalExpected = 6 + dataLen + 1;
-    if (size < totalExpected)
-        return {};
-
-    if (!verifyChecksum(data + 6, dataLen + 1))
+    if (!verifyChecksum(data + 6, kVoiceDataLen + 1))
         return {};
 
     std::vector<Dx7Voice> voices;

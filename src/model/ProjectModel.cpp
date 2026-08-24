@@ -55,9 +55,6 @@ juce::ValueTree ProjectModel::createTrackAutomationList()
     return list;
 }
 
-static std::atomic<int> nextClipID{1};
-static std::atomic<int> nextCcID{1};
-
 juce::ValueTree ProjectModel::getScaleInfoTree()
 {
     auto tree = projectTree.getChildWithName(IDs::SCALE_INFO);
@@ -109,22 +106,22 @@ void ProjectModel::setScaleMode(int mode)
 
 int ProjectModel::allocateClipID()
 {
-    return nextClipID.fetch_add(1, std::memory_order_relaxed);
+    return nextClipID_.fetch_add(1, std::memory_order_relaxed);
 }
 
 int ProjectModel::allocateNoteID()
 {
-    return nextNoteID.fetch_add(1, std::memory_order_relaxed);
+    return nextNoteID_.fetch_add(1, std::memory_order_relaxed);
 }
 
 int ProjectModel::allocateCcID()
 {
-    return nextCcID.fetch_add(1, std::memory_order_relaxed);
+    return nextCcID_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void ProjectModel::resetNoteIDCounter()
 {
-    nextNoteID.store(1, std::memory_order_relaxed);
+    nextNoteID_.store(1, std::memory_order_relaxed);
 }
 
 juce::uint32 ProjectModel::trackColorForIndex(int index)
@@ -148,7 +145,7 @@ juce::uint32 ProjectModel::trackColorForIndex(int index)
 
 void ProjectModel::resetClipIDCounter()
 {
-    nextClipID.store(1, std::memory_order_relaxed);
+    nextClipID_.store(1, std::memory_order_relaxed);
 }
 
 void ProjectModel::scanAndSyncClipIDs()
@@ -168,7 +165,7 @@ void ProjectModel::scanAndSyncClipIDs()
             }
         }
     }
-    nextClipID.store(maxID + 1, std::memory_order_relaxed);
+    nextClipID_.store(maxID + 1, std::memory_order_relaxed);
 }
 
 void ProjectModel::scanAndSyncNoteIDs()
@@ -183,7 +180,7 @@ void ProjectModel::scanAndSyncNoteIDs()
             }
             else
             {
-                int id = nextNoteID.fetch_add(1, std::memory_order_relaxed);
+                int id = nextNoteID_.fetch_add(1, std::memory_order_relaxed);
                 t.setProperty(IDs::noteID, id, nullptr);
                 maxExisting = std::max(maxExisting, id);
             }
@@ -194,14 +191,14 @@ void ProjectModel::scanAndSyncNoteIDs()
     };
     walk(projectTree);
 
-    int cur = nextNoteID.load(std::memory_order_relaxed);
-    while (cur <= maxExisting && !nextNoteID.compare_exchange_weak(cur, maxExisting + 1)) {}
+    int cur = nextNoteID_.load(std::memory_order_relaxed);
+    while (cur <= maxExisting && !nextNoteID_.compare_exchange_weak(cur, maxExisting + 1)) {}
 }
 
 juce::ValueTree ProjectModel::createAudioClip(juce::String name, double startSec, double durSec, juce::String file)
 {
     juce::ValueTree clip(IDs::CLIP);
-    clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    clip.setProperty(IDs::clipID, allocateClipID(), nullptr);
     clip.setProperty(IDs::name, name, nullptr);
     clip.setProperty(IDs::startTime, startSec, nullptr);
     clip.setProperty(IDs::duration, durSec, nullptr);
@@ -223,7 +220,7 @@ juce::ValueTree ProjectModel::createAudioClip(juce::String name, double startSec
 juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double startBeat, double durBeats)
 {
     juce::ValueTree noteNode(IDs::MIDI_NOTE);
-    noteNode.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), nullptr);
+    noteNode.setProperty(IDs::noteID, allocateNoteID(), nullptr);
     noteNode.setProperty(IDs::noteNumber, note, nullptr);
     noteNode.setProperty(IDs::velocity, vel, nullptr);
     noteNode.setProperty(IDs::startBeat, startBeat, nullptr);
@@ -234,7 +231,7 @@ juce::ValueTree ProjectModel::createMidiNote(int note, float vel, double startBe
 juce::ValueTree ProjectModel::createMidiClipEmpty(juce::String name, double startSec, double durSec)
 {
     juce::ValueTree clip(IDs::CLIP);
-    clip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    clip.setProperty(IDs::clipID, allocateClipID(), nullptr);
     clip.setProperty(IDs::name, name, nullptr);
     clip.setProperty(IDs::startTime, startSec, nullptr);
     clip.setProperty(IDs::duration, durSec, nullptr);
@@ -257,18 +254,18 @@ juce::ValueTree ProjectModel::getTrackOfClip(const juce::ValueTree& clip)
     return clipList.getParent();
 }
 
-static juce::ValueTree createMidiClip(juce::String name, double start, double dur, double bpm)
+static juce::ValueTree createMidiClip(ProjectModel& model, juce::String name, double start, double dur, double bpm)
 {
     double startSec = start * 60.0 / bpm;
     double durSec = dur * 60.0 / bpm;
-    juce::ValueTree clip = ProjectModel::createMidiClipEmpty(name, startSec, durSec);
+    juce::ValueTree clip = model.createMidiClipEmpty(name, startSec, durSec);
     auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
-    midiNotes.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
-    midiNotes.addChild(ProjectModel::createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
-    midiNotes.addChild(ProjectModel::createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
-    midiNotes.addChild(ProjectModel::createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
-    midiNotes.addChild(ProjectModel::createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
-    midiNotes.addChild(ProjectModel::createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(64, 0.7f, 1.0, 0.5), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(67, 0.9f, 1.5, 1.5), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(72, 0.6f, 3.0, 0.25), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(71, 0.5f, 3.25, 0.25), -1, nullptr);
+    midiNotes.addChild(model.createMidiNote(69, 0.7f, 3.5, 0.5), -1, nullptr);
     return clip;
 }
 

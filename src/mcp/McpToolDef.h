@@ -21,6 +21,7 @@ struct McpToolDef {
     QString name;
     QString description;
     QJsonObject inputSchema;
+    QString category;
     std::function<McpToolResult(const QJsonObject&)> handler;
 };
 

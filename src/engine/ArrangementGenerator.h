@@ -77,6 +77,9 @@ struct ArrangementParams
     bool enableLead = false;
     bool enableChords = false;
 
+    int velocityMin = 0;                 // 0 = use generator defaults
+    int velocityMax = 0;                 // 0 = use generator defaults
+
     std::map<std::string, int> targetTrackIds;
 };
 

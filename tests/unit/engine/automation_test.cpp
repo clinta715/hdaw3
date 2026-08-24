@@ -218,3 +218,33 @@ TEST(Automation, SetFaderAuthoritativeOutOfRangeIsNoOp)
         EXPECT_EQ(before[i].enabled, after[i].enabled);
     }
 }
+
+// addAutomationLane returns true on success and false on collision (duplicate
+// name or duplicate paramID). This is the MCP/RPC error-signaling contract.
+TEST(Automation, AddLaneParamIdCollisionReturnsError)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Use a fresh track — the default project's track 0 already has Volume/Pan/Mute lanes.
+    int trackIdx = cmds.addTrack("Test", -1, -1, 0);
+    ASSERT_GE(trackIdx, 0);
+
+    // Every track ships Volume(paramID=1), Pan(2), Mute(3) by default.
+    // Use paramIDs outside that range to avoid colliding with built-in lanes.
+    bool first = cmds.addAutomationLane(trackIdx, "My Cutoff", 105);
+    EXPECT_TRUE(first);
+
+    // Try to add another lane with the same paramID — should fail.
+    bool second = cmds.addAutomationLane(trackIdx, "Other Cutoff", 105);
+    EXPECT_FALSE(second);
+
+    // Try to add a lane with the same name — should fail.
+    bool third = cmds.addAutomationLane(trackIdx, "My Cutoff", 106);
+    EXPECT_FALSE(third);
+
+    // A lane with a different name AND different paramID should succeed.
+    bool fourth = cmds.addAutomationLane(trackIdx, "My Resonance", 106);
+    EXPECT_TRUE(fourth);
+}

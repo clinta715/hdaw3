@@ -44,9 +44,9 @@ int AudioEngineCommands::createSessionClip(int trackIndex, int sceneIndex, bool 
 
     juce::ValueTree clip;
     if (isMidi) {
-        clip = ProjectModel::createMidiClipEmpty("Session Clip", 0.0, 4.0);
+        clip = model.createMidiClipEmpty("Session Clip", 0.0, 4.0);
     } else {
-        clip = ProjectModel::createAudioClip("Session Clip", 0.0, 4.0, "");
+        clip = model.createAudioClip("Session Clip", 0.0, 4.0, "");
     }
     int newId = model.allocateClipID();
     clip.setProperty(IDs::clipID, newId, nullptr);

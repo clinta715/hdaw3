@@ -37,7 +37,7 @@ public:
 
 TEST(StdioTransport, ReaderParsesAndDispatches) {
     McpServer server;
-    server.registerTool({"echo","echoes args", QJsonObject{{"type","object"}},
+    server.registerTool({"echo","echoes args", QJsonObject{{"type","object"}}, "test",
         [](const QJsonObject& a) { return McpToolResult::text("ok:" + QString::number(a.size())); }});
     CaptureTransport capture;
     server.setTransport(&capture);

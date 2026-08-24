@@ -28,6 +28,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_project_summary",
         "Return project name, tempo, track/clip counts, transport state.",
         QJsonObject{{"type","object"}},
+        "project",
         [e](const QJsonObject&) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto tp = m.getTransportTree();
@@ -47,6 +48,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"get_scale", "Return the project scale (root, mode).",
         QJsonObject{{"type","object"}},
+        "project",
         [e](const QJsonObject&) {
             auto& m = e->getProjectModel();
             QJsonObject o{{"root", m.getScaleRoot()}, {"mode", m.getScaleMode()}};
@@ -57,6 +59,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
     s.registerTool({"list_tracks",
         "List all tracks (id, name, color, volume, pan, mute, solo, clipCount).",
         QJsonObject{{"type","object"}},
+        "project",
         [e](const QJsonObject&) {
             auto tl = e->getProjectModel().getTrackListTree();
             QJsonArray arr;
@@ -79,6 +82,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"list_clips", "List clips (optionally on a single trackId).",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}),
+        "project",
         [e](const QJsonObject& a) {
             auto tl = e->getProjectModel().getTrackListTree();
             int wanted = a.value("trackId").toInt(-1);
@@ -111,6 +115,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_clip",
         "Return full properties of a clip, including its note list if MIDI.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "project",
         [e](const QJsonObject& a) {
             int cid = a.value("clipId").toInt(-1);
             auto tl = e->getProjectModel().getTrackListTree();
@@ -142,7 +147,7 @@ static void registerReadTools(McpServer& s, AudioEngine* e)
                                 {"pitch", static_cast<int>(n.getProperty(IDs::noteNumber))},
                                 {"start", static_cast<double>(n.getProperty(IDs::startBeat))},
                                 {"duration", static_cast<double>(n.getProperty(IDs::durationBeats))},
-                                {"velocity", static_cast<int>(n.getProperty(IDs::velocity))}
+                                {"velocity", static_cast<int>(static_cast<double>(n.getProperty(IDs::velocity)) * 127.0 + 0.5)}
                             });
                         }
                         out["notes"] = notes;
@@ -162,6 +167,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
         objSchema({{"name", QJsonObject{{"type","string"}}},
                   {"color", QJsonObject{{"type","integer"}}},
                   {"parentBus", QJsonObject{{"type","integer"}}}}, {"name"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto& um = m.getUndoManager();
@@ -189,6 +195,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"dryRun",  QJsonObject{{"type","boolean"}}},
                   {"force",   QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto tl = m.getTrackListTree();
@@ -224,6 +231,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
                   {"solo",   QJsonObject{{"type","boolean"}}},
                   {"color",  QJsonObject{{"type","integer"}}},
                   {"hidden", QJsonObject{{"type","boolean"}}}}, {"trackId"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             int id = a.value("trackId").toInt();
@@ -242,6 +250,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"set_master_gain", "Set the master bus gain (linear, >= 0).",
         objSchema({{"gain", QJsonObject{{"type","number"},{"minimum",0}}}}, {"gain"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getProjectCommands().setMasterGain(static_cast<float>(a.value("gain").toDouble(1.0)));
             return McpToolResult::text("ok");
@@ -250,6 +259,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
     s.registerTool({"move_track", "Move a track to a new index.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"newIndex", QJsonObject{{"type","integer"}}}}, {"trackId","newIndex"}),
+        "track",
         [e](const QJsonObject& a) {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             auto tl = m.getTrackListTree();
@@ -266,6 +276,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
     s.registerTool({"duplicate_track",
         "Duplicate a track (deep copy with new clip/note IDs). Returns the new track index.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto tl = m.getTrackListTree();
@@ -288,6 +299,7 @@ static void registerTrackTools(McpServer& s, AudioEngine* e)
                    {"pluginId", QJsonObject{{"type","string"}}},
                    {"color",    QJsonObject{{"type","integer"}}},
                    {"parentBus",QJsonObject{{"type","integer"}}}}, {"name"}),
+        "track",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel();
             auto& um = m.getUndoManager();
@@ -329,6 +341,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
                   {"start",   QJsonObject{{"type","number"}}},
                   {"length",  QJsonObject{{"type","number"}}},
                   {"name",    QJsonObject{{"type","string"}}}}, {"trackId","start","length"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             int ti = a.value("trackId").toInt();
@@ -337,7 +350,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             double bpm = e->getReadModel().getTransport().bpm;
             double startSec = HDAW::beatsToSeconds(a.value("start").toDouble(), bpm);
             double durSec = HDAW::beatsToSeconds(a.value("length").toDouble(), bpm);
-            auto c = ProjectModel::createMidiClipEmpty(
+            auto c = m.createMidiClipEmpty(
                 juce::String(a.value("name").toString("MIDI Clip").toUtf8().constData()),
                 startSec, durSec);
             c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
@@ -352,6 +365,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
                   {"length",      QJsonObject{{"type","number"}}},
                   {"sourceFile",  QJsonObject{{"type","string"}}},
                   {"name",        QJsonObject{{"type","string"}}}}, {"trackId","start","length","sourceFile"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
             int ti = a.value("trackId").toInt();
@@ -362,7 +376,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
             double bpm = e->getReadModel().getTransport().bpm;
             double startSec = HDAW::beatsToSeconds(a.value("start").toDouble(), bpm);
             double durSec = HDAW::beatsToSeconds(a.value("length").toDouble(), bpm);
-            auto c = ProjectModel::createAudioClip(
+            auto c = m.createAudioClip(
                 juce::String(a.value("name").toString("Audio Clip").toUtf8().constData()),
                 startSec, durSec,
                 src.getFullPathName());
@@ -375,6 +389,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
     s.registerTool({"remove_clip", "Remove a clip (destructive).",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                   {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -390,6 +405,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
         objSchema({{"clipId",  QJsonObject{{"type","integer"}}},
                   {"start",   QJsonObject{{"type","number"}}},
                   {"trackId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -415,6 +431,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
         "[startBeat, endBeat) and shift later clips left to close the gap.",
         objSchema({{"startBeat", QJsonObject{{"type","number"}}},
                    {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             if (!a.contains("startBeat") || !a.contains("endBeat"))
                 return McpToolResult::text("startBeat and endBeat required", true);
@@ -431,6 +448,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
         "content right by (endBeat - startBeat), opening an empty gap.",
         objSchema({{"startBeat", QJsonObject{{"type","number"}}},
                    {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             if (!a.contains("startBeat") || !a.contains("endBeat"))
                 return McpToolResult::text("startBeat and endBeat required", true);
@@ -447,6 +465,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
         "and paste it at endBeat, shifting later content right.",
         objSchema({{"startBeat", QJsonObject{{"type","number"}}},
                    {"endBeat",   QJsonObject{{"type","number"}}}}, {"startBeat","endBeat"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             if (!a.contains("startBeat") || !a.contains("endBeat"))
                 return McpToolResult::text("startBeat and endBeat required", true);
@@ -467,6 +486,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
                   {"fadeIn",    QJsonObject{{"type","number"}}},
                   {"fadeOut",   QJsonObject{{"type","number"}}},
                   {"looping",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -488,6 +508,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
                   {"start",    QJsonObject{{"type","number"}}},
                   {"trackId",  QJsonObject{{"type","integer"}}},
                   {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto src = findClip(e, a.value("clipId").toInt(), &ti);
             if (!src.isValid()) return McpToolResult::text("clip not found", true);
@@ -514,6 +535,7 @@ static void registerClipTools(McpServer& s, AudioEngine* e)
         objSchema({{"clipId",      QJsonObject{{"type","integer"}}},
                   {"repetitions", QJsonObject{{"type","integer"},{"minimum",1}}}},
                  {"clipId","repetitions"}),
+        "clip",
         [e](const QJsonObject& a) -> McpToolResult {
             auto c = findClip(e, a.value("clipId").toInt(), nullptr);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -559,6 +581,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"duration",  QJsonObject{{"type","number"}}},
                   {"velocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
                  {"clipId","pitch","start","duration","velocity"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -573,10 +596,56 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
             n.setProperty(IDs::noteNumber, a.value("pitch").toInt(), &um);
             n.setProperty(IDs::startBeat, a.value("start").toDouble(), &um);
             n.setProperty(IDs::durationBeats, a.value("duration").toDouble(), &um);
-            n.setProperty(IDs::velocity, a.value("velocity").toInt(), &um);
+            n.setProperty(IDs::velocity, static_cast<float>(a.value("velocity").toInt()) / 127.0f, &um);
             nl.addChild(n, -1, &um);
             return McpToolResult::text(QString("noteId=%1").arg(nid));
         }});
+
+    {
+        QJsonObject noteItemProps{
+            {"pitch",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+            {"start",     QJsonObject{{"type","number"}}},
+            {"duration",  QJsonObject{{"type","number"}}},
+            {"velocity",  QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}
+        };
+        QJsonObject noteItem{{"type","object"},{"properties", noteItemProps},{"required", QJsonArray{"pitch","start","duration"}}};
+        QJsonObject addNotesSchema = objSchema(
+            {{"clipId", QJsonObject{{"type","integer"}}},
+             {"notes",  QJsonObject{{"type","array"},{"items", noteItem}}}},
+            QJsonArray{"clipId","notes"});
+        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}.",
+            addNotesSchema,
+            "note",
+            [e](const QJsonObject& a) -> McpToolResult {
+                int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
+                if (!c.isValid()) return McpToolResult::text("clip not found", true);
+                if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
+                    return McpToolResult::text("clip is not MIDI", true);
+                auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
+                auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+                if (!nl.isValid()) { nl = juce::ValueTree(IDs::MIDI_NOTE_LIST); c.addChild(nl, -1, nullptr); }
+                auto notesArr = a.value("notes").toArray();
+                if (notesArr.isEmpty()) return McpToolResult::text("notes array is empty", true);
+                um.beginNewTransaction();
+                QJsonArray ids;
+                for (const auto& nv : notesArr) {
+                    auto no = nv.toObject();
+                    juce::ValueTree n(IDs::MIDI_NOTE);
+                    int nid = m.allocateNoteID();
+                    n.setProperty(IDs::noteID, nid, nullptr);
+                    n.setProperty(IDs::noteNumber, no.value("pitch").toInt(), &um);
+                    n.setProperty(IDs::startBeat, no.value("start").toDouble(), &um);
+                    n.setProperty(IDs::durationBeats, no.value("duration").toDouble(), &um);
+                    n.setProperty(IDs::velocity, static_cast<float>(no.value("velocity").toInt(100)) / 127.0f, &um);
+                    nl.addChild(n, -1, &um);
+                    ids.append(nid);
+                }
+                QJsonObject result;
+                result["added"] = notesArr.size();
+                result["noteIds"] = ids;
+                return McpToolResult::text(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            }});
+    }
 
     s.registerTool({"set_note", "Update a note's properties (partial).",
         objSchema({{"noteId",   QJsonObject{{"type","integer"}}},
@@ -584,6 +653,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"start",    QJsonObject{{"type","number"}}},
                   {"duration", QJsonObject{{"type","number"}}},
                   {"velocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}}, {"noteId"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -591,7 +661,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
             if (a.contains("pitch"))    n.setProperty(IDs::noteNumber, a.value("pitch").toInt(), &um);
             if (a.contains("start"))    n.setProperty(IDs::startBeat, a.value("start").toDouble(), &um);
             if (a.contains("duration")) n.setProperty(IDs::durationBeats, a.value("duration").toDouble(), &um);
-            if (a.contains("velocity")) n.setProperty(IDs::velocity, a.value("velocity").toInt(), &um);
+            if (a.contains("velocity")) n.setProperty(IDs::velocity, static_cast<float>(a.value("velocity").toInt()) / 127.0f, &um);
             return McpToolResult::text("ok");
         }});
 
@@ -608,6 +678,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"velocityMin",    QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"velocityMax",    QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
                  {"clipId"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             auto c = findClip(e, a.value("clipId").toInt(), nullptr);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -644,12 +715,12 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                 if (hasAbs) {
                     newVel = vAbs;
                 } else if (hasRel) {
-                    newVel = static_cast<int>(n.getProperty(IDs::velocity)) + vOff;
+                    newVel = static_cast<int>(static_cast<double>(n.getProperty(IDs::velocity)) * 127.0 + 0.5) + vOff;
                 } else {
                     newVel = vMin + (std::rand() % (vMax - vMin + 1));
                 }
                 newVel = (std::max)(1, (std::min)(127, newVel));
-                n.setProperty(IDs::velocity, newVel, &um);
+                n.setProperty(IDs::velocity, static_cast<float>(newVel) / 127.0f, &um);
                 ++modified;
             }
             return McpToolResult::text(QString("modified %1 notes").arg(modified));
@@ -664,6 +735,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
                   {"noteIds",  QJsonObject{{"type","array"},
                       {"items", QJsonObject{{"type","integer"}}}}},
                   {"dryRun",   QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -698,6 +770,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"clear_notes", "Remove all notes from a MIDI clip (destructive).",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                   {"dryRun", QJsonObject{{"type","boolean"}}}}, {"clipId"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -712,6 +785,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_chance", "Set a note's chance (probability) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"chance", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","chance"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -723,6 +797,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_repeat_count", "Set a note's repeat count (repeats/ratchets) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"repeatCount", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"noteId","repeatCount"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -734,6 +809,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_repeat_rate", "Set a note's repeat rate (beat fraction) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"repeatRate", QJsonObject{{"type","number"},{"minimum",0.0}}}}, {"noteId","repeatRate"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -745,6 +821,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_repeat_curve", "Set a note's repeat curve (bunching, -1.0 to 1.0) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"repeatCurve", QJsonObject{{"type","number"},{"minimum",-1.0},{"maximum",1.0}}}}, {"noteId","repeatCurve"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -756,6 +833,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_occurrence", "Set a note's occurrence (cycle-aware bitmask) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"occurrence", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"noteId","occurrence"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -767,6 +845,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_recurrence", "Set a note's recurrence (previous-event dependency) operator.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"recurrence", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",2}}}}, {"noteId","recurrence"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -778,6 +857,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_gain", "Set a note's per-note gain multiplier (0.0 to 2.0).",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"gain", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",2.0}}}}, {"noteId","gain"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -789,6 +869,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_pan", "Set a note's per-note pan (-1.0 left to 1.0 right).",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"pan", QJsonObject{{"type","number"},{"minimum",-1.0},{"maximum",1.0}}}}, {"noteId","pan"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -800,6 +881,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_pitch_offset", "Set a note's per-note pitch offset in semitones.",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"pitchOffset", QJsonObject{{"type","number"}}}}, {"noteId","pitchOffset"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -811,6 +893,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_timbre", "Set a note's per-note timbre (0.0 dark to 1.0 bright).",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"timbre", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","timbre"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -822,6 +905,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_note_pressure", "Set a note's per-note aftertouch pressure (0.0 to 1.0).",
         objSchema({{"noteId", QJsonObject{{"type","integer"}}},
                   {"pressure", QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}}, {"noteId","pressure"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto n = findNote(e, a.value("noteId").toInt(), &dummy);
             if (!n.isValid()) return McpToolResult::text("note not found", true);
@@ -833,6 +917,7 @@ static void registerNoteTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_clip_seed", "Set the deterministic seed for a clip's operators.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                   {"seed", QJsonObject{{"type","integer"}}}}, {"clipId","seed"}),
+        "note",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -875,6 +960,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_scale", "Set the project scale (root 0..11, mode 0..20).",
         objSchema({{"root", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
                   {"mode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}}}, {"root","mode"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectModel().setScaleRoot(a.value("root").toInt());
             e->getProjectModel().setScaleMode(a.value("mode").toInt());
@@ -883,6 +969,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"set_tempo", "Set the project tempo (BPM).",
         objSchema({{"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}}, {"bpm"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectCommands().setTempo(a.value("bpm").toDouble());
             return McpToolResult::text("ok");
@@ -892,6 +979,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"timeSeconds", QJsonObject{{"type","number"},{"description","Time in seconds"}}},
                    {"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}},
                   {"timeSeconds","bpm"}),
+        "composition",
         [e](const QJsonObject& a) {
             int idx = e->getProjectCommands().addTempoPoint(
                 a.value("timeSeconds").toDouble(), a.value("bpm").toDouble());
@@ -900,6 +988,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"remove_tempo_point", "Remove a tempo point by index.",
         objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}}}, {"index"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectCommands().removeTempoPoint(a.value("index").toInt());
             return McpToolResult::text("removed");
@@ -909,6 +998,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}},
                    {"bpm", QJsonObject{{"type","number"},{"minimum",1.0},{"maximum",999.0}}}},
                   {"index","bpm"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectCommands().setTempoPointBpm(
                 a.value("index").toInt(), a.value("bpm").toDouble());
@@ -919,6 +1009,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"index", QJsonObject{{"type","integer"},{"minimum",0}}},
                    {"timeSeconds", QJsonObject{{"type","number"},{"description","Time in seconds"}}}},
                   {"index","timeSeconds"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectCommands().setTempoPointTime(
                 a.value("index").toInt(), a.value("timeSeconds").toDouble());
@@ -928,6 +1019,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_time_signature", "Set the project time signature (numerator/denominator).",
         objSchema({{"numerator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}},
                   {"denominator", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",32}}}}, {"numerator","denominator"}),
+        "composition",
         [e](const QJsonObject& a) {
             e->getProjectCommands().setTimeSignature(a.value("numerator").toInt(), a.value("denominator").toInt());
             return McpToolResult::text("ok");
@@ -935,6 +1027,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"get_chord_types", "List all available chord types.",
         objSchema({}),
+        "composition",
         [](const QJsonObject&) {
             QJsonArray arr;
             for (const auto& ct : PhraseGenerator::getChordTypes()) {
@@ -951,6 +1044,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"get_progression_patterns", "List all available progression patterns.",
         objSchema({}),
+        "composition",
         [](const QJsonObject&) {
             QJsonArray arr;
             for (const auto& pp : PhraseGenerator::getProgressionPatterns()) {
@@ -970,6 +1064,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"get_scale_modes", "List all available scale modes.",
         objSchema({}),
+        "composition",
         [](const QJsonObject&) {
             QJsonArray arr;
             for (const auto& sm : PhraseGenerator::getScaleModes()) {
@@ -993,11 +1088,11 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         double bpm = e->getReadModel().getTransport().bpm;
         double startSec = HDAW::beatsToSeconds(start, bpm);
         double durSec = HDAW::beatsToSeconds(length, bpm);
-        auto c = ProjectModel::createMidiClipEmpty("Generated", startSec, durSec);
+        auto c = m.createMidiClipEmpty("Generated", startSec, durSec);
         c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(trackId)), nullptr);
         auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
         for (const auto& gn : notes)
-            nl.addChild(ProjectModel::createMidiNote(gn.noteNumber, static_cast<float>(gn.velocity) / 127.0f, gn.startBeat, gn.durationBeats), -1, nullptr);
+            nl.addChild(m.createMidiNote(gn.noteNumber, static_cast<float>(gn.velocity) / 127.0f, gn.startBeat, gn.durationBeats), -1, nullptr);
         int cid = static_cast<int>(c.getProperty(IDs::clipID));
         tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
         return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg((int) notes.size()));
@@ -1021,6 +1116,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
                   {"seed",        QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","style","length","density"}),
+        "composition",
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::PhraseParams p;
             QString sname = a.value("style").toString();
@@ -1137,6 +1233,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"scaleMode",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
                   {"seed",        QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","rootPitch","chordType","length"}),
+        "composition",
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::ChordParams p;
             p.chordType = a.value("chordType").toInt();
@@ -1175,6 +1272,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"scaleMode",        QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
                   {"seed",             QJsonObject{{"type","integer"},{"minimum",0}}}},
                  {"trackId","pattern","beatsPerChord"}),
+        "composition",
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             PhraseGenerator::ProgressionParams p;
             p.patternIndex = a.value("pattern").toInt();
@@ -1202,7 +1300,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"start",       QJsonObject{{"type","number"}}},
                   {"grid",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",64},{"description","Steps per bar (16 = 16th notes). Notes align to beat grid positions."}}},
-                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16},{"description","Number of bars (not seconds). Each bar = 4 beats."}}},
+                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"description","Number of bars (not seconds). Each bar = 4 beats."}}},
                   {"pulseA",      QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"pulseB",      QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"rotationA",   QJsonObject{{"type","integer"},{"minimum",0}}},
@@ -1215,6 +1313,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"dslPitch",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
                   {"dslVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
                  {"trackId"}),
+        "composition",
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
             RhythmPatternGenerator::Params p;
             p.grid        = a.value("grid").toInt(16);
@@ -1263,10 +1362,13 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"enableBass",      QJsonObject{{"type","boolean"}}},
                   {"enableLead",      QJsonObject{{"type","boolean"}}},
                   {"enableChords",    QJsonObject{{"type","boolean"}}},
+                  {"velocityMin",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                  {"velocityMax",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
                   {"targetTrackIds", QJsonObject{{"type","object"},
                       {"description","Map role names to track indices: {\"Kick\":0, \"Bass\":1, ...}. Roles without mapping create new tracks."},
                       {"additionalProperties", QJsonObject{{"type","integer"}}}}}},
                  {"bars"}),
+        "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             HDAW::ArrangementParams p;
             p.bars = a.value("bars").toInt(32);
@@ -1284,15 +1386,28 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
             p.enableBass = a.contains("enableBass") ? a.value("enableBass").toBool() : true;
             p.enableLead = a.contains("enableLead") ? a.value("enableLead").toBool() : false;
             p.enableChords = a.contains("enableChords") ? a.value("enableChords").toBool() : false;
+            p.velocityMin = a.contains("velocityMin") ? a.value("velocityMin").toInt() : 0;
+            p.velocityMax = a.contains("velocityMax") ? a.value("velocityMax").toInt() : 0;
             if (a.contains("targetTrackIds")) {
                 auto obj = a.value("targetTrackIds").toObject();
                 for (auto it = obj.begin(); it != obj.end(); ++it)
                     p.targetTrackIds[it.key().toStdString()] = it.value().toInt();
             }
             auto r = e->getProjectCommands().generateArrangement(p);
-            return McpToolResult::text(QString("tracks=%1 clips=%2 notes=%3 seed=%4")
-                .arg(r.trackIndices.size()).arg(r.clipIds.size()).arg(r.noteCount)
-                .arg(static_cast<qulonglong>(r.seed)));
+            QJsonArray parts;
+            const size_t n = r.clipIds.size();
+            for (size_t i = 0; i < n; ++i) {
+                QJsonObject part;
+                part["role"] = QString::fromStdString(i < r.roleNames.size() ? r.roleNames[i] : "");
+                part["trackIndex"] = r.trackIndices[i];
+                part["clipId"] = r.clipIds[i];
+                parts.append(part);
+            }
+            QJsonObject res;
+            res["seed"] = QJsonValue(static_cast<qint64>(r.seed));
+            res["noteCount"] = r.noteCount;
+            res["parts"] = parts;
+            return McpToolResult::text(QJsonDocument(res).toJson(QJsonDocument::Compact));
         }});
 
     s.registerTool({"add_instrument_part",
@@ -1322,6 +1437,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"verify",       QJsonObject{{"type","boolean"}}},
                   {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
                  {"trackName"}),
+        "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             ProjectCommands::InstrumentPartParams p;
             p.trackName = a.value("trackName").toString().toStdString();
@@ -1377,6 +1493,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"verify",         QJsonObject{{"type","boolean"}}},
                   {"allowGlobalScale", QJsonObject{{"type","boolean"}}}},
                  {"trackId","targetRms"}),
+        "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             auto r = e->getProjectCommands().autoGainToTarget(
                 a.value("trackId").toInt(),
@@ -1392,7 +1509,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"audition_plugin",
-        "Solo-render a plugin — on a temp probe track (trackIndex < 0) or an existing plugin slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Calls the same engine command as the composition.auditionPlugin RPC.",
+        "Solo-render a plugin or internal FX (fm_synth/sampler) — on a temp probe track (trackIndex < 0) or an existing slot — over a short window and report peak/rms/audible so silent-at-default plugins stop being a blocker. programIndex -1 reports the current program. Calls the same engine command as the composition.auditionPlugin RPC.",
         objSchema({{"pluginId",     QJsonObject{{"type","string"}}},
                   {"programIndex",  QJsonObject{{"type","integer"},{"minimum",-1}}},
                   {"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
@@ -1407,7 +1524,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                   {"maxVelocity",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"seed",          QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}},
-                  {"keepTrack",     QJsonObject{{"type","boolean"}}}}),
+                   {"keepTrack",     QJsonObject{{"type","boolean"}}}}),
+        "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             ProjectCommands::AuditionParams p;
             p.pluginId = a.contains("pluginId") ? a.value("pluginId").toString().toStdString() : std::string();
@@ -1438,7 +1556,8 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (mix peak < 1.0), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy). Read-only. Calls the same engine command as the composition.verifyPart RPC.",
         objSchema({{"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
                    {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}}},
-                  {"trackIndex"}),
+                   {"trackIndex"}),
+        "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             const int trackIndex = a.value("trackIndex").toInt(-1);
             const double windowSeconds = a.value("windowSeconds").toDouble(4.0);
@@ -1458,6 +1577,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Returns full analysis with generated params ready for regeneration.",
         objSchema({{"path", QJsonObject{{"type","string"}}}},
                    {"path"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             auto filePath = a.value("path").toString().toStdString();
             juce::File file{ juce::String(filePath) };
@@ -1538,6 +1658,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         objSchema({{"category", QJsonObject{{"type","string"}}},
                    {"style",    QJsonObject{{"type","string"}}},
                    {"tag",      QJsonObject{{"type","string"}}}}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             auto entries = patternLib.listPatterns(
                 a.value("category").toString().toStdString(),
@@ -1569,6 +1690,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
                    {"tags",        QJsonObject{{"type","array"},{"items", QJsonObject{{"type","string"}}}}},
                    {"category",    QJsonObject{{"type","string"}}}},
                    {"name","style","params"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             HDAW::PatternPreset preset;
             preset.name = a.value("name").toString().toStdString();
@@ -1594,6 +1716,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Load a pattern preset's parameters.",
         objSchema({{"id", QJsonObject{{"type","string"}}}},
                    {"id"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             HDAW::PatternPreset preset;
             juce::String err;
@@ -1625,6 +1748,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Delete a user-created pattern preset. Factory presets cannot be deleted.",
         objSchema({{"id", QJsonObject{{"type","string"}}}},
                    {"id"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             juce::String err;
             if (!patternLib.deletePattern(a.value("id").toString().toStdString(), err))
@@ -1636,6 +1760,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Import a JSON pattern file or string into the pattern library.",
         objSchema({{"json", QJsonObject{{"type","string"}}}},
                    {"json"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             juce::String outId, err;
             if (!patternLib.importPattern(a.value("json").toString().toStdString(), outId, err))
@@ -1647,6 +1772,7 @@ static void registerCompositionTools(McpServer& s, AudioEngine* e)
         "Export a pattern preset as a JSON string.",
         objSchema({{"id", QJsonObject{{"type","string"}}}},
                    {"id"}),
+        "composition",
         [](const QJsonObject& a) -> McpToolResult {
             juce::String outJson, err;
             if (!patternLib.exportPattern(a.value("id").toString().toStdString(), outJson, err))
@@ -1661,6 +1787,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_arranger_regions",
         "List all arranger regions (regionID, name, startTime, duration, color).",
         objSchema({}),
+        "arranger",
         [e](const QJsonObject&) {
             auto regions = e->getReadModel().getArrangerRegions();
             QJsonArray arr;
@@ -1680,6 +1807,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_arranger_chains",
         "List all arranger chains (chainID, name, isActive, entries).",
         objSchema({}),
+        "arranger",
         [e](const QJsonObject&) {
             auto chains = e->getReadModel().getArrangerChains();
             QJsonArray arr;
@@ -1710,6 +1838,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
                    {"duration",  QJsonObject{{"type","number"}}},
                    {"color",     QJsonObject{{"type","integer"}}}},
                   {"name","startTime","duration"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string name = a.value("name").toString().toStdString();
             double start = a.value("startTime").toDouble();
@@ -1723,6 +1852,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         "Remove an arranger region by regionID (destructive).",
         objSchema({{"regionID", QJsonObject{{"type","string"}}}},
                   {"regionID"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string rid = a.value("regionID").toString().toStdString();
             e->getProjectCommands().removeArrangerRegion(rid);
@@ -1734,6 +1864,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         objSchema({{"regionID", QJsonObject{{"type","string"}}},
                    {"name",     QJsonObject{{"type","string"}}}},
                   {"regionID","name"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string rid = a.value("regionID").toString().toStdString();
             std::string name = a.value("name").toString().toStdString();
@@ -1747,6 +1878,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
                    {"startTime", QJsonObject{{"type","number"}}},
                    {"duration",  QJsonObject{{"type","number"}}}},
                   {"regionID","startTime","duration"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string rid = a.value("regionID").toString().toStdString();
             double start = a.value("startTime").toDouble();
@@ -1760,6 +1892,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         objSchema({{"regionID", QJsonObject{{"type","string"}}},
                    {"color",    QJsonObject{{"type","integer"}}}},
                   {"regionID","color"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string rid = a.value("regionID").toString().toStdString();
             int color = a.value("color").toInt();
@@ -1772,6 +1905,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         "Add an arranger chain. Returns the new chainID.",
         objSchema({{"name", QJsonObject{{"type","string"}}}},
                   {"name"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string name = a.value("name").toString().toStdString();
             auto id = e->getProjectCommands().addArrangerChain(name);
@@ -1782,6 +1916,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         "Remove an arranger chain by chainID (destructive).",
         objSchema({{"chainID", QJsonObject{{"type","string"}}}},
                   {"chainID"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             e->getProjectCommands().removeArrangerChain(cid);
@@ -1793,6 +1928,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         objSchema({{"chainID", QJsonObject{{"type","string"}}},
                    {"name",    QJsonObject{{"type","string"}}}},
                   {"chainID","name"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             std::string name = a.value("name").toString().toStdString();
@@ -1804,6 +1940,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         "Set the active arranger chain.",
         objSchema({{"chainID", QJsonObject{{"type","string"}}}},
                   {"chainID"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             e->getProjectCommands().setArrangerChainActive(cid);
@@ -1817,6 +1954,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
                    {"regionID",    QJsonObject{{"type","string"}}},
                    {"repeatCount", QJsonObject{{"type","integer"}}}},
                   {"chainID","regionID"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             std::string rid = a.value("regionID").toString().toStdString();
@@ -1830,6 +1968,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
         objSchema({{"chainID",   QJsonObject{{"type","string"}}},
                    {"entryIndex", QJsonObject{{"type","integer"}}}},
                   {"chainID","entryIndex"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             int idx = a.value("entryIndex").toInt();
@@ -1843,6 +1982,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
                    {"fromIndex", QJsonObject{{"type","integer"}}},
                    {"toIndex",   QJsonObject{{"type","integer"}}}},
                   {"chainID","fromIndex","toIndex"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             int from = a.value("fromIndex").toInt();
@@ -1857,6 +1997,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
                    {"entryIndex", QJsonObject{{"type","integer"}}},
                    {"repeatCount", QJsonObject{{"type","integer"}}}},
                   {"chainID","entryIndex","repeatCount"}),
+        "arranger",
         [e](const QJsonObject& a) -> McpToolResult {
             std::string cid = a.value("chainID").toString().toStdString();
             int idx = a.value("entryIndex").toInt();
@@ -1869,6 +2010,7 @@ static void registerArrangerTools(McpServer& s, AudioEngine* e)
     s.registerTool({"flatten_arranger",
         "Flatten the arranger: expand all chain regions into actual clips on the timeline.",
         objSchema({}),
+        "arranger",
         [e](const QJsonObject&) -> McpToolResult {
             e->getProjectCommands().flattenArranger();
             return McpToolResult::text("ok");
@@ -1879,6 +2021,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"save_project", "Save the project to a file.",
         objSchema({{"filePath", QJsonObject{{"type","string"}}}}, {"filePath"}),
+        "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
             juce::File f(juce::String(path.toUtf8().constData()));
@@ -1890,6 +2033,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"load_project", "Load a project from a file (replaces current project).",
         objSchema({{"filePath", QJsonObject{{"type","string"}}}}, {"filePath"}),
+        "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
             juce::File f(juce::String(path.toUtf8().constData()));
@@ -1903,6 +2047,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"new_project", "Create a new empty project.",
         objSchema({}),
+        "project",
         [e](const QJsonObject&) {
             HDAW::ProjectSerializer::createNew(e->getProjectModel());
             return McpToolResult::text("ok");
@@ -1910,6 +2055,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"project_info", "Return project file metadata (provenance, format version, timestamps).",
         objSchema({}),
+        "project",
         [e](const QJsonObject&) {
             auto& tree = e->getProjectModel().getTree();
             QJsonObject o{
@@ -1925,6 +2071,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"scan_plugins", "Scan for VST3/CLAP plugins (may take a minute).",
         objSchema({}),
+        "project",
         [e](const QJsonObject&) {
             e->getPluginManager().scanAll();
             int count = static_cast<int>(e->getPluginManager().getPlugins().size());
@@ -1933,6 +2080,7 @@ static void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"list_plugins", "List all scanned plugins.",
         objSchema({}),
+        "project",
         [e](const QJsonObject&) {
             auto& pm = e->getPluginManager();
             QJsonArray arr;
@@ -1965,6 +2113,7 @@ static void registerCcTools(McpServer& s, AudioEngine* e)
                   {"beat",             QJsonObject{{"type","number"}}},
                   {"value",            QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}},
                  {"clipId","controllerNumber","beat","value"}),
+        "cc",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -1986,6 +2135,7 @@ static void registerCcTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_cc_points", "List CC points in a clip (optionally one controller).",
         objSchema({{"clipId",           QJsonObject{{"type","integer"}}},
                   {"controllerNumber", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}}, {"clipId"}),
+        "cc",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
             if (!c.isValid()) return McpToolResult::text("clip not found", true);
@@ -2014,6 +2164,7 @@ static void registerCcTools(McpServer& s, AudioEngine* e)
         objSchema({{"ccId",  QJsonObject{{"type","integer"}}},
                   {"beat",  QJsonObject{{"type","number"}}},
                   {"value", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}}, {"ccId"}),
+        "cc",
         [e](const QJsonObject& a) -> McpToolResult {
             int dummy = 0; auto pt = findCcPoint(e, a.value("ccId").toInt(), &dummy);
             if (!pt.isValid()) return McpToolResult::text("cc point not found", true);
@@ -2026,6 +2177,7 @@ static void registerCcTools(McpServer& s, AudioEngine* e)
     s.registerTool({"remove_cc_point", "Remove a CC point by ccId (destructive).",
         objSchema({{"ccId",   QJsonObject{{"type","integer"}}},
                   {"dryRun", QJsonObject{{"type","boolean"}}}}, {"ccId"}),
+        "cc",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = 0; auto pt = findCcPoint(e, a.value("ccId").toInt(), &clipId);
             if (!pt.isValid()) return McpToolResult::text("cc point not found", true);

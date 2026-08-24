@@ -192,3 +192,63 @@ TEST(Audition, RealPluginReportsProgramNames)
 // captured bytes) yet the plugin renders the default program. This is a
 // plugin/format limitation of the JUCE program API, not a defect in the
 // audition pipeline. See docs/plans/2026-08-19-plugin-preset-audition.md.
+
+TEST(Audition, InternalFmSynthSlotAudible)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Add a track with an fm_synth instrument slot.
+    int trackIdx = cmds.addTrack("FM Test", -1, -1, 0);
+    ASSERT_GE(trackIdx, 0);
+    cmds.addFxSlot(trackIdx, "fm_synth", 0, "");
+    // Rebuild routing graph so the live processor picks up the new track + FX.
+    if (auto* proc = engine.getMainProcessor())
+        proc->rebuildRoutingGraph();
+
+    // Add a MIDI clip with notes so there's something to render.
+    int clipId = cmds.addMidiClip(trackIdx, 0.0, 4.0, "Test");
+    ASSERT_GT(clipId, 0);
+    cmds.addNote(clipId, 60, 100, 0.0, 0.5);
+    cmds.addNote(clipId, 64, 100, 0.5, 0.5);
+    cmds.addNote(clipId, 67, 100, 1.0, 0.5);
+
+    // Audition the fm_synth slot — should succeed and be audible.
+    ProjectCommands::AuditionParams p;
+    p.trackIndex = trackIdx;
+    p.slotIndex = 0;
+    p.windowSeconds = 2.0;
+    auto r = cmds.auditionPlugin(p);
+    EXPECT_TRUE(r.ok) << "error: " << r.error;
+    EXPECT_TRUE(r.audible) << "fm_synth should be audible, peak=" << r.peak;
+    EXPECT_GT(r.peak, 1e-4f);
+}
+
+TEST(Audition, InternalSamplerSlotAudible)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Add a track with a sampler instrument slot.
+    int trackIdx = cmds.addTrack("Sampler Test", -1, -1, 0);
+    ASSERT_GE(trackIdx, 0);
+    cmds.addFxSlot(trackIdx, "sampler", 0, "");
+    if (auto* proc = engine.getMainProcessor())
+        proc->rebuildRoutingGraph();
+
+    // Add a MIDI clip so the audition has content to render.
+    int clipId = cmds.addMidiClip(trackIdx, 0.0, 4.0, "Test");
+    ASSERT_GT(clipId, 0);
+    cmds.addNote(clipId, 60, 100, 0.0, 0.5);
+
+    // No sound loaded → audition succeeds but reports silence.
+    ProjectCommands::AuditionParams p;
+    p.trackIndex = trackIdx;
+    p.slotIndex = 0;
+    p.windowSeconds = 2.0;
+    auto r = cmds.auditionPlugin(p);
+    EXPECT_TRUE(r.ok) << "error: " << r.error;
+    EXPECT_FALSE(r.audible);
+}

@@ -26,6 +26,14 @@ export default function SessionView() {
     return map;
   }, [clips]);
 
+  const sceneNames = useMemo(() => {
+    const firstTrackIdx = visibleTracks.length > 0 ? visibleTracks[0].index : 0;
+    return Array.from({ length: SCENE_COUNT }, (_, i) => {
+      const clip = clipsBySlot.get(`${firstTrackIdx}-${i}`);
+      return clip?.name || `Scene ${i + 1}`;
+    });
+  }, [clipsBySlot, visibleTracks]);
+
   const handleSceneLaunch = (sceneIndex: number) => {
     rpc.call("session.launchScene", { sceneIndex }).catch(console.error);
   };
@@ -46,14 +54,14 @@ export default function SessionView() {
   return (
     <div className="sv-root">
       <div className="sv-scene-buttons">
-        {Array.from({ length: SCENE_COUNT }, (_, i) => (
+        {sceneNames.map((name, i) => (
           <button
             key={i}
             className={`sv-scene-btn${launchedScene === i ? " sv-scene-btn--active" : ""}`}
             onClick={() => handleSceneLaunch(i)}
-            title={`Launch Scene ${i + 1}`}
+            title={`Launch ${name}`}
           >
-            Scene {i + 1}
+            {name}
           </button>
         ))}
         <button

@@ -93,7 +93,7 @@ QJsonValue McpServer::handleInitialize(const QJsonValue&) {
 QJsonValue McpServer::handleToolsList() {
     QJsonArray arr;
     for (const auto& t : tools_) arr.append(QJsonObject{
-        {"name", t.name},{"description", t.description},{"inputSchema", t.inputSchema}});
+        {"name", t.name},{"description", t.description},{"inputSchema", t.inputSchema},{"category", t.category}});
     return QJsonObject{{"tools", arr}};
 }
 

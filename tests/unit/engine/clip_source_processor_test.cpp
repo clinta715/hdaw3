@@ -7,7 +7,7 @@
 TEST(ClipSourceProcessor, GainEnvelopeInterpolation)
 {
     ProjectModel model;
-    auto clip = ProjectModel::createAudioClip("Test", 0.0, 4.0, "dummy.wav");
+    auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     auto envelope = ProjectModel::ensureGainEnvelope(clip);
     ProjectModel::addGainEnvelopePoint(envelope, 0.0, 1.0, nullptr);
     ProjectModel::addGainEnvelopePoint(envelope, 2.0, 0.5, nullptr);

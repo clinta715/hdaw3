@@ -363,21 +363,28 @@ ProjectCommands::InstrumentPartParams loudLeadPart(uint64_t seed)
 
 } // namespace
 
-// Deterministic loud part: Lead seed 42 clips the full mix at unity (true
-// peak ≈ 1.13, measured 0.5657 at master 0.5 in MasterGain.RenderAttenuation)
-// and its raw solo RMS is well below 0.5, so targetRms 0.5 wants a fader > 1
-// → clamps → the global-scale path scales the master bus down and raises the
-// fader into the created headroom, in ONE undo unit.
+// Stack 4 identical Lead parts so the full mix clips at unity (v0.24.0 gain
+// restructure lowered single-part peak from ~1.13 to ~0.28; four coherent
+// additions push the mix past 1.0, triggering the global-scale path). The
+// fader is raised into the created headroom, in ONE undo unit.
 TEST(GlobalScale, ClippedMixScaledDown)
 {
     AudioEngine engine;
     engine.initialize();
     auto& pc = engine.getProjectCommands();
 
-    auto res = pc.addInstrumentPart(loudLeadPart(42));
-    ASSERT_TRUE(res.error.empty()) << res.error;
+    // Stack 4 identical Lead parts so the full mix clips at unity (v0.24.0 gain
+    // restructure lowered single-part peak from ~1.13 to ~0.28; four coherent
+    // additions push the mix past 1.0, triggering the global-scale path).
+    int targetTrack = -1;
+    for (int i = 0; i < 4; ++i)
+    {
+        auto res = pc.addInstrumentPart(loudLeadPart(42));
+        ASSERT_TRUE(res.error.empty()) << res.error;
+        targetTrack = res.trackIndex;
+    }
 
-    auto gain = pc.autoGainToTarget(res.trackIndex, 0.5f, 4.0, false, true);
+    auto gain = pc.autoGainToTarget(targetTrack, 0.5f, 4.0, false, true);
     std::cout << "[GlobalScale] fader=" << gain.fader << " clamped=" << gain.clamped
               << " globalScale=" << gain.globalScale << " masterGain=" << gain.masterGain
               << " mixPeak=" << gain.mixPeak << " rawRms=" << gain.measuredRms << std::endl;
@@ -390,7 +397,7 @@ TEST(GlobalScale, ClippedMixScaledDown)
     EXPECT_LT(gain.masterGain, 1.0f);
     EXPECT_NEAR(gain.masterGain, gain.globalScale, 1e-6f);   // baseline master was 1.0
     EXPECT_GT(gain.fader, 1.0f);                             // raised into the headroom
-    // Single-track mix: the fader raise exactly compensates the master scale
+    // Multi-track mix: the fader raise exactly compensates the master scale
     // (the target track IS the mix), so the post-scale mix still touches full
     // scale and the 24-bit WAV measures exactly 1.0 (JUCE reads int24 full
     // scale as 1/0x7fffff). mixPeak < 1.0 is unreachable after a global
@@ -403,8 +410,8 @@ TEST(GlobalScale, ClippedMixScaledDown)
     pc.undo();
     EXPECT_NEAR(engine.getProjectModel().getMasterGain(), 1.0f, 1e-6f);
     const auto snap = engine.getReadModel().snapshot();
-    ASSERT_GT(static_cast<int>(snap.tracks.size()), res.trackIndex);
-    EXPECT_NEAR(snap.tracks[res.trackIndex].volume, 1.0, 1e-6);
+    ASSERT_GT(static_cast<int>(snap.tracks.size()), targetTrack);
+    EXPECT_NEAR(snap.tracks[targetTrack].volume, 1.0, 1e-6);
 }
 
 // Default path (allowGlobalScale=false): clamps at unity exactly as before,

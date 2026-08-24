@@ -525,12 +525,14 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
 
         auto result = c.generateArrangement(ap);
 
-        QJsonArray tracks, clips;
+        QJsonArray tracks, clips, roles;
         for (int t : result.trackIndices) tracks.append(t);
         for (int ci : result.clipIds) clips.append(ci);
+        for (const auto& rn : result.roleNames) roles.append(QString::fromStdString(rn));
         QJsonObject res{
             { "trackIndices", tracks },
             { "clipIds", clips },
+            { "roleNames", roles },
             { "noteCount", result.noteCount },
             { "seed", static_cast<double>(result.seed) }
         };

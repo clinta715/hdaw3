@@ -1,109 +1,191 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { rpc } from "../rpc";
-import type { PresetSearchResult, FxSlotSnapshot } from "../rpc/types";
-import { useUiStore } from "../store/uiStore";
 import "./PresetBrowser.css";
 
-export default React.memo(function PresetBrowser() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PresetSearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadedMsg, setLoadedMsg] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+interface PatternEntry {
+  id: string;
+  name: string;
+  style: string;
+  category: string;
+  tags: string[];
+  source: string;
+}
 
-  const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
+interface LoadResult {
+  name: string;
+  style: string;
+  params: Record<string, unknown>;
+  styleParams: Record<string, unknown>;
+}
 
-  const doSearch = useCallback(async (q: string) => {
-    if (q.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await rpc.call("plugin.searchPresets", { query: q, limit: 100 });
-      setResults(Array.isArray(res) ? res : []);
-    } catch {
-      setResults([]);
-    }
-    setLoading(false);
-  }, []);
+interface Props {
+  onLoadPreset: (preset: {
+    name: string;
+    style: string;
+    params: Record<string, unknown>;
+    styleParams: Record<string, unknown>;
+  }) => void;
+  currentStyle: string;
+}
+
+export default function PresetBrowser({ onLoadPreset }: Props) {
+  const [patterns, setPatterns] = useState<PatternEntry[]>([]);
+  const [search, setSearch] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => doSearch(query), 250);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, doSearch]);
-
-  const handleLoad = useCallback(async (preset: PresetSearchResult) => {
-    const trackIndex = useUiStore.getState().selectedTrackIndex;
-    if (trackIndex == null) {
-      setLoadedMsg("Select a track first");
-      setTimeout(() => setLoadedMsg(null), 2000);
-      return;
-    }
-
-    let slots: FxSlotSnapshot[];
-    try {
-      const data = await rpc.call("read.getFxSlots", { trackIndex });
-      slots = Array.isArray(data) ? data as FxSlotSnapshot[] : [];
-    } catch {
-      setLoadedMsg("Failed to read FX slots");
-      setTimeout(() => setLoadedMsg(null), 2000);
-      return;
-    }
-
-    const slot = slots.find((s) => s.fxType === "plugin" && s.pluginId === preset.pluginId);
-    if (!slot) {
-      setLoadedMsg(`No ${preset.pluginName} slot on this track`);
-      setTimeout(() => setLoadedMsg(null), 2000);
-      return;
-    }
-
-    try {
-      await rpc.call("pluginParam.setCurrentProgram", {
-        trackIndex,
-        pluginID: preset.pluginId,
-        programIndex: preset.presetIndex,
-      });
-      setLoadedMsg(`Loaded: ${preset.presetName}`);
-      setTimeout(() => setLoadedMsg(null), 2000);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "failed";
-      setLoadedMsg(`Error: ${msg}`);
-      setTimeout(() => setLoadedMsg(null), 3000);
-    }
+    rpc.call("composition.listPatterns", {}).then((result: unknown) => {
+      if (Array.isArray(result)) setPatterns(result as PatternEntry[]);
+    });
   }, []);
+
+  const filtered = useMemo(() => {
+    if (!search) return patterns;
+    const lower = search.toLowerCase();
+    return patterns.filter(
+      (p) =>
+        p.name.toLowerCase().includes(lower) ||
+        p.style.toLowerCase().includes(lower) ||
+        (p.tags && p.tags.some((t) => t.toLowerCase().includes(lower)))
+    );
+  }, [patterns, search]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, PatternEntry[]>();
+    for (const p of filtered) {
+      const cat = p.category || "other";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(p);
+    }
+    return map;
+  }, [filtered]);
+
+  const handleLoad = useCallback(
+    async (id: string) => {
+      const result: unknown = await rpc.call("composition.loadPattern", { id });
+      if (result && typeof result === "object") {
+        const r = result as LoadResult;
+        setActiveId(id);
+        onLoadPreset({
+          name: r.name,
+          style: r.style,
+          params: r.params,
+          styleParams: r.styleParams,
+        });
+      }
+    },
+    [onLoadPreset]
+  );
+
+  const handleDelete = useCallback(
+    async (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!confirm("Delete this preset?")) return;
+      await rpc.call("composition.deletePattern", { id });
+      setPatterns((prev) => prev.filter((p) => p.id !== id));
+      if (activeId === id) setActiveId(null);
+    },
+    [activeId]
+  );
+
+  const handleImport = useCallback(async () => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const result: unknown = await rpc.call("composition.importPattern", {
+        json: text,
+      });
+      if (result && typeof result === "object" && "success" in (result as Record<string, unknown>)) {
+        const updated: unknown = await rpc.call("composition.listPatterns", {});
+        if (Array.isArray(updated)) setPatterns(updated as PatternEntry[]);
+      }
+      e.target.value = "";
+    },
+    []
+  );
+
+  if (collapsed) {
+    return (
+      <div className="preset-browser collapsed">
+        <button
+          className="preset-expand-btn"
+          onClick={() => setCollapsed(false)}
+          title="Show presets"
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text-secondary)",
+            cursor: "pointer",
+            padding: "8px 4px",
+          }}
+        >
+          ▶
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="preset-browser">
-      <div className="preset-browser-toolbar">
-        <input
-          className="preset-browser-search"
-          type="text"
-          placeholder="Search presets..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          autoFocus
-        />
-        {loading && <span className="preset-browser-status">Searching...</span>}
-        {loadedMsg && <span className="preset-browser-status">{loadedMsg}</span>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+      <div className="preset-browser-header">
+        <h3>Presets</h3>
+        <div className="preset-browser-actions">
+          <button onClick={handleImport} title="Import JSON pattern">
+            Import
+          </button>
+          <button onClick={() => setCollapsed(true)} title="Hide presets">
+            ◀
+          </button>
+        </div>
       </div>
-      <div className="preset-browser-results">
-        {results.length === 0 && query.trim().length >= 2 && !loading && (
-          <div className="preset-browser-empty">No presets found</div>
-        )}
-        {results.map((r, i) => (
-          <div
-            key={`${r.pluginId}-${r.presetIndex}-${i}`}
-            className="preset-browser-item"
-            onClick={() => handleLoad(r)}
-            title={`Load "${r.presetName}" from ${r.pluginName}`}
-          >
-            <span className="preset-browser-item-name">{r.presetName}</span>
-            <span className="preset-browser-item-plugin">{r.pluginName}</span>
+      <div className="preset-search">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+      <div className="preset-list">
+        {Array.from(grouped.entries()).map(([category, items]) => (
+          <div key={category}>
+            <div className="preset-category">{category}</div>
+            {items.map((p) => (
+              <div
+                key={p.id}
+                className={`preset-item ${activeId === p.id ? "active" : ""}`}
+                onClick={() => handleLoad(p.id)}
+              >
+                <span>{p.name}</span>
+                <span className="preset-style">{p.style}</span>
+                {p.source === "user" && (
+                  <button
+                    className="preset-delete"
+                    onClick={(e) => handleDelete(p.id, e)}
+                    title="Delete preset"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         ))}
       </div>
     </div>
   );
-});
+}

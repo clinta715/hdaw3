@@ -6,11 +6,11 @@
 
 // ─── ProjectCommands — Automation ─────────────────────────────────
 
-void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName, int paramID)
+bool AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& laneName, int paramID)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto trackList = engine_.getProjectModel().getTrackListTree();
-    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return;
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren()) return false;
 
     auto track = trackList.getChild(trackIndex);
     auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
@@ -20,17 +20,24 @@ void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& l
         track.addChild(autoList, -1, &um);
     }
 
-    // Don't add duplicate lanes — reject an existing lane name, or (for FX-param
-    // lanes) an existing lane already bound to the same target paramID so two
-    // lanes can't drive the same plugin parameter. paramID 0 means "unbound"
-    // (the legacy default before this overload existed) and is never a conflict.
+    // Don't add duplicate lanes. Same-name collision is an idempotent no-op
+    // when the requested paramID matches the existing binding (0 = unbound,
+    // the legacy default, matches any) and a conflict when it differs. A
+    // different name with a requested nonzero paramID matching an existing
+    // lane's binding is a conflict so two lanes can't drive the same plugin
+    // parameter.
     for (int i = 0; i < autoList.getNumChildren(); ++i)
     {
         auto existing = autoList.getChild(i);
+        int existingParam = static_cast<int>(existing.getProperty(IDs::paramID, 0));
         if (existing.getProperty(IDs::name, "").toString().toStdString() == laneName)
-            return;
-        if (paramID != 0 && static_cast<int>(existing.getProperty(IDs::paramID, 0)) == paramID)
-            return;
+        {
+            if (paramID == 0 || paramID == existingParam)
+                return true;
+            return false;
+        }
+        if (paramID != 0 && existingParam == paramID)
+            return false;
     }
 
     juce::ValueTree lane(IDs::AUTOMATION);
@@ -42,6 +49,7 @@ void AudioEngineCommands::addAutomationLane(int trackIndex, const std::string& l
     autoList.addChild(lane, -1, &um);
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildAutomationCache(trackIndex);
+    return true;
 }
 
 void AudioEngineCommands::removeAutomationLane(int trackIndex, const std::string& laneName)

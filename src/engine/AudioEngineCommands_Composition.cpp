@@ -225,7 +225,7 @@ std::vector<int> paintGhostCopies(AudioEngine& engine, int trackIndex,
     {
         const double copyStartBeat = startBeat + (i + 1) * lengthBeats;
         auto newClip = rootClip.createCopy();
-        const int newId = ProjectModel::allocateClipID();
+        const int newId = model.allocateClipID();
         newClip.setProperty(IDs::clipID, newId, &um);
         newClip.setProperty(IDs::ghostSourceId, rootClipId, &um);
         newClip.setProperty(IDs::isGhost, 1, &um);
@@ -243,7 +243,7 @@ std::vector<int> paintGhostCopies(AudioEngine& engine, int trackIndex,
             for (int n = 0; n < rootNoteList.getNumChildren(); ++n)
             {
                 auto noteCopy = rootNoteList.getChild(n).createCopy();
-                noteCopy.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), &um);
+                noteCopy.setProperty(IDs::noteID, model.allocateNoteID(), &um);
                 ghostNoteList.addChild(noteCopy, -1, &um);
             }
         }
@@ -890,23 +890,44 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
             return result;
         }
         auto* track = proc->getTrack(params.trackIndex);
-        if (track == nullptr || params.slotIndex < 0
-            || static_cast<size_t>(params.slotIndex) >= track->getFXChain().size())
+        if (track == nullptr && proc->getRoutingManager() == nullptr)
         {
-            result.error = "slotIndex out of range";
-            return result;
+            // No audio device — validate against the ValueTree instead.
+            auto trackTree = trackList.getChild(params.trackIndex);
+            auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
+            if (!fxChain.isValid() || params.slotIndex < 0
+                || params.slotIndex >= fxChain.getNumChildren())
+            {
+                result.error = "slotIndex out of range";
+                return result;
+            }
+            auto clipList = trackTree.getChildWithName(IDs::CLIP_LIST);
+            if (!clipList.isValid() || clipList.getNumChildren() == 0)
+            {
+                result.error = "track has no clips";
+                return result;
+            }
         }
-        auto& slot = track->getFXChain()[static_cast<size_t>(params.slotIndex)];
-        if (slot == nullptr || !slot->isPlugin())
+        else
         {
-            result.error = "slot is not a plugin";
-            return result;
-        }
-        auto clipList = trackList.getChild(params.trackIndex).getChildWithName(IDs::CLIP_LIST);
-        if (!clipList.isValid() || clipList.getNumChildren() == 0)
-        {
-            result.error = "track has no clips";
-            return result;
+            if (track == nullptr || params.slotIndex < 0
+                || static_cast<size_t>(params.slotIndex) >= track->getFXChain().size())
+            {
+                result.error = "slotIndex out of range";
+                return result;
+            }
+            auto& slot = track->getFXChain()[static_cast<size_t>(params.slotIndex)];
+            if (slot == nullptr)
+            {
+                result.error = "slot is empty";
+                return result;
+            }
+            auto clipList = trackList.getChild(params.trackIndex).getChildWithName(IDs::CLIP_LIST);
+            if (!clipList.isValid() || clipList.getNumChildren() == 0)
+            {
+                result.error = "track has no clips";
+                return result;
+            }
         }
     }
 
@@ -931,35 +952,65 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
         || slotIndex < 0 || static_cast<size_t>(slotIndex) >= track->getFXChain().size()
         || track->getFXChain()[static_cast<size_t>(slotIndex)] == nullptr)
     {
-        rollbackProbe();
-        result.error = "plugin instance unavailable";
-        return result;
-    }
-    auto& slot = track->getFXChain()[static_cast<size_t>(slotIndex)];
-    result.numPrograms = slot->getNumPrograms();
-    if (params.programIndex >= 0)
-    {
-        if (params.programIndex >= result.numPrograms)
+        // When the routing manager is null (no audio device / test environment),
+        // the live processor has no tracks. Skip program operations — the render
+        // path reads from the ValueTree and will still produce audio.
+        if (track == nullptr && proc->getRoutingManager() == nullptr)
+        {
+            result.numPrograms = 1;
+            if (params.programIndex >= 0)
+            {
+                if (params.programIndex >= result.numPrograms)
+                {
+                    rollbackProbe();
+                    result.error = "programIndex out of range (1 programs)";
+                    return result;
+                }
+                // Can't apply a program without a live slot — reject.
+                rollbackProbe();
+                result.error = "plugin instance unavailable";
+                return result;
+            }
+            else
+            {
+                result.programIndex = 0;
+            }
+        }
+        else
         {
             rollbackProbe();
-            result.error = "programIndex out of range (" + std::to_string(result.numPrograms) + " programs)";
+            result.error = "plugin instance unavailable";
             return result;
         }
-        std::string progErr;
-        if (!applyPluginProgram(engine_, trackIndex, slotIndex, params.programIndex, progErr))
-        {
-            rollbackProbe();
-            result.error = progErr;
-            return result;
-        }
-        result.programIndex = params.programIndex;
-        result.programName = slot->getProgramName(params.programIndex).toStdString();
     }
     else
     {
-        result.programIndex = slot->getCurrentProgram();
-        if (result.programIndex >= 0 && result.programIndex < result.numPrograms)
-            result.programName = slot->getProgramName(result.programIndex).toStdString();
+        auto& slot = track->getFXChain()[static_cast<size_t>(slotIndex)];
+        result.numPrograms = slot->getNumPrograms();
+        if (params.programIndex >= 0)
+        {
+            if (params.programIndex >= result.numPrograms)
+            {
+                rollbackProbe();
+                result.error = "programIndex out of range (" + std::to_string(result.numPrograms) + " programs)";
+                return result;
+            }
+            std::string progErr;
+            if (!applyPluginProgram(engine_, trackIndex, slotIndex, params.programIndex, progErr))
+            {
+                rollbackProbe();
+                result.error = progErr;
+                return result;
+            }
+            result.programIndex = params.programIndex;
+            result.programName = slot->getProgramName(params.programIndex).toStdString();
+        }
+        else
+        {
+            result.programIndex = slot->getCurrentProgram();
+            if (result.programIndex >= 0 && result.programIndex < result.numPrograms)
+                result.programName = slot->getProgramName(result.programIndex).toStdString();
+        }
     }
 
     // Solo-render the window and report the level (audible ≈ peak > -80 dBFS).

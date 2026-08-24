@@ -772,6 +772,22 @@ Arrangement generateArrangement (const ArrangementParams& params)
             return;
         std::sort (notes.begin(), notes.end(),
                    [] (const ArrangementNote& a, const ArrangementNote& b) { return a.startBeat < b.startBeat; });
+        if (params.velocityMin > 0 && params.velocityMax > 0)
+        {
+            int genMin = 127, genMax = 1;
+            for (const auto& n : notes)
+            {
+                genMin = (std::min) (genMin, n.velocity);
+                genMax = (std::max) (genMax, n.velocity);
+            }
+            if (genMax > genMin)
+            {
+                for (auto& n : notes)
+                    n.velocity = std::clamp (
+                        params.velocityMin + (n.velocity - genMin) * (params.velocityMax - params.velocityMin) / (genMax - genMin),
+                        params.velocityMin, params.velocityMax);
+            }
+        }
         ArrangementPart part;
         part.role = role;
         part.name = trackRoleName (role);

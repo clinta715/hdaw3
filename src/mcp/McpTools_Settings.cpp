@@ -21,6 +21,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_device_types",
         "List available audio driver types.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             for (auto* type : e->getDeviceManager().getAvailableDeviceTypes())
@@ -32,6 +33,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_output_devices",
         "List output devices for the current audio driver.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             auto* devType = e->getDeviceManager().getCurrentDeviceTypeObject();
@@ -45,6 +47,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_input_devices",
         "List input devices for the current audio driver.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             auto* devType = e->getDeviceManager().getCurrentDeviceTypeObject();
@@ -58,6 +61,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_current_setup",
         "Get current audio device setup (driver, devices, sample rate, buffer size, latency).",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             auto setup = dm.getAudioDeviceSetup();
@@ -83,6 +87,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_sample_rates",
         "List available sample rates for the current audio device.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             auto* dev = e->getDeviceManager().getCurrentAudioDevice();
@@ -96,6 +101,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_audio_buffer_sizes",
         "List available buffer sizes for the current audio device.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             auto* dev = e->getDeviceManager().getCurrentAudioDevice();
@@ -109,6 +115,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_audio_device_type",
         "Switch the audio driver type.",
         objSchema({{"type", QJsonObject{{"type","string"}}}}, {"type"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             std::string type = a.value("type").toString().toStdString();
@@ -121,6 +128,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_audio_output_device",
         "Switch the audio output device.",
         objSchema({{"name", QJsonObject{{"type","string"}}}}, {"name"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             std::string name = a.value("name").toString().toStdString();
@@ -135,6 +143,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_audio_input_device",
         "Switch the audio input device.",
         objSchema({{"name", QJsonObject{{"type","string"}}}}, {"name"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             std::string name = a.value("name").toString().toStdString();
@@ -149,6 +158,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_audio_sample_rate",
         "Set the audio sample rate.",
         objSchema({{"rate", QJsonObject{{"type","number"}}}}, {"rate"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             double rate = a.value("rate").toDouble();
@@ -163,6 +173,7 @@ static void registerAudioDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_audio_buffer_size",
         "Set the audio buffer size.",
         objSchema({{"size", QJsonObject{{"type","integer"}}}}, {"size"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto& dm = e->getDeviceManager();
             int size = a.value("size").toInt();
@@ -182,6 +193,7 @@ static void registerMidiDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_midi_devices",
         "List available MIDI input devices.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             auto arr = QJsonArray();
             for (const auto& d : e->getMidiService().getAvailableDevices())
@@ -193,6 +205,7 @@ static void registerMidiDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_open_midi_device",
         "Get the currently open MIDI device name.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             return McpToolResult::text(
                 QString::fromStdString(e->getMidiService().getOpenDevice()));
@@ -201,6 +214,7 @@ static void registerMidiDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"open_midi_device",
         "Open a MIDI input device by identifier.",
         objSchema({{"identifier", QJsonObject{{"type","string"}}}}, {"identifier"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             bool ok = e->getMidiService().openDevice(
                 a.value("identifier").toString().toStdString());
@@ -210,6 +224,7 @@ static void registerMidiDeviceTools(McpServer& s, AudioEngine* e)
     s.registerTool({"close_midi_device",
         "Close the currently open MIDI device.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             e->getMidiService().closeDevice();
             return McpToolResult::text("ok");
@@ -223,6 +238,7 @@ static void registerMetronomeTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_metronome_enabled",
         "Enable or disable the metronome.",
         objSchema({{"enabled", QJsonObject{{"type","boolean"}}}}, {"enabled"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getProjectCommands().setMetronomeEnabled(a.value("enabled").toBool());
             return McpToolResult::text("ok");
@@ -236,6 +252,7 @@ static void registerPunchTools(McpServer& s, AudioEngine* e)
     s.registerTool({"set_punch_enabled",
         "Enable or disable punch recording.",
         objSchema({{"enabled", QJsonObject{{"type","boolean"}}}}, {"enabled"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getTransportCommands().setPunchEnabled(a.value("enabled").toBool());
             return McpToolResult::text("ok");
@@ -249,6 +266,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
     s.registerTool({"preview_load",
         "Load a file into the preview player.",
         objSchema({{"filePath", QJsonObject{{"type","string"}}}}, {"filePath"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             QString filePath = a.value("filePath").toString();
             if (filePath.isEmpty())
@@ -260,6 +278,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
     s.registerTool({"preview_play",
         "Start preview playback.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             e->getPreviewPlayer().play();
             return McpToolResult::text("ok");
@@ -268,6 +287,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
     s.registerTool({"preview_stop",
         "Stop preview playback.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             e->getPreviewPlayer().stop();
             return McpToolResult::text("ok");
@@ -277,6 +297,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
         "Set preview player volume (0.0 to 1.0).",
         objSchema({{"volume", QJsonObject{{"type","number"},
             {"minimum",0.0},{"maximum",1.0}}}}, {"volume"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             float vol = static_cast<float>(a.value("volume").toDouble());
             e->getPreviewPlayer().setVolume(vol);
@@ -287,6 +308,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
         "Enable or disable tempo-matched preview.",
         objSchema({{"enabled", QJsonObject{{"type","boolean"}}},
                    {"fileBpm", QJsonObject{{"type","number"}}}}, {"enabled"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             bool enabled = a.value("enabled").toBool();
             double fileBpm = a.value("fileBpm").toDouble(0.0);
@@ -298,6 +320,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
         "Set the project BPM for preview tempo matching.",
         objSchema({{"bpm", QJsonObject{{"type","number"},
             {"minimum",1.0},{"maximum",999.0}}}}, {"bpm"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getPreviewPlayer().setProjectBpm(a.value("bpm").toDouble());
             return McpToolResult::text("ok");
@@ -306,6 +329,7 @@ static void registerPreviewTools(McpServer& s, AudioEngine* e)
     s.registerTool({"preview_is_playing",
         "Check if preview is currently playing.",
         objSchema({}),
+        "settings",
         [e](const QJsonObject&) -> McpToolResult {
             return McpToolResult::text(
                 e->getPreviewPlayer().isPlaying() ? "true" : "false");
@@ -319,6 +343,7 @@ static void registerPluginBlacklistTools(McpServer& s, AudioEngine* e)
     s.registerTool({"is_plugin_blacklisted",
         "Check if a plugin is blacklisted.",
         objSchema({{"pluginId", QJsonObject{{"type","string"}}}}, {"pluginId"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             bool blacklisted = e->getPluginService().isBlacklisted(
                 a.value("pluginId").toString().toStdString());
@@ -328,6 +353,7 @@ static void registerPluginBlacklistTools(McpServer& s, AudioEngine* e)
     s.registerTool({"blacklist_plugin",
         "Blacklist a plugin.",
         objSchema({{"pluginId", QJsonObject{{"type","string"}}}}, {"pluginId"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getPluginService().blacklistPlugin(
                 a.value("pluginId").toString().toStdString());
@@ -337,6 +363,7 @@ static void registerPluginBlacklistTools(McpServer& s, AudioEngine* e)
     s.registerTool({"unblacklist_plugin",
         "Remove a plugin from the blacklist.",
         objSchema({{"pluginId", QJsonObject{{"type","string"}}}}, {"pluginId"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getPluginService().unblacklistPlugin(
                 a.value("pluginId").toString().toStdString());
@@ -346,6 +373,7 @@ static void registerPluginBlacklistTools(McpServer& s, AudioEngine* e)
     s.registerTool({"get_blacklist_reason",
         "Get the reason a plugin was blacklisted.",
         objSchema({{"pluginId", QJsonObject{{"type","string"}}}}, {"pluginId"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             auto reason = e->getPluginService().getBlacklistReason(
                 a.value("pluginId").toString().toStdString());
@@ -362,6 +390,7 @@ static void registerFxSnapshotTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}}},
                   {"trackIndex","slotIndex"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackIndex").toInt();
             int si = a.value("slotIndex").toInt();
@@ -391,6 +420,7 @@ static void registerFxSnapshotTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}}},
                   {"trackIndex","slotIndex"}),
+        "settings",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackIndex").toInt();
             int si = a.value("slotIndex").toInt();

@@ -25,7 +25,7 @@ int AudioEngineCommands::createGhostClip(int sourceClipId, double newStart, int 
 
     // Deep-copy the clip
     auto newClip = clip.createCopy();
-    int newId = ProjectModel::allocateClipID();
+    int newId = engine_.getProjectModel().allocateClipID();
     newClip.setProperty(IDs::clipID, newId, nullptr);
     newClip.setProperty(IDs::ghostSourceId, rootId, nullptr);
     newClip.setProperty(IDs::isGhost, 1, nullptr);
@@ -56,7 +56,7 @@ int AudioEngineCommands::createGhostClip(int sourceClipId, double newStart, int 
             for (int i = 0; i < rootNoteList.getNumChildren(); ++i)
             {
                 auto noteCopy = rootNoteList.getChild(i).createCopy();
-                noteCopy.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), &um);
+                noteCopy.setProperty(IDs::noteID, engine_.getProjectModel().allocateNoteID(), &um);
                 ghostNoteList.addChild(noteCopy, -1, &um);
             }
         }
@@ -109,7 +109,7 @@ std::vector<int> AudioEngineCommands::paintClips(const std::vector<int>& sourceC
             }
 
             auto newClip = srcClip.createCopy();
-            int newId = ProjectModel::allocateClipID();
+            int newId = model.allocateClipID();
             newClip.setProperty(IDs::clipID, newId, &um);
             newClip.setProperty(IDs::ghostSourceId, rootId, &um);
             newClip.setProperty(IDs::isGhost, 1, &um);
@@ -139,7 +139,7 @@ std::vector<int> AudioEngineCommands::paintClips(const std::vector<int>& sourceC
                     for (int n = 0; n < rootNoteList.getNumChildren(); ++n)
                     {
                         auto noteCopy = rootNoteList.getChild(n).createCopy();
-                        noteCopy.setProperty(IDs::noteID, ProjectModel::allocateNoteID(), &um);
+                        noteCopy.setProperty(IDs::noteID, model.allocateNoteID(), &um);
                         ghostNoteList.addChild(noteCopy, -1, &um);
                     }
                 }

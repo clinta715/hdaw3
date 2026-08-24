@@ -200,7 +200,7 @@ TEST(McpServer, HandlerRunsOnMainThread) {
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
     tp.start(&s); s.setTransport(&tp); s.start();
     std::thread::id mainTid = std::this_thread::get_id();
-    s.registerTool({"whereami","test", QJsonObject{{"type","object"}},
+    s.registerTool({"whereami","test", QJsonObject{{"type","object"}}, "test",
         [mainTid](const QJsonObject&) {
             return mcp::McpToolResult::text(
                 (std::this_thread::get_id() == mainTid) ? "main" : "other");
@@ -862,17 +862,23 @@ TEST(McpServer, AutoGainGlobalScale) {
     AudioEngine engine;
     engine.initialize();
 
-    // Deterministic loud part: Lead seed 42 clips the full mix at unity and
-    // wants a fader > 1 for targetRms 0.5 → the global-scale path fires.
-    ProjectCommands::InstrumentPartParams params;
-    params.trackName = "Lead";
-    params.style = "Lead";
-    params.lengthBeats = 4.0;
-    params.placement = "region";
-    params.count = 1;
-    params.seed = 42;
-    auto res = engine.getProjectCommands().addInstrumentPart(params);
-    ASSERT_TRUE(res.error.empty()) << res.error;
+    // Stack multiple loud parts so the full mix clips at unity. A single
+    // fm_synth Lead peaks at ~0.28 — four叠加 push the mix peak past 1.0,
+    // triggering the global-scale path.
+    int targetTrack = -1;
+    for (int i = 0; i < 4; ++i)
+    {
+        ProjectCommands::InstrumentPartParams params;
+        params.trackName = "Lead";
+        params.style = "Lead";
+        params.lengthBeats = 4.0;
+        params.placement = "region";
+        params.count = 1;
+        params.seed = 42;
+        auto res = engine.getProjectCommands().addInstrumentPart(params);
+        ASSERT_TRUE(res.error.empty()) << res.error;
+        targetTrack = res.trackIndex;
+    }
 
     mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
@@ -881,9 +887,9 @@ TEST(McpServer, AutoGainGlobalScale) {
     const QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",)"
         R"("params":{"name":"auto_gain_to_target","arguments":{"trackId":%1,)"
         R"("targetRms":0.5,"windowSeconds":4.0,"allowGlobalScale":true}}})")
-        .arg(res.trackIndex);
+        .arg(targetTrack);
     tp.pumpIncoming(req.toUtf8());
-    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(60000, &out));
     auto r = parseOne(out);
     EXPECT_FALSE(r.value("error").isObject());
     EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));

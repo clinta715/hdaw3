@@ -95,7 +95,7 @@ std::vector<int> HDAW::importMidiFile(AudioEngine& engine, const QString& path, 
             clipStartTime = (std::max)(clipStartTime, end);
         }
 
-        auto clip = ProjectModel::createMidiClipEmpty(
+        auto clip = model.createMidiClipEmpty(
             ("MIDI Track " + juce::String(mt + 1)).toRawUTF8(),
             clipStartTime, clipDuration);
         auto midiNotes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
@@ -125,7 +125,7 @@ std::vector<int> HDAW::importMidiFile(AudioEngine& engine, const QString& path, 
                     }
                 }
 
-                midiNotes.addChild(ProjectModel::createMidiNote(
+                midiNotes.addChild(model.createMidiNote(
                     noteNum, static_cast<float>(msg.getVelocity()) / 127.0f,
                     beatTime, noteDurBeats), -1, nullptr);
             }

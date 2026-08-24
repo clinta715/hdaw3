@@ -12,6 +12,7 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"session_launch_scene", "Launch all clips in a scene (quantized to next bar).",
         objSchema({{"sceneIndex", QJsonObject{{"type","integer"}}}}, {"sceneIndex"}),
+        "session",
         [e](const QJsonObject& a) -> McpToolResult {
             int si = a.value("sceneIndex").toInt();
             if (si < 0 || si > 7) return McpToolResult::text("sceneIndex must be 0-7", true);
@@ -21,6 +22,7 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"session_stop_all", "Stop all playing session clips.",
         objSchema({}),
+        "session",
         [e](const QJsonObject&) -> McpToolResult {
             e->getProjectCommands().stopAllSessionClips();
             return McpToolResult::text("stopped all session clips");
@@ -29,6 +31,7 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
     s.registerTool({"session_set_clip_scene", "Assign a clip to a session scene (-1 = remove from session).",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                    {"sceneIndex", QJsonObject{{"type","integer"}}}}, {"clipId","sceneIndex"}),
+        "session",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = a.value("clipId").toInt();
             int scene = a.value("sceneIndex").toInt();
@@ -40,6 +43,7 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
                    {"sceneIndex", QJsonObject{{"type","integer"}}},
                    {"isMidi", QJsonObject{{"type","boolean"}}}}, {"trackIndex","sceneIndex"}),
+        "session",
         [e](const QJsonObject& a) -> McpToolResult {
             int track = a.value("trackIndex").toInt();
             int scene = a.value("sceneIndex").toInt();
@@ -51,6 +55,7 @@ void registerSessionDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"session_get_clip_states", "Get play/stop state for all session clips.",
         objSchema({}),
+        "session",
         [e](const QJsonObject&) -> McpToolResult {
             auto states = e->getSessionManager().getClipStates();
             QJsonArray arr;

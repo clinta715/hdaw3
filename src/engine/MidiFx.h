@@ -114,7 +114,7 @@ public:
 
         const int seqLen = static_cast<int>(seq.size());
         const int kStart = static_cast<int>(std::ceil(blockStart / rate - 1e-9));
-        const int kEnd = static_cast<int>(std::floor(blockEnd / rate + 1e-9));
+        const int kEnd = static_cast<int>(std::ceil(blockEnd / rate - 1e-9));
         for (int k = kStart; k < kEnd; ++k)
         {
             const double stepBeat = k * rate;

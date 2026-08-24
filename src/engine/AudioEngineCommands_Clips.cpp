@@ -21,7 +21,7 @@ int AudioEngineCommands::addAudioClip(int trackIndex, double start, double durat
     double startSec = HDAW::beatsToSeconds(start, bpm);
     double durSec = HDAW::beatsToSeconds(duration, bpm);
 
-    auto clip = ProjectModel::createAudioClip(
+    auto clip = engine_.getProjectModel().createAudioClip(
         juce::String(name), startSec, durSec, juce::String(sourceFile));
 
     auto track = trackList.getChild(trackIndex);
@@ -48,7 +48,7 @@ int AudioEngineCommands::addMidiClip(int trackIndex, double start, double durati
     double startSec = HDAW::beatsToSeconds(start, bpm);
     double durSec = HDAW::beatsToSeconds(duration, bpm);
 
-    auto clip = ProjectModel::createMidiClipEmpty(
+    auto clip = engine_.getProjectModel().createMidiClipEmpty(
         juce::String(name), startSec, durSec);
 
     auto track = trackList.getChild(trackIndex);
@@ -206,7 +206,7 @@ void AudioEngineCommands::moveClipWithOverlap(int clipId, int newTrackIndex, dou
             rightClip.setProperty(IDs::startTime, rightStart, &um);
             rightClip.setProperty(IDs::duration, rightDur, &um);
             rightClip.setProperty(IDs::offset, rightOffset, &um);
-            rightClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+            rightClip.setProperty(IDs::clipID, engine_.getProjectModel().allocateClipID(), &um);
             clipList.addChild(rightClip, -1, &um);
 
             // Trim the left portion
@@ -314,7 +314,7 @@ int AudioEngineCommands::duplicateClip(int clipId)
     if (!clip.isValid() || trackIdx < 0) return -1;
 
     auto newClip = clip.createCopy();
-    newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    newClip.setProperty(IDs::clipID, engine_.getProjectModel().allocateClipID(), nullptr);
     double start = newClip.getProperty(IDs::startTime, 0.0);
     double duration = newClip.getProperty(IDs::duration, 0.0);
     newClip.setProperty(IDs::startTime, start + duration, nullptr);
@@ -338,7 +338,7 @@ int AudioEngineCommands::duplicateClipTo(int clipId, double newStart, int newTra
 
     // Deep-copy the clip and reassign its identity (mirrors duplicateClip).
     auto newClip = clip.createCopy();
-    newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), nullptr);
+    newClip.setProperty(IDs::clipID, engine_.getProjectModel().allocateClipID(), nullptr);
     juce::String origName = newClip.getProperty(IDs::name).toString();
     if (!origName.endsWith(" copy"))
         newClip.setProperty(IDs::name, origName + " copy", nullptr);
@@ -383,7 +383,7 @@ std::vector<int> AudioEngineCommands::duplicateClips(const std::vector<int>& cli
         if (targetTrack < 0 || targetTrack >= trackList.getNumChildren()) { result.push_back(-1); continue; }
 
         auto newClip = clip.createCopy();
-        int newId = ProjectModel::allocateClipID();
+        int newId = engine_.getProjectModel().allocateClipID();
         newClip.setProperty(IDs::clipID, newId, nullptr);
         juce::String origName = newClip.getProperty(IDs::name).toString();
         if (!origName.endsWith(" copy"))
@@ -470,7 +470,7 @@ void AudioEngineCommands::rippleDelete(double startBeat, double endBeat)
             int ti = -1;
             auto clip = findClipById(id, ti);
             if (clip.isValid())
-                ProjectModel::sliceClipAtTimes(clip, times, &um);
+                engine_.getProjectModel().sliceClipAtTimes(clip, times, &um);
         }
     }
 
@@ -549,7 +549,7 @@ void AudioEngineCommands::insertSilence(double startBeat, double endBeat)
             int ti = -1;
             auto clip = findClipById(id, ti);
             if (clip.isValid())
-                ProjectModel::sliceClipAtTimes(clip, { rs }, &um);
+                engine_.getProjectModel().sliceClipAtTimes(clip, { rs }, &um);
         }
     }
 
@@ -614,7 +614,7 @@ void AudioEngineCommands::duplicateRegion(double startBeat, double endBeat)
             int ti = -1;
             auto clip = findClipById(id, ti);
             if (clip.isValid())
-                ProjectModel::sliceClipAtTimes(clip, times, &um);
+                engine_.getProjectModel().sliceClipAtTimes(clip, times, &um);
         }
     }
 
@@ -657,7 +657,7 @@ void AudioEngineCommands::duplicateRegion(double startBeat, double endBeat)
     for (const auto& ic : insideClips)
     {
         auto newClip = ic.clip.createCopy();
-        newClip.setProperty(IDs::clipID, ProjectModel::allocateClipID(), &um);
+        newClip.setProperty(IDs::clipID, engine_.getProjectModel().allocateClipID(), &um);
         newClip.setProperty(IDs::startTime, ic.startSec + regionLen, &um);
         juce::String origName = newClip.getProperty(IDs::name).toString();
         if (!origName.endsWith(" copy"))
@@ -704,12 +704,12 @@ std::vector<int> AudioEngineCommands::addClips(int trackIndex, const std::vector
         juce::ValueTree clip;
         if (i < sourceFiles.size() && !sourceFiles[i].empty())
         {
-            clip = ProjectModel::createAudioClip(
+            clip = engine_.getProjectModel().createAudioClip(
                 juce::String(names[i]), startSec, durSec, juce::String(sourceFiles[i]));
         }
         else
         {
-            clip = ProjectModel::createMidiClipEmpty(
+            clip = engine_.getProjectModel().createMidiClipEmpty(
                 juce::String(names[i]), startSec, durSec);
         }
 
@@ -741,12 +741,24 @@ ProjectCommands::ArrangementResult AudioEngineCommands::generateArrangement(cons
     for (const auto& part : arr.parts)
     {
         int trackIdx = -1;
-        auto it = params.targetTrackIds.find(part.name);
-        if (it != params.targetTrackIds.end()) {
-            trackIdx = it->second;
-            if (trackIdx < 0 || trackIdx >= trackList.getNumChildren())
-                trackIdx = -1;
+        auto normalizeRoleName = [](const std::string& s) {
+            std::string out;
+            out.reserve(s.size());
+            for (char c : s)
+                if (c != ' ') out += c;
+            return out;
+        };
+        const std::string normalizedName = normalizeRoleName(part.name);
+        for (const auto& [key, val] : params.targetTrackIds)
+        {
+            if (normalizeRoleName(key) == normalizedName)
+            {
+                trackIdx = val;
+                break;
+            }
         }
+        if (trackIdx < 0 || trackIdx >= trackList.getNumChildren())
+            trackIdx = -1;
         if (trackIdx < 0) {
             for (int i = 0; i < trackList.getNumChildren(); ++i)
             {
@@ -768,6 +780,7 @@ ProjectCommands::ArrangementResult AudioEngineCommands::generateArrangement(cons
 
         result.trackIndices.push_back(trackIdx);
         result.clipIds.push_back(clipId);
+        result.roleNames.push_back(part.name);
         result.noteCount += static_cast<int>(part.notes.size());
     }
 
@@ -815,7 +828,7 @@ int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
     }
     double newDuration = newEnd - newStart;
 
-    auto mergedClip = ProjectModel::createMidiClipEmpty(
+    auto mergedClip = model.createMidiClipEmpty(
         juce::String("Merged"), newStart, newDuration);
     int mergedId = static_cast<int>(mergedClip.getProperty(IDs::clipID, 0));
 
@@ -831,7 +844,7 @@ int AudioEngineCommands::mergeClips(const std::vector<int>& clipIds)
         for (int n = 0; n < noteList.getNumChildren(); ++n)
         {
             auto srcNote = noteList.getChild(n);
-            auto newNote = ProjectModel::createMidiNote(
+            auto newNote = model.createMidiNote(
                 static_cast<int>(srcNote.getProperty(IDs::noteNumber)),
                 static_cast<float>(static_cast<double>(srcNote.getProperty(IDs::velocity))),
                 static_cast<double>(srcNote.getProperty(IDs::startBeat)) + offsetBeats,

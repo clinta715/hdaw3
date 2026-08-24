@@ -197,7 +197,9 @@ TEST(IncrementalRoutingRemoveMove, UndoRedoEquivalentToFullRebuild)
 
     // Clip 5 overlaps clip 4 ([5.0, 6.0]) → the add/undo/redo round-trip
     // exercises sibling crossfade re-application.
-    auto clip5 = ProjectModel::createAudioClip("c5", 5.4, 1.0, file.getFullPathName());
+    // Throwaway id mint — this test addresses clips by index, never by id.
+    ProjectModel mint;
+    auto clip5 = mint.createAudioClip("c5", 5.4, 1.0, file.getFullPathName());
 
     // Reference C: full rebuild of the 6-clip layout (base + clip 5).
     auto sixClips = juce::ValueTree(IDs::CLIP_LIST);

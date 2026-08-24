@@ -190,6 +190,32 @@ TEST(Dx7SysexImport, VmemUnpackGlobalSection) {
     EXPECT_EQ(std::string(name, 10), "TESTVOICE ");
 }
 
+static std::vector<uint8_t> makeCartridgeSysexDexed() {
+    std::vector<uint8_t> sysex;
+    sysex.reserve(4104);
+    sysex.push_back(0xF0);
+    sysex.push_back(0x43);
+    sysex.push_back(0x00);
+    sysex.push_back(0x09);
+    sysex.push_back(0x10); // Dexed variant: 0x10 instead of spec's 0x20
+    sysex.push_back(0x00);
+    int sum = 0;
+    for (size_t i = 0; i < 4096; ++i) {
+        uint8_t b = static_cast<uint8_t>(i & 0x7F);
+        sysex.push_back(b);
+        sum += b;
+    }
+    sysex.push_back(static_cast<uint8_t>((~sum + 1) & 0x7F));
+    sysex.push_back(0xF7);
+    return sysex;
+}
+
+TEST(Dx7SysexImport, CartridgeDexedVariantAccepted) {
+    auto sysex = makeCartridgeSysexDexed();
+    auto voices = parseCartridgeSysex(sysex.data(), sysex.size());
+    EXPECT_EQ(voices.size(), 32u);
+}
+
 TEST(Dx7SysexImport, CartridgeReturns32Voices) {
     auto sysex = makeCartridgeSysex();
     auto voices = parseCartridgeSysex(sysex.data(), sysex.size());

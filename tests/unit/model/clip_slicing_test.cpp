@@ -7,12 +7,12 @@ TEST(ProjectModel, SliceClipAtTime)
 {
     ProjectModel model;
     auto track = model.getTrackListTree().getChild(0);  // assume default track exists
-    auto clip = ProjectModel::createAudioClip("Test", 0.0, 4.0, "dummy.wav");
+    auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, &model.getUndoManager());
     int clipId = clip.getProperty(IDs::clipID);
 
     // Slice at 1.0 and 3.0
-    auto slices = ProjectModel::sliceClipAtTimes(clip, {1.0, 3.0}, &model.getUndoManager());
+    auto slices = model.sliceClipAtTimes(clip, {1.0, 3.0}, &model.getUndoManager());
 
     EXPECT_EQ(slices.size(), 3);
     EXPECT_DOUBLE_EQ(slices[0].getProperty(IDs::startTime), 0.0);

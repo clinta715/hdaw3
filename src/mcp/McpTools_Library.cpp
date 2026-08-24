@@ -14,6 +14,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"list_libraries", "List all configured file libraries with metadata.",
         objSchema({}),
+        "library",
         [lib](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             for (const auto& id : lib->getLibraryIds()) {
@@ -37,6 +38,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                    {"path", QJsonObject{{"type","string"}}},
                    {"type", QJsonObject{{"type","string"}, {"enum", QJsonArray{"midi","audio"}}}}},
                   {"name","path","type"}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             QString name = a.value("name").toString();
             QString path = a.value("path").toString();
@@ -54,6 +56,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"remove_library", "Remove a file library by id (entries are deleted, source files are untouched).",
         objSchema({{"id", QJsonObject{{"type","string"}}}}, {"id"}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             QString id = a.value("id").toString();
             if (id.isEmpty())
@@ -64,6 +67,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"scan_library", "Scan a library to (re)index its files. Omit id to scan all libraries.",
         objSchema({{"id", QJsonObject{{"type","string"}}}}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             QString id = a.value("id").toString();
             if (id.isEmpty())
@@ -84,6 +88,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                    {"key", QJsonObject{{"type","string"}}},
                    {"offset", QJsonObject{{"type","integer"}}},
                    {"limit", QJsonObject{{"type","integer"}}}}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             auto results = lib->search(
                 juce::String(a.value("query").toString().toUtf8().constData()),
@@ -123,6 +128,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         objSchema({{"libraryId", QJsonObject{{"type","string"}}},
                    {"path", QJsonObject{{"type","string"}}}},
                   {"libraryId","path"}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             auto entry = lib->getEntry(
                 juce::String(a.value("libraryId").toString().toUtf8().constData()),
@@ -151,6 +157,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         objSchema({{"id", QJsonObject{{"type","string"}}},
                    {"enabled", QJsonObject{{"type","boolean"}}}},
                   {"id","enabled"}),
+        "library",
         [lib](const QJsonObject& a) -> McpToolResult {
             QString id = a.value("id").toString();
             if (id.isEmpty())

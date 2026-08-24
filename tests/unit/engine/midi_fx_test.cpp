@@ -123,6 +123,38 @@ TEST(Arpeggiator, ReleaseStopsNote)
     EXPECT_EQ(collectNoteOns(release).size(), 0u);
 }
 
+TEST(Arpeggiator, SustainedNotesAcrossBlocks)
+{
+    Arpeggiator arp;
+    arp.rate = 0.25; arp.pattern = 0; arp.octaves = 1; arp.gate = 0.9;
+
+    const double bpm = 174.0;
+    const double sampleRate = 44100.0;
+    const int numSamples = 1024;
+    const double beatsPerBlock = numSamples * bpm / 60.0 / sampleRate;
+
+    // Block 0: send note-ons at beat 0
+    auto buf0 = holdChord();
+    auto pos0 = makePos(0.0, bpm);
+    arp.process(buf0, &pos0, sampleRate, numSamples);
+    auto notes0 = collectNoteOns(buf0);
+    EXPECT_GE(notes0.size(), 1u) << "Block 0: no notes produced";
+
+    // Process 20 more blocks with no new MIDI (sustained notes).
+    // At rate=0.25 and beatsPerBlock~0.067, a step fires roughly every
+    // 3.7 blocks. Over 20 blocks we expect at least 4 blocks with notes.
+    int blocksWithNotes = 0;
+    for (int i = 1; i <= 20; ++i)
+    {
+        juce::MidiBuffer buf;
+        auto pos = makePos(i * beatsPerBlock, bpm);
+        arp.process(buf, &pos, sampleRate, numSamples);
+        if (!collectNoteOns(buf).empty())
+            ++blocksWithNotes;
+    }
+    EXPECT_GE(blocksWithNotes, 4) << "Arpeggiator produced notes in too few blocks with sustained input";
+}
+
 namespace {
 struct TestPlayHead : juce::AudioPlayHead {
     juce::Optional<PositionInfo> getPosition() const override

@@ -89,9 +89,9 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
         if (clipDuration < 0.01) { clipOffset = 0.0; clipDuration = duration; }
     }
 
-    auto clip = ProjectModel::createAudioClip(fi.baseName().toUtf8().constData(),
-                                              startTime, clipDuration,
-                                              path.toUtf8().constData());
+    auto clip = model.createAudioClip(fi.baseName().toUtf8().constData(),
+                                       startTime, clipDuration,
+                                       path.toUtf8().constData());
     if (clipOffset > 0.0)
         clip.setProperty(IDs::offset, clipOffset, &model.getUndoManager());
     clipList.addChild(clip, -1, &model.getUndoManager());

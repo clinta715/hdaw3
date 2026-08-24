@@ -9,7 +9,7 @@ TEST(DryRun, DestructiveToolRespectsFlag) {
     McpServer s;
     QJsonObject argsSchema{{"type","object"},
         {"properties", QJsonObject{{"dryRun", QJsonObject{{"type","boolean"}}}}}};
-    s.registerTool({"destroy","mutates something", argsSchema,
+    s.registerTool({"destroy","mutates something", argsSchema, "test",
         [&c](const QJsonObject& a) {
             bool d = a.value("dryRun").toBool(false);
             if (d) return McpToolResult::text("would mutate");

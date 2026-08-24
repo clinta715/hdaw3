@@ -429,3 +429,87 @@ TEST(ArrangementGenre, DnbClosedHatsDenserThanTechno)
     ASSERT_NE (techHats, nullptr);
     EXPECT_GT (dnbHats->notes.size(), techHats->notes.size());
 }
+
+TEST(ArrangementIntegration, TargetTrackIdsHonoredForAllRoles)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    std::map<std::string, int> roleMap;
+    roleMap["Kick"] = cmds.addTrack("K", -1, -1, 0);
+    roleMap["ClosedHat"] = cmds.addTrack("CH", -1, -1, 0);
+    roleMap["OpenHat"] = cmds.addTrack("OH", -1, -1, 0);
+    roleMap["Clap"] = cmds.addTrack("CL", -1, -1, 0);
+    roleMap["Bass"] = cmds.addTrack("B", -1, -1, 0);
+
+    int trackCountBefore = engine.getProjectModel().getTrackListTree().getNumChildren();
+
+    HDAW::ArrangementParams p;
+    p.bars = 8;
+    p.seed = 42;
+    p.enableSnare = p.enableLead = p.enableChords = false;
+    p.targetTrackIds = roleMap;
+    auto result = cmds.generateArrangement(p);
+
+    int trackCountAfter = engine.getProjectModel().getTrackListTree().getNumChildren();
+    EXPECT_EQ(trackCountBefore, trackCountAfter);
+
+    for (int idx : result.trackIndices)
+    {
+        bool found = false;
+        for (const auto& [k, v] : roleMap)
+            if (v == idx) { found = true; break; }
+        EXPECT_TRUE(found) << "trackIdx " << idx << " not in targetTrackIds";
+    }
+}
+
+TEST(ArrangementIntegration, GeneratedNotesHaveVelocity)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    HDAW::ArrangementParams p;
+    p.bars = 16;
+    p.seed = 174;
+    p.style = 2; // DnB
+    auto result = cmds.generateArrangement (p);
+
+    EXPECT_GT (result.noteCount, 0);
+    auto& read = engine.getReadModel();
+    for (int clipId : result.clipIds)
+    {
+        auto notes = read.getNotes (clipId);
+        for (const auto& n : notes)
+        {
+            EXPECT_GT (n.velocity, 0) << "clip " << clipId << " noteId " << n.noteId;
+        }
+    }
+}
+
+TEST(ArrangementIntegration, VelocityRangeApplied)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    HDAW::ArrangementParams p;
+    p.bars = 8;
+    p.seed = 42;
+    p.velocityMin = 60;
+    p.velocityMax = 90;
+    auto result = cmds.generateArrangement (p);
+
+    EXPECT_GT (result.noteCount, 0);
+    auto& read = engine.getReadModel();
+    for (int clipId : result.clipIds)
+    {
+        auto notes = read.getNotes (clipId);
+        for (const auto& n : notes)
+        {
+            EXPECT_GE (n.velocity, 60) << "velocity below min";
+            EXPECT_LE (n.velocity, 90) << "velocity above max";
+        }
+    }
+}

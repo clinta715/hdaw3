@@ -15,7 +15,7 @@ TEST(ProjectModelIDs, GainEnvelopeIDsExist)
 TEST(ProjectModel, CreateGainEnvelopeForClip)
 {
     ProjectModel model;
-    auto clip = ProjectModel::createAudioClip("Test", 0.0, 4.0, "dummy.wav");
+    auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     
     auto envelope = ProjectModel::ensureGainEnvelope(clip);
     EXPECT_TRUE(envelope.isValid());
@@ -26,7 +26,7 @@ TEST(ProjectModel, CreateGainEnvelopeForClip)
 TEST(ProjectModel, AddGainEnvelopePoint)
 {
     ProjectModel model;
-    auto clip = ProjectModel::createAudioClip("Test", 0.0, 4.0, "dummy.wav");
+    auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     auto envelope = ProjectModel::ensureGainEnvelope(clip);
     
     auto point = ProjectModel::addGainEnvelopePoint(envelope, 1.0, 0.5, nullptr);
@@ -38,7 +38,7 @@ TEST(ProjectModel, AddGainEnvelopePoint)
 TEST(ProjectModel, GetGainEnvelopePoints)
 {
     ProjectModel model;
-    auto clip = ProjectModel::createAudioClip("Test", 0.0, 4.0, "dummy.wav");
+    auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     auto envelope = ProjectModel::ensureGainEnvelope(clip);
     
     ProjectModel::addGainEnvelopePoint(envelope, 0.0, 1.0, nullptr);

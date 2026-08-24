@@ -117,6 +117,11 @@ struct RenderHarness
         clipList.removeAllChildren(nullptr);
         for (int i = 0; i < track0Clips.getNumChildren(); ++i)
             clipList.addChild(track0Clips.getChild(i).createCopy(), -1, nullptr);
+        // The copied clips carry ids from another model's counters — resync
+        // ours so later mints (e.g. addClipParked test clips) stay unique,
+        // exactly like the load path (ProjectSerializer::load).
+        model.scanAndSyncClipIDs();
+        model.scanAndSyncNoteIDs();
 
         transport.setSampleRate(kSampleRate);
         transport.setBPM(model.getTree().getProperty(IDs::tempo, 120.0));
@@ -263,12 +268,15 @@ juce::ValueTree makeClipList(const juce::File& file, int numClips,
                              const std::vector<double>& startAt = {},
                              const std::vector<double>& durations = {})
 {
+    // Throwaway id mint — ids only need to be unique within this list; the
+    // receiving harness resyncs its own counter in RenderHarness::init.
+    ProjectModel model;
     juce::ValueTree list(IDs::CLIP_LIST);
     for (int i = 0; i < numClips; ++i)
     {
         double start = startAt.empty() ? i * 0.5 : startAt[static_cast<size_t>(i)];
         double dur = durations.empty() ? 0.4 : durations[static_cast<size_t>(i)];
-        auto clip = ProjectModel::createAudioClip(
+        auto clip = model.createAudioClip(
             "c" + juce::String(i), start, dur, file.getFullPathName());
         list.addChild(clip, -1, nullptr);
     }

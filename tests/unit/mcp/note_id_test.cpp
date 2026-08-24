@@ -2,9 +2,10 @@
 #include "model/ProjectModel.h"
 
 TEST(NoteID, AllocatesUniqueIDs) {
-    int a = ProjectModel::allocateNoteID();
-    int b = ProjectModel::allocateNoteID();
-    int c = ProjectModel::allocateNoteID();
+    ProjectModel model;
+    int a = model.allocateNoteID();
+    int b = model.allocateNoteID();
+    int c = model.allocateNoteID();
     EXPECT_NE(a, b); EXPECT_NE(b, c); EXPECT_NE(a, c);
 }
 
@@ -13,9 +14,9 @@ TEST(NoteID, CreateMidiNoteAssignsID) {
     m.createDefaultProject();
     // The default project now ships empty; add a MIDI clip with a note so the
     // walk below has something to find.
-    auto clip = ProjectModel::createMidiClipEmpty("T", 0.0, 1.0);
+    auto clip = m.createMidiClipEmpty("T", 0.0, 1.0);
     clip.getChildWithName(IDs::MIDI_NOTE_LIST)
-        .addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+        .addChild(m.createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
     m.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
         .addChild(clip, -1, nullptr);
@@ -40,9 +41,9 @@ TEST(NoteID, ScanAndSyncAssignsMissing) {
     m.createDefaultProject();
     // The default project now ships empty; add a MIDI clip with one note to
     // track 0, then strip its noteID and verify scanAndSync restores it.
-    auto clip = ProjectModel::createMidiClipEmpty("T", 0.0, 1.0);
+    auto clip = m.createMidiClipEmpty("T", 0.0, 1.0);
     auto nl = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
-    nl.addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+    nl.addChild(m.createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
     m.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
         .addChild(clip, -1, nullptr);

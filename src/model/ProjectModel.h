@@ -278,14 +278,17 @@ public:
     bool isDirty() const { return dirty; }
     void markAsSaved() { dirty = false; }
 
-    static int allocateClipID();
-    static void resetClipIDCounter();
-    static int allocateNoteID();
-    static void resetNoteIDCounter();
-    static int allocateCcID();
-    static juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
-    static juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
-    static juce::ValueTree createMidiNote(int note, float vel, double start, double dur);
+    // Per-instance id counters: a second ProjectModel (e.g. ExportManager's
+    // render-local model) must never reset the live project's counters, or
+    // freshly minted ids collide with existing clips/notes in the tree.
+    int allocateClipID();
+    void resetClipIDCounter();
+    int allocateNoteID();
+    void resetNoteIDCounter();
+    int allocateCcID();
+    juce::ValueTree createAudioClip(juce::String name, double start, double dur, juce::String file);
+    juce::ValueTree createMidiClipEmpty(juce::String name, double start, double dur);
+    juce::ValueTree createMidiNote(int note, float vel, double start, double dur);
     static juce::ValueTree getTrackOfClip(const juce::ValueTree& clip);
     // Returns a color from a curated rotating palette so each track (and thus
     // its clips) gets a distinct, stable color without clashing.
@@ -304,8 +307,8 @@ public:
     static void removeGainEnvelopePoint(juce::ValueTree envelope, int index, juce::UndoManager* um);
     static void clearGainEnvelope(juce::ValueTree envelope, juce::UndoManager* um);
 
-    // Slicing
-    static std::vector<juce::ValueTree> sliceClipAtTimes(juce::ValueTree clip, const std::vector<double>& times, juce::UndoManager* um);
+    // Slicing (instance method: mints fresh clip ids from this model's counter)
+    std::vector<juce::ValueTree> sliceClipAtTimes(juce::ValueTree clip, const std::vector<double>& times, juce::UndoManager* um);
 
     // Wire the engine's PluginManager so addFxSlot can resolve plugin formats.
     // Pass nullptr to clear. The pointer is not owned.
@@ -331,7 +334,10 @@ private:
     void valueTreeChildOrderChanged(juce::ValueTree&, int, int) override { dirty = true; }
     void valueTreeParentChanged(juce::ValueTree&) override {}
 
-    static inline std::atomic<int> nextNoteID{1};
+    // Per-instance id counters (see the public allocator notes above).
+    std::atomic<int> nextClipID_{1};
+    std::atomic<int> nextNoteID_{1};
+    std::atomic<int> nextCcID_{1};
 
     juce::ValueTree projectTree;
     juce::UndoManager undoManager;

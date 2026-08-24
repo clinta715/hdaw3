@@ -157,7 +157,7 @@ TEST(StretchCommands, FitToLoopComputesRatio)
         clipList = juce::ValueTree(IDs::CLIP_LIST);
         trackTree.addChild(clipList, -1, nullptr);
     }
-    auto clip = ProjectModel::createAudioClip("t", 0.0, 2.0, "/nonexistent.wav");
+    auto clip = engine.getProjectModel().createAudioClip("t", 0.0, 2.0, "/nonexistent.wav");
     // sourceDuration defaults to the duration passed in (2.0s).
     clipList.addChild(clip, -1, nullptr);
     int clipId = static_cast<int>(clip.getProperty(IDs::clipID));
@@ -186,7 +186,7 @@ TEST(StretchCommands, TempoMatchDerivesRatio)
         clipList = juce::ValueTree(IDs::CLIP_LIST);
         trackTree.addChild(clipList, -1, nullptr);
     }
-    auto clip = ProjectModel::createAudioClip("t", 0.0, 2.0, "/nonexistent.wav");
+    auto clip = engine.getProjectModel().createAudioClip("t", 0.0, 2.0, "/nonexistent.wav");
     clipList.addChild(clip, -1, nullptr);
     int clipId = static_cast<int>(clip.getProperty(IDs::clipID));
 

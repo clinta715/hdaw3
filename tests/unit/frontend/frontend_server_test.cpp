@@ -708,28 +708,36 @@ TEST(FrontendServer, VerifyPartRpc) {
 }
 
 // RPC round-trip: composition.autoGainToTarget with allowGlobalScale scales
-// the master bus down on a clipping mix (deterministic loud Lead seed 42 part)
-// and surfaces globalScale/masterGain/mixPeak; read.snapshot reflects the new
-// master gain.
+// the master bus down on a clipping mix (4 stacked Lead seed 42 parts —
+// v0.24.0 gain restructure lowered single-part peak; coherent addition of 4
+// pushes past 1.0) and surfaces globalScale/masterGain/mixPeak; read.snapshot
+// reflects the new master gain.
 TEST(FrontendServer, AutoGainGlobalScaleRpc) {
     EngineAndServer s;
     s.setUp();
 
-    ProjectCommands::InstrumentPartParams params;
-    params.trackName = "Lead";
-    params.style = "Lead";
-    params.lengthBeats = 4.0;
-    params.placement = "region";
-    params.count = 1;
-    params.seed = 42;
-    auto res = s.engine.getProjectCommands().addInstrumentPart(params);
-    ASSERT_TRUE(res.error.empty()) << res.error;
+    // Stack 4 Lead parts so the mix clips (v0.24.0 gain restructure lowered
+    // single-part peak; coherent addition of 4 pushes past 1.0).
+    int targetTrack = -1;
+    for (int i = 0; i < 4; ++i)
+    {
+        ProjectCommands::InstrumentPartParams params;
+        params.trackName = "Lead";
+        params.style = "Lead";
+        params.lengthBeats = 4.0;
+        params.placement = "region";
+        params.count = 1;
+        params.seed = 42;
+        auto res = s.engine.getProjectCommands().addInstrumentPart(params);
+        ASSERT_TRUE(res.error.empty()) << res.error;
+        targetTrack = res.trackIndex;
+    }
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
 
     QJsonObject gainParams{
-        { "trackIndex", res.trackIndex },
+        { "trackIndex", targetTrack },
         { "targetRms", 0.5 },
         { "windowSeconds", 4.0 },
         { "allowGlobalScale", true },

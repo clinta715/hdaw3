@@ -18,6 +18,9 @@ namespace {
 
 juce::ValueTree makeProjectWithClips(int numClips, int numTracks = 1)
 {
+    // Throwaway id mint — the tree is detached; ids only need to be unique
+    // within it.
+    ProjectModel model;
     juce::ValueTree project(IDs::PROJECT);
     juce::ValueTree trackList(IDs::TRACK_LIST);
     for (int t = 0; t < numTracks; ++t)
@@ -26,7 +29,7 @@ juce::ValueTree makeProjectWithClips(int numClips, int numTracks = 1)
         juce::ValueTree clipList(IDs::CLIP_LIST);
         for (int c = 0; c < numClips; ++c)
         {
-            clipList.addChild(ProjectModel::createMidiClipEmpty(
+            clipList.addChild(model.createMidiClipEmpty(
                                   "c" + juce::String(t * numClips + c),
                                   c * 0.5, 0.4),
                               -1, nullptr);

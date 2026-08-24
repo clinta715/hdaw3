@@ -189,7 +189,7 @@ public:
                                              int sliceIndex, float velocity);
 
     // ProjectCommands — Automation
-    void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;
+    bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;
     void removeAutomationLane(int trackIndex, const std::string& laneName) override;
     void addAutomationPoint(int trackIndex, const std::string& lane,
                             double time, float value) override;

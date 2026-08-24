@@ -16,7 +16,7 @@ void AudioEngineCommands::sliceClipAtTimes(int clipId, const std::vector<double>
     auto clip = findClipById(clipId, trackIdx);
     if (!clip.isValid()) return;
 
-    auto slices = ProjectModel::sliceClipAtTimes(clip, times, &um);
+    auto slices = engine_.getProjectModel().sliceClipAtTimes(clip, times, &um);
     
     // Rebuild routing for new clips
     if (auto* proc = engine_.getMainProcessor())
@@ -74,7 +74,7 @@ void AudioEngineCommands::sliceClipAtTransients(int clipId)
     if (timelineTimes.empty()) return;
 
     // Slice at detected transients
-    auto slices = ProjectModel::sliceClipAtTimes(clip, timelineTimes, &um);
+    auto slices = engine_.getProjectModel().sliceClipAtTimes(clip, timelineTimes, &um);
     
     // Rebuild routing for new clips
     if (auto* proc = engine_.getMainProcessor())
@@ -94,7 +94,7 @@ void AudioEngineCommands::sliceClipAtPlayhead(int clipId)
     
     if (playhead <= clipStart || playhead >= clipEnd) return;
     
-    auto slices = ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
+    auto slices = engine_.getProjectModel().sliceClipAtTimes(clip, {playhead}, &um);
     
     // Rebuild routing for new clips
     if (auto* proc = engine_.getMainProcessor())
@@ -118,7 +118,7 @@ void AudioEngineCommands::sliceClipsAtPlayhead(const std::vector<int>& clipIds)
 
         if (playhead <= clipStart || playhead >= clipEnd) continue;
 
-        ProjectModel::sliceClipAtTimes(clip, {playhead}, &um);
+        engine_.getProjectModel().sliceClipAtTimes(clip, {playhead}, &um);
     }
 
     // Single rebuild at the end
@@ -165,7 +165,7 @@ void AudioEngineCommands::sliceClipsAtTransients(const std::vector<int>& clipIds
         }
         if (timelineTimes.empty()) continue;
 
-        ProjectModel::sliceClipAtTimes(clip, timelineTimes, &um);
+        engine_.getProjectModel().sliceClipAtTimes(clip, timelineTimes, &um);
     }
 
     // Single rebuild at the end
@@ -227,7 +227,7 @@ int AudioEngineCommands::cutAudioClipRegion(int clipId, double regionStart, doub
     // one to delete is the middle slice whose startTime == slice1. We identify
     // it by the returned slice identities rather than by a fuzzy startTime
     // match, which is fragile when multiple clips share near-equal start times.
-    auto slices = ProjectModel::sliceClipAtTimes(clip, {slice1, slice2}, &um);
+    auto slices = engine_.getProjectModel().sliceClipAtTimes(clip, {slice1, slice2}, &um);
 
     // Find the slice that starts at slice1 (the cut region) and remove it.
     for (const auto& s : slices)

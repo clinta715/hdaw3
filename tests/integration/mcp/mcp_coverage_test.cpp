@@ -710,8 +710,8 @@ TEST_F(McpCoverageTest, LibraryAddListSearchRemove) {
 // ============================================================================
 
 TEST_F(McpCoverageTest, SetAutomationPoints) {
-    // Add automation lane for Volume
-    auto laneR = call("add_automation_lane", {{"trackId", 0}, {"laneName", "Volume"}});
+    // Add automation lane with unique name (track 0 already has built-in "Volume")
+    auto laneR = call("add_automation_lane", {{"trackId", 0}, {"laneName", "Test Volume"}, {"paramID", 100}});
     EXPECT_FALSE(isError(laneR)) << text(laneR).toStdString();
 
     // Set points (replace mode)
@@ -719,7 +719,7 @@ TEST_F(McpCoverageTest, SetAutomationPoints) {
     points.append(QJsonObject{{"time", 0.0}, {"value", 0.8}});
     points.append(QJsonObject{{"time", 4.0}, {"value", 0.5}});
     auto setR = call("set_automation_points", {
-        {"trackId", 0}, {"lane", "Volume"}, {"points", points}
+        {"trackId", 0}, {"lane", "Test Volume"}, {"points", points}
     });
     EXPECT_FALSE(isError(setR)) << text(setR).toStdString();
 
@@ -727,7 +727,7 @@ TEST_F(McpCoverageTest, SetAutomationPoints) {
     QJsonArray morePoints;
     morePoints.append(QJsonObject{{"time", 8.0}, {"value", 0.3}});
     auto appendR = call("set_automation_points", {
-        {"trackId", 0}, {"lane", "Volume"}, {"points", morePoints}, {"mode", "append"}
+        {"trackId", 0}, {"lane", "Test Volume"}, {"points", morePoints}, {"mode", "append"}
     });
     EXPECT_FALSE(isError(appendR)) << text(appendR).toStdString();
 }
@@ -738,11 +738,62 @@ TEST_F(McpCoverageTest, GenerateArrangement) {
 
     // Should have created tracks beyond the default 3
     EXPECT_GT(trackCount(), 3);
+
+    // Response should be JSON with seed, noteCount, and parts array
+    auto doc = QJsonDocument::fromJson(text(r).toUtf8());
+    auto obj = doc.object();
+    EXPECT_TRUE(obj.contains("seed"));
+    EXPECT_TRUE(obj.contains("noteCount"));
+    EXPECT_TRUE(obj.contains("parts"));
+    auto parts = obj["parts"].toArray();
+    EXPECT_GT(parts.size(), 0);
+    for (const auto& p : parts) {
+        auto part = p.toObject();
+        EXPECT_TRUE(part.contains("role"));
+        EXPECT_TRUE(part.contains("trackIndex"));
+        EXPECT_TRUE(part.contains("clipId"));
+        EXPECT_FALSE(part["role"].toString().isEmpty());
+        EXPECT_GE(part["trackIndex"].toInt(), 0);
+        EXPECT_GT(part["clipId"].toInt(), 0);
+    }
 }
 
 TEST_F(McpCoverageTest, ProjectInfo) {
     auto r = call("project_info");
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
+}
+
+TEST_F(McpCoverageTest, AddNotesBulk) {
+    int clipId = addMidiClip(0, 0.0, 4.0);
+    ASSERT_GT(clipId, 0);
+
+    QJsonArray notes;
+    notes.append(QJsonObject{{"pitch", 60}, {"start", 0.0}, {"duration", 0.5}, {"velocity", 100}});
+    notes.append(QJsonObject{{"pitch", 64}, {"start", 0.5}, {"duration", 0.5}, {"velocity", 90}});
+    notes.append(QJsonObject{{"pitch", 67}, {"start", 1.0}, {"duration", 0.5}, {"velocity", 80}});
+
+    auto r = call("add_notes", {{"clipId", clipId}, {"notes", notes}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto result = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(result.value("added").toInt(), 3);
+
+    auto getNotesResult = getNotes(clipId);
+    EXPECT_EQ(getNotesResult.size(), 3);
+}
+
+TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {
+    // 32 bars should work (was capped at 16 before)
+    auto r = call("generate_rhythm_pattern", {
+        {"trackId", 0}, {"bars", 32}, {"grid", 16},
+        {"pulseA", 4}, {"pulseB", 3}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Verify the clip was created with the right duration
+    QString txt = text(r);
+    EXPECT_TRUE(txt.contains("clipId="));
+    EXPECT_TRUE(txt.contains("notes="));
 }
 
 } // namespace

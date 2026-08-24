@@ -37,6 +37,7 @@ void registerExportTool(McpServer& s) {
                   {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
                   {"dryRun",     QJsonObject{{"type","boolean"}}}},
                  {"outputPath"}),
+        "export",
         [e, &s](const QJsonObject& a) -> McpToolResult {
             QString path = a.value("outputPath").toString();
             if (path.isEmpty()) return McpToolResult::text("outputPath required", true);
@@ -134,6 +135,7 @@ void registerCancelExportTool(McpServer& s) {
 
     s.registerTool({"cancel_export", "Cancel an in-progress audio export. No-op if nothing is rendering; aborts the render and deletes the partial file.",
         QJsonObject{{"type","object"}},
+        "export",
         [e](const QJsonObject&) -> McpToolResult {
             auto* mainProc = e->getMainProcessor();
             if (mainProc == nullptr)

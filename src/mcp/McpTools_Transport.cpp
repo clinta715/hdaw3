@@ -15,6 +15,7 @@ static void registerTransportReadTool(McpServer& s, AudioEngine* e)
     s.registerTool({"get_transport",
         "Return transport state (bpm, position, isPlaying, isLooping, loopStart, loopEnd, time signature).",
         QJsonObject{{"type","object"}},
+        "transport",
         [e](const QJsonObject&) {
             auto tp = e->getProjectModel().getTransportTree();
             QJsonObject o{
@@ -40,6 +41,7 @@ static void registerTransportControlTools(McpServer& s, AudioEngine* e)
             {"enum", QJsonArray{"play","stop","pause","rewind","toggleLoop"}}}},
                   {"loopStart", QJsonObject{{"type","number"}}},
                   {"loopEnd",   QJsonObject{{"type","number"}}}}, {"action"}),
+        "transport",
         [e](const QJsonObject& a) -> McpToolResult {
             QString action = a.value("action").toString();
             auto tp = e->getProjectModel().getTransportTree();
@@ -59,6 +61,7 @@ static void registerTransportControlTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"seek", "Move the playhead to a position (in seconds).",
         objSchema({{"position", QJsonObject{{"type","number"}}}}, {"position"}),
+        "transport",
         [e](const QJsonObject& a) {
             e->getProjectModel().getTransportTree().setProperty(
                 IDs::position, a.value("position").toDouble(), nullptr);
@@ -67,6 +70,7 @@ static void registerTransportControlTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"undo", "Undo the last N actions (default 1).",
         objSchema({{"count", QJsonObject{{"type","integer"}}}}),
+        "transport",
         [e](const QJsonObject& a) {
             int n = a.value("count").toInt(1);
             auto& um = e->getProjectModel().getUndoManager();
@@ -76,6 +80,7 @@ static void registerTransportControlTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"redo", "Redo the last N undone actions (default 1).",
         objSchema({{"count", QJsonObject{{"type","integer"}}}}),
+        "transport",
         [e](const QJsonObject& a) {
             int n = a.value("count").toInt(1);
             auto& um = e->getProjectModel().getUndoManager();

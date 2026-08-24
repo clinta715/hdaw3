@@ -53,7 +53,7 @@ void AudioEngineCommands::setClipCcPoints(int clipId, int controllerNumber,
     for (const auto& [time, value] : points)
     {
         juce::ValueTree pt(IDs::CC_POINT);
-        pt.setProperty(IDs::ccID, ProjectModel::allocateCcID(), nullptr);
+        pt.setProperty(IDs::ccID, engine_.getProjectModel().allocateCcID(), nullptr);
         pt.setProperty(IDs::controllerNumber, controllerNumber, &um);
         pt.setProperty(IDs::beat, time, &um);
         pt.setProperty(IDs::value, static_cast<int>(std::round(value)), &um);

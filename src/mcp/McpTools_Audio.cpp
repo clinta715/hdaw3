@@ -39,6 +39,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"list_fx", "List FX slots on a track.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "audio",
         [e](const QJsonObject& a) {
             int ti = a.value("trackId").toInt(-1);
             auto tl = e->getProjectModel().getTrackListTree();
@@ -64,6 +65,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"list_automation_lanes", "List automation lanes on a track.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "audio",
         [e](const QJsonObject& a) {
             int ti = a.value("trackId").toInt(-1);
             auto tl = e->getProjectModel().getTrackListTree();
@@ -88,6 +90,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "Return downsampled min/max peak pairs for an audio clip waveform.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                    {"numBins", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "audio",
         [e](const QJsonObject& a) -> McpToolResult {
             int cid = a.value("clipId").toInt(-1);
             auto clip = findClip(e, cid, nullptr);
@@ -158,6 +161,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "List all audio files used in the project with usage counts and metadata. "
         "Derived from clips in the arrangement — no persistent pool.",
         objSchema({}, {}),
+        "audio",
         [e](const QJsonObject&) {
             auto snapshot = e->getReadModel().snapshot();
             auto& fm = e->getProjectPool().getFormatManager();
@@ -204,6 +208,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
     s.registerTool({"list_clip_takes",
         "List all takes for an audio clip, showing which is active.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "audio",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = a.value("clipId").toInt();
             auto& model = e->getProjectModel();
@@ -238,6 +243,7 @@ static void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "Switch an audio clip to a specific take index.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
                    {"takeIndex", QJsonObject{{"type","integer"}}}}, {"clipId","takeIndex"}),
+        "audio",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = a.value("clipId").toInt();
             int takeIndex = a.value("takeIndex").toInt();
@@ -255,6 +261,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                       {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","sampler","fm_synth"}}}},
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             auto tl = e->getProjectModel().getTrackListTree();
@@ -276,6 +283,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"dryRun",    QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             auto tl = e->getProjectModel().getTrackListTree();
@@ -293,6 +301,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
                  {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -331,6 +340,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         "Search for presets across all scanned plugins by name (case-insensitive substring match).",
         objSchema({{"query", QJsonObject{{"type","string"}}},
                    {"limit", QJsonObject{{"type","integer"}}}}, {"query"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             QString query = a.value("query").toString().toLower();
             if (query.isEmpty()) return McpToolResult::text("query required", true);
@@ -371,6 +381,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"programIndex", QJsonObject{{"type","integer"}}}},
                  {"trackId","slotIndex","programIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -388,6 +399,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -398,6 +410,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
     s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
                   {"slotIndex",  QJsonObject{{"type","integer"}}}}, {"trackIndex","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackIndex").toInt();
             int si = a.value("slotIndex").toInt();
@@ -411,6 +424,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
     s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, sampler).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -431,6 +445,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                     o["automatable"] = pi.automatable;
                     o["value"] = static_cast<double>(pi.value);
                     o["text"] = QString::fromStdString(pi.text);
+                    o["paramID"] = 100 + si * 100 + pi.index;
                     arr.append(o);
                 }
             }
@@ -446,6 +461,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                     o["minValue"] = static_cast<double>(def.minValue);
                     o["maxValue"] = static_cast<double>(def.maxValue);
                     o["defaultValue"] = static_cast<double>(def.defaultValue);
+                    o["paramID"] = 100 + si * 100 + def.index;
                     arr.append(o);
                 }
             }
@@ -458,6 +474,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -499,6 +516,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"filePath",  QJsonObject{{"type","string"}}}},
                   {"trackId","slotIndex","filePath"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -605,6 +623,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -626,6 +645,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"filePath",  QJsonObject{{"type","string"}}},
                   {"rootNote",  QJsonObject{{"type","integer"}}}},
                   {"trackId","slotIndex","filePath"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -652,6 +672,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}},
                   {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -721,6 +742,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"property",   QJsonObject{{"type","string"}}},
                   {"value",      QJsonObject{{"type","number"}}}},
                   {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -750,6 +772,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"mode",      QJsonObject{{"type","string"},
                       {"enum", QJsonArray{"classic","one-shot","slice"}}}}},
                   {"trackId","slotIndex","mode"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -773,6 +796,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"sliceGrid",        QJsonObject{{"type","number"}}},
                   {"sliceSensitivity", QJsonObject{{"type","number"}}}},
                   {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -801,6 +825,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                   {"sliceIndex", QJsonObject{{"type","integer"}}},
                   {"velocity",   QJsonObject{{"type","number"}}}},
                   {"trackId","slotIndex","sliceIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -822,6 +847,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"patchData", QJsonObject{{"type","string"}}}}, {"trackId","slotIndex","patchData"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -867,6 +893,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
                    {"filePath",  QJsonObject{{"type","string"}}},
                    {"voiceIndex",QJsonObject{{"type","integer"}}}},
                    {"trackId","slotIndex","filePath"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -952,6 +979,7 @@ static void registerFxTools(McpServer& s, AudioEngine* e)
         "Get the current state of an FM synth FX slot (active voices, algorithm).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -996,6 +1024,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
                       QJsonObject{{"type","string"}}}}}},
                   {"time",   QJsonObject{{"type","number"}}},
                   {"value",  QJsonObject{{"type","number"}}}}, {"trackId","lane","time","value"}),
+        "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
@@ -1027,6 +1056,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
         s.registerTool({"set_automation_points",
             "Set multiple automation points on a lane at once (bulk). Replaces all existing points or appends.",
             objSchema(props, QJsonArray{"trackId","lane","points"}),
+            "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt();
             auto lane = findLane(e, trackId, a.value("lane"));
@@ -1060,6 +1090,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
                       QJsonObject{{"type","integer"}},
                       QJsonObject{{"type","string"}}}}}},
                   {"enabled",QJsonObject{{"type","boolean"}}}}, {"trackId","lane","enabled"}),
+        "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             auto lane = findLane(e, a.value("trackId").toInt(), a.value("lane"));
             if (!lane.isValid()) return McpToolResult::text("lane not found", true);
@@ -1074,6 +1105,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
         "Disable (or re-enable) ALL Volume automation lanes on a track so the fader is authoritative in playback/export. trackId -1 = every track. Automation points are kept; only the enabled flag toggles. Mirrors project.setFaderAuthoritative (one shared command path).",
         objSchema({{"trackId",        QJsonObject{{"type","integer"}}},
                   {"authoritative",  QJsonObject{{"type","boolean"}}}}, {"trackId","authoritative"}),
+        "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             e->getProjectCommands().setFaderAuthoritative(
                 a.value("trackId").toInt(-1), a.value("authoritative").toBool());
@@ -1089,13 +1121,16 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"laneName",  QJsonObject{{"type","string"}}},
                   {"paramID",   QJsonObject{{"type","integer"}}}}, {"trackId","laneName"}),
+        "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt(-1);
             QString laneNameQ = a.value("laneName").toString();
             if (laneNameQ.isEmpty()) return McpToolResult::text("laneName required", true);
             int paramID = a.value("paramID").toInt(0);
-            e->getProjectCommands().addAutomationLane(
+            bool added = e->getProjectCommands().addAutomationLane(
                 trackId, laneNameQ.toUtf8().constData(), paramID);
+            if (!added)
+                return McpToolResult::text("lane name or paramID already exists", true);
             return McpToolResult::text("ok");
         }});
 
@@ -1104,6 +1139,7 @@ static void registerAutomationTools(McpServer& s, AudioEngine* e)
                   {"lane",   QJsonObject{{"oneOf", QJsonArray{
                       QJsonObject{{"type","integer"}},
                       QJsonObject{{"type","string"}}}}}}}, {"trackId","lane"}),
+        "automation",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt(-1);
             auto ref = a.value("lane");
@@ -1121,6 +1157,7 @@ static void registerSendTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"get_track_sends", "List all sends on a track.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+        "send",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt(-1);
             if (!e->getMainProcessor()) return McpToolResult::text("engine not ready", true);
@@ -1142,6 +1179,7 @@ static void registerSendTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}},
                   {"level", QJsonObject{{"type","number"}}}}, {"trackId","sendIndex","level"}),
+        "send",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt(-1);
             int si = a.value("sendIndex").toInt(-1);
@@ -1154,6 +1192,7 @@ static void registerSendTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}},
                   {"isPreFader", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","isPreFader"}),
+        "send",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt(-1);
             int si = a.value("sendIndex").toInt(-1);
@@ -1166,6 +1205,7 @@ static void registerSendTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"sendIndex", QJsonObject{{"type","integer"}}},
                   {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","sendIndex","bypassed"}),
+        "send",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt(-1);
             int si = a.value("sendIndex").toInt(-1);
@@ -1185,6 +1225,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
                                            "transpose","keyfilter","multinote","velocitycurve",
                                            "notechance","mididelay","humanize","strum"}}}},
                    {"position", QJsonObject{{"type","integer"}}}}, {"trackId","fxType"}),
+        "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             auto tl = e->getProjectModel().getTrackListTree();
@@ -1200,6 +1241,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
         "Remove a MIDI FX slot from a track.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -1212,6 +1254,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"bypassed", QJsonObject{{"type","boolean"}}}}, {"trackId","slotIndex","bypassed"}),
+        "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -1226,6 +1269,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"paramName", QJsonObject{{"type","string"}}},
                    {"value", QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramName","value"}),
+        "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
             int si = a.value("slotIndex").toInt();
@@ -1243,6 +1287,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
                    {"paramIndex",  QJsonObject{{"type","integer"}}},
                    {"value",       QJsonObject{{"type","number"},{"minimum",0.0},{"maximum",1.0}}}},
                   {"trackId","slotIndex","paramIndex","value"}),
+        "midi-fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt();
             int slotIndex = a.value("slotIndex").toInt();
@@ -1268,6 +1313,7 @@ static void registerMidiFxTools(McpServer& s, AudioEngine* e)
         s.registerTool({"list_midi_fx_params",
             "List all parameters of a MIDI FX slot with their names, ranges, and current values.",
             objSchema(midiFxProps, QJsonArray{"trackId","slotIndex"}),
+            "midi-fx",
             [e](const QJsonObject& a) -> McpToolResult {
                 int ti = a.value("trackId").toInt();
                 int si = a.value("slotIndex").toInt();
@@ -1311,6 +1357,7 @@ static void registerEnvelopeTools(McpServer& s, AudioEngine* e)
     s.registerTool({"list_envelope_shapes",
         "List all available envelope generator shapes.",
         objSchema({}),
+        "envelope",
         [e](const QJsonObject&) -> McpToolResult {
             QJsonArray arr;
             auto addShape = [&](const char* name, const char* desc) {
@@ -1349,6 +1396,7 @@ static void registerEnvelopeTools(McpServer& s, AudioEngine* e)
                    {"smooth",   QJsonObject{{"type","number"}}},
                    {"seed",     QJsonObject{{"type","integer"}}}},
                   {"trackId","lane","shape"}),
+        "envelope",
         [e](const QJsonObject& a) -> McpToolResult {
             int trackId = a.value("trackId").toInt(-1);
             auto laneRef = a.value("lane");
@@ -1391,6 +1439,7 @@ static void registerEnvelopeTools(McpServer& s, AudioEngine* e)
                    {"smooth",     QJsonObject{{"type","number"}}},
                    {"seed",       QJsonObject{{"type","integer"}}}},
                   {"clipId","shape"}),
+        "envelope",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = a.value("clipId").toInt(-1);
             auto clip = findClip(e, clipId, nullptr);
@@ -1432,6 +1481,7 @@ static void registerEnvelopeTools(McpServer& s, AudioEngine* e)
                    {"smooth",           QJsonObject{{"type","number"}}},
                    {"seed",             QJsonObject{{"type","integer"}}}},
                   {"clipId","controllerNumber","shape"}),
+        "envelope",
         [e](const QJsonObject& a) -> McpToolResult {
             int clipId = a.value("clipId").toInt(-1);
             auto clip = findClip(e, clipId, nullptr);

@@ -159,7 +159,7 @@ public:
     virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;
 
     // Automation
-    virtual void addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
+    virtual bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
     virtual void removeAutomationLane(int trackIndex, const std::string& laneName) = 0;
     virtual void addAutomationPoint(int trackIndex, const std::string& lane,
                                      double time, float value) = 0;
@@ -312,6 +312,7 @@ public:
     struct ArrangementResult {
         std::vector<int> trackIndices;
         std::vector<int> clipIds;
+        std::vector<std::string> roleNames;
         int noteCount = 0;
         uint64_t seed = 0;
     };

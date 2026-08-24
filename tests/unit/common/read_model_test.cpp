@@ -60,7 +60,7 @@ TEST(ReadModel, ClipSnapshot)
     model.createDefaultProject();
     // The default project now ships empty; add a MIDI clip to verify the
     // snapshot reflects clip fields.
-    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     model.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
         .addChild(clip, -1, nullptr);
@@ -85,7 +85,7 @@ TEST(ReadModel, GetClipById)
     ProjectModel model;
     model.createDefaultProject();
     // The default project now ships empty; add a clip and look it up by id.
-    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     model.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
         .addChild(clip, -1, nullptr);
@@ -103,9 +103,9 @@ TEST(ReadModel, GetNotesForMidiClip)
     ProjectModel model;
     model.createDefaultProject();
     // The default project now ships empty; add a MIDI clip + note ourselves.
-    auto clip = ProjectModel::createMidiClipEmpty("TestClip", 0.0, 4.0);
+    auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     clip.getChildWithName(IDs::MIDI_NOTE_LIST)
-        .addChild(ProjectModel::createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
+        .addChild(model.createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
     model.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
         .addChild(clip, -1, nullptr);

@@ -19,7 +19,7 @@ int AudioEngineCommands::addNote(int clipId, int pitch, int velocity,
         clip.addChild(noteList, -1, nullptr);
     }
 
-    auto note = ProjectModel::createMidiNote(
+    auto note = engine_.getProjectModel().createMidiNote(
         pitch, static_cast<float>(velocity) / 127.0f, startBeat, durationBeats);
     int noteId = static_cast<int>(note.getProperty(IDs::noteID, 0));
     noteList.addChild(note, -1, &um);
@@ -233,7 +233,7 @@ void AudioEngineCommands::addCcPoint(int clipId, int controllerNumber, double be
     }
 
     juce::ValueTree pt(IDs::CC_POINT);
-    pt.setProperty(IDs::ccID, ProjectModel::allocateCcID(), nullptr);
+    pt.setProperty(IDs::ccID, engine_.getProjectModel().allocateCcID(), nullptr);
     pt.setProperty(IDs::controllerNumber, controllerNumber, &um);
     pt.setProperty(IDs::beat, beat, &um);
     pt.setProperty(IDs::value, value, &um);
