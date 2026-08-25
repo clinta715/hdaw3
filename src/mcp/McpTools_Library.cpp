@@ -2,11 +2,111 @@
 #include "McpServer.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/FileLibraryManager.h"
+#include "../engine/ClusterPresetStore.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
 
 namespace mcp {
+
+namespace {
+
+// Shared JSON builders: a cluster snapshot (stored shape) and a fresh
+// ClusterOutcome shape decode to the same wire format, so list/get/refresh
+// and cluster_library responses stay structurally identical.
+
+QJsonObject presetMemberJson(const HDAW::ClusterPresetMember& m) {
+    return QJsonObject{
+        {"name", jstr(m.name)},
+        {"path", jstr(m.path)},
+        {"tags", jstr(m.tags)},
+        {"description", jstr(m.description)},
+        {"similarity", m.similarity}
+    };
+}
+
+QJsonObject presetClusterJson(const HDAW::ClusterPresetCluster& c) {
+    QJsonArray members;
+    for (const auto& m : c.members) members.append(presetMemberJson(m));
+    return QJsonObject{
+        {"id", jstr(c.id)},
+        {"label", jstr(c.label)},
+        {"size", static_cast<int>(c.members.size())},
+        {"members", members}
+    };
+}
+
+QJsonArray presetUnassignedJson(const HDAW::ClusterPreset& p) {
+    QJsonArray out;
+    for (const auto& u : p.unassigned)
+        out.append(QJsonObject{{"name", jstr(u.name)}, {"path", jstr(u.path)}});
+    return out;
+}
+
+QJsonObject freshMemberJson(const HDAW::ClusterMember& m) {
+    return QJsonObject{
+        {"name", jstr(m.name)},
+        {"path", jstr(m.path)},
+        {"tags", jstr(m.tags)},
+        {"description", jstr(m.description)},
+        {"similarity", m.similarity}
+    };
+}
+
+QJsonObject freshClusterJson(const HDAW::Cluster& c) {
+    QJsonArray members;
+    for (const auto& m : c.members) members.append(freshMemberJson(m));
+    return QJsonObject{
+        {"id", jstr(c.id)},
+        {"label", jstr(c.label)},
+        {"size", static_cast<int>(c.members.size())},
+        {"members", members}
+    };
+}
+
+QJsonArray freshUnassignedJson(const HDAW::ClusterOutcome& o) {
+    QJsonArray out;
+    for (const auto& u : o.unassigned)
+        out.append(QJsonObject{{"name", jstr(u.name)}, {"path", jstr(u.path)}});
+    return out;
+}
+
+int freshEntryCount(const HDAW::ClusterOutcome& o) {
+    int count = 0;
+    for (const auto& c : o.clusters) count += (int)c.members.size();
+    count += (int)o.unassigned.size();
+    return count;
+}
+
+QJsonArray libraryIdsJson(const juce::StringArray& ids) {
+    QJsonArray out;
+    for (const auto& id : ids) out.append(jstr(id));
+    return out;
+}
+
+// Get-style response: full preset snapshot (refresh=false) or the stored
+// record + fresh outcome (refresh=true). Always includes metadata.
+QJsonObject fullPresetJson(const HDAW::ClusterPreset& p, const QJsonArray& clusters,
+                           bool singleCluster, const QJsonArray& unassigned) {
+    QJsonObject root;
+    root["id"] = jstr(p.id);
+    root["name"] = jstr(p.name);
+    root["createdAt"] = jstr(p.createdAt);
+    root["libraryIds"] = libraryIdsJson(p.libraryIds);
+    root["method"] = jstr(p.method);
+    root["k"] = p.k;
+    root["clusterId"] = p.clusterId.isNotEmpty() ? QJsonValue(jstr(p.clusterId))
+                                                 : QJsonValue(QJsonValue::Null);
+    root["clusters"] = clusters;
+    if (singleCluster)
+        root["unassigned"] = QJsonValue(QJsonValue::Null);
+    else
+        root["unassigned"] = unassigned;
+    root["entryCount"] = p.entryCount;
+    return root;
+}
+
+} // namespace
 
 void registerLibraryDomain(McpServer& s, AudioEngine* e)
 {
@@ -173,20 +273,29 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         "Cluster entries from one or more audio libraries into k groups by timbre "
         "(text tags/description + numeric dsp features from TimbreLib sidecars). "
         "Omit libraryIds to cluster ALL audio libraries. k omitted (0) = auto "
-        "(silhouette). method: hybrid (default) | text | dsp.",
+        "(silhouette). method: hybrid (default) | text | dsp. "
+        "saveAs names the result as a cluster preset (response gains presetId); "
+        "clusterId narrows the SAVED preset to one cluster (c1..cK) — unassigned "
+        "is omitted — without changing the returned clusters.",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
                    {"k", QJsonObject{{"type","integer"}}},
                    {"method", QJsonObject{{"type","string"},
-                    {"enum", QJsonArray{"hybrid","text","dsp"}}}}}),
+                    {"enum", QJsonArray{"hybrid","text","dsp"}}}},
+                   {"saveAs", QJsonObject{{"type","string"}}},
+                   {"clusterId", QJsonObject{{"type","string"}}}}),
         "library",
         [lib, idsFrom = libraryIdsFrom](const QJsonObject& a) -> McpToolResult {
             juce::String error;
+            juce::String presetId;
             auto outcome = lib->clusterLibrary(
                 idsFrom(a),
                 a.value("k").toInt(0),
                 juce::String(a.value("method").toString("hybrid").toUtf8().constData()),
-                error);
+                error,
+                juce::String(a.value("saveAs").toString().toUtf8().constData()),
+                juce::String(a.value("clusterId").toString().toUtf8().constData()),
+                &presetId);
             if (error.isNotEmpty())
                 return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
 
@@ -218,6 +327,98 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 unassigned.append(QJsonObject{{"name", jstr(u.name)}, {"path", jstr(u.path)}});
             root["unassigned"] = unassigned;
             if (outcome.note.isNotEmpty()) root["note"] = jstr(outcome.note);
+            if (presetId.isNotEmpty()) root["presetId"] = jstr(presetId);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"list_cluster_presets",
+        "List saved cluster presets (id, name, createdAt, libraryIds, method, "
+        "k, clusterId, clusterCount, entryCount).",
+        objSchema({}),
+        "library",
+        [lib](const QJsonObject&) -> McpToolResult {
+            QJsonArray arr;
+            for (const auto& p : lib->listClusterPresets()) {
+                arr.append(QJsonObject{
+                    {"id", jstr(p.id)},
+                    {"name", jstr(p.name)},
+                    {"createdAt", jstr(p.createdAt)},
+                    {"libraryIds", libraryIdsJson(p.libraryIds)},
+                    {"method", jstr(p.method)},
+                    {"k", p.k},
+                    {"clusterId", p.clusterId.isNotEmpty() ? QJsonValue(jstr(p.clusterId))
+                                                           : QJsonValue(QJsonValue::Null)},
+                    {"clusterCount", p.clusterCount},
+                    {"entryCount", p.entryCount}
+                });
+            }
+            QJsonObject root{{"presets", arr}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"get_cluster_preset",
+        "Fetch a saved cluster preset. refresh=false (default) returns the "
+        "stored snapshot plus missingMemberCount (snapshot member paths that "
+        "no longer exist on disk, checked capped at 500). refresh=true "
+        "recomputes from the stored recipe (libraryIds/method/k) and returns "
+        "the fresh result in the same shape with a computedAt echo.",
+        objSchema({{"id", QJsonObject{{"type","string"}}},
+                   {"refresh", QJsonObject{{"type","boolean"}}}},
+                  {"id"}),
+        "library",
+        [lib](const QJsonObject& a) -> McpToolResult {
+            const juce::String id(a.value("id").toString().toUtf8().constData());
+            if (id.isEmpty())
+                return McpToolResult::text("id is required", true);
+
+            if (a.value("refresh").toBool(false)) {
+                HDAW::ClusterPreset preset;
+                HDAW::ClusterOutcome outcome;
+                juce::String error;
+                if (!lib->refreshClusterPreset(id, preset, outcome, error))
+                    return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
+
+                QJsonArray clustersArr;
+                for (const auto& c : outcome.clusters) clustersArr.append(freshClusterJson(c));
+                auto root = fullPresetJson(preset, clustersArr,
+                                           !preset.clusterId.isEmpty(),
+                                           freshUnassignedJson(outcome));
+                // Fresh snapshot: entryCount reflects the recomputed result.
+                root["entryCount"] = freshEntryCount(outcome);
+                root["computedAt"] = jstr(juce::Time::getCurrentTime().toISO8601(true));
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            }
+
+            HDAW::ClusterPreset preset;
+            juce::String error;
+            if (!lib->getClusterPreset(id, preset, error))
+                return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
+
+            QJsonArray clustersArr;
+            for (const auto& c : preset.clusters) clustersArr.append(presetClusterJson(c));
+            auto root = fullPresetJson(preset, clustersArr,
+                                       !preset.clusterId.isEmpty(),
+                                       presetUnassignedJson(preset));
+            root["missingMemberCount"] = lib->countMissingPresetMembers(preset);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"delete_cluster_preset",
+        "Delete a saved cluster preset by id.",
+        objSchema({{"id", QJsonObject{{"type","string"}}}}, {"id"}),
+        "library",
+        [lib](const QJsonObject& a) -> McpToolResult {
+            const juce::String id(a.value("id").toString().toUtf8().constData());
+            if (id.isEmpty())
+                return McpToolResult::text("id is required", true);
+            juce::String error;
+            if (!lib->deleteClusterPreset(id, error))
+                return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
+            QJsonObject root{{"deleted", true}};
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
@@ -282,3 +483,6 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
 }
 
 } // namespace mcp
+
+
+

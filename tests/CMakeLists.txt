@@ -106,6 +106,7 @@ add_executable(hdaw_tests
     unit/engine/send_test.cpp
     unit/engine/file_library_test.cpp
     unit/engine/library_clusterer_test.cpp
+    unit/engine/cluster_preset_store_test.cpp
     unit/common/read_model_test.cpp
     unit/common/commands_test.cpp
     unit/common/message_pump_test.cpp

@@ -1,6 +1,7 @@
 // src/engine/FileLibraryManager.h
 #pragma once
 #include "LibraryClusterer.h"
+#include "ClusterPresetStore.h"
 #include <juce_core/juce_core.h>
 #include <vector>
 #include <unordered_map>
@@ -105,11 +106,39 @@ public:
     // through the out-param (empty = success); no exceptions escape.
     // Computation runs on the calling thread over a copied entry snapshot
     // (the mutex is held only for the copy).
+    //
+    // Cluster presets (docs/plans/2026-08-25-cluster-presets.md): when saveAs
+    // is non-empty the outcome is persisted through the ClusterPresetStore as
+    // a named preset (name capped at 200 chars by the store) and presetId
+    // (if non-null) receives the generated "cp_<8hex>" id. saveClusterId
+    // narrows the saved snapshot to one cluster ("c1".."cK", unassigned
+    // omitted); an unknown cluster id fails the whole call with an error.
     ClusterOutcome clusterLibrary(const juce::StringArray& libraryIds, int k,
-                                  const juce::String& method, juce::String& error) const;
+                                  const juce::String& method, juce::String& error,
+                                  const juce::String& saveAs = {},
+                                  const juce::String& saveClusterId = {},
+                                  juce::String* presetId = nullptr) const;
     RelatedResult relatedSamples(const juce::StringArray& libraryIds,
                                  const juce::String& filePath, const juce::String& query,
                                  int limit, const juce::String& method, juce::String& error) const;
+
+    // ── cluster presets (docs/plans/2026-08-25-cluster-presets.md) ──────────
+    // All disk IO happens under the existing mutex (results are copied out);
+    // unknown ids come back as errors, never exceptions.
+    std::vector<ClusterPresetSummary> listClusterPresets() const;
+    bool getClusterPreset(const juce::String& id, ClusterPreset& out,
+                          juce::String& error) const;
+    // refresh: loads the stored recipe (libraryIds/method/k — empty
+    // libraryIds stays empty = all audio) and re-runs clusterLibrary; a
+    // stored clusterId narrows the fresh result to that cluster (unassigned
+    // omitted), matching the original single-cluster save shape. Returns the
+    // stored record (never modified) plus the fresh outcome.
+    bool refreshClusterPreset(const juce::String& id, ClusterPreset& outPreset,
+                              ClusterOutcome& outOutcome, juce::String& error) const;
+    bool deleteClusterPreset(const juce::String& id, juce::String& error);
+    // Staleness probe over a snapshot copy: how many member paths no longer
+    // exist on disk (checked = capped at `cap`, default 500).
+    int countMissingPresetMembers(const ClusterPreset& p, int cap = 500) const;
 
     // Persistence
     void loadRegistry();
@@ -126,6 +155,11 @@ private:
                                std::vector<LibraryEntry>& out, juce::String& error) const;
     juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
+
+    // Owned cluster-preset store; constructed with librariesDir after the
+    // registry load (loads <librariesDir>/cluster_presets.json itself).
+    // mutable so the const clusterLibrary/refresh surfaces can persist saves.
+    mutable std::unique_ptr<ClusterPresetStore> presetStore;
 
     mutable std::mutex mutex;
     std::vector<LibraryInfo> libraries;

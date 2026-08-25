@@ -1087,6 +1087,190 @@ TEST_F(McpCoverageTest, LibraryClusterTwoLibraryScope) {
     EXPECT_FALSE(isError(removeB));
 }
 
+
+// ── cluster presets (docs/plans/2026-08-25-cluster-presets.md, G3) ──────────
+// cluster_library(saveAs) -> presetId; list/get/refresh/delete round-trip;
+// single-cluster save keeps only that cluster's members.
+
+namespace {
+
+// Canonical cluster fingerprint for equality checks: fixed-precision
+// similarities so QJsonDocument double formatting cannot cause false diffs.
+QString clusterFingerprint(const QJsonValue& c) {
+    auto co = c.toObject();
+    QString s = co.value("id").toString() + "|" + co.value("label").toString()
+              + "|" + QString::number(co.value("size").toInt()) + "|";
+    const auto members = co.value("members").toArray();
+    for (const auto& m : members) {
+        auto mo = m.toObject();
+        s += mo.value("name").toString() + "@"
+           + QString::number(mo.value("similarity").toDouble(), 'f', 9) + ";";
+    }
+    return s;
+}
+
+QString snapshotFingerprint(const QJsonObject& o) {
+    QString s = o.value("method").toString() + "|" + QString::number(o.value("k").toInt())
+              + "|" + QString::number(o.value("entryCount").toInt()) + "|"
+              + o.value("clusterId").toString() + "|";
+    const auto clusters = o.value("clusters").toArray();
+    for (const auto& c : clusters) s += clusterFingerprint(c);
+    const auto unassigned = o.value("unassigned").toArray();
+    s += "U:";
+    for (const auto& u : unassigned) {
+        auto uo = u.toObject();
+        s += uo.value("name").toString() + "," + uo.value("path").toString() + ";";
+    }
+    return s;
+}
+
+} // namespace
+
+TEST_F(McpCoverageTest, ClusterPresetSaveListGetRefreshDelete) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark1.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark2.wav", "dark, low", "a dark low texture",
+                                    160.0, 0.73, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright1.wav", "bright, high", "a bright high texture",
+                                    5200.0, 0.05, 0.70));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright2.wav", "bright, high", "a bright high texture",
+                                    5400.0, 0.04, 0.72));
+
+    auto addR = call("add_library", {{"name", "PresetMcpLib"}, {"path", dir.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    QString libId = QJsonDocument::fromJson(text(addR).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(libId.isEmpty());
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR));
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    QJsonArray ids{libId};
+    QString presetId;
+
+    // 1. cluster_library with saveAs -> presetId in the response.
+    auto saveR = call("cluster_library", {{"libraryIds", ids}, {"k", 2}, {"saveAs", "Mcp Preset"}});
+    ASSERT_FALSE(isError(saveR)) << text(saveR).toStdString();
+    auto saveObj = QJsonDocument::fromJson(text(saveR).toUtf8()).object();
+    EXPECT_EQ(saveObj.value("k").toInt(), 2);
+    presetId = saveObj.value("presetId").toString();
+    ASSERT_FALSE(presetId.isEmpty()) << "saveAs must produce a presetId";
+    EXPECT_TRUE(presetId.startsWith("cp_"));
+
+    // 2. list_cluster_presets shows it with the recipe + counts.
+    auto listR = call("list_cluster_presets");
+    ASSERT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listArr = QJsonDocument::fromJson(text(listR).toUtf8()).object().value("presets").toArray();
+    bool found = false;
+    for (const auto& p : listArr) {
+        auto po = p.toObject();
+        if (po.value("id").toString() != presetId) continue;
+        found = true;
+        EXPECT_EQ(po.value("name").toString().toStdString(), "Mcp Preset");
+        EXPECT_EQ(po.value("libraryIds").toArray().size(), 1);
+        EXPECT_EQ(po.value("libraryIds").toArray()[0].toString(), libId);
+        EXPECT_EQ(po.value("method").toString().toStdString(), "hybrid");
+        EXPECT_EQ(po.value("k").toInt(), 2);
+        EXPECT_TRUE(po.value("clusterId").isNull()) << "whole-result save has null clusterId";
+        EXPECT_EQ(po.value("clusterCount").toInt(), 2);
+        EXPECT_EQ(po.value("entryCount").toInt(), 4);
+    }
+    EXPECT_TRUE(found) << "list_cluster_presets must contain the saved preset";
+
+    // 3. get_cluster_preset (refresh=false) returns the snapshot + staleness probe.
+    auto getR = call("get_cluster_preset", {{"id", presetId}});
+    ASSERT_FALSE(isError(getR)) << text(getR).toStdString();
+    auto getObj = QJsonDocument::fromJson(text(getR).toUtf8()).object();
+    EXPECT_EQ(getObj.value("name").toString().toStdString(), "Mcp Preset");
+    EXPECT_EQ(getObj.value("k").toInt(), 2);
+    EXPECT_EQ(getObj.value("entryCount").toInt(), 4);
+    EXPECT_EQ(getObj.value("missingMemberCount").toInt(), 0)
+        << "fixture files still exist -> no missing members";
+    int totalMembers = 0;
+    for (const auto& c : getObj.value("clusters").toArray()) {
+        auto co = c.toObject();
+        EXPECT_TRUE(co.value("id").toString().startsWith("c"));
+        totalMembers += co.value("members").toArray().size();
+        for (const auto& m : co.value("members").toArray())
+            EXPECT_TRUE(m.toObject().contains("tags"));
+    }
+    EXPECT_EQ(totalMembers, 4);
+    EXPECT_TRUE(getObj.value("unassigned").toArray().isEmpty());
+
+    // 4. get_cluster_preset refresh=true recomputes equal when the library is
+    // unchanged (determinism bridge); adds computedAt.
+    auto refreshR = call("get_cluster_preset", {{"id", presetId}, {"refresh", true}});
+    ASSERT_FALSE(isError(refreshR)) << text(refreshR).toStdString();
+    auto freshObj = QJsonDocument::fromJson(text(refreshR).toUtf8()).object();
+    EXPECT_FALSE(freshObj.value("computedAt").toString().isEmpty());
+    EXPECT_EQ(snapshotFingerprint(freshObj), snapshotFingerprint(getObj))
+        << "refresh=true must equal the stored snapshot when the library is unchanged";
+
+    // 5. delete removes it; get after delete is a tool error; list is empty of it.
+    auto delR = call("delete_cluster_preset", {{"id", presetId}});
+    ASSERT_FALSE(isError(delR)) << text(delR).toStdString();
+    EXPECT_TRUE(QJsonDocument::fromJson(text(delR).toUtf8()).object().value("deleted").toBool());
+    auto delGetR = call("get_cluster_preset", {{"id", presetId}});
+    EXPECT_TRUE(isError(delGetR)) << "get after delete must be a tool error";
+    auto listAfter = QJsonDocument::fromJson(
+        text(call("list_cluster_presets")).toUtf8()).object().value("presets").toArray();
+    for (const auto& p : listAfter)
+        EXPECT_NE(p.toObject().value("id").toString(), presetId);
+
+    // 6. Unknown id -> tool error (get/refresh/delete all error paths).
+    auto unknownR = call("get_cluster_preset", {{"id", "cp_00000000"}});
+    EXPECT_TRUE(isError(unknownR));
+    EXPECT_TRUE(text(unknownR).contains("cp_00000000"));
+    auto unknownRefresh = call("get_cluster_preset", {{"id", "cp_00000000"}, {"refresh", true}});
+    EXPECT_TRUE(isError(unknownRefresh));
+    auto unknownDel = call("delete_cluster_preset", {{"id", "cp_00000000"}});
+    EXPECT_TRUE(isError(unknownDel));
+
+    // 7. saveAs on a failed cluster (bogus clusterId) -> tool error, no preset.
+    auto badSave = call("cluster_library", {{"libraryIds", ids}, {"k", 2},
+                                            {"saveAs", "Bad Save"}, {"clusterId", "c99"}});
+    EXPECT_TRUE(isError(badSave));
+    EXPECT_TRUE(text(badSave).contains("c99"));
+
+    // 8. Single-cluster save: clusterId narrows the stored snapshot.
+    auto firstClusterId = saveObj.value("clusters").toArray()[0].toObject().value("id").toString();
+    ASSERT_FALSE(firstClusterId.isEmpty());
+    auto singleR = call("cluster_library", {{"libraryIds", ids}, {"k", 2},
+                                            {"saveAs", "Single Scope"}, {"clusterId", firstClusterId}});
+    ASSERT_FALSE(isError(singleR)) << text(singleR).toStdString();
+    auto singleObj = QJsonDocument::fromJson(text(singleR).toUtf8()).object();
+    QString singleId = singleObj.value("presetId").toString();
+    ASSERT_FALSE(singleId.isEmpty());
+    // The LIVE response still carries all clusters — narrowing only affects the save.
+    EXPECT_EQ(singleObj.value("clusters").toArray().size(), 2);
+
+    auto singleGet = call("get_cluster_preset", {{"id", singleId}});
+    ASSERT_FALSE(isError(singleGet)) << text(singleGet).toStdString();
+    auto sObj = QJsonDocument::fromJson(text(singleGet).toUtf8()).object();
+    EXPECT_EQ(sObj.value("clusterId").toString(), firstClusterId);
+    auto sClusters = sObj.value("clusters").toArray();
+    ASSERT_EQ(sClusters.size(), 1) << "only the saved cluster is stored";
+    EXPECT_EQ(sClusters[0].toObject().value("id").toString(), firstClusterId);
+    EXPECT_EQ(sClusters[0].toObject().value("members").toArray().size(), 2)
+        << "single-cluster save stores only that cluster's members";
+    EXPECT_TRUE(sObj.value("unassigned").isNull()) << "unassigned omitted when clusterId set";
+    EXPECT_EQ(sObj.value("entryCount").toInt(), 2);
+
+    // Refresh of the single-cluster preset stays narrow.
+    auto singleRefresh = call("get_cluster_preset", {{"id", singleId}, {"refresh", true}});
+    ASSERT_FALSE(isError(singleRefresh)) << text(singleRefresh).toStdString();
+    auto srObj = QJsonDocument::fromJson(text(singleRefresh).toUtf8()).object();
+    EXPECT_EQ(srObj.value("clusters").toArray().size(), 1);
+    EXPECT_EQ(srObj.value("entryCount").toInt(), 2);
+
+    // 9. Clean up presets + library (appdata registry must not be polluted).
+    call("delete_cluster_preset", {{"id", singleId}});
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
+}
 // ============================================================================
 // REMAINING TOOLS
 // ============================================================================

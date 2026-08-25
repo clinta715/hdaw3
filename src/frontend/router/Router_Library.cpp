@@ -1,6 +1,7 @@
 #include "Router_Library.h"
 #include "RouterHelpers.h"
 #include "../../engine/FileLibraryManager.h"
+#include "../../engine/ClusterPresetStore.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -13,6 +14,62 @@ namespace frontend {
 
 // juce::String -> QString (UTF-8). Used consistently for all library fields.
 static inline QString qstr(const juce::String& s) { return QString::fromUtf8(s.toRawUTF8()); }
+
+// ── cluster-preset JSON builders (mirror the MCP wire shape) ────────────────
+static QJsonObject presetMemberJson(const HDAW::ClusterPresetMember& m) {
+    return QJsonObject{
+        {"name", qstr(m.name)},
+        {"path", qstr(m.path)},
+        {"tags", qstr(m.tags)},
+        {"description", qstr(m.description)},
+        {"similarity", m.similarity}
+    };
+}
+
+static QJsonObject presetClusterJson(const HDAW::ClusterPresetCluster& c) {
+    QJsonArray members;
+    for (const auto& m : c.members) members.append(presetMemberJson(m));
+    return QJsonObject{
+        {"id", qstr(c.id)},
+        {"label", qstr(c.label)},
+        {"size", static_cast<int>(c.members.size())},
+        {"members", members}
+    };
+}
+
+static QJsonObject freshMemberJson(const HDAW::ClusterMember& m) {
+    return QJsonObject{
+        {"name", qstr(m.name)},
+        {"path", qstr(m.path)},
+        {"tags", qstr(m.tags)},
+        {"description", qstr(m.description)},
+        {"similarity", m.similarity}
+    };
+}
+
+static QJsonObject freshClusterJson(const HDAW::Cluster& c) {
+    QJsonArray members;
+    for (const auto& m : c.members) members.append(freshMemberJson(m));
+    return QJsonObject{
+        {"id", qstr(c.id)},
+        {"label", qstr(c.label)},
+        {"size", static_cast<int>(c.members.size())},
+        {"members", members}
+    };
+}
+
+static QJsonArray libraryIdsJson(const juce::StringArray& ids) {
+    QJsonArray out;
+    for (const auto& id : ids) out.append(qstr(id));
+    return out;
+}
+
+static int freshEntryCount(const HDAW::ClusterOutcome& o) {
+    int count = 0;
+    for (const auto& c : o.clusters) count += (int)c.members.size();
+    count += (int)o.unassigned.size();
+    return count;
+}
 
 DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
@@ -122,7 +179,8 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
     }
 
     if (m == "cluster") {
-        // library.cluster — same params/shape as the MCP cluster_library tool.
+        // library.cluster — same params/shape as the MCP cluster_library tool
+        // (saveAs/clusterId passthrough: save the result as a named preset).
         juce::StringArray libraryIds;
         if (o.contains("libraryIds")) {
             const auto arr = o.value("libraryIds").toArray();
@@ -131,14 +189,20 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         }
         const int k = optInt(o, "k", 0, nullptr);
         const std::string method = optString(o, "method", "hybrid");
+        const std::string saveAs = optString(o, "saveAs", {});
+        const std::string saveClusterId = optString(o, "clusterId", {});
         juce::String error;
-        auto outcome = lib.clusterLibrary(libraryIds, k, juce::String(method), error);
+        juce::String presetId;
+        auto outcome = lib.clusterLibrary(libraryIds, k, juce::String(method), error,
+                                          juce::String(saveAs), juce::String(saveClusterId),
+                                          &presetId);
         if (error.isNotEmpty())
             return makeError(-32602, qstr(error));
 
         QJsonObject root;
         root["method"] = qstr(outcome.method);
         root["k"] = outcome.k;
+        if (presetId.isNotEmpty()) root["presetId"] = qstr(presetId);
         QJsonArray clustersArr;
         for (const auto& c : outcome.clusters) {
             QJsonArray members;
@@ -203,6 +267,97 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         }
         root["results"] = results;
         return { false, root };
+    }
+
+    if (m == "clusterPresetsList") {
+        // Mirror of the MCP list_cluster_presets tool.
+        QJsonArray arr;
+        for (const auto& p : lib.listClusterPresets()) {
+            arr.append(QJsonObject{
+                {"id", qstr(p.id)},
+                {"name", qstr(p.name)},
+                {"createdAt", qstr(p.createdAt)},
+                {"libraryIds", libraryIdsJson(p.libraryIds)},
+                {"method", qstr(p.method)},
+                {"k", p.k},
+                {"clusterId", p.clusterId.isNotEmpty() ? QJsonValue(qstr(p.clusterId))
+                                                       : QJsonValue(QJsonValue::Null)},
+                {"clusterCount", p.clusterCount},
+                {"entryCount", p.entryCount}
+            });
+        }
+        return { false, QJsonObject{{"presets", arr}} };
+    }
+
+    if (m == "clusterPresetsGet") {
+        // Mirror of the MCP get_cluster_preset tool (refresh + missing count).
+        std::string id;
+        if (!requireString(o, "id", id, nullptr) || id.empty())
+            return makeError(-32602, "id required");
+        const bool refresh = optBool(o, "refresh", false, nullptr);
+
+        HDAW::ClusterPreset preset;
+        QJsonArray clustersArr;
+        QJsonArray unassignedArr;
+        bool singleCluster = false;
+
+        if (refresh) {
+            HDAW::ClusterOutcome outcome;
+            juce::String error;
+            if (!lib.refreshClusterPreset(juce::String(id), preset, outcome, error))
+                return makeError(-32602, qstr(error));
+            for (const auto& c : outcome.clusters) clustersArr.append(freshClusterJson(c));
+            for (const auto& u : outcome.unassigned)
+                unassignedArr.append(QJsonObject{{"name", qstr(u.name)}, {"path", qstr(u.path)}});
+            singleCluster = !preset.clusterId.isEmpty();
+            QJsonObject root;
+            root["id"] = qstr(preset.id);
+            root["name"] = qstr(preset.name);
+            root["createdAt"] = qstr(preset.createdAt);
+            root["libraryIds"] = libraryIdsJson(preset.libraryIds);
+            root["method"] = qstr(preset.method);
+            root["k"] = preset.k;
+            root["clusterId"] = preset.clusterId.isNotEmpty() ? QJsonValue(qstr(preset.clusterId))
+                                                              : QJsonValue(QJsonValue::Null);
+            root["clusters"] = clustersArr;
+            root["unassigned"] = singleCluster ? QJsonValue(QJsonValue::Null) : QJsonValue(unassignedArr);
+            root["entryCount"] = freshEntryCount(outcome);
+            root["computedAt"] = qstr(juce::Time::getCurrentTime().toISO8601(true));
+            return { false, root };
+        }
+
+        juce::String error;
+        if (!lib.getClusterPreset(juce::String(id), preset, error))
+            return makeError(-32602, qstr(error));
+        for (const auto& c : preset.clusters) clustersArr.append(presetClusterJson(c));
+        for (const auto& u : preset.unassigned)
+            unassignedArr.append(QJsonObject{{"name", qstr(u.name)}, {"path", qstr(u.path)}});
+        singleCluster = !preset.clusterId.isEmpty();
+        QJsonObject root;
+        root["id"] = qstr(preset.id);
+        root["name"] = qstr(preset.name);
+        root["createdAt"] = qstr(preset.createdAt);
+        root["libraryIds"] = libraryIdsJson(preset.libraryIds);
+        root["method"] = qstr(preset.method);
+        root["k"] = preset.k;
+        root["clusterId"] = preset.clusterId.isNotEmpty() ? QJsonValue(qstr(preset.clusterId))
+                                                          : QJsonValue(QJsonValue::Null);
+        root["clusters"] = clustersArr;
+        root["unassigned"] = singleCluster ? QJsonValue(QJsonValue::Null) : QJsonValue(unassignedArr);
+        root["entryCount"] = preset.entryCount;
+        root["missingMemberCount"] = lib.countMissingPresetMembers(preset);
+        return { false, root };
+    }
+
+    if (m == "clusterPresetsDelete") {
+        // Mirror of the MCP delete_cluster_preset tool.
+        std::string id;
+        if (!requireString(o, "id", id, nullptr) || id.empty())
+            return makeError(-32602, "id required");
+        juce::String error;
+        if (!lib.deleteClusterPreset(juce::String(id), error))
+            return makeError(-32602, qstr(error));
+        return { false, QJsonObject{{"deleted", true}} };
     }
 
     if (m == "setAutoScan") {

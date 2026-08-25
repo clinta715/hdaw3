@@ -1124,3 +1124,194 @@ TEST_F(FileLibraryTest, StaleSchemaVersionCacheIgnoredUntilRescan) {
     ASSERT_EQ(results[0].dspFeatures.size(), (size_t)HDAW::kDspFeatureCount);
     EXPECT_DOUBLE_EQ(results[0].dspFeatures[5], 300.0);
 }
+
+// ── cluster presets (docs/plans/2026-08-25-cluster-presets.md, increment 2) ─
+// Integration through the manager: saveAs persists a preset, get returns it,
+// refresh recomputes equal (deterministic bridge over the stored recipe).
+// Reuses writeSilentWav + sidecarWithDsp from the anonymous namespace above.
+
+namespace {
+
+// Two timbre families (dark vs bright) x 2 entries each, with dsp sidecars.
+void seedClusterFixture(const juce::File& dir) {
+    dir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(dir.getChildFile("dark1.wav")));
+    ASSERT_TRUE(writeSilentWav(dir.getChildFile("dark2.wav")));
+    ASSERT_TRUE(writeSilentWav(dir.getChildFile("bright1.wav")));
+    ASSERT_TRUE(writeSilentWav(dir.getChildFile("bright2.wav")));
+    dir.getChildFile("dark1.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("dark, low", "a dark low texture", 150.0, 0.75, 0.05));
+    dir.getChildFile("dark2.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("dark, low", "a dark low texture", 160.0, 0.73, 0.06));
+    dir.getChildFile("bright1.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("bright, high", "a bright high texture", 5200.0, 0.05, 0.70));
+    dir.getChildFile("bright2.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("bright, high", "a bright high texture", 5400.0, 0.04, 0.72));
+}
+
+void waitForScan(HDAW::FileLibraryManager& mgr) {
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+}
+
+// Total members across clusters + unassigned.
+int outcomeMemberCount(const HDAW::ClusterOutcome& o) {
+    int count = 0;
+    for (const auto& c : o.clusters) count += (int)c.members.size();
+    count += (int)o.unassigned.size();
+    return count;
+}
+
+// Callable before ClusterPresetStore is included? It's already in scope via
+// FileLibraryManager.h -> ClusterPresetStore.h.
+int freshEntryCountFor(const HDAW::ClusterOutcome& o) {
+    return outcomeMemberCount(o);
+}
+
+} // namespace
+
+TEST_F(FileLibraryTest, SaveAsPresetPersistsAndGetReturnsIt) {
+    auto audioDir = tempDir.getChildFile("preset_fixture");
+    seedClusterFixture(audioDir);
+
+    juce::String presetId;
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        auto id = mgr.addLibrary("PresetLib", audioDir.getFullPathName(), "audio");
+        mgr.scanLibrary(id);
+        waitForScan(mgr);
+
+        juce::String error;
+        auto outcome = mgr.clusterLibrary(juce::StringArray{id}, 2, "hybrid", error,
+                                          "Favourite Clusters", {}, &presetId);
+        ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+        EXPECT_FALSE(presetId.isEmpty());
+        EXPECT_TRUE(presetId.startsWith("cp_"));
+
+        HDAW::ClusterPreset preset;
+        ASSERT_TRUE(mgr.getClusterPreset(presetId, preset, error));
+        EXPECT_EQ(preset.name, "Favourite Clusters");
+        EXPECT_EQ(preset.libraryIds.size(), 1);
+        EXPECT_EQ(preset.libraryIds[0], id);
+        EXPECT_EQ(preset.method, "hybrid");
+        EXPECT_EQ(preset.k, 2);
+        EXPECT_TRUE(preset.clusterId.isEmpty());
+        ASSERT_EQ(preset.clusters.size(), 2u);
+        int members = 0;
+        for (const auto& c : preset.clusters) {
+            members += (int)c.members.size();
+            for (const auto& m : c.members) {
+                EXPECT_FALSE(m.name.isEmpty());
+                EXPECT_FALSE(m.path.isEmpty());
+                EXPECT_TRUE(m.tags.contains("dark") || m.tags.contains("bright"));
+            }
+        }
+        EXPECT_EQ(members, 4);
+        EXPECT_EQ(preset.entryCount, 4);
+    }
+
+    // New manager instance on the same tempDir: preset persists on disk.
+    HDAW::FileLibraryManager mgr2(tempDir);
+    HDAW::ClusterPreset preset;
+    juce::String error;
+    ASSERT_TRUE(mgr2.getClusterPreset(presetId, preset, error))
+        << "preset must survive persistence across manager instances: " << error.toStdString();
+    EXPECT_EQ(preset.name, "Favourite Clusters");
+    EXPECT_EQ(preset.entryCount, 4);
+
+    // Unknown id -> error, never a crash.
+    HDAW::ClusterPreset ignored;
+    EXPECT_FALSE(mgr2.getClusterPreset("cp_00000000", ignored, error));
+    EXPECT_FALSE(error.isEmpty());
+}
+
+TEST_F(FileLibraryTest, SaveAsSingleClusterStoresOnlyThatCluster) {
+    auto audioDir = tempDir.getChildFile("preset_single");
+    seedClusterFixture(audioDir);
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("PresetSingleLib", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+
+    juce::String error;
+    // Save the whole result first to discover a cluster id.
+    auto whole = mgr.clusterLibrary(juce::StringArray{id}, 2, "hybrid", error);
+    ASSERT_TRUE(error.isEmpty());
+    ASSERT_FALSE(whole.clusters.empty());
+    const juce::String clusterId = whole.clusters[0].id;
+
+    juce::String presetId;
+    auto outcome = mgr.clusterLibrary(juce::StringArray{id}, 2, "hybrid", error,
+                                      "Single Cluster", clusterId, &presetId);
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    EXPECT_FALSE(presetId.isEmpty());
+    EXPECT_EQ(outcomeMemberCount(outcome), 4) << "returned clusters unchanged by narrowing";
+
+    HDAW::ClusterPreset preset;
+    ASSERT_TRUE(mgr.getClusterPreset(presetId, preset, error));
+    EXPECT_EQ(preset.clusterId, clusterId);
+    ASSERT_EQ(preset.clusters.size(), 1u);
+    EXPECT_EQ(preset.clusters[0].id, clusterId);
+    EXPECT_EQ(preset.clusters[0].members.size(), 2u) << "only that cluster's members";
+    EXPECT_TRUE(preset.unassigned.empty()) << "unassigned omitted on single-cluster save";
+    EXPECT_EQ(preset.entryCount, 2);
+
+    // An unknown cluster id fails the whole save request with an error.
+    juce::String presetId2;
+    auto bad = mgr.clusterLibrary(juce::StringArray{id}, 2, "hybrid", error,
+                                  "Bad Save", "c99", &presetId2);
+    EXPECT_FALSE(error.isEmpty());
+    EXPECT_TRUE(error.contains("c99"));
+    EXPECT_TRUE(bad.clusters.empty());
+    EXPECT_TRUE(presetId2.isEmpty());
+}
+
+TEST_F(FileLibraryTest, RefreshRecomputesEqualDeterministically) {
+    auto audioDir = tempDir.getChildFile("preset_refresh");
+    seedClusterFixture(audioDir);
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("PresetRefreshLib", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+
+    juce::String error;
+    juce::String presetId;
+    auto original = mgr.clusterLibrary(juce::StringArray{id}, 2, "hybrid", error,
+                                       "Refreshable", {}, &presetId);
+    ASSERT_TRUE(error.isEmpty());
+
+    HDAW::ClusterPreset stored;
+    HDAW::ClusterOutcome fresh;
+    ASSERT_TRUE(mgr.refreshClusterPreset(presetId, stored, fresh, error))
+        << error.toStdString();
+
+    EXPECT_EQ(stored.id, presetId);
+    EXPECT_EQ(stored.name, "Refreshable");
+    EXPECT_EQ(fresh.method, original.method);
+    EXPECT_EQ(fresh.k, original.k);
+    EXPECT_EQ(fresh.clusters.size(), original.clusters.size());
+    EXPECT_EQ(fresh.unassigned.size(), original.unassigned.size());
+    EXPECT_EQ(freshEntryCountFor(fresh), freshEntryCountFor(original));
+
+    for (size_t i = 0; i < original.clusters.size(); ++i) {
+        ASSERT_EQ(fresh.clusters[i].members.size(), original.clusters[i].members.size());
+        for (size_t j = 0; j < original.clusters[i].members.size(); ++j) {
+            EXPECT_EQ(fresh.clusters[i].members[j].name, original.clusters[i].members[j].name);
+            EXPECT_NEAR(fresh.clusters[i].members[j].similarity,
+                        original.clusters[i].members[j].similarity, 1e-12)
+                << "refresh must reproduce the original similarities (deterministic clamp)";
+        }
+    }
+
+    // Missing-member staleness probe: all fixture files still exist -> 0.
+    EXPECT_EQ(mgr.countMissingPresetMembers(stored), 0);
+
+    // Unknown id refresh -> error.
+    HDAW::ClusterPreset ignPreset;
+    HDAW::ClusterOutcome ignOutcome;
+    EXPECT_FALSE(mgr.refreshClusterPreset("cp_00000000", ignPreset, ignOutcome, error));
+    EXPECT_FALSE(error.isEmpty());
+}

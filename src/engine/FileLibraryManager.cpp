@@ -19,6 +19,7 @@ FileLibraryManager::FileLibraryManager() {
     librariesDir.createDirectory();
     registryFile = librariesDir.getChildFile("registry.json");
     loadRegistry();
+    presetStore = std::make_unique<ClusterPresetStore>(librariesDir);
 }
 
 FileLibraryManager::FileLibraryManager(const juce::File& baseDir) {
@@ -26,6 +27,7 @@ FileLibraryManager::FileLibraryManager(const juce::File& baseDir) {
     librariesDir.createDirectory();
     registryFile = librariesDir.getChildFile("registry.json");
     loadRegistry();
+    presetStore = std::make_unique<ClusterPresetStore>(librariesDir);
 }
 
 FileLibraryManager::~FileLibraryManager() {
@@ -1053,10 +1055,28 @@ static std::vector<ClusterItem> toClusterItems(const std::vector<LibraryEntry>& 
     return items;
 }
 
+namespace {
+
+ClusterPresetMember toPresetMember(const ClusterMember& m) {
+    ClusterPresetMember pm;
+    pm.name = m.name;
+    pm.path = m.path;
+    pm.tags = m.tags;
+    pm.description = m.description;
+    pm.similarity = m.similarity;
+    return pm;
+}
+
+} // namespace
+
 ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libraryIds,
                                                   int k, const juce::String& method,
-                                                  juce::String& error) const {
+                                                  juce::String& error,
+                                                  const juce::String& saveAs,
+                                                  const juce::String& saveClusterId,
+                                                  juce::String* presetId) const {
     error = {};
+    if (presetId) presetId->clear();
     ClusterMethod methodEnum = ClusterMethod::Hybrid;
     if (!parseClusterMethod(method, methodEnum, error)) return {};
 
@@ -1067,6 +1087,49 @@ ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libra
     if (outcome.clusters.empty()) {
         error = "no usable signal entries: every entry lacks tags/description and dsp features";
         return {};
+    }
+
+    // Save-as-preset (increment 2): persist a snapshot + recipe when requested.
+    if (saveAs.isNotEmpty()) {
+        ClusterPreset record;
+        record.name = saveAs; // store caps at 200 chars (Gate 9)
+        record.createdAt = juce::Time::getCurrentTime().toISO8601(true);
+        record.libraryIds = libraryIds; // empty stays empty = all-audio recipe
+        record.method = outcome.method;
+        record.k = k; // as requested (0 = auto)
+
+        if (saveClusterId.isNotEmpty()) {
+            // Narrow the saved snapshot to ONE cluster; unassigned omitted.
+            record.clusterId = saveClusterId;
+            const Cluster* found = nullptr;
+            for (const auto& c : outcome.clusters) {
+                if (c.id == saveClusterId) { found = &c; break; }
+            }
+            if (found == nullptr) {
+                error = "cluster id not found: " + saveClusterId;
+                return {};
+            }
+            ClusterPresetCluster pc;
+            pc.id = found->id;
+            pc.label = found->label;
+            for (const auto& m : found->members) pc.members.push_back(toPresetMember(m));
+            record.clusters.push_back(std::move(pc));
+            // unassigned stays empty — serialized as null (single-cluster save)
+        } else {
+            for (const auto& c : outcome.clusters) {
+                ClusterPresetCluster pc;
+                pc.id = c.id;
+                pc.label = c.label;
+                for (const auto& m : c.members) pc.members.push_back(toPresetMember(m));
+                record.clusters.push_back(std::move(pc));
+            }
+            for (const auto& u : outcome.unassigned) record.unassigned.push_back(toPresetMember(u));
+        }
+        // entryCount is recomputed inside the store's upsert from the snapshot.
+
+        std::lock_guard<std::mutex> lock(mutex);
+        const juce::String id = presetStore->upsert(std::move(record));
+        if (presetId) *presetId = id;
     }
     return outcome;
 }
@@ -1113,6 +1176,87 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
         return {};
     }
     return r;
+}
+
+// ── cluster presets (docs/plans/2026-08-25-cluster-presets.md) ───────────
+// All disk IO is guarded by the existing mutex; results are copied out.
+
+std::vector<ClusterPresetSummary> FileLibraryManager::listClusterPresets() const {
+    std::lock_guard<std::mutex> lock(mutex);
+    return presetStore ? presetStore->list() : std::vector<ClusterPresetSummary>();
+}
+
+bool FileLibraryManager::getClusterPreset(const juce::String& id, ClusterPreset& out,
+                                          juce::String& error) const {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!presetStore || !presetStore->get(id, out)) {
+        error = "preset not found: " + id;
+        return false;
+    }
+    return true;
+}
+
+bool FileLibraryManager::refreshClusterPreset(const juce::String& id,
+                                              ClusterPreset& outPreset,
+                                              ClusterOutcome& outOutcome,
+                                              juce::String& error) const {
+    ClusterPreset stored;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!presetStore || !presetStore->get(id, stored)) {
+            error = "preset not found: " + id;
+            return false;
+        }
+    }
+
+    // Re-run the stored recipe (empty libraryIds stays empty = all audio).
+    auto outcome = clusterLibrary(stored.libraryIds, stored.k, stored.method, error);
+    if (error.isNotEmpty()) return false;
+
+    // Single-cluster presets refresh to the same narrow shape they were saved
+    // with: only that cluster's members, unassigned omitted.
+    if (stored.clusterId.isNotEmpty()) {
+        Cluster* found = nullptr;
+        for (auto& c : outcome.clusters) {
+            if (c.id == stored.clusterId) { found = &c; break; }
+        }
+        if (found == nullptr) {
+            error = "cluster " + stored.clusterId + " no longer present after refresh";
+            return false;
+        }
+        Cluster kept = std::move(*found);
+        outcome.clusters.clear();
+        outcome.clusters.push_back(std::move(kept));
+        outcome.unassigned.clear();
+        outcome.note.clear();
+    }
+
+    outPreset = std::move(stored);
+    outOutcome = std::move(outcome);
+    return true;
+}
+
+bool FileLibraryManager::deleteClusterPreset(const juce::String& id, juce::String& error) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (!presetStore) {
+        error = "preset store unavailable";
+        return false;
+    }
+    return presetStore->remove(id, error);
+}
+
+int FileLibraryManager::countMissingPresetMembers(const ClusterPreset& p, int cap) const {
+    int missing = 0;
+    int checked = 0;
+    auto check = [&](const juce::String& path) {
+        if (checked >= cap) return;
+        ++checked;
+        if (path.isNotEmpty() && !juce::File(path).existsAsFile()) ++missing;
+    };
+    for (const auto& c : p.clusters)
+        for (const auto& m : c.members) check(m.path);
+    for (const auto& u : p.unassigned) check(u.path);
+    return missing;
 }
 
 void FileLibraryManager::createExampleMidiFiles(const juce::File& dir) {
