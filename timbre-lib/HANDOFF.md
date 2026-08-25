@@ -20,7 +20,7 @@ DSP descriptors (timbre.py, numpy/scipy)
 
 ## 2. Working directory & key files
 
-    /mnt/d/pdf/roo projects/timbre-lib/   (Windows: D:\pdf\roo projects\timbre-lib\)
+    /mnt/d/pdf/roo projects/hdaw3/timbre-lib/   (Windows: D:\pdf\roo projects\hdaw3\timbre-lib\)
 
     README.md            pipeline docs & usage
     timbre.py            stage 1 DSP descriptors (numpy/scipy only, portable)
@@ -56,7 +56,7 @@ Generic MCP server name: hdaw. Tool list: 187 tools (list with
 `await mcp.list_tools("hdaw")`). Execute: `await mcp.call_tool("hdaw", name, args)`.
 
     Library registrations that matter:
-      f2538111f7cd  TimbreLib   audio  D:\pdf\roo projects\timbre-lib\samples (17 files)
+      f2538111f7cd  TimbreLib   audio  D:\pdf\roo projects\hdaw3\timbre-lib\samples (17 files)
       e731d934c141  112718      audio  D:\projects\112718 (40 x 120bpm OGG/FLAC loops,
                                        most in Dm, described keys/bpm; long texture loops)
     search_library {libraryId, query} — substring matches on name/description/tags;
