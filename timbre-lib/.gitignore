@@ -1,0 +1,36 @@
+# Machine-local model weights (~1.9 GB Qwen GGUF) - never commit
+*.gguf
+
+# Audio media (repo policy: binary media is never committed)
+*.wav
+*.mp3
+*.flac
+*.aiff
+*.aif
+*.ogg
+*.m4a
+*.serumpreset
+*.fxp
+*.syx
+
+# HDAW project scratch/demo files (probe outputs)
+*.hdaw3
+*.hdaw3.bak
+
+# Python caches
+__pycache__/
+*.pyc
+
+# HDAW project auto-backups
+auto-backups/
+
+# TimbreLib per-folder analysis cache + index (regenerate with analyze.sh)
+.timbre_cache/
+samples/timbre_index.json
+
+# Sample library - user audio data, kept local
+samples/
+
+# Serum2 probe generated outputs - sources only
+serum2/harvest_out/
+serum2/test_projects/
