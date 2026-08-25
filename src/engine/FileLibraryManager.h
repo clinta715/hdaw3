@@ -1,5 +1,6 @@
 // src/engine/FileLibraryManager.h
 #pragma once
+#include "LibraryClusterer.h"
 #include <juce_core/juce_core.h>
 #include <vector>
 #include <unordered_map>
@@ -36,6 +37,10 @@ struct LibraryEntry {
     // TimbreLib sidecar (audio libraries)
     juce::String tags;        // comma-joined dsp_words + top captions + top tags
     juce::String description; // prose
+    // Numeric `dsp` dict from the sidecar — accepted only when ALL 20 keys
+    // (kDspFeatureKeys, LibraryClusterer.h) are present and finite; otherwise
+    // empty. Ingested since schemaVersion 2 of the per-library entry cache.
+    std::vector<double> dspFeatures;
 };
 
 struct LibraryInfo {
@@ -92,6 +97,20 @@ public:
     // Entry access
     LibraryEntry getEntry(const juce::String& libraryId, const juce::String& path) const;
 
+    // Clustering / nearest-neighbour over TimbreLib sidecar data
+    // (docs/plans/2026-08-25-library-clustering.md). Both take an EMPTY
+    // libraryIds array to mean ALL audio-type libraries (midi excluded);
+    // a provided array is the exact scope — any unknown id (or a known
+    // non-audio id) is an error, never a silent skip. Errors come back
+    // through the out-param (empty = success); no exceptions escape.
+    // Computation runs on the calling thread over a copied entry snapshot
+    // (the mutex is held only for the copy).
+    ClusterOutcome clusterLibrary(const juce::StringArray& libraryIds, int k,
+                                  const juce::String& method, juce::String& error) const;
+    RelatedResult relatedSamples(const juce::StringArray& libraryIds,
+                                 const juce::String& filePath, const juce::String& query,
+                                 int limit, const juce::String& method, juce::String& error) const;
+
     // Persistence
     void loadRegistry();
     void saveRegistry();
@@ -103,6 +122,8 @@ private:
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
     static void applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile);
+    bool collectClusterEntries(const juce::StringArray& libraryIds,
+                               std::vector<LibraryEntry>& out, juce::String& error) const;
     juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
 

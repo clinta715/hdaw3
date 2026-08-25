@@ -790,6 +790,303 @@ TEST_F(McpCoverageTest, LibrarySidecarSearchAndGetEntry) {
     EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
 }
 
+// ── cluster_library / related_samples (clustering v1.1) ──────────────────────
+// docs/plans/2026-08-25-library-clustering.md, G4. Temp WAVs + TimbreLib
+// sidecars with numeric `dsp` dicts; two timbre "families" (dark vs bright).
+
+namespace {
+
+// Sidecar with a complete 20-key `dsp` dict. Three dims carry the family
+// signal (centroid / mel_low / mel_high); the rest are constants.
+QString dspSidecar(const char* words, const char* prose,
+                   double centroid, double melLow, double melHigh) {
+    return QStringLiteral(
+        "{\"dsp_words\":\"%1\",\"prose\":\"%2\","
+        "\"captions\":[[\"%1\",0.9]],\"tags\":[[\"%1\",0.9]],"
+        "\"dsp\":{\"duration\":2.0,\"rms\":0.1,\"peak\":0.5,\"crest_dB\":12.0,\"zcr\":0.1,"
+        "\"centroid\":%3,\"bandwidth\":800.0,\"rolloff85\":500.0,\"rolloff95\":2000.0,"
+        "\"flatness\":0.05,\"spectral_crest\":300.0,\"spec_irregularity\":0.2,"
+        "\"mel_low\":%4,\"mel_mid\":0.2,\"mel_high\":%5,\"attack_s\":0.01,\"decay_s\":0.5,"
+        "\"f0_hz\":0.0,\"tonal_fraction\":0.0,\"f0_sweep\":9.0}}")
+        .arg(QString::fromUtf8(words), QString::fromUtf8(prose))
+        .arg(QString::number(centroid, 'f', 6),
+             QString::number(melLow, 'f', 6),
+             QString::number(melHigh, 'f', 6));
+}
+
+bool writeWavWithSidecar(const QString& dir, const char* name,
+                         const char* words, const char* prose,
+                         double centroid, double melLow, double melHigh) {
+    const std::string base = dir.toStdString() + "/" + name;
+    juce::File wav(base);
+    auto outStream = wav.createOutputStream();
+    if (outStream == nullptr) return false;
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+    if (writer == nullptr) return false;
+    outStream.release(); // writer takes ownership
+    juce::AudioBuffer<float> buffer(1, 44100);
+    buffer.clear();
+    writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+    writer.reset();
+    juce::File sidecar(base + ".timbre.json");
+    sidecar.replaceWithText(dspSidecar(words, prose, centroid, melLow, melHigh).toStdString());
+    return true;
+}
+
+} // namespace
+
+TEST_F(McpCoverageTest, LibraryClusterTwoSidecarFamilies) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark1.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark2.wav", "dark, low", "a dark low texture",
+                                    160.0, 0.73, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright1.wav", "bright, high", "a bright high texture",
+                                    5200.0, 0.05, 0.70));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright2.wav", "bright, high", "a bright high texture",
+                                    5400.0, 0.04, 0.72));
+
+    auto addR = call("add_library", {{"name", "ClusterLib"}, {"path", dir.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    QString libId = QJsonDocument::fromJson(text(addR).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(libId.isEmpty());
+
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR));
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    QJsonArray ids{libId};
+    auto clusterR = call("cluster_library", {{"libraryIds", ids}, {"k", 2}});
+    ASSERT_FALSE(isError(clusterR)) << text(clusterR).toStdString();
+    auto obj = QJsonDocument::fromJson(text(clusterR).toUtf8()).object();
+    EXPECT_EQ(obj.value("method").toString().toStdString(), "hybrid");
+    EXPECT_EQ(obj.value("k").toInt(), 2);
+    auto clusters = obj.value("clusters").toArray();
+    ASSERT_EQ(clusters.size(), 2) << "two sidecar families -> two clusters";
+
+    QStringList darkMembers, brightMembers;
+    int totalMembers = 0;
+    for (const auto& c : clusters) {
+        auto co = c.toObject();
+        EXPECT_TRUE(co.value("id").toString().startsWith("c"));
+        EXPECT_FALSE(co.value("label").toString().isEmpty());
+        EXPECT_GT(co.value("size").toInt(), 0);
+        EXPECT_EQ(co.value("size").toInt(), co.value("members").toArray().size());
+        for (const auto& m : co.value("members").toArray()) {
+            auto mo = m.toObject();
+            totalMembers++;
+            // Members carry the sidecar tags (G4: "members carry tags").
+            EXPECT_TRUE(mo.contains("tags"));
+            EXPECT_TRUE(mo.value("tags").toString().contains("dark")
+                        || mo.value("tags").toString().contains("bright"));
+            EXPECT_TRUE(mo.contains("similarity"));
+            EXPECT_GE(mo.value("similarity").toDouble(), 0.0);
+            if (mo.value("name").toString().startsWith("dark")) darkMembers << mo.value("name").toString();
+            else brightMembers << mo.value("name").toString();
+        }
+    }
+    EXPECT_EQ(totalMembers, 4) << "all entries clustered";
+    EXPECT_EQ(darkMembers.size(), 2) << "dark family in one cluster";
+    EXPECT_EQ(brightMembers.size(), 2) << "bright family in the other cluster";
+    EXPECT_TRUE(obj.value("unassigned").toArray().isEmpty());
+
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
+}
+
+TEST_F(McpCoverageTest, LibraryRelatedSamplesByFilePathAndQuery) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark1.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark2.wav", "dark, low", "a dark low texture",
+                                    160.0, 0.73, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright1.wav", "bright, high", "a bright high texture",
+                                    5200.0, 0.05, 0.70));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright2.wav", "bright, high", "a bright high texture",
+                                    5400.0, 0.04, 0.72));
+
+    auto addR = call("add_library", {{"name", "RelatedLib"}, {"path", dir.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    QString libId = QJsonDocument::fromJson(text(addR).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(libId.isEmpty());
+
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR));
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    // Seed path comes straight from the indexed entries.
+    auto searchR = call("search_library", {{"libraryId", libId}});
+    auto entries = QJsonDocument::fromJson(text(searchR).toUtf8()).array();
+    ASSERT_EQ(entries.size(), 4);
+    QString dark1Path;
+    for (const auto& e : entries)
+        if (e.toObject().value("name").toString() == "dark1.wav")
+            dark1Path = e.toObject().value("path").toString();
+    ASSERT_FALSE(dark1Path.isEmpty());
+
+    QJsonArray ids{libId};
+    auto relR = call("related_samples", {{"libraryIds", ids}, {"filePath", dark1Path}});
+    ASSERT_FALSE(isError(relR)) << text(relR).toStdString();
+    auto obj = QJsonDocument::fromJson(text(relR).toUtf8()).object();
+    EXPECT_EQ(obj.value("method").toString().toStdString(), "hybrid");
+    EXPECT_EQ(obj.value("seed").toObject().value("name").toString().toStdString(), "dark1.wav");
+    auto results = obj.value("results").toArray();
+    ASSERT_EQ(results.size(), 3) << "seed excludes itself";
+    // Same-family neighbor ranked first.
+    EXPECT_EQ(results[0].toObject().value("name").toString().toStdString(), "dark2.wav");
+    EXPECT_TRUE(results[0].toObject().contains("tags"));
+    EXPECT_TRUE(results[0].toObject().value("tags").toString().contains("dark"));
+    for (const auto& r : results)
+        EXPECT_NE(r.toObject().value("name").toString().toStdString(), "dark1.wav")
+            << "the seed never appears in results";
+    // Monotone ranking.
+    EXPECT_GE(results[0].toObject().value("similarity").toDouble(),
+              results[1].toObject().value("similarity").toDouble());
+
+    // Text query seed: "dark" ranks the dark family first.
+    auto qR = call("related_samples", {{"libraryIds", ids}, {"query", "dark"}, {"limit", 2}});
+    ASSERT_FALSE(isError(qR)) << text(qR).toStdString();
+    auto qObj = QJsonDocument::fromJson(text(qR).toUtf8()).object();
+    EXPECT_FALSE(qObj.contains("seed")) << "a query has no file seed";
+    auto qResults = qObj.value("results").toArray();
+    ASSERT_EQ(qResults.size(), 2) << "limit is respected";
+    EXPECT_TRUE(qResults[0].toObject().value("name").toString().startsWith("dark"));
+    EXPECT_TRUE(qResults[1].toObject().value("name").toString().startsWith("dark"));
+
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
+}
+
+TEST_F(McpCoverageTest, LibraryClusterRelatedErrorCases) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "solo.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+
+    auto addR = call("add_library", {{"name", "ErrLib"}, {"path", dir.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    QString libId = QJsonDocument::fromJson(text(addR).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(libId.isEmpty());
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR));
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    QJsonArray ids{libId};
+
+    // Unknown library id -> tool error listing the offender, never a silent skip.
+    QJsonArray badIds{libId, "nosuchlib"};
+    auto r1 = call("cluster_library", {{"libraryIds", badIds}, {"k", 2}});
+    EXPECT_TRUE(isError(r1)) << "unknown libraryIds must be a tool error";
+    EXPECT_TRUE(text(r1).contains("nosuchlib")) << "error must list the unknown id";
+
+    auto r1b = call("related_samples", {{"libraryIds", badIds}, {"query", "dark"}});
+    EXPECT_TRUE(isError(r1b)) << "unknown libraryIds must be a tool error (related_samples)";
+
+    // Bad method -> tool error (whitelist comparison, no stoi).
+    auto r2 = call("cluster_library", {{"libraryIds", ids}, {"k", 2}, {"method", "bogus"}});
+    EXPECT_TRUE(isError(r2));
+    EXPECT_TRUE(text(r2).contains("method")) << "error should name the bad method";
+
+    // Exactly one of filePath/query is required.
+    auto r3 = call("related_samples", {{"libraryIds", ids}});
+    EXPECT_TRUE(isError(r3)) << "missing both filePath and query must be a tool error";
+    auto r3b = call("related_samples", {{"libraryIds", ids},
+                                        {"filePath", "C:/no/such/file.wav"},
+                                        {"query", "dark"}});
+    EXPECT_TRUE(isError(r3b)) << "providing both filePath and query must be a tool error";
+
+    // filePath that exists in no selected library -> error, not an empty result.
+    auto r4 = call("related_samples", {{"libraryIds", ids}, {"filePath", "C:/no/such/file.wav"}});
+    EXPECT_TRUE(isError(r4));
+
+    // Happy control: same call with valid params is NOT an error.
+    auto okR = call("cluster_library", {{"libraryIds", ids}, {"k", 1}});
+    EXPECT_FALSE(isError(okR)) << text(okR).toStdString();
+
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
+}
+
+TEST_F(McpCoverageTest, LibraryClusterTwoLibraryScope) {
+    QTemporaryDir dirA, dirB;
+    ASSERT_TRUE(dirA.isValid());
+    ASSERT_TRUE(dirB.isValid());
+    // Lib A: two dark + one bright.
+    ASSERT_TRUE(writeWavWithSidecar(dirA.path(), "darkA1.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+    ASSERT_TRUE(writeWavWithSidecar(dirA.path(), "darkA2.wav", "dark, low", "a dark low texture",
+                                    160.0, 0.73, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dirA.path(), "brightA1.wav", "bright, high", "a bright high texture",
+                                    5200.0, 0.05, 0.70));
+    // Lib B: two dark (same family as A) + one unrelated metallic.
+    ASSERT_TRUE(writeWavWithSidecar(dirB.path(), "darkB1.wav", "dark, low", "a dark low texture",
+                                    140.0, 0.77, 0.04));
+    ASSERT_TRUE(writeWavWithSidecar(dirB.path(), "darkB2.wav", "dark, low", "a dark low texture",
+                                    155.0, 0.74, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dirB.path(), "metalB1.wav", "metallic, ringing", "a metallic ringing texture",
+                                    9000.0, 0.01, 0.95));
+
+    QString idA, idB;
+    auto addA = call("add_library", {{"name", "ScopeA"}, {"path", dirA.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addA)) << text(addA).toStdString();
+    idA = QJsonDocument::fromJson(text(addA).toUtf8()).object().value("id").toString();
+    auto addB = call("add_library", {{"name", "ScopeB"}, {"path", dirB.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addB)) << text(addB).toStdString();
+    idB = QJsonDocument::fromJson(text(addB).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(idA.isEmpty());
+    ASSERT_FALSE(idB.isEmpty());
+
+    for (const QString& id : {idA, idB}) {
+        auto scanR = call("scan_library", {{"id", id}});
+        EXPECT_FALSE(isError(scanR));
+    }
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    QJsonArray scope{idA, idB};
+    auto clusterR = call("cluster_library", {{"libraryIds", scope}, {"k", 3}});
+    ASSERT_FALSE(isError(clusterR)) << text(clusterR).toStdString();
+    auto obj = QJsonDocument::fromJson(text(clusterR).toUtf8()).object();
+    EXPECT_EQ(obj.value("k").toInt(), 3);
+    auto clusters = obj.value("clusters").toArray();
+
+    // The dark family must form ONE cluster spanning BOTH libraries; the
+    // unrelated metallic entry must NOT be in it.
+    int totalMembers = 0;
+    bool foundCrossLib = false;
+    for (const auto& c : clusters) {
+        auto members = c.toObject().value("members").toArray();
+        totalMembers += members.size();
+        QStringList names;
+        for (const auto& m : members) names << m.toObject().value("name").toString();
+        const QString joined = names.join(";");
+        if (joined.contains("darkA") && joined.contains("darkB")) {
+            foundCrossLib = true;
+            EXPECT_FALSE(joined.contains("metalB1"))
+                << "the unrelated metallic entry must be excluded from the dark cluster";
+            EXPECT_EQ(names.size(), 4) << "both dark pairs in one cluster";
+        }
+    }
+    EXPECT_TRUE(foundCrossLib) << "a cluster must span BOTH scoped libraries";
+    EXPECT_EQ(totalMembers, 6) << "all entries from A+B participate";
+
+    auto removeA = call("remove_library", {{"id", idA}});
+    EXPECT_FALSE(isError(removeA));
+    auto removeB = call("remove_library", {{"id", idB}});
+    EXPECT_FALSE(isError(removeB));
+}
+
 // ============================================================================
 // REMAINING TOOLS
 // ============================================================================

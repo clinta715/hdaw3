@@ -159,6 +159,7 @@ src/engine/StretchRenderer.cpp
     src/engine/StretchCache.cpp
     src/engine/TransientDetector.cpp
     src/engine/FileLibraryManager.cpp
+    src/engine/LibraryClusterer.cpp
     src/common/MessagePumpThread.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp

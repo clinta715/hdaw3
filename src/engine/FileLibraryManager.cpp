@@ -329,6 +329,17 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         e.format = eObj->getProperty("format").toString();
         e.tags = eObj->getProperty("tags").toString(); // missing -> empty
         e.description = eObj->getProperty("description").toString(); // missing -> empty
+        if (auto* dspArr = eObj->getProperty("dspFeatures").getArray()) {
+            std::vector<double> vals;
+            vals.reserve(dspArr->size());
+            bool ok = true;
+            for (const auto& v : *dspArr) {
+                if (!v.isDouble() && !v.isInt() && !v.isInt64()) { ok = false; break; }
+                vals.push_back((double)v);
+            }
+            if (ok && vals.size() == (size_t)kDspFeatureCount)
+                e.dspFeatures = std::move(vals);
+        }
         return e;
     };
 
@@ -338,6 +349,11 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         auto json = juce::JSON::parse(content);
         auto* obj = json.getDynamicObject();
         if (!obj) return;
+        // Schema guard: caches written before dspFeatures (schemaVersion 2)
+        // are missing the dsp axis. Ignore them so ONE rescan re-ingests with
+        // the current parser instead of silently serving stale features.
+        const int schemaVersion = (int)(double)obj->getProperty("schemaVersion");
+        if (schemaVersion < 2) return;
         auto& items = obj->getProperty("entries");
         auto* arr = items.getArray();
         if (!arr) return;
@@ -400,6 +416,11 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("format", e.format);
         obj->setProperty("tags", e.tags);
         obj->setProperty("description", e.description);
+        if (e.dspFeatures.size() == (size_t)kDspFeatureCount) {
+            juce::Array<juce::var> dspArr;
+            for (const double d : e.dspFeatures) dspArr.add(d);
+            obj->setProperty("dspFeatures", dspArr);
+        }
         return juce::var(obj.get());
     };
 
@@ -417,6 +438,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         for (const auto& e : it->second)
             arr.add(serializeEntry(e));
         root->setProperty("entries", arr);
+        root->setProperty("schemaVersion", 2); // 2 = dspFeatures per entry
         auto entryFile = librariesDir.getChildFile(id + ".json");
         entryFile.getParentDirectory().createDirectory();
         entryFile.replaceWithText(juce::JSON::toString(juce::var(root.get())));
@@ -439,6 +461,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
             for (const auto* e : partitionEntries)
                 arr.add(serializeEntry(*e));
             root->setProperty("entries", arr);
+            root->setProperty("schemaVersion", 2); // 2 = dspFeatures per entry
             juce::String partFile = id + "_part_" + juce::String(c) + ".json";
             librariesDir.getChildFile(partFile).replaceWithText(juce::JSON::toString(juce::var(root.get())));
         }
@@ -771,6 +794,23 @@ void FileLibraryManager::applyTimbreSidecar(LibraryEntry& entry, const juce::Fil
 
     entry.tags = parts.joinIntoString(", ");
     entry.description = obj->getProperty("prose").toString();
+
+    // dsp: object with the 20 numeric keys in kDspFeatureKeys. Accepted only
+    // when ALL 20 keys are present and finite — no partial vectors, no
+    // imputation (features stay empty).
+    if (auto* dsp = obj->getProperty("dsp").getDynamicObject()) {
+        std::vector<double> vals;
+        vals.reserve((size_t)kDspFeatureCount);
+        bool ok = true;
+        for (int i = 0; i < kDspFeatureCount; ++i) {
+            const juce::var& v = dsp->getProperty(kDspFeatureKeys[i]);
+            if (!v.isDouble() && !v.isInt() && !v.isInt64()) { ok = false; break; }
+            const double d = (double)v;
+            if (!std::isfinite(d)) { ok = false; break; }
+            vals.push_back(d);
+        }
+        if (ok) entry.dspFeatures = std::move(vals);
+    }
 }
 
 LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
@@ -923,6 +963,156 @@ LibraryEntry FileLibraryManager::getEntry(const juce::String& libraryId, const j
     for (const auto& e : it->second)
         if (e.path == path) return e;
     return {};
+}
+
+// ── clustering / related-samples (docs/plans/2026-08-25-library-clustering.md) ──
+
+bool FileLibraryManager::collectClusterEntries(const juce::StringArray& libraryIds,
+                                               std::vector<LibraryEntry>& out,
+                                               juce::String& error) const {
+    std::vector<juce::String> selected;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (libraryIds.isEmpty()) {
+            // Omitted scope = ALL audio-type libraries (midi excluded).
+            for (const auto& lib : libraries)
+                if (lib.type == "audio") selected.push_back(lib.id);
+            if (selected.empty()) {
+                error = "no audio libraries found";
+                return false;
+            }
+        } else {
+            // Provided scope = exactly those libraries. Unknown ids and known
+            // non-audio ids are errors listing the offenders — never silent skips.
+            juce::StringArray unknown, notAudio;
+            for (const auto& id : libraryIds) {
+                const LibraryInfo* found = nullptr;
+                for (const auto& lib : libraries)
+                    if (lib.id == id) { found = &lib; break; }
+                if (found == nullptr) unknown.add(id);
+                else if (found->type != "audio") notAudio.add(id);
+            }
+            if (!unknown.isEmpty()) {
+                error = "unknown library ids: " + unknown.joinIntoString(", ");
+                return false;
+            }
+            if (!notAudio.isEmpty()) {
+                error = "not audio libraries: " + notAudio.joinIntoString(", ");
+                return false;
+            }
+            selected.assign(libraryIds.begin(), libraryIds.end());
+        }
+    }
+
+    // Lazy-load OUTSIDE the lock (same pattern as search(): the loader takes
+    // its own lock — a nested std::lock_guard would self-deadlock).
+    auto* self = const_cast<FileLibraryManager*>(this);
+    for (const auto& id : selected)
+        self->loadLibraryEntries(id);
+
+    // Copy the entry snapshot under the lock; all clustering math runs on the
+    // caller's thread against the copy.
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& id : selected) {
+            auto it = entries.find(id);
+            if (it == entries.end()) continue;
+            out.insert(out.end(), it->second.begin(), it->second.end());
+        }
+    }
+    if (out.empty()) {
+        error = "no entries found in the selected libraries (run scan_library first)";
+        return false;
+    }
+    return true;
+}
+
+static bool parseClusterMethod(const juce::String& method, ClusterMethod& out,
+                               juce::String& error) {
+    // Whitelist comparison — no stoi/number parsing on client input.
+    if (method.isEmpty() || method == "hybrid") { out = ClusterMethod::Hybrid; return true; }
+    if (method == "text") { out = ClusterMethod::Text; return true; }
+    if (method == "dsp")  { out = ClusterMethod::Dsp;  return true; }
+    error = "unknown method: " + method + " (expected hybrid, text, or dsp)";
+    return false;
+}
+
+static std::vector<ClusterItem> toClusterItems(const std::vector<LibraryEntry>& entries) {
+    std::vector<ClusterItem> items;
+    items.reserve(entries.size());
+    for (const auto& e : entries) {
+        ClusterItem it;
+        it.name = e.name;
+        it.path = e.path;
+        it.tags = e.tags;
+        it.description = e.description;
+        if (e.dspFeatures.size() == (size_t)kDspFeatureCount)
+            it.dsp = e.dspFeatures;
+        items.push_back(std::move(it));
+    }
+    return items;
+}
+
+ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libraryIds,
+                                                  int k, const juce::String& method,
+                                                  juce::String& error) const {
+    error = {};
+    ClusterMethod methodEnum = ClusterMethod::Hybrid;
+    if (!parseClusterMethod(method, methodEnum, error)) return {};
+
+    std::vector<LibraryEntry> entries;
+    if (!collectClusterEntries(libraryIds, entries, error)) return {};
+
+    auto outcome = cluster(toClusterItems(entries), k, methodEnum);
+    if (outcome.clusters.empty()) {
+        error = "no usable signal entries: every entry lacks tags/description and dsp features";
+        return {};
+    }
+    return outcome;
+}
+
+RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& libraryIds,
+                                                 const juce::String& filePath,
+                                                 const juce::String& query, int limit,
+                                                 const juce::String& method,
+                                                 juce::String& error) const {
+    error = {};
+    ClusterMethod methodEnum = ClusterMethod::Hybrid;
+    if (!parseClusterMethod(method, methodEnum, error)) return {};
+
+    // Exactly one of filePath / query is required.
+    if (filePath.isEmpty() == query.isEmpty()) {
+        error = "exactly one of filePath or query is required";
+        return {};
+    }
+    if (!query.isEmpty() && methodEnum == ClusterMethod::Dsp) {
+        error = "query seed requires method 'text' or 'hybrid' (a text query has no dsp axis)";
+        return {};
+    }
+
+    std::vector<LibraryEntry> entries;
+    if (!collectClusterEntries(libraryIds, entries, error)) return {};
+    const auto items = toClusterItems(entries);
+
+    if (filePath.isNotEmpty()) {
+        auto r = relatedToItem(items, filePath, methodEnum, limit);
+        if (!r.found) {
+            error = "entry not found: " + filePath;
+            return {};
+        }
+        if (!r.hasSeedSignal) {
+            error = "seed entry has no tags, description, or dsp features to compare";
+            return {};
+        }
+        return r;
+    }
+
+    auto r = relatedToQuery(items, query, methodEnum, limit);
+    if (!r.hasSeedSignal) {
+        error = "query matched no indexed terms";
+        return {};
+    }
+    return r;
 }
 
 void FileLibraryManager::createExampleMidiFiles(const juce::File& dir) {

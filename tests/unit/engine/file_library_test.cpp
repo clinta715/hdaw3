@@ -411,6 +411,7 @@ TEST_F(FileLibraryTest, PartitioningByFirstChar) {
         e1->setProperty("format", "");
         arr.add(juce::var(e1.get()));
         root->setProperty("entries", arr);
+        root->setProperty("schemaVersion", 2); // v2 = dspFeatures per entry (older caches are ignored)
         mgrDir.getChildFile(id + "_part_a.json").replaceWithText(juce::JSON::toString(juce::var(root.get())));
     }
 
@@ -436,6 +437,7 @@ TEST_F(FileLibraryTest, PartitioningByFirstChar) {
         e2->setProperty("format", "");
         arr.add(juce::var(e2.get()));
         root->setProperty("entries", arr);
+        root->setProperty("schemaVersion", 2); // v2 = dspFeatures per entry (older caches are ignored)
         mgrDir.getChildFile(id + "_part_b.json").replaceWithText(juce::JSON::toString(juce::var(root.get())));
     }
 
@@ -949,4 +951,176 @@ TEST_F(FileLibraryTest, MalformedSidecarTolerated) {
     EXPECT_EQ(results[0].name, "broken.wav");
     EXPECT_TRUE(results[0].tags.isEmpty()) << "malformed sidecar must be tolerated (empty tags)";
     EXPECT_TRUE(results[0].description.isEmpty()) << "malformed sidecar must be tolerated (empty description)";
+}
+
+// ── TimbreLib dsp feature ingestion + cache schema (clustering v1.1) ────────
+// docs/plans/2026-08-25-library-clustering.md, G3.
+
+namespace {
+
+bool writeSilentWav(const juce::File& wavFile, int samples = 44100) {
+    auto outStream = wavFile.createOutputStream();
+    if (outStream == nullptr) return false;
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+    if (writer == nullptr) return false;
+    outStream.release(); // writer takes ownership
+    juce::AudioBuffer<float> buffer(1, samples);
+    buffer.clear();
+    writer->writeFromAudioSampleBuffer(buffer, 0, samples);
+    writer.reset();
+    return true;
+}
+
+// Sidecar JSON whose `dsp` dict carries all 20 keys (kDspFeatureKeys order
+// does not matter to the parser — it looks keys up by name). Three dims carry
+// the family signal; the rest are plausible constants.
+juce::String sidecarWithDsp(const char* words, const char* prose,
+                            double centroid, double melLow, double melHigh) {
+    const auto num = [](double d) { return juce::String(d, 6); };
+    return "{\"dsp_words\":\"" + juce::String(words) + "\","
+           "\"prose\":\"" + juce::String(prose) + "\","
+           "\"captions\":[[\"" + juce::String(words) + "\",0.9]],"
+           "\"tags\":[[\"" + juce::String(words) + "\",0.9]],"
+           "\"dsp\":{"
+           "\"duration\":2.0,\"rms\":0.1,\"peak\":0.5,\"crest_dB\":12.0,\"zcr\":0.1,"
+           "\"centroid\":" + num(centroid) + ",\"bandwidth\":800.0,"
+           "\"rolloff85\":500.0,\"rolloff95\":2000.0,\"flatness\":0.05,"
+           "\"spectral_crest\":300.0,\"spec_irregularity\":0.2,"
+           "\"mel_low\":" + num(melLow) + ",\"mel_mid\":0.2,"
+           "\"mel_high\":" + num(melHigh) + ",\"attack_s\":0.01,\"decay_s\":0.5,"
+           "\"f0_hz\":0.0,\"tonal_fraction\":0.0,\"f0_sweep\":9.0}}";
+}
+
+// Same sidecar minus the LAST dsp key (19 of 20) — must leave dspFeatures empty.
+juce::String sidecarMissingLastDspKey(const char* words, const char* prose) {
+    auto full = sidecarWithDsp(words, prose, 5000.0, 0.1, 0.6);
+    return full.replace("\"tonal_fraction\":0.0,\"f0_sweep\":9.0", "\"tonal_fraction\":0.0");
+}
+
+} // namespace
+
+// dspFeatures ingested from the sidecar `dsp` dict — all 20 keys required.
+TEST_F(FileLibraryTest, SidecarDspFeaturesIngestedWhenAllTwentyKeysPresent) {
+    static_assert(HDAW::kDspFeatureCount == 20, "dsp contract is 20 keys");
+    EXPECT_EQ(juce::String(HDAW::kDspFeatureKeys[5]), "centroid");
+    EXPECT_EQ(juce::String(HDAW::kDspFeatureKeys[12]), "mel_low");
+
+    auto audioDir = tempDir.getChildFile("sidecar_dsp");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("full.wav")));
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("partial.wav")));
+    audioDir.getChildFile("full.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("dark low pad", "A dark low pad with a slow attack.", 200.0, 0.8, 0.05));
+    audioDir.getChildFile("partial.wav.timbre.json").replaceWithText(
+        sidecarMissingLastDspKey("bright high chime", "A bright high chime."));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Dsp Ingest", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 2u);
+    EXPECT_EQ(results[0].name, "full.wav");
+    EXPECT_EQ(results[1].name, "partial.wav");
+
+    // All-20-keys sidecar -> full vector, values by key.
+    ASSERT_EQ(results[0].dspFeatures.size(), (size_t)HDAW::kDspFeatureCount);
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[5], 200.0);   // centroid
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[12], 0.8);    // mel_low
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[14], 0.05);   // mel_high
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[19], 9.0);    // f0_sweep
+
+    // 19-of-20 sidecar -> text fields still ingest, but dsp stays empty
+    // (no partial vectors, no imputation).
+    EXPECT_EQ(results[1].dspFeatures.size(), 0u);
+    EXPECT_TRUE(results[1].tags.contains("bright high chime"));
+}
+
+// dspFeatures round-trip through save/load (schemaVersion 2 entry cache).
+TEST_F(FileLibraryTest, SidecarDspFeaturesRoundTripAcrossInstances) {
+    auto audioDir = tempDir.getChildFile("sidecar_dsp_persist");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("texture.wav")));
+    audioDir.getChildFile("texture.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("cold shimmer", "A cold shimmering texture with a long tail.",
+                       2400.0, 0.45, 0.25));
+
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        auto id = mgr.addLibrary("Dsp Persist", audioDir.getFullPathName(), "audio");
+        mgr.scanLibrary(id);
+        for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+            juce::Thread::sleep(100);
+        ASSERT_FALSE(mgr.isScanning());
+        auto inMemory = mgr.search("");
+        ASSERT_EQ(inMemory.size(), 1u);
+        ASSERT_EQ(inMemory[0].dspFeatures.size(), (size_t)HDAW::kDspFeatureCount);
+        // The cache file carries schemaVersion 2 + the dspFeatures array.
+        auto cache = tempDir.getChildFile("libraries").getChildFile(id + ".json");
+        ASSERT_TRUE(cache.existsAsFile());
+        auto cacheText = cache.loadFileAsString();
+        EXPECT_TRUE(cacheText.contains("schemaVersion"));
+        EXPECT_TRUE(cacheText.contains("dspFeatures"));
+    }
+
+    // New manager instance lazy-loads from disk — no scan.
+    HDAW::FileLibraryManager mgr2(tempDir);
+    auto results = mgr2.search("");
+    ASSERT_EQ(results.size(), 1u);
+    ASSERT_EQ(results[0].dspFeatures.size(), (size_t)HDAW::kDspFeatureCount)
+        << "dspFeatures must survive save/load";
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[5], 2400.0); // centroid
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[12], 0.45);  // mel_low
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[14], 0.25);  // mel_high
+}
+
+// A per-library entry cache with schemaVersion < 2 (or missing) is ignored so
+// ONE rescan re-ingests with the current parser.
+TEST_F(FileLibraryTest, StaleSchemaVersionCacheIgnoredUntilRescan) {
+    auto audioDir = tempDir.getChildFile("schema_v1");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("pad.wav")));
+    audioDir.getChildFile("pad.wav.timbre.json").replaceWithText(
+        sidecarWithDsp("dark pad", "A dark pad.", 300.0, 0.7, 0.1));
+
+    juce::String id;
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        id = mgr.addLibrary("Schema V1", audioDir.getFullPathName(), "audio");
+        mgr.scanLibrary(id);
+        for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+            juce::Thread::sleep(100);
+        ASSERT_FALSE(mgr.isScanning());
+        ASSERT_EQ(mgr.search("").size(), 1u);
+
+        // Downgrade the cache to the v1 shape: strip schemaVersion, keep entries.
+        auto cache = tempDir.getChildFile("libraries").getChildFile(id + ".json");
+        auto parsed = juce::JSON::parse(cache.loadFileAsString());
+        auto* obj = parsed.getDynamicObject();
+        ASSERT_NE(obj, nullptr);
+        obj->removeProperty("schemaVersion");
+        cache.replaceWithText(juce::JSON::toString(parsed));
+    }
+
+    // New manager: the v1 cache must be IGNORED (no stale entries served).
+    HDAW::FileLibraryManager mgr2(tempDir);
+    EXPECT_EQ(mgr2.search("").size(), 0u)
+        << "schemaVersion < 2 cache must be ignored, not served";
+
+    // One rescan re-ingests from the source files (sidecar dsp included).
+    mgr2.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr2.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr2.isScanning());
+
+    auto results = mgr2.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "pad.wav");
+    ASSERT_EQ(results[0].dspFeatures.size(), (size_t)HDAW::kDspFeatureCount);
+    EXPECT_DOUBLE_EQ(results[0].dspFeatures[5], 300.0);
 }

@@ -157,6 +157,115 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 QJsonDocument(obj).toJson(QJsonDocument::Compact)));
         }});
 
+    // libraryIds helper: array of strings -> juce::StringArray (empty when
+    // omitted/empty = ALL audio-type libraries).
+    auto libraryIdsFrom = [](const QJsonObject& a) {
+        juce::StringArray ids;
+        if (a.contains("libraryIds")) {
+            const auto arr = a.value("libraryIds").toArray();
+            for (const auto& v : arr)
+                ids.add(juce::String(v.toString().toUtf8().constData()));
+        }
+        return ids;
+    };
+
+    s.registerTool({"cluster_library",
+        "Cluster entries from one or more audio libraries into k groups by timbre "
+        "(text tags/description + numeric dsp features from TimbreLib sidecars). "
+        "Omit libraryIds to cluster ALL audio libraries. k omitted (0) = auto "
+        "(silhouette). method: hybrid (default) | text | dsp.",
+        objSchema({{"libraryIds", QJsonObject{{"type","array"},
+                    {"items", QJsonObject{{"type","string"}}}}},
+                   {"k", QJsonObject{{"type","integer"}}},
+                   {"method", QJsonObject{{"type","string"},
+                    {"enum", QJsonArray{"hybrid","text","dsp"}}}}}),
+        "library",
+        [lib, idsFrom = libraryIdsFrom](const QJsonObject& a) -> McpToolResult {
+            juce::String error;
+            auto outcome = lib->clusterLibrary(
+                idsFrom(a),
+                a.value("k").toInt(0),
+                juce::String(a.value("method").toString("hybrid").toUtf8().constData()),
+                error);
+            if (error.isNotEmpty())
+                return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
+
+            QJsonObject root;
+            root["method"] = jstr(outcome.method);
+            root["k"] = outcome.k;
+            QJsonArray clustersArr;
+            for (const auto& c : outcome.clusters) {
+                QJsonArray members;
+                for (const auto& m : c.members) {
+                    members.append(QJsonObject{
+                        {"name", jstr(m.name)},
+                        {"path", jstr(m.path)},
+                        {"tags", jstr(m.tags)},
+                        {"description", jstr(m.description)},
+                        {"similarity", m.similarity}
+                    });
+                }
+                clustersArr.append(QJsonObject{
+                    {"id", jstr(c.id)},
+                    {"label", jstr(c.label)},
+                    {"size", static_cast<int>(c.members.size())},
+                    {"members", members}
+                });
+            }
+            root["clusters"] = clustersArr;
+            QJsonArray unassigned;
+            for (const auto& u : outcome.unassigned)
+                unassigned.append(QJsonObject{{"name", jstr(u.name)}, {"path", jstr(u.path)}});
+            root["unassigned"] = unassigned;
+            if (outcome.note.isNotEmpty()) root["note"] = jstr(outcome.note);
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"related_samples",
+        "Find entries similar to a seed sample (filePath) or to a text query, "
+        "within one or more audio libraries — nearest neighbours by timbre "
+        "(tags/description + dsp features). Exactly one of filePath or query "
+        "is required. limit default 10, max 100.",
+        objSchema({{"libraryIds", QJsonObject{{"type","array"},
+                    {"items", QJsonObject{{"type","string"}}}}},
+                   {"filePath", QJsonObject{{"type","string"}}},
+                   {"query", QJsonObject{{"type","string"}}},
+                   {"method", QJsonObject{{"type","string"},
+                    {"enum", QJsonArray{"hybrid","text","dsp"}}}},
+                   {"limit", QJsonObject{{"type","integer"}, {"maximum", 100}}}}),
+        "library",
+        [lib, idsFrom = libraryIdsFrom](const QJsonObject& a) -> McpToolResult {
+            juce::String error;
+            auto r = lib->relatedSamples(
+                idsFrom(a),
+                juce::String(a.value("filePath").toString().toUtf8().constData()),
+                juce::String(a.value("query").toString().toUtf8().constData()),
+                a.value("limit").toInt(10),
+                juce::String(a.value("method").toString("hybrid").toUtf8().constData()),
+                error);
+            if (error.isNotEmpty())
+                return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
+
+            QJsonObject root;
+            root["method"] = jstr(r.method);
+            if (r.found)
+                root["seed"] = QJsonObject{{"name", jstr(r.seedName)}, {"path", jstr(r.seedPath)}};
+            QJsonArray results;
+            for (const auto& h : r.results) {
+                results.append(QJsonObject{
+                    {"name", jstr(h.name)},
+                    {"path", jstr(h.path)},
+                    {"tags", jstr(h.tags)},
+                    {"description", jstr(h.description)},
+                    {"similarity", h.similarity}
+                });
+            }
+            root["results"] = results;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
     s.registerTool({"set_library_autoscan", "Enable or disable automatic rescanning for a library.",
         objSchema({{"id", QJsonObject{{"type","string"}}},
                    {"enabled", QJsonObject{{"type","boolean"}}}},
