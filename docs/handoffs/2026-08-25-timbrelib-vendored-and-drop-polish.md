@@ -213,3 +213,32 @@ async def export_full(out_path, start=None, end=None):  # fresh path + stable si
 - Respawned hdaw MCP (`mcp.reload`), loaded sampler_demo_long.hdaw3 (13/34,
   all samplers sound). Collected lane/clip inspection (above).
 - Interrupted mid drop-polish inspection (worker interruption; this doc).
+
+## 8. UPDATE (2026-08-25, later session) — WIP landed, state resolved
+
+- The 20-file sidecar-integration WIP is COMMITTED and PUSHED as TWO commits
+  (user-approved): `88eaf07` refactor: split monolithic McpTools source into
+  per-domain files (26 files: 3 modified + 22 new + CMakeLists) and `fde2a38`
+  feat: TimbreLib sidecar ingestion, offline-render exclusion, plugin state
+  fidelity (18 files, incl. FileLibraryManager sidecar ingest, ExportManager
+  cancelAndJoin, PluginHost lastSetState re-apply, sidecar tests, plan doc).
+- Verification evidence (plan gates G1-G4): build-fast.bat test green; fresh
+  RelWithDebInfo hdaw_tests.exe (binaries newer than all WIP sources);
+  FileLibraryTest 25/25 incl. 5 new sidecar tests; McpCoverageTest 40/40 incl.
+  LibrarySidecarSearchAndGetEntry; full-suite rerun of every originally-failed
+  family green except documented env cases.
+- Full-suite gaps found (PRE-EXISTING, proven vs pre-WIP Debug baseline):
+  (a) RelWithDebInfo full suite needs hdaw_plugin_host.exe +
+      hdaw_plugin_scanner.exe — `build-fast.bat test` builds ONLY hdaw_tests;
+      build them with `cmake --build build --config RelWithDebInfo --target
+      hdaw_plugin_host hdaw_plugin_scanner`.
+  (b) RealtimeSafety.* is Debug-only BY DESIGN (`#if JUCE_DEBUG` around all of
+      BufferCheck) — fails in RelWithDebInfo regardless of code state.
+  (c) McpServer.DiagnosticClapExportMatrix = known-flaky (real installed CLAPs,
+      silent/cancelled exports in this env); AutoGain.TooLoudTargetClampsAtUnity
+      + GlobalScale.NonClippingMixUntouched fail on the pre-WIP baseline too
+      ("failed to read render").
+- stash@{0} "batchA-mine" = only 6 frontend files (131 insertions), NOT the
+  ~300-file/95k-insertion WIP the earlier note claimed. Untouched.
+- Still untracked (intentionally excluded): clap-libs/ (zero refs), renders/,
+  test.zip (96 MB WAV zip), docs/handoffs/2026-08-24-dnb-crash-generator-bugs-backlog.md.
