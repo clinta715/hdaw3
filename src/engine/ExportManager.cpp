@@ -3,10 +3,33 @@
 #include "../proxy/PluginProxySlot.h"
 #include "../common/DebugLog.h"
 #include <cstdlib>
+#include <thread>
 
 namespace HDAW {
 
 ExportManager::ExportManager() = default;
+
+void ExportManager::cancelAndJoin(uint32_t drainTimeoutMs)
+{
+    if (!renderThread.joinable())
+        return;
+    if (renderThread.get_id() == std::this_thread::get_id())
+    {
+        HDAW_LOG("Export", "cancelAndJoin called from the render thread itself - skipping join");
+        return;
+    }
+    if (active.load())
+    {
+        cancel();
+        const auto deadline = juce::Time::getMillisecondCounter() + drainTimeoutMs;
+        while (active.load() && juce::Time::getMillisecondCounter() < deadline)
+            juce::Thread::sleep(10);
+        if (active.load())
+            HDAW_LOG("Export", "cancelAndJoin: render still active after "
+                + juce::String(drainTimeoutMs).toStdString() + "ms drain wait - joining anyway");
+    }
+    renderThread.join();
+}
 
 ExportManager::~ExportManager()
 {

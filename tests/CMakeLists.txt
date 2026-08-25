@@ -94,6 +94,7 @@ add_executable(hdaw_tests
     unit/engine/instrument_part_test.cpp
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
+    unit/engine/offline_render_exclusion_test.cpp
     unit/engine/master_gain_test.cpp
     unit/engine/clap_preset_probe_test.cpp
     unit/engine/clap_preset_database_test.cpp

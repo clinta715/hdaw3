@@ -185,6 +185,11 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                 auto slot = std::make_unique<TrackFXSlot>(std::move(plugin), pluginID, wantIsolated);
                 slot->setBypassed(slotTree.getProperty(IDs::bypassed));
 
+                if (fxSpec.sampleRate > 0)
+                {
+                    slot->prepare(fxSpec);
+                }
+
                 juce::String stateStr = slotTree.getProperty(IDs::pluginState).toString();
                 if (stateStr.isNotEmpty())
                 {
@@ -193,11 +198,6 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                     if (decOk)
                         slot->getPluginInstance()->setStateInformation(state.getData(),
                             static_cast<int>(state.getSize()));
-                }
-
-                if (fxSpec.sampleRate > 0)
-                {
-                    slot->prepare(fxSpec);
                 }
 
                 if (wantIsolated && pluginManager) {

@@ -114,6 +114,11 @@ private:
     uint32_t pendingStateTotal = 0;
     std::vector<uint8_t> pendingState;
 
+    // Last state successfully handed to the plugin. Re-applied after
+    // prepareToPlay: plugins (e.g. Serum 2) accept and cache state that
+    // arrives before audio setup but never decode it into their DSP.
+    std::vector<uint8_t> lastSetState;
+
     // Editor window (owned, lives on GUI thread)
     class EditorWindow;
     std::unique_ptr<EditorWindow> editorWindow;

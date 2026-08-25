@@ -27,6 +27,13 @@ public:
     void cancel();
     bool isExporting() const { return active.load(); }
 
+    // Cancel any in-flight render and JOIN the render thread so nothing it
+    // touches outlives this call (handoff B1: an orphaned windowed render
+    // racing a routing-graph rebuild killed the engine). Bounded drain poll,
+    // then an unbounded join — a wedged render is a broken engine; correctness
+    // over liveness, but log loudly before blocking.
+    void cancelAndJoin(uint32_t drainTimeoutMs = 10000);
+
     std::function<void(float)> onProgress;
     std::function<void(bool success, const juce::String& message)> onComplete;
 

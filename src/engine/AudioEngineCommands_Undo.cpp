@@ -74,6 +74,10 @@ void AudioEngineCommands::newProject()
 
 bool AudioEngineCommands::saveProject(const std::string& filePath)
 {
+    if (auto* proc = engine_.getMainProcessor())
+        if (proc->getExportManager().isExporting())
+            proc->getExportManager().cancelAndJoin();
+
     auto f = juce::File(filePath);
     bool ok = HDAW::ProjectSerializer::save(engine_.getProjectModel(), f, engine_.getMainProcessor());
     if (ok) {

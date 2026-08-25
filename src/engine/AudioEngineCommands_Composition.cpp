@@ -376,14 +376,23 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
     // Block-wait for the bake + render. The message pump is a separate thread
     // so the render still completes (proven pattern from
     // export_bake_timeout_test.cpp).
-    const uint32_t waitMs = HDAW::ExportManager::computeBakeWaitMs(treeCopy)
-                            + static_cast<uint32_t>(windowSeconds * 1000.0) + 5000u;
+    uint32_t waitMs = HDAW::ExportManager::computeBakeWaitMs(treeCopy)
+                      + static_cast<uint32_t>(windowSeconds * 1000.0) + 5000u;
+    // Allow HDAW_RENDER_WINDOW_WAIT_MS to override the total handler wait budget
+    // (mirrors the HDAW_EXPORT_BAKE_TIMEOUT_MS precedent in ExportManager).
+    if (const char* envMs = std::getenv("HDAW_RENDER_WINDOW_WAIT_MS"))
+    {
+        const int parsed = juce::String(envMs).getIntValue();
+        if (parsed > 0)
+            waitMs = static_cast<uint32_t>(parsed);
+    }
     const auto deadline = juce::Time::getMillisecondCounter() + waitMs;
     while (em.isExporting() && juce::Time::getMillisecondCounter() < deadline)
         juce::Thread::sleep(10);
     if (em.isExporting())
     {
-        em.cancel();
+        em.cancelAndJoin();
+        tempFile.deleteFile();
         result.error = "render timed out";
         return result;
     }

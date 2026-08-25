@@ -327,6 +327,8 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         e.channels = (int)(double)eObj->getProperty("channels");
         e.bpm = (double)eObj->getProperty("bpm");
         e.format = eObj->getProperty("format").toString();
+        e.tags = eObj->getProperty("tags").toString(); // missing -> empty
+        e.description = eObj->getProperty("description").toString(); // missing -> empty
         return e;
     };
 
@@ -396,6 +398,8 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("channels", e.channels);
         obj->setProperty("bpm", e.bpm);
         obj->setProperty("format", e.format);
+        obj->setProperty("tags", e.tags);
+        obj->setProperty("description", e.description);
         return juce::var(obj.get());
     };
 
@@ -502,8 +506,20 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         if (it != existingByPath.end()) {
             const juce::int64 currentModifiedTime = file.getLastModificationTime().toMilliseconds();
             if (it->second.modifiedTime == currentModifiedTime) {
-                newEntries.push_back(it->second); // reuse existing entry
-                needsRescan = false;
+                // Audio libraries: if the TimbreLib sidecar exists and its analysis
+                // is newer than the audio, the entry must be rescanned even though
+                // the audio itself is unchanged — otherwise tags/description go stale.
+                bool sidecarNewer = false;
+                if (type == "audio") {
+                    auto sidecar = juce::File(filePath + ".timbre.json");
+                    if (sidecar.existsAsFile()
+                        && sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
+                        sidecarNewer = true;
+                }
+                if (!sidecarNewer) {
+                    newEntries.push_back(it->second); // reuse existing entry
+                    needsRescan = false;
+                }
             }
         }
 
@@ -517,6 +533,8 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                 entry.size = file.getSize();
                 entry.modifiedTime = file.getLastModificationTime().toMilliseconds();
                 entry.modified = juce::Time(entry.modifiedTime).toISO8601(true);
+                if (type == "audio")
+                    applyTimbreSidecar(entry, file);
                 newEntries.push_back(std::move(entry));
             } catch (const std::exception& e) {
                 juce::Logger::writeToLog("FileLibraryManager: failed to extract metadata for "
@@ -692,6 +710,69 @@ juce::String FileLibraryManager::detectKey(const std::vector<double>& noteCounts
     return bestKey;
 }
 
+// Reads a TimbreLib sidecar (<audiofile>.timbre.json) next to the audio file and
+// composes LibraryEntry tags/description. Fields used:
+//   dsp_words (string), prose (string),
+//   captions (array of [text, score]), tags (array of [label, score]).
+// Missing sidecar and malformed JSON are tolerated — fields stay empty and no
+// exception escapes (must never break the scan's per-file try/catch).
+void FileLibraryManager::applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile) {
+    auto sidecar = juce::File(audioFile.getFullPathName() + ".timbre.json");
+    if (!sidecar.existsAsFile()) return;
+
+    juce::var json;
+    try {
+        auto content = sidecar.loadFileAsString();
+        if (content.isEmpty()) return;
+        json = juce::JSON::parse(content);
+    } catch (...) {
+        return; // malformed/unreadable sidecar — leave fields empty
+    }
+    auto* obj = json.getDynamicObject();
+    if (!obj) return;
+
+    juce::StringArray parts;
+
+    auto dspWords = obj->getProperty("dsp_words").toString();
+    if (dspWords.isNotEmpty())
+        parts.add(dspWords.trim());
+
+    // captions: array of [text, score] — keep the top 3 by score.
+    if (auto* captions = obj->getProperty("captions").getArray()) {
+        std::vector<std::pair<double, juce::String>> scored;
+        for (const auto& c : *captions) {
+            auto* cArr = c.getArray();
+            if (cArr == nullptr || cArr->size() < 2) continue;
+            double score = (double)(*cArr)[1];
+            auto text = (*cArr)[0].toString().trim();
+            if (text.isNotEmpty()) scored.push_back({score, text});
+        }
+        std::sort(scored.begin(), scored.end(),
+            [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (size_t i = 0; i < scored.size() && i < 3; ++i)
+            parts.add(scored[i].second);
+    }
+
+    // tags: array of [label, score] — keep the top 3 by score.
+    if (auto* tags = obj->getProperty("tags").getArray()) {
+        std::vector<std::pair<double, juce::String>> scored;
+        for (const auto& t : *tags) {
+            auto* tArr = t.getArray();
+            if (tArr == nullptr || tArr->size() < 2) continue;
+            double score = (double)(*tArr)[1];
+            auto label = (*tArr)[0].toString().trim();
+            if (label.isNotEmpty()) scored.push_back({score, label});
+        }
+        std::sort(scored.begin(), scored.end(),
+            [](const auto& a, const auto& b) { return a.first > b.first; });
+        for (size_t i = 0; i < scored.size() && i < 3; ++i)
+            parts.add(scored[i].second);
+    }
+
+    entry.tags = parts.joinIntoString(", ");
+    entry.description = obj->getProperty("prose").toString();
+}
+
 LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
     LibraryEntry entry;
     entry.format = file.getFileExtension().toLowerCase()
@@ -801,7 +882,9 @@ std::vector<LibraryEntry> FileLibraryManager::search(const juce::String& query,
                 if (queryLower.isNotEmpty()
                     && !entry.name.toLowerCase().contains(queryLower)
                     && !entry.path.toLowerCase().contains(queryLower)
-                    && !entry.key.toLowerCase().contains(queryLower))
+                    && !entry.key.toLowerCase().contains(queryLower)
+                    && !entry.tags.toLowerCase().contains(queryLower)
+                    && !entry.description.toLowerCase().contains(queryLower))
                     continue;
                 if (durationMin >= 0 && entry.durationSeconds < durationMin) continue;
                 if (durationMax >= 0 && entry.durationSeconds > durationMax) continue;

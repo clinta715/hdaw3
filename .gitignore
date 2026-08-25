@@ -141,3 +141,22 @@ test_log*.txt
 /JUCE-v9.0.1/
 
 
+
+
+# Binary media & plugin presets — GLOBAL. Audio renders/exports and preset
+# files anywhere under the tree (renders/, exports/, sample libraries, etc.)
+# are large, regenerable binaries and must never be committed/uploaded.
+# (Root-scoped /*.wav and /*.mp3 above only covered the repo root; these
+# cover every subdirectory, including nested libraries.)
+*.wav
+*.mp3
+*.flac
+*.aiff
+*.aif
+*.ogg
+*.m4a
+*.serumpreset
+*.fxp
+*.syx
+*.hdp
+*.vital

@@ -709,3 +709,244 @@ TEST_F(FileLibraryTest, AudioKeyDetectionProducesNonEmptyKey) {
     EXPECT_TRUE(results[0].key.startsWith("C"))
         << "expected C-classification for a C major scale, got: " << results[0].key.toStdString();
 }
+
+// ── TimbreLib sidecar ingestion ──────────────────────────────────────────────
+// An audio file with a <file>.timbre.json sidecar next to it gets
+// entry.tags (dsp_words + top-3 captions + top-3 tags, comma-joined) and
+// entry.description (prose). search() matches text through both fields.
+
+TEST_F(FileLibraryTest, AudioSidecarIngestionPopulatesTagsAndDescription) {
+    auto audioDir = tempDir.getChildFile("sidecar_ingest");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("beat.wav");
+
+    // 1 second of silence at 44100 Hz, mono, 16-bit (proven writer pattern).
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+
+    // Realistic TimbreLib sidecar: <wavname>.wav.timbre.json
+    auto sidecar = audioDir.getChildFile("beat.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\n"
+        "  \"dsp_words\": \"dark gritty pad\",\n"
+        "  \"prose\": \"A brooding low synth atmosphere with a slow attack and a very long release tail, ideal for trailing drone beds.\",\n"
+        "  \"captions\": [[\"dark pad\", 0.95], [\"gritty atmosphere\", 0.90], [\"slow attack pad\", 0.70], [\"bright chime\", 0.30]],\n"
+        "  \"tags\": [[\"dark\", 0.98], [\"gritty\", 0.93], [\"pad\", 0.88], [\"bright\", 0.12]]\n"
+        "}\n");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Sidecar Audio", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    ASSERT_EQ(results[0].name, "beat.wav");
+
+    // tags = dsp_words + top-3 captions by score + top-3 tags by score, comma-joined
+    EXPECT_TRUE(results[0].tags.isNotEmpty());
+    EXPECT_TRUE(results[0].tags.startsWith("dark gritty pad"));
+    EXPECT_TRUE(results[0].tags.contains("dark pad"));
+    EXPECT_TRUE(results[0].tags.contains("gritty atmosphere"));
+    EXPECT_TRUE(results[0].tags.contains("slow attack pad"));
+    EXPECT_TRUE(results[0].tags.contains("gritty"));
+    // 4th caption ("bright chime", 0.30) is below the top-3 cutoff
+    EXPECT_FALSE(results[0].tags.contains("bright chime"));
+    EXPECT_EQ(results[0].description,
+              "A brooding low synth atmosphere with a slow attack and a very long release tail, ideal for trailing drone beds.");
+
+    // Search matches a word that lives only in tags (name/path/key don't have it).
+    auto byTag = mgr.search("gritty");
+    ASSERT_EQ(byTag.size(), 1u);
+    EXPECT_EQ(byTag[0].name, "beat.wav");
+
+    // Search matches a phrase that lives only in description/prose.
+    auto byProse = mgr.search("very long release tail");
+    ASSERT_EQ(byProse.size(), 1u);
+    EXPECT_EQ(byProse[0].name, "beat.wav");
+}
+
+TEST_F(FileLibraryTest, SidecarMtimeBumpTriggersRescan) {
+    auto audioDir = tempDir.getChildFile("sidecar_rescan");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("kick.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+    auto sidecar = audioDir.getChildFile("kick.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"dark kick\",\"prose\":\"A dark kick drum.\","
+        "\"captions\":[[\"kick\",0.9]],\"tags\":[[\"dark\",0.9],[\"kick\",0.8]]}");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Sidecar Rescan", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    ASSERT_EQ(mgr.search("").size(), 1u);
+    EXPECT_TRUE(mgr.search("")[0].tags.contains("dark kick"));
+
+    // Audio file untouched; sidecar re-analyzed (newer than the audio).
+    const juce::int64 audioMillis = wavFile.getLastModificationTime().toMilliseconds();
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"bright punchy kick\",\"prose\":\"A bright punchy kick drum.\","
+        "\"captions\":[[\"punchy\",0.9]],\"tags\":[[\"bright\",0.9],[\"punchy\",0.8]]}");
+    ASSERT_TRUE(sidecar.setLastModificationTime(juce::Time(audioMillis + 1)));
+
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    ASSERT_EQ(mgr.search("").size(), 1u);
+    auto after = mgr.search("");
+    EXPECT_TRUE(after[0].tags.contains("bright punchy kick"))
+        << "sidecar mtime bump must trigger rescan even though audio is unchanged";
+    EXPECT_FALSE(after[0].tags.contains("dark kick"));
+    // The refreshed tag word is searchable.
+    auto byTag = mgr.search("punchy");
+    ASSERT_EQ(byTag.size(), 1u);
+    EXPECT_EQ(byTag[0].name, "kick.wav");
+}
+
+TEST_F(FileLibraryTest, SidecarTagsPersistAcrossInstances) {
+    auto audioDir = tempDir.getChildFile("sidecar_persist");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("texture.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+    auto sidecar = audioDir.getChildFile("texture.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"cold shimmer\",\"prose\":\"A cold shimmering texture with a long tail.\","
+        "\"captions\":[[\"shimmer\",0.9]],\"tags\":[[\"cold\",0.9],[\"shimmer\",0.8]]}");
+
+    // Instance 1: scan writes tags/description into the entry file.
+    {
+        HDAW::FileLibraryManager mgr(tempDir);
+        auto id = mgr.addLibrary("Persist Sidecar", audioDir.getFullPathName(), "audio");
+        mgr.scanLibrary(id);
+        for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+            juce::Thread::sleep(100);
+        ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+        ASSERT_EQ(mgr.search("").size(), 1u);
+        EXPECT_TRUE(mgr.search("")[0].tags.contains("cold shimmer"));
+    } // mgr destroyed — saveLibraryEntries flushed tags/description to disk
+
+    // Instance 2: NEW manager on same tempDir — no scan. search() lazy-loads
+    // the persisted entry and must keep tags/description.
+    HDAW::FileLibraryManager mgr2(tempDir);
+    auto results = mgr2.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_TRUE(results[0].tags.contains("cold shimmer"))
+        << "tags must survive persistence across manager instances (lazy load)";
+    EXPECT_EQ(results[0].description, "A cold shimmering texture with a long tail.");
+    EXPECT_EQ(mgr2.search("shimmer").size(), 1u);
+}
+
+TEST_F(FileLibraryTest, MissingSidecarTolerated) {
+    auto audioDir = tempDir.getChildFile("sidecar_missing");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("plain.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+    // NOTE: no .timbre.json sidecar written.
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("No Sidecar", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "plain.wav");
+    EXPECT_TRUE(results[0].tags.isEmpty()) << "missing sidecar must leave tags empty";
+    EXPECT_TRUE(results[0].description.isEmpty()) << "missing sidecar must leave description empty";
+}
+
+TEST_F(FileLibraryTest, MalformedSidecarTolerated) {
+    auto audioDir = tempDir.getChildFile("sidecar_malformed");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("broken.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+    auto sidecar = audioDir.getChildFile("broken.wav.timbre.json");
+    sidecar.replaceWithText("{ this is not valid json !!!");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Broken Sidecar", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id); // must not crash
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "broken.wav");
+    EXPECT_TRUE(results[0].tags.isEmpty()) << "malformed sidecar must be tolerated (empty tags)";
+    EXPECT_TRUE(results[0].description.isEmpty()) << "malformed sidecar must be tolerated (empty description)";
+}

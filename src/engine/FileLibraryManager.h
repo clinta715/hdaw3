@@ -32,6 +32,10 @@ struct LibraryEntry {
     int channels = 0;
     double bpm = 0.0;
     juce::String format; // wav, flac, mp3, etc.
+
+    // TimbreLib sidecar (audio libraries)
+    juce::String tags;        // comma-joined dsp_words + top captions + top tags
+    juce::String description; // prose
 };
 
 struct LibraryInfo {
@@ -98,6 +102,7 @@ private:
     void scanDirectory(const juce::String& id, const juce::File& dir);
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
+    static void applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile);
     juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
 

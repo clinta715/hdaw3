@@ -879,6 +879,12 @@ void PluginHost::controlLoop()
                         try {
                             if (!runLifecycleOnMessageThread([this]() {
                                     plugin->prepareToPlay(preparedSampleRate, preparedBlockSize);
+                                    if (!lastSetState.empty())
+                                    {
+                                        plugin->setStateInformation(lastSetState.data(),
+                                                                    static_cast<int>(lastSetState.size()));
+                                        HDAW_LOG("plugin_host", "PREPARE re-applied state bytes=" + juce::String(static_cast<int>(lastSetState.size())));
+                                    }
                                 }, 3000))
                             {
                                 HDAW_LOG("plugin_host", "prepareToPlay marshal timed out");
@@ -914,6 +920,8 @@ void PluginHost::controlLoop()
                             {
                                 HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
                             }
+                            lastSetState.assign(msg.data, msg.data + total);
+                            HDAW_LOG("plugin_host", "SET_STATE small applied bytes=" + juce::String(total));
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));
                             pluginFailed.store(true);
@@ -954,6 +962,8 @@ void PluginHost::controlLoop()
                             {
                                 HDAW_LOG("plugin_host", "setStateInformation marshal timed out");
                             }
+                            lastSetState = pendingState;
+                            HDAW_LOG("plugin_host", "SET_STATE chunked applied bytes=" + juce::String(static_cast<int>(pendingState.size())));
                             result = 1;
                         } catch (const std::exception& e) {
                             HDAW_LOG("plugin_host", "setStateInformation threw: " + juce::String(e.what()));

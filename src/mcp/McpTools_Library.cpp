@@ -118,6 +118,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 if (bpm > 0) obj["bpm"] = bpm;
                 if (e.format.isNotEmpty()) obj["format"] = jstr(e.format);
                 if (e.timeSignature.isNotEmpty()) obj["timeSignature"] = jstr(e.timeSignature);
+                if (e.tags.isNotEmpty()) obj["tags"] = jstr(e.tags);
+                if (e.description.isNotEmpty()) obj["description"] = jstr(e.description);
                 arr.append(obj);
             }
             return McpToolResult::text(QString::fromUtf8(
@@ -149,6 +151,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 {"format", jstr(entry.format)},
                 {"timeSignature", jstr(entry.timeSignature)}
             };
+            if (entry.tags.isNotEmpty()) obj["tags"] = jstr(entry.tags);
+            if (entry.description.isNotEmpty()) obj["description"] = jstr(entry.description);
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(obj).toJson(QJsonDocument::Compact)));
         }});

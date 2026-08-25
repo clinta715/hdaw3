@@ -89,6 +89,8 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
             if (bpm > 0) obj["bpm"] = bpm;
             if (e.format.isNotEmpty()) obj["format"] = qstr(e.format);
             if (e.timeSignature.isNotEmpty()) obj["timeSignature"] = qstr(e.timeSignature);
+            if (e.tags.isNotEmpty()) obj["tags"] = qstr(e.tags);
+            if (e.description.isNotEmpty()) obj["description"] = qstr(e.description);
             arr.append(obj);
         }
         return { false, arr };
@@ -114,6 +116,8 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         obj["bpm"] = entry.bpm > 0 ? entry.bpm : entry.tempo;
         obj["format"] = qstr(entry.format);
         obj["timeSignature"] = qstr(entry.timeSignature);
+        if (entry.tags.isNotEmpty()) obj["tags"] = qstr(entry.tags);
+        if (entry.description.isNotEmpty()) obj["description"] = qstr(entry.description);
         return { false, obj };
     }
 

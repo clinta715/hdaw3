@@ -4,10 +4,13 @@
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
 #include "mcp/McpJsonRpc.h"
+#include <juce_core/juce_core.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QThread>
 #include <QVector>
 #include <QTemporaryDir>
 #include <algorithm>
@@ -703,6 +706,88 @@ TEST_F(McpCoverageTest, LibraryAddListSearchRemove) {
         callText("list_libraries").toString().toUtf8()).array();
     for (const auto& l : listR)
         EXPECT_NE(l.toObject().value("id").toString(), libId);
+}
+
+// TimbreLib sidecar ingestion end-to-end through the MCP surface:
+// add_library(audio) -> scan_library -> search_library with a tag word as query,
+// and get_library_entry — both must carry tags/description from the sidecar.
+TEST_F(McpCoverageTest, LibrarySidecarSearchAndGetEntry) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    // Write a WAV plus a TimbreLib sidecar (<file>.wav.timbre.json) into the dir.
+    juce::File wavFile(juce::String(dir.path().toStdString()) + "/beat.wav");
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+    juce::File sidecar(juce::String(dir.path().toStdString()) + "/beat.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"dark gritty pad\","
+        "\"prose\":\"A dark gritty atmospheric pad with a slow attack.\","
+        "\"captions\":[[\"dark pad\",0.95],[\"gritty atmosphere\",0.90]],"
+        "\"tags\":[[\"dark\",0.98],[\"gritty\",0.93],[\"pad\",0.88]]}");
+
+    // Add an AUDIO library pointing at the temp dir.
+    auto addR = call("add_library", {
+        {"name", "TimbreLib"}, {"path", dir.path()}, {"type", "audio"}
+    });
+    EXPECT_FALSE(isError(addR)) << text(addR).toStdString();
+    auto addObj = QJsonDocument::fromJson(text(addR).toUtf8()).object();
+    QString libId = addObj.value("id").toString();
+    ASSERT_FALSE(libId.isEmpty()) << "add_library response: " << text(addR).toStdString();
+
+    // Scan (async — runs on the manager's threadpool; poll until done).
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR)) << text(scanR).toStdString();
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning())
+        << "scan did not complete in time";
+
+    // search_library with a tag word ("gritty" exists only in tags/dsp_words —
+    // not in the file name or path) must return the entry with tags+description.
+    // Scoped by libraryId so other libraries (e.g. appdata-registry leftovers)
+    // cannot add unexpected results.
+    auto searchText = callText("search_library", {{"query", "gritty"}, {"libraryId", libId}});
+    ASSERT_FALSE(searchText.isUndefined()) << "search_library returned no text";
+    auto arr = QJsonDocument::fromJson(searchText.toString().toUtf8()).array();
+    ASSERT_EQ(arr.size(), 1) << "expected exactly one search result";
+    auto entry = arr[0].toObject();
+    EXPECT_EQ(entry.value("name").toString().toStdString(), "beat.wav");
+    EXPECT_TRUE(entry.contains("tags")) << "search result must carry tags";
+    EXPECT_TRUE(entry.value("tags").toString().contains("dark gritty pad"));
+    EXPECT_TRUE(entry.value("tags").toString().contains("gritty"));
+    EXPECT_TRUE(entry.contains("description")) << "search result must carry description";
+    EXPECT_EQ(entry.value("description").toString().toStdString(),
+              "A dark gritty atmospheric pad with a slow attack.");
+
+    // get_library_entry must return the same sidecar data.
+    auto getText = callText("get_library_entry", {
+        {"libraryId", libId}, {"path", entry.value("path").toString()}
+    });
+    auto getObj = QJsonDocument::fromJson(getText.toString().toUtf8()).object();
+    EXPECT_EQ(getObj.value("name").toString().toStdString(), "beat.wav");
+    EXPECT_TRUE(getObj.contains("tags")) << "get_library_entry must carry tags";
+    EXPECT_TRUE(getObj.value("tags").toString().contains("dark gritty pad"));
+    EXPECT_TRUE(getObj.contains("description")) << "get_library_entry must carry description";
+    EXPECT_EQ(getObj.value("description").toString().toStdString(),
+              "A dark gritty atmospheric pad with a slow attack.");
+
+    // Clean up: remove the library so the appdata registry is not polluted
+    // (mirrors LibraryAddListSearchRemove). Without this, the persisted entry
+    // file survives the temp dir and leaks tags into later unscoped searches.
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
 }
 
 // ============================================================================

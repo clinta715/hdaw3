@@ -1,5 +1,6 @@
 #include "MainAudioProcessor.h"
 #include "ClipSourceProcessor.h"
+#include "../common/DebugLog.h"
 #include <exception>
 
 namespace
@@ -586,6 +587,18 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
 {
     if (routingManager != nullptr && projectModel != nullptr)
     {
+        // Render-domain exclusion (handoff B1/F1): a full rebuild destroys every
+        // live FX slot / graph node. Any still-running offline render (windowed
+        // verify/audition/autoGain probe whose handler timed out, or an export)
+        // must be cancelled AND joined first — an orphaned render thread racing
+        // this teardown is the silent-death use-after-free family (lessons 12/14,
+        // postmortem §6). Drain here so EVERY rebuild caller (load, structural
+        // commands, undo, tests) is covered without each remembering to do it.
+        if (exportManager.isExporting())
+        {
+            HDAW_LOG("RoutingDiag", "rebuildRoutingGraph: draining in-flight offline render before rebuild");
+            exportManager.cancelAndJoin();
+        }
         if (decodedPool != nullptr)
             decodedPool->pruneUnreferenced();
         if (streamingPool != nullptr)
