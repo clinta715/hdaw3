@@ -167,8 +167,30 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpExportTool.cpp
     src/mcp/McpTools.cpp
     src/mcp/McpTools_Project.cpp
+    src/mcp/McpTools_Read.cpp
+    src/mcp/McpTools_Track.cpp
+    src/mcp/McpTools_Clip.cpp
+    src/mcp/McpTools_Note.cpp
+    src/mcp/McpTools_Cc.cpp
+    src/mcp/McpTools_Composition.cpp
+    src/mcp/McpTools_CompositionTiming.cpp
+    src/mcp/McpTools_CompositionGenerate.cpp
+    src/mcp/McpTools_CompositionInstrument.cpp
+    src/mcp/McpTools_CompositionPattern.cpp
+    src/mcp/McpTools_Arranger.cpp
+    src/mcp/McpTools_ProjectSaveLoad.cpp
     src/mcp/McpTools_Transport.cpp
     src/mcp/McpTools_Audio.cpp
+    src/mcp/McpTools_AudioRead.cpp
+    src/mcp/McpTools_Fx.cpp
+    src/mcp/McpTools_FxSlot.cpp
+    src/mcp/McpTools_FxPreset.cpp
+    src/mcp/McpTools_Sampler.cpp
+    src/mcp/McpTools_FmSynth.cpp
+    src/mcp/McpTools_MidiFx.cpp
+    src/mcp/McpTools_Automation.cpp
+    src/mcp/McpTools_Send.cpp
+    src/mcp/McpTools_Envelope.cpp
     src/mcp/McpTools_Session.cpp
     src/mcp/McpTools_Library.cpp
     src/mcp/McpTools_Settings.cpp
