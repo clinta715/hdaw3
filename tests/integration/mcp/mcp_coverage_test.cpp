@@ -112,6 +112,19 @@ protected:
         return obj.value("notes").toArray();
     }
 
+    QJsonArray toolList() {
+        QJsonObject req;
+        req["jsonrpc"] = "2.0";
+        req["id"] = nextId_++;
+        req["method"] = "tools/list";
+        loopback->drainOutgoing();
+        loopback->pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+        QByteArray out;
+        if (!loopback->waitForOutgoing(500, &out)) return {};
+        auto resp = parseOne(out);
+        return resp.value("result").toObject().value("tools").toArray();
+    }
+
     int addMidiClip(int trackId, double start, double length, const QString& name = {}) {
         QJsonObject args{{"trackId", trackId}, {"start", start}, {"length", length}};
         if (!name.isEmpty()) args["name"] = name;
@@ -1346,6 +1359,97 @@ TEST_F(McpCoverageTest, AddNotesBulk) {
 
     auto getNotesResult = getNotes(clipId);
     EXPECT_EQ(getNotesResult.size(), 3);
+}
+
+TEST_F(McpCoverageTest, AddNotesAbsoluteBeatsConvertToClipLocal) {
+    // Clip on track 0 spanning timeline beats [32, 40): add_midi_clip stores
+    // start in SECONDS (32 beats @ 120 BPM = 16 s); add_notes ABSOLUTE mode must
+    // convert back with the project tempo at call time (clipStartBeats = 32).
+    int clipId = addMidiClip(0, 32.0, 8.0);
+    ASSERT_GT(clipId, 0);
+
+    // (b) absolute start before the clip's own start -> whole batch rejected,
+    // nothing added.
+    QJsonArray badNotes;
+    badNotes.append(QJsonObject{{"pitch", 60}, {"start", 8.0}, {"duration", 0.5}});
+    auto bad = call("add_notes", {{"clipId", clipId}, {"notes", badNotes}, {"relative", false}});
+    EXPECT_TRUE(isError(bad)) << text(bad).toStdString();
+    EXPECT_TRUE(text(bad).contains("absolute start 8 < clip start 32"))
+        << text(bad).toStdString();
+    {
+        auto countR = call("list_notes", {{"clipId", clipId}});
+        EXPECT_FALSE(isError(countR)) << text(countR).toStdString();
+        auto notes = QJsonDocument::fromJson(text(countR).toUtf8()).object();
+        EXPECT_EQ(notes.value("count").toInt(), 0);
+        EXPECT_EQ(notes.value("notes").toArray().size(), 0);
+    }
+
+    // (a) absolute starts >= clip start get converted to clip-local beats:
+    // 96 -> 64, 32 -> 0.
+    QJsonArray notes;
+    notes.append(QJsonObject{{"pitch", 60}, {"start", 96.0}, {"duration", 0.5}, {"velocity", 100}});
+    notes.append(QJsonObject{{"pitch", 64}, {"start", 32.0}, {"duration", 0.5}, {"velocity", 90}});
+    auto r = call("add_notes", {{"clipId", clipId}, {"notes", notes}, {"relative", false}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto result = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(result.value("added").toInt(), 2);
+    EXPECT_EQ(result.value("noteIds").toArray().size(), 2);
+
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    EXPECT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    EXPECT_EQ(listed.value("count").toInt(), 2);
+    auto arr = listed.value("notes").toArray();
+    EXPECT_NEAR(arr[0].toObject().value("start").toDouble(), 64.0, 0.0001);
+    EXPECT_NEAR(arr[1].toObject().value("start").toDouble(), 0.0, 0.0001);
+    EXPECT_EQ(arr[0].toObject().value("pitch").toInt(), 60);
+    EXPECT_EQ(arr[1].toObject().value("pitch").toInt(), 64);
+}
+
+TEST_F(McpCoverageTest, AddNotesRelativeDefaultUnchanged) {
+    // Regression guard: with relative omitted (default true), starts are written
+    // verbatim as clip-local beats regardless of the clip's own start.
+    int clipId = addMidiClip(0, 32.0, 8.0);
+    ASSERT_GT(clipId, 0);
+
+    QJsonArray notes;
+    notes.append(QJsonObject{{"pitch", 67}, {"start", 2.0}, {"duration", 0.5}});
+    auto r = call("add_notes", {{"clipId", clipId}, {"notes", notes}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    EXPECT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    EXPECT_EQ(listed.value("count").toInt(), 1);
+    auto arr = listed.value("notes").toArray();
+    EXPECT_NEAR(arr[0].toObject().value("start").toDouble(), 2.0, 0.0001);
+
+    // Explicit relative:true behaves identically.
+    QJsonArray more;
+    more.append(QJsonObject{{"pitch", 69}, {"start", 3.0}, {"duration", 0.5}});
+    auto r2 = call("add_notes", {{"clipId", clipId}, {"notes", more}, {"relative", true}});
+    EXPECT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto listR2 = call("list_notes", {{"clipId", clipId}});
+    EXPECT_FALSE(isError(listR2)) << text(listR2).toStdString();
+    auto listed2 = QJsonDocument::fromJson(text(listR2).toUtf8()).object();
+    EXPECT_EQ(listed2.value("count").toInt(), 2);
+    auto arr2 = listed2.value("notes").toArray();
+    EXPECT_NEAR(arr2[1].toObject().value("start").toDouble(), 3.0, 0.0001);
+}
+
+TEST_F(McpCoverageTest, AddNotesDescriptionDocumentsAbsoluteMode) {
+    auto tools = toolList();
+    QString desc;
+    for (const auto& t : tools) {
+        if (t.toObject().value("name").toString() == "add_notes") {
+            desc = t.toObject().value("description").toString();
+            break;
+        }
+    }
+    ASSERT_FALSE(desc.isEmpty()) << "add_notes tool not found in tools/list";
+    EXPECT_TRUE(desc.contains("ABSOLUTE")) << desc.toStdString();
+    EXPECT_TRUE(desc.contains("relative")) << desc.toStdString();
 }
 
 TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {

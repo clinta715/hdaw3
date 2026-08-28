@@ -61,10 +61,11 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
         };
         QJsonObject noteItem{{"type","object"},{"properties", noteItemProps},{"required", QJsonArray{"pitch","start","duration"}}};
         QJsonObject addNotesSchema = objSchema(
-            {{"clipId", QJsonObject{{"type","integer"}}},
-             {"notes",  QJsonObject{{"type","array"},{"items", noteItem}}}},
+            {{"clipId",   QJsonObject{{"type","integer"}}},
+             {"notes",    QJsonObject{{"type","array"},{"items", noteItem}}},
+             {"relative", QJsonObject{{"type","boolean"}}}},
             QJsonArray{"clipId","notes"});
-        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}. NOTE: start/duration are CLIP-LOCAL beats (subtract the clip's own start beat from timeline positions); a clip plays at most 8192 notes (excess is logged and skipped - split long parts into multiple clips).",
+        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}. Default (relative=true): start/duration are CLIP-LOCAL beats (subtract the clip's own start beat from timeline positions). ABSOLUTE mode (relative=false): each note's start is a TIMELINE-ABSOLUTE beat position, converted to clip-local by subtracting the clip's start beat (clip start seconds * bpm / 60); the whole batch is rejected if any absolute start is before the clip's start. A clip plays at most 8192 notes (excess is logged and skipped - split long parts into multiple clips).",
             addNotesSchema,
             "note",
             [e](const QJsonObject& a) -> McpToolResult {
@@ -77,6 +78,27 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                 if (!nl.isValid()) { nl = juce::ValueTree(IDs::MIDI_NOTE_LIST); c.addChild(nl, -1, nullptr); }
                 auto notesArr = a.value("notes").toArray();
                 if (notesArr.isEmpty()) return McpToolResult::text("notes array is empty", true);
+
+                // ABSOLUTE mode (relative=false): note starts are timeline-absolute
+                // beats. Convert to clip-local by subtracting the clip's own start,
+                // which the ValueTree stores in SECONDS (HDAW boundary convention:
+                // MCP speaks beats, processors/tree speak seconds). Validate the
+                // WHOLE batch before mutating anything so a single out-of-range
+                // absolute start rejects the entire call (no partial add).
+                const bool relative = a.value("relative").toBool(true);
+                double clipStartBeats = 0.0;
+                if (!relative) {
+                    const double bpm = e->getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+                    clipStartBeats = HDAW::secondsToBeats(static_cast<double>(c.getProperty(IDs::startTime, 0.0)), bpm);
+                    for (const auto& nv : notesArr) {
+                        const double absStart = nv.toObject().value("start").toDouble();
+                        if (absStart < clipStartBeats)
+                            return McpToolResult::text(
+                                QString("absolute start %1 < clip start %2 (clipId %3)")
+                                    .arg(absStart).arg(clipStartBeats).arg(a.value("clipId").toInt()), true);
+                    }
+                }
+
                 um.beginNewTransaction();
                 QJsonArray ids;
                 for (const auto& nv : notesArr) {
@@ -85,7 +107,8 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                     int nid = m.allocateNoteID();
                     n.setProperty(IDs::noteID, nid, nullptr);
                     n.setProperty(IDs::noteNumber, no.value("pitch").toInt(), &um);
-                    n.setProperty(IDs::startBeat, no.value("start").toDouble(), &um);
+                    n.setProperty(IDs::startBeat, relative ? no.value("start").toDouble()
+                                                           : no.value("start").toDouble() - clipStartBeats, &um);
                     n.setProperty(IDs::durationBeats, no.value("duration").toDouble(), &um);
                     n.setProperty(IDs::velocity, static_cast<float>(no.value("velocity").toInt(100)) / 127.0f, &um);
                     nl.addChild(n, -1, &um);
