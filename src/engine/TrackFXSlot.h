@@ -365,8 +365,12 @@ public:
                     float freq  = (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f;
                     float Qval  = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.7f;
                     float gDb   = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.0f;
+                    // Param defs express gain in dB (-24..24); makePeakFilter's
+                    // 4th arg is a LINEAR factor (0.0 = silence) - converting
+                    // dB->linear made the DEFAULT gain (0 dB) silence every
+                    // track carrying an EQ (2026-08-27, psytrance v3).
                     *eq->state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-                        spec.sampleRate, freq, Qval, gDb);
+                        spec.sampleRate, freq, Qval, juce::Decibels::decibelsToGain(gDb));
                 }
                 break;
             }
@@ -904,9 +908,11 @@ private:
                 float freq = internalParamValues[0];
                 float Qval = internalParamValues[1];
                 float gainDb = internalParamValues[2];
-                // Reconstruct all three coeffs from stored values
+                // Reconstruct all three coeffs from stored values (dB -> linear,
+                // see prepare() - passing raw dB as the linear factor silenced
+                // the EQ at the default 0 dB gain).
                 *eq->state = *juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-                    sampleRate_, freq, Qval, gainDb);
+                    sampleRate_, freq, Qval, juce::Decibels::decibelsToGain(gainDb));
                 break;
             }
             case ActiveType::Delay:

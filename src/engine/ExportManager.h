@@ -7,6 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <functional>
+#include <mutex>
 #include <thread>
 
 namespace HDAW {
@@ -26,6 +27,16 @@ public:
 
     void cancel();
     bool isExporting() const { return active.load(); }
+
+    // Last result message produced by the most recent render thread
+    // (exact: "Export complete." on success; descriptive failure text
+    // otherwise). Mutex-guarded; never touched by the audio thread. Waiters
+    // should read it only after isExporting() went false.
+    juce::String getLastExportMessage() const
+    {
+        std::lock_guard<std::mutex> lock(lastMsgMutex);
+        return lastMessage;
+    }
 
     // Cancel any in-flight render and JOIN the render thread so nothing it
     // touches outlives this call (handoff B1: an orphaned windowed render
@@ -55,6 +66,8 @@ private:
     std::atomic<bool> active{ false };
     std::atomic<bool> cancelFlag{ false };
     std::thread renderThread;
+    mutable std::mutex lastMsgMutex;
+    juce::String lastMessage;
 };
 
 } // namespace HDAW

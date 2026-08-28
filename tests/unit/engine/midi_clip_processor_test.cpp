@@ -176,3 +176,122 @@ TEST(MidiClipProcessor, ActiveNotesGetNoteOffAtClipEnd)
 
     EXPECT_TRUE(hasNoteOff(midi, 60));
 }
+
+
+// ---------------------------------------------------------------------------
+// Regression: the note/CC caches used to be fixed 512-entry arrays that
+// truncated SILENTLY — clips with >512 notes lost everything past entry 512
+// (docs/handoffs/2026-08-27-mcp-cluster-compose-session-bugs.md §1).
+// The caches are now heap vectors sized to the list, with a loud-log hard
+// ceiling at MAX_NOTE_SLOTS/MAX_CC_SLOTS.
+// ---------------------------------------------------------------------------
+
+juce::ValueTree makeManyNoteClip(int totalNotes)
+{
+    juce::ValueTree clip(IDs::CLIP);
+    clip.setProperty(IDs::clipType, "midi", nullptr);
+    auto noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+    for (int i = 0; i < totalNotes; ++i)
+    {
+        juce::ValueTree n(IDs::MIDI_NOTE);
+        // Entries before 512 sit far outside the playback window (beat 999);
+        // entries at/past the legacy 512 cap sit inside it (beat 1.0..1.5).
+        // Below-512 pitch 30 is outside the 36..123 range used by past-512
+        // entries, so a collision cannot mask the window check.
+        n.setProperty(IDs::noteNumber, i < 512 ? 30 : 36 + (i - 512), nullptr);
+        n.setProperty(IDs::velocity, 100, nullptr);
+        n.setProperty(IDs::startBeat, i < 512 ? 999.0 : 1.0, nullptr);
+        n.setProperty(IDs::durationBeats, i < 512 ? 0.01 : 0.5, nullptr);
+        n.setProperty(IDs::chance, 1.0f, nullptr);
+        noteList.addChild(n, -1, nullptr);
+    }
+    clip.addChild(noteList, -1, nullptr);
+    return clip;
+}
+
+juce::ValueTree makeManyCcClip(int totalPoints)
+{
+    juce::ValueTree clip(IDs::CLIP);
+    clip.setProperty(IDs::clipType, "midi", nullptr);
+    auto ccList = juce::ValueTree(IDs::CC_LIST);
+    for (int i = 0; i < totalPoints; ++i)
+    {
+        juce::ValueTree pt(IDs::CC_POINT);
+        pt.setProperty(IDs::controllerNumber, 74, nullptr);
+        // First 512 points at beat 100 (outside); the rest at beat 1.0.
+        pt.setProperty(IDs::beat, i < 512 ? 100.0 : 1.0, nullptr);
+        pt.setProperty(IDs::value, i == totalPoints - 1 ? 100 : (i < 512 ? 7 : 90), nullptr);
+        ccList.addChild(pt, -1, nullptr);
+    }
+    clip.addChild(ccList, -1, nullptr);
+    return clip;
+}
+
+TEST(MidiClipProcessor, NoteCachePlaysNotesBeyondLegacy512Limit)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    proc.setClipTree(makeManyNoteClip(600));
+    EXPECT_EQ(proc.getNumCachedNotes(), 600);
+    proc.setStartTime(0.0);
+    proc.setDuration(8.0);
+    proc.prepareToPlay(44100.0, 512);
+
+    juce::AudioBuffer<float> buffer(2, 512);
+
+    // 120 BPM -> 2 beats/sec. 0.6 s -> beat 1.2: inside [1.0, 1.5) of the
+    // past-512 entries, far away from the first-512 entries (beat 999).
+    tm.setCurrentSample(static_cast<int64_t>(0.6 * 44100.0));
+    tm.setPlaying(true);
+
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    EXPECT_TRUE(hasNoteOn(midi, 114));  // entry 590: pitch 36 + (590 - 512)
+    EXPECT_FALSE(hasNoteOn(midi, 30));  // entry 0's pitch: outside the window
+
+    int noteOnCount = 0;
+    for (const auto& meta : midi)
+        if (meta.getMessage().isNoteOn()) ++noteOnCount;
+    EXPECT_EQ(noteOnCount, 88); // entries 512..599 fire exactly once
+}
+
+TEST(MidiClipProcessor, CcCacheEmitsPointsBeyondLegacy512Limit)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    proc.setClipTree(makeManyCcClip(600));
+    proc.setStartTime(0.0);
+    proc.setDuration(8.0);
+    proc.prepareToPlay(44100.0, 512);
+
+    juce::AudioBuffer<float> buffer(2, 512);
+
+    // Block window [0.98, ~1.003) beats contains beat 1.0 (past-512 points)
+    // but not beat 100 (first-512 points).
+    tm.setCurrentSample(static_cast<int64_t>(0.49 * 44100.0));
+    tm.setPlaying(true);
+
+    juce::MidiBuffer midi;
+    proc.processBlock(buffer, midi);
+
+    EXPECT_TRUE(hasController(midi, 74, 100)); // final point (index 599)
+}
+
+TEST(MidiClipProcessor, NoteCacheClampsAtSlotCeiling)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    proc.setClipTree(makeManyNoteClip(HDAW::MidiClipProcessor::MAX_NOTE_SLOTS + 5));
+    // Hard safety ceiling: cache count clamps (and the processor logs loudly).
+    EXPECT_EQ(proc.getNumCachedNotes(), HDAW::MidiClipProcessor::MAX_NOTE_SLOTS);
+}

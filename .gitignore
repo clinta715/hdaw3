@@ -160,3 +160,12 @@ test_log*.txt
 *.syx
 *.hdp
 *.vital
+
+
+# Session temp artifacts (never commit)
+.tmp_dnb_theme/
+renders/
+clap-libs/
+test.zip
+.tmp_*
+*.tmp

@@ -90,4 +90,26 @@ if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
 :: Prepend the build directory to PATH so the copied exe finds its DLLs
 set "PATH=%BUILD_DIR%;%PATH%"
 
+:: Crash capture (the §3 abort class: debug-CRT heap asserts / std::terminate
+:: used to die with only an MSVC dialog). When procdump is on PATH (default
+:: ON), run the engine under "procdump -accepteula -ma -e -g -x" so any
+:: unhandled exception leaves a FULL minidump + context in
+:: %TEMP%\hdaw_crash_captures\engine_<rand>\ — stdio still flows straight
+:: through to the MCP client. Disable with HDAW_NO_CRASH_CAPTURE=1; use
+:: HDAW_CRASH_DUMP_TYPE=mini for smaller "-mm" dumps.
+set "DUMPFLAGS=-ma"
+if "%HDAW_CRASH_DUMP_TYPE%"=="mini" set "DUMPFLAGS=-mm"
+:: procdump invocation is delegated to PowerShell: cmd's own argument
+:: quoting is a minefield for paths with spaces (the engine path lives in
+:: %TEMP% and BUILD_DIR has spaces), and the capture must never break the
+:: MCP stdio contract. PowerShell resolves procdump, builds a unique capture
+:: dir, and runs "procdump -accepteula [-ma|-mm] -e -g -x <dir> <engine>"
+:: with stdio inherited straight through to the MCP client.
+if not "%HDAW_NO_CRASH_CAPTURE%"=="1" (
+    setlocal EnableDelayedExpansion
+    set "ENGINE=!DST!"
+    powershell -NoProfile -Command "$f='-ma'; if ($env:HDAW_CRASH_DUMP_TYPE -eq 'mini') { $f='-mm' }; $pd=(Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { $dir=Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; Write-Host ('[mcp-launch] crash capture ON: procdump ' + $f + ' -e -g -x ' + $dir); & $pd -accepteula $f -e -g -x $dir $env:ENGINE --mcp-stdio; exit $LASTEXITCODE }; & $env:ENGINE --mcp-stdio"
+    exit /b !ERRORLEVEL!
+)
+
 "%DST%" --mcp-stdio %*

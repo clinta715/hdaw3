@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.24.2
+**Current version**: 0.25.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.24.2)
+## What works today (v0.25.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -322,7 +322,70 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 
 ## Changelog
 
+### v0.25.0 — Long-composition engine fixes, list_notes, crash capture
+
+**Engine fixes (from the 2026-08-27 MCP cluster-compose session, see
+`docs/handoffs/2026-08-27-mcp-cluster-compose-session-bugs.md`):**
+- **Note/CC cache rework (silent 512-note truncation fixed):** `MidiClipProcessor`
+  note/CC caches are no longer fixed 512-entry arrays — they are heap vectors
+  sized to the actual list (hard safety cap 8192, truncation now logs loudly).
+  Long compositions (chord stabs, 1300+ note parts) no longer lose their tails
+  past note #512. Cache snapshots are immutable `shared_ptr`s, so a rebuild on
+  the command thread can never free storage the audio callback is reading
+  (allocation-free audio path preserved).
+- **Internal EQ gain fixed:** the track EQ fed *raw dB* (-24..24) into
+  `juce::dsp::makePeakFilter`'s **linear** gain slot — the default 0 dB became
+  silence on every track carrying an EQ. Now `Decibels::decibelsToGain` is
+  applied (verified end-to-end in the psytrance render sessions).
+- **Windowed-render reliability:** `renderTrackWindow` now drains pending
+  routing-graph rebuilds before starting an export (a coalesced rebuild landing
+  mid-render previously cancelled the export → "failed to read render" with no
+  output file), and surfaces the real render-thread result via a new
+  `ExportManager::getLastExportMessage()` (`ExportManager.cpp` logs
+  success/failure + message).
+
+**MCP tools:**
+- New `list_notes` tool — list MIDI notes in a clip with the same filters as
+  `remove_notes` (pitches, startGte/startLt, noteIds); returns full note
+  properties in clip-local beats.
+- `add_notes` contract documented in-tool: start/duration are **clip-local
+  beats** and a clip plays at most 8192 notes (split long parts; excess is
+  logged and skipped).
+
+**Ops / tooling:**
+- `mcp-launch.bat` — optional **procdump crash capture** for the §3 abort class
+  (debug-CRT heap asserts / `std::terminate` previously died with only an MSVC
+  dialog): full minidumps land in `%TEMP%\hdaw_crash_captures\engine_<rand>\`.
+  Disable with `HDAW_NO_CRASH_CAPTURE=1`; use `HDAW_CRASH_DUMP_TYPE=mini` for
+  smaller dumps. Stdio still flows straight through to the MCP client.
+- `timbre-lib/` — new session scripts: `analyze_multi.py`,
+  `analyze_targeted.py`, `analyze_psytrance.py`, `register_library.py`,
+  `select_psy_samples.py` (+ `psy_sample_selection.tsv`) for the
+  pack-sample selection/clustering workflows; `analyze.sh` extended
+  (`--library` registration hardening).
+
+**Tests (+537 lines):**
+- `midi_clip_processor_test` — note-cache rework coverage (incl. >512-note clip
+  that previously played a silent tail).
+- `export_bake_timeout_test` (new) — render-bake timeout + cancelled-export
+  paths.
+- `audio_pool_dedup_test` — sampler re-set guard: first set → re-set with a
+  different file → re-set with the same file updates the live processor sound.
+- `mcp_functionality_test` — `list_notes` + note-contract coverage.
+- `psytrance_composition_stress_test` (new) — long-arrangement renders with the
+  8/27 crash's automation-lane set (EQ freq, phaser centre/depth, flanger rate)
+  driving internal FX, under crash capture.
+
+**Docs:**
+- `docs/handoffs/2026-08-24-dnb-crash-generator-bugs-backlog.md`,
+  `docs/handoffs/2026-08-27-mcp-cluster-compose-session-bugs.md` (the two
+  session write-ups behind this release).
+- Line-ending policy pinned to LF via `.gitattributes` (`* text=auto eol=lf`);
+  session temp artifacts (`.tmp_dnb_theme/`, `renders/`, `clap-libs/`,
+  `test.zip`, `.tmp_*`) added to `.gitignore`.
+
 ### v0.24.1 — MCP test coverage, set_note_velocities bug fix
+
 
 **MCP test coverage (37 new tests, ~60 tools):**
 - New `tests/integration/mcp/mcp_coverage_test.cpp` with `McpCoverageTest`

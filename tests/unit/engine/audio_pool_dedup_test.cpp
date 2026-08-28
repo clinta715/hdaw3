@@ -401,3 +401,63 @@ TEST(AudioPoolDedup, TwoClipProcessorsShareOneStereoDecode)
 
     file.deleteFile();
 }
+
+
+// Repro for handoff §2: a SECOND sampler_set_sample on the same slot must
+// reach the LIVE processor. The tree carries the truth (save/export use it),
+// but the live slot was observed stuck on the first sound / soundless after a
+// re-set. First set (fresh slot) works; any subsequent set must also rebuild
+// the live slot with the new file + root note.
+TEST(AudioPoolDedup, SamplerResampleUpdatesLiveProcessor)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto fileA = writeSineWav("resample_a", 44100);
+    auto fileB = writeSineWav("resample_b", 44100);
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addFxSlot(0, "sampler", 0, "");
+    cmds.setSamplerSample(0, 0, fileA.getFullPathName().toStdString(), 60);
+    engine.drainPendingRoutingRebuild();
+
+    // Re-fetch the live slot each time (async routing rebuilds swap the
+    // RoutingManager / Track objects).
+    auto liveSlot = [&](int t, int s) -> HDAW::TrackFXSlot* {
+        auto* trk = engine.getMainProcessor()->getTrack(t);
+        if (trk == nullptr || s >= static_cast<int>(trk->getFXChain().size()))
+            return nullptr;
+        return trk->getFXChain()[static_cast<size_t>(s)].get();
+    };
+
+    const auto* soundA = liveSlot(0, 0) != nullptr ? liveSlot(0, 0)->getSamplerSoundForTest() : nullptr;
+    ASSERT_NE(soundA, nullptr) << "first set must load a sound";
+    EXPECT_EQ(soundA->rootNote, 60);
+
+    // Second set, DIFFERENT file + root note: the live processor must now
+    // carry B (and it must not keep silently reporting the old state).
+    cmds.setSamplerSample(0, 0, fileB.getFullPathName().toStdString(), 62);
+    const auto* soundB = liveSlot(0, 0) != nullptr ? liveSlot(0, 0)->getSamplerSoundForTest() : nullptr;
+    EXPECT_NE(soundB, nullptr) << "second set (different file) must load a sound immediately";
+    if (soundB != nullptr)
+        EXPECT_EQ(soundB->rootNote, 62) << "second set must apply the NEW file/root, not leave the old sound";
+
+    // Same path once settled (async routing rebuild landed).
+    engine.drainPendingRoutingRebuild();
+    soundB = liveSlot(0, 0) != nullptr ? liveSlot(0, 0)->getSamplerSoundForTest() : nullptr;
+    EXPECT_NE(soundB, nullptr) << "second set must still have a sound after the routing rebuild lands";
+    if (soundB != nullptr)
+        EXPECT_EQ(soundB->rootNote, 62);
+
+    // Re-set the SAME file (ValueTree setProperty is a no-op on unchanged
+    // values, lesson 2): the explicit rebuild must still keep the sound live.
+    cmds.setSamplerSample(0, 0, fileA.getFullPathName().toStdString(), 60);
+    engine.drainPendingRoutingRebuild();
+    const auto* soundA2 = liveSlot(0, 0) != nullptr ? liveSlot(0, 0)->getSamplerSoundForTest() : nullptr;
+    EXPECT_NE(soundA2, nullptr) << "same-file re-set must keep a live sound";
+    if (soundA2 != nullptr)
+        EXPECT_EQ(soundA2->rootNote, 60);
+
+    fileA.deleteFile();
+    fileB.deleteFile();
+}

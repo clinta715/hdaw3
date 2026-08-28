@@ -488,6 +488,12 @@ finish:
     proxy::setRenderCancelRequested(false);
     proxy::setRenderMode(false);
 
+    {
+        std::lock_guard<std::mutex> lock(lastMsgMutex);
+        lastMessage = message;
+    }
+    HDAW_LOG("Export", "render finished success=" + juce::String(success ? 1 : 0)
+        + " message=" + message);
     if (onComplete)
         onComplete(success, message);
 }

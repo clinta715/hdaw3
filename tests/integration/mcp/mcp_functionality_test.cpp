@@ -446,6 +446,69 @@ TEST_F(GuiFuncTest, ClearNotes) {
     EXPECT_TRUE(notes.isEmpty());
 }
 
+// list_notes: full note read with range filters (handoff §7 item 5 — the
+// only prior way to count notes in a range was remove_notes dryRun).
+TEST_F(GuiFuncTest, ListNotesWithFilters) {
+    auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 16.0}});
+    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+
+    call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
+                       {"duration", 1.0}, {"velocity", 100}});
+    call("add_note", {{"clipId", clipId}, {"pitch", 64}, {"start", 2.0},
+                       {"duration", 1.0}, {"velocity", 90}});
+    call("add_note", {{"clipId", clipId}, {"pitch", 67}, {"start", 4.0},
+                       {"duration", 1.0}, {"velocity", 80}});
+    call("add_note", {{"clipId", clipId}, {"pitch", 72}, {"start", 6.0},
+                       {"duration", 1.0}, {"velocity", 70}});
+
+    auto listNotes = [&](const QJsonObject& extra) -> QJsonObject {
+        auto r = call("list_notes", extra);
+        EXPECT_FALSE(isError(r)) << "list_notes failed";
+        return QJsonDocument::fromJson(text(r).toUtf8()).object();
+    };
+
+    // Unfiltered: count + full field set on every note.
+    auto all = listNotes({{"clipId", clipId}});
+    EXPECT_EQ(all.value("count").toInt(), 4);
+    auto notes = all.value("notes").toArray();
+    ASSERT_EQ(notes.size(), 4);
+    const auto firstNote = notes[0].toObject();
+    for (const char* key : {"noteId", "pitch", "start", "duration", "velocity", "chance",
+                            "repeatCount", "repeatRate", "repeatCurve", "occurrence",
+                            "recurrence", "gain", "pan", "pitchOffset", "timbre", "pressure"})
+        EXPECT_TRUE(firstNote.contains(key)) << "list_notes missing field: " << key;
+
+    // Set one operator field (by noteId) so the read round-trips it.
+    int pitch64Id = -1;
+    for (const auto& n : notes)
+        if (n.toObject().value("pitch").toInt() == 64)
+            pitch64Id = n.toObject().value("noteId").toInt();
+    ASSERT_GT(pitch64Id, 0);
+    call("set_note_chance", {{"noteId", pitch64Id}, {"chance", 0.5}});
+
+    // Range filter: startGte=1, startLt=5 → notes at beats 2 and 4.
+    all = listNotes({{"clipId", clipId}, {"startGte", 1.0}, {"startLt", 5.0}});
+    EXPECT_EQ(all.value("count").toInt(), 2);
+    QSet<int> starts;
+    for (const auto& n : all.value("notes").toArray())
+        starts.insert(n.toObject().value("start").toInt());
+    EXPECT_TRUE(starts.contains(2));
+    EXPECT_TRUE(starts.contains(4));
+
+    // Pitch filter.
+    all = listNotes({{"clipId", clipId}, {"pitches", QJsonArray{64, 72}}});
+    EXPECT_EQ(all.value("count").toInt(), 2);
+
+    // noteId filter (single note).
+    all = listNotes({{"clipId", clipId}, {"noteIds", QJsonArray{pitch64Id}}});
+    EXPECT_EQ(all.value("count").toInt(), 1);
+    EXPECT_EQ(all.value("notes").toArray()[0].toObject().value("noteId").toInt(), pitch64Id);
+
+    // Operator field round-trip: pitch 64's note carries chance 0.5.
+    EXPECT_NEAR(all.value("notes").toArray()[0].toObject().value("chance").toDouble(), 0.5, 1e-6);
+}
+
+
 TEST_F(GuiFuncTest, AddNoteToNonMidiClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
     int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();

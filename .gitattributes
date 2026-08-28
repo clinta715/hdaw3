@@ -1,0 +1,22 @@
+# Canonical line endings: LF in the repo, LF in the worktree.
+# (2026-08-28: the tree drifted to CRLF on disk while the index stayed LF,
+# producing ~180k lines of EOL churn; `* text=auto eol=lf` pins the policy.)
+* text=auto eol=lf
+
+# Binary files: never EOL-normalized, never treated as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.flac binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.pdb binary
+*.obj binary
+*.lib binary
+*.a binary

@@ -3,6 +3,8 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
 #include <array>
+#include <vector>
+#include <memory>
 #include <algorithm>
 #include <cmath>
 #include "TransportManager.h"
@@ -39,8 +41,13 @@ struct CcData {
 class MidiClipProcessor : public juce::AudioProcessor
 {
 public:
-    static constexpr int MAX_NOTES = 512;
-    static constexpr int MAX_CC = 512;
+    // Cache slot ceiling per clip. Note/CC caches are heap vectors sized to
+    // the actual list length (no practical limit); the ceiling is a hard
+    // safety clamp, and a clip exceeding it is truncated WITH a loud log.
+    // The old fixed 512-entry arrays truncated silently — long compositions
+    // lost their tails (docs/handoffs/2026-08-27-mcp-cluster-compose-session-bugs.md §1).
+    static constexpr int MAX_NOTE_SLOTS = 8192;
+    static constexpr int MAX_CC_SLOTS = 8192;
 
     MidiClipProcessor(HDAW::TransportManager& tm)
         : AudioProcessor(BusesProperties()
@@ -122,10 +129,15 @@ public:
             return;
         }
 
-        int idx = activeCacheIndex.load(std::memory_order_acquire);
-        int count = noteCount.load(std::memory_order_acquire);
-        int ccIdx = activeCcCacheIndex.load(std::memory_order_acquire);
-        int ccCnt = ccCount.load(std::memory_order_acquire);
+        // Immutable cache snapshots. Retained (shared_ptr) for this block so a
+        // concurrent rebuild on the command thread can never free storage the
+        // callback is reading — even two rebuilds between callbacks. Audio path
+        // stays allocation-free; refcount release is the same discipline JUCE's
+        // AudioProcessorGraph already applies to Node::Ptr on the audio thread.
+        const std::shared_ptr<const NoteCache> noteSnap = noteSnapshot.load(std::memory_order_acquire);
+        const std::shared_ptr<const CcCache> ccSnap = ccSnapshot.load(std::memory_order_acquire);
+        const int count = noteSnap ? static_cast<int>(noteSnap->notes.size()) : 0;
+        const int ccCnt = ccSnap ? static_cast<int>(ccSnap->points.size()) : 0;
 
         int64_t transportSample = transportManager.getCurrentSample();
         double sr = transportManager.getSampleRate();
@@ -171,17 +183,17 @@ public:
 
         // Snapshot recurrence decisions before any writes to previousNotePlayed,
         // so same-pitch notes don't contaminate each other within this block.
-        std::array<bool, MAX_NOTES> recurrenceDecision{};
+        std::fill_n(recurrenceDecision.begin(), count, false);
         for (int j = 0; j < count; ++j)
         {
-            const NoteData& nd = noteCaches[idx][j];
+            const NoteData& nd = noteSnap->notes[j];
             if (nd.recurrence != 0)
                 recurrenceDecision[j] = recurrenceCheck(nd.recurrence, previousNotePlayed[nd.noteNumber]);
         }
 
 for (int i = 0; i < count; ++i)
         {
-            const NoteData& note = noteCaches[idx][i];
+            const NoteData& note = noteSnap->notes[i];
             double noteEnd = note.startBeat + note.durationBeats;
 
             int adjustedNoteNumber = note.noteNumber + static_cast<int>(note.notePitch);
@@ -337,7 +349,7 @@ for (int i = 0; i < count; ++i)
             double beatSpan = blockEndBeat - currentBeat;
             for (int i = 0; i < ccCnt; ++i)
             {
-                const CcData& cc = ccCaches[ccIdx][i];
+                const CcData& cc = ccSnap->points[i];
                 if (cc.beat >= currentBeat && cc.beat < blockEndBeat)
                 {
                     int sampleOffset = 0;
@@ -376,71 +388,111 @@ for (int i = 0; i < count; ++i)
     void setStateInformation(const void*, int) override {}
 
 private:
+    // Immutable cache snapshot machinery. Rebuilds run only on non-audio
+    // threads (setClipTree from RoutingManager / tests). Each rebuild allocates
+    // a fresh snapshot and publishes it with an atomic store; the audio thread
+    // takes a shared_ptr copy at the top of processBlock. Snapshots are never
+    // mutated or reused after publication, so there is no ABA hazard and no
+    // use-after-free (a double-buffered array/vector can tolerate only one
+    // rebuild between callbacks — the second rewrites/frees the slot a callback
+    // is still reading).
+    struct NoteCache
+    {
+        std::vector<NoteData> notes;
+    };
+
+    struct CcCache
+    {
+        std::vector<CcData> points;
+    };
+
     void rebuildNoteCache()
     {
-        int inactiveIdx = 1 - activeCacheIndex.load(std::memory_order_relaxed);
-        auto& inactive = noteCaches[inactiveIdx];
-
         auto nl = clipTree.getChildWithName(IDs::MIDI_NOTE_LIST);
-        if (!nl.isValid())
+        int count = 0;
+        if (nl.isValid())
+        {
+            const int numChildren = nl.getNumChildren();
+            count = (std::min)(numChildren, MAX_NOTE_SLOTS);
+            if (numChildren > MAX_NOTE_SLOTS)
+            {
+                HDAW_LOG("MidiClip", "clip '" + clipTree.getProperty(IDs::name, juce::String()).toString()
+                    + "' has " + juce::String(numChildren) + " notes, engine ceiling is " + juce::String(MAX_NOTE_SLOTS)
+                    + " - notes past the ceiling will NOT play; split the clip into smaller clips");
+            }
+        }
+
+        if (count == 0)
         {
             noteCount.store(0, std::memory_order_release);
-            activeCacheIndex.store(inactiveIdx, std::memory_order_release);
+            noteSnapshot.store({}, std::memory_order_release);
             return;
         }
 
-        int count = (std::min)(nl.getNumChildren(), MAX_NOTES);
+        auto fresh = std::make_shared<NoteCache>();
+        fresh->notes.resize(static_cast<size_t>(count));
         for (int i = 0; i < count; ++i)
         {
             auto n = nl.getChild(i);
-            inactive[i].noteNumber = n.getProperty(IDs::noteNumber);
-            inactive[i].velocity = n.getProperty(IDs::velocity);
-            inactive[i].startBeat = n.getProperty(IDs::startBeat);
-            inactive[i].durationBeats = n.getProperty(IDs::durationBeats);
-            inactive[i].chance = n.getProperty(IDs::chance, 1.0f);
-            inactive[i].repeatCount = n.getProperty(IDs::repeatCount, 0);
-            inactive[i].repeatRate = n.getProperty(IDs::repeatRate, 0.25f);
-            inactive[i].repeatCurve = n.getProperty(IDs::repeatCurve, 0.0f);
-            inactive[i].occurrence = n.getProperty(IDs::occurrence, 0);
-            inactive[i].recurrence = n.getProperty(IDs::recurrence, 0);
-            inactive[i].noteGain = n.getProperty(IDs::noteGain, 1.0f);
-            inactive[i].notePan = n.getProperty(IDs::notePan, 0.0f);
-            inactive[i].notePitch = n.getProperty(IDs::notePitch, 0.0f);
-            inactive[i].noteTimbre = n.getProperty(IDs::noteTimbre, 0.5f);
-            inactive[i].notePressure = n.getProperty(IDs::notePressure, 0.0f);
+            fresh->notes[i].noteNumber = n.getProperty(IDs::noteNumber);
+            fresh->notes[i].velocity = n.getProperty(IDs::velocity);
+            fresh->notes[i].startBeat = n.getProperty(IDs::startBeat);
+            fresh->notes[i].durationBeats = n.getProperty(IDs::durationBeats);
+            fresh->notes[i].chance = n.getProperty(IDs::chance, 1.0f);
+            fresh->notes[i].repeatCount = n.getProperty(IDs::repeatCount, 0);
+            fresh->notes[i].repeatRate = n.getProperty(IDs::repeatRate, 0.25f);
+            fresh->notes[i].repeatCurve = n.getProperty(IDs::repeatCurve, 0.0f);
+            fresh->notes[i].occurrence = n.getProperty(IDs::occurrence, 0);
+            fresh->notes[i].recurrence = n.getProperty(IDs::recurrence, 0);
+            fresh->notes[i].noteGain = n.getProperty(IDs::noteGain, 1.0f);
+            fresh->notes[i].notePan = n.getProperty(IDs::notePan, 0.0f);
+            fresh->notes[i].notePitch = n.getProperty(IDs::notePitch, 0.0f);
+            fresh->notes[i].noteTimbre = n.getProperty(IDs::noteTimbre, 0.5f);
+            fresh->notes[i].notePressure = n.getProperty(IDs::notePressure, 0.0f);
         }
 
         noteCount.store(count, std::memory_order_release);
-        activeCacheIndex.store(inactiveIdx, std::memory_order_release);
+        noteSnapshot.store(std::move(fresh), std::memory_order_release);
     }
 
     void rebuildCcCache()
     {
-        int inactiveIdx = 1 - activeCcCacheIndex.load(std::memory_order_relaxed);
-        auto& inactive = ccCaches[inactiveIdx];
-
         auto cl = clipTree.getChildWithName(IDs::CC_LIST);
-        if (!cl.isValid())
+        int count = 0;
+        if (cl.isValid())
+        {
+            const int numChildren = cl.getNumChildren();
+            count = (std::min)(numChildren, MAX_CC_SLOTS);
+            if (numChildren > MAX_CC_SLOTS)
+            {
+                HDAW_LOG("MidiClip", "clip '" + clipTree.getProperty(IDs::name, juce::String()).toString()
+                    + "' has " + juce::String(numChildren) + " CC points, engine ceiling is " + juce::String(MAX_CC_SLOTS)
+                    + " - points past the ceiling are ignored; split the clip into smaller clips");
+            }
+        }
+
+        if (count == 0)
         {
             ccCount.store(0, std::memory_order_release);
-            activeCcCacheIndex.store(inactiveIdx, std::memory_order_release);
+            ccSnapshot.store({}, std::memory_order_release);
             return;
         }
 
-        int count = (std::min)(cl.getNumChildren(), MAX_CC);
+        auto fresh = std::make_shared<CcCache>();
+        fresh->points.resize(static_cast<size_t>(count));
         for (int i = 0; i < count; ++i)
         {
-            auto p = cl.getChild(i);
-            inactive[i].controllerNumber = p.getProperty(IDs::controllerNumber);
-            inactive[i].beat = p.getProperty(IDs::beat);
-            inactive[i].value = p.getProperty(IDs::value);
+            auto pt = cl.getChild(i);
+            fresh->points[i].controllerNumber = pt.getProperty(IDs::controllerNumber);
+            fresh->points[i].beat = pt.getProperty(IDs::beat);
+            fresh->points[i].value = pt.getProperty(IDs::value);
         }
 
-        std::sort(inactive.begin(), inactive.begin() + count,
+        std::sort(fresh->points.begin(), fresh->points.end(),
                   [](const CcData& a, const CcData& b) { return a.beat < b.beat; });
 
         ccCount.store(count, std::memory_order_release);
-        activeCcCacheIndex.store(inactiveIdx, std::memory_order_release);
+        ccSnapshot.store(std::move(fresh), std::memory_order_release);
     }
 
     int procEntryCount = 0;
@@ -457,17 +509,17 @@ private:
     std::atomic<int> midiChannel{ 1 }; // 1-16 = specific MIDI channel
     uint8_t lastCcByte = 255;
     std::array<bool, 128> activeNotes{};
-    std::array<bool, MAX_NOTES> noteActive{};
+    std::array<bool, MAX_NOTE_SLOTS> noteActive{};
+    std::array<bool, MAX_NOTE_SLOTS> recurrenceDecision{}; // per-block scratch, audio thread only
     std::array<int, 128> pitchOwner{ -1 };
     std::array<bool, 128> previousNotePlayed{};
     std::atomic<uint64_t> clipSeed{0};
 
-    std::array<std::array<NoteData, MAX_NOTES>, 2> noteCaches{};
-    std::atomic<int> activeCacheIndex{0};
+    // Immutable cache snapshots (see NoteCache/CcCache above). noteCount /
+    // ccCount mirror the published snapshot sizes for cheap off-thread reads.
+    std::atomic<std::shared_ptr<const NoteCache>> noteSnapshot{};
+    std::atomic<std::shared_ptr<const CcCache>> ccSnapshot{};
     std::atomic<int> noteCount{0};
-
-    std::array<std::array<CcData, MAX_CC>, 2> ccCaches{};
-    std::atomic<int> activeCcCacheIndex{0};
     std::atomic<int> ccCount{0};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiClipProcessor)

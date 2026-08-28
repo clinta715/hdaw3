@@ -64,7 +64,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
             {{"clipId", QJsonObject{{"type","integer"}}},
              {"notes",  QJsonObject{{"type","array"},{"items", noteItem}}}},
             QJsonArray{"clipId","notes"});
-        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}.",
+        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}. NOTE: start/duration are CLIP-LOCAL beats (subtract the clip's own start beat from timeline positions); a clip plays at most 8192 notes (excess is logged and skipped - split long parts into multiple clips).",
             addNotesSchema,
             "note",
             [e](const QJsonObject& a) -> McpToolResult {
@@ -231,6 +231,71 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text(QString("would clear %1 notes").arg(n));
             if (nl.isValid()) c.removeChild(nl, &e->getProjectModel().getUndoManager());
             return McpToolResult::text(QString("cleared %1 notes").arg(n));
+        }});
+
+    s.registerTool({"list_notes", "List MIDI notes in a clip with optional range filters. Filters mirror remove_notes: pitches[], startGte/startLt (clip-local beats), noteIds[]. Returns {count, notes:[{noteId,pitch,start,duration,velocity,chance,repeatCount,repeatRate,repeatCurve,occurrence,recurrence,gain,pan,pitchOffset,timbre,pressure}]} in clip-local beats.",
+        objSchema({{"clipId",   QJsonObject{{"type","integer"}}},
+                  {"pitches",  QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}}}},
+                  {"startGte", QJsonObject{{"type","number"}}},
+                  {"startLt",  QJsonObject{{"type","number"}}},
+                  {"noteIds",  QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","integer"}}}}}}, {"clipId"}),
+        "note",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
+            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
+                return McpToolResult::text("clip is not MIDI", true);
+            auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+            if (!nl.isValid())
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(QJsonObject{{"count", 0}, {"notes", QJsonArray()}})
+                        .toJson(QJsonDocument::Compact)));
+            QSet<int> pitches; for (const auto& p : a.value("pitches").toArray()) pitches.insert(p.toInt());
+            QSet<int> ids;     for (const auto& i : a.value("noteIds").toArray()) ids.insert(i.toInt());
+            const bool filterIds = !ids.isEmpty();
+            const bool filterPitches = !pitches.isEmpty();
+            const bool hasGte = a.contains("startGte");
+            const bool hasLt  = a.contains("startLt");
+            const double gte = a.value("startGte").toDouble();
+            const double lt  = a.value("startLt").toDouble();
+
+            QJsonArray notes;
+            for (int k = 0; k < nl.getNumChildren(); ++k)
+            {
+                auto n = nl.getChild(k);
+                const int nid = static_cast<int>(n.getProperty(IDs::noteID));
+                const int p   = static_cast<int>(n.getProperty(IDs::noteNumber));
+                const double s= static_cast<double>(n.getProperty(IDs::startBeat));
+                if (filterIds && !ids.contains(nid)) continue;
+                if (filterPitches && !pitches.contains(p)) continue;
+                if (hasGte && s < gte) continue;
+                if (hasLt  && s >= lt) continue;
+                notes.append(QJsonObject{
+                    {"noteId", nid},
+                    {"pitch", p},
+                    {"start", s},
+                    {"duration", static_cast<double>(n.getProperty(IDs::durationBeats))},
+                    {"velocity", static_cast<int>(static_cast<double>(n.getProperty(IDs::velocity)) * 127.0 + 0.5)},
+                    {"chance", static_cast<double>(n.getProperty(IDs::chance, 1.0f))},
+                    {"repeatCount", static_cast<int>(n.getProperty(IDs::repeatCount, 0))},
+                    {"repeatRate", static_cast<double>(n.getProperty(IDs::repeatRate, 0.25f))},
+                    {"repeatCurve", static_cast<double>(n.getProperty(IDs::repeatCurve, 0.0f))},
+                    {"occurrence", static_cast<int>(n.getProperty(IDs::occurrence, 0))},
+                    {"recurrence", static_cast<int>(n.getProperty(IDs::recurrence, 0))},
+                    {"gain", static_cast<double>(n.getProperty(IDs::noteGain, 1.0f))},
+                    {"pan", static_cast<double>(n.getProperty(IDs::notePan, 0.0f))},
+                    {"pitchOffset", static_cast<double>(n.getProperty(IDs::notePitch, 0.0f))},
+                    {"timbre", static_cast<double>(n.getProperty(IDs::noteTimbre, 0.5f))},
+                    {"pressure", static_cast<double>(n.getProperty(IDs::notePressure, 0.0f))}
+                });
+            }
+            QJsonObject result;
+            result["count"] = notes.size();
+            result["notes"] = notes;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"set_note_chance", "Set a note's chance (probability) operator.",

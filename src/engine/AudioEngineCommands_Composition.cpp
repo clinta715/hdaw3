@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <string>
 
 namespace
@@ -365,6 +366,38 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                           + juce::String(s_renderCounter.fetch_add(1)) + ".wav");
     tempFile.deleteFile();
 
+    // Drain pending live-graph rebuilds before the windowed render starts.
+    // AudioEngine coalesces ValueTree->graph rebuilds into an AsyncUpdater
+    // serviced on the message pump; a mutating command running on a
+    // non-message thread (addTrack / addAudioClip / ...) returns before that
+    // rebuild executes, and if it lands while a render is in flight,
+    // rebuildRoutingGraph drains and cancels the export (AutoGain read-back
+    // failure: "Export cancelled.", no output file). Post a probe to the same
+    // queue and wait for it: FIFO dispatch guarantees every rebuild queued
+    // before the probe has been applied by the time it fires. Skipped on the
+    // message thread itself (a posted probe could never be dispatched while we
+    // block it), where rebuilds are already serialized with commands.
+    if (juce::MessageManager::getInstance() != nullptr
+        && !juce::MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        auto graphSettled = std::make_shared<std::atomic<bool>>(false);
+        struct GraphSettleProbe final : public juce::CallbackMessage
+        {
+            std::shared_ptr<std::atomic<bool>> settled;
+            explicit GraphSettleProbe(std::shared_ptr<std::atomic<bool>> s)
+                : settled(std::move(s)) {}
+            void messageCallback() override
+            {
+                settled->store(true, std::memory_order_release);
+            }
+        };
+        (new GraphSettleProbe(graphSettled))->post();
+        const auto settleDeadline = juce::Time::getMillisecondCounter() + 2000u;
+        while (!graphSettled->load(std::memory_order_acquire)
+               && juce::Time::getMillisecondCounter() < settleDeadline)
+            juce::Thread::sleep(1);
+    }
+
     if (!em.startExport(treeCopy, fm, &engine.getPluginManager(), tempFile,
                         48000.0, windowStart, windowSeconds,
                         HDAW::ExportManager::WAV, 24))
@@ -394,6 +427,17 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
         em.cancelAndJoin();
         tempFile.deleteFile();
         result.error = "render timed out";
+        return result;
+    }
+
+    // Surface the actual render-thread result instead of the generic
+    // "no file to measure" message: a failed export now reports the real
+    // reason (bake timeout, writer creation failure, thrown exception).
+    const juce::String exportMsg = em.getLastExportMessage();
+    if (!exportMsg.startsWith("Export complete"))
+    {
+        tempFile.deleteFile();
+        result.error = (juce::String("export failed: ") + exportMsg).toStdString();
         return result;
     }
 
