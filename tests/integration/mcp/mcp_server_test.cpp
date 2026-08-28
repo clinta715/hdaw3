@@ -425,6 +425,92 @@ TEST(McpServer, AddFilterFxAndSetParams) {
     s.setTransport(nullptr);
 }
 
+// P1-3 (plan 2026-08-29, G1): the internal delay exposes 5 params incl.
+// SyncToTempo (3) + Division (4); set_internal_fx_param writes them as
+// real-value tree properties (round-trip-safe), and list_fx_params reflects
+// them automatically. Gate 9: out-of-range stays an error.
+TEST(McpServer, AddDelaySyncAndSetParams) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    // add_fx {fxType:"delay"} -> a live slot of type "delay" exists.
+    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"delay"})");
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(isError(r));
+    EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
+    auto* tr0 = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(tr0, nullptr);
+    ASSERT_EQ(tr0->getNumFXSlots(), 1);
+    EXPECT_EQ(tr0->getFXChain().at(0)->getType().toStdString(), std::string("delay"));
+
+    // list_fx_params -> 5 defs incl. SyncToTempo + Division (real-unit ranges).
+    r = callTool(2, "list_fx_params", R"({"trackId":0,"slotIndex":0})");
+    EXPECT_FALSE(r.value("error").isObject());
+    auto params = QJsonDocument::fromJson(text(r).toUtf8())
+                      .object().value("params").toArray();
+    ASSERT_EQ(params.size(), 5);
+    EXPECT_EQ(params.at(0).toObject().value("name").toString().toStdString(), "Delay Time");
+    EXPECT_EQ(params.at(1).toObject().value("name").toString().toStdString(), "Feedback");
+    EXPECT_EQ(params.at(2).toObject().value("name").toString().toStdString(), "Mix");
+    const QJsonObject p3 = params.at(3).toObject();
+    EXPECT_EQ(p3.value("name").toString().toStdString(), "SyncToTempo");
+    EXPECT_EQ(p3.value("minValue").toDouble(), 0.0);
+    EXPECT_EQ(p3.value("maxValue").toDouble(), 1.0);
+    EXPECT_EQ(p3.value("paramID").toInt(), 103);
+    const QJsonObject p4 = params.at(4).toObject();
+    EXPECT_EQ(p4.value("name").toString().toStdString(), "Division");
+    EXPECT_EQ(p4.value("minValue").toDouble(), 0.0);
+    EXPECT_EQ(p4.value("maxValue").toDouble(), 6.0);
+    EXPECT_EQ(p4.value("paramID").toInt(), 104);
+
+    // set_internal_fx_param (REAL units): SyncToTempo = 1, Division = 4
+    // (dotted-1/8) — the G1 "one param instead of hand-computed seconds" path.
+    r = callTool(3, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":3,"value":1})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(4, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":4,"value":4})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Read model agrees (real units).
+    auto snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    ASSERT_EQ(snaps.size(), 5u);
+    EXPECT_NEAR(snaps[3].value, 1.0f, 0.01f);
+    EXPECT_NEAR(snaps[4].value, 4.0f, 0.01f);
+    // Tree round-trip: param_3/param_4 persist for save/load.
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_3"))), 1.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_4"))), 4.0);
+
+    // Gate 9: out-of-range internal param is an error, not a silent no-op.
+    r = callTool(5, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":5,"value":1})");
+    EXPECT_TRUE(isError(r));
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, SetFaderAuthoritativeDisablesVolumeAutomation) {
     AudioEngine engine;
     engine.initialize();

@@ -493,6 +493,13 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         return;
     }
 
+    // Get BPM from playhead: beat-synced modulation below AND the per-block
+    // tempo feed for internal FX slots (tempo-synced delay divisions, P1-3).
+    double bpm = 120.0;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+            bpm = pos->getBpm().orFallback(120.0);
+
     // Apply MIDI FX (arpeggiator etc.) first, then the audio FX chain
     // (DSP + plugins). The MIDI FX transforms midiMessages so the instrument
     // slot in the audio chain receives the arpeggiated/processed MIDI.
@@ -524,6 +531,7 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
         {
             if (slot)
             {
+                slot->setTempo(bpm);
                 slot->applyAutomation();
                 slot->process(buffer, midiMessages);
             }
@@ -539,12 +547,6 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
     {
         float* leftChannel = buffer.getWritePointer(0);
         float* rightChannel = buffer.getWritePointer(1);
-
-        // Get BPM from playhead for beat-synced modulation
-        double bpm = 120.0;
-        if (auto* ph = getPlayHead())
-            if (auto pos = ph->getPosition())
-                bpm = pos->getBpm().orFallback(120.0);
 
         // Modulation read path: collect unique paramIDs from all sources
         // (outside the per-sample loop — no allocation inside the sample

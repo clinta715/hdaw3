@@ -51,11 +51,21 @@ public:
                 { 1, "Q",          0.7f,  0.1f,   10.0f    },
                 { 2, "Gain",       0.0f,-24.0f,   24.0f    },
             };
+        // Internal delay: Delay Time (manual seconds) + Feedback + Mix, plus
+        // tempo-sync controls (P1-3, plan 2026-08-29): SyncToTempo (3) =
+        // 1 -> Delay Time is DERIVED from Division (4) + project BPM
+        // (seconds = divisionBeatFraction * 60 / bpm, clamped to 0.01..5 s),
+        // and re-applied automatically when the tempo changes. Division enum:
+        // 0=1/8, 1=1/16, 2=1/32, 3=triplet-1/8 (2/3*1/8), 4=dotted-1/8
+        // (1.5*1/8), 5=dotted-1/16 (1.5*1/16), 6=1/4. Beat fractions:
+        // 0.125, 0.0625, 0.03125, 0.08333, 0.1875, 0.09375, 0.25.
         if (type == "delay")
             return {
                 { 0, "Delay Time", 0.5f, 0.01f,  5.0f    },
                 { 1, "Feedback",   0.3f, 0.0f,   0.99f   },
                 { 2, "Mix",        0.5f, 0.0f,   1.0f    },
+                { 3, "SyncToTempo",0.0f, 0.0f,   1.0f    },
+                { 4, "Division",   0.0f, 0.0f,   6.0f    },
             };
         if (type == "chorus")
             return {
@@ -197,6 +207,12 @@ public:
 
     const juce::String& getPluginID() const { return pluginIdentifier; }
     bool isIsolated() const { return isolated; }
+
+    // Feed the project tempo (beats per minute) from the audio thread each
+    // block (Track::processBlock -> TrackFXSlot::process). Atomic store only —
+    // lock-free, no allocation, safe on the audio thread. Tempo-synced delay
+    // divisions read this when SyncToTempo (param 3) is on.
+    void setTempo(double bpm) { tempoBpm.store(static_cast<float>(bpm), std::memory_order_relaxed); }
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
@@ -361,7 +377,7 @@ public:
             {
                 delay = std::make_unique<juce::dsp::DelayLine<float>>(static_cast<int>(spec.sampleRate));
                 delay->prepare(spec);
-                float delaySec = (internalParamValues.size() > 0) ? internalParamValues[0] : 0.5f;
+                float delaySec = computeDelaySeconds();
                 int delaySamps = juce::roundToInt(delaySec * spec.sampleRate);
                 delaySamps = std::max(1, delaySamps);
                 delay->setDelay(delaySamps);
@@ -552,9 +568,13 @@ public:
                     float fb = internalParamValues[1];
                     float wetMix = internalParamValues[2];
                     float dryMix = 1.0f - wetMix;
-                    float delayTime = internalParamValues[0];
-                    // Only recompute delay samples when the parameter changes
-                    if (delayTime != lastDelayTime)
+                    // Derived in sync mode (Division * 60 / project BPM,
+                    // recomputed every block so tempo changes re-apply
+                    // automatically); raw Delay Time param otherwise.
+                    float delayTime = computeDelaySeconds();
+                    // Only recompute delay samples when the derived delay
+                    // changed (param, division, tempo, or manual seconds).
+                    if (std::fabs(delayTime - lastDelayTime) > 1e-4f)
                     {
                         lastDelayTime = delayTime;
                         lastDelaySamps = juce::roundToInt(delayTime * sampleRate_);
@@ -859,6 +879,9 @@ private:
     // Delay parameter cache — avoids recomputing delay samples per sample
     float lastDelayTime = -1.0f;
     int lastDelaySamps = 1;
+    // Project tempo fed from Track::processBlock each block (audio-thread
+    // atomic store; default 120 BPM). Used by tempo-synced delay divisions.
+    std::atomic<float> tempoBpm{ 120.0f };
 
     mutable std::vector<ParamInfo> cachedParams;
     std::atomic<int> numParams{ 0 };
@@ -888,6 +911,39 @@ private:
     static float denormalizeParam(float normalizedValue, const InternalParamDef& def)
     {
         return def.minValue + normalizedValue * (def.maxValue - def.minValue);
+    }
+
+    // Tempo-synced delay division beat fractions (P1-3), indexed by the
+    // Division param (4): 0=1/8, 1=1/16, 2=1/32, 3=triplet-1/8 (2/3*1/8),
+    // 4=dotted-1/8 (1.5*1/8), 5=dotted-1/16 (1.5*1/16), 6=1/4.
+    static constexpr float kDelayDivisionBeats[7] = {
+        0.125f, 0.0625f, 0.03125f, 0.08333f, 0.1875f, 0.09375f, 0.25f
+    };
+
+    bool isDelaySyncOn() const
+    {
+        return activeType == ActiveType::Delay && internalParamValues.size() > 3
+            && internalParamValues[3] > 0.5f;
+    }
+
+    // Effective delay seconds. Sync mode: kDelayDivisionBeats[division] *
+    // 60 / bpm (bpm <= 0 falls back to 120), clamped to the Delay Time param
+    // range 0.01..5 s. Sync off: raw Delay Time param (0). Reads the audio
+    // thread's atomic tempo; safe to call from both processBlock and the
+    // param-apply path (the cached lastDelayTime compare gates setDelay).
+    float computeDelaySeconds() const
+    {
+        if (isDelaySyncOn())
+        {
+            int division = (internalParamValues.size() > 4)
+                ? juce::roundToInt(internalParamValues[4]) : 0;
+            division = juce::jlimit(0, 6, division);
+            double bpm = static_cast<double>(tempoBpm.load(std::memory_order_relaxed));
+            if (bpm <= 0.0) bpm = 120.0;
+            const double sec = static_cast<double>(kDelayDivisionBeats[division]) * 60.0 / bpm;
+            return static_cast<float>(juce::jlimit(0.01, 5.0, sec));
+        }
+        return (internalParamValues.size() > 0) ? internalParamValues[0] : 0.5f;
     }
 
     void applyInternalParamToDsp(int paramIndex, float value)
@@ -939,13 +995,19 @@ private:
             }
             case ActiveType::Delay:
             {
-                if (!delay) return;
-                if (paramIndex == 0)
+                if (!delay || paramIndex > 4) break;
+                // Sync mode derives the delay from Division + BPM, so a direct
+                // Delay Time write is ignored while sync is on (it resumes
+                // mattering when sync is turned off). Any other delay param
+                // change (SyncToTempo, Division) re-derives and re-applies.
+                if (paramIndex == 0 && isDelaySyncOn()) break;
+                const float delaySec = computeDelaySeconds();
+                if (std::fabs(delaySec - lastDelayTime) > 1e-4f)
                 {
-                    int delaySamps = juce::roundToInt(value * sampleRate_);
+                    int delaySamps = juce::roundToInt(delaySec * sampleRate_);
                     delaySamps = std::max(1, delaySamps);
                     delay->setDelay(delaySamps);
-                    lastDelayTime = value;
+                    lastDelayTime = delaySec;
                     lastDelaySamps = delaySamps;
                 }
                 break;

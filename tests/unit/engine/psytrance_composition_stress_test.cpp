@@ -91,22 +91,26 @@ static double bandEnergyDb(const juce::AudioBuffer<float>& buf, double sr)
 }
 
 // Static playhead for Track::processBlock automation reads (P1-2 G3): reports
-// a fixed time so the automation lane value at that time is deterministic.
+// a fixed time + tempo so the automation lane value at that time (and the
+// per-block tempo feed for tempo-synced delay divisions, P1-3) is deterministic.
 class FixedPlayHead : public juce::AudioPlayHead
 {
 public:
     void setTimeSeconds(double s) { seconds_ = s; }
+    void setBpm(double b) { bpm_ = b; }
+    double getBpm() const { return bpm_; }
     juce::Optional<PositionInfo> getPosition() const override
     {
         PositionInfo info;
         info.setIsPlaying(true);
         info.setTimeInSeconds(seconds_);
         info.setTimeInSamples(static_cast<juce::int64>(seconds_ * 48000.0));
-        info.setBpm(120.0);
+        info.setBpm(bpm_);
         return info;
     }
 private:
     double seconds_ = 0.0;
+    double bpm_ = 120.0;
 };
 
 } // namespace
@@ -1173,6 +1177,229 @@ TEST(InternalFx, FilterCutoffAutomationSweeps)
     std::cout << "FilterSweep: low=" << lowDb << " high=" << highDb
               << " dB (diff=" << (highDb - lowDb) << ")" << std::endl;
     EXPECT_GE(highDb - lowDb, 12.0) << "automated cutoff must sweep the band >= 12 dB";
+}
+
+// ── P1-3 (plan 2026-08-29): tempo-synced delay divisions ──────────────────
+// The internal delay derives Delay Time from Division + project BPM when
+// SyncToTempo is on: seconds = divisionBeatFraction * 60 / bpm, clamped to
+// the param range 0.01..5 s, re-applied automatically when the tempo changes.
+// The gate uses the MATH (f*60/bpm), not the handoff's "dotted-8th ≈ 0.1286"
+// label (which is actually a dotted-16th-of-a-half). A first-tap probe: feed
+// an impulse at sample 0 through a fresh (reset) delay slot and find the
+// first output sample with |amp| > threshold — that is the first reflected
+// tap, at exactly delaySamps (roundToInt(delaySeconds * sampleRate)).
+TEST(InternalFx, DelaySyncDivisionTracksTempo)
+{
+    HDAW::TrackFXSlot slot("delay");
+    constexpr double sr = 48000.0;
+    constexpr int blockSize = 8192;
+    slot.prepare({ sr, blockSize, 2 });
+    slot.setInternalParam(3, 1.0f); // SyncToTempo on
+    slot.setInternalParam(4, 0.0f); // Division = 1/8 (beat fraction 0.125)
+
+    auto firstTap = [&]() {
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        buf.setSample(0, 0, 1.0f);
+        buf.setSample(1, 0, 1.0f);
+        juce::MidiBuffer midi;
+        slot.process(buf, midi);
+        for (int i = 1; i < blockSize; ++i)
+            if (std::fabs(buf.getSample(0, i)) > 0.05f)
+                return i;
+        return -1;
+    };
+
+    slot.reset();
+    slot.setTempo(120.0);
+    const int tap120 = firstTap();
+    slot.reset();
+    slot.setTempo(175.0);
+    const int tap175 = firstTap();
+    ASSERT_GT(tap120, 0) << "no reflected tap at 120 BPM";
+    ASSERT_GT(tap175, 0) << "no reflected tap at 175 BPM";
+
+    const double sec120 = static_cast<double>(tap120) / sr;
+    const double sec175 = static_cast<double>(tap175) / sr;
+    const double ratio = sec120 / sec175;
+    std::cout << "DelaySyncTempo: bpm120 tap=" << tap120 << " (" << sec120 << " s)  "
+              << "bpm175 tap=" << tap175 << " (" << sec175 << " s)  ratio=" << ratio
+              << " (expect ~" << (175.0 / 120.0) << ")" << std::endl;
+
+    // Tempo tracking: first-tap spacing must scale by 175/120 (= 1.4583).
+    EXPECT_NEAR(ratio, 175.0 / 120.0, 0.05)
+        << "tap spacing must scale with tempo (120 vs 175 BPM)";
+    // Absolute math: 1/8 division = 0.125 * 60 / bpm seconds, ±10%.
+    EXPECT_NEAR(sec120, 0.125 * 60.0 / 120.0, 0.125 * 60.0 / 120.0 * 0.10);
+    EXPECT_NEAR(sec175, 0.125 * 60.0 / 175.0, 0.125 * 60.0 / 175.0 * 0.10);
+}
+
+// Same probe at 175 BPM for the dotted divisions: dotted-1/8 (4) = 1.5*1/8 =
+// 0.1875 beats -> 0.1875*60/175 s; dotted-1/16 (5) = 1.5*1/16 = 0.09375 beats
+// -> 0.09375*60/175 s.
+TEST(InternalFx, DelaySyncDivisionDottedEighth)
+{
+    HDAW::TrackFXSlot slot("delay");
+    constexpr double sr = 48000.0;
+    constexpr int blockSize = 8192;
+    slot.prepare({ sr, blockSize, 2 });
+    slot.setInternalParam(3, 1.0f); // SyncToTempo on
+    slot.setTempo(175.0);
+
+    auto tapForDivision = [&](int division) {
+        slot.setInternalParam(4, static_cast<float>(division));
+        slot.reset();
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        buf.setSample(0, 0, 1.0f);
+        buf.setSample(1, 0, 1.0f);
+        juce::MidiBuffer midi;
+        slot.process(buf, midi);
+        for (int i = 1; i < blockSize; ++i)
+            if (std::fabs(buf.getSample(0, i)) > 0.05f)
+                return i;
+        return -1;
+    };
+
+    const int tapDot8 = tapForDivision(4);   // dotted-1/8
+    const int tapDot16 = tapForDivision(5);  // dotted-1/16
+    ASSERT_GT(tapDot8, 0);
+    ASSERT_GT(tapDot16, 0);
+
+    const double secDot8 = static_cast<double>(tapDot8) / sr;
+    const double secDot16 = static_cast<double>(tapDot16) / sr;
+    std::cout << "DelaySyncDotted: @175 dotted-1/8 tap=" << tapDot8 << " (" << secDot8 << " s)  "
+              << "dotted-1/16 tap=" << tapDot16 << " (" << secDot16 << " s)" << std::endl;
+
+    EXPECT_NEAR(secDot8, 0.1875 * 60.0 / 175.0, 0.1875 * 60.0 / 175.0 * 0.10)
+        << "dotted-1/8 must be 1.5*1/8 of a beat at 175 BPM";
+    EXPECT_NEAR(secDot16, 0.09375 * 60.0 / 175.0, 0.09375 * 60.0 / 175.0 * 0.10)
+        << "dotted-1/16 must be 1.5*1/16 of a beat at 175 BPM";
+}
+
+// Gate 1/10 (save/load leg + Track feed leg): SyncToTempo/Division survive the
+// project XML round trip, the Track::rebuildFXChain factory
+// (TrackFXSlot(type) + loadParamsFromTree) restores them, and the restored
+// DSP taps at the division-derived delay — identical after load. Also covers
+// the Track::processBlock -> setTempo feed: with a FixedPlayHead reporting
+// 175 BPM, the track's delay slot reacts to the playhead tempo (no manual
+// slot.setTempo call here).
+TEST(InternalFx, DelaySyncDivisionRoundTripsProjectXml)
+{
+    ProjectModel model;
+    model.createDefaultProject();
+    auto& um = model.getUndoManager();
+    auto fxChain = model.getTrackListTree().getChild(0).getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChain.isValid());
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String("delay"), &um);
+    slot.setProperty(IDs::bypassed, false, &um);
+    slot.setProperty(juce::Identifier("param_0"), 0.5, &um); // manual seconds
+    slot.setProperty(juce::Identifier("param_1"), 0.3, &um); // feedback
+    slot.setProperty(juce::Identifier("param_2"), 0.5, &um); // mix
+    slot.setProperty(juce::Identifier("param_3"), 1.0, &um); // SyncToTempo on
+    slot.setProperty(juce::Identifier("param_4"), 4.0, &um); // dotted-1/8
+    fxChain.addChild(slot, -1, &um);
+
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getChildFile("hdaw_delay_sync_roundtrip.hdap");
+    f.deleteFile();
+    ASSERT_TRUE(HDAW::ProjectSerializer::save(model, f));
+    ASSERT_TRUE(f.existsAsFile());
+
+    ProjectModel loaded;
+    ASSERT_TRUE(HDAW::ProjectSerializer::load(loaded, f));
+    auto loadedSlot = loaded.getTrackListTree().getChild(0)
+                          .getChildWithName(IDs::FX_CHAIN).getChild(0);
+    ASSERT_TRUE(loadedSlot.isValid());
+    EXPECT_EQ(loadedSlot.getProperty(IDs::fxType).toString().toStdString(), "delay");
+    EXPECT_DOUBLE_EQ(static_cast<double>(loadedSlot.getProperty(juce::Identifier("param_3"))), 1.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(loadedSlot.getProperty(juce::Identifier("param_4"))), 4.0);
+
+    // Factory parses the loaded tree back into a working slot (the exact
+    // construction Track::rebuildFXChain performs for internal FX).
+    HDAW::TrackFXSlot slot2("delay");
+    slot2.prepare({ 48000.0, 512, 2 });
+    slot2.loadParamsFromTree(loadedSlot);
+    auto vals = slot2.getInternalParamValues();
+    ASSERT_GE(vals.size(), 5u);
+    EXPECT_NEAR(vals[3], 1.0f, 0.01f);
+    EXPECT_NEAR(vals[4], 4.0f, 0.01f);
+
+    // The restored slot's DSP taps at the SAME division-derived delay it had
+    // before the save (dotted-1/8 at the default 120 BPM = 0.1875*60/120 s).
+    juce::AudioBuffer<float> buf(2, 8192);
+    buf.clear();
+    buf.setSample(0, 0, 1.0f);
+    buf.setSample(1, 0, 1.0f);
+    juce::MidiBuffer midi;
+    slot2.process(buf, midi);
+    int tap = -1;
+    for (int i = 1; i < 8192; ++i)
+        if (std::fabs(buf.getSample(0, i)) > 0.05f) { tap = i; break; }
+    const int expectedTap = juce::roundToInt(0.1875 * 60.0 / 120.0 * 48000.0);
+    EXPECT_EQ(tap, expectedTap) << "restored slot must tap at the division-derived delay";
+    f.deleteFile();
+}
+
+// Track feed leg: Track::processBlock must push the playhead BPM into its FX
+// slots each block (without any direct slot.setTempo call). A delay slot on a
+// real Track node, SyncToTempo on + Division 1/8, fed an impulse while the
+// FixedPlayHead reports 120 BPM then 175 BPM, must tap at the corresponding
+// division-derived offsets.
+TEST(InternalFx, DelaySyncTrackPlayheadFeedsTempo)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addFxSlot(0, "delay");            // slot 0 on track 0
+    cmds.setFxSlotParam(0, 0, 3, 1.0f);    // SyncToTempo on
+    cmds.setFxSlotParam(0, 0, 4, 0.0f);    // Division = 1/8
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+
+    // AudioEngine::initialize() defaults to 44100 Hz; measure in the track's
+    // REAL sample rate so the printed seconds match the engine.
+    const double trackSr = track->getSampleRate();
+    constexpr int n = 8192;
+    auto tapAtBpm = [&](double bpm) {
+        ph.setBpm(bpm);
+        juce::AudioBuffer<float> buf(2, n);
+        buf.clear();
+        buf.setSample(0, 0, 1.0f);
+        buf.setSample(1, 0, 1.0f);
+        juce::MidiBuffer midi;
+        track->processBlock(buf, midi);
+        for (int i = 1; i < n; ++i)
+            if (std::fabs(buf.getSample(0, i)) > 0.05f)
+                return i;
+        return -1;
+    };
+
+    const int tap120 = tapAtBpm(120.0);
+    const int tap175 = tapAtBpm(175.0);
+    ASSERT_GT(tap120, 0) << "no tap at 120 BPM via Track feed";
+    ASSERT_GT(tap175, 0) << "no tap at 175 BPM via Track feed";
+
+    const double sec120 = static_cast<double>(tap120) / trackSr;
+    const double sec175 = static_cast<double>(tap175) / trackSr;
+    std::cout << "DelaySyncTrackFeed: bpm120 tap=" << tap120 << " (" << sec120 << " s)  "
+              << "bpm175 tap=" << tap175 << " (" << sec175 << " s)" << std::endl;
+    EXPECT_NEAR(sec120 / sec175, 175.0 / 120.0, 0.05)
+        << "Track-fed tempo must re-derive the delay on BPM change";
+    // Sanity: taps land at the real division math in the engine's own rate.
+    EXPECT_NEAR(sec120, 0.125 * 60.0 / 120.0, 0.125 * 60.0 / 120.0 * 0.10);
+    EXPECT_NEAR(sec175, 0.125 * 60.0 / 175.0, 0.125 * 60.0 / 175.0 * 0.10);
 }
 
 // P1-2 Gate 1/10 (save/load leg): fxType "filter" + its real-unit param_N
