@@ -168,8 +168,10 @@ When a section misbehaves, mute-to-isolate roles rather than guessing; the
 
 ## 8. Trademark traps (hit and paid for, in order of severity)
 
-1. **Clip-local beats**: note `start` is relative to its clip — keep one clip
-   per role spanning the whole track at start=0 (what every recipe does).
+1. **Clip-local beats**: note `start` is relative to its clip by default —
+   keep one clip per role spanning the whole track at start=0, or pass
+   `relative:false` to `add_notes` for timeline-absolute starts (P1-4,
+   landed 2026-08-29).
 2. **`add_notes` accepts duplicates** — loop generators that write the same
    pitch/start twice stack triggers (244 duplicate hats made a mini-break 3×
    louder); generate per-bar, not per-beat offsets.

@@ -61,7 +61,7 @@ changes + rebuild).
 **Pitfall gates:** 1/6/10 (restore), 3/13 (DSP + stateLock), 7/8 (latency/
 fidelity).
 
-## P1-4: `add_notes` absolute-beat mode
+## P1-4: `add_notes` absolute-beat mode — ✅ LANDED 2026-08-29 (`relative:false`, McpCoverageTest.AddNotes* trio green)
 **Goal:** accept timeline-absolute note starts without the clip-local
 conversion trap (startBeat is clip-relative today).
 **Design:** optional `{relative: false}` (default current behavior): subtract
@@ -95,7 +95,7 @@ binary), 1 (unit conversion correctness — beats everywhere).
 ## Sequencing
 P1-1 (MCP LFO) is the highest-leverage for jungle/dnb generation; P1-2 is
 needed for honest filter sweeps; P1-3 for dub timing; P1-4 removes the
-biggest data-convention trap. Suggested order: P1-4 → P1-1 → P1-2 → P1-3
+biggest data-convention trap. Suggested order: P1-4 → P1-1 → P1-2 → P1-3 (P1-4 done; next: P1-1 MCP LFO tools)
 (smallest blast radius first). Each lands with its gates + tests in the same
 change (hdaw-guard completion contract: test discipline, MCP parity, graph
 refresh after new files/RPC methods).
