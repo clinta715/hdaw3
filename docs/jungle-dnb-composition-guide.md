@@ -131,9 +131,10 @@ units — names from the engine spec):
   lane (triangle 0.68–1.0 at 1 cycle/beat; gentler 0.82–1.0 for ambient).
 - **Bass**: eq + comp; **rumble**: eq sweep; **pads**: chorus (rate 1.1, depth
   0.6, mix 0.5) + reverb + eq (slow filter swell lane).
-- **Organ/lead/chants** (ragga): else delay (fb .4–.5, wet .3) + reverb; delay
-  TIME is seconds — dotted-8th at 175 = 0.1286 s if you need the classic dub
-  pattern (tempo-sync is a requested feature, not yet available).
+- **Organ/lead/chants** (ragga): else delay (fb .4–.5, wet .3) + reverb; tempo-
+  sync LANDED (P1-3): delay params `SyncToTempo` + `Division` (dotted-1/8,
+  dotted-1/16, triplets) derive Delay Time from BPM (dotted-1/8 @175 =
+  0.0643 s; dotted-1/16 = 0.0321 s) — no hand-computed seconds.
 
 **LFOs (P1-1, landed 2026-08-29):** `add_lfo {trackId}` + `set_lfo_param {trackId, lfoIndex, param,
 value}` (waveform 0=sin/1=tri/2=saw, rate, rateSync, depth, bipolar, phaseOffset, targetParamID)

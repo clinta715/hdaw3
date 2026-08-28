@@ -45,7 +45,7 @@ to `eq`. Prefer (a): separate, one automatable `Cutoff` param.
 stateLock + no alloc in processBlock), 13 (stateLock writes), 7/8 (latency +
 fidelity evaluation explicit).
 
-## P1-3: Tempo-synced delay divisions
+## P1-3: Tempo-synced delay divisions — ✅ LANDED 2026-08-29 (SyncToTempo + Division enums; ratio 1.45843 measured) — **P1 BACKLOG COMPLETE**
 **Goal:** one `sync` + `division` on delay (dotted-8th etc.) instead of
 hand-computing seconds per tempo.
 **Design:** add `syncToTempo(bool)` + `division` (selected from 1/2, 1/4,
