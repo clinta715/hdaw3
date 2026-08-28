@@ -92,6 +92,7 @@ add_executable(hdaw_tests
     unit/engine/export_volume_bypass_test.cpp
     unit/engine/export_bake_timeout_test.cpp
     unit/engine/psytrance_composition_stress_test.cpp
+    unit/engine/jungle_composition_stress_test.cpp
     unit/engine/instrument_part_test.cpp
     unit/engine/audition_test.cpp
     unit/engine/verify_part_test.cpp
