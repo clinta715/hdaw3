@@ -36,6 +36,7 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
 | [`docs/adr-automation-model.md`](docs/adr-automation-model.md) | ADR: track-based automation as the primary model (clip-based/relative deferred), beats-vs-seconds implication |
 | [`docs/bitwig-reference.md`](docs/bitwig-reference.md) | Bitwig Studio UI/architecture design reference with HDAW-side takeaways |
+| [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Psytrance composition via MCP: style canon, sample pipeline, score grammar, FX/LFO/automation recipes, mix + verification, contract traps — distilled from the 2026-08-26/27 composition sessions (recipes: `psytrance_composition_stress_test.cpp`) |
 | [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
 | [`docs/archive/superpowers/`](docs/archive/superpowers/) | Historical plans/specs (Jun–Aug 2026). Completed work — context only, not live specs. Current plans live in `docs/plans/` |
 
