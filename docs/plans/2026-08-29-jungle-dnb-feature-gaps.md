@@ -5,7 +5,7 @@ manual note/automation placement we hand-rolled in every render. This plan
 covers P1 only; P2/P3 are a backlog at the bottom (each becomes its own plan
 when picked up).
 
-## P1-1: MCP LFO tools (add_lfo / set_lfo_param)
+## P1-1: MCP LFO tools (add_lfo / set_lfo_param) — ✅ LANDED 2026-08-29 (4 tools; also fixed a real Gate 1/10 bug: addTrack never restored LFOs on routing rebuilds)
 **Goal:** Expose the engine's per-track LFO system over MCP so per-beat pumps
 and wobbles are one command, not ~150 computed automation points.
 **Context:** engine commands exist (`addLfo`, `setLfoParam` per track

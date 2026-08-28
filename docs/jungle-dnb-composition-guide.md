@@ -135,6 +135,10 @@ units — names from the engine spec):
   TIME is seconds — dotted-8th at 175 = 0.1286 s if you need the classic dub
   pattern (tempo-sync is a requested feature, not yet available).
 
+**LFOs (P1-1, landed 2026-08-29):** `add_lfo {trackId}` + `set_lfo_param {trackId, lfoIndex, param,
+value}` (waveform 0=sin/1=tri/2=saw, rate, rateSync, depth, bipolar, phaseOffset, targetParamID)
++ `list_lfos` — per-beat pumps/wobbles are now MCP-native instead of computed automation points.
+
 **Automation contract (all verified):** `add_automation_lane {paramID}`
 (FX param IDs = `100 + slotIndex*100 + paramIndex`; volume=1/pan=2/mute=3 are
 BUILT-IN lanes per track — adding paramID 1 fails, target "Volume" instead) →
