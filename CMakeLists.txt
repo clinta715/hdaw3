@@ -194,6 +194,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Send.cpp
     src/mcp/McpTools_Envelope.cpp
     src/mcp/McpTools_Session.cpp
+    src/mcp/McpTools_Modulation.cpp
     src/mcp/McpTools_Library.cpp
     src/mcp/McpTools_Settings.cpp
     src/mcp/McpTransportLoopback.cpp

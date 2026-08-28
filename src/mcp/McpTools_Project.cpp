@@ -15,6 +15,7 @@ void registerProjectDomain(McpServer& s, AudioEngine* e)
     registerCompositionTools(s, e);
     registerArrangerTools(s, e);
     registerProjectSaveLoadTools(s, e);
+    registerModulationTools(s, e);
 }
 
 } // namespace mcp

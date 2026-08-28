@@ -34,6 +34,7 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e);
 void registerAudioReadTools(McpServer& s, AudioEngine* e);
 void registerFxTools(McpServer& s, AudioEngine* e);
 void registerMidiFxTools(McpServer& s, AudioEngine* e);
+void registerModulationTools(McpServer& s, AudioEngine* e);
 void registerAutomationTools(McpServer& s, AudioEngine* e);
 void registerSendTools(McpServer& s, AudioEngine* e);
 void registerEnvelopeTools(McpServer& s, AudioEngine* e);

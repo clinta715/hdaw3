@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
+#include "engine/MainAudioProcessor.h"
+#include "engine/Track.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
@@ -1464,6 +1466,128 @@ TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {
     QString txt = text(r);
     EXPECT_TRUE(txt.contains("clipId="));
     EXPECT_TRUE(txt.contains("notes="));
+}
+
+
+// ============================================================================
+// MODULATION (LFO) TOOLS - docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P1-1
+// ============================================================================
+
+// add_lfo / set_lfo_param / list_lfos / remove_lfo end-to-end through the MCP
+// surface: defaults, per-param reflection, error rejection on bad param name
+// and out-of-range indices (the commands no-op silently - Gate 9 says the MCP
+// layer must reject), and remove-to-empty lifecycle.
+TEST_F(McpCoverageTest, AddLfoLifecycle) {
+    // The four tools are registered with descriptions (G1).
+    QStringList toolNames;
+    for (const auto& t : toolList())
+        toolNames << t.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("add_lfo"));
+    EXPECT_TRUE(toolNames.contains("set_lfo_param"));
+    EXPECT_TRUE(toolNames.contains("list_lfos"));
+    EXPECT_TRUE(toolNames.contains("remove_lfo"));
+
+    // add_lfo -> returns {lfoIndex} (0-based list size BEFORE the append).
+    auto addR = call("add_lfo", {{"trackId", 0}});
+    EXPECT_FALSE(isError(addR)) << text(addR).toStdString();
+    auto addObj = QJsonDocument::fromJson(text(addR).toUtf8()).object();
+    EXPECT_EQ(addObj.value("lfoIndex").toInt(), 0);
+
+    // list_lfos shows the engine defaults.
+    auto list1 = QJsonDocument::fromJson(
+        callText("list_lfos", {{"trackId", 0}}).toString().toUtf8()).array();
+    ASSERT_EQ(list1.size(), 1);
+    auto lfo = list1[0].toObject();
+    EXPECT_EQ(lfo.value("index").toInt(), 0);
+    EXPECT_EQ(lfo.value("name").toString().toStdString(), "LFO 1");
+    EXPECT_EQ(lfo.value("waveform").toInt(), 0);
+    EXPECT_NEAR(lfo.value("rate").toDouble(), 1.0, 1e-9);
+    EXPECT_TRUE(lfo.value("rateSync").toBool());
+    EXPECT_NEAR(lfo.value("depth").toDouble(), 0.3, 1e-9);
+    EXPECT_FALSE(lfo.value("bipolar").toBool());
+    EXPECT_NEAR(lfo.value("phaseOffset").toDouble(), 0.0, 1e-9);
+    EXPECT_EQ(lfo.value("targetParamID").toInt(), 1);
+    EXPECT_TRUE(lfo.value("enabled").toBool());
+
+    // A second add_lfo appends at index 1 (defaults, name "LFO 2").
+    auto addR2 = call("add_lfo", {{"trackId", 0}});
+    EXPECT_FALSE(isError(addR2)) << text(addR2).toStdString();
+    auto addObj2 = QJsonDocument::fromJson(text(addR2).toUtf8()).object();
+    EXPECT_EQ(addObj2.value("lfoIndex").toInt(), 1);
+
+    // set_lfo_param: every supported param is reflected by list_lfos.
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "waveform"}, {"value", 2.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "rate"}, {"value", 4.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "rateSync"}, {"value", 0.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "depth"}, {"value", 0.75}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "bipolar"}, {"value", 1.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "phaseOffset"}, {"value", 90.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "targetParamID"}, {"value", 3.0}})));
+    EXPECT_FALSE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 1}, {"param", "enabled"}, {"value", 0.0}})));
+
+    auto list2 = QJsonDocument::fromJson(
+        callText("list_lfos", {{"trackId", 0}}).toString().toUtf8()).array();
+    ASSERT_EQ(list2.size(), 2);
+    auto lfo1 = list2[1].toObject();
+    EXPECT_EQ(lfo1.value("waveform").toInt(), 2);
+    EXPECT_NEAR(lfo1.value("rate").toDouble(), 4.0, 1e-9);
+    EXPECT_FALSE(lfo1.value("rateSync").toBool());
+    EXPECT_NEAR(lfo1.value("depth").toDouble(), 0.75, 1e-9);
+    EXPECT_TRUE(lfo1.value("bipolar").toBool());
+    EXPECT_NEAR(lfo1.value("phaseOffset").toDouble(), 90.0, 1e-9);
+    EXPECT_EQ(lfo1.value("targetParamID").toInt(), 3);
+    EXPECT_FALSE(lfo1.value("enabled").toBool());
+    // The untouched first LFO still carries defaults.
+    auto lfo0 = list2[0].toObject();
+    EXPECT_EQ(lfo0.value("waveform").toInt(), 0);
+    EXPECT_EQ(lfo0.value("targetParamID").toInt(), 1);
+
+    // Gate 9: unknown param and out-of-range indices are errors, never no-ops.
+    EXPECT_TRUE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 0}, {"param", "bogus"}, {"value", 1.0}})));
+    EXPECT_TRUE(isError(call("set_lfo_param", {{"trackId", 99}, {"lfoIndex", 0}, {"param", "rate"}, {"value", 2.0}})));
+    EXPECT_TRUE(isError(call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 9}, {"param", "rate"}, {"value", 2.0}})));
+    EXPECT_TRUE(isError(call("remove_lfo", {{"trackId", 0}, {"lfoIndex", 9}})));
+    EXPECT_TRUE(isError(call("remove_lfo", {{"trackId", 99}, {"lfoIndex", 0}})));
+    EXPECT_TRUE(isError(call("add_lfo", {{"trackId", 99}})));
+    EXPECT_TRUE(isError(call("list_lfos", {{"trackId", 99}})));
+
+    // remove_lfo -> list empty.
+    EXPECT_FALSE(isError(call("remove_lfo", {{"trackId", 0}, {"lfoIndex", 0}})));
+    EXPECT_FALSE(isError(call("remove_lfo", {{"trackId", 0}, {"lfoIndex", 0}})));
+    auto list3 = QJsonDocument::fromJson(
+        callText("list_lfos", {{"trackId", 0}}).toString().toUtf8()).array();
+    EXPECT_EQ(list3.size(), 0);
+}
+
+// Gate 1/10: LFOs created via MCP must survive a full routing rebuild on the
+// LIVE processor (ReadModel-only is NOT sufficient - RoutingManager::addTrack
+// restores modulation from MODULATION_LIST on every rebuild, Track.cpp:248).
+// Mirrors the envelope_generation/audio_pool_dedup rebuild pattern:
+// rebuildRoutingGraph + drainPendingRoutingRebuild.
+TEST_F(McpCoverageTest, AddLfoSurvivesRoutingRebuild) {
+    auto addR = call("add_lfo", {{"trackId", 0}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    auto setR = call("set_lfo_param", {{"trackId", 0}, {"lfoIndex", 0}, {"param", "targetParamID"}, {"value", 3.0}});
+    ASSERT_FALSE(isError(setR)) << text(setR).toStdString();
+
+    // Settle any coalesced async routing work, then force a full rebuild.
+    engine->drainPendingRoutingRebuild();
+    engine->getMainProcessor()->rebuildRoutingGraph();
+    engine->drainPendingRoutingRebuild();
+
+    // LIVE processor assertion: the rebuilt Track still owns the LFO source
+    // with its targetParamID.
+    auto* track = engine->getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->getNumModulations(), 1);
+    EXPECT_EQ(track->getModulationSourceParamID(0), 3);
+
+    // ReadModel agrees (parity check, not the primary Gate 1/10 evidence).
+    auto list = QJsonDocument::fromJson(
+        callText("list_lfos", {{"trackId", 0}}).toString().toUtf8()).array();
+    ASSERT_EQ(list.size(), 1);
+    EXPECT_EQ(list[0].toObject().value("targetParamID").toInt(), 3);
+    EXPECT_EQ(list[0].toObject().value("waveform").toInt(), 0);
 }
 
 } // namespace

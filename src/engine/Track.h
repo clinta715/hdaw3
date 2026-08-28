@@ -69,6 +69,8 @@ public:
     AutomationManager& getAutomation(int index) { return *automationManagers[index]; }
     int getNumAutomations() const { return static_cast<int>(automationManagers.size()); }
     int getNumModulations() const { return modulationManager ? modulationManager->getNumSources() : 0; }
+    // Target paramID of the live modulation source at index (see ModulationManager::getSourceParamID); -1 when absent. Live-processor probe for the rebuild-restore test discipline (Gate 1/10).
+    int getModulationSourceParamID(int index) const { return modulationManager ? modulationManager->getSourceParamID(index) : -1; }
 
     void setPluginManager(PluginManager* pm) { pluginManager = pm; }
     PluginManager* getPluginManager() const { return pluginManager; }

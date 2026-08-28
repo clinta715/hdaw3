@@ -254,6 +254,13 @@ void RoutingManager::addTrack(int trackIndex, juce::ValueTree trackTree)
     trackProcessors[trackIndex]->setAutomationTrees(
         trackTree.getChildWithName(IDs::AUTOMATION_LIST));
 
+    // Restore the LFO/modulation sources from the tree on every rebuild -
+    // a fresh Track starts with an empty ModulationManager. Without this, a
+    // full rebuildRoutingGraph() silently drops every LFO (Gate 1/10: the
+    // live processor must match the tree; the ReadModel alone is not enough).
+    trackProcessors[trackIndex]->rebuildModulation(
+        trackTree.getChildWithName(IDs::MODULATION_LIST));
+
     // Build the in-memory FX chain from the project model so the saved
     // plugin state (base64 in IDs::pluginState) is reapplied. This is
     // what makes plugin state save/load actually work end-to-end: a
