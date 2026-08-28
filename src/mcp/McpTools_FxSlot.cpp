@@ -23,10 +23,10 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,sampler,fm_synth}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,sampler,fm_synth}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","sampler","fm_synth"}}}},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","sampler","fm_synth"}}}},
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "fx",
@@ -90,7 +90,7 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, sampler).",
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, sampler).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         "fx",
@@ -138,7 +138,7 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, sampler).",
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, sampler).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -179,7 +179,7 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, and sampler.",
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, and sampler.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -194,6 +194,12 @@ s.registerTool({"set_internal_fx_param",
             if (fxSlots[si].fxType == "plugin" || fxSlots[si].fxType == "none")
                 return McpToolResult::text("slot is not an internal FX", true);
             int pi = a.value("paramIndex").toInt();
+            // Gate 9: validate against the type's real-unit defs table — an
+            // out-of-range index must be an error, never a stray param_N
+            // property write (existing set_fx_param behavior).
+            auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+            if (pi < 0 || pi >= static_cast<int>(defs.size()))
+                return McpToolResult::text("param index out of range", true);
             float v = static_cast<float>(a.value("value").toDouble());
             e->getProjectCommands().setFxSlotParam(ti, si, pi, v);
             return McpToolResult::text("ok");

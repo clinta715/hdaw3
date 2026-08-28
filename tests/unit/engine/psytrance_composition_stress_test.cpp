@@ -3,9 +3,14 @@
 #include "engine/MainAudioProcessor.h"
 #include "engine/ExportManager.h"
 #include "engine/AudioEngineCommands.h"
+#include "engine/ProjectSerializer.h"
+#include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_dsp/juce_dsp.h>
 #include <algorithm>
+#include <cmath>
+#include <iostream>
 #include <vector>
 
 // §3-context stress with the NEW psytrance packs (E:\samples, indexed
@@ -57,6 +62,52 @@ static std::vector<std::pair<juce::String, juce::String>> loadSelection(int skip
     }
     return out;
 }
+
+// P1-2 analysis helper (2026-08-29): band-limited (2k-8k) energy of channel 0
+// in dB. 4096-point FFT; bin k covers k*sr/N Hz; magnitudes come from
+// performFrequencyOnlyForwardTransform (first N/2+1 entries valid). Used by
+// the filter tests to prove a lowpass really attenuates the high band.
+static double bandEnergyDb(const juce::AudioBuffer<float>& buf, double sr)
+{
+    constexpr int order = 12;
+    const int n = 1 << order; // 4096
+    juce::dsp::FFT fft(order);
+    std::vector<float> data(static_cast<size_t>(2 * n), 0.0f);
+    const float* src = buf.getReadPointer(0);
+    const int m = std::min(n, buf.getNumSamples());
+    for (int i = 0; i < m; ++i)
+        data[static_cast<size_t>(i)] = src[i];
+    fft.performFrequencyOnlyForwardTransform(data.data(), true);
+    const double binHz = sr / n;
+    const int k0 = static_cast<int>(std::ceil(2000.0 / binHz));
+    const int k1 = std::min(static_cast<int>(std::floor(8000.0 / binHz)), n / 2);
+    double energy = 0.0;
+    for (int k = k0; k <= k1; ++k)
+    {
+        const double mag = data[static_cast<size_t>(k)];
+        energy += mag * mag;
+    }
+    return 10.0 * std::log10(energy + 1e-12);
+}
+
+// Static playhead for Track::processBlock automation reads (P1-2 G3): reports
+// a fixed time so the automation lane value at that time is deterministic.
+class FixedPlayHead : public juce::AudioPlayHead
+{
+public:
+    void setTimeSeconds(double s) { seconds_ = s; }
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setIsPlaying(true);
+        info.setTimeInSeconds(seconds_);
+        info.setTimeInSamples(static_cast<juce::int64>(seconds_ * 48000.0));
+        info.setBpm(120.0);
+        return info;
+    }
+private:
+    double seconds_ = 0.0;
+};
 
 } // namespace
 
@@ -983,6 +1034,194 @@ TEST(InternalFx, EqDefaultGainPassesAudio)
     slot.process(buf, midi);
     // Default EQ (0 dB gain) must pass audio, not zero it.
     EXPECT_GT(buf.getMagnitude(0, 0, 512), 0.05f);
+}
+
+// P1-2 (plan 2026-08-29): HONEST filter sweeps. The internal "filter" type is
+// a state-variable low/high/bandpass whose Cutoff attenuates a band — unlike
+// the "eq" peak filter, whose Frequency param moves a boost/cut centre and
+// leaves the band loud (measured trap, handoff B3). G2: a lowpass @ 200 Hz
+// must attenuate the 2k-8k band >= 12 dB vs the SAME slot at 20 kHz, AFTER a
+// real full routing rebuild (Gate 1/10: the tree-restored slot must exist and
+// process identically).
+TEST(InternalFx, FilterLowpassAttenuatesAboveCutoff)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Command layer: add + set REAL-unit params (Cutoff=200 Hz, Mode=lowpass,
+    // Resonance=0.7).
+    cmds.addFxSlot(0, "filter");
+    cmds.setFxSlotParam(0, 0, 0, 200.0f);
+    cmds.setFxSlotParam(0, 0, 1, 0.0f);
+    cmds.setFxSlotParam(0, 0, 2, 0.7f);
+
+    // Gate 1/10: a REAL rebuild must re-create the filter from the tree
+    // (Track::rebuildFXChain -> TrackFXSlot("filter") -> loadParamsFromTree)
+    // and restore the params onto the LIVE slot.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at(0).get();
+    ASSERT_EQ(slot->getType().toStdString(), "filter");
+    const auto restored = slot->getInternalParamValues();
+    ASSERT_GE(restored.size(), 3u);
+    EXPECT_NEAR(restored[0], 200.0f, 0.01f);
+    EXPECT_NEAR(restored[1], 0.0f, 0.01f);
+    EXPECT_NEAR(restored[2], 0.7f, 0.01f);
+
+    // Mixed test signal: 200 Hz (below cutoff, passes) + 4 kHz (above, cut).
+    constexpr double sr = 48000.0;
+    constexpr int n = 4096;
+    juce::AudioBuffer<float> input(2, n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(sr);
+        const float v = 0.5f * std::sin(juce::MathConstants<float>::twoPi * 200.0f * t)
+                      + 0.5f * std::sin(juce::MathConstants<float>::twoPi * 4000.0f * t);
+        input.setSample(0, i, v);
+        input.setSample(1, i, v);
+    }
+    juce::MidiBuffer midi;
+    const double openDb = bandEnergyDb(input, sr); // unfiltered reference
+
+    // Cutoff 200: the 2k-8k band must be strongly attenuated.
+    juce::AudioBuffer<float> lowOut(input);
+    slot->reset();
+    slot->process(lowOut, midi);
+    const double lowDb = bandEnergyDb(lowOut, sr);
+
+    // Cutoff 20000 (live param update on the SAME restored slot).
+    cmds.setFxSlotParam(0, 0, 0, 20000.0f);
+    juce::AudioBuffer<float> highOut(input);
+    slot->reset();
+    slot->process(highOut, midi);
+    const double highDb = bandEnergyDb(highOut, sr);
+
+    std::cout << "FilterLowpass: 2k-8k band open=" << openDb
+              << " cut200=" << lowDb << " cut20k=" << highDb
+              << " dB (diff=" << (highDb - lowDb) << ")" << std::endl;
+    EXPECT_GE(highDb - lowDb, 12.0) << "lowpass must attenuate the band >= 12 dB";
+    EXPECT_LT(lowDb, openDb - 12.0) << "cut 200 must differ from the open band";
+    // Fidelity (lesson 8): a wide-open filter must not ADD band energy.
+    EXPECT_LE(std::abs(highDb - openDb), 3.0) << "wide-open lowpass altered the band";
+}
+
+// P1-2 G3: an automation lane on filter slot 0 param 0 (paramID
+// 100 + slot*100 + 0, values normalized 0..1) drives the DSP end-to-end:
+// Track::processBlock reads the lane value at the playhead time and calls
+// TrackFXSlot::setAutomationParam -> denormalize -> applyInternalParamToDsp
+// -> the live TPT filter. LOW value (20 Hz cutoff) must attenuate the high
+// band; HIGH value (~20 kHz cutoff) must pass it.
+TEST(InternalFx, FilterCutoffAutomationSweeps)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addFxSlot(0, "filter");        // slot 0 on track 0
+    cmds.setFxSlotParam(0, 0, 1, 0.0f); // Mode = lowpass
+
+    // Lane bound to paramID 100 (FX slot 0, param 0 = Cutoff).
+    ASSERT_TRUE(cmds.addAutomationLane(0, "FilterCutoff", 100));
+    cmds.addAutomationPoint(0, "FilterCutoff", 0.0, 0.0f);  // 0 s -> 20 Hz
+    cmds.addAutomationPoint(0, "FilterCutoff", 16.0, 1.0f); // 8 s @120 BPM -> 20 kHz
+
+    // Gate 1/10: automation + FX survive a full routing rebuild.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+
+    FixedPlayHead ph;
+    track->setPlayHead(&ph);
+
+    constexpr double sr = 48000.0;
+    constexpr int n = 4096;
+    juce::AudioBuffer<float> input(2, n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(sr);
+        const float v = 0.5f * std::sin(juce::MathConstants<float>::twoPi * 200.0f * t)
+                      + 0.5f * std::sin(juce::MathConstants<float>::twoPi * 4000.0f * t);
+        input.setSample(0, i, v);
+        input.setSample(1, i, v);
+    }
+    juce::MidiBuffer midi;
+
+    // Warm-up pass at each position settles the IIR state; the measured pass
+    // uses a fresh input copy so both measurements see identical material.
+    auto renderAt = [&](double seconds) {
+        ph.setTimeSeconds(seconds);
+        juce::AudioBuffer<float> warm(input);
+        track->processBlock(warm, midi);
+        juce::AudioBuffer<float> out(input);
+        track->processBlock(out, midi);
+        return bandEnergyDb(out, sr);
+    };
+
+    const double lowDb = renderAt(0.0);   // lane value 0.0 -> cutoff 20 Hz
+    const double highDb = renderAt(10.0); // lane value 1.0 -> cutoff ~20 kHz
+
+    std::cout << "FilterSweep: low=" << lowDb << " high=" << highDb
+              << " dB (diff=" << (highDb - lowDb) << ")" << std::endl;
+    EXPECT_GE(highDb - lowDb, 12.0) << "automated cutoff must sweep the band >= 12 dB";
+}
+
+// P1-2 Gate 1/10 (save/load leg): fxType "filter" + its real-unit param_N
+// properties round-trip through the project XML, and the factory that
+// Track::rebuildFXChain uses for internal FX (TrackFXSlot(type) +
+// loadParamsFromTree) parses the loaded tree back into a working slot.
+TEST(InternalFx, FilterTypeRoundTripsProjectXml)
+{
+    ProjectModel model;
+    model.createDefaultProject();
+    auto& um = model.getUndoManager();
+    auto fxChain = model.getTrackListTree().getChild(0).getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChain.isValid());
+
+    juce::ValueTree slot(IDs::FX_SLOT);
+    slot.setProperty(IDs::fxType, juce::String("filter"), &um);
+    slot.setProperty(IDs::bypassed, false, &um);
+    slot.setProperty(juce::Identifier("param_0"), 350.0, &um);
+    slot.setProperty(juce::Identifier("param_1"), 1.0, &um);
+    slot.setProperty(juce::Identifier("param_2"), 0.9, &um);
+    fxChain.addChild(slot, -1, &um);
+
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getChildFile("hdaw_filter_roundtrip.hdap");
+    f.deleteFile();
+    ASSERT_TRUE(HDAW::ProjectSerializer::save(model, f));
+    ASSERT_TRUE(f.existsAsFile());
+
+    ProjectModel loaded;
+    ASSERT_TRUE(HDAW::ProjectSerializer::load(loaded, f));
+    auto loadedSlot = loaded.getTrackListTree().getChild(0)
+                          .getChildWithName(IDs::FX_CHAIN).getChild(0);
+    ASSERT_TRUE(loadedSlot.isValid());
+    EXPECT_EQ(loadedSlot.getProperty(IDs::fxType).toString().toStdString(), "filter");
+    EXPECT_DOUBLE_EQ(static_cast<double>(loadedSlot.getProperty(juce::Identifier("param_0"))), 350.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(loadedSlot.getProperty(juce::Identifier("param_1"))), 1.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(loadedSlot.getProperty(juce::Identifier("param_2"))), 0.9);
+
+    // Factory parses the loaded type (the exact construction
+    // Track::rebuildFXChain performs for internal FX).
+    HDAW::TrackFXSlot slot2("filter");
+    slot2.prepare({ 48000.0, 512, 2 });
+    slot2.loadParamsFromTree(loadedSlot);
+    auto vals = slot2.getInternalParamValues();
+    ASSERT_GE(vals.size(), 3u);
+    EXPECT_NEAR(vals[0], 350.0f, 0.01f);
+    EXPECT_NEAR(vals[1], 1.0f, 0.01f);
+    EXPECT_NEAR(vals[2], 0.9f, 0.01f);
+    f.deleteFile();
 }
 
 

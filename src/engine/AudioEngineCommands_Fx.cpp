@@ -36,6 +36,7 @@ void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
         case 4: typeStr = "chorus"; break;
         case 5: typeStr = "flanger"; break;
         case 6: typeStr = "phaser"; break;
+        case 7: typeStr = "filter"; break;
         default: typeStr = "plugin"; break;
     }
 

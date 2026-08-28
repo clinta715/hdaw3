@@ -1590,4 +1590,56 @@ TEST_F(McpCoverageTest, AddLfoSurvivesRoutingRebuild) {
     EXPECT_EQ(list[0].toObject().value("waveform").toInt(), 0);
 }
 
+// P1-2 (2026-08-29): internal "filter" FX — add_fx -> list_fx_params in REAL
+// units -> set_internal_fx_param; the slot survives a full routing rebuild
+// with its params restored on the LIVE processor (Gate 1/10, MCP surface).
+TEST_F(McpCoverageTest, FilterFxParamsRealUnitsAndRebuildSurvival) {
+    auto addR = call("add_fx", {{"trackId", 0}, {"fxType", "filter"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+
+    // list_fx_params: 3 params in real units.
+    auto listObj = QJsonDocument::fromJson(
+        callText("list_fx_params", {{"trackId", 0}, {"slotIndex", 0}}).toString().toUtf8()).object();
+    auto params = listObj.value("params").toArray();
+    ASSERT_EQ(params.size(), 3);
+    EXPECT_EQ(params.at(0).toObject().value("name").toString().toStdString(), "Cutoff");
+    EXPECT_EQ(params.at(0).toObject().value("minValue").toDouble(), 20.0);
+    EXPECT_EQ(params.at(0).toObject().value("maxValue").toDouble(), 20000.0);
+    EXPECT_EQ(params.at(0).toObject().value("paramID").toInt(), 100);
+    EXPECT_EQ(params.at(1).toObject().value("name").toString().toStdString(), "Mode");
+    EXPECT_EQ(params.at(1).toObject().value("maxValue").toDouble(), 2.0);
+    EXPECT_EQ(params.at(1).toObject().value("paramID").toInt(), 101);
+    EXPECT_EQ(params.at(2).toObject().value("name").toString().toStdString(), "Resonance");
+    EXPECT_NEAR(params.at(2).toObject().value("minValue").toDouble(), 0.1, 1e-6);
+    EXPECT_EQ(params.at(2).toObject().value("maxValue").toDouble(), 10.0);
+    EXPECT_EQ(params.at(2).toObject().value("paramID").toInt(), 102);
+
+    // set_internal_fx_param (real units).
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 0}, {"value", 250.0}})));
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 1}, {"value", 1.0}})));
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 2}, {"value", 1.5}})));
+
+    // Gate 1/10: full rebuild; the LIVE slot keeps the type + restored params.
+    engine->drainPendingRoutingRebuild();
+    engine->getMainProcessor()->rebuildRoutingGraph();
+    engine->drainPendingRoutingRebuild();
+    auto* track = engine->getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at(0).get();
+    EXPECT_EQ(slot->getType().toStdString(), "filter");
+    auto vals = slot->getInternalParamValues();
+    ASSERT_GE(vals.size(), 3u);
+    EXPECT_NEAR(vals[0], 250.0f, 0.01f);
+    EXPECT_NEAR(vals[1], 1.0f, 0.01f);
+    EXPECT_NEAR(vals[2], 1.5f, 0.01f);
+
+    // ReadModel parity (real units).
+    auto rp = engine->getReadModel().getInternalFxParams(0, 0);
+    ASSERT_EQ(rp.size(), 3u);
+    EXPECT_NEAR(rp[0].value, 250.0f, 0.01f);
+    EXPECT_NEAR(rp[1].value, 1.0f, 0.01f);
+    EXPECT_NEAR(rp[2].value, 1.5f, 0.01f);
+}
+
 } // namespace

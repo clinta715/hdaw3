@@ -332,6 +332,99 @@ TEST(McpServer, FxAddRemoveBypass) {
     s.setTransport(nullptr);
 }
 
+// P1-2 (plan 2026-08-29) G1: the internal "filter" FX type is addable via
+// MCP, list_fx_params exposes its 3 params in REAL units (Cutoff Hz, Mode
+// enum 0..2, Resonance Q), and set_internal_fx_param writes each to the tree
+// + read model. Gate 9: out-of-range internal param is an error.
+TEST(McpServer, AddFilterFxAndSetParams) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    // add_fx {fxType:"filter"} -> ok; a live slot of type "filter" exists.
+    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"filter"})");
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(isError(r));
+    EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
+    auto* tr0 = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(tr0, nullptr);
+    ASSERT_EQ(tr0->getNumFXSlots(), 1);
+    EXPECT_EQ(tr0->getFXChain().at(0)->getType().toStdString(), std::string("filter"));
+
+    // list_fx_params -> 3 defs with REAL-unit ranges.
+    r = callTool(2, "list_fx_params", R"({"trackId":0,"slotIndex":0})");
+    EXPECT_FALSE(r.value("error").isObject());
+    auto params = QJsonDocument::fromJson(text(r).toUtf8())
+                      .object().value("params").toArray();
+    ASSERT_EQ(params.size(), 3);
+    const QJsonObject p0 = params.at(0).toObject();
+    EXPECT_EQ(p0.value("name").toString().toStdString(), "Cutoff");
+    EXPECT_EQ(p0.value("minValue").toDouble(), 20.0);
+    EXPECT_EQ(p0.value("maxValue").toDouble(), 20000.0);
+    EXPECT_EQ(p0.value("defaultValue").toDouble(), 1000.0);
+    EXPECT_EQ(p0.value("paramID").toInt(), 100);
+    const QJsonObject p1 = params.at(1).toObject();
+    EXPECT_EQ(p1.value("name").toString().toStdString(), "Mode");
+    EXPECT_EQ(p1.value("minValue").toDouble(), 0.0);
+    EXPECT_EQ(p1.value("maxValue").toDouble(), 2.0);
+    EXPECT_EQ(p1.value("paramID").toInt(), 101);
+    const QJsonObject p2 = params.at(2).toObject();
+    EXPECT_EQ(p2.value("name").toString().toStdString(), "Resonance");
+    EXPECT_NEAR(p2.value("minValue").toDouble(), 0.1, 1e-6);
+    EXPECT_EQ(p2.value("maxValue").toDouble(), 10.0);
+    EXPECT_NEAR(p2.value("defaultValue").toDouble(), 0.7, 1e-6);
+    EXPECT_EQ(p2.value("paramID").toInt(), 102);
+
+    // set_internal_fx_param (REAL units): Cutoff 400, Mode bandpass, Res 3.5.
+    r = callTool(3, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":0,"value":400})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(4, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":1,"value":2})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(5, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":2,"value":3.5})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Read model agrees (real units).
+    auto snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    ASSERT_EQ(snaps.size(), 3u);
+    EXPECT_NEAR(snaps[0].value, 400.0f, 0.01f);
+    EXPECT_NEAR(snaps[1].value, 2.0f, 0.01f);
+    EXPECT_NEAR(snaps[2].value, 3.5f, 0.01f);
+    // Tree round-trip: param_N properties persisted for save/load.
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_0"))), 400.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_1"))), 2.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_2"))), 3.5);
+
+    // Gate 9: out-of-range internal param is an error, not a silent no-op.
+    r = callTool(6, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":9,"value":1})");
+    EXPECT_TRUE(isError(r));
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 TEST(McpServer, SetFaderAuthoritativeDisablesVolumeAutomation) {
     AudioEngine engine;
     engine.initialize();

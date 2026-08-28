@@ -81,6 +81,16 @@ public:
                 { 3, "Feedback",         0.0f,   -1.0f,    1.0f     },
                 { 4, "Mix",              0.5f,    0.0f,    1.0f     },
             };
+        // State-variable filter (lowpass/highpass/bandpass) with an automatable
+        // Cutoff — the honest filter sweep for generation scripts (plan
+        // 2026-08-29 P1-2). Param 1 is an int enum: 0=lowpass, 1=highpass,
+        // 2=bandpass. Automation of Mode is rounded to the nearest enum value.
+        if (type == "filter")
+            return {
+                { 0, "Cutoff",    1000.0f,   20.0f, 20000.0f },
+                { 1, "Mode",         0.0f,    0.0f,     2.0f },
+                { 2, "Resonance",    0.7f,    0.1f,    10.0f },
+            };
         if (type == "sampler")
             return {
                 { 0, "Attack",      0.005f,  0.0f,   5.0f  },
@@ -144,6 +154,8 @@ public:
             activeType = ActiveType::Flanger;
         else if (type == "phaser")
             activeType = ActiveType::Phaser;
+        else if (type == "filter")
+            activeType = ActiveType::Filter;
         else if (type == "sampler")
             activeType = ActiveType::Sampler;
         else if (type == "fm_synth")
@@ -407,6 +419,13 @@ public:
                 if (internalParamValues.size() > 4) phaserDsp->setMix(internalParamValues[4]);
                 break;
             }
+            case ActiveType::Filter:
+            {
+                filter = std::make_unique<juce::dsp::StateVariableTPTFilter<float>>();
+                filter->prepare(spec);
+                applyFilterParamsFromValues();
+                break;
+            }
             case ActiveType::Sampler:
             {
                 if (!sampler)
@@ -561,6 +580,7 @@ public:
             }
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
             case ActiveType::Compressor:  if (comp)   comp->process(context);    break;
+            case ActiveType::Filter:      if (filter) filter->process(context);  break;
             case ActiveType::Chorus:
             case ActiveType::Flanger:     if (chorusDsp) chorusDsp->process(context); break;
             case ActiveType::Phaser:      if (phaserDsp) phaserDsp->process(context); break;
@@ -581,6 +601,7 @@ public:
         if (comp)      comp->reset();
         if (chorusDsp) chorusDsp->reset();
         if (phaserDsp) phaserDsp->reset();
+        if (filter)    filter->reset();
         if (fmSynth)   fmSynth->prepare(sampleRate_, 0);
         // Sampler voices stop on sound swap; no explicit reset needed.
     }
@@ -807,7 +828,7 @@ public:
     FmSynthEngine* fmSynthEngine() { return fmSynth.get(); }
 
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Plugin, Sampler, FmSynth };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -828,6 +849,7 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
+    std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>> filter;
     std::unique_ptr<SamplerEngine> sampler;
     std::unique_ptr<FmSynthEngine> fmSynth;
 
@@ -957,6 +979,24 @@ private:
                 }
                 break;
             }
+            case ActiveType::Filter:
+            {
+                if (!filter) return;
+                // Mode is an int enum (0=lowpass, 1=highpass, 2=bandpass).
+                // Round fractional automation/command values and store the
+                // rounded result so reads report what the DSP actually runs.
+                if (paramIndex == 1 && value >= 0.0f && value <= 2.0f)
+                {
+                    const float rounded = static_cast<float>(juce::roundToInt(value));
+                    internalParamValues[static_cast<size_t>(paramIndex)] = rounded;
+                    value = rounded;
+                }
+                // Reconfigure all three filter coefficients from the stored
+                // values on ANY param change (mirrors the EQ path: the
+                // coefficients depend on all params).
+                applyFilterParamsFromValues();
+                break;
+            }
             case ActiveType::Sampler:
             {
                 if (! sampler) return;
@@ -1002,6 +1042,27 @@ private:
             default:
                 break;
         }
+    }
+
+    // Reconfigure the state-variable filter from stored internalParamValues.
+    // Cutoff is clamped just below Nyquist (the TPT filter's cutoff setter
+    // asserts frequency < sampleRate/2) and kept >= 1 Hz, so a 20 kHz cutoff
+    // never trips the assert at low sample rates.
+    void applyFilterParamsFromValues()
+    {
+        if (!filter) return;
+        const float cutoff = (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f;
+        const float mode   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.0f;
+        const float res    = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.7f;
+        const int m = juce::jlimit(0, 2, juce::roundToInt(mode));
+        const float sr = static_cast<float>(sampleRate_);
+        const float maxCut = std::max(1.0f, sr * 0.49f);
+        const float freq = juce::jlimit(1.0f, maxCut, cutoff);
+        filter->setType(m == 0 ? juce::dsp::StateVariableTPTFilterType::lowpass
+                      : m == 1 ? juce::dsp::StateVariableTPTFilterType::highpass
+                               : juce::dsp::StateVariableTPTFilterType::bandpass);
+        filter->setCutoffFrequency(freq);
+        filter->setResonance(res);
     }
 
     void rebuildParamCache()
