@@ -838,6 +838,141 @@ TEST_F(FileLibraryTest, SidecarMtimeBumpTriggersRescan) {
     EXPECT_EQ(byTag[0].name, "kick.wav");
 }
 
+// B2 regression: copied packs can carry FUTURE-dated audio mtimes (observed
+// 2027-12-29) while sidecars written at analysis time are OLDER. The old reuse
+// predicate only rescanned when the sidecar was NEWER than the audio, so the
+// entry was reused without tags forever.
+TEST_F(FileLibraryTest, FutureMtimeAudioWithOlderSidecarIngestsTags) {
+    auto audioDir = tempDir.getChildFile("future_mtime_sidecar");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("future.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+
+    // Future-dated audio mtime (2036): the sidecar written later at analysis
+    // time is guaranteed to be OLDER than the audio, so the sidecar-newer
+    // rescan path can never fire.
+    const juce::int64 futureMillis = juce::Time(2036, 1, 1, 0, 0, 0, 0, true).toMilliseconds();
+    ASSERT_TRUE(wavFile.setLastModificationTime(juce::Time(futureMillis)));
+
+    auto sidecar = audioDir.getChildFile("future.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"future mtime pad\",\"prose\":\"A pad file carrying a future-dated mtime.\","
+        "\"captions\":[[\"pad\",0.9]],\"tags\":[[\"future\",0.9],[\"mtime\",0.8]]}");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Future Mtime", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].name, "future.wav");
+    EXPECT_TRUE(results[0].tags.contains("future mtime pad"))
+        << "sidecar tags must be ingested even when the audio mtime is newer than the sidecar's";
+    EXPECT_EQ(results[0].description, "A pad file carrying a future-dated mtime.");
+
+    // Direct entry access exposes the same sidecar data.
+    auto entry = mgr.getEntry(id, wavFile.getFullPathName());
+    EXPECT_TRUE(entry.tags.contains("future mtime pad"));
+
+    // Second incremental scan: audio unchanged, sidecar exists but is not
+    // newer — the entry already carries the data, so reuse keeps the tags.
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "second scan did not complete in time";
+    auto after = mgr.search("");
+    ASSERT_EQ(after.size(), 1u);
+    EXPECT_TRUE(after[0].tags.contains("future mtime pad"));
+}
+
+// B2 regression: a library scanned BEFORE analysis ran holds entries with no
+// tags; the sidecar added later has an mtime that is not newer than the
+// (future-dated) audio — the incremental scan must still re-ingest it.
+TEST_F(FileLibraryTest, SidecarAddedAfterScanWithOlderMtimeIngestedOnSecondScan) {
+    auto audioDir = tempDir.getChildFile("late_sidecar");
+    audioDir.createDirectory();
+    auto wavFile = audioDir.getChildFile("late.wav");
+
+    {
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release(); // writer takes ownership
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+
+    // Future-dated audio mtime — even a sidecar written LATER is older.
+    const juce::int64 futureMillis = juce::Time(2036, 1, 1, 0, 0, 0, 0, true).toMilliseconds();
+    ASSERT_TRUE(wavFile.setLastModificationTime(juce::Time(futureMillis)));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Late Sidecar", audioDir.getFullPathName(), "audio");
+
+    // Scan 1: BEFORE the sidecar exists — the entry lands without tags.
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+    auto before = mgr.search("");
+    ASSERT_EQ(before.size(), 1u);
+    EXPECT_TRUE(before[0].tags.isEmpty());
+
+    // Analysis runs later; pin the sidecar mtime to the AUDIO mtime (worst
+    // case: equal, not newer) so the fix cannot rely on mtime ordering.
+    auto sidecar = audioDir.getChildFile("late.wav.timbre.json");
+    sidecar.replaceWithText(
+        "{\"dsp_words\":\"late analysis pad\",\"prose\":\"A pad analyzed after the first scan.\","
+        "\"captions\":[[\"pad\",0.9]],\"tags\":[[\"late\",0.9],[\"analysis\",0.8]]}");
+    ASSERT_TRUE(sidecar.setLastModificationTime(juce::Time(futureMillis)));
+
+    // Scan 2: audio unchanged, sidecar exists but is NOT newer — the entry
+    // must still be rescanned and ingest the sidecar data.
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "second scan did not complete in time";
+
+    auto after = mgr.search("");
+    ASSERT_EQ(after.size(), 1u);
+    EXPECT_EQ(after[0].name, "late.wav");
+    EXPECT_TRUE(after[0].tags.contains("late analysis pad"))
+        << "sidecar added after the entry was scanned must be ingested even when not newer than the audio";
+    EXPECT_EQ(after[0].description, "A pad analyzed after the first scan.");
+    EXPECT_EQ(mgr.search("late analysis pad").size(), 1u);
+
+    // Scan 3: with the data now applied, the incremental scan reuses the entry
+    // (no churn) and keeps the tags.
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "third scan did not complete in time";
+    auto stable = mgr.search("");
+    ASSERT_EQ(stable.size(), 1u);
+    EXPECT_TRUE(stable[0].tags.contains("late analysis pad"));
+}
+
 TEST_F(FileLibraryTest, SidecarTagsPersistAcrossInstances) {
     auto audioDir = tempDir.getChildFile("sidecar_persist");
     audioDir.createDirectory();

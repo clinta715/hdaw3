@@ -470,6 +470,16 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
     }
 }
 
+// True when any TimbreLib sidecar-derived field is populated. Used to detect
+// entries that were scanned before a sidecar existed, or whose sidecar was
+// skipped because its mtime was not newer than the audio file's (e.g.
+// future-dated audio mtime on copied packs), so the incremental scan
+// re-ingests the missed sidecar.
+static bool entryHasTimbreData(const LibraryEntry& entry) {
+    return !entry.tags.isEmpty() || !entry.description.isEmpty()
+        || !entry.dspFeatures.empty();
+}
+
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
     if (!dir.isDirectory()) {
         juce::Logger::writeToLog("FileLibraryManager: directory not found: " + dir.getFullPathName());
@@ -531,17 +541,25 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
         if (it != existingByPath.end()) {
             const juce::int64 currentModifiedTime = file.getLastModificationTime().toMilliseconds();
             if (it->second.modifiedTime == currentModifiedTime) {
-                // Audio libraries: if the TimbreLib sidecar exists and its analysis
-                // is newer than the audio, the entry must be rescanned even though
-                // the audio itself is unchanged — otherwise tags/description go stale.
-                bool sidecarNewer = false;
+                // Audio libraries: a TimbreLib sidecar can require a rescan even
+                // though the audio itself is unchanged:
+                //  1. the sidecar is NEWER than the audio — its analysis was
+                //     refreshed, so tags/description must be re-ingested;
+                //  2. a sidecar EXISTS but the stored entry has none of its
+                //     data — the entry predates the sidecar, or the sidecar's
+                //     mtime is not newer than a future-dated audio mtime, so
+                //     the tags were skipped. Re-run to ingest them.
+                bool rescanForTimbre = false;
                 if (type == "audio") {
                     auto sidecar = juce::File(filePath + ".timbre.json");
-                    if (sidecar.existsAsFile()
-                        && sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
-                        sidecarNewer = true;
+                    if (sidecar.existsAsFile()) {
+                        if (sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
+                            rescanForTimbre = true;
+                        else if (!entryHasTimbreData(it->second))
+                            rescanForTimbre = true;
+                    }
                 }
-                if (!sidecarNewer) {
+                if (!rescanForTimbre) {
                     newEntries.push_back(it->second); // reuse existing entry
                     needsRescan = false;
                 }
