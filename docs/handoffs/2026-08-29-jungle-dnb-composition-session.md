@@ -135,7 +135,7 @@ Prioritized; each removes a concrete step we did BY HAND in every render.
 | # | Bug | Status / workaround |
 |---|---|---|
 | B1 | `mcp-launch.bat` crash-capture leaked into MCP stdio: `Write-Host` status + **ProcDump UTF-16 banner** on stdout broke every MCP client ("Failed to parse JSONRPC"). | **FIXED** (this session): capture now opt-in via `HDAW_CRASH_CAPTURE=1`, status line to stderr; verified clean handshake + capture still works + gtest runner unchanged. Commit pending (§4). |
-| B2 | TimbreLib sidecars silently never ingested for copied packs with FUTURE mtimes: incremental scan reuses an entry unless sidecar mtime > audio mtime → `applyTimbreSidecar` never runs → search/cluster lack tags. | Workaround: forward-date sidecars (`os.utime`) + re-scan. Engine suggestion: rescan when a sidecar exists but the entry carries no tags (or persist sidecar mtime in the entry). |
+| B2 | TimbreLib sidecars silently never ingested for copied packs with FUTURE mtimes: incremental scan reuses an entry unless sidecar mtime > audio mtime → `applyTimbreSidecar` never runs → search/cluster lack tags. | **FIXED** (`FileLibraryManager` + `file_library_test`): reuse predicate now also rescans when a `.timbre.json` sidecar exists but the stored entry has no sidecar-derived data (`entryHasTimbreData`); regression pair `FutureMtimeAudioWithOlderSidecarIngestsTags` + `SidecarAddedAfterScanWithOlderMtimeIngestedOnSecondScan` (fail-before/after proven). Workaround no longer needed. |
 | B3 | "Filtered break" is an illusion: automating internal EQ Frequency (peak filter) does not attenuate — the mini-break stayed loud (0.085 RMS) until duplicate hats were removed (0.031). It only moves a boost/cut center. | Documented; needs real LP/HP (see P1.2). |
 | B4 | `add_automation_lane` with paramID 1 fails `lane name or paramID already exists` because every track auto-has Volume/Pan/Mute lanes. | Workaround: target the built-in lane via `set_automation_points {lane:"Volume"}` + `set_automation_enabled`. Improve error to say "built-in lane exists". |
 | B5 | `analyze_midi_file` top-level `key`/`scale`/`bpm` are null and patterns lack `id` (key: 51 patterns, each pattern dict has no `id`, `key` None despite filename "…_D.mid"). | Needs a fix (return engine's key read / pattern ids) — pattern names/fingerprint exist. |
@@ -152,7 +152,7 @@ stems) mixing is fine when quantized per-source-bar.
    linking the three .wav/.hdaw deliverables as reference renders.
 2. **File P1 feature requests as a plan** (`docs/plans/`): MCP LFO tools, internal filter types +
    cutoff automation, tempo-synced delay divisions, `add_notes` absolute-beat mode.
-3. **Engine fix B2** (sidecar re-ingest robustness) with a regression test
+3. ~~Engine fix B2 (sidecar re-ingest robustness)~~ **DONE** (committed with `file_library_test` regressions; see B2)
    (`FileLibrary.*`: place future-mtime audio + newer sidecar → tags present after scan; and the
    tags-absent-but-sidecar-exists re-ingest case).
 4. **Jungle regression test** (mirror `psytrance_composition_stress_test.cpp`):

@@ -183,7 +183,9 @@ When a section misbehaves, mute-to-isolate roles rather than guessing; the
    (136 → 5.148 beats/bar at 175) — quantize each source by its own bar.
 6. **Future-mtime packs**: if the pack copy carries future file mtimes,
    sidecars never ingest (incremental scan compares sidecar-to-audio mtimes);
-   forward-date the sidecars and re-scan.
+   forward-date the sidecars and re-scan. (Engine fixed 2026-08-29: a scan now
+   also re-applies a sidecar when the stored entry has none of its data —
+   `FileLibraryTest.SidecarAddedAfterScan*` regression pair.)
 7. **Unit confusion at the wire**: beats for notes/automation times, seconds
    for exports; win paths for samples; `add_track`→text, `list_tracks`→`id`.
 
