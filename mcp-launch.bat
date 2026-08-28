@@ -91,12 +91,17 @@ if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
 set "PATH=%BUILD_DIR%;%PATH%"
 
 :: Crash capture (the §3 abort class: debug-CRT heap asserts / std::terminate
-:: used to die with only an MSVC dialog). When procdump is on PATH (default
-:: ON), run the engine under "procdump -accepteula -ma -e -g -x" so any
-:: unhandled exception leaves a FULL minidump + context in
-:: %TEMP%\hdaw_crash_captures\engine_<rand>\ — stdio still flows straight
-:: through to the MCP client. Disable with HDAW_NO_CRASH_CAPTURE=1; use
-:: HDAW_CRASH_DUMP_TYPE=mini for smaller "-mm" dumps.
+:: used to die with only an MSVC dialog). Opt-in: when HDAW_CRASH_CAPTURE=1
+:: and procdump is on PATH, run the engine under
+:: "procdump -accepteula -ma -e -g -x" so any unhandled exception leaves a
+:: FULL minidump + context in %TEMP%\hdaw_crash_captures\engine_<rand>\ —
+:: the [mcp-launch] status line goes to stderr, but procdump's own UTF-16
+:: banner still lands on stdout before the engine's JSON-RPC.
+:: Enable with HDAW_CRASH_CAPTURE=1 (DEFAULT OFF; procdump writes its UTF-16
+:: banner to stdout, which breaks the MCP stdio contract, so capture is
+:: opt-in for MCP sessions; the gtest runner
+:: %TEMP%\hdaw_capture\run_with_capture.ps1 remains the default crash-capture
+:: path). HDAW_CRASH_DUMP_TYPE=mini stays.
 set "DUMPFLAGS=-ma"
 if "%HDAW_CRASH_DUMP_TYPE%"=="mini" set "DUMPFLAGS=-mm"
 :: procdump invocation is delegated to PowerShell: cmd's own argument
@@ -105,10 +110,10 @@ if "%HDAW_CRASH_DUMP_TYPE%"=="mini" set "DUMPFLAGS=-mm"
 :: MCP stdio contract. PowerShell resolves procdump, builds a unique capture
 :: dir, and runs "procdump -accepteula [-ma|-mm] -e -g -x <dir> <engine>"
 :: with stdio inherited straight through to the MCP client.
-if not "%HDAW_NO_CRASH_CAPTURE%"=="1" (
+if "%HDAW_CRASH_CAPTURE%"=="1" (
     setlocal EnableDelayedExpansion
     set "ENGINE=!DST!"
-    powershell -NoProfile -Command "$f='-ma'; if ($env:HDAW_CRASH_DUMP_TYPE -eq 'mini') { $f='-mm' }; $pd=(Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { $dir=Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; Write-Host ('[mcp-launch] crash capture ON: procdump ' + $f + ' -e -g -x ' + $dir); & $pd -accepteula $f -e -g -x $dir $env:ENGINE --mcp-stdio; exit $LASTEXITCODE }; & $env:ENGINE --mcp-stdio"
+    powershell -NoProfile -Command "$f='-ma'; if ($env:HDAW_CRASH_DUMP_TYPE -eq 'mini') { $f='-mm' }; $pd=(Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { $dir=Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; [Console]::Error.WriteLine('[mcp-launch] crash capture ON: procdump ' + $f + ' -e -g -x ' + $dir); & $pd -accepteula $f -e -g -x $dir $env:ENGINE --mcp-stdio; exit $LASTEXITCODE }; & $env:ENGINE --mcp-stdio"
     exit /b !ERRORLEVEL!
 )
 
