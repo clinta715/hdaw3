@@ -24,7 +24,7 @@ rebuildRoutingGraph — verify the existing restore path covers MCP-created
 LFOs), 2 (full path RPC→tree→processor→audio), 13 (param writes hold
 stateLock), 15 (verify binary).
 
-## P1-2: Internal filter types (low/high-pass) + honest cutoff sweeps
+## P1-2: Internal filter types (low/high-pass) + honest cutoff sweeps — ✅ LANDED 2026-08-29 (fxType 'filter', StateVariableTPT, 36.9 dB LP attenuation measured; B3 fixed)
 **Goal:** Add lowpass/highpass/bandpass modes so "filtered break" and LP
 sweeps actually attenuate. Today the internal `eq` is a peak filter
 (Frequency/Q/Gain dB) — automating Frequency moves a boost/cut center; it
