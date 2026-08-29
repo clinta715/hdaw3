@@ -3,6 +3,7 @@
 #include "../common/TransportCommands.h"
 #include "../common/AudioGraphCommands.h"
 #include "../model/ProjectModel.h"
+#include "BreakPatternGenerator.h"
 #include <juce_data_structures/juce_data_structures.h>
 #include <vector>
 
@@ -187,6 +188,41 @@ public:
     struct SamplerTriggerResult { bool ok = false; int totalSlices = 0; };
     SamplerTriggerResult triggerSamplerSlice(int trackIndex, int slotIndex,
                                              int sliceIndex, float velocity);
+
+    // ── Break chopper/composer (docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-1) ──
+    // Turns a DETECTED-slice sampler sample into a written MIDI break pattern.
+    // Reads the sampler slot's slicePoints + baseNote from the ValueTree (the
+    // DSP is never touched — the notes are data the sliced sampler plays at
+    // render). Validates every arg (Gate 9), generates a seeded stylized
+    // pattern via BreakPatternGenerator, and appends the notes to the clip's
+    // MIDI_NOTE_LIST as ONE undo unit. Errors: bad track/slot/clip, slot not
+    // a sampler, clip not MIDI, or no detected slices (error text mentions
+    // detect_sampler_slices).
+    struct BreakPatternParams
+    {
+        int trackIndex = -1;
+        int slotIndex  = 0;
+        int clipId     = -1;
+        BreakPatternGenerator::Style style = BreakPatternGenerator::Style::Amen;
+        int bars        = 8;   // 1..64
+        int grid        = 4;   // output steps per beat (1=quarter .. 8=32nds)
+        bool dropFirst  = false;
+        int ghostFills  = 0;   // 0..2
+        int velocityMin = 60;  // 1..127
+        int velocityMax = 100; // 1..127
+        uint64_t seed   = 12345; // 0 -> deterministic default
+    };
+    struct BreakPatternResult
+    {
+        bool ok = false;
+        int added = 0;        // notes written
+        int firstPitch = -1;  // pitch of the first note by time
+        int lastPitch  = -1;  // pitch of the last note by time
+        int sliceCount = 0;   // slices the pattern was generated against
+        int baseNote   = 60;  // sampler baseNote read from state
+        std::string error;
+    };
+    BreakPatternResult generateChoppedBreak(const BreakPatternParams& params);
 
     // ProjectCommands — Automation
     bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;

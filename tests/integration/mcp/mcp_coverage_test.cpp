@@ -1642,4 +1642,160 @@ TEST_F(McpCoverageTest, FilterFxParamsRealUnitsAndRebuildSurvival) {
     EXPECT_NEAR(rp[2].value, 1.5f, 0.01f);
 }
 
+
+// ============================================================================
+// BREAK CHOPPER / COMPOSER — docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-1
+// ============================================================================
+
+namespace {
+
+// A 4-second click track (short 1 kHz sine bursts every 0.25 s). The
+// transient slice detector reliably finds >= 15 onsets, giving a real
+// multi-slice break to compose against (hermetic — no dependency on the
+// E: sample kit).
+QString writeClickWav() {
+    QString dir = QDir::tempPath();
+    QString path = QString("%1/hdaw_break_click_%2.wav")
+                       .arg(QDir::fromNativeSeparators(dir))
+                       .arg(QCoreApplication::applicationPid());
+    QFile::remove(path);
+
+    constexpr int sampleRate = 44100;
+    constexpr int numSeconds = 4;
+    juce::AudioBuffer<float> buf(1, sampleRate * numSeconds);
+    buf.clear();
+    constexpr double clickEvery = 0.25;      // s between clicks
+    constexpr int burstSamples = 660;        // ~15 ms burst
+    constexpr double clickHz = 1000.0;
+    const double clickStep = clickHz / sampleRate;
+    for (int c = 0; c < buf.getNumSamples(); ++c)
+    {
+        const double phaseInClick = std::fmod(static_cast<double>(c) / sampleRate, clickEvery);
+        if (phaseInClick < static_cast<double>(burstSamples) / sampleRate)
+        {
+            const int n = static_cast<int>(std::round(phaseInClick * sampleRate));
+            buf.setSample(0, c, 0.5f * static_cast<float>(
+                std::sin(2.0 * juce::MathConstants<double>::pi * clickStep * n)));
+        }
+    }
+
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(juce::File(path.toStdString())),
+                            sampleRate, 1, 16, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
+    writer->flush();
+    return path;
+}
+
+} // namespace
+
+// End-to-end: detect slices -> slice mode -> generate_chopped_break writes a
+// MIDI slice-trigger pattern (Gate 2 data path: tool -> command -> clip
+// MIDI_NOTE_LIST). Pitches map to slices (baseNote + sliceIndex); jungleEdit
+// drops the first kick (no note at beat 0); the no-slices path names
+// detect_sampler_slices.
+TEST_F(McpCoverageTest, GenerateChoppedBreakWritesSlicePattern) {
+    // Tool is registered.
+    QStringList toolNames;
+    for (const auto& t : toolList())
+        toolNames << t.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("generate_chopped_break"))
+        << "generate_chopped_break not registered";
+
+    // Build a track + sampler with a click WAV and DETECT its slices.
+    QString wavPath = writeClickWav();
+    ASSERT_FALSE(wavPath.isEmpty()) << "failed to write click WAV";
+    auto addFx = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(addFx)) << text(addFx).toStdString();
+    int slot = text(addFx).mid(text(addFx).indexOf('=') + 1).toInt();
+
+    auto setSample = call("sampler_set_sample", {
+        {"trackId", 0}, {"slotIndex", slot}, {"filePath", wavPath}
+    });
+    ASSERT_FALSE(isError(setSample)) << text(setSample).toStdString();
+
+    auto detect = call("detect_sampler_slices", {
+        {"trackId", 0}, {"slotIndex", slot},
+        {"sliceMode", "transient"}, {"sliceSensitivity", 0.5}
+    });
+    ASSERT_FALSE(isError(detect)) << text(detect).toStdString();
+    auto detectObj = QJsonDocument::fromJson(text(detect).toUtf8()).object();
+    int totalSlices = detectObj.value("totalSlices").toInt();
+    ASSERT_GE(totalSlices, 2) << "click WAV should yield multiple slices: " << text(detect).toStdString();
+
+    auto setMode = call("set_sampler_mode", {
+        {"trackId", 0}, {"slotIndex", slot}, {"mode", "slice"}
+    });
+    ASSERT_FALSE(isError(setMode)) << text(setMode).toStdString();
+
+    // Fresh MIDI clip spanning 2 bars (8 beats).
+    int clipId = addMidiClip(0, 0.0, 8.0, "Break");
+    ASSERT_GT(clipId, 0);
+
+    // Compose a jungleEdit break: bars=2, dropFirst=true, seed=7.
+    auto r = call("generate_chopped_break", {
+        {"trackId", 0}, {"slotIndex", slot}, {"clipId", clipId},
+        {"bars", 2}, {"style", "jungleEdit"}, {"dropFirst", true}, {"seed", 7}
+    });
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto res = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    int added = res.value("added").toInt();
+    int firstPitch = res.value("firstPitch").toInt();
+    int lastPitch = res.value("lastPitch").toInt();
+    int sliceCount = res.value("sliceCount").toInt();
+    int baseNote = res.value("baseNote").toInt();
+    EXPECT_GT(added, 0);
+    EXPECT_EQ(sliceCount, totalSlices);
+    EXPECT_EQ(baseNote, 60);
+    EXPECT_GE(firstPitch, 60);
+    EXPECT_GE(lastPitch, 60);
+    EXPECT_LE(firstPitch, 60 + totalSlices - 1);
+    EXPECT_LE(lastPitch, 60 + totalSlices - 1);
+
+    // The written notes are slice triggers: pitch in [baseNote, baseNote +
+    // totalSlices - 1]; clip-local starts in [0, 8); the jungleEdit drops
+    // the first kick -> no note at startBeat 0.
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    ASSERT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    ASSERT_EQ(listed.value("count").toInt(), added) << "clip note count must match the tool result";
+    auto notesArr = listed.value("notes").toArray();
+    ASSERT_GT(notesArr.size(), 0);
+    for (const auto& nv : notesArr)
+    {
+        auto n = nv.toObject();
+        const int pitch = n.value("pitch").toInt();
+        const double start = n.value("start").toDouble();
+        EXPECT_GE(pitch, baseNote);
+        EXPECT_LE(pitch, baseNote + totalSlices - 1) << "pitch " << pitch;
+        EXPECT_GE(start, 0.0);
+        EXPECT_LT(start, 8.0) << "start " << start;
+        EXPECT_NE(start, 0.0) << "first kick must be dropped (jungleEdit open)";
+        EXPECT_GE(n.value("velocity").toInt(), 1);
+        EXPECT_LE(n.value("velocity").toInt(), 127);
+    }
+
+    // Failure path: a sampler slot with NO detected slices errors and names
+    // the missing precondition.
+    auto addFx2 = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(addFx2)) << text(addFx2).toStdString();
+    int slot2 = text(addFx2).mid(text(addFx2).indexOf('=') + 1).toInt();
+    auto failR = call("generate_chopped_break", {
+        {"trackId", 0}, {"slotIndex", slot2}, {"clipId", clipId}, {"bars", 2}
+    });
+    EXPECT_TRUE(isError(failR)) << text(failR).toStdString();
+    EXPECT_TRUE(text(failR).contains("detect_sampler_slices"))
+        << text(failR).toStdString();
+
+    // Validation: a bad style name is rejected at the tool boundary (Gate 9 —
+    // the schema enum check fires before the handler).
+    auto badStyle = call("generate_chopped_break", {
+        {"trackId", 0}, {"slotIndex", slot}, {"clipId", clipId}, {"style", "juke"}
+    });
+    EXPECT_TRUE(isError(badStyle));
+    EXPECT_TRUE(text(badStyle).contains("enum")) << text(badStyle).toStdString();
+}
+
 } // namespace

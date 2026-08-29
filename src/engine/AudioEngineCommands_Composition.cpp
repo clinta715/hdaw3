@@ -1149,3 +1149,142 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
     mix.wavPath.deleteFile();
     return result;
 }
+
+// ── Break chopper/composer (P2-1) ────────────────────────────────────────
+// generateChoppedBreak: reads the sampler slot's DETECTED slice boundaries +
+// baseNote from the ValueTree, generates a seeded stylized slice-trigger
+// pattern with BreakPatternGenerator (pure, offline — no DSP touch), and
+// writes the notes into the clip's MIDI_NOTE_LIST as ONE undo unit. The
+// sliced sampler plays them at render (slice index = note - baseNote).
+AudioEngineCommands::BreakPatternResult AudioEngineCommands::generateChoppedBreak(const BreakPatternParams& params)
+{
+    BreakPatternResult result;
+
+    // Validate every arg at the command boundary (Gate 9).
+    auto& model = engine_.getProjectModel();
+    auto trackList = model.getTrackListTree();
+    if (params.trackIndex < 0 || params.trackIndex >= trackList.getNumChildren())
+    {
+        result.error = "trackIndex out of range";
+        return result;
+    }
+    if (params.bars < BreakPatternGenerator::kMinBars || params.bars > BreakPatternGenerator::kMaxBars)
+    {
+        result.error = "bars must be in 1..64";
+        return result;
+    }
+    if (params.grid < BreakPatternGenerator::kMinGrid || params.grid > BreakPatternGenerator::kMaxGrid)
+    {
+        result.error = "grid must be in 1..8";
+        return result;
+    }
+    if (params.velocityMin < 1 || params.velocityMin > 127
+        || params.velocityMax < 1 || params.velocityMax > 127)
+    {
+        result.error = "velocities must be in 1..127";
+        return result;
+    }
+    if (params.velocityMin > params.velocityMax)
+    {
+        result.error = "velocityMin must be <= velocityMax";
+        return result;
+    }
+    if (params.ghostFills < 0 || params.ghostFills > BreakPatternGenerator::kMaxGhostFills)
+    {
+        result.error = "ghostFills must be in 0..2";
+        return result;
+    }
+
+    // Sampler FX slot must exist and be a sampler (read of the ValueTree —
+    // the DSP is intentionally untouched here).
+    auto slot = findFxSlot(params.trackIndex, params.slotIndex);
+    if (!slot.isValid())
+    {
+        result.error = "slot not found";
+        return result;
+    }
+    if (slot.getProperty(IDs::fxType, "").toString() != juce::String("sampler"))
+    {
+        result.error = "slot is not a sampler";
+        return result;
+    }
+
+    // Detected slice boundaries: normalized (0..1), comma-separated, stored by
+    // detectSamplerSlices (points include sample start 0 and end; the slice
+    // COUNT is points.size()-1 — the number of triggerable slices).
+    juce::StringArray tokens = juce::StringArray::fromTokens(
+        slot.getProperty("slicePoints", "").toString(), ",", "");
+    const int sliceCount = std::max(0, static_cast<int>(tokens.size()) - 1);
+    if (sliceCount < 1)
+    {
+        result.error = "no slices: run detect_sampler_slices first";
+        return result;
+    }
+    result.sliceCount = sliceCount;
+
+    // baseNote for the chromatic slice mapping (slice index = note - baseNote;
+    // SamplerEngine::handleNoteOn). Same property the live track reads
+    // (TrackFXSlot::loadSamplerState reads "baseNote", default 60); configurable
+    // via set_sampler_param baseNote.
+    const int baseNote = static_cast<int>(slot.getProperty("baseNote", 60));
+    result.baseNote = baseNote;
+
+    // The pattern is written into an existing MIDI clip (notes are data).
+    int trackOfClip = -1;
+    auto clip = findClipById(params.clipId, trackOfClip);
+    if (!clip.isValid())
+    {
+        result.error = "clip not found";
+        return result;
+    }
+    if (clip.getProperty(IDs::clipType).toString() != juce::String("midi"))
+    {
+        result.error = "clip is not MIDI";
+        return result;
+    }
+
+    BreakPatternGenerator::Params gp;
+    gp.sliceCount   = sliceCount;
+    gp.bars         = params.bars;
+    gp.grid         = params.grid;
+    gp.style        = params.style;
+    gp.dropFirst    = params.dropFirst;
+    gp.ghostFills   = params.ghostFills;
+    gp.velocityMin  = params.velocityMin;
+    gp.velocityMax  = params.velocityMax;
+    gp.seed         = params.seed;
+
+    const auto steps = BreakPatternGenerator::generate(gp);
+    if (steps.empty())
+    {
+        result.error = "pattern produced no notes";
+        return result;
+    }
+    const auto notes = BreakPatternGenerator::asNotes(gp, steps, baseNote);
+
+    // One undo unit: append every note (fresh ids via createMidiNote ->
+    // allocateNoteID, the add_notes path). No graph rebuild — note edits are
+    // data and never rebuild the routing graph.
+    auto& um = model.getUndoManager();
+    auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    if (!noteList.isValid())
+    {
+        noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+        clip.addChild(noteList, -1, &um);
+    }
+    beginTransaction("Generate chopped break");
+    for (const auto& n : notes)
+    {
+        auto note = model.createMidiNote(n.pitch, static_cast<float>(n.velocity) / 127.0f,
+                                         n.startBeat, n.durationBeats);
+        noteList.addChild(note, -1, &um);
+        ++result.added;
+        if (result.added == 1)
+            result.firstPitch = n.pitch;
+        result.lastPitch = n.pitch; // steps arrive sorted by stepIndex
+    }
+    endTransaction();
+
+    result.ok = true;
+    return result;
+}

@@ -321,6 +321,57 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
                           (double) std::max(1, p.bars) * 4.0, converted);
         }});
 
+    s.registerTool({"generate_chopped_break",
+        "Compose a MIDI break pattern from a sliced sampler sample and write it into an existing MIDI clip. Requires the sampler slot to have DETECTED slices: set_sampler_mode {mode:'slice'} + detect_sampler_slices first, or the tool errors with 'no slices: run detect_sampler_slices first'. Reads the slot's slicePoints + baseNote from sampler state (baseNote default 60, configurable via set_sampler_param baseNote). Slice trigger mapping: slice i sounds at MIDI note baseNote+i, so the written notes trigger the detected slices when the clip plays. Styles: amen (Think-break skeleton: kicks 0/8, snares 4/12, 16th fills 14/15, off-beat ghosts), twoStep (kicks 0/9, snares 4/12, sparse), halftime (kick 0 + 13 clutch, snare 8, minimal), jungleEdit (amen skeleton + per-bar seeded slice-swap on the 14/15 fills + first kick always dropped), random (seeded random walk over slice indices). Returns {added, firstPitch, lastPitch, sliceCount, baseNote}.",
+        objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+                  {"slotIndex",   QJsonObject{{"type","integer"}}},
+                  {"clipId",      QJsonObject{{"type","integer"}}},
+                  {"bars",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",64},{"description","Number of 4/4 bars (beats = bars*4)."}}},
+                  {"grid",        QJsonObject{{"type","integer"},{"minimum",1},{"maximum",8},{"description","Output steps per beat: 1=quarter, 2=8th, 4=16th (default), 8=32nds."}}},
+                  {"style",       QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"amen","twoStep","halftime","jungleEdit","random"}}}},
+                  {"dropFirst",   QJsonObject{{"type","boolean"}}},
+                  {"ghostFills",  QJsonObject{{"type","integer"},{"minimum",0},{"maximum",2}}},
+                  {"velocityMin", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"velocityMax", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"seed",        QJsonObject{{"type","integer"},{"description","Seeded RNG; same seed + params reproduce the same pattern. 0 = deterministic default."}}}},
+                 {"trackId","clipId"}),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            AudioEngineCommands::BreakPatternParams p;
+            p.trackIndex = a.value("trackId").toInt();
+            p.slotIndex  = a.value("slotIndex").toInt(0);
+            p.clipId     = a.value("clipId").toInt(-1);
+            std::string styleName = a.value("style").toString("amen").toStdString();
+            BreakPatternGenerator::Style style;
+            if (!BreakPatternGenerator::styleFromName(styleName, style))
+                return McpToolResult::text("unknown style: " + QString::fromStdString(styleName), true);
+            p.style = style;
+            p.bars        = a.value("bars").toInt(8);
+            p.grid        = a.value("grid").toInt(4);
+            p.dropFirst   = a.value("dropFirst").toBool(false);
+            // jungleEdit's intended density is one ghost fill (its signature
+            // edit); every other style defaults to none.
+            p.ghostFills  = a.value("ghostFills").toInt(
+                style == BreakPatternGenerator::Style::JungleEdit ? 1 : 0);
+            p.velocityMin = a.value("velocityMin").toInt(60);
+            p.velocityMax = a.value("velocityMax").toInt(100);
+            uint64_t seed = 12345;
+            if (a.contains("seed"))
+                seed = static_cast<uint64_t>(a.value("seed").toVariant().toULongLong());
+            p.seed = seed;
+
+            const auto result = e->getAudioEngineCommands().generateChoppedBreak(p);
+            if (!result.ok)
+                return McpToolResult::text(QString::fromStdString(result.error), true);
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                {"added",      result.added},
+                {"firstPitch", result.firstPitch},
+                {"lastPitch",  result.lastPitch},
+                {"sliceCount", result.sliceCount},
+                {"baseNote",   result.baseNote}}).toJson(QJsonDocument::Compact)));
+        }});
+
 }
 
 } // namespace mcp
