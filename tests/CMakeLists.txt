@@ -71,6 +71,7 @@ add_executable(hdaw_tests
     unit/engine/arrangement_generator_test.cpp
     unit/engine/rhythm_pattern_generator_test.cpp
     unit/engine/break_pattern_generator_test.cpp
+    unit/engine/pattern_placer_test.cpp
     unit/engine/pattern_library_test.cpp
     unit/engine/arranger_test.cpp
     unit/engine/bar_snap_test.cpp

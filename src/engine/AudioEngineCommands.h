@@ -4,6 +4,7 @@
 #include "../common/AudioGraphCommands.h"
 #include "../model/ProjectModel.h"
 #include "BreakPatternGenerator.h"
+#include "PatternPlacer.h"
 #include <juce_data_structures/juce_data_structures.h>
 #include <vector>
 
@@ -228,6 +229,33 @@ public:
         std::string error;
     };
     BreakPatternResult generateChoppedBreak(const BreakPatternParams& params);
+
+    // ── Pattern placement (docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-2) ──
+    // Tiles caller-supplied bar-aligned MIDI patterns (the patterns[] array
+    // from the analyze_midi_file MCP tool) across a beat range: placement j
+    // uses patterns[j % patterns.size()] with per-placement octave/velocity/
+    // reverse transforms applied by PatternPlacer (pure, offline — notes are
+    // data, the routing graph is never rebuilt). Appends every note to the
+    // clip's MIDI_NOTE_LIST as ONE undo unit (allocateNoteID via
+    // createMidiNote, the add_notes path), enforcing the MidiClipProcessor
+    // note-slot ceiling: notes past MAX_NOTE_SLOTS (8192) are skipped and
+    // reported. clearExisting removes the clip's notes first inside the same
+    // transaction. Errors: clip not found / not MIDI, empty patterns or
+    // placements (error text). Placed pitches are clamped to 0..127;
+    // octaveShift is clamped to -6..+6 and velocityScale to 0.05..2.0.
+    struct PlaceResult
+    {
+        bool ok = false;
+        int added = 0;      // notes actually appended to the clip
+        int skipped = 0;    // notes past the 8192 ceiling, not appended
+        int clipId = -1;
+        std::string error;
+    };
+    bool placePatterns(int clipId,
+                       const std::vector<std::vector<PatternPlacer::PatternNote>>& patterns,
+                       const std::vector<PatternPlacer::Placement>& placements,
+                       PlaceResult& out,
+                       bool clearExisting = false);
 
     // ProjectCommands — Automation
     bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) override;

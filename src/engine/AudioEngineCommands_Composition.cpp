@@ -2,6 +2,7 @@
 #include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
+#include "MidiClipProcessor.h"
 #include "ExportManager.h"
 #include "PhraseGenerator.h"
 #include "RhythmPatternGenerator.h"
@@ -845,6 +846,105 @@ ProjectCommands::GainStageResult AudioEngineCommands::autoGainToTarget(int track
     raw.wavPath.deleteFile();
     result.ok = true;
     return result;
+}
+
+
+// ── Pattern placement (docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-2) ──
+// placePatterns: tiles caller-supplied bar-aligned MIDI patterns (the
+// patterns[] payload from the analyze_midi_file MCP tool) across a beat range.
+// Placement j uses patterns[j % patterns.size()]; each placement applies the
+// PatternPlacer transforms (octave shift, velocity scale, retrograde). Notes
+// are appended to the clip's MIDI_NOTE_LIST as ONE undo unit (fresh ids via
+// createMidiNote -> allocateNoteID, the add_notes path) with the
+// MidiClipProcessor note-slot ceiling enforced: notes past MAX_NOTE_SLOTS
+// (8192) are skipped and counted, mirroring what the processor itself does at
+// cache build. Pure data — no DSP touch, no routing-graph rebuild (note edits
+// never rebuild the graph).
+bool AudioEngineCommands::placePatterns(
+    int clipId,
+    const std::vector<std::vector<PatternPlacer::PatternNote>>& patterns,
+    const std::vector<PatternPlacer::Placement>& placements,
+    PlaceResult& out,
+    bool clearExisting)
+{
+    out = PlaceResult{};
+    out.clipId = clipId;
+
+    // Validate every arg at the command boundary (Gate 9).
+    if (patterns.empty())
+    {
+        out.error = "patterns must be non-empty";
+        return false;
+    }
+    if (placements.empty())
+    {
+        out.error = "placements must be non-empty";
+        return false;
+    }
+
+    auto& model = engine_.getProjectModel();
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (!clip.isValid())
+    {
+        out.error = "clip not found";
+        return false;
+    }
+    if (clip.getProperty(IDs::clipType).toString() != juce::String("midi"))
+    {
+        out.error = "clip is not MIDI";
+        return false;
+    }
+
+    auto& um = model.getUndoManager();
+    auto noteList = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    if (!noteList.isValid())
+    {
+        noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+        clip.addChild(noteList, -1, &um);
+    }
+
+    // One undo unit: optional clear + every appended note.
+    beginTransaction("Place patterns");
+    if (clearExisting && noteList.getNumChildren() > 0)
+        noteList.removeAllChildren(&um);
+
+    const int ceiling = HDAW::MidiClipProcessor::MAX_NOTE_SLOTS;
+    const int existingCount = clearExisting ? 0 : noteList.getNumChildren();
+
+    for (size_t j = 0; j < placements.size(); ++j)
+    {
+        const auto& pattern = patterns[j % patterns.size()]; // cyclic
+
+        // Clamp the caller-side placement ranges defensively (the MCP schema
+        // already bounds them; a direct command caller can never exceed the
+        // MIDI limits either).
+        PatternPlacer::Placement p = placements[j];
+        p.octaveShift = (std::max)(-PatternPlacer::kMaxOctaveShift,
+                          (std::min)(PatternPlacer::kMaxOctaveShift, p.octaveShift));
+        p.velocityScale = (std::max)(PatternPlacer::kMinVelocityScale,
+                            (std::min)(PatternPlacer::kMaxVelocityScale, p.velocityScale));
+
+        const auto placed = PatternPlacer::place(pattern, p);
+        for (const auto& n : placed)
+        {
+            if (existingCount + out.added >= ceiling)
+            {
+                ++out.skipped; // past the per-clip note ceiling — skip + report
+                continue;
+            }
+            const int pitch = (std::max)(0, (std::min)(127, n.pitch));
+            auto note = model.createMidiNote(pitch,
+                                             static_cast<float>(n.velocity) / 127.0f,
+                                             n.startBeat, n.durationBeats);
+            noteList.addChild(note, -1, &um);
+            ++out.added;
+        }
+    }
+    endTransaction();
+
+    out.ok = true;
+    return true;
 }
 
 ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const AuditionParams& params)

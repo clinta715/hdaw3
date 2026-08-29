@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 namespace {
 
@@ -1903,6 +1904,203 @@ TEST_F(McpCoverageTest, GenerateChoppedBreakWritesSlicePattern) {
     });
     EXPECT_TRUE(isError(badStyle));
     EXPECT_TRUE(text(badStyle).contains("enum")) << text(badStyle).toStdString();
+}
+
+// ============================================================================
+// PATTERN PLACEMENT — docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-2
+// ============================================================================
+
+namespace {
+
+// The 3-note test pattern used across every placement case (the analyze_midi_
+// file patterns[] shape: clip/pattern-local beats, velocity 0..127).
+QJsonObject threeNotePattern()
+{
+    return QJsonObject{{"notes", QJsonArray{
+        QJsonObject{{"pitch", 60}, {"startBeat", 0.0}, {"durationBeats", 1.0}, {"velocity", 100}},
+        QJsonObject{{"pitch", 64}, {"startBeat", 1.0}, {"durationBeats", 1.0}, {"velocity", 100}},
+        QJsonObject{{"pitch", 67}, {"startBeat", 2.0}, {"durationBeats", 1.0}, {"velocity", 100}}}}};
+}
+
+// Read every note of a clip into start -> {pitch, velocity}.
+std::map<double, std::pair<int, int>> notesByStart(const QJsonObject& listed)
+{
+    std::map<double, std::pair<int, int>> m;
+    for (const auto& nv : listed.value("notes").toArray())
+    {
+        auto no = nv.toObject();
+        m[no.value("start").toDouble()] = { no.value("pitch").toInt(),
+                                            no.value("velocity").toInt() };
+    }
+    return m;
+}
+
+} // namespace
+
+// Gate 2 end-to-end data path: tool -> command -> clip MIDI_NOTE_LIST ->
+// list_notes read-back. Three placements of a 3-note pattern: bar 1 identity
+// (60/64/67 @0..3 vel 100), bar 2 octave+1 / velocity scale 0.5 (72/76/79 @8,
+// vel 50), bar 3 retrograde (67/64/60 @16..18). clear=true resets the clip
+// inside the same call. Error paths: empty placements, octave out of range,
+// unknown clipId, out-of-range pattern pitch.
+TEST_F(McpCoverageTest, PlacePatternsTilesWithTransforms)
+{
+    // Tool is registered.
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("place_patterns")) << "place_patterns not registered";
+
+    int clipId = addMidiClip(0, 0.0, 32.0, "Placed");
+    ASSERT_GT(clipId, 0) << "add_midi_clip failed";
+
+    auto r = call("place_patterns", {
+        {"clipId", clipId},
+        {"patterns", QJsonArray{threeNotePattern()}},
+        {"placements", QJsonArray{
+            QJsonObject{{"start", 0.0}},
+            QJsonObject{{"start", 8.0}, {"octave", 1}, {"velocityScale", 0.5}},
+            QJsonObject{{"start", 16.0}, {"reverse", true}}}}
+    });
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto res = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(res.value("added").toInt(), 9) << text(r).toStdString();
+    EXPECT_EQ(res.value("skipped").toInt(), 0);
+    EXPECT_EQ(res.value("clipId").toInt(), clipId);
+    EXPECT_EQ(res.value("placementsApplied").toInt(), 3);
+
+    // Read-back through list_notes: bar 1 identity, bar 2 octave+vel, bar 3
+    // retrograde (67/64/60 occupying starts 16..18).
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    ASSERT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    ASSERT_EQ(listed.value("count").toInt(), 9) << text(listR).toStdString();
+    auto byStart = notesByStart(listed);
+    ASSERT_EQ(byStart.size(), 9u) << "duplicate (start,pitch) occupancy: " << text(listR).toStdString();
+    auto expectNote = [&](double start, int pitch, int velocity) {
+        auto it = byStart.find(start);
+        ASSERT_NE(it, byStart.end()) << "no note at start " << start;
+        EXPECT_EQ(it->second.first, pitch) << "pitch at beat " << start;
+        EXPECT_EQ(it->second.second, velocity) << "velocity at beat " << start;
+    };
+    // Bar 1: identity.
+    expectNote(0.0, 60, 100);
+    expectNote(1.0, 64, 100);
+    expectNote(2.0, 67, 100);
+    // Bar 2: octave +1, velocity scaled 0.5 (100 -> 50).
+    expectNote(8.0, 72, 50);
+    expectNote(9.0, 76, 50);
+    expectNote(10.0, 79, 50);
+    // Bar 3: retrograde — 67/64/60 at starts 16/17/18 (same span as bar 1).
+    expectNote(16.0, 67, 100);
+    expectNote(17.0, 64, 100);
+    expectNote(18.0, 60, 100);
+
+    // clear=true replaces the clip's content in the SAME call: 2 placements of
+    // the 3-note pattern -> 6 notes, total count resets from 9 to 6.
+    auto clearR = call("place_patterns", {
+        {"clipId", clipId},
+        {"patterns", QJsonArray{threeNotePattern()}},
+        {"placements", QJsonArray{
+            QJsonObject{{"start", 0.0}},
+            QJsonObject{{"start", 8.0}, {"reverse", true}}}},
+        {"clear", true}
+    });
+    ASSERT_FALSE(isError(clearR)) << text(clearR).toStdString();
+    auto clearRes = QJsonDocument::fromJson(text(clearR).toUtf8()).object();
+    EXPECT_EQ(clearRes.value("added").toInt(), 6);
+    EXPECT_EQ(clearRes.value("skipped").toInt(), 0);
+    auto listR2 = call("list_notes", {{"clipId", clipId}});
+    ASSERT_FALSE(isError(listR2)) << text(listR2).toStdString();
+    auto listed2 = QJsonDocument::fromJson(text(listR2).toUtf8()).object();
+    EXPECT_EQ(listed2.value("count").toInt(), 6) << "clear=true must reset the clip: " << text(listR2).toStdString();
+    auto byStart2 = notesByStart(listed2);
+    // clear placed identity @0 + retrograde @8: pitches 60/64/67 @0/1/2 and
+    // 67/64/60 @10/9/8.
+    auto expectNote2 = [&](double start, int pitch) {
+        auto it = byStart2.find(start);
+        ASSERT_NE(it, byStart2.end()) << "no note at start " << start;
+        EXPECT_EQ(it->second.first, pitch);
+    };
+    expectNote2(0.0, 60); expectNote2(1.0, 64); expectNote2(2.0, 67);
+    expectNote2(8.0, 67); expectNote2(9.0, 64); expectNote2(10.0, 60);
+
+    // Error paths (Gate 9).
+    auto emptyPlacements = call("place_patterns", {
+        {"clipId", clipId}, {"patterns", QJsonArray{threeNotePattern()}},
+        {"placements", QJsonArray()}});
+    EXPECT_TRUE(isError(emptyPlacements)) << text(emptyPlacements).toStdString();
+    EXPECT_TRUE(text(emptyPlacements).contains("placements")) << text(emptyPlacements).toStdString();
+
+    auto badOctave = call("place_patterns", {
+        {"clipId", clipId}, {"patterns", QJsonArray{threeNotePattern()}},
+        {"placements", QJsonArray{QJsonObject{{"start", 0.0}, {"octave", 99}}}}});
+    EXPECT_TRUE(isError(badOctave)) << text(badOctave).toStdString();
+    EXPECT_TRUE(text(badOctave).contains("maximum")) << text(badOctave).toStdString();
+
+    auto unknownClip = call("place_patterns", {
+        {"clipId", 999999}, {"patterns", QJsonArray{threeNotePattern()}},
+        {"placements", QJsonArray{QJsonObject{{"start", 0.0}}}}});
+    EXPECT_TRUE(isError(unknownClip)) << text(unknownClip).toStdString();
+    EXPECT_TRUE(text(unknownClip).contains("clip not found")) << text(unknownClip).toStdString();
+
+    QJsonObject badPattern{{"notes", QJsonArray{
+        QJsonObject{{"pitch", 200}, {"startBeat", 0.0}, {"durationBeats", 1.0}, {"velocity", 100}}}}};
+    auto badPitch = call("place_patterns", {
+        {"clipId", clipId}, {"patterns", QJsonArray{badPattern}},
+        {"placements", QJsonArray{QJsonObject{{"start", 0.0}}}}});
+    EXPECT_TRUE(isError(badPitch)) << text(badPitch).toStdString();
+    EXPECT_TRUE(text(badPitch).contains("pitch")) << text(badPitch).toStdString();
+
+    // Empty patterns list is rejected at the handler boundary.
+    auto emptyPatterns = call("place_patterns", {
+        {"clipId", clipId}, {"patterns", QJsonArray()},
+        {"placements", QJsonArray{QJsonObject{{"start", 0.0}}}}});
+    EXPECT_TRUE(isError(emptyPatterns)) << text(emptyPatterns).toStdString();
+    EXPECT_TRUE(text(emptyPatterns).contains("patterns")) << text(emptyPatterns).toStdString();
+}
+
+// Cyclic pattern use: placement j uses patterns[j % patterns.size()], so with
+// 2 patterns and 3 placements the third placement repeats pattern 0.
+TEST_F(McpCoverageTest, PlacePatternsCyclicPlacement)
+{
+    int clipId = addMidiClip(0, 0.0, 32.0, "Cyclic");
+    ASSERT_GT(clipId, 0);
+
+    QJsonObject patA{{"notes", QJsonArray{
+        QJsonObject{{"pitch", 60}, {"startBeat", 0.0}, {"durationBeats", 1.0}, {"velocity", 100}},
+        QJsonObject{{"pitch", 61}, {"startBeat", 1.0}, {"durationBeats", 1.0}, {"velocity", 100}}}}};
+    QJsonObject patB{{"notes", QJsonArray{
+        QJsonObject{{"pitch", 70}, {"startBeat", 0.0}, {"durationBeats", 1.0}, {"velocity", 100}},
+        QJsonObject{{"pitch", 71}, {"startBeat", 1.0}, {"durationBeats", 1.0}, {"velocity", 100}}}}};
+
+    auto r = call("place_patterns", {
+        {"clipId", clipId},
+        {"patterns", QJsonArray{patA, patB}},
+        {"placements", QJsonArray{
+            QJsonObject{{"start", 0.0}},
+            QJsonObject{{"start", 4.0}},
+            QJsonObject{{"start", 8.0}}}}
+    });
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto res = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(res.value("added").toInt(), 6);
+    EXPECT_EQ(res.value("placementsApplied").toInt(), 3);
+
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    ASSERT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    auto byStart = notesByStart(listed);
+    auto expectNote = [&](double start, int pitch) {
+        auto it = byStart.find(start);
+        ASSERT_NE(it, byStart.end()) << "no note at start " << start;
+        EXPECT_EQ(it->second.first, pitch) << "pitch at beat " << start;
+    };
+    // placement 0 -> pattern A (60/61); placement 1 -> pattern B (70/71);
+    // placement 2 -> pattern A again (j % 2 == 0).
+    expectNote(0.0, 60); expectNote(1.0, 61);
+    expectNote(4.0, 70); expectNote(5.0, 71);
+    expectNote(8.0, 60); expectNote(9.0, 61);
 }
 
 } // namespace

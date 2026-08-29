@@ -12,6 +12,7 @@
 #include "../engine/ArrangementGenerator.h"
 #include "engine/RhythmPatternGenerator.h"
 #include "../engine/PatternLibrary.h"
+#include "../engine/PatternPlacer.h"
 #include "../engine/MidiAnalyzer.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
@@ -20,6 +21,7 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
+#include <utility>
 
 namespace mcp {
 
@@ -370,6 +372,134 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
                 {"lastPitch",  result.lastPitch},
                 {"sliceCount", result.sliceCount},
                 {"baseNote",   result.baseNote}}).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"place_patterns",
+        "Tile bar-aligned MIDI patterns across a beat range with per-placement transforms "
+        "(octave shift, velocity scale, retrograde) and write them into an existing MIDI clip. "
+        "WORKFLOW: analyze_midi_file {path} -> paste the returned patterns[] array into this "
+        "tool's 'patterns' argument verbatim (each has notes[{pitch,startBeat,durationBeats,"
+        "velocity}], clip/pattern-local beats), then give one placement per target bar/beat: "
+        "{start} (clip-local beat), optional octave (-6..+6), velocityScale (0.05..2.0), "
+        "reverse (true = retrograde: the pattern plays backwards within its own span). "
+        "Placement j uses patterns[j % patterns.length] (cyclic), so one pattern tiles across "
+        "many bars. Notes are APPENDED to the clip; set clear=true to first remove the clip's "
+        "existing notes inside the same undo transaction. The per-clip note ceiling is 8192 "
+        "(MidiClipProcessor) — notes past it are skipped and reported in 'skipped'. Returns "
+        "{added, skipped, clipId, placementsApplied}.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                  {"patterns", QJsonObject{
+                      {"type","array"},
+                      {"items", QJsonObject{
+                          {"type","object"},
+                          {"properties", QJsonObject{
+                              {"notes", QJsonObject{
+                                  {"type","array"},
+                                  {"items", QJsonObject{
+                                      {"type","object"},
+                                      {"properties", QJsonObject{
+                                          {"pitch",         QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                                          {"startBeat",     QJsonObject{{"type","number"},{"minimum",0}}},
+                                          {"durationBeats", QJsonObject{{"type","number"},{"minimum",0}}},
+                                          {"velocity",      QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                                      }},
+                                      {"required", QJsonArray{"pitch","startBeat","durationBeats","velocity"}},
+                                      {"additionalProperties", false},
+                                  }},
+                              }},
+                              {"name",          QJsonObject{{"type","string"}}},
+                              {"startBar",      QJsonObject{{"type","integer"}}},
+                              {"lengthBars",    QJsonObject{{"type","integer"}}},
+                              {"trackIndex",    QJsonObject{{"type","integer"}}},
+                              {"frequency",     QJsonObject{{"type","number"}}},
+                              {"isMotif",       QJsonObject{{"type","boolean"}}},
+                          }},
+                          {"required", QJsonArray{"notes"}},
+                          {"additionalProperties", false},
+                      }},
+                  }},
+                  {"placements", QJsonObject{
+                      {"type","array"},
+                      {"items", QJsonObject{
+                          {"type","object"},
+                          {"properties", QJsonObject{
+                              {"start",         QJsonObject{{"type","number"},{"minimum",0}}},
+                              {"octave",        QJsonObject{{"type","integer"},{"minimum",-6},{"maximum",6}}},
+                              {"velocityScale", QJsonObject{{"type","number"},{"minimum",0.05},{"maximum",2.0}}},
+                              {"reverse",       QJsonObject{{"type","boolean"}}},
+                          }},
+                          {"required", QJsonArray{"start"}},
+                          {"additionalProperties", false},
+                      }},
+                  }},
+                  {"clear", QJsonObject{{"type","boolean"}}}},
+                 {"clipId","patterns","placements"}),        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const int clipId = a.value("clipId").toInt(-1);
+
+            // Parse + validate the pattern payload (the analyze_midi_file
+            // patterns[] shape; Gate 9 — every note field is range-checked).
+            std::vector<std::vector<PatternPlacer::PatternNote>> patterns;
+            const auto patternsArr = a.value("patterns").toArray();
+            for (const auto& pv : patternsArr)
+            {
+                std::vector<PatternPlacer::PatternNote> notes;
+                for (const auto& nv : pv.toObject().value("notes").toArray())
+                {
+                    auto no = nv.toObject();
+                    const int pitch = no.value("pitch").toInt();
+                    const double start = no.value("startBeat").toDouble();
+                    const double dur = no.value("durationBeats").toDouble();
+                    const int vel = no.value("velocity").toInt();
+                    if (pitch < 0 || pitch > 127)
+                        return McpToolResult::text("pattern note pitch must be in 0..127", true);
+                    if (vel < 1 || vel > 127)
+                        return McpToolResult::text("pattern note velocity must be in 1..127", true);
+                    if (!(dur > 0.0))
+                        return McpToolResult::text("pattern note durationBeats must be > 0", true);
+                    if (start < 0.0)
+                        return McpToolResult::text("pattern note startBeat must be >= 0", true);
+                    notes.push_back(PatternPlacer::PatternNote{pitch, start, dur, vel});
+                }
+                patterns.push_back(std::move(notes));
+            }
+            if (patterns.empty())
+                return McpToolResult::text("patterns must be non-empty", true);
+
+            // Parse + validate placements (octave/velocityScale ranges; Gate 9).
+            std::vector<PatternPlacer::Placement> placements;
+            for (const auto& plv : a.value("placements").toArray())
+            {
+                auto pl = plv.toObject();
+                const double start = pl.value("start").toDouble();
+                if (start < 0.0)
+                    return McpToolResult::text("placement start must be >= 0", true);
+                PatternPlacer::Placement p;
+                p.start = start;
+                p.octaveShift = pl.contains("octave") ? pl.value("octave").toInt() : 0;
+                if (p.octaveShift < -PatternPlacer::kMaxOctaveShift || p.octaveShift > PatternPlacer::kMaxOctaveShift)
+                    return McpToolResult::text("placement octave must be in -6..6", true);
+                p.velocityScale = pl.contains("velocityScale") ? pl.value("velocityScale").toDouble() : 1.0;
+                if (p.velocityScale < PatternPlacer::kMinVelocityScale || p.velocityScale > PatternPlacer::kMaxVelocityScale)
+                    return McpToolResult::text("placement velocityScale must be in 0.05..2.0", true);
+                p.reverse = pl.contains("reverse") ? pl.value("reverse").toBool() : false;
+                placements.push_back(p);
+            }
+            if (placements.empty())
+                return McpToolResult::text("placements must be non-empty", true);
+
+            const bool clearExisting = a.contains("clear") ? a.value("clear").toBool() : false;
+
+            AudioEngineCommands::PlaceResult out;
+            e->getAudioEngineCommands().placePatterns(clipId, patterns, placements, out, clearExisting);
+            if (!out.ok)
+                return McpToolResult::text(QString::fromStdString(out.error), true);
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                {"added",              out.added},
+                {"skipped",            out.skipped},
+                {"clipId",             out.clipId},
+                {"placementsApplied", static_cast<int>(placements.size())}})
+                .toJson(QJsonDocument::Compact)));
         }});
 
 }
