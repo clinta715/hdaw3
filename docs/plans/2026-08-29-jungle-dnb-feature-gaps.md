@@ -82,10 +82,8 @@ binary), 1 (unit conversion correctness — beats everywhere).
   beat range with octave/rotation/velocity params.
 - P2-3 Section-aware arrangement + automation preset bank (pump, macro sweep, ✅ LANDED 2026-08-29 (`automation_preset`, 6 presets + sections[], 9 tests)
   breakdown open/close, riser presets).
-- P2-4 Key/scale degree helper + `analyze_midi_file` returns key/scale/bpm
-  (currently null) + pattern ids.
-- P2-5 Server-side mix report: RMS arc / bands / pump depth / kick prominence
-  per section map (the verify loop we run in Python per render).
+- P2-4 Key/scale degree helper + `analyze_midi_file` returns key/scale/bpm + pattern ids.  ✅ LANDED 2026-08-29 (`scale_note` + B5 fixed)
+- P2-5 Server-side mix report: RMS arc / bands / pump depth / kick prominence per section.  ✅ LANDED 2026-08-29 (`mix_report`) — **P2 BACKLOG COMPLETE**
 - P3-1 `add_notes` duplicate guard (same pitch/start warn-or-dedupe).
 - P3-2 `add_track` returns JSON `{trackId}` like other tools.
 - P3-3 `related_samples` includes `libraryId` in results.
