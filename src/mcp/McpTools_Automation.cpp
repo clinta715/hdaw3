@@ -6,6 +6,7 @@
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
+#include "../engine/AutomationPreset.h"
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
@@ -155,6 +156,163 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
             e->getProjectCommands().removeAutomationLane(trackId, name);
             return McpToolResult::text("ok");
         }});
+
+    // automation_preset — the P2-3 preset bank. One call writes a named recipe
+    // (pump/macro/openClose/riser/sine/square) onto an EXISTING lane over one
+    // or more beat windows, as ONE undo unit. Windows/times are beats at this
+    // boundary; the tree stores seconds; values are normalized 0..1 (the
+    // command converts exactly like generate_automation_envelope). The lane
+    // must already exist — create it with add_automation_lane first (the
+    // built-in "Volume" lane works by name). Lanes are enabled by this call
+    // unless enable=false.
+    {
+        QJsonObject sectionItem{{"type","object"},
+            {"properties", QJsonObject{
+                {"start",      QJsonObject{{"type","number"}}},
+                {"end",        QJsonObject{{"type","number"}}},
+                {"preset",     QJsonObject{{"type","string"}}},
+                {"startValue", QJsonObject{{"type","number"}}},
+                {"endValue",   QJsonObject{{"type","number"}}}}},
+            {"required", QJsonArray{"start","end"}}};
+        QJsonObject sectionsSchema{{"type","array"}, {"items", sectionItem}};
+        QJsonObject laneSchema{{"oneOf", QJsonArray{
+            QJsonObject{{"type","integer"}},
+            QJsonObject{{"type","string"}}}}};
+
+        QString presetsDoc;
+        for (std::size_t i = 0; i < HDAW::AutomationPreset::kPresetDocumentationCount; ++i)
+            presetsDoc += QString(" - %1: %2\n").arg(
+                HDAW::AutomationPreset::kPresetDocumentation[i].name,
+                HDAW::AutomationPreset::kPresetDocumentation[i].line);
+        const QString description =
+            QString::fromUtf8(
+                "Apply named automation presets to an EXISTING lane over beat windows. Presets:\n") +
+            presetsDoc +
+            QString::fromUtf8(
+                "Windows are BEATS at this boundary; the tree stores SECONDS and values are "
+                "normalized 0..1 (converted exactly like generate_automation_envelope; density is "
+                "a 0.25-beat grid). The lane must already exist — create it with add_automation_lane "
+                "first; built-in lanes like \"Volume\" work by name. With sections, each section's "
+                "preset/startValue/endValue override the top-level ones; without sections, preset + "
+                "start + end form the single window. clear=true removes existing points inside each "
+                "window before writing. seed 0 = non-deterministic (default 12345 = reproducible). "
+                "The lane is enabled after this call unless enable=false.");
+
+        s.registerTool({"automation_preset",
+            description.toUtf8().constData(),
+            objSchema({{"trackId",    QJsonObject{{"type","integer"}}},
+                       {"lane",       laneSchema},
+                       {"preset",     QJsonObject{{"type","string"}}},
+                       {"start",      QJsonObject{{"type","number"}}},
+                       {"end",        QJsonObject{{"type","number"}}},
+                       {"startValue", QJsonObject{{"type","number"}}},
+                       {"endValue",   QJsonObject{{"type","number"}}},
+                       {"cycles",     QJsonObject{{"type","number"}}},
+                       {"sections",   sectionsSchema},
+                       {"clear",      QJsonObject{{"type","boolean"}}},
+                       {"seed",       QJsonObject{{"type","integer"}}},
+                       {"enable",     QJsonObject{{"type","boolean"}}}},
+                      {"trackId","lane"}),
+            "automation",
+            [e](const QJsonObject& a) -> McpToolResult {
+                const int trackId = a.value("trackId").toInt(-1);
+                auto lane = findLane(e, trackId, a.value("lane"));
+                if (!lane.isValid())
+                    return McpToolResult::text(
+                        "lane not found; create it with add_automation_lane first "
+                        "(built-in lanes like \"Volume\" work by name)", true);
+                const std::string laneName =
+                    lane.getProperty(IDs::name, "").toString().toStdString();
+
+                std::vector<HDAW::AutomationPreset::PresetWindow> windows;
+                QJsonArray applied;
+                const auto resolvePreset = [](const QString& s)
+                    -> std::optional<HDAW::AutomationPreset::Preset> {
+                    return HDAW::AutomationPreset::presetFromName(s.toStdString());
+                };
+
+                const auto sections = a.value("sections").toArray();
+                if (!sections.isEmpty())
+                {
+                    for (const auto& sv : sections)
+                    {
+                        const auto obj = sv.toObject();
+                        if (!obj.contains("start") || !obj.contains("end"))
+                            return McpToolResult::text("each section requires start and end", true);
+                        HDAW::AutomationPreset::PresetWindow w;
+                        w.start = obj.value("start").toDouble();
+                        w.end = obj.value("end").toDouble();
+                        const QString pName = obj.value("preset").toString(a.value("preset").toString());
+                        if (pName.isEmpty())
+                            return McpToolResult::text(
+                                "preset required (pump|macro|openClose|riser|sine|square)", true);
+                        const auto p = resolvePreset(pName);
+                        if (!p)
+                            return McpToolResult::text("unknown preset: " + pName, true);
+                        w.preset = *p;
+                        if (obj.contains("startValue"))
+                            w.startValue = obj.value("startValue").toDouble();
+                        else if (a.contains("startValue"))
+                            w.startValue = a.value("startValue").toDouble();
+                        if (obj.contains("endValue"))
+                            w.endValue = obj.value("endValue").toDouble();
+                        else if (a.contains("endValue"))
+                            w.endValue = a.value("endValue").toDouble();
+                        if (!(w.end > w.start))
+                            return McpToolResult::text(
+                                QString("bad window: end (%1) must be > start (%2)")
+                                    .arg(w.end).arg(w.start), true);
+                        windows.push_back(w);
+                        applied.append(pName);
+                    }
+                }
+                else
+                {
+                    const QString pName = a.value("preset").toString();
+                    if (pName.isEmpty())
+                        return McpToolResult::text(
+                            "preset required (pump|macro|openClose|riser|sine|square) "
+                            "when sections is absent", true);
+                    const auto p = resolvePreset(pName);
+                    if (!p)
+                        return McpToolResult::text("unknown preset: " + pName, true);
+                    if (!a.contains("start") || !a.contains("end"))
+                        return McpToolResult::text(
+                            "start and end required when sections is absent", true);
+                    HDAW::AutomationPreset::PresetWindow w;
+                    w.start = a.value("start").toDouble();
+                    w.end = a.value("end").toDouble();
+                    w.preset = *p;
+                    if (a.contains("startValue")) w.startValue = a.value("startValue").toDouble();
+                    if (a.contains("endValue"))   w.endValue   = a.value("endValue").toDouble();
+                    if (a.contains("cycles"))     w.cycles     = a.value("cycles").toDouble();
+                    if (!(w.end > w.start))
+                        return McpToolResult::text(
+                            QString("bad window: end (%1) must be > start (%2)")
+                                .arg(w.end).arg(w.start), true);
+                    windows.push_back(w);
+                    applied.append(pName);
+                }
+
+                const bool clear = a.value("clear").toBool(false);
+                const uint64_t seed = static_cast<uint64_t>(a.value("seed").toInt(12345));
+                int pointsAdded = 0;
+                const std::string err = e->getProjectCommands().applyAutomationPreset(
+                    trackId, laneName, windows, clear, seed, &pointsAdded);
+                if (!err.empty())
+                    return McpToolResult::text(QString::fromStdString(err), true);
+
+                const bool enable = a.value("enable").toBool(true);
+                if (!enable)
+                    e->getProjectCommands().setAutomationEnabled(trackId, laneName, false);
+
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(QJsonObject{
+                        {"lane", QString::fromStdString(laneName)},
+                        {"presets", applied},
+                        {"pointsAdded", pointsAdded}}).toJson(QJsonDocument::Compact)));
+            }});
+    }
 }
 
 } // namespace mcp

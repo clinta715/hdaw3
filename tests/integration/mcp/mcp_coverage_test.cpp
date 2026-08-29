@@ -16,6 +16,7 @@
 #include <QVector>
 #include <QTemporaryDir>
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -1311,6 +1312,112 @@ TEST_F(McpCoverageTest, SetAutomationPoints) {
         {"trackId", 0}, {"lane", "Test Volume"}, {"points", morePoints}, {"mode", "append"}
     });
     EXPECT_FALSE(isError(appendR)) << text(appendR).toStdString();
+}
+
+
+// P2-3 automation preset bank: tool -> applyAutomationPreset command -> lane
+// ValueTree -> read path. Windows are beats at the boundary, seconds in the
+// tree, values normalized 0..1; the lane must exist (add_automation_lane)
+// and is enabled by the apply so renders honor the points.
+TEST_F(McpCoverageTest, AutomationPresetWindows) {
+    // Lane must exist first — dedicated lane on track 0 (paramID 200 is free;
+    // the built-ins are Volume/Pan/Mute).
+    auto createR = call("add_automation_lane", {{"trackId", 0}, {"laneName", "CutPump"}, {"paramID", 200}});
+    EXPECT_FALSE(isError(createR)) << text(createR).toStdString();
+
+    // Two section windows: pump over beats [0,16), macro over [16,32) with
+    // explicit 0.2 -> 0.6 values (per-window overrides win).
+    QJsonArray sections;
+    sections.append(QJsonObject{{"start", 0.0}, {"end", 16.0}, {"preset", "pump"}});
+    sections.append(QJsonObject{{"start", 16.0}, {"end", 32.0}, {"preset", "macro"},
+                                {"startValue", 0.2}, {"endValue", 0.6}});
+    auto r = call("automation_preset",
+                  {{"trackId", 0}, {"lane", "CutPump"}, {"sections", sections}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto res = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(res.value("lane").toString(), QString("CutPump"));
+    EXPECT_EQ(res.value("presets").toArray().size(), 2);
+    EXPECT_EQ(res.value("presets").toArray()[0].toString(), QString("pump"));
+    EXPECT_EQ(res.value("presets").toArray()[1].toString(), QString("macro"));
+    const int pointsAdded = res.value("pointsAdded").toInt(0);
+    // 2 windows x 16 beats x 4 points/beat = 128 (generator emits exactly one
+    // point per grid step; endTime lands on the grid).
+    EXPECT_GE(pointsAdded, 100);
+    EXPECT_LE(pointsAdded, 200);
+
+    // Lane lists the points and ended up enabled by the apply.
+    auto lanes = QJsonDocument::fromJson(
+        callText("list_automation_lanes", {{"trackId", 0}}).toString().toUtf8()).array();
+    bool found = false;
+    for (const auto& lv : lanes)
+    {
+        auto lane = lv.toObject();
+        if (lane.value("name").toString() == "CutPump")
+        {
+            found = true;
+            EXPECT_GT(lane.value("pointCount").toInt(), 0);
+            EXPECT_TRUE(lane.value("enabled").toBool());
+        }
+    }
+    EXPECT_TRUE(found);
+
+    // Read points back through the read path (the same getAutomationPoints the
+    // frontend router serves): beats domain, normalized values.
+    auto pts = engine->getReadModel().getAutomationPoints(0, "CutPump");
+    ASSERT_GE(pts.size(), 100u);
+    const auto nearestAt = [&](double beat) {
+        double bestT = -1e9;
+        double bestV = 0.0;
+        for (const auto& p : pts)
+        {
+            if (std::fabs(p.time - beat) < std::fabs(bestT - beat))
+            {
+                bestT = p.time;
+                bestV = p.value;
+            }
+        }
+        return bestV;
+    };
+
+    // Pump region bounces inside [0.70, 1.00] (values at beats 2 and 8 land on
+    // the band) and actually bounces: min near the trough, max near the peak.
+    const double v2 = nearestAt(2.0);
+    const double v8 = nearestAt(8.0);
+    EXPECT_GE(v2, 0.70 - 1e-3);
+    EXPECT_LE(v2, 1.00 + 1e-3);
+    EXPECT_GE(v8, 0.70 - 1e-3);
+    EXPECT_LE(v8, 1.00 + 1e-3);
+    float minV = 2.0f, maxV = 0.0f;
+    for (const auto& p : pts)
+    {
+        if (p.time >= 0.0 && p.time < 16.0)
+        {
+            minV = std::min(minV, p.value);
+            maxV = std::max(maxV, p.value);
+        }
+    }
+    EXPECT_LT(minV, 0.75f);
+    EXPECT_GT(maxV, 0.95f);
+
+    // Macro region mid-window (beat 24) sits at the midpoint of the 0.2->0.6
+    // ramp: value ≈ 0.4.
+    EXPECT_NEAR(nearestAt(24.0), 0.4, 0.05);
+
+    // Error cases (Gate 9: actionable messages, atomic no-ops).
+    auto badPreset = call("automation_preset",
+        {{"trackId", 0}, {"lane", "CutPump"}, {"preset", "bogus"}, {"start", 0}, {"end", 4}});
+    EXPECT_TRUE(isError(badPreset));
+    EXPECT_TRUE(text(badPreset).contains("unknown preset"));
+
+    auto badLane = call("automation_preset",
+        {{"trackId", 0}, {"lane", "NoSuchLane"}, {"preset", "pump"}, {"start", 0}, {"end", 4}});
+    EXPECT_TRUE(isError(badLane));
+    EXPECT_TRUE(text(badLane).contains("add_automation_lane"));
+
+    auto badWindow = call("automation_preset",
+        {{"trackId", 0}, {"lane", "CutPump"}, {"preset", "pump"}, {"start", 8}, {"end", 4}});
+    EXPECT_TRUE(isError(badWindow));
+    EXPECT_TRUE(text(badWindow).contains("bad window"));
 }
 
 TEST_F(McpCoverageTest, GenerateArrangement) {

@@ -3,6 +3,7 @@
 #include "AudioEngine.h"
 #include "MainAudioProcessor.h"
 #include "../model/ProjectModel.h"
+#include "AutomationPreset.h"
 
 // ─── ProjectCommands — Automation ─────────────────────────────────
 
@@ -244,4 +245,108 @@ void AudioEngineCommands::setAutomationPointValue(int trackIndex, const std::str
             return;
         }
     }
+}
+
+// ─── applyAutomationPreset (P2-3 preset bank) ─────────────────────
+// Generates one named recipe per beat window and writes the envelope points
+// onto an EXISTING lane as ONE undo unit, enabling the lane so renders honor
+// it. Mirrors generateAutomationEnvelope's beats→seconds conversion and
+// in-window insertion exactly (docs/architecture.md unit convention); the
+// only extra step scales the plan's per-beat density (4.0 = 0.25-beat grid)
+// to the seconds domain the generator + ValueTree use, keeping the grid
+// locked to beats at any tempo.
+//
+// Validation happens BEFORE the first tree write, so any error (bad window,
+// missing lane) is an atomic no-op that leaves the project untouched.
+std::string AudioEngineCommands::applyAutomationPreset(
+    int trackIndex, const std::string& laneName,
+    const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
+    bool clearWindowBeforeApply, uint64_t seed, int* pointsAdded)
+{
+    if (pointsAdded) *pointsAdded = 0;
+
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return "track not found: " + std::to_string(trackIndex);
+
+    auto autoLane = findAutomationLane(trackIndex, laneName);
+    if (!autoLane.isValid())
+        return "lane not found: " + laneName + " (create it with add_automation_lane first)";
+
+    if (windows.empty())
+        return "no preset windows given";
+
+    for (const auto& w : windows)
+    {
+        if (!(w.end > w.start))
+            return "bad window: end (" + std::to_string(w.end) +
+                   ") must be > start (" + std::to_string(w.start) + ")";
+    }
+
+    auto* proc = engine_.getMainProcessor();
+    auto& um = engine_.getProjectModel().getUndoManager();
+    um.beginNewTransaction("apply automation preset");
+
+    double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+
+    auto pointList = autoLane.getChildWithName(IDs::POINT_LIST);
+    if (!pointList.isValid())
+    {
+        pointList = juce::ValueTree(IDs::POINT_LIST);
+        autoLane.addChild(pointList, -1, nullptr);
+    }
+
+    int added = 0;
+    for (const auto& w : windows)
+    {
+        auto plan = HDAW::AutomationPreset::plan(w, seed);
+        for (const auto& seg : plan.segments)
+        {
+            // Beats at this boundary -> seconds in the tree (same conversion
+            // as generateAutomationEnvelope).
+            const double startSec = HDAW::beatsToSeconds(seg.startTime, bpm);
+            const double endSec = HDAW::beatsToSeconds(seg.endTime, bpm);
+
+            if (clearWindowBeforeApply)
+            {
+                // Remove existing POINTs in [startSec, endSec] (inclusive),
+                // the same replace-in-window insertion generateAutomationEnvelope
+                // performs unconditionally.
+                for (int i = pointList.getNumChildren() - 1; i >= 0; --i)
+                {
+                    auto pt = pointList.getChild(i);
+                    const double t = static_cast<double>(pt.getProperty(IDs::startTime, 0.0));
+                    if (t >= startSec && t <= endSec)
+                        pointList.removeChild(i, &um);
+                }
+            }
+
+            auto genParams = seg;
+            genParams.startTime = startSec;
+            genParams.endTime = endSec;
+            // Density 4.0 in the plan means per beat (0.25-beat grid);
+            // per-second density = per-beat * bpm / 60.
+            genParams.densityPerSec = seg.densityPerSec * bpm / 60.0;
+
+            auto generated = HDAW::EnvelopeGenerator::generate(genParams);
+            for (const auto& [time, value] : generated)
+            {
+                juce::ValueTree point(IDs::POINT);
+                point.setProperty(IDs::startTime, time, nullptr);
+                point.setProperty(IDs::gain, value, nullptr);
+                pointList.addChild(point, -1, &um);
+                ++added;
+            }
+        }
+    }
+
+    // Lanes are disabled by default; enable so playback/render honors the
+    // points (same effect as the set_automation_enabled path). One undo unit
+    // with the point writes above.
+    autoLane.setProperty(IDs::automationEnabled, true, &um);
+    if (proc)
+        proc->rebuildAutomationCache(trackIndex);
+
+    if (pointsAdded) *pointsAdded = added;
+    return "";
 }

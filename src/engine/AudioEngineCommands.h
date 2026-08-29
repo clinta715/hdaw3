@@ -124,6 +124,11 @@ public:
                                    const HDAW::EnvelopeGenerator::Params& params) override;
     void generateClipCcLane(int clipId, int controllerNumber,
                              const HDAW::EnvelopeGenerator::Params& params) override;
+    // P2-3 automation preset bank. See ProjectCommands.h for the contract.
+    std::string applyAutomationPreset(int trackIndex, const std::string& laneName,
+                                      const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
+                                      bool clearWindowBeforeApply, uint64_t seed,
+                                      int* pointsAdded) override;
 
     // ProjectCommands — Modulation (LFO)
     void addLfo(int trackIndex) override;

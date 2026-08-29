@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "../engine/EnvelopeGenerator.h"
+#include "../engine/AutomationPreset.h"
 
 namespace HDAW { struct ArrangementParams; }
 
@@ -252,6 +253,18 @@ public:
     // Envelope generation (beats at RPC boundary, seconds in tree)
     virtual void generateAutomationEnvelope(int trackIndex, const std::string& lane,
                                              const HDAW::EnvelopeGenerator::Params& params) = 0;
+    // Automation preset bank (P2-3): generate named envelope recipes (pump /
+    // macro / openClose / riser / sine / square) over BEAT windows and write
+    // the points onto an EXISTING lane in ONE undo unit, enabling the lane.
+    // Windows and times are beats at this boundary; the tree stores seconds
+    // (the same beatsToSeconds conversion generateAutomationEnvelope uses,
+    // with density scaled from per-beat to per-second). Returns "" on success
+    // or an actionable error string (track/lane missing, bad window, no
+    // windows); *pointsAdded receives the total points written (0 on error).
+    virtual std::string applyAutomationPreset(int trackIndex, const std::string& laneName,
+                                              const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
+                                              bool clearWindowBeforeApply, uint64_t seed,
+                                              int* pointsAdded) = 0;
     virtual void generateClipGainEnvelope(int clipId,
                                            const HDAW::EnvelopeGenerator::Params& params) = 0;
     virtual void generateClipCcLane(int clipId, int controllerNumber,
