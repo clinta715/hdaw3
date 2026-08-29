@@ -271,6 +271,25 @@ TEST_F(McpCoverageTest, AddTrackWithFx) {
     EXPECT_GE(fxArr.size(), 1);
 }
 
+TEST_F(McpCoverageTest, AddTrackReturnsJson) {
+    // P3-2: add_track must return compact JSON (was plain "trackId=N routed=1").
+    int before = trackCount();
+    auto r = call("add_track", {{"name", "JsonTrack"}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto result = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_FALSE(result.isEmpty()) << text(r).toStdString();
+    int trackId = result.value("trackId").toInt();
+    EXPECT_GT(trackId, 0) << text(r).toStdString();
+    EXPECT_EQ(result.value("routed").toInt(), 1);
+    EXPECT_EQ(trackCount(), before + 1);
+
+    // The returned id really exists in list_tracks with the requested name.
+    auto t = findTrack(trackId);
+    EXPECT_FALSE(t.isEmpty());
+    EXPECT_EQ(t.value("name").toString().toStdString(), "JsonTrack");
+}
+
 // ============================================================================
 // NOTE OPERATORS
 // ============================================================================
@@ -970,6 +989,17 @@ TEST_F(McpCoverageTest, LibraryRelatedSamplesByFilePathAndQuery) {
     EXPECT_GE(results[0].toObject().value("similarity").toDouble(),
               results[1].toObject().value("similarity").toDouble());
 
+    // P3-3: every hit carries the library it belongs to, within the requested
+    // scope.
+    QJsonArray requestedIds{libId};
+    for (const auto& r : results) {
+        auto hit = r.toObject();
+        EXPECT_FALSE(hit.value("libraryId").toString().isEmpty())
+            << "related_samples hit missing libraryId";
+        EXPECT_TRUE(requestedIds.contains(QJsonValue(hit.value("libraryId").toString())))
+            << "hit libraryId outside the requested scope";
+    }
+
     // Text query seed: "dark" ranks the dark family first.
     auto qR = call("related_samples", {{"libraryIds", ids}, {"query", "dark"}, {"limit", 2}});
     ASSERT_FALSE(isError(qR)) << text(qR).toStdString();
@@ -979,6 +1009,15 @@ TEST_F(McpCoverageTest, LibraryRelatedSamplesByFilePathAndQuery) {
     ASSERT_EQ(qResults.size(), 2) << "limit is respected";
     EXPECT_TRUE(qResults[0].toObject().value("name").toString().startsWith("dark"));
     EXPECT_TRUE(qResults[1].toObject().value("name").toString().startsWith("dark"));
+
+    // P3-3: query-seeded hits also carry libraryId within the requested scope.
+    for (const auto& r : qResults) {
+        auto hit = r.toObject();
+        EXPECT_FALSE(hit.value("libraryId").toString().isEmpty())
+            << "query hit missing libraryId";
+        EXPECT_TRUE(requestedIds.contains(QJsonValue(hit.value("libraryId").toString())))
+            << "query hit libraryId outside the requested scope";
+    }
 
     auto removeR = call("remove_library", {{"id", libId}});
     EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
@@ -1471,6 +1510,36 @@ TEST_F(McpCoverageTest, AddNotesBulk) {
 
     auto getNotesResult = getNotes(clipId);
     EXPECT_EQ(getNotesResult.size(), 3);
+}
+
+TEST_F(McpCoverageTest, AddNotesDeduplicatesBatchInternal) {
+    // P3-1: batch-internal exact-dup guard. Identical (pitch, start, duration)
+    // triples keep only the FIRST occurrence; velocity differences are NOT a
+    // dedupe key. Duplicates against existing clip notes are NOT deduped.
+    int clipId = addMidiClip(0, 0.0, 8.0);
+    ASSERT_GT(clipId, 0);
+
+    QJsonArray notes;
+    // 3 exact duplicates of (60, 0.0, 0.5) — different velocities on purpose.
+    notes.append(QJsonObject{{"pitch", 60}, {"start", 0.0}, {"duration", 0.5}, {"velocity", 100}});
+    notes.append(QJsonObject{{"pitch", 60}, {"start", 0.0}, {"duration", 0.5}, {"velocity", 90}});
+    notes.append(QJsonObject{{"pitch", 60}, {"start", 0.0}, {"duration", 0.5}, {"velocity", 120}});
+    // 2 unique notes.
+    notes.append(QJsonObject{{"pitch", 64}, {"start", 0.5}, {"duration", 0.5}});
+    notes.append(QJsonObject{{"pitch", 67}, {"start", 1.0}, {"duration", 0.5}});
+
+    auto r = call("add_notes", {{"clipId", clipId}, {"notes", notes}});
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto result = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(result.value("added").toInt(), 3);
+    EXPECT_EQ(result.value("duplicatesSkipped").toInt(), 2);
+
+    // list_notes sees exactly the 3 kept notes (5 - 2 skipped).
+    auto listR = call("list_notes", {{"clipId", clipId}});
+    EXPECT_FALSE(isError(listR)) << text(listR).toStdString();
+    auto listed = QJsonDocument::fromJson(text(listR).toUtf8()).object();
+    EXPECT_EQ(listed.value("count").toInt(), 3);
 }
 
 TEST_F(McpCoverageTest, AddNotesAbsoluteBeatsConvertToClipLocal) {

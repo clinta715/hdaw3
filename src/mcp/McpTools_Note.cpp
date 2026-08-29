@@ -20,6 +20,8 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
+#include <set>
+#include <tuple>
 
 namespace mcp {
 
@@ -65,7 +67,7 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
              {"notes",    QJsonObject{{"type","array"},{"items", noteItem}}},
              {"relative", QJsonObject{{"type","boolean"}}}},
             QJsonArray{"clipId","notes"});
-        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}. Default (relative=true): start/duration are CLIP-LOCAL beats (subtract the clip's own start beat from timeline positions). ABSOLUTE mode (relative=false): each note's start is a TIMELINE-ABSOLUTE beat position, converted to clip-local by subtracting the clip's start beat (clip start seconds * bpm / 60); the whole batch is rejected if any absolute start is before the clip's start. A clip plays at most 8192 notes (excess is logged and skipped - split long parts into multiple clips).",
+        s.registerTool({"add_notes", "Add multiple MIDI notes to a clip in one batch; returns {added, noteIds}. Default (relative=true): start/duration are CLIP-LOCAL beats (subtract the clip's own start beat from timeline positions). ABSOLUTE mode (relative=false): each note's start is a TIMELINE-ABSOLUTE beat position, converted to clip-local by subtracting the clip's start beat (clip start seconds * bpm / 60); the whole batch is rejected if any absolute start is before the clip's start. A clip plays at most 8192 notes (excess is logged and skipped - split long parts into multiple clips). Exact duplicates WITHIN the batch (same pitch, start, and duration) are skipped after the first occurrence and counted in duplicatesSkipped (velocity is not a dedupe key).",
             addNotesSchema,
             "note",
             [e](const QJsonObject& a) -> McpToolResult {
@@ -101,21 +103,37 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
 
                 um.beginNewTransaction();
                 QJsonArray ids;
+                int duplicatesSkipped = 0;
+                // Batch-internal exact-dup guard (P3-1): same (pitch, startBeat,
+                // durationBeats) triple keeps only the FIRST occurrence. Keyed on
+                // the EFFECTIVE clip-local startBeat (post absolute conversion),
+                // matching what is actually written to the tree. Velocity is not
+                // a dedupe key. Duplicates against EXISTING clip notes are NOT
+                // deduped — this guard is batch-internal only.
+                std::set<std::tuple<int, double, double>> seen;
                 for (const auto& nv : notesArr) {
                     auto no = nv.toObject();
+                    const int pitch = no.value("pitch").toInt();
+                    const double startBeat = relative ? no.value("start").toDouble()
+                                                      : no.value("start").toDouble() - clipStartBeats;
+                    const double durationBeats = no.value("duration").toDouble();
+                    if (!seen.insert(std::make_tuple(pitch, startBeat, durationBeats)).second) {
+                        ++duplicatesSkipped;
+                        continue;
+                    }
                     juce::ValueTree n(IDs::MIDI_NOTE);
                     int nid = m.allocateNoteID();
                     n.setProperty(IDs::noteID, nid, nullptr);
-                    n.setProperty(IDs::noteNumber, no.value("pitch").toInt(), &um);
-                    n.setProperty(IDs::startBeat, relative ? no.value("start").toDouble()
-                                                           : no.value("start").toDouble() - clipStartBeats, &um);
-                    n.setProperty(IDs::durationBeats, no.value("duration").toDouble(), &um);
+                    n.setProperty(IDs::noteNumber, pitch, &um);
+                    n.setProperty(IDs::startBeat, startBeat, &um);
+                    n.setProperty(IDs::durationBeats, durationBeats, &um);
                     n.setProperty(IDs::velocity, static_cast<float>(no.value("velocity").toInt(100)) / 127.0f, &um);
                     nl.addChild(n, -1, &um);
                     ids.append(nid);
                 }
                 QJsonObject result;
-                result["added"] = notesArr.size();
+                result["added"] = ids.size();
+                result["duplicatesSkipped"] = duplicatesSkipped;
                 result["noteIds"] = ids;
                 return McpToolResult::text(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
             }});

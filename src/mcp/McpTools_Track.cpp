@@ -26,7 +26,7 @@ namespace mcp {
 void registerTrackTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"add_track",
-        "Add a track. Color defaults to the next palette color if omitted.",
+        "Add a track; returns compact JSON {\"trackId\":N,\"routed\":1} (routed=1 when the track is registered for routing). Color defaults to the next palette color if omitted.",
         objSchema({{"name", QJsonObject{{"type","string"}}},
                   {"color", QJsonObject{{"type","integer"}}},
                   {"parentBus", QJsonObject{{"type","integer"}}}}, {"name"}),
@@ -50,8 +50,12 @@ void registerTrackTools(McpServer& s, AudioEngine* e)
             t.addChild(ProjectModel::createTrackAutomationList(), -1, &um);
             m.getTrackListTree().addChild(t, -1, &um);
             bool routingOk = idx >= 0 && idx < e->getProjectModel().getTrackListTree().getNumChildren();
-            return McpToolResult::text(
-                QString("trackId=%1 routed=%2").arg(idx).arg(routingOk ? "1" : "0"));
+            // P3-2: JSON response (was plain text "trackId=N routed=1"). The
+            // trackId/routed keys are semantically unchanged, so parsers that
+            // look up the key by name keep working.
+            QJsonObject result{{"trackId", idx}, {"routed", routingOk ? 1 : 0}};
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"remove_track", "Remove a track (destructive).",

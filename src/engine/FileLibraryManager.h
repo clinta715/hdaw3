@@ -151,8 +151,12 @@ private:
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
     static void applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile);
+    // When outLibraryIds is non-null, it receives the library id for each
+    // entry in `out` (same order/index) so callers can attribute entries
+    // back to their library.
     bool collectClusterEntries(const juce::StringArray& libraryIds,
-                               std::vector<LibraryEntry>& out, juce::String& error) const;
+                               std::vector<LibraryEntry>& out, juce::String& error,
+                               std::vector<juce::String>* outLibraryIds = nullptr) const;
     juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
 

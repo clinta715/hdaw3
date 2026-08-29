@@ -84,6 +84,9 @@ struct RelatedHit {
     juce::String path;
     juce::String tags;
     juce::String description;
+    // Library the entry belongs to. The pure clusterer has no library
+    // concept; the FileLibraryManager wrapper attributes this per hit.
+    juce::String libraryId;
     double similarity = 0.0;
 };
 

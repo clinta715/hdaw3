@@ -989,7 +989,8 @@ LibraryEntry FileLibraryManager::getEntry(const juce::String& libraryId, const j
 
 bool FileLibraryManager::collectClusterEntries(const juce::StringArray& libraryIds,
                                                std::vector<LibraryEntry>& out,
-                                               juce::String& error) const {
+                                               juce::String& error,
+                                               std::vector<juce::String>* outLibraryIds) const {
     std::vector<juce::String> selected;
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -1031,13 +1032,19 @@ bool FileLibraryManager::collectClusterEntries(const juce::StringArray& libraryI
         self->loadLibraryEntries(id);
 
     // Copy the entry snapshot under the lock; all clustering math runs on the
-    // caller's thread against the copy.
+    // caller's thread against the copy. When asked, pair each entry with the
+    // library id it came from (same order/index as `out`).
     {
         std::lock_guard<std::mutex> lock(mutex);
         for (const auto& id : selected) {
             auto it = entries.find(id);
             if (it == entries.end()) continue;
-            out.insert(out.end(), it->second.begin(), it->second.end());
+            if (outLibraryIds != nullptr)
+                outLibraryIds->reserve(outLibraryIds->size() + it->second.size());
+            for (const auto& e : it->second) {
+                out.push_back(e);
+                if (outLibraryIds != nullptr) outLibraryIds->push_back(id);
+            }
         }
     }
     if (out.empty()) {
@@ -1172,11 +1179,20 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
     }
 
     std::vector<LibraryEntry> entries;
-    if (!collectClusterEntries(libraryIds, entries, error)) return {};
+    std::vector<juce::String> entryLibraryIds;
+    if (!collectClusterEntries(libraryIds, entries, error, &entryLibraryIds)) return {};
+    // P3-3: attribute each result hit to the library it came from. The pure
+    // clusterer (LibraryClusterer) has no library concept — the wrapper does,
+    // so build a path -> library map from the collected entries here. The
+    // cluster math itself is not changed.
+    std::map<juce::String, juce::String> pathToLibrary;
+    for (size_t i = 0; i < entries.size(); ++i)
+        pathToLibrary.emplace(entries[i].path, entryLibraryIds[i]);
     const auto items = toClusterItems(entries);
 
+    RelatedResult r;
     if (filePath.isNotEmpty()) {
-        auto r = relatedToItem(items, filePath, methodEnum, limit);
+        r = relatedToItem(items, filePath, methodEnum, limit);
         if (!r.found) {
             error = "entry not found: " + filePath;
             return {};
@@ -1185,13 +1201,16 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
             error = "seed entry has no tags, description, or dsp features to compare";
             return {};
         }
-        return r;
+    } else {
+        r = relatedToQuery(items, query, methodEnum, limit);
+        if (!r.hasSeedSignal) {
+            error = "query matched no indexed terms";
+            return {};
+        }
     }
-
-    auto r = relatedToQuery(items, query, methodEnum, limit);
-    if (!r.hasSeedSignal) {
-        error = "query matched no indexed terms";
-        return {};
+    for (auto& h : r.results) {
+        auto it = pathToLibrary.find(h.path);
+        if (it != pathToLibrary.end()) h.libraryId = it->second;
     }
     return r;
 }

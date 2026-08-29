@@ -427,7 +427,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         "Find entries similar to a seed sample (filePath) or to a text query, "
         "within one or more audio libraries — nearest neighbours by timbre "
         "(tags/description + dsp features). Exactly one of filePath or query "
-        "is required. limit default 10, max 100.",
+        "is required. limit default 10, max 100. Each result hit includes "
+        "libraryId (the audio library the entry belongs to).",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
                    {"filePath", QJsonObject{{"type","string"}}},
@@ -457,6 +458,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 results.append(QJsonObject{
                     {"name", jstr(h.name)},
                     {"path", jstr(h.path)},
+                    {"libraryId", jstr(h.libraryId)},
                     {"tags", jstr(h.tags)},
                     {"description", jstr(h.description)},
                     {"similarity", h.similarity}
