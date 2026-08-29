@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <tuple>
+#include <vector>
 
 namespace {
 
@@ -2101,6 +2103,247 @@ TEST_F(McpCoverageTest, PlacePatternsCyclicPlacement)
     expectNote(0.0, 60); expectNote(1.0, 61);
     expectNote(4.0, 70); expectNote(5.0, 71);
     expectNote(8.0, 60); expectNote(9.0, 61);
+}
+
+
+// ── P2-4 / P2-5 fixtures and MCP coverage tests ─────────────────────────────
+
+// Minimal MIDI writer (single track): tempo meta + note on/off pairs.
+void writeMidiVarLen(std::vector<uint8_t>& buf, uint32_t value)
+{
+    if (value < 0x80) { buf.push_back(static_cast<uint8_t>(value)); return; }
+    std::vector<uint8_t> bytes;
+    bytes.push_back(static_cast<uint8_t>(value & 0x7F));
+    value >>= 7;
+    while (value > 0) {
+        bytes.push_back(static_cast<uint8_t>((value & 0x7F) | 0x80));
+        value >>= 7;
+    }
+    for (auto it = bytes.rbegin(); it != bytes.rend(); ++it)
+        buf.push_back(*it);
+}
+
+// notes = {pitch, velocity, startBeat, durationBeats}. Returns temp file path.
+QString writeMidiWithTempo(const std::vector<std::tuple<int, int, double, double>>& notes,
+                           double bpm)
+{
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_analyze_" + juce::String(juce::Random::getSystemRandom().nextInt()) + ".mid");
+    f.deleteFile();
+
+    constexpr int ticksPerQuarter = 480;
+    struct MidiEvent { uint32_t tick; bool isNoteOn; int pitch; int velocity; };
+    std::vector<MidiEvent> events;
+    for (const auto& [pitch, vel, start, dur] : notes) {
+        events.push_back({ static_cast<uint32_t>(start * ticksPerQuarter), true, pitch, vel });
+        events.push_back({ static_cast<uint32_t>((start + dur) * ticksPerQuarter), false, pitch, 0 });
+    }
+    std::sort(events.begin(), events.end(),
+        [](const MidiEvent& a, const MidiEvent& b) { return a.tick < b.tick; });
+
+    std::vector<uint8_t> data;
+    const uint8_t header[] = {
+        'M','T','h','d', 0,0,0,6, 0,0, 0,1,
+        static_cast<uint8_t>((ticksPerQuarter >> 8) & 0xFF),
+        static_cast<uint8_t>(ticksPerQuarter & 0xFF)
+    };
+    data.insert(data.end(), header, header + sizeof(header));
+
+    std::vector<uint8_t> trackData;
+    const uint32_t usPerQuarter = static_cast<uint32_t>(60000000.0 / bpm);
+    writeMidiVarLen(trackData, 0);
+    trackData.insert(trackData.end(), { 0xFF, 0x51, 0x03 });
+    trackData.push_back((usPerQuarter >> 16) & 0xFF);
+    trackData.push_back((usPerQuarter >> 8) & 0xFF);
+    trackData.push_back(usPerQuarter & 0xFF);
+
+    uint32_t lastTick = 0;
+    for (const auto& ev : events) {
+        writeMidiVarLen(trackData, ev.tick - lastTick);
+        lastTick = ev.tick;
+        trackData.push_back(ev.isNoteOn ? 0x90 : 0x80);
+        trackData.push_back(static_cast<uint8_t>(ev.pitch));
+        trackData.push_back(static_cast<uint8_t>(ev.velocity));
+    }
+    writeMidiVarLen(trackData, 0);
+    trackData.insert(trackData.end(), { 0xFF, 0x2F, 0 });
+
+    data.insert(data.end(), { 'M','T','r','k' });
+    const uint32_t trackLen = static_cast<uint32_t>(trackData.size());
+    data.push_back((trackLen >> 24) & 0xFF);
+    data.push_back((trackLen >> 16) & 0xFF);
+    data.push_back((trackLen >> 8) & 0xFF);
+    data.push_back(trackLen & 0xFF);
+    data.insert(data.end(), trackData.begin(), trackData.end());
+
+    std::unique_ptr<juce::FileOutputStream> out(f.createOutputStream());
+    out->write(data.data(), static_cast<int>(data.size()));
+    out.reset();
+    return QString::fromStdString(f.getFullPathName().toStdString());
+}
+
+// Phase-continuous sine helper (deterministic fixtures).
+double synthSineAt(double t, double freq, double amp)
+{
+    return amp * std::sin(2.0 * juce::MathConstants<double>::pi * freq * t);
+}
+
+// 8 s @ 48 kHz mono WAV (4 s per section — each section is 8 beats at the
+// 120 bpm used below, satisfying the >= 8-beat pump-depth contract):
+//   A [0,4): 60 Hz @ 0.5 + 440 Hz @ 0.3  -> rms sqrt(0.17) ~ 0.4123
+//   B [4,8): 440 Hz @ 0.2 + 8000 Hz @ 0.3 -> rms sqrt(0.065) ~ 0.2549
+// Integer cycles per section -> deterministic RMS. Whole-file rms ~ 0.3428.
+QString writeMixReportFixtureWav()
+{
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_mix_report_" + juce::String(juce::Random::getSystemRandom().nextInt()) + ".wav");
+    f.deleteFile();
+    constexpr double sr = 48000.0;
+    constexpr int len = static_cast<int>(sr * 8.0);
+    juce::AudioBuffer<float> buf(1, len);
+    for (int64_t i = 0; i < len; ++i) {
+        const double t = static_cast<double>(i) / sr;
+        float v = (t < 4.0)
+            ? static_cast<float>(synthSineAt(t, 60.0, 0.5) + synthSineAt(t, 440.0, 0.3))
+            : static_cast<float>(synthSineAt(t, 440.0, 0.2) + synthSineAt(t, 8000.0, 0.3));
+        buf.setSample(0, static_cast<int>(i), v);
+    }
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(f), sr, 1, 24, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, len);
+    return QString::fromStdString(f.getFullPathName().toStdString());
+}
+
+// P2-4: analyze_midi_file now returns key/scale/bpm (top-level) and stable
+// per-pattern ids. Fixture: two identical bars of C minor @ 128 bpm — C is
+// the heaviest pitch class so detectScale lands on Aeolian (scaleType 1).
+TEST_F(McpCoverageTest, AnalyzeMidiFileReturnsKeyScaleBpmAndPatternIds)
+{
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("analyze_midi_file"));
+
+    std::vector<std::tuple<int, int, double, double>> bar = {
+        {60, 100, 0.0, 0.5}, {60, 100, 0.5, 0.5}, {63, 100, 1.0, 0.5},
+        {67, 100, 1.5, 0.5}, {65, 100, 2.0, 0.5}, {70, 100, 2.5, 0.25},
+        {60, 100, 3.0, 0.75}
+    };
+    std::vector<std::tuple<int, int, double, double>> notes = bar;
+    for (const auto& n : bar) {
+        notes.push_back({ std::get<0>(n), std::get<1>(n),
+                          std::get<2>(n) + 4.0, std::get<3>(n) });
+    }
+
+    const QString path = writeMidiWithTempo(notes, 128.0);
+    ASSERT_FALSE(path.isEmpty());
+    auto r = call("analyze_midi_file", {{"path", path}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto obj = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(obj.value("key").toString().toStdString(), "C minor") << text(r).toStdString();
+    EXPECT_DOUBLE_EQ(obj.value("bpm").toDouble(), 128.0);
+    EXPECT_DOUBLE_EQ(obj.value("sourceBpm").toDouble(), 128.0);
+    EXPECT_EQ(obj.value("scaleType").toInt(), 1) << text(r).toStdString();
+    const QString scale = obj.value("scale").toString();
+    EXPECT_TRUE(scale.contains("minor", Qt::CaseInsensitive));
+    EXPECT_EQ(obj.value("fingerprint").toObject().value("rootNote").toInt(), 60);
+
+    auto patterns = obj.value("patterns").toArray();
+    ASSERT_GE(patterns.size(), 1) << "expected at least one repeated-bar pattern: " << text(r).toStdString();
+    for (int i = 0; i < patterns.size(); ++i) {
+        EXPECT_EQ(patterns[i].toObject().value("id").toString().toStdString(),
+                  std::string("p") + std::to_string(i));
+    }
+
+    // Error path: missing file.
+    EXPECT_TRUE(isError(call("analyze_midi_file", {{"path", "C:/nonexistent/x.mid"}})));
+
+    juce::File(path.toStdString()).deleteFile();
+}
+
+// P2-4: scale_note degree math — rootC degree0 -> C, degree7 -> next octave,
+// negative degrees wrap, known/unknown scale names, ranges.
+TEST_F(McpCoverageTest, ScaleNoteMath)
+{
+    auto pitch = [&](const QJsonObject& args) -> int {
+        auto r = call("scale_note", args);
+        if (isError(r)) return -1000;
+        auto obj = QJsonDocument::fromJson(text(r).toUtf8()).object();
+        return obj.value("midiPitch").toInt(-1000);
+    };
+    // Base math.
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",0}}), 60);   // C
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",7}}), 72);   // next octave C
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",8}}), 74);   // D, next octave
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",-1}}), 59);  // B below C
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",-7}}), 48);  // C, octave below
+    EXPECT_EQ(pitch({{"rootMidi",62}, {"scale","minor"}, {"degree",0}}), 62);   // D minor root
+    // Name forms: canonical full name and church-mode alias resolve too.
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","Major (Ionian)"}, {"degree",7}}), 72);
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","ionian"}, {"degree",7}}), 72);
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","aeolian"}, {"degree",0}}), 60);
+    // octave param shifts by 12 * octave.
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",0}, {"octave",1}}), 72);
+    EXPECT_EQ(pitch({{"rootMidi",60}, {"scale","major"}, {"degree",0}, {"octave",-1}}), 48);
+    // Errors: unknown scale, out-of-range rootMidi, pitch out of MIDI range.
+    EXPECT_TRUE(isError(call("scale_note", {{"rootMidi",60}, {"scale","not-a-scale"}, {"degree",0}})));
+    EXPECT_TRUE(isError(call("scale_note", {{"rootMidi",128}, {"scale","major"}, {"degree",0}})));
+    EXPECT_TRUE(isError(call("scale_note", {{"rootMidi",-1}, {"scale","major"}, {"degree",0}})));
+    EXPECT_TRUE(isError(call("scale_note", {{"rootMidi",100}, {"scale","major"}, {"degree",40}})));
+    EXPECT_TRUE(isError(call("scale_note", {{"rootMidi",60}, {"scale","major"}, {"degree",-100}})));
+}
+
+// P2-5: mix_report reads the fixture WAV offline and reports whole-file +
+// section metrics; errors on missing/invalid input.
+TEST_F(McpCoverageTest, MixReportSections)
+{
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("mix_report"));
+
+    const QString wavPath = writeMixReportFixtureWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    QJsonArray sectionsArg{
+        QJsonObject{{"name","A"}, {"start",0.0}, {"end",4.0}},
+        QJsonObject{{"name","B"}, {"start",4.0}, {"end",8.0}}};
+    auto r = call("mix_report", {{"filePath", wavPath}, {"bpm", 120.0}, {"sections", sectionsArg}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto obj = QJsonDocument::fromJson(text(r).toUtf8()).object();
+
+    EXPECT_NEAR(obj.value("rms").toDouble(), std::sqrt(0.1175), 0.01);
+    EXPECT_NEAR(obj.value("duration").toDouble(), 8.0, 1e-6);
+    EXPECT_EQ(obj.value("sampleRate").toDouble(), 48000.0);
+    EXPECT_EQ(obj.value("bandLabels").toArray().size(), 4);
+    EXPECT_TRUE(obj.contains("pumpDepth")) << "bpm given, 8-beat sections -> pumpDepth expected";
+
+    auto secs = obj.value("sections").toArray();
+    ASSERT_EQ(secs.size(), 2) << text(r).toStdString();
+    EXPECT_EQ(secs[0].toObject().value("name").toString(), "A");
+    EXPECT_NEAR(secs[0].toObject().value("rms").toDouble(), std::sqrt(0.17), 0.01);
+    EXPECT_NEAR(secs[1].toObject().value("rms").toDouble(), std::sqrt(0.065), 0.01);
+    auto secA = secs[0].toObject().value("bandEnergy").toArray();
+    EXPECT_GT(secA[0].toDouble(), secA[1].toDouble());   // sub > bass in A
+
+    // Default: one "whole" section, pumpDepth omitted when no bpm.
+    auto r2 = call("mix_report", {{"filePath", wavPath}});
+    ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto obj2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    auto secs2 = obj2.value("sections").toArray();
+    ASSERT_EQ(secs2.size(), 1);
+    EXPECT_EQ(secs2[0].toObject().value("name").toString(), "whole");
+    EXPECT_FALSE(obj2.contains("pumpDepth"));
+
+    // Error paths: missing file, bad section (end <= start).
+    EXPECT_TRUE(isError(call("mix_report", {{"filePath", "C:/nonexistent/render.wav"}})));
+    QJsonArray badSections{QJsonObject{{"name","bad"}, {"start",2.0}, {"end",1.0}}};
+    EXPECT_TRUE(isError(call("mix_report", {{"filePath", wavPath}, {"sections", badSections}})));
+
+    juce::File(wavPath.toStdString()).deleteFile();
 }
 
 } // namespace

@@ -20,8 +20,65 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <algorithm>
+#include <cmath>
 
 namespace mcp {
+
+namespace {
+
+// Short, lowercase mode name for human key strings: "Minor (Aeolian)" ->
+// "minor", "Harmonic Minor" -> "harmonic minor". "unknown" for -1 / unknown.
+QString scaleModeShortName(int scaleType)
+{
+    if (scaleType < 0)
+        return QStringLiteral("unknown");
+    for (const auto& m : PhraseGenerator::getScaleModes()) {
+        if (m.index == scaleType) {
+            juce::String n(m.name);
+            const int paren = n.indexOf(" (");
+            if (paren > 0)
+                n = n.substring(0, paren);
+            return QString::fromStdString(n.trim().toLowerCase().toStdString());
+        }
+    }
+    return QStringLiteral("unknown");
+}
+
+// Canonical scale-mode name as listed by get_scale_modes (PhraseGenerator
+// scale table): "Minor (Aeolian)". "unknown" for -1 / unknown.
+QString scaleModeFullName(int scaleType)
+{
+    if (scaleType < 0)
+        return QStringLiteral("unknown");
+    for (const auto& m : PhraseGenerator::getScaleModes()) {
+        if (m.index == scaleType)
+            return QString::fromUtf8(m.name);
+    }
+    return QStringLiteral("unknown");
+}
+
+// Resolve a scale-mode NAME to its PhraseGenerator index (-1 if unknown).
+// Accepts the canonical name ("Minor (Aeolian)"), the short form ("minor"),
+// and the parenthetical church-mode alias ("aeolian"), case-insensitively.
+int resolveScaleIndex(const QString& name)
+{
+    const QString needle = name.trimmed().toLower();
+    if (needle.isEmpty())
+        return -1;
+    for (const auto& m : PhraseGenerator::getScaleModes()) {
+        const QString full = QString::fromUtf8(m.name).toLower();   // "minor (aeolian)"
+        const int paren = full.indexOf(" (");
+        const QString shortName = paren > 0 ? full.left(paren) : full;  // "minor"
+        const QString church = paren > 0
+            ? full.mid(paren + 2, full.length() - paren - 3) : QString();  // "aeolian"
+        if (needle == full || needle == shortName || (!church.isEmpty() && needle == church))
+            return m.index;
+    }
+    return -1;
+}
+
+} // namespace
+
 
 void registerPatternTools(McpServer& s, AudioEngine* e)
 {
@@ -33,7 +90,11 @@ void registerPatternTools(McpServer& s, AudioEngine* e)
 s.registerTool({"analyze_midi_file",
         "Analyze a MIDI file: extract musical fingerprint (key, scale, rhythm, velocity), "
         "bar-aligned patterns, sub-bar motifs, and PhraseGenerator-compatible style parameters. "
-        "Returns full analysis with generated params ready for regeneration.",
+        "Returns full analysis with generated params ready for regeneration. "
+        "Top-level convenience fields: bpm (file tempo; sourceBpm kept too), key "
+        "(human string, e.g. \"F minor\"), scale (scale-mode name from get_scale_modes, "
+        "\"unknown\" when undetected), scaleType (mode index, -1 = unknown). Each pattern "
+        "carries a stable id \"p<index>\" in array order (p0, p1, ...).",
         objSchema({{"path", QJsonObject{{"type","string"}}}},
                    {"path"}),
         "composition",
@@ -73,8 +134,20 @@ s.registerTool({"analyze_midi_file",
             // Metadata
             root["fileName"] = QString::fromStdString(result.fileName.toStdString());
             root["sourceBpm"] = result.sourceBpm;
+            root["bpm"] = result.sourceBpm;
             root["timeSignature"] = QString("%1/%2").arg(result.timeSignatureNum).arg(result.timeSignatureDen);
             root["trackCount"] = result.trackCount;
+
+            // Key / scale convenience fields (nested fingerprint stays unchanged
+            // for backward compatibility). key is a human "F minor"-style string.
+            root["scaleType"] = fp.scaleType;
+            root["scale"] = scaleModeFullName(fp.scaleType);
+            {
+                const QString rootName = jstr(juce::MidiMessage::getMidiNoteName(
+                    fp.rootNote, true /*sharps*/, false /*no octave*/, 4));
+                const QString modeName = scaleModeShortName(fp.scaleType);
+                root["key"] = (fp.scaleType >= 0) ? rootName + " " + modeName : rootName;
+            }
 
             // Style classification
             root["guessedStyle"] = PhraseGenerator::styleName(
@@ -83,6 +156,7 @@ s.registerTool({"analyze_midi_file",
 
             // Patterns
             QJsonArray patternsArr;
+            int patternIdx = 0;
             for (const auto& p : result.patterns) {
                 QJsonArray notesArr;
                 for (const auto& n : p.notes) {
@@ -92,10 +166,12 @@ s.registerTool({"analyze_midi_file",
                     });
                 }
                 patternsArr.append(QJsonObject{
-                    {"name", jstr(p.name)}, {"startBar", p.startBar},
+                    {"id", QString("p%1").arg(patternIdx)}, {"name", jstr(p.name)},
+                    {"startBar", p.startBar},
                     {"lengthBars", p.lengthBars}, {"trackIndex", p.trackIndex},
                     {"notes", notesArr}, {"frequency", p.frequency}, {"isMotif", p.isMotif}
                 });
+                ++patternIdx;
             }
             root["patterns"] = patternsArr;
             root["patternCount"] = static_cast<int>(result.patterns.size());
@@ -105,6 +181,56 @@ s.registerTool({"analyze_midi_file",
             root["styleParamsJson"] = QString::fromStdString(result.styleParamsJson.toStdString());
 
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
+        }});
+
+
+s.registerTool({"scale_note",
+        "Map a scale degree (diatonic step, octave-wrapped) to an absolute MIDI pitch for "
+        "a given root note and scale mode. Degree 0 is the root; degree 7 (in a 7-note "
+        "scale) wraps to the next octave root; negative degrees wrap below the root. The "
+        "optional octave shifts the whole result by +-12 * octave. Accepts a scale name "
+        "from get_scale_modes (e.g. \"Minor (Aeolian)\"), the short form (\"minor\"), or "
+        "the mode alias (\"aeolian\"), case-insensitively. Errors on unknown scales, "
+        "out-of-range rootMidi, or degrees whose computed pitch falls outside 0..127.",
+        objSchema({
+            {"rootMidi", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+            {"scale",    QJsonObject{{"type","string"}}},
+            {"degree",   QJsonObject{{"type","integer"}}},
+            {"octave",   QJsonObject{{"type","integer"}}}
+        }, {"rootMidi","scale","degree"}),
+        "composition",
+        [](const QJsonObject& a) -> McpToolResult {
+            const int rootMidi = a.value("rootMidi").toInt(-1);
+            const int degree  = a.value("degree").toInt(0);
+            const int octave  = a.value("octave").toInt(0);
+            if (rootMidi < 0 || rootMidi > 127)
+                return McpToolResult::text("rootMidi must be in 0..127", true);
+
+            const QString scaleName = a.value("scale").toString();
+            const int scaleIdx = resolveScaleIndex(scaleName);
+            if (scaleIdx < 0)
+                return McpToolResult::text("unknown scale: " + scaleName, true);
+
+            const auto& modes = PhraseGenerator::getScaleModes();
+            const std::vector<int>* intervals = nullptr;
+            for (const auto& m : modes)
+                if (m.index == scaleIdx) { intervals = &m.intervals; break; }
+            if (intervals == nullptr || intervals->empty())
+                return McpToolResult::text("scale has no pitch-class table", true);
+
+            const int n = static_cast<int>(intervals->size());
+            const int wrapped = ((degree % n) + n) % n;   // degree within the pitch class
+            const int octShift = static_cast<int>(
+                std::floor(static_cast<double>(degree) / static_cast<double>(n)));
+            const int midiPitch = rootMidi + octave * 12 + octShift * 12 + (*intervals)[wrapped];
+            if (midiPitch < 0 || midiPitch > 127)
+                return McpToolResult::text(
+                    "degree out of range: computed pitch " + QString::number(midiPitch)
+                    + " falls outside 0..127", true);
+
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(QJsonObject{{"midiPitch", midiPitch}})
+                    .toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"list_patterns",
