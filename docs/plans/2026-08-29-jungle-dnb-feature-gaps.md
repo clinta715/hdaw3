@@ -80,7 +80,7 @@ binary), 1 (unit conversion correctness — beats everywhere).
   grids, ghost fills, drop-the-first-beat edit).
 - P2-2 Pattern-placement helper: tile `analyze_midi_file` patterns across a
   beat range with octave/rotation/velocity params.
-- P2-3 Section-aware arrangement + automation preset bank (pump, macro sweep,
+- P2-3 Section-aware arrangement + automation preset bank (pump, macro sweep, ✅ LANDED 2026-08-29 (`automation_preset`, 6 presets + sections[], 9 tests)
   breakdown open/close, riser presets).
 - P2-4 Key/scale degree helper + `analyze_midi_file` returns key/scale/bpm
   (currently null) + pattern ids.
