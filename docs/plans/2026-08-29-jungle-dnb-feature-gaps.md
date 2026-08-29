@@ -84,11 +84,10 @@ binary), 1 (unit conversion correctness — beats everywhere).
   breakdown open/close, riser presets).
 - P2-4 Key/scale degree helper + `analyze_midi_file` returns key/scale/bpm + pattern ids.  ✅ LANDED 2026-08-29 (`scale_note` + B5 fixed)
 - P2-5 Server-side mix report: RMS arc / bands / pump depth / kick prominence per section.  ✅ LANDED 2026-08-29 (`mix_report`) — **P2 BACKLOG COMPLETE**
-- P3-1 `add_notes` duplicate guard (same pitch/start warn-or-dedupe).
-- P3-2 `add_track` returns JSON `{trackId}` like other tools.
-- P3-3 `related_samples` includes `libraryId` in results.
-- P3-4 Sidecar re-ingest robustness (mirrors B2 engine fix; if not fixed in
-  the B2 change itself, tracking here).
+- P3-1 `add_notes` duplicate guard.  ✅ LANDED 2026-08-29 (`duplicatesSkipped`, batch-internal exact triples)
+- P3-2 `add_track` returns JSON `{trackId, routed}`.  ✅ LANDED 2026-08-29
+- P3-3 `related_samples` includes `libraryId`.  ✅ LANDED 2026-08-29
+- P3-4 Sidecar re-ingest robustness.  ✅ DONE via B2 (c99b7a0); regression pair re-verified 2026-08-29 — **P3 BACKLOG COMPLETE; P1+P2+P3 DONE**
 
 ## Sequencing
 P1-1 (MCP LFO) is the highest-leverage for jungle/dnb generation; P1-2 is
