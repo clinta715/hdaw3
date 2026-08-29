@@ -75,7 +75,7 @@ the clip's startTime before writing startBeat. Clip start known from the tree.
 binary), 1 (unit conversion correctness — beats everywhere).
 
 ## P2/P3 backlog (each gets its own plan when picked up)
-- P2-1 Break chopper/composer: slice-ORDER pattern generation on top of
+- P2-1 Break chopper/composer: slice-ORDER pattern generation on top of  ✅ LANDED 2026-08-29 (`generate_chopped_break`, BreakPatternGenerator, 13 tests)
   `detect_sampler_slices` + `trigger_sampler_slice` (amen/2step/halftime
   grids, ghost fills, drop-the-first-beat edit).
 - P2-2 Pattern-placement helper: tile `analyze_midi_file` patterns across a

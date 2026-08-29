@@ -58,7 +58,7 @@ Per-role starting points and the sample sources used (all registered HDAW libs):
 
 | Role | Source packs | Notes |
 |---|---|---|
-| Break loops | `100 Amen Breaks By Veak - Volume 2` (100×@175) | 1-bar loops, trigger per bar, dur 4 |
+| Break loops | `100 Amen Breaks By Veak - Volume 2` (100×@175) | 1-bar loops, trigger per bar, dur 4 — or **chop**: `detect_sampler_slices` (transient) + `set_sampler_mode slice` + `generate_chopped_break` (amen/twoStep/halftime/jungleEdit/random; pitch = baseNote+slice) |
 | Breaks/loops | `Breaks`, `Drums - Full Drum Loops`, `Full_Drums`, `drum_loops` | alt textures |
 | Sub bass | `Bass Shots` (BW_* named with key), `Basses` (Vixage loops named key+BPM) | pick by key |
 | Bas loop | Vixage `DNBTypeBeat F 174`, `ClassicVix Dmin 150` | melodic loops |
