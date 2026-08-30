@@ -97,19 +97,22 @@ set "PATH=%BUILD_DIR%;%PATH%"
 :: file, NOT the engine's stdout, so the MCP stdio contract stays clean.
 :: Opt-out with HDAW_NO_CRASH_CAPTURE=1.
 :: The gtest runner %TEMP%\hdaw_capture\run_with_capture.ps1 remains the
-:: default crash-capture path for tests. HDAW_CRASH_DUMP_TYPE=mini stays.
-set "DUMPFLAGS=-ma"
-if "%HDAW_CRASH_DUMP_TYPE%"=="mini" set "DUMPFLAGS=-mm"
-:: procdump invocation is delegated to PowerShell: cmd's own argument
-:: quoting is a minefield for paths with spaces (the engine path lives in
-:: %TEMP% and BUILD_DIR has spaces), and the capture must never break the
-:: MCP stdio contract. PowerShell starts the engine with inherited stdio,
-:: then attaches procdump to the engine PID as a watcher. Procdump's
-:: banner/error streams go to log files in the capture dir, not stdout.
+:: default crash-capture path for tests. HDAW_CRASH_DUMP_TYPE=mini (-> -mm)
+:: is honored by mcp-launch-capture.ps1 (default -ma).
+:: procdump invocation is delegated to PowerShell (mcp-launch-capture.ps1):
+:: (1) cmd's own argument quoting is a minefield for paths with spaces (the
+:: engine path lives in %TEMP% and BUILD_DIR has spaces); (2) an inline
+:: `-Command "..."` string cannot survive embedded double quotes like
+:: "$($engine.Id)" -- cmd's quote pairing breaks and the whole batch file
+:: aborts with '... was unexpected at this time' before the engine starts.
+:: The capture logic therefore lives in a .ps1 invoked via -File; it starts
+:: the engine with inherited stdio, then attaches procdump to the engine PID
+:: as a watcher. Procdump's banner/error streams go to log files in the
+:: capture dir, NOT the engine's stdout, so the MCP stdio contract stays clean.
 if not "%HDAW_NO_CRASH_CAPTURE%"=="1" (
     setlocal EnableDelayedExpansion
     set "ENGINE=!DST!"
-    powershell -NoProfile -Command "$psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = $env:ENGINE; $psi.Arguments = '--mcp-stdio'; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $false; $psi.RedirectStandardError = $false; $psi.RedirectStandardInput = $false; $engine = [System.Diagnostics.Process]::Start($psi); $dir = Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; $pd = (Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { Start-Process -FilePath $pd -ArgumentList '-accepteula','-ma','-e','-g',"$($engine.Id)",$dir -WindowStyle Hidden -RedirectStandardOutput "$dir\procdump.log" -RedirectStandardError "$dir\procdump.err"; [Console]::Error.WriteLine('[mcp-launch] crash capture ON (attach pid=' + $engine.Id + ')') }; $engine.WaitForExit(); exit $engine.ExitCode"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0mcp-launch-capture.ps1"
     exit /b !ERRORLEVEL!
 )
 
