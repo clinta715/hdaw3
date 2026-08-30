@@ -189,13 +189,14 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         }
         const int k = optInt(o, "k", 0, nullptr);
         const std::string method = optString(o, "method", "hybrid");
+        const std::string type = optString(o, "type", "audio");
         const std::string saveAs = optString(o, "saveAs", {});
         const std::string saveClusterId = optString(o, "clusterId", {});
         juce::String error;
         juce::String presetId;
         auto outcome = lib.clusterLibrary(libraryIds, k, juce::String(method), error,
                                           juce::String(saveAs), juce::String(saveClusterId),
-                                          &presetId);
+                                          &presetId, juce::String(type));
         if (error.isNotEmpty())
             return makeError(-32602, qstr(error));
 
@@ -243,9 +244,10 @@ DispatchResult dispatchLibrary(HDAW::FileLibraryManager& lib, const QString& m, 
         const std::string query = optString(o, "query", {});
         const int limit = optInt(o, "limit", 10, nullptr);
         const std::string method = optString(o, "method", "hybrid");
+        const std::string type = optString(o, "type", "audio");
         juce::String error;
         auto r = lib.relatedSamples(libraryIds, juce::String(filePath), juce::String(query),
-                                    limit, juce::String(method), error);
+                                    limit, juce::String(method), error, juce::String(type));
         if (error.isNotEmpty()) {
             const int code = error.startsWith("entry not found") ? -32601 : -32602;
             return makeError(code, qstr(error));

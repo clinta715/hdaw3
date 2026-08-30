@@ -317,3 +317,122 @@ TEST(LibraryClustererTest, UnknownPathSeedReportsNotFound) {
     EXPECT_TRUE(noSignal.found);
     EXPECT_FALSE(noSignal.hasSeedSignal) << "a seed without any signal cannot be ranked";
 }
+
+// ── MIDI symbolic vectors (plan 2026-08-28) ──────────────────────────────────
+// The numeric axis is dimension-agnostic: the same 20-dim machinery accepts
+// kMidiFeatureKeys vectors, and mismatched/empty widths are excluded to
+// unassigned — never a crash, never implicit zero-padding.
+
+namespace {
+
+// 20-dim vector in kMidiFeatureKeys order; 3 dims carry the family signal
+// (note_density / pitch_centroid / syncopation_fraction).
+std::vector<double> makeMidi(double density, double pitchCentroid, double syncopation) {
+    std::vector<double> v(HDAW::kMidiFeatureCount, 0.0);
+    v[0] = 16.0;          // duration_beats
+    v[1] = 160.0;         // note_count
+    v[2] = density;       // note_density
+    v[3] = 2.5;           // polyphony_mean
+    v[4] = 6.0;           // polyphony_max
+    v[5] = 36.0;          // pitch_min
+    v[6] = 40.0;          // pitch_span
+    v[7] = pitchCentroid; // pitch_centroid
+    v[8] = 0.7;           // pitch_class_entropy
+    v[9] = 0.9;           // scale_fit
+    v[10] = 0.6;          // key_confidence
+    v[11] = 3.0;          // interval_mean
+    v[12] = 0.6;          // interval_entropy
+    v[13] = 0.5;          // contour_up_ratio
+    v[14] = 0.1;          // note_repetition_rate
+    v[15] = 0.25;         // ioi_mean
+    v[16] = 0.01;         // grid_deviation
+    v[17] = syncopation;  // syncopation_fraction
+    v[18] = 90.0;         // velocity_mean
+    v[19] = 8.0;          // velocity_std
+    return v;
+}
+
+// Three well-separated MIDI families x 4 entries: four-on-floor drums /
+// offbeat bassline / slow pad chords.
+std::vector<HDAW::ClusterItem> threeMidiFamilies() {
+    std::vector<HDAW::ClusterItem> items;
+    for (int i = 0; i < 4; ++i)
+        items.push_back(item("drums" + juce::String(i), "", "", makeMidi(4.0, 52.0, 0.12 + 0.01 * i)));
+    for (int i = 0; i < 4; ++i)
+        items.push_back(item("bass" + juce::String(i), "", "", makeMidi(2.0, 45.0, 0.46 + 0.01 * i)));
+    for (int i = 0; i < 4; ++i)
+        items.push_back(item("pad" + juce::String(i), "", "", makeMidi(0.8, 72.0, 0.05 + 0.01 * i)));
+    return items;
+}
+
+// "drums0" -> "drums" (strip the trailing index digit).
+juce::String familyOf(const juce::String& name) {
+    return name.substring(0, name.length() - 1);
+}
+
+} // namespace
+
+TEST(LibraryClustererTest, MidiVectorsClusterByFamily) {
+    auto items = threeMidiFamilies();
+    auto out = HDAW::cluster(items, 3, HDAW::ClusterMethod::Dsp);
+    ASSERT_EQ(out.clusters.size(), 3u);
+    ASSERT_EQ(out.unassigned.size(), 0u);
+    EXPECT_EQ(out.method, "dsp");
+    std::vector<juce::String> families;
+    for (const auto& c : out.clusters) {
+        ASSERT_EQ(c.members.size(), 4u);
+        const juce::String fam = familyOf(c.members[0].name);
+        for (const auto& m : c.members) EXPECT_EQ(familyOf(m.name), fam);
+        families.push_back(fam);
+    }
+    EXPECT_EQ(families.size(), 3u);
+}
+
+TEST(LibraryClustererTest, MismatchedVectorWidthsExcludedToUnassigned) {
+    std::vector<HDAW::ClusterItem> items;
+    items.push_back(item("a0", "", "", makeMidi(4.0, 52.0, 0.12)));
+    items.push_back(item("a1", "", "", makeMidi(3.9, 54.0, 0.11)));
+    items.push_back(item("a2", "", "", std::vector<double>(7, 1.0)));   // too short
+    items.push_back(item("a3", "", "", std::vector<double>(21, 1.0)));  // too long
+    items.push_back(item("a4", "", ""));                                 // empty
+
+    auto out = HDAW::cluster(items, 1, HDAW::ClusterMethod::Dsp);
+    ASSERT_EQ(out.clusters.size(), 1u);
+    ASSERT_EQ(out.clusters[0].members.size(), 2u);
+    EXPECT_EQ(out.unassigned.size(), 3u); // a2/a3 wrong width, a4 empty
+}
+
+TEST(LibraryClustererTest, AutoKWorksOnMidiVectors) {
+    auto items = threeMidiFamilies();
+    auto out = HDAW::cluster(items, 0, HDAW::ClusterMethod::Dsp);
+    ASSERT_EQ(out.clusters.size(), 3u) << "auto-k must find the three midi families";
+    for (const auto& c : out.clusters) {
+        const juce::String fam = familyOf(c.members[0].name);
+        for (const auto& m : c.members) EXPECT_EQ(familyOf(m.name), fam);
+    }
+}
+
+TEST(LibraryClustererTest, RelatedToItemOnMidiVectorsRanksFamilyFirst) {
+    auto items = threeMidiFamilies();
+    auto r = HDAW::relatedToItem(items, "/lib/drums0", HDAW::ClusterMethod::Dsp, 10);
+    ASSERT_TRUE(r.hasSeedSignal);
+    ASSERT_GE(r.results.size(), 3u);
+    for (size_t i = 0; i < 3; ++i)
+        EXPECT_TRUE(r.results[i].name.startsWith("drums")) << "hit " << i << ": " << r.results[i].name;
+    for (const auto& h : r.results) EXPECT_NE(h.name, "drums0") << "seed must be excluded";
+}
+
+TEST(LibraryClustererTest, TextAxisIndependentOfVectorWidth) {
+    std::vector<HDAW::ClusterItem> items;
+    for (int i = 0; i < 3; ++i)
+        items.push_back(item("x" + juce::String(i), "techno driving offbeat", "", makeMidi(4.0, 52.0, 0.4)));
+    for (int i = 0; i < 3; ++i)
+        items.push_back(item("y" + juce::String(i), "ambient airy sustained", "", makeMidi(0.8, 72.0, 0.05)));
+    auto out = HDAW::cluster(items, 2, HDAW::ClusterMethod::Text);
+    ASSERT_EQ(out.clusters.size(), 2u);
+    for (const auto& c : out.clusters) {
+        const bool isX = c.members[0].name.startsWith("x");
+        for (const auto& m : c.members) EXPECT_EQ(m.name.startsWith("x"), isX);
+    }
+}
+

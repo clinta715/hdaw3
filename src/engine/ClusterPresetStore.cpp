@@ -142,6 +142,7 @@ std::vector<ClusterPresetSummary> ClusterPresetStore::list() const {
         s.name = p.name;
         s.createdAt = p.createdAt;
         s.libraryIds = p.libraryIds;
+        s.type = p.type;
         s.method = p.method;
         s.k = p.k;
         s.clusterId = p.clusterId;
@@ -214,6 +215,7 @@ juce::var ClusterPresetStore::recordToVar(const ClusterPreset& p) {
     o->setProperty("name", p.name);
     o->setProperty("createdAt", p.createdAt);
     o->setProperty("libraryIds", libraryIdsToVar(p.libraryIds));
+    o->setProperty("type", p.type.isEmpty() ? "audio" : p.type);
     o->setProperty("method", p.method);
     o->setProperty("k", p.k);
     // clusterId null = whole result was saved (plan §Storage).
@@ -245,6 +247,7 @@ bool ClusterPresetStore::varToRecord(const juce::var& v, ClusterPreset& out) {
     out.name = limitName(o->getProperty("name").toString());
     out.createdAt = o->getProperty("createdAt").toString();
     libraryIdsFromVar(o->getProperty("libraryIds"), out.libraryIds);
+    out.type = o->getProperty("type").toString(); // missing -> empty = audio
     out.method = o->getProperty("method").toString();
     out.k = (int)(double)o->getProperty("k");
     const auto clusterIdVar = o->getProperty("clusterId");

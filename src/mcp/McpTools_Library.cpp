@@ -93,6 +93,7 @@ QJsonObject fullPresetJson(const HDAW::ClusterPreset& p, const QJsonArray& clust
     root["name"] = jstr(p.name);
     root["createdAt"] = jstr(p.createdAt);
     root["libraryIds"] = libraryIdsJson(p.libraryIds);
+    root["type"] = jstr(p.type.isEmpty() ? "audio" : p.type);
     root["method"] = jstr(p.method);
     root["k"] = p.k;
     root["clusterId"] = p.clusterId.isNotEmpty() ? QJsonValue(jstr(p.clusterId))
@@ -270,15 +271,19 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
     };
 
     s.registerTool({"cluster_library",
-        "Cluster entries from one or more audio libraries into k groups by timbre "
-        "(text tags/description + numeric dsp features from TimbreLib sidecars). "
-        "Omit libraryIds to cluster ALL audio libraries. k omitted (0) = auto "
-        "(silhouette). method: hybrid (default) | text | dsp. "
-        "saveAs names the result as a cluster preset (response gains presetId); "
-        "clusterId narrows the SAVED preset to one cluster (c1..cK) — unassigned "
-        "is omitted — without changing the returned clusters.",
+        "Cluster entries from one or more libraries into k groups by timbre "
+        "(text tags/description + numeric features from sidecars: TimbreLib "
+        "audio or MIDI-LLM symbolic). type: audio (default) | midi; omit "
+        "libraryIds to cluster ALL libraries of that type, or pass explicit "
+        "ids (mixed types are an error). k omitted (0) = auto (silhouette). "
+        "method: hybrid (default) | text | dsp. saveAs names the result as a "
+        "cluster preset (response gains presetId); clusterId narrows the SAVED "
+        "preset to one cluster (c1..cK) — unassigned is omitted — without "
+        "changing the returned clusters.",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
+                   {"type", QJsonObject{{"type","string"},
+                    {"enum", QJsonArray{"audio","midi"}}}},
                    {"k", QJsonObject{{"type","integer"}}},
                    {"method", QJsonObject{{"type","string"},
                     {"enum", QJsonArray{"hybrid","text","dsp"}}}},
@@ -295,7 +300,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 error,
                 juce::String(a.value("saveAs").toString().toUtf8().constData()),
                 juce::String(a.value("clusterId").toString().toUtf8().constData()),
-                &presetId);
+                &presetId,
+                juce::String(a.value("type").toString("audio").toUtf8().constData()));
             if (error.isNotEmpty())
                 return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
 
@@ -333,8 +339,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"list_cluster_presets",
-        "List saved cluster presets (id, name, createdAt, libraryIds, method, "
-        "k, clusterId, clusterCount, entryCount).",
+        "List saved cluster presets (id, name, createdAt, libraryIds, type, "
+        "method, k, clusterId, clusterCount, entryCount).",
         objSchema({}),
         "library",
         [lib](const QJsonObject&) -> McpToolResult {
@@ -345,6 +351,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                     {"name", jstr(p.name)},
                     {"createdAt", jstr(p.createdAt)},
                     {"libraryIds", libraryIdsJson(p.libraryIds)},
+                    {"type", jstr(p.type.isEmpty() ? "audio" : p.type)},
                     {"method", jstr(p.method)},
                     {"k", p.k},
                     {"clusterId", p.clusterId.isNotEmpty() ? QJsonValue(jstr(p.clusterId))
@@ -424,13 +431,16 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"related_samples",
-        "Find entries similar to a seed sample (filePath) or to a text query, "
-        "within one or more audio libraries — nearest neighbours by timbre "
-        "(tags/description + dsp features). Exactly one of filePath or query "
-        "is required. limit default 10, max 100. Each result hit includes "
-        "libraryId (the audio library the entry belongs to).",
+        "Find entries similar to a seed (filePath) or to a text query, within "
+        "one or more libraries — nearest neighbours by (tags/description + "
+        "numeric features). type: audio (default) | midi; omit libraryIds to "
+        "cover ALL libraries of that type. Exactly one of filePath or query is "
+        "required. limit default 10, max 100. Each result hit includes "
+        "libraryId (the library the entry belongs to).",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
+                   {"type", QJsonObject{{"type","string"},
+                    {"enum", QJsonArray{"audio","midi"}}}},
                    {"filePath", QJsonObject{{"type","string"}}},
                    {"query", QJsonObject{{"type","string"}}},
                    {"method", QJsonObject{{"type","string"},
@@ -445,7 +455,8 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 juce::String(a.value("query").toString().toUtf8().constData()),
                 a.value("limit").toInt(10),
                 juce::String(a.value("method").toString("hybrid").toUtf8().constData()),
-                error);
+                error,
+                juce::String(a.value("type").toString("audio").toUtf8().constData()));
             if (error.isNotEmpty())
                 return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
 
