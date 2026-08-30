@@ -309,17 +309,6 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
     // File I/O + JSON parse OUTSIDE the lock (don't block search/getEntry/scan).
     std::vector<LibraryEntry> loaded;
 
-    // Per-type cache schemaVersion (plan 2026-08-28): audio caches stay v2
-    // (dspFeatures numeric axis since v2); midi caches are v3 (v2 caches never
-    // ingested the midi numeric axis — ignore them so one rescan re-ingests
-    // with the current parser).
-    int minSchemaVersion = 2;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        for (const auto& lib : libraries)
-            if (lib.id == id) { if (lib.type == "midi") minSchemaVersion = 3; break; }
-    }
-
     auto deserializeEntry = [](const juce::var& item) -> LibraryEntry {
         LibraryEntry e;
         auto* eObj = item.getDynamicObject();
@@ -362,12 +351,11 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         auto json = juce::JSON::parse(content);
         auto* obj = json.getDynamicObject();
         if (!obj) return;
-        // Schema guard: caches written before the numeric axis existed are
-        // ignored so ONE rescan re-ingests with the current parser instead of
-        // silently serving stale features (audio: v2 = dspFeatures; midi:
-        // v3 = symbolic features; see minSchemaVersion above).
+        // Schema guard: caches written before dspFeatures (schemaVersion 2)
+        // are missing the dsp axis. Ignore them so ONE rescan re-ingests with
+        // the current parser instead of silently serving stale features.
         const int schemaVersion = (int)(double)obj->getProperty("schemaVersion");
-        if (schemaVersion < minSchemaVersion) return;
+        if (schemaVersion < 2) return;
         auto& items = obj->getProperty("entries");
         auto* arr = items.getArray();
         if (!arr) return;
@@ -409,11 +397,6 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
 
     constexpr int PARTITION_THRESHOLD = 50000;
     const bool shouldPartition = (int)it->second.size() > PARTITION_THRESHOLD;
-
-    // Per-type schemaVersion (see loadLibraryEntries): audio 2, midi 3.
-    int schemaVersion = 2;
-    for (const auto& lib : libraries)
-        if (lib.id == id) { if (lib.type == "midi") schemaVersion = 3; break; }
 
     auto serializeEntry = [](const LibraryEntry& e) -> juce::var {
         juce::DynamicObject::Ptr obj = new juce::DynamicObject();
@@ -457,7 +440,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         for (const auto& e : it->second)
             arr.add(serializeEntry(e));
         root->setProperty("entries", arr);
-        root->setProperty("schemaVersion", schemaVersion); // 2 audio / 3 midi
+        root->setProperty("schemaVersion", 2); // 2 = dspFeatures per entry
         auto entryFile = librariesDir.getChildFile(id + ".json");
         entryFile.getParentDirectory().createDirectory();
         entryFile.replaceWithText(juce::JSON::toString(juce::var(root.get())));
@@ -480,7 +463,7 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
             for (const auto* e : partitionEntries)
                 arr.add(serializeEntry(*e));
             root->setProperty("entries", arr);
-            root->setProperty("schemaVersion", schemaVersion); // 2 audio / 3 midi
+            root->setProperty("schemaVersion", 2); // 2 = dspFeatures per entry
             juce::String partFile = id + "_part_" + juce::String(c) + ".json";
             librariesDir.getChildFile(partFile).replaceWithText(juce::JSON::toString(juce::var(root.get())));
         }
@@ -575,18 +558,6 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                         else if (!entryHasTimbreData(it->second))
                             rescanForTimbre = true;
                     }
-                } else if (type == "midi") {
-                    // MIDI-LLM sidecars (<file>.mid.json) — same mtime rule
-                    // as the audio sidecars (plan 2026-08-28): a sidecar newer
-                    // than the entry triggers a rescan, and entries scanned
-                    // before a sidecar existed are re-ingested once.
-                    auto sidecar = juce::File(filePath + ".mid.json");
-                    if (sidecar.existsAsFile()) {
-                        if (sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
-                            rescanForTimbre = true;
-                        else if (!entryHasTimbreData(it->second))
-                            rescanForTimbre = true;
-                    }
                 }
                 if (!rescanForTimbre) {
                     newEntries.push_back(it->second); // reuse existing entry
@@ -607,8 +578,6 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                 entry.modified = juce::Time(entry.modifiedTime).toISO8601(true);
                 if (type == "audio")
                     applyTimbreSidecar(entry, file);
-                else if (type == "midi")
-                    applyMidiSidecar(entry, file);
                 newEntries.push_back(std::move(entry));
             } catch (const std::exception& e) {
                 juce::Logger::writeToLog("FileLibraryManager: failed to extract metadata for "
@@ -864,85 +833,6 @@ void FileLibraryManager::applyTimbreSidecar(LibraryEntry& entry, const juce::Fil
     }
 }
 
-// Reads a MIDI-LLM-analysis sidecar (<file>.mid.json, written by
-// timbre-lib/midi_analyze.py) next to the MIDI file. Same tolerant contract
-// as applyTimbreSidecar: uses dsp_words / captions / tags / prose, and the
-// `dsp` object with the 20 kMidiFeatureKeys — accepted only when ALL 20 are
-// present and finite. Missing/malformed sidecar leaves fields empty and never
-// throws out of the scan's per-file try/catch.
-void FileLibraryManager::applyMidiSidecar(LibraryEntry& entry, const juce::File& midiFile) {
-    auto sidecar = juce::File(midiFile.getFullPathName() + ".mid.json");
-    if (!sidecar.existsAsFile()) return;
-
-    juce::var json;
-    try {
-        auto content = sidecar.loadFileAsString();
-        if (content.isEmpty()) return;
-        json = juce::JSON::parse(content);
-    } catch (...) {
-        return; // malformed/unreadable sidecar — leave fields empty
-    }
-    auto* obj = json.getDynamicObject();
-    if (!obj) return;
-
-    juce::StringArray parts;
-
-    auto dspWords = obj->getProperty("dsp_words").toString();
-    if (dspWords.isNotEmpty())
-        parts.add(dspWords.trim());
-
-    // captions: array of [text, score] — keep the top 3 by score.
-    if (auto* captions = obj->getProperty("captions").getArray()) {
-        std::vector<std::pair<double, juce::String>> scored;
-        for (const auto& c : *captions) {
-            auto* cArr = c.getArray();
-            if (cArr == nullptr || cArr->size() < 2) continue;
-            double score = (double)(*cArr)[1];
-            auto text = (*cArr)[0].toString().trim();
-            if (text.isNotEmpty()) scored.push_back({score, text});
-        }
-        std::sort(scored.begin(), scored.end(),
-            [](const auto& a, const auto& b) { return a.first > b.first; });
-        for (size_t i = 0; i < scored.size() && i < 3; ++i)
-            parts.add(scored[i].second);
-    }
-
-    // tags: array of [label, score] — keep the top 3 by score.
-    if (auto* tags = obj->getProperty("tags").getArray()) {
-        std::vector<std::pair<double, juce::String>> scored;
-        for (const auto& t : *tags) {
-            auto* tArr = t.getArray();
-            if (tArr == nullptr || tArr->size() < 2) continue;
-            double score = (double)(*tArr)[1];
-            auto label = (*tArr)[0].toString().trim();
-            if (label.isNotEmpty()) scored.push_back({score, label});
-        }
-        std::sort(scored.begin(), scored.end(),
-            [](const auto& a, const auto& b) { return a.first > b.first; });
-        for (size_t i = 0; i < scored.size() && i < 3; ++i)
-            parts.add(scored[i].second);
-    }
-
-    entry.tags = parts.joinIntoString(", ");
-    entry.description = obj->getProperty("prose").toString();
-
-    // dsp: object with the 20 kMidiFeatureKeys. Accepted only when ALL 20 keys
-    // are present and finite — no partial vectors, no imputation.
-    if (auto* dsp = obj->getProperty("dsp").getDynamicObject()) {
-        std::vector<double> vals;
-        vals.reserve((size_t)kMidiFeatureCount);
-        bool ok = true;
-        for (int i = 0; i < kMidiFeatureCount; ++i) {
-            const juce::var& v = dsp->getProperty(kMidiFeatureKeys[i]);
-            if (!v.isDouble() && !v.isInt() && !v.isInt64()) { ok = false; break; }
-            const double d = (double)v;
-            if (!std::isfinite(d)) { ok = false; break; }
-            vals.push_back(d);
-        }
-        if (ok) entry.dspFeatures = std::move(vals);
-    }
-}
-
 LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
     LibraryEntry entry;
     entry.format = file.getFileExtension().toLowerCase()
@@ -1100,39 +990,35 @@ LibraryEntry FileLibraryManager::getEntry(const juce::String& libraryId, const j
 bool FileLibraryManager::collectClusterEntries(const juce::StringArray& libraryIds,
                                                std::vector<LibraryEntry>& out,
                                                juce::String& error,
-                                               std::vector<juce::String>* outLibraryIds,
-                                               const juce::String& type) const {
+                                               std::vector<juce::String>* outLibraryIds) const {
     std::vector<juce::String> selected;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (libraryIds.isEmpty()) {
-            // Omitted scope = ALL libraries of the requested type
-            // ("audio" = status quo; "midi" = all midi libs).
+            // Omitted scope = ALL audio-type libraries (midi excluded).
             for (const auto& lib : libraries)
-                if (lib.type == type) selected.push_back(lib.id);
+                if (lib.type == "audio") selected.push_back(lib.id);
             if (selected.empty()) {
-                error = "no " + type + " libraries found";
+                error = "no audio libraries found";
                 return false;
             }
         } else {
-            // Provided scope = exactly those libraries. Unknown ids and ids of
-            // the wrong type are errors listing the offenders — never silent
-            // skips. A mixed-type scope is always an error (audio and midi
-            // numeric vectors live in different spaces).
-            juce::StringArray unknown, wrongType;
+            // Provided scope = exactly those libraries. Unknown ids and known
+            // non-audio ids are errors listing the offenders — never silent skips.
+            juce::StringArray unknown, notAudio;
             for (const auto& id : libraryIds) {
                 const LibraryInfo* found = nullptr;
                 for (const auto& lib : libraries)
                     if (lib.id == id) { found = &lib; break; }
                 if (found == nullptr) unknown.add(id);
-                else if (found->type != type) wrongType.add(id);
+                else if (found->type != "audio") notAudio.add(id);
             }
             if (!unknown.isEmpty()) {
                 error = "unknown library ids: " + unknown.joinIntoString(", ");
                 return false;
             }
-            if (!wrongType.isEmpty()) {
-                error = "not " + type + " libraries: " + wrongType.joinIntoString(", ");
+            if (!notAudio.isEmpty()) {
+                error = "not audio libraries: " + notAudio.joinIntoString(", ");
                 return false;
             }
             selected.assign(libraryIds.begin(), libraryIds.end());
@@ -1178,14 +1064,6 @@ static bool parseClusterMethod(const juce::String& method, ClusterMethod& out,
     return false;
 }
 
-// Library-type whitelist for cluster/related scoping (plan 2026-08-28).
-// "audio" and "midi" only; anything else is a caller error, never a default.
-static bool parseLibraryType(const juce::String& type, juce::String& out) {
-    if (type.isEmpty() || type == "audio") { out = "audio"; return true; }
-    if (type == "midi") { out = "midi"; return true; }
-    return false;
-}
-
 static std::vector<ClusterItem> toClusterItems(const std::vector<LibraryEntry>& entries) {
     std::vector<ClusterItem> items;
     items.reserve(entries.size());
@@ -1221,20 +1099,14 @@ ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libra
                                                   juce::String& error,
                                                   const juce::String& saveAs,
                                                   const juce::String& saveClusterId,
-                                                  juce::String* presetId,
-                                                  const juce::String& type) const {
+                                                  juce::String* presetId) const {
     error = {};
     if (presetId) presetId->clear();
     ClusterMethod methodEnum = ClusterMethod::Hybrid;
     if (!parseClusterMethod(method, methodEnum, error)) return {};
-    juce::String libType;
-    if (!parseLibraryType(type, libType)) {
-        error = "unknown type: " + type + " (expected audio or midi)";
-        return {};
-    }
 
     std::vector<LibraryEntry> entries;
-    if (!collectClusterEntries(libraryIds, entries, error, nullptr, libType)) return {};
+    if (!collectClusterEntries(libraryIds, entries, error)) return {};
 
     auto outcome = cluster(toClusterItems(entries), k, methodEnum);
     if (outcome.clusters.empty()) {
@@ -1247,8 +1119,7 @@ ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libra
         ClusterPreset record;
         record.name = saveAs; // store caps at 200 chars (Gate 9)
         record.createdAt = juce::Time::getCurrentTime().toISO8601(true);
-        record.libraryIds = libraryIds; // empty stays empty = all-<type> recipe
-        record.type = libType;           // "audio" | "midi"
+        record.libraryIds = libraryIds; // empty stays empty = all-audio recipe
         record.method = outcome.method;
         record.k = k; // as requested (0 = auto)
 
@@ -1292,16 +1163,10 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
                                                  const juce::String& filePath,
                                                  const juce::String& query, int limit,
                                                  const juce::String& method,
-                                                 juce::String& error,
-                                                 const juce::String& type) const {
+                                                 juce::String& error) const {
     error = {};
     ClusterMethod methodEnum = ClusterMethod::Hybrid;
     if (!parseClusterMethod(method, methodEnum, error)) return {};
-    juce::String libType;
-    if (!parseLibraryType(type, libType)) {
-        error = "unknown type: " + type + " (expected audio or midi)";
-        return {};
-    }
 
     // Exactly one of filePath / query is required.
     if (filePath.isEmpty() == query.isEmpty()) {
@@ -1315,7 +1180,7 @@ RelatedResult FileLibraryManager::relatedSamples(const juce::StringArray& librar
 
     std::vector<LibraryEntry> entries;
     std::vector<juce::String> entryLibraryIds;
-    if (!collectClusterEntries(libraryIds, entries, error, &entryLibraryIds, libType)) return {};
+    if (!collectClusterEntries(libraryIds, entries, error, &entryLibraryIds)) return {};
     // P3-3: attribute each result hit to the library it came from. The pure
     // clusterer (LibraryClusterer) has no library concept — the wrapper does,
     // so build a path -> library map from the collected entries here. The
@@ -1381,11 +1246,8 @@ bool FileLibraryManager::refreshClusterPreset(const juce::String& id,
         }
     }
 
-    // Re-run the stored recipe (empty libraryIds stays empty = all-<type>).
-    // Legacy records predate the type field — empty means audio.
-    juce::String recipeType = stored.type.isEmpty() ? "audio" : stored.type;
-    auto outcome = clusterLibrary(stored.libraryIds, stored.k, stored.method, error,
-                                  {}, {}, nullptr, recipeType);
+    // Re-run the stored recipe (empty libraryIds stays empty = all audio).
+    auto outcome = clusterLibrary(stored.libraryIds, stored.k, stored.method, error);
     if (error.isNotEmpty()) return false;
 
     // Single-cluster presets refresh to the same narrow shape they were saved

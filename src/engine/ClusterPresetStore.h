@@ -40,8 +40,7 @@ struct ClusterPreset {
     juce::String id;             // "cp_<8 hex>", collision-checked
     juce::String name;           // user/agent-provided, capped at 200 chars
     juce::String createdAt;      // ISO 8601
-    juce::StringArray libraryIds;// scope snapshot; empty = all-<type> scope
-    juce::String type;           // "audio" | "midi"; empty = "audio" (legacy)
+    juce::StringArray libraryIds;// scope snapshot; empty = all-audio scope
     juce::String method;         // "hybrid" | "text" | "dsp"
     int k = 0;                   // as requested (0 = auto)
     juce::String clusterId;      // empty = whole result saved; else "c1"...
@@ -56,7 +55,6 @@ struct ClusterPresetSummary {
     juce::String name;
     juce::String createdAt;
     juce::StringArray libraryIds;
-    juce::String type; // "audio" | "midi" (empty = audio, legacy records)
     juce::String method;
     int k = 0;
     juce::String clusterId;

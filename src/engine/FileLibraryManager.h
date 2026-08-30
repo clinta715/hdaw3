@@ -117,12 +117,10 @@ public:
                                   const juce::String& method, juce::String& error,
                                   const juce::String& saveAs = {},
                                   const juce::String& saveClusterId = {},
-                                  juce::String* presetId = nullptr,
-                                  const juce::String& type = "audio") const;
+                                  juce::String* presetId = nullptr) const;
     RelatedResult relatedSamples(const juce::StringArray& libraryIds,
                                  const juce::String& filePath, const juce::String& query,
-                                 int limit, const juce::String& method, juce::String& error,
-                                 const juce::String& type = "audio") const;
+                                 int limit, const juce::String& method, juce::String& error) const;
 
     // ── cluster presets (docs/plans/2026-08-25-cluster-presets.md) ──────────
     // All disk IO happens under the existing mutex (results are copied out);
@@ -153,14 +151,12 @@ private:
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
     static void applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile);
-    static void applyMidiSidecar(LibraryEntry& entry, const juce::File& midiFile);
     // When outLibraryIds is non-null, it receives the library id for each
     // entry in `out` (same order/index) so callers can attribute entries
     // back to their library.
     bool collectClusterEntries(const juce::StringArray& libraryIds,
                                std::vector<LibraryEntry>& out, juce::String& error,
-                               std::vector<juce::String>* outLibraryIds = nullptr,
-                               const juce::String& type = "audio") const;
+                               std::vector<juce::String>* outLibraryIds = nullptr) const;
     juce::String detectKey(const std::vector<double>& noteCounts) const;
     void createExampleMidiFiles(const juce::File& dir);
 

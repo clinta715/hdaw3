@@ -47,20 +47,6 @@ inline constexpr const char* kDspFeatureKeys[kDspFeatureCount] = {
     "tonal_fraction", "f0_sweep"
 };
 
-// Symbolic feature keys for MIDI libraries, from `<file>.mid.json` sidecars
-// written by timbre-lib/midi_analyze.py (plan 2026-08-28). Same acceptance
-// rule as the audio axis: ALL 20 keys present and finite, else the numeric
-// axis stays empty. The clustering math is dimension-agnostic (N derived per
-// call), so both key lists share the same vectorization code.
-inline constexpr int kMidiFeatureCount = 20;
-inline constexpr const char* kMidiFeatureKeys[kMidiFeatureCount] = {
-    "duration_beats", "note_count", "note_density", "polyphony_mean", "polyphony_max",
-    "pitch_min", "pitch_span", "pitch_centroid", "pitch_class_entropy", "scale_fit",
-    "key_confidence", "interval_mean", "interval_entropy", "contour_up_ratio",
-    "note_repetition_rate", "ioi_mean", "grid_deviation", "syncopation_fraction",
-    "velocity_mean", "velocity_std"
-};
-
 struct ClusterItem {
     juce::String name;
     juce::String path;

@@ -97,26 +97,16 @@ TextModel buildTextModel(const std::vector<ClusterItem>& items) {
 struct DspModel {
     std::vector<std::vector<double>> vec; // z-scored, L2-normalized (or zero)
     std::vector<char> has;                // item carries a full finite dsp vector
-    size_t dims = 0;                      // numeric-axis width for this scope
 };
 
 DspModel buildDspModel(const std::vector<ClusterItem>& items) {
     DspModel m;
     const size_t n = items.size();
-    // Dimension-agnostic numeric axis (plan 2026-08-28): the width N is
-    // derived from the first non-empty vector in the scope — audio libs pass
-    // the 20 DSP keys, midi libs the 20 symbolic keys. Vectors with any other
-    // width (and empty vectors) carry no signal for the numeric axis.
-    size_t N = 0;
-    for (const auto& it : items) {
-        if (!it.dsp.empty()) { N = it.dsp.size(); break; }
-    }
-    m.dims = N;
     m.has.assign(n, 0);
-    m.vec.assign(n, std::vector<double>(N, 0.0));
+    m.vec.assign(n, std::vector<double>(kDspFeatureCount, 0.0));
     std::vector<std::vector<double>> raw(n);
     for (size_t i = 0; i < n; ++i) {
-        if (N == 0 || items[i].dsp.size() != N) continue;
+        if (items[i].dsp.size() != static_cast<size_t>(kDspFeatureCount)) continue;
         bool finite = true;
         for (const double d : items[i].dsp)
             if (!std::isfinite(d)) { finite = false; break; }
@@ -126,20 +116,20 @@ DspModel buildDspModel(const std::vector<ClusterItem>& items) {
         }
     }
     // z-score each dim across the entries that HAVE dsp (population std).
-    for (size_t d = 0; d < N; ++d) {
+    for (int d = 0; d < kDspFeatureCount; ++d) {
         double sum = 0.0;
         int cnt = 0;
         for (size_t i = 0; i < n; ++i)
-            if (m.has[i]) { sum += raw[i][d]; ++cnt; }
+            if (m.has[i]) { sum += raw[i][static_cast<size_t>(d)]; ++cnt; }
         if (cnt == 0) continue;
         const double mean = sum / static_cast<double>(cnt);
         double var = 0.0;
         for (size_t i = 0; i < n; ++i)
-            if (m.has[i]) { const double dd = raw[i][d] - mean; var += dd * dd; }
+            if (m.has[i]) { const double dd = raw[i][static_cast<size_t>(d)] - mean; var += dd * dd; }
         const double stdev = std::sqrt(var / static_cast<double>(cnt));
         // std == 0 -> dim leaves an all-zero contribution (dropped from scaling)
         for (size_t i = 0; i < n; ++i)
-            if (m.has[i]) m.vec[i][d] = (stdev > 0.0) ? (raw[i][d] - mean) / stdev : 0.0;
+            if (m.has[i]) m.vec[i][static_cast<size_t>(d)] = (stdev > 0.0) ? (raw[i][static_cast<size_t>(d)] - mean) / stdev : 0.0;
     }
     for (size_t i = 0; i < n; ++i) {
         if (!m.has[i]) continue;
@@ -167,14 +157,14 @@ double sqDist(const std::vector<double>& a, const std::vector<double>& b) {
 std::vector<double> combine(const std::vector<double>& text,
                             const std::vector<double>& dsp,
                             ClusterMethod method) {
-    std::vector<double> out(text.size() + dsp.size(), 0.0);
+    std::vector<double> out(text.size() + static_cast<size_t>(kDspFeatureCount), 0.0);
     const double wText = (method == ClusterMethod::Hybrid) ? 0.5 : 1.0;
     const double wDsp = (method == ClusterMethod::Hybrid) ? 0.5 : 1.0;
     if (method != ClusterMethod::Dsp)
         for (size_t i = 0; i < text.size(); ++i) out[i] = wText * text[i];
     if (method != ClusterMethod::Text)
-        for (size_t i = 0; i < dsp.size(); ++i)
-            out[text.size() + i] = wDsp * dsp[i];
+        for (int i = 0; i < kDspFeatureCount; ++i)
+            out[text.size() + static_cast<size_t>(i)] = wDsp * dsp[static_cast<size_t>(i)];
     return out;
 }
 
@@ -541,7 +531,9 @@ RelatedResult relatedToQuery(const std::vector<ClusterItem>& items,
     for (auto& v : pseudo) v /= norm;
 
     r.hasSeedSignal = true;
-    const auto seedVec = combine(pseudo, std::vector<double>(dsp.dims, 0.0), method);
+    const auto seedVec = combine(pseudo,
+                                 std::vector<double>(static_cast<size_t>(kDspFeatureCount), 0.0),
+                                 method);
     r.results = rankBySeed(items, text, dsp, method, -1, seedVec, limit);
     return r;
 }
