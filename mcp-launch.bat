@@ -91,29 +91,25 @@ if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
 set "PATH=%BUILD_DIR%;%PATH%"
 
 :: Crash capture (the §3 abort class: debug-CRT heap asserts / std::terminate
-:: used to die with only an MSVC dialog). Opt-in: when HDAW_CRASH_CAPTURE=1
-:: and procdump is on PATH, run the engine under
-:: "procdump -accepteula -ma -e -g -x" so any unhandled exception leaves a
-:: FULL minidump + context in %TEMP%\hdaw_crash_captures\engine_<rand>\ —
-:: the [mcp-launch] status line goes to stderr, but procdump's own UTF-16
-:: banner still lands on stdout before the engine's JSON-RPC.
-:: Enable with HDAW_CRASH_CAPTURE=1 (DEFAULT OFF; procdump writes its UTF-16
-:: banner to stdout, which breaks the MCP stdio contract, so capture is
-:: opt-in for MCP sessions; the gtest runner
-:: %TEMP%\hdaw_capture\run_with_capture.ps1 remains the default crash-capture
-:: path). HDAW_CRASH_DUMP_TYPE=mini stays.
+:: used to die with only an MSVC dialog). DEFAULT ON: when procdump is on
+:: PATH and HDAW_NO_CRASH_CAPTURE is not set, start the engine normally then
+:: ATTACH procdump as a watcher — procdump's UTF-16 banner goes to a log
+:: file, NOT the engine's stdout, so the MCP stdio contract stays clean.
+:: Opt-out with HDAW_NO_CRASH_CAPTURE=1.
+:: The gtest runner %TEMP%\hdaw_capture\run_with_capture.ps1 remains the
+:: default crash-capture path for tests. HDAW_CRASH_DUMP_TYPE=mini stays.
 set "DUMPFLAGS=-ma"
 if "%HDAW_CRASH_DUMP_TYPE%"=="mini" set "DUMPFLAGS=-mm"
 :: procdump invocation is delegated to PowerShell: cmd's own argument
 :: quoting is a minefield for paths with spaces (the engine path lives in
 :: %TEMP% and BUILD_DIR has spaces), and the capture must never break the
-:: MCP stdio contract. PowerShell resolves procdump, builds a unique capture
-:: dir, and runs "procdump -accepteula [-ma|-mm] -e -g -x <dir> <engine>"
-:: with stdio inherited straight through to the MCP client.
-if "%HDAW_CRASH_CAPTURE%"=="1" (
+:: MCP stdio contract. PowerShell starts the engine with inherited stdio,
+:: then attaches procdump to the engine PID as a watcher. Procdump's
+:: banner/error streams go to log files in the capture dir, not stdout.
+if not "%HDAW_NO_CRASH_CAPTURE%"=="1" (
     setlocal EnableDelayedExpansion
     set "ENGINE=!DST!"
-    powershell -NoProfile -Command "$f='-ma'; if ($env:HDAW_CRASH_DUMP_TYPE -eq 'mini') { $f='-mm' }; $pd=(Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { $dir=Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; [Console]::Error.WriteLine('[mcp-launch] crash capture ON: procdump ' + $f + ' -e -g -x ' + $dir); & $pd -accepteula $f -e -g -x $dir $env:ENGINE --mcp-stdio; exit $LASTEXITCODE }; & $env:ENGINE --mcp-stdio"
+    powershell -NoProfile -Command "$psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = $env:ENGINE; $psi.Arguments = '--mcp-stdio'; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $false; $psi.RedirectStandardError = $false; $psi.RedirectStandardInput = $false; $engine = [System.Diagnostics.Process]::Start($psi); $dir = Join-Path $env:TEMP ('hdaw_crash_captures\engine_' + [guid]::NewGuid().ToString('N').Substring(0,8)); New-Item -ItemType Directory -Force -Path $dir | Out-Null; $pd = (Get-Command procdump -ErrorAction SilentlyContinue).Source; if ($pd) { Start-Process -FilePath $pd -ArgumentList '-accepteula','-ma','-e','-g',"$($engine.Id)",$dir -WindowStyle Hidden -RedirectStandardOutput "$dir\procdump.log" -RedirectStandardError "$dir\procdump.err"; [Console]::Error.WriteLine('[mcp-launch] crash capture ON (attach pid=' + $engine.Id + ')') }; $engine.WaitForExit(); exit $engine.ExitCode"
     exit /b !ERRORLEVEL!
 )
 
