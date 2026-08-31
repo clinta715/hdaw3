@@ -295,3 +295,35 @@ TEST(MidiClipProcessor, NoteCacheClampsAtSlotCeiling)
     // Hard safety ceiling: cache count clamps (and the processor logs loudly).
     EXPECT_EQ(proc.getNumCachedNotes(), HDAW::MidiClipProcessor::MAX_NOTE_SLOTS);
 }
+
+// Regression (2026-09-02 session): a clip tree containing an out-of-range
+// noteNumber (pitch 160, written by a generator bug before the MIDI-addressable
+// cap existed) crashed processBlock with MSVC's "array subscript out of range"
+// — previousNotePlayed[] indexed raw noteNumber. The render path must clamp
+// every pitch-table index and still emit valid (clamped) MIDI.
+TEST(MidiClipProcessor, OutOfRangePitchNoteDoesNotCrashRender)
+{
+    HDAW::TransportManager tm;
+    tm.setSampleRate(44100.0);
+    tm.setBPM(120.0);
+
+    HDAW::MidiClipProcessor proc(tm);
+    proc.setClipTree(makeNoteClip(160, 0.8f, 0.0, 4.0));
+    proc.setStartTime(0.0);
+    proc.setDuration(8.0);
+    proc.prepareToPlay(44100.0, 512);
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    for (int block = 0; block < 16; ++block)
+    {
+        tm.setCurrentSample(block * 512);
+        juce::MidiBuffer midi;
+        proc.processBlock(buffer, midi);   // must not assert / crash
+        if (block == 0)
+        {
+            // The note plays clamped to 127 — a legal MIDI note — never 160.
+            EXPECT_TRUE(hasNoteOn(midi, 127));
+            EXPECT_FALSE(hasNoteOn(midi, 160));
+        }
+    }
+}

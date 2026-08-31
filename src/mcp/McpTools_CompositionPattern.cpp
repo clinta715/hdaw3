@@ -211,22 +211,10 @@ s.registerTool({"scale_note",
             if (scaleIdx < 0)
                 return McpToolResult::text("unknown scale: " + scaleName, true);
 
-            const auto& modes = PhraseGenerator::getScaleModes();
-            const std::vector<int>* intervals = nullptr;
-            for (const auto& m : modes)
-                if (m.index == scaleIdx) { intervals = &m.intervals; break; }
-            if (intervals == nullptr || intervals->empty())
-                return McpToolResult::text("scale has no pitch-class table", true);
-
-            const int n = static_cast<int>(intervals->size());
-            const int wrapped = ((degree % n) + n) % n;   // degree within the pitch class
-            const int octShift = static_cast<int>(
-                std::floor(static_cast<double>(degree) / static_cast<double>(n)));
-            const int midiPitch = rootMidi + octave * 12 + octShift * 12 + (*intervals)[wrapped];
-            if (midiPitch < 0 || midiPitch > 127)
+            const int midiPitch = PhraseGenerator::scaleDegreeToPitch(rootMidi, scaleIdx, degree, octave);
+            if (midiPitch < 0)
                 return McpToolResult::text(
-                    "degree out of range: computed pitch " + QString::number(midiPitch)
-                    + " falls outside 0..127", true);
+                    "degree out of range: computed pitch falls outside 0..127", true);
 
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(QJsonObject{{"midiPitch", midiPitch}})

@@ -183,12 +183,16 @@ public:
 
         // Snapshot recurrence decisions before any writes to previousNotePlayed,
         // so same-pitch notes don't contaminate each other within this block.
+        // Pitch tables are 128 wide (MIDI); a tree can carry out-of-range
+        // noteNumber values (e.g. written by a generator bug), so every raw
+        // index below is clamped — mirrors the adjustedNoteNumber jlimit.
         std::fill_n(recurrenceDecision.begin(), count, false);
         for (int j = 0; j < count; ++j)
         {
             const NoteData& nd = noteSnap->notes[j];
             if (nd.recurrence != 0)
-                recurrenceDecision[j] = recurrenceCheck(nd.recurrence, previousNotePlayed[nd.noteNumber]);
+                recurrenceDecision[j] = recurrenceCheck(nd.recurrence,
+                    previousNotePlayed[juce::jlimit (0, 127, nd.noteNumber)]);
         }
 
 for (int i = 0; i < count; ++i)
@@ -198,6 +202,10 @@ for (int i = 0; i < count; ++i)
 
             int adjustedNoteNumber = note.noteNumber + static_cast<int>(note.notePitch);
             adjustedNoteNumber = juce::jlimit(0, 127, adjustedNoteNumber);
+            // Raw (pre-offset) pitch clamped for the 128-wide bookkeeping
+            // tables below — an out-of-range tree value must never index past
+            // the arrays (debug STL asserts; release = UB).
+            const int tableNoteNumber = juce::jlimit(0, 127, note.noteNumber);
 
             if (currentBeat >= note.startBeat && currentBeat < noteEnd)
             {
@@ -219,7 +227,7 @@ for (int i = 0; i < count; ++i)
                             pitchOwner[adjustedNoteNumber] = -1;
                         }
                     }
-                    previousNotePlayed[note.noteNumber] = false;
+                    previousNotePlayed[tableNoteNumber] = false;
                     continue;
                 }
 
@@ -298,7 +306,7 @@ for (int i = 0; i < count; ++i)
                             }
                         }
                     }
-                    previousNotePlayed[note.noteNumber] = true;
+                    previousNotePlayed[tableNoteNumber] = true;
                     continue;
                 }
 
@@ -328,7 +336,7 @@ for (int i = 0; i < count; ++i)
                         midiMessages.addEvent(juce::MidiMessage::channelPressureChange(channel, pressureVal), 0);
                     }
                 }
-                previousNotePlayed[note.noteNumber] = true;
+                previousNotePlayed[tableNoteNumber] = true;
             }
             else if (noteActive[i])
             {

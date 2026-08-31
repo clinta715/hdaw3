@@ -3,7 +3,10 @@
 #include "../model/ProjectModel.h"
 #include "../engine/PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
+#include "TrackFXSlot.h"
 #include "engine/SliceDetector.h"
+#include "engine/PsyFmState.h"
+#include "engine/PsyFmModMatrix.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
@@ -282,6 +285,24 @@ void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int para
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (!slot.isValid()) return;
 
+    // Write-side clamp: internal FX param values land in the ValueTree and
+    // are re-read verbatim on every rebuild/export (loadParamsFromTree), so
+    // an out-of-range write would persist into saves and can drive recursive
+    // DSP (reverb comb feedback) to inf/NaN — the "export silent after 0.6s"
+    // bug. Clamp to the slot type's documented defs BEFORE the property
+    // write. Plugin/none slots have no defs and pass through unchanged
+    // (their params use the 0..1 plugin cache, not these defs).
+    const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
+    if (fxType.isNotEmpty() && fxType != "plugin" && fxType != "none")
+    {
+        auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxType);
+        if (paramIndex >= 0 && paramIndex < static_cast<int>(defs.size()))
+        {
+            const auto& d = defs[static_cast<size_t>(paramIndex)];
+            value = juce::jlimit(d.minValue, d.maxValue, value);
+        }
+    }
+
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
 }
@@ -373,6 +394,34 @@ void AudioEngineCommands::setSamplerProperty(int trackIndex, int slotIndex,
         slot.setProperty(juce::Identifier(property), static_cast<int>(value), &um);
     else
         return;
+
+    if (auto* proc = engine_.getMainProcessor())
+        proc->rebuildTrackFX(trackIndex);
+}
+
+void AudioEngineCommands::setSamplerKeyRange(int trackIndex, int slotIndex,
+                                             int keyLow, int keyHigh)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+    if (slot.getProperty(IDs::fxType, "").toString() != "sampler") return;
+
+    // Validate: both must be -1 (full range) or 0..127 with low <= high
+    if (keyLow != -1 && keyHigh != -1)
+    {
+        keyLow = juce::jlimit(0, 127, keyLow);
+        keyHigh = juce::jlimit(0, 127, keyHigh);
+        if (keyLow > keyHigh) std::swap(keyLow, keyHigh);
+    }
+    else
+    {
+        keyLow = -1;
+        keyHigh = -1;
+    }
+
+    slot.setProperty(IDs::keyRangeLow, keyLow, &um);
+    slot.setProperty(IDs::keyRangeHigh, keyHigh, &um);
 
     if (auto* proc = engine_.getMainProcessor())
         proc->rebuildTrackFX(trackIndex);
@@ -495,4 +544,86 @@ void AudioEngineCommands::respawnFxSlot(int trackIndex, int slotIndex)
     auto* proxy = dynamic_cast<proxy::PluginProxySlot*>(slot->getPluginInstance());
     if (!proxy) return;
     engine_.getPluginManager().recovery().requestRespawn(proxy->getSlotId(), true);
+}
+
+// ─── PsyFm preset/matrix commands (tree-first, deviceless-safe) ──────
+
+bool AudioEngineCommands::setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
+                                               const std::string& presetName)
+{
+    auto preset = HDAW::PsyFmState::findPreset(presetName);
+    if (!preset) return false;
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return false;
+    if (slot.getProperty(IDs::fxType).toString() != "psy_fm") return false;
+
+    // Write all 33 params: ratios 0–5, feedback 6, envelopes 7–30, level 31, algorithm 32
+    for (int i = 0; i < 6; ++i)
+        slot.setProperty(juce::Identifier("param_" + juce::String(i)),
+                         static_cast<double>(preset->ratios[i]), &um);
+    slot.setProperty(juce::Identifier("param_6"),
+                     static_cast<double>(preset->feedback), &um);
+    for (int op = 0; op < 6; ++op)
+    {
+        int base = 7 + op * 4;
+        for (int k = 0; k < 4; ++k)
+            slot.setProperty(juce::Identifier("param_" + juce::String(base + k)),
+                             static_cast<double>(preset->env[op][k]), &um);
+    }
+    slot.setProperty(juce::Identifier("param_31"),
+                     static_cast<double>(preset->outputLevel), &um);
+    slot.setProperty(juce::Identifier("param_32"),
+                     static_cast<double>(preset->algorithm), &um);
+
+    // Matrix + sweep rate
+    slot.setProperty(juce::Identifier("psyFmMatrix"),
+                     juce::String(preset->matrix), &um);
+    slot.setProperty(juce::Identifier("psyFmSweepRate"),
+                     static_cast<double>(preset->sweepRateHz), &um);
+    return true;
+}
+
+void AudioEngineCommands::setFxSlotPsyFmModRoute(int trackIndex, int slotIndex,
+                                                 const std::string& srcName,
+                                                 const std::string& destName,
+                                                 float depth)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+    if (slot.getProperty(IDs::fxType).toString() != "psy_fm") return;
+
+    // Read existing routes, upsert by source+dest key
+    juce::String current = slot.getProperty("psyFmMatrix", "").toString();
+    auto routes = HDAW::PsyFmState::decodeRoutes(current.toStdString());
+
+    auto src = HDAW::PsyFmState::sourceFromName(srcName);
+    auto dst = HDAW::PsyFmState::destFromName(destName);
+    if (!src || !dst) return; // unknown name — silently ignore
+
+    bool updated = false;
+    for (auto& r : routes)
+    {
+        if (r.source == *src && r.dest == *dst)
+        {
+            r.depth = depth;
+            updated = true;
+            break;
+        }
+    }
+    if (!updated)
+        routes.push_back({ *src, *dst, depth });
+
+    slot.setProperty(juce::Identifier("psyFmMatrix"),
+                     juce::String(HDAW::PsyFmState::encodeRoutes(routes)), &um);
+}
+
+void AudioEngineCommands::clearFxSlotPsyFmModRoutes(int trackIndex, int slotIndex)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+    slot.setProperty(juce::Identifier("psyFmMatrix"), juce::String(), &um);
 }

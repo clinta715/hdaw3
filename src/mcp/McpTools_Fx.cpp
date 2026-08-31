@@ -11,6 +11,7 @@ void registerFxTools(McpServer& s, AudioEngine* e)
     registerFxPresetTools(s, e);
     registerSamplerTools(s, e);
     registerFmSynthTools(s, e);
+    registerPsyFmTools(s, e);
 }
 
 } // namespace mcp

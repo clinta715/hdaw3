@@ -19,6 +19,17 @@ public:
     static std::vector<int> buildScalePitches(int rootNote, int scaleModeIndex,
                                                int lowNote = 36, int highNote = 96);
 
+    // Map a scale DEGREE (diatonic step, octave-wrapped) to an absolute MIDI
+    // pitch for a root note + scale mode. Degree 0 is the root; degree N
+    // (N = pitch classes in the scale) wraps up an octave; negative degrees
+    // wrap below the root. octave shifts the whole result by ±12·octave
+    // (octave is the SCIENTIFIC octave of the note, matching diatonicRoots:
+    // degree 0 at octave 4 is rootMidi=60/root+0 → C4-style placement;
+    // see the MCP scale_note tool for the canonical semantics). Returns -1 if
+    // the scale mode index is unknown or the computed pitch falls outside
+    // 0..127 — callers must treat -1 as invalid (same contract as scale_note).
+    static int scaleDegreeToPitch(int rootMidi, int scaleModeIndex, int degree, int octave = 0);
+
     // ── Chord types ──
     struct ChordType {
         int index;

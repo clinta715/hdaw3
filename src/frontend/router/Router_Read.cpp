@@ -124,6 +124,8 @@ DispatchResult dispatchRead(ReadModel& r, const QString& m, const QJsonValue& pa
         obj["glide"] = static_cast<double>(s.glide);
         obj["hasSound"] = s.hasSound;
         obj["activeVoices"] = s.activeVoices;
+        obj["keyRangeLow"] = s.keyRangeLow;
+        obj["keyRangeHigh"] = s.keyRangeHigh;
         return { false, obj };
     }
     return makeError(-32601, "unknown read method: " + m);

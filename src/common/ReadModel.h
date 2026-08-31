@@ -253,6 +253,8 @@ struct SamplerStateSnapshot {
     double sliceGrid = 0.25;
     double sliceSensitivity = 0.5;
     std::vector<float> slicePoints;   // normalized 0..1
+    int keyRangeLow = -1;             // -1 = full range
+    int keyRangeHigh = -1;
 };
 
 class ReadModel {

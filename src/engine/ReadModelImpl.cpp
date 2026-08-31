@@ -588,6 +588,9 @@ SamplerStateSnapshot ReadModelImpl::getSamplerState(int trackIndex, int slotInde
     for (auto& tok : juce::StringArray::fromTokens(sliceStr, ",", ""))
         snap.slicePoints.push_back(static_cast<float>(tok.trim().getDoubleValue()));
 
+    snap.keyRangeLow = static_cast<int>(slotTree.getProperty("keyRangeLow", -1));
+    snap.keyRangeHigh = static_cast<int>(slotTree.getProperty("keyRangeHigh", -1));
+
     if (engine_)
     {
         auto* proc = engine_->getMainProcessor();

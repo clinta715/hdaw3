@@ -1078,17 +1078,15 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
     else if (treeWhosePropertyHasChanged.hasType(IDs::FX_SLOT))
     {
         if (!mainProcessor) return;
-        // Forward param_N property changes to the live TrackFXSlot for
-        // internal (non-plugin) FX. Isolated-plugin plugin params cross the
-        // proxy shm param bridge (staging -> paramSet ring -> child audio
-        // loop), NOT this listener — only internal-FX params are handled here.
+        // Forward FX-slot property changes to the live TrackFXSlot. This
+        // covers `param_N` (all internal FX), `psyFmMatrix` and
+        // `psyFmSweepRate` (psy_fm modulation state). Isolated-plugin params
+        // cross the proxy shm bridge, not this listener.
         juce::String propStr = property.toString();
-        if (!propStr.startsWith("param_"))
-            return;
-
-        // Extract param index from "param_N"
-        int paramIndex = propStr.substring(6).getIntValue();
-        float value = static_cast<float>(treeWhosePropertyHasChanged.getProperty(property));
+        const bool isParam = propStr.startsWith("param_");
+        const bool isMatrix = (propStr == "psyFmMatrix");
+        const bool isSweep = (propStr == "psyFmSweepRate");
+        if (!isParam && !isMatrix && !isSweep) return;
 
         // Find track index and slot index by walking the tree
         auto fxChain = treeWhosePropertyHasChanged.getParent();
@@ -1130,7 +1128,22 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
         auto* track = mainProcessor->getTrack(trackIdx);
         if (track == nullptr) return;
 
-        track->setFxSlotInternalParam(slotIdx, paramIndex, value);
+        if (isParam)
+        {
+            int paramIndex = propStr.substring(6).getIntValue();
+            float value = static_cast<float>(treeWhosePropertyHasChanged.getProperty(property));
+            track->setFxSlotInternalParam(slotIdx, paramIndex, value);
+        }
+        else if (isMatrix)
+        {
+            juce::String matrixStr = treeWhosePropertyHasChanged.getProperty(property).toString();
+            track->setFxSlotPsyFmMatrix(slotIdx, matrixStr);
+        }
+        else if (isSweep)
+        {
+            float hz = static_cast<float>(static_cast<double>(treeWhosePropertyHasChanged.getProperty(property)));
+            track->setFxSlotPsyFmSweepRate(slotIdx, hz);
+        }
     }
 }
 

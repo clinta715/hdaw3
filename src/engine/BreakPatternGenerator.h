@@ -82,6 +82,7 @@ public:
     struct Params
     {
         int sliceCount   = 8;      // detected slices (slicePoints.size()-1)
+        int baseNote     = 60;     // sampler base note: pitch = baseNote + sliceIndex
         int bars         = 8;      // 1..64
         int grid         = 4;      // output steps per beat: 1=quarter..8=32nds
         Style style      = Style::Amen;
@@ -139,6 +140,12 @@ public:
         if (p.velocityMin > p.velocityMax)
             std::swap (p.velocityMin, p.velocityMax);
         p.ghostFills   = std::clamp (p.ghostFills, 0, kMaxGhostFills);
+        // 7-bit MIDI can only address pitches 0..127: cap the effective slice
+        // pool to what the chromatic mapping (pitch = baseNote + sliceIndex)
+        // can actually reach. Without this, baseNote 60 + 108 detected slices
+        // emits pitches up to 167 — notes the render path must then reject
+        // (MidiClipProcessor pitch tables are 128 wide).
+        p.sliceCount    = std::clamp (p.sliceCount, 0, 128 - std::clamp (p.baseNote, 0, 127));
         if (p.sliceCount <= 0)
             return {};
 
@@ -262,7 +269,10 @@ public:
         out.reserve (steps.size());
         for (const auto& s : steps)
             out.push_back ({ static_cast<double> (s.stepIndex) * beatsPerStep,
-                             baseNote + s.sliceIndex, s.velocity, beatsPerStep });
+                             // Defensive: even if sliceCount were mis-capped,
+                             // never emit a pitch outside MIDI 0..127.
+                             std::clamp (baseNote + s.sliceIndex, 0, 127),
+                             s.velocity, beatsPerStep });
         return out;
     }
 };

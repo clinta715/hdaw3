@@ -25,6 +25,7 @@ export const BOTTOM_TAB_IDS = [
   "sampler",
   "arranger",
   "fm-analysis",
+  "psy-fm",
   "tempo",
   "presets",
 ] as const;

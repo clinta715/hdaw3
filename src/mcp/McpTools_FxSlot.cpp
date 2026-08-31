@@ -23,10 +23,10 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,sampler,fm_synth}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,sampler,fm_synth,growl_bass,psyarp}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","sampler","fm_synth"}}}},
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","sampler","fm_synth","growl_bass","psyarp","psy_fm"}}}},
                   {"pluginId", QJsonObject{{"type","string"}}},
                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "fx",
@@ -120,13 +120,21 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
             }
             else
             {
-                // Internal FX: enumerate from param definitions
+                // Internal FX: enumerate from param definitions. Include the
+                // CURRENT real-unit value alongside the metadata (P1.3, plan
+                // 2026-08-30) — symmetric with the plugin branch above; the
+                // value comes from the ValueTree param_N props (source of
+                // truth, same storage the engine loads + list_fx_params reads).
                 auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+                auto snaps = e->getReadModel().getInternalFxParams(ti, si);
                 for (const auto& def : defs) {
                     QJsonObject o;
                     o["index"] = def.index;
                     o["name"] = QString::fromUtf8(def.name.toRawUTF8());
                     o["automatable"] = true;
+                    for (const auto& snap : snaps)
+                        if (snap.paramIndex == def.index)
+                            { o["value"] = static_cast<double>(snap.value); break; }
                     o["minValue"] = static_cast<double>(def.minValue);
                     o["maxValue"] = static_cast<double>(def.maxValue);
                     o["defaultValue"] = static_cast<double>(def.defaultValue);
@@ -203,6 +211,39 @@ s.registerTool({"set_internal_fx_param",
             float v = static_cast<float>(a.value("value").toDouble());
             e->getProjectCommands().setFxSlotParam(ti, si, pi, v);
             return McpToolResult::text("ok");
+        }});
+
+s.registerTool({"get_internal_fx_param",
+        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units — the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, sampler. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth — no render, no DSP access, read-only).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+                return McpToolResult::text("get_internal_fx_param: slot not found", true);
+            // Gate 9: validate against the type's real-unit defs table — a
+            // plugin, empty, or unknown slot has no defs and must error, never
+            // return an empty/meaningless dump.
+            if (HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType).empty())
+                return McpToolResult::text("get_internal_fx_param: slot is not an internal FX", true);
+            auto snaps = e->getReadModel().getInternalFxParams(ti, si);
+            QJsonArray arr;
+            for (const auto& s : snaps)
+            {
+                QJsonObject o;
+                o["index"]         = s.paramIndex;
+                o["name"]          = QString::fromStdString(s.name);
+                o["value"]         = static_cast<double>(s.value);
+                o["defaultValue"]  = static_cast<double>(s.defaultValue);
+                o["minValue"]      = static_cast<double>(s.minValue);
+                o["maxValue"]      = static_cast<double>(s.maxValue);
+                arr.append(o);
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
 }

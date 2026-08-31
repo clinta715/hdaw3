@@ -124,6 +124,8 @@ namespace IDs {
     DECLARE_ID(FX_SLOT)
     DECLARE_ID(slotIndex)
     DECLARE_ID(bypassed)
+    DECLARE_ID(keyRangeLow)
+    DECLARE_ID(keyRangeHigh)
 
     // Per-track MIDI FX chain
     DECLARE_ID(MIDI_FX_CHAIN)

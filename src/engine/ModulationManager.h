@@ -7,6 +7,25 @@
 
 namespace HDAW {
 
+// ── FM modulation paramIDs (track-level LFO → PsyFm engine) ──
+// Range 300-309 reserved for FM modulation targets.
+// The ModulationManager / Track::processBlock applies these to the
+// PsyFmEngine's mod source pool or directly to operator params.
+namespace FmModParamIDs {
+    static constexpr int Op1Ratio     = 300;  // LFO → operator 1 ratio offset
+    static constexpr int Op2Ratio     = 301;  // LFO → operator 2 ratio offset
+    static constexpr int Op3Ratio     = 302;  // LFO → operator 3 ratio offset
+    static constexpr int Op4Ratio     = 303;  // LFO → operator 4 ratio offset
+    static constexpr int Op5Ratio     = 304;  // LFO → operator 5 ratio offset
+    static constexpr int Op6Ratio     = 305;  // LFO → operator 6 ratio offset
+    static constexpr int Op6Feedback  = 306;  // LFO → operator 6 feedback
+    static constexpr int OutputLevel  = 307;  // LFO → master output level
+    static constexpr int RatioSweepRate = 308; // LFO → ratio-sweep LFO rate (nested)
+    static constexpr int FirstFmParam = 300;
+    static constexpr int LastFmParam  = 308;
+}
+
+
 class ModulationManager {
 public:
     ModulationManager() = default;

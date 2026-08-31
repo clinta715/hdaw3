@@ -6,6 +6,7 @@
 #include "ExportManager.h"
 #include "PhraseGenerator.h"
 #include "RhythmPatternGenerator.h"
+#include "PsytranceGenerator.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -1345,6 +1346,7 @@ AudioEngineCommands::BreakPatternResult AudioEngineCommands::generateChoppedBrea
 
     BreakPatternGenerator::Params gp;
     gp.sliceCount   = sliceCount;
+    gp.baseNote     = baseNote;   // caps the slice pool at 128-baseNote (MIDI range)
     gp.bars         = params.bars;
     gp.grid         = params.grid;
     gp.style        = params.style;
@@ -1386,5 +1388,82 @@ AudioEngineCommands::BreakPatternResult AudioEngineCommands::generateChoppedBrea
     endTransaction();
 
     result.ok = true;
+    return result;
+}
+
+ProjectCommands::PsytranceResult AudioEngineCommands::generatePsytrance(const HDAW::PsytranceParams& params)
+{
+    ProjectCommands::PsytranceResult result;
+
+    // Pure generation first — if the grammar rejects the params, nothing is
+    // written and the caller gets a tool-named error.
+    const auto score = HDAW::PsytranceGenerator::generate(params);
+    if (!score.error.empty())
+    {
+        result.error = "generate_psytrance: " + score.error;
+        return result;
+    }
+
+    auto& model = engine_.getProjectModel();
+    const int trackCount = model.getTrackListTree().getNumChildren();
+
+    // Validate every role's track BEFORE any mutation (no partial writes).
+    for (const auto& clip : score.clips)
+        if (clip.trackIndex < 0 || clip.trackIndex >= trackCount)
+        {
+            result.error = "generate_psytrance: role '" + clip.role
+                         + "' track index out of range";
+            return result;
+        }
+
+    result.totalBeats = score.totalBeats;
+    result.notesTotal = score.notesTotal;
+    result.skippedRoles = score.skipped;
+
+    auto& um = model.getUndoManager();
+    beginTransaction("Generate psytrance");
+
+    constexpr int kMaxNotesPerClip = 8192; // MidiClipProcessor cache ceiling
+    for (const auto& clip : score.clips)
+    {
+        ProjectCommands::PsytranceResult::Clip out;
+        out.role = clip.role;
+        out.trackIndex = clip.trackIndex;
+
+        // One clip per role at beat 0 spanning the whole arrangement → note
+        // starts are clip-local (= absolute beats; guide §9.1 contract).
+        const double bpm = engine_.getTransportManager().getBPM();
+        auto c = model.createMidiClipEmpty("Psy" + clip.role,
+                                           HDAW::beatsToSeconds(0.0, bpm),
+                                           HDAW::beatsToSeconds(score.totalBeats, bpm));
+        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(clip.trackIndex)), &um);
+        auto noteList = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!noteList.isValid())
+        {
+            noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+            c.addChild(noteList, -1, &um);
+        }
+
+        int written = 0;
+        for (const auto& n : clip.notes)
+        {
+            if (n.startBeat >= score.totalBeats) { ++result.notesSkipped; continue; }
+            if (written >= kMaxNotesPerClip)     { ++result.notesSkipped; continue; }
+            auto note = model.createMidiNote(n.pitch,
+                                             static_cast<float>(n.velocity) / 127.0f,
+                                             n.startBeat, n.durationBeats);
+            noteList.addChild(note, -1, &um);
+            ++written;
+        }
+        out.noteCount = written;
+        out.clipId = static_cast<int>(c.getProperty(IDs::clipID));
+        if (out.clipId < 0) out.clipId = -1;
+
+        model.getTrackListTree().getChild(clip.trackIndex)
+            .getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+        result.clips.push_back(std::move(out));
+    }
+
+    endTransaction();
     return result;
 }

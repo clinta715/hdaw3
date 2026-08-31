@@ -502,6 +502,71 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
                 .toJson(QJsonDocument::Compact)));
         }});
 
+s.registerTool({"generate_psytrance",
+        "Compose the FULL psytrance score (guide §4 grammar) onto existing palette tracks in ONE call: key-disciplined notes for kick (4-on-floor), offbeat rolling bass, offbeat hats + 16th rolls, chord-tone arp with +12 glints, beat-2 stabs, whole-arrangement pads, breakdown melody, and the riser/downlifter schedule into the drops. Writes one clip per mapped role at beat 0 spanning the arrangement (note starts are clip-local = absolute beats); one undo unit. NOTES ONLY — load samples and add FX/LFO/automation as separate steps. sections = [{name, start, end}] in beats, names in {intro, build, mainA, mini, mainB, breakdown, finale} (case/space/dash-insensitive; unknown = full-stack like mainA). paletteTrackIds maps roles {kick,bass,hat,arp,stab,pad,clap,riser,down} → trackId; unmapped roles are reported in 'skipped' (clap defaults to the hat track). Deterministic for a given seed (density gates the extra 16th rolls / extra stabs). Returns {clips:[{role,trackId,clipId,noteCount}], skipped, totalBeats, notesTotal, notesSkipped} — compact, no note payload.",
+        objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},
+                      {"description","role name -> track index (kick,bass,hat,arp,stab,pad,clap,riser,down)"},
+                      {"additionalProperties", QJsonObject{{"type","integer"}}}}},
+                  {"sections", QJsonObject{{"type","array"},
+                      {"items", QJsonObject{{"type","object"},
+                          {"properties", QJsonObject{
+                              {"name",  QJsonObject{{"type","string"}}},
+                              {"start", QJsonObject{{"type","number"}}},
+                              {"end",   QJsonObject{{"type","number"}}}}},
+                          {"required", QJsonArray{"name","start","end"}}}}}},
+                  {"keyRoot", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
+                  {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",20}}},
+                  {"density", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},
+                  {"seed", QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
+                  {"progressionB", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}}},
+                 {"paletteTrackIds","sections"}),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::PsytranceParams p;
+            p.keyRoot = a.value("keyRoot").toInt(0);
+            p.scaleMode = a.value("scaleMode").toInt(1);
+            p.density = a.value("density").toDouble(0.7);
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toVariant().toULongLong()) : 0;
+            for (const auto& sv : a.value("sections").toArray())
+            {
+                auto so = sv.toObject();
+                HDAW::PsytranceSection s;
+                s.name  = so.value("name").toString().toStdString();
+                s.start = so.value("start").toDouble(0.0);
+                s.end   = so.value("end").toDouble(0.0);
+                p.sections.push_back(s);
+            }
+            if (a.contains("progressionA"))
+                for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+            if (a.contains("progressionB"))
+                for (const auto& v : a.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+            const auto pt = a.value("paletteTrackIds").toObject();
+            auto set = [&](const char* role, int& out) { if (pt.contains(role)) out = pt.value(role).toInt(-1); };
+            set("kick", p.kick);     set("bass", p.bass);
+            set("hat", p.hat);       set("arp", p.arp);
+            set("stab", p.stab);     set("pad", p.pad);
+            set("riser", p.riser);   set("down", p.down);
+            set("clap", p.clap);
+            auto r = e->getProjectCommands().generatePsytrance(p);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            QJsonArray clips;
+            for (const auto& rc : r.clips)
+                clips.append(QJsonObject{{"role", QString::fromStdString(rc.role)},
+                                         {"trackId", rc.trackIndex},
+                                         {"clipId", rc.clipId},
+                                         {"noteCount", rc.noteCount}});
+            QJsonArray skipped;
+            for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                QJsonObject{{"clips", clips},
+                            {"skipped", skipped},
+                            {"totalBeats", r.totalBeats},
+                            {"notesTotal", r.notesTotal},
+                            {"notesSkipped", r.notesSkipped}}).toJson(QJsonDocument::Compact)));
+        }});
+
 }
 
 } // namespace mcp

@@ -1,6 +1,7 @@
 # Build output
 build/
 cmake-build-*/
+build-ninja/
 out/
 
 # IDE
@@ -169,3 +170,7 @@ clap-libs/
 test.zip
 .tmp_*
 *.tmp
+
+# Export-silence investigation scratch (repro/bisect/causality drivers + WAVs)
+repro_out/
+tools/.ruff_cache/

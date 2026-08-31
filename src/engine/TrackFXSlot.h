@@ -13,7 +13,12 @@
 #include "../proxy/PluginProxySlot.h"
 #include "engine/SamplerEngine.h"
 #include "engine/FmSynthEngine.h"
+#include "engine/GrowlBassEngine.h"
 #include "DecodedSoundPool.h"
+#include "PsyArpEngine.h"
+#include "PsyFmEngine.h"
+#include "PsyFmAlgorithms.h"
+#include "PsyFmState.h"
 
 namespace HDAW {
 
@@ -143,6 +148,94 @@ public:
                 {24, "LFO Amp Depth",  0.0f,  0.0f,  1.0f },
                 {25, "LFO Waveform",   0.0f,  0.0f,  3.0f },
             };
+        if (type == "growl_bass")
+            return {
+                { 0, "Fundamental Hz", 55.0f,  20.0f,  200.0f },
+                { 1, "Mod Ratio",       1.5f,   0.5f,    8.0f },
+                { 2, "Mod Depth",       0.6f,   0.0f,    1.0f },
+                { 3, "Mod Shape",       0.0f,   0.0f,    2.0f },  // 0=Sine, 1=Tri, 2=Square
+                { 4, "Clip Type",       0.0f,   0.0f,    3.0f },  // 0=Tanh, 1=Atan, 2=Hard, 3=Bitcrush
+                { 5, "Drive dB",       18.0f,   0.0f,   40.0f },
+                { 6, "Asymmetry",       0.15f, -1.0f,    1.0f },
+                { 7, "Bitcrush Bits",   8.0f,   2.0f,   16.0f },
+                { 8, "Filter Cutoff", 800.0f,  20.0f, 20000.0f },
+                { 9, "Filter Res",       4.0f,   0.1f,   20.0f },
+                {10, "Filter Env Amt",   0.7f,   0.0f,    1.0f },
+                {11, "Filter Type",      0.0f,   0.0f,    1.0f },  // 0=LP, 1=BP
+                {12, "Attack ms",        2.0f,   0.1f,  100.0f },
+                {13, "Decay ms",        80.0f,   1.0f, 1000.0f },
+                {14, "Sustain",          0.7f,   0.0f,    1.0f },
+                {15, "Release ms",      40.0f,   1.0f, 1000.0f },
+                {16, "Output Level",     0.4f,   0.0f,    1.0f },
+                {17, "Unison Enable",    0.0f,   0.0f,    1.0f },
+                {18, "Unison Voices",    2.0f,   1.0f,    4.0f },
+                {19, "Unison Detune",   12.0f,   0.0f,   50.0f },
+                {20, "Ratio Jitter",     0.0f,   0.0f,    1.0f },
+                {21, "Jitter Amount",    0.05f,  0.0f,    0.5f },
+                {22, "Formant Enable",   0.0f,   0.0f,    1.0f },
+                {23, "Formant Morph",    0.0f,   0.0f,    1.0f },
+                {24, "Sidechain Drive",  0.0f,   0.0f,    1.0f },
+                {25, "Sidechain Amt",    0.5f,   0.0f,    1.0f },
+            };
+        if (type == "psyarp")
+            return {
+                { 0, "Osc Shape",          0.0f,   0.0f,    2.0f },  // 0=Saw, 1=Square, 2=SuperSaw
+                { 1, "Unison Voices",      2.0f,   1.0f,    4.0f },
+                { 2, "Unison Detune",      8.0f,   0.0f,   50.0f },
+                { 3, "Pattern Shape",      1.0f,   0.0f,    2.0f },  // 0=UpDown, 1=Asym332, 2=Random
+                { 4, "Octave Range",       3.0f,   1.0f,    4.0f },
+                { 5, "Bars Per Motif",     2.0f,   0.5f,   8.0f },
+                { 6, "Filter Cutoff",    600.0f,  20.0f, 20000.0f },
+                { 7, "Filter Resonance",   7.0f,   0.1f,   20.0f },
+                { 8, "Filter Sweep Bars",  4.0f,   0.5f,   16.0f },
+                { 9, "Delay Time (beats)", 0.375f, 0.01f,  2.0f },
+                {10, "Delay Feedback",     0.55f,  0.0f,   0.95f },
+                {11, "Delay Ping-Pong",    1.0f,   0.0f,   1.0f },
+                {12, "Delay Wet",          0.4f,   0.0f,   1.0f },
+                {13, "Reverb Size",        3.5f,   0.1f,  10.0f },
+                {14, "Reverb Wet on Dry",  0.1f,   0.0f,   1.0f },
+                {15, "Reverb Wet on Delay",0.6f,   0.0f,   1.0f },
+                {16, "Phaser Enable",      1.0f,   0.0f,   1.0f },
+                {17, "Phaser Rate",        0.15f,  0.01f,  5.0f },
+                {18, "Phaser Depth",       0.3f,   0.0f,   1.0f },
+                {19, "Output Level",       0.4f,   0.0f,   1.0f },
+            };
+        if (type == "psy_fm")
+            return {
+                { 0, "OP1 Ratio",       1.0f,   0.1f,  10.0f },
+                { 1, "OP2 Ratio",       1.0f,   0.1f,  10.0f },
+                { 2, "OP3 Ratio",       1.0f,   0.1f,  10.0f },
+                { 3, "OP4 Ratio",       1.0f,   0.1f,  10.0f },
+                { 4, "OP5 Ratio",       1.0f,   0.1f,  10.0f },
+                { 5, "OP6 Ratio",       1.0f,   0.1f,  10.0f },
+                { 6, "Feedback",        0.0f,   0.0f,   1.0f },
+                { 7, "OP1 Attack",      0.01f,  0.001f, 2.0f },
+                { 8, "OP1 Decay",       0.3f,   0.001f, 5.0f },
+                { 9, "OP1 Sustain",     0.7f,   0.0f,   1.0f },
+                {10, "OP1 Release",     0.2f,   0.001f, 5.0f },
+                {11, "OP2 Attack",      0.01f,  0.001f, 2.0f },
+                {12, "OP2 Decay",       0.3f,   0.001f, 5.0f },
+                {13, "OP2 Sustain",     0.7f,   0.0f,   1.0f },
+                {14, "OP2 Release",     0.2f,   0.001f, 5.0f },
+                {15, "OP3 Attack",      0.01f,  0.001f, 2.0f },
+                {16, "OP3 Decay",       0.3f,   0.001f, 5.0f },
+                {17, "OP3 Sustain",     0.7f,   0.0f,   1.0f },
+                {18, "OP3 Release",     0.2f,   0.001f, 5.0f },
+                {19, "OP4 Attack",      0.01f,  0.001f, 2.0f },
+                {20, "OP4 Decay",       0.3f,   0.001f, 5.0f },
+                {21, "OP4 Sustain",     0.7f,   0.0f,   1.0f },
+                {22, "OP4 Release",     0.2f,   0.001f, 5.0f },
+                {23, "OP5 Attack",      0.01f,  0.001f, 2.0f },
+                {24, "OP5 Decay",       0.3f,   0.001f, 5.0f },
+                {25, "OP5 Sustain",     0.7f,   0.0f,   1.0f },
+                {26, "OP5 Release",     0.2f,   0.001f, 5.0f },
+                {27, "OP6 Attack",      0.01f,  0.001f, 2.0f },
+                {28, "OP6 Decay",       0.3f,   0.001f, 5.0f },
+                {29, "OP6 Sustain",     0.7f,   0.0f,   1.0f },
+                {30, "OP6 Release",     0.2f,   0.001f, 5.0f },
+                {31, "Output Level",    0.4f,   0.0f,   1.0f },
+                {32, "Algorithm Preset",0.0f,   0.0f,   3.0f },
+            };
         return {};
     }
 
@@ -170,6 +263,12 @@ public:
             activeType = ActiveType::Sampler;
         else if (type == "fm_synth")
             activeType = ActiveType::FmSynth;
+        else if (type == "growl_bass")
+            activeType = ActiveType::GrowlBass;
+        else if (type == "psyarp")
+            activeType = ActiveType::PsyArp;
+        else if (type == "psy_fm")
+            activeType = ActiveType::PsyFm;
         else if (type == "plugin")
             activeType = ActiveType::Plugin;
         else
@@ -356,6 +455,12 @@ public:
             return;
         }
 
+        // Clamp the whole vector once so every per-type push below inherits
+        // in-range values (legacy/hand-edited projects can store out-of-range
+        // param_N; recursive feedback DSP runs away to inf/NaN otherwise).
+        for (size_t i = 0; i < internalParamValues.size(); ++i)
+            internalParamValues[i] = clampToParamDef(static_cast<int>(i), internalParamValues[i]);
+
         switch (activeType)
         {
             case ActiveType::Reverb:
@@ -493,6 +598,86 @@ public:
                 if (internalParamValues.size() > 25) fmSynth->setLfoWaveform(static_cast<int>(internalParamValues[25]));
                 break;
             }
+            case ActiveType::GrowlBass:
+            {
+                if (!growlBass)
+                    growlBass = std::make_unique<GrowlBassEngine>();
+                growlBass->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                break;
+            }
+            case ActiveType::PsyArp:
+            {
+                if (!psyArp)
+                    psyArp = std::make_unique<PsyArpEngine>();
+                psyArp->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                // Push initial params from internalParamValues
+                if (internalParamValues.size() > 0) psyArp->setOscShape(static_cast<int>(internalParamValues[0]));
+                if (internalParamValues.size() > 1) psyArp->setOscUnisonVoices(static_cast<int>(internalParamValues[1]));
+                if (internalParamValues.size() > 2) psyArp->setOscDetuneCents(internalParamValues[2]);
+                if (internalParamValues.size() > 3) psyArp->setPatternShape(static_cast<int>(internalParamValues[3]));
+                if (internalParamValues.size() > 4) psyArp->setOctaveRange(static_cast<int>(internalParamValues[4]));
+                if (internalParamValues.size() > 5) psyArp->setBarsPerMotifLoop(internalParamValues[5]);
+                if (internalParamValues.size() > 6) psyArp->setFilterCutoffHz(internalParamValues[6]);
+                if (internalParamValues.size() > 7) psyArp->setFilterResonance(internalParamValues[7]);
+                if (internalParamValues.size() > 8) psyArp->setFilterSweepBars(internalParamValues[8]);
+                if (internalParamValues.size() > 9) psyArp->setDelayTimeBeats(internalParamValues[9]);
+                if (internalParamValues.size() > 10) psyArp->setDelayFeedback(internalParamValues[10]);
+                if (internalParamValues.size() > 11) psyArp->setDelayPingPongWidth(internalParamValues[11]);
+                if (internalParamValues.size() > 12) psyArp->setDelayWetLevel(internalParamValues[12]);
+                if (internalParamValues.size() > 13) psyArp->setReverbSizeSec(internalParamValues[13]);
+                if (internalParamValues.size() > 14) psyArp->setReverbWetOnDry(internalParamValues[14]);
+                if (internalParamValues.size() > 15) psyArp->setReverbWetOnDelay(internalParamValues[15]);
+                if (internalParamValues.size() > 16) psyArp->setPhaserEnabled(internalParamValues[16] >= 0.5f);
+                if (internalParamValues.size() > 17) psyArp->setPhaserRateHz(internalParamValues[17]);
+                if (internalParamValues.size() > 18) psyArp->setPhaserDepth(internalParamValues[18]);
+                if (internalParamValues.size() > 19) psyArp->setOutputLevel(internalParamValues[19]);
+                break;
+            }
+            case ActiveType::PsyFm:
+            {
+                if (!psyFm)
+                    psyFm = std::make_unique<PsyFmEngine>();
+                psyFm->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                // Push base ratios from params 0-5
+                float ratios[6];
+                for (int i = 0; i < 6; i++)
+                    ratios[i] = (internalParamValues.size() > (size_t)i) ? internalParamValues[i] : 1.0f;
+                psyFm->setBaseRatios(ratios);
+                // Feedback
+                if (internalParamValues.size() > 6)
+                    psyFm->setBaseFeedback(internalParamValues[6]);
+                // Per-operator envelopes (params 7-30: 4 params per op)
+                for (int op = 0; op < 6; op++)
+                {
+                    juce::ADSR::Parameters p;
+                    p.attack  = (internalParamValues.size() > (size_t)(7 + op * 4))     ? internalParamValues[7 + op * 4]     : 0.01f;
+                    p.decay   = (internalParamValues.size() > (size_t)(8 + op * 4))     ? internalParamValues[8 + op * 4]     : 0.3f;
+                    p.sustain = (internalParamValues.size() > (size_t)(9 + op * 4))     ? internalParamValues[9 + op * 4]     : 0.7f;
+                    p.release = (internalParamValues.size() > (size_t)(10 + op * 4))    ? internalParamValues[10 + op * 4]    : 0.2f;
+                    psyFm->setOpEnvelope(op, p);
+                }
+                // Output level
+                if (internalParamValues.size() > 31)
+                    psyFm->setOutputLevel(internalParamValues[31]);
+                // Algorithm preset
+                if (internalParamValues.size() > 32)
+                {
+                    int algoIdx = static_cast<int>(internalParamValues[32]);
+                    switch (algoIdx)
+                    {
+                        case 0: psyFm->setAlgorithm(growlBassAlgorithm); break;
+                        case 1: psyFm->setAlgorithm(acidLeadAlgorithm); break;
+                        case 2: psyFm->setAlgorithm(metallicPluckAlgorithm); break;
+                        case 3: psyFm->setAlgorithm(riserAlgorithm); break;
+                        default: psyFm->setAlgorithm(growlBassAlgorithm); break;
+                    }
+                }
+                else
+                {
+                    psyFm->setAlgorithm(growlBassAlgorithm);
+                }
+                break;
+            }
             case ActiveType::None:
             default:
                 break;
@@ -535,9 +720,32 @@ public:
         {
             if (sampler)
             {
-                buffer.clear();    // instrument = source (overwrite)
-                sampler->render (buffer, midiMessages);
-                midiMessages.clear();
+                const bool hasRange = (keyRangeLow_ >= 0 && keyRangeHigh_ >= 0
+                                       && keyRangeLow_ <= keyRangeHigh_);
+                if (hasRange)
+                {
+                    // Partial sampler: partition MIDI into in-range and remainder.
+                    juce::MidiBuffer inRange, remainder;
+                    for (const auto metadata : midiMessages)
+                    {
+                        auto msg = metadata.getMessage();
+                        const int note = msg.getNoteNumber();
+                        if (note >= keyRangeLow_ && note <= keyRangeHigh_)
+                            inRange.addEvent(msg, static_cast<int>(metadata.samplePosition));
+                        else
+                            remainder.addEvent(msg, static_cast<int>(metadata.samplePosition));
+                    }
+                    buffer.clear();
+                    sampler->render(buffer, inRange);
+                    midiMessages = remainder;
+                }
+                else
+                {
+                    // Full-range: current behavior (clears + consumes all notes)
+                    buffer.clear();
+                    sampler->render(buffer, midiMessages);
+                    midiMessages.clear();
+                }
             }
             return;
         }
@@ -548,6 +756,39 @@ public:
             {
                 buffer.clear();
                 fmSynth->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
+        if (activeType == ActiveType::GrowlBass)
+        {
+            if (growlBass)
+            {
+                buffer.clear();
+                growlBass->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
+        if (activeType == ActiveType::PsyArp)
+        {
+            if (psyArp)
+            {
+                buffer.clear();
+                psyArp->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
+        if (activeType == ActiveType::PsyFm)
+        {
+            if (psyFm)
+            {
+                buffer.clear();
+                psyFm->render(buffer, midiMessages);
                 midiMessages.clear();
             }
             return;
@@ -623,6 +864,9 @@ public:
         if (phaserDsp) phaserDsp->reset();
         if (filter)    filter->reset();
         if (fmSynth)   fmSynth->prepare(sampleRate_, 0);
+        if (growlBass) growlBass->prepare(sampleRate_, 0);
+        if (psyArp)    psyArp->prepare(sampleRate_, 0);
+        if (psyFm)     psyFm->prepare(sampleRate_, 0);
         // Sampler voices stop on sound swap; no explicit reset needed.
     }
 
@@ -652,6 +896,7 @@ public:
     {
         if (paramIndex < 0 || paramIndex >= static_cast<int>(internalParamValues.size()))
             return;
+        value = clampToParamDef(paramIndex, value);
         internalParamValues[static_cast<size_t>(paramIndex)] = value;
         applyInternalParamToDsp(paramIndex, value);
     }
@@ -665,6 +910,7 @@ public:
             if (slotTree.hasProperty(juce::Identifier(propName)))
             {
                 float val = static_cast<float>(slotTree.getProperty(juce::Identifier(propName)));
+                val = clampToParamDef(def.index, val);
                 internalParamValues[static_cast<size_t>(def.index)] = val;
                 applyInternalParamToDsp(def.index, val);
             }
@@ -677,6 +923,11 @@ public:
     {
         if (activeType != ActiveType::Sampler)
             return;
+
+        // Restore multi-sampler key range from tree (before the sampleFile
+        // early-return so ranges survive rebuilds even without a sample).
+        keyRangeLow_ = static_cast<int> (slotTree.getProperty ("keyRangeLow", -1));
+        keyRangeHigh_ = static_cast<int> (slotTree.getProperty ("keyRangeHigh", -1));
 
         juce::String sampleFile = slotTree.getProperty ("sampleFile", "").toString();
         if (sampleFile.isEmpty())
@@ -846,9 +1097,57 @@ public:
     SamplerEngine* samplerEngineForTest() { return sampler.get(); }
 
     FmSynthEngine* fmSynthEngine() { return fmSynth.get(); }
+    PsyFmEngine* psyFmEngine() { return psyFm.get(); }
+
+    // ── PsyFm matrix/sweep state (tree-persisted, rebuild-safe) ──
+    // Called on the message thread under Track::stateLock (mirrors
+    // setInternalParam's guard): decodes the encoded route string and swaps
+    // the live engine's matrix (PsyFmEngine::setModMatrix is itself
+    // audio-thread safe). No-op when this slot is not a psy_fm synth.
+    void applyModMatrixFromString (const juce::String& encoded)
+    {
+        if (activeType != ActiveType::PsyFm || ! psyFm) return;
+        HDAW::PsyFmModMatrix m;
+        for (const auto& r : HDAW::PsyFmState::decodeRoutes (encoded.toStdString()))
+            m.addRoute (r);
+        psyFm->setModMatrix (std::move (m));
+    }
+
+    void applySweepRate (float hz)
+    {
+        if (activeType != ActiveType::PsyFm || ! psyFm) return;
+        // Plain float store — same tolerance as the Track::processBlock FM
+        // modulation pass writing the pool from the audio thread.
+        psyFm->getModSourcePool().ratioSweepLFORateHz = hz;
+    }
+
+    /// Rebuild path (Gate 1/10): restore matrix + sweep rate from the slot
+    /// tree. Called after prepare() + loadParamsFromTree() in
+    /// Track::rebuildFXChain. Absent properties = defaults (empty matrix,
+    /// pool's own default sweep rate).
+    void loadPsyFmStateFromTree (const juce::ValueTree& slotTree)
+    {
+        if (activeType != ActiveType::PsyFm || ! psyFm) return;
+        juce::String matrixStr = slotTree.getProperty ("psyFmMatrix", "").toString();
+        if (matrixStr.isNotEmpty())
+            applyModMatrixFromString (matrixStr);
+        auto sweep = slotTree.getProperty ("psyFmSweepRate", -1.0);
+        if (static_cast<double> (sweep) >= 0.0)
+            applySweepRate (static_cast<float> (static_cast<double> (sweep)));
+    }
+    GrowlBassEngine* growlBassEngine() { return growlBass.get(); }
+
+    // Multi-sampler key-range routing: when both are >= 0, only MIDI notes
+    // in [keyRangeLow_, keyRangeHigh_] are rendered by this sampler; notes
+    // outside the range pass to the next slot. -1 = full range (default).
+    bool hasKeyRange() const
+    {
+        return keyRangeLow_ >= 0 && keyRangeHigh_ >= 0
+            && keyRangeLow_ <= keyRangeHigh_;
+    }
 
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -872,6 +1171,9 @@ private:
     std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>> filter;
     std::unique_ptr<SamplerEngine> sampler;
     std::unique_ptr<FmSynthEngine> fmSynth;
+    std::unique_ptr<GrowlBassEngine> growlBass;
+    std::unique_ptr<PsyArpEngine> psyArp;
+    std::unique_ptr<PsyFmEngine> psyFm;
 
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
@@ -896,6 +1198,11 @@ private:
 
     std::shared_ptr<const SamplerSound> stagedSound_;
     SamplerEngine::Params stagedParams_;
+
+    // Multi-sampler key-range routing: MIDI note range for this sampler slot.
+    // -1 = full range (default, current behavior); 0..127 = restricted range.
+    int keyRangeLow_ = -1;
+    int keyRangeHigh_ = -1;
 
     void wireEditorClosedCallback();
 
@@ -944,6 +1251,22 @@ private:
             return static_cast<float>(juce::jlimit(0.01, 5.0, sec));
         }
         return (internalParamValues.size() > 0) ? internalParamValues[0] : 0.5f;
+    }
+
+    // Clamps a raw param value to the slot type's documented range. Params
+    // without a def definition pass through unchanged. Out-of-range values
+    // reach us from hand-edited/legacy project files and unvalidated command
+    // writes; feeding them to recursive DSP (reverb comb feedback, delay/
+    // chorus/phaser feedback) causes exponential runaway to inf/NaN — the
+    // 2026-08-31 "export silent after 0.6s" bug (see
+    // docs/handoffs/2026-09-17-export-silence-investigation.md follow-up).
+    float clampToParamDef(int paramIndex, float value) const
+    {
+        auto defs = getParamDefsForType(slotType);
+        if (paramIndex < 0 || paramIndex >= static_cast<int>(defs.size()))
+            return value;
+        const auto& d = defs[static_cast<size_t>(paramIndex)];
+        return juce::jlimit(d.minValue, d.maxValue, value);
     }
 
     void applyInternalParamToDsp(int paramIndex, float value)
@@ -1097,6 +1420,143 @@ private:
                     case 23: fmSynth->setLfoPitchDepth(value); break;
                     case 24: fmSynth->setLfoAmpDepth(value); break;
                     case 25: fmSynth->setLfoWaveform(static_cast<int>(value)); break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::GrowlBass:
+            {
+                if (!growlBass) return;
+                switch (paramIndex)
+                {
+                    case 0: growlBass->setFundamentalHz(value); break;
+                    case 1: growlBass->setModRatio(value); break;
+                    case 2: growlBass->setModDepth(value); break;
+                    case 3: growlBass->setModShape(static_cast<int>(value)); break;
+                    case 4: growlBass->setClipType(static_cast<int>(value)); break;
+                    case 5: growlBass->setDriveDb(value); break;
+                    case 6: growlBass->setAsymmetry(value); break;
+                    case 7: growlBass->setBitcrushBits(static_cast<int>(value)); break;
+                    case 8: growlBass->setFilterCutoffHz(value); break;
+                    case 9: growlBass->setFilterResonance(value); break;
+                    case 10: growlBass->setFilterEnvAmount(value); break;
+                    case 11: growlBass->setFilterType(static_cast<int>(value)); break;
+                    case 12: growlBass->setAttackMs(value); break;
+                    case 13: growlBass->setDecayMs(value); break;
+                    case 14: growlBass->setSustainLevel(value); break;
+                    case 15: growlBass->setReleaseMs(value); break;
+                    case 16: growlBass->setOutputLevel(value); break;
+                    case 17: growlBass->setUnisonEnabled(value >= 0.5f); break;
+                    case 18: growlBass->setUnisonVoices(static_cast<int>(value)); break;
+                    case 19: growlBass->setUnisonDetuneCents(value); break;
+                    case 20: growlBass->setPerNoteRatioJitter(value >= 0.5f); break;
+                    case 21: growlBass->setRatioJitterAmount(value); break;
+                    case 22: growlBass->setFormantEnabled(value >= 0.5f); break;
+                    case 23: growlBass->setFormantMorph(value); break;
+                    case 24: growlBass->setSidechainDrive(value >= 0.5f); break;
+                    case 25: growlBass->setSidechainAmount(value); break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::PsyArp:
+            {
+                if (!psyArp) return;
+                switch (paramIndex)
+                {
+                    case 0: psyArp->setOscShape(static_cast<int>(value)); break;
+                    case 1: psyArp->setOscUnisonVoices(static_cast<int>(value)); break;
+                    case 2: psyArp->setOscDetuneCents(value); break;
+                    case 3: psyArp->setPatternShape(static_cast<int>(value)); break;
+                    case 4: psyArp->setOctaveRange(static_cast<int>(value)); break;
+                    case 5: psyArp->setBarsPerMotifLoop(value); break;
+                    case 6: psyArp->setFilterCutoffHz(value); break;
+                    case 7: psyArp->setFilterResonance(value); break;
+                    case 8: psyArp->setFilterSweepBars(value); break;
+                    case 9: psyArp->setDelayTimeBeats(value); break;
+                    case 10: psyArp->setDelayFeedback(value); break;
+                    case 11: psyArp->setDelayPingPongWidth(value); break;
+                    case 12: psyArp->setDelayWetLevel(value); break;
+                    case 13: psyArp->setReverbSizeSec(value); break;
+                    case 14: psyArp->setReverbWetOnDry(value); break;
+                    case 15: psyArp->setReverbWetOnDelay(value); break;
+                    case 16: psyArp->setPhaserEnabled(value >= 0.5f); break;
+                    case 17: psyArp->setPhaserRateHz(value); break;
+                    case 18: psyArp->setPhaserDepth(value); break;
+                    case 19: psyArp->setOutputLevel(value); break;
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::PsyFm:
+            {
+                if (!psyFm) return;
+                switch (paramIndex)
+                {
+                    case 0: case 1: case 2: case 3: case 4: case 5:
+                    {
+                        float ratios[6];
+                        for (int i = 0; i < 6; i++)
+                            ratios[i] = (internalParamValues.size() > (size_t)i) ? internalParamValues[i] : 1.0f;
+                        ratios[paramIndex] = value;
+                        psyFm->setBaseRatios(ratios);
+                        break;
+                    }
+                    case 6: psyFm->setBaseFeedback(value); break;
+                    case 7: case 11: case 15: case 19: case 23: case 27:
+                    {
+                        int op = (paramIndex - 7) / 4;
+                        float atk = value;
+                        float dec = (internalParamValues.size() > (size_t)(paramIndex + 1)) ? internalParamValues[paramIndex + 1] : 0.3f;
+                        float sus = (internalParamValues.size() > (size_t)(paramIndex + 2)) ? internalParamValues[paramIndex + 2] : 0.7f;
+                        float rel = (internalParamValues.size() > (size_t)(paramIndex + 3)) ? internalParamValues[paramIndex + 3] : 0.2f;
+                        psyFm->setOpEnvelope(op, { atk, dec, sus, rel });
+                        break;
+                    }
+                    case 8: case 12: case 16: case 20: case 24: case 28:
+                    {
+                        int op = (paramIndex - 8) / 4;
+                        float atk = (internalParamValues.size() > (size_t)(paramIndex - 1)) ? internalParamValues[paramIndex - 1] : 0.01f;
+                        float dec = value;
+                        float sus = (internalParamValues.size() > (size_t)(paramIndex + 1)) ? internalParamValues[paramIndex + 1] : 0.7f;
+                        float rel = (internalParamValues.size() > (size_t)(paramIndex + 2)) ? internalParamValues[paramIndex + 2] : 0.2f;
+                        psyFm->setOpEnvelope(op, { atk, dec, sus, rel });
+                        break;
+                    }
+                    case 9: case 13: case 17: case 21: case 25: case 29:
+                    {
+                        int op = (paramIndex - 9) / 4;
+                        float atk = (internalParamValues.size() > (size_t)(paramIndex - 2)) ? internalParamValues[paramIndex - 2] : 0.01f;
+                        float dec = (internalParamValues.size() > (size_t)(paramIndex - 1)) ? internalParamValues[paramIndex - 1] : 0.3f;
+                        float sus = value;
+                        float rel = (internalParamValues.size() > (size_t)(paramIndex + 1)) ? internalParamValues[paramIndex + 1] : 0.2f;
+                        psyFm->setOpEnvelope(op, { atk, dec, sus, rel });
+                        break;
+                    }
+                    case 10: case 14: case 18: case 22: case 26: case 30:
+                    {
+                        int op = (paramIndex - 10) / 4;
+                        float atk = (internalParamValues.size() > (size_t)(paramIndex - 3)) ? internalParamValues[paramIndex - 3] : 0.01f;
+                        float dec = (internalParamValues.size() > (size_t)(paramIndex - 2)) ? internalParamValues[paramIndex - 2] : 0.3f;
+                        float sus = (internalParamValues.size() > (size_t)(paramIndex - 1)) ? internalParamValues[paramIndex - 1] : 0.7f;
+                        float rel = value;
+                        psyFm->setOpEnvelope(op, { atk, dec, sus, rel });
+                        break;
+                    }
+                    case 31: psyFm->setOutputLevel(value); break;
+                    case 32:
+                    {
+                        int algoIdx = static_cast<int>(value);
+                        switch (algoIdx)
+                        {
+                            case 0: psyFm->setAlgorithm(growlBassAlgorithm); break;
+                            case 1: psyFm->setAlgorithm(acidLeadAlgorithm); break;
+                            case 2: psyFm->setAlgorithm(metallicPluckAlgorithm); break;
+                            case 3: psyFm->setAlgorithm(riserAlgorithm); break;
+                            default: psyFm->setAlgorithm(growlBassAlgorithm); break;
+                        }
+                        break;
+                    }
                     default: return;
                 }
                 break;

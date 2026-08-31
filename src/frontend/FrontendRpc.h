@@ -40,6 +40,7 @@ namespace method {
     inline constexpr const char* Library    = "library";
     inline constexpr const char* Sampler    = "sampler";
     inline constexpr const char* Pool       = "pool";
+    inline constexpr const char* PsyFm      = "psy_fm";
 } // namespace method
 
 // Server-initiated push notifications (no client id, no response expected).

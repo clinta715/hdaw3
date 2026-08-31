@@ -59,6 +59,11 @@ const INTERNAL_FX = [
   { label: "Chorus", fxType: "chorus" },
   { label: "Flanger", fxType: "flanger" },
   { label: "Phaser", fxType: "phaser" },
+  { label: "Filter", fxType: "filter" },
+  { label: "Sampler", fxType: "sampler" },
+  { label: "FM Synth", fxType: "fm_synth" },
+  { label: "Growl Bass", fxType: "growl_bass" },
+  { label: "PsyArp", fxType: "psyarp" },
 ];
 
 export default function FXChain() {

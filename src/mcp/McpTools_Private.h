@@ -45,6 +45,7 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e);
 void registerFxPresetTools(McpServer& s, AudioEngine* e);
 void registerSamplerTools(McpServer& s, AudioEngine* e);
 void registerFmSynthTools(McpServer& s, AudioEngine* e);
+void registerPsyFmTools(McpServer& s, AudioEngine* e);
 void registerSessionDomain(McpServer& s, AudioEngine* e);
 void registerLibraryDomain(McpServer& s, AudioEngine* e);
 void registerSettingsDomain(McpServer& s, AudioEngine* e);

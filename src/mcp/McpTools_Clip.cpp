@@ -259,6 +259,129 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString("looped clip %1, now %2 notes, duration %3s")
                 .arg(static_cast<int>(c.getProperty(IDs::clipID))).arg(totalNotes).arg(durSec * reps));
         }});
+
+    // ── Slicing tools ──
+
+    s.registerTool({"slice_clip_at_playhead",
+        "Slice an audio or MIDI clip at the current playhead position, splitting it into two clips.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            e->getProjectCommands().sliceClipAtPlayhead(clipId);
+            return McpToolResult::text(QString("sliced clip %1 at playhead").arg(clipId));
+        }});
+
+    s.registerTool({"slice_clips_at_playhead",
+        "Slice multiple clips at the current playhead position.",
+        objSchema({{"clipIds", QJsonObject{{"type","array"},
+                       {"items", QJsonObject{{"type","integer"}}}}}}, {"clipIds"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<int> ids;
+            for (const auto& v : a.value("clipIds").toArray())
+                ids.push_back(v.toInt());
+            e->getProjectCommands().sliceClipsAtPlayhead(ids);
+            return McpToolResult::text(QString("sliced %1 clips at playhead").arg(ids.size()));
+        }});
+
+    s.registerTool({"slice_clip_at_times",
+        "Slice a clip at multiple timeline-absolute beat positions. Each time splits the clip into two; multiple times produce multiple slices.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                   {"times",  QJsonObject{{"type","array"},
+                       {"items", QJsonObject{{"type","number"}}}}}}, {"clipId","times"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            double bpm = e->getReadModel().getTransport().bpm;
+            std::vector<double> timesSec;
+            for (const auto& v : a.value("times").toArray())
+                timesSec.push_back(HDAW::beatsToSeconds(v.toDouble(), bpm));
+            e->getProjectCommands().sliceClipAtTimes(clipId, timesSec);
+            return McpToolResult::text(QString("sliced clip %1 at %2 positions").arg(clipId).arg(timesSec.size()));
+        }});
+
+    s.registerTool({"slice_clip_at_transients",
+        "Slice an audio clip at detected transient positions (auto-slice).",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            e->getProjectCommands().sliceClipAtTransients(clipId);
+            return McpToolResult::text(QString("sliced clip %1 at transients").arg(clipId));
+        }});
+
+    s.registerTool({"slice_clips_at_transients",
+        "Slice multiple audio clips at detected transient positions.",
+        objSchema({{"clipIds", QJsonObject{{"type","array"},
+                       {"items", QJsonObject{{"type","integer"}}}}}}, {"clipIds"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            std::vector<int> ids;
+            for (const auto& v : a.value("clipIds").toArray())
+                ids.push_back(v.toInt());
+            e->getProjectCommands().sliceClipsAtTransients(ids);
+            return McpToolResult::text(QString("sliced %1 clips at transients").arg(ids.size()));
+        }});
+
+    // ── Timestretch tools ──
+
+    s.registerTool({"set_clip_source_bpm",
+        "Set the source BPM metadata for an audio clip (used by tempo-match and stretch).",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                   {"bpm",    QJsonObject{{"type","number"}}}}, {"clipId","bpm"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            double bpm = a.value("bpm").toDouble();
+            e->getProjectCommands().setClipSourceBpm(clipId, bpm);
+            return McpToolResult::text(QString("set source BPM to %1 for clip %2").arg(bpm).arg(clipId));
+        }});
+
+    s.registerTool({"set_clip_stretch_mode",
+        "Set the stretch mode for an audio clip: 0=Off, 1=TempoMatch, 2=ManualRatio.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                   {"mode",   QJsonObject{{"type","integer"}}}}, {"clipId","mode"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            int mode = a.value("mode").toInt();
+            e->getProjectCommands().setClipStretchMode(clipId, mode);
+            const char* modeName = (mode == 0) ? "Off" : (mode == 1) ? "TempoMatch" : "ManualRatio";
+            return McpToolResult::text(QString("set stretch mode to %1 for clip %2").arg(modeName).arg(clipId));
+        }});
+
+    s.registerTool({"set_clip_stretch_ratio",
+        "Set the stretch ratio for an audio clip (0.25 to 4.0). Only applies when stretch mode is ManualRatio.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}},
+                   {"ratio",  QJsonObject{{"type","number"}}}}, {"clipId","ratio"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            double ratio = a.value("ratio").toDouble();
+            e->getProjectCommands().setClipStretchRatio(clipId, ratio);
+            return McpToolResult::text(QString("set stretch ratio to %1 for clip %2").arg(ratio).arg(clipId));
+        }});
+
+    s.registerTool({"tempo_match_clip",
+        "Auto-stretch an audio clip to match the project tempo. Requires sourceBpm to be set.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            e->getProjectCommands().tempoMatchClip(clipId);
+            return McpToolResult::text(QString("tempo-matched clip %1").arg(clipId));
+        }});
+
+    s.registerTool({"fit_clip_to_loop",
+        "Stretch an audio clip to fill the current loop region exactly.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            e->getProjectCommands().fitClipToLoop(clipId);
+            return McpToolResult::text(QString("fit clip %1 to loop").arg(clipId));
+        }});
 }
 
 } // namespace mcp

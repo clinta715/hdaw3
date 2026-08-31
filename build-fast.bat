@@ -27,8 +27,27 @@ REM are suppressed in CMakeLists.txt (if(MSVC) block, add_compile_options).
 REM Changing CMakeLists.txt auto-reconfigures on the next cmake --build.
 
 set "ROOT=%~dp0"
-set BUILD_DIR=%ROOT%build
+set "BUILD_DIR=%ROOT%build"
+if not "%HDAW_BUILD_DIR%"=="" set "BUILD_DIR=%HDAW_BUILD_DIR%"
 set CONFIG=RelWithDebInfo
+
+REM Auto-bootstrap the MSVC toolchain when cl.exe is not on PATH so this
+REM script works from any shell (bash, Explorer-launched cmd, CI) instead of
+REM only from a pre-opened "x64 Native Tools" prompt. Probes the known VS
+REM install roots; falls through silently if none is found (previous
+REM behavior: user ran from a developer prompt).
+where cl.exe >nul 2>nul
+if errorlevel 1 (
+    set "VSB="
+    if exist "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" set "VSB=C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
+    if exist "C:\Program Files\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat" set "VSB=C:\Program Files\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+    if exist "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" set "VSB=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+    if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" set "VSB=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+    if defined VSB (
+        call "!VSB!" >nul
+        if errorlevel 1 echo [build-fast] WARN: vcvars64.bat failed ^(rc=!errorlevel!^) — the build will likely fail.
+    )
+)
 
 if "%1"=="debug" set CONFIG=Debug
 if "%1"=="ninja" goto :ninja
@@ -43,23 +62,42 @@ echo Usage: build-fast [debug^|ninja^|test^|all^|frontend^|package]
 exit /b 1
 
 :hdaw
-cmake --build "%BUILD_DIR%" --config %CONFIG% --target HDAW -- /m /v:minimal 2>&1
+call :build_target HDAW
 if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] HDAW.exe up to date (config: %CONFIG%).
 goto :check_pkg
 
 :test
-cmake --build "%BUILD_DIR%" --config %CONFIG% --target hdaw_tests -- /m /v:minimal 2>&1
-if %errorlevel% neq 0 exit /b %errorlevel%
+call :build_target hdaw_tests
+if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] hdaw_tests.exe up to date (config: %CONFIG%).
 goto :eof
 
 :all
-cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
+call :build_target
 if !errorlevel! neq 0 exit /b !errorlevel!
 echo [build-fast] All targets up to date (config: %CONFIG%).
 goto :check_pkg
 
+REM Build via the active generator. Ninja (configured with 'build-fast ninja'
+REM or HDAW_BUILD_DIR) ignores --config and rejects the msbuild '/m /v:minimal'
+REM tail; the Visual Studio generator needs both. Detect by build.ninja's
+REM presence in the build dir. %1 optional target name (empty = all).
+:build_target
+if exist "%BUILD_DIR%\build.ninja" (
+    if "%1"=="" (
+        cmake --build "%BUILD_DIR%" 2>&1
+    ) else (
+        cmake --build "%BUILD_DIR%" --target %1 2>&1
+    )
+) else (
+    if "%1"=="" (
+        cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
+    ) else (
+        cmake --build "%BUILD_DIR%" --config %CONFIG% --target %1 -- /m /v:minimal 2>&1
+    )
+)
+exit /b !errorlevel!
 :frontend
 cd /d "%ROOT%frontend"
 call npm run build
@@ -69,7 +107,7 @@ echo [build-fast] Frontend built (dist/ + dist-electron/).
 goto :check_pkg
 
 :package
-cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal 2>&1
+call :build_target
 if !errorlevel! neq 0 exit /b !errorlevel!
 cd /d "%ROOT%frontend"
 call npm run build
@@ -106,6 +144,7 @@ goto :eof
 
 :ninja
 echo [build-fast] Reconfiguring with Ninja (one-time)...
+if "%CMAKE_PREFIX_PATH%"=="" if exist "C:\Qt\6.11.2\msvc2022_64" set "CMAKE_PREFIX_PATH=C:\Qt\6.11.2\msvc2022_64"
 cmake -S "%~dp0." -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% -DCMAKE_PREFIX_PATH=%CMAKE_PREFIX_PATH%
 if %errorlevel% neq 0 (
     echo [build-fast] Ninja configure failed. Falling back to Visual Studio.

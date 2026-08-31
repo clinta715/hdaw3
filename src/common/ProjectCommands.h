@@ -4,6 +4,7 @@
 #include <vector>
 #include "../engine/EnvelopeGenerator.h"
 #include "../engine/AutomationPreset.h"
+#include "../engine/PsytranceGenerator.h"
 
 namespace HDAW { struct ArrangementParams; }
 
@@ -234,6 +235,10 @@ public:
     virtual void setSamplerSample(int trackIndex, int slotIndex,
         const std::string& filePath, int rootNote = 60) = 0;
 
+    // Sampler — set MIDI key range for multi-sampler routing (-1 = full range)
+    virtual void setSamplerKeyRange(int trackIndex, int slotIndex,
+        int keyLow, int keyHigh) = 0;
+
     // Automation — point mutation by time (for drag)
     virtual void setAutomationPointValue(int trackIndex, const std::string& lane,
         double time, float value) = 0;
@@ -405,6 +410,24 @@ public:
                                              double windowSeconds = 4.0,
                                              bool verify = false,
                                              bool allowGlobalScale = false) = 0;
+
+    // ── Psytrance score generation (plan 2026-08-30, W1) ──
+    // Composes the FULL psytrance score (guide §4 grammar) onto the caller's
+    // palette tracks in ONE undo unit: one clip per mapped role at beat 0
+    // spanning the whole arrangement, key-disciplined notes, riser/downlifter
+    // schedule into the drops. Notes only — kit + FX/LFO/automation stay
+    // separate MCP-side steps. See engine/PsytranceGenerator.h.
+    struct PsytranceResult {
+        struct Clip { std::string role; int trackIndex = -1; int clipId = -1; int noteCount = 0; };
+        std::vector<Clip> clips;
+        std::vector<std::string> skippedRoles; // unmapped roles and roles with no notes
+        double totalBeats = 0.0;
+        int notesTotal = 0;
+        int notesSkipped = 0;   // notes dropped past a clip's note ceiling
+        std::string error;      // non-empty → nothing was written
+    };
+
+    virtual PsytranceResult generatePsytrance(const HDAW::PsytranceParams& params) = 0;
 
     // ── Plugin preset audition ──
     // Solo-renders a plugin (on a temp probe track when trackIndex < 0, or an

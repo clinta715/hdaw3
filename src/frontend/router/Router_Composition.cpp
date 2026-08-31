@@ -5,6 +5,7 @@
 #include "../../engine/PhraseGenerator.h"
 #include "../../engine/ArrangementGenerator.h"
 #include "../../engine/RhythmPatternGenerator.h"
+#include "../../engine/PsytranceGenerator.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
 #include "../../engine/PatternLibrary.h"
@@ -749,6 +750,60 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         };
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));
+        return { false, res };
+    }
+
+    if (m == "generatePsytrance") {
+        HDAW::PsytranceParams p;
+        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
+        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        p.density = optDouble(o, "density", 0.7, nullptr);
+        p.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        if (o.contains("sections") && o.value("sections").isArray())
+        {
+            for (const auto& sv : o.value("sections").toArray())
+            {
+                const auto so = sv.toObject();
+                HDAW::PsytranceSection s;
+                s.name  = so.value("name").toString().toStdString();
+                s.start = so.value("start").toDouble(0.0);
+                s.end   = so.value("end").toDouble(0.0);
+                p.sections.push_back(s);
+            }
+        }
+        if (o.contains("progressionA") && o.value("progressionA").isArray())
+            for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+        if (o.contains("progressionB") && o.value("progressionB").isArray())
+            for (const auto& v : o.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+        if (o.contains("paletteTrackIds") && o.value("paletteTrackIds").isObject())
+        {
+            const auto obj = o.value("paletteTrackIds").toObject();
+            auto set = [&](const QString& role, int& out) { if (obj.contains(role)) out = obj.value(role).toInt(-1); };
+            set("kick", p.kick);     set("bass", p.bass);
+            set("hat", p.hat);       set("arp", p.arp);
+            set("stab", p.stab);     set("pad", p.pad);
+            set("riser", p.riser);   set("down", p.down);
+            set("clap", p.clap);
+        }
+        auto r = c.generatePsytrance(p);
+        QJsonArray clips;
+        for (const auto& rc : r.clips)
+            clips.append(QJsonObject{
+                { "role", QString::fromStdString(rc.role) },
+                { "trackId", rc.trackIndex },
+                { "clipId", rc.clipId },
+                { "noteCount", rc.noteCount } });
+        QJsonArray skipped;
+        for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+        QJsonObject res{
+            { "clips", clips },
+            { "skipped", skipped },
+            { "totalBeats", r.totalBeats },
+            { "notesTotal", r.notesTotal },
+            { "notesSkipped", r.notesSkipped }
+        };
+        if (!r.error.empty())
+            res["error"] = QString::fromStdString(r.error);
         return { false, res };
     }
 

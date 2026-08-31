@@ -244,6 +244,27 @@ std::vector<int> PhraseGenerator::buildScalePitches(int rootNote, int scaleModeI
     return pitches;
 }
 
+int PhraseGenerator::scaleDegreeToPitch(int rootMidi, int scaleModeIndex, int degree, int octave)
+{
+    // Semantics identical to the MCP scale_note tool (which now delegates
+    // here): degree within the scale's pitch-class table wraps octaves via an
+    // integer division of the degree by the table size.
+    const auto& modes = getScaleModes();
+    const std::vector<int>* intervals = nullptr;
+    for (const auto& m : modes)
+        if (m.index == scaleModeIndex) { intervals = &m.intervals; break; }
+    if (intervals == nullptr || intervals->empty())
+        return -1;
+    const int n = static_cast<int>(intervals->size());
+    const int wrapped = ((degree % n) + n) % n;   // degree within the pitch class
+    const int octShift = static_cast<int>(
+        std::floor(static_cast<double>(degree) / static_cast<double>(n)));
+    const int midiPitch = rootMidi + octave * 12 + octShift * 12 + (*intervals)[wrapped];
+    if (midiPitch < 0 || midiPitch > 127)
+        return -1;
+    return midiPitch;
+}
+
 // Returns the MIDI note numbers of the 7 diatonic roots in a given scale.
 // octave selects which octave to place them.
 std::vector<int> PhraseGenerator::diatonicRoots(int scaleRoot, int scaleModeIndex, int octave)

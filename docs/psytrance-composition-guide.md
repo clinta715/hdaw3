@@ -87,6 +87,24 @@ want a "dark forest" character — v5's order was: TerraTech → SantoGrau →
 Hypnoticum → Hipotermic → FLOW36 → Batuhan → Avalon → Ascend. Track identity
 came mostly from palette choice + tempo + phrase set, not from FX.
 
+### Cluster-driven palette flow (alternative to TSV-first)
+
+Instead of hand-picking from a TSV, use `cluster_library` to auto-classify
+samples by timbre role:
+
+1. `cluster_library {libraryIds:["antinomy_vol2"], k:8, method:"hybrid"}`
+   → returns clusters with semantic labels (e.g. c1="dark" = low-end,
+   c2="bright" = clap/riser, c4="stab", c7="pad", c8="soft" = tonal reverse).
+2. Build the kit straight from member paths — cluster labels are
+   semantically useful for role assignment.
+3. Sample-key hints in filenames (`…_C.wav`, `…_F#_9.wav`) feed
+   natural-pitch `rootNote` values.
+4. Save the preset with `saveAs` for reuse: `cp_<hash>`.
+
+Verified in the 2026-08-30 F-minor session: Antinomy Vol.2 k=8 hybrid
+cleanly separated role clusters, with the 12-key bass multisamples
+shunted to `unassigned` as redundant.
+
 ## 3. Kit construction (MCP / commands)
 
 One sampler track per role sample. Verified pattern:
@@ -98,6 +116,33 @@ await mcp_call("sampler_set_sample", {"trackId": t, "slotIndex": 0,
                                       "filePath": win_path, "rootNote": root})
 await mcp_call("set_track", {"trackId": t, "volume": vol})
 ```
+
+### MCP tool-name contract map (verified 2026-08-30)
+
+The key tools and their shapes, distilled from the composition sessions:
+
+| Tool | Key params | Returns | Notes |
+|------|-----------|---------|-------|
+| `add_midi_clip` | `{trackId, start, length, name}` | `"clipId=N"` text | Clips are beats. |
+| `add_notes` | `{clipId, notes[{start,duration,pitch,velocity}], relative}` | full `noteIds` array | Note starts are **clip-local** by default; `relative:false` = timeline-absolute. |
+| `sampler_set_sample` | `{trackId, slotIndex, filePath, rootNote}` | `"ok"` | Must be slot 0 (add_fx first). All sampler slots on a track share MIDI. |
+| `set_internal_fx_param` | `{trackId, slotIndex, paramIndex, value}` | `"ok"` | REAL units (Hz, dB, ratio). `list_fx_params` reveals indices/min/max. |
+| `add_lfo` | `{trackId}` | `"lfoIndex"` | Then `set_lfo_param` for waveform/rate/depth/target. |
+| `set_lfo_param` | `{trackId, lfoIndex, param, value}` | `"ok"` | targetParamID: 1=Volume, 2=Pan, 100+=FX, 300+=FM (300–308). |
+| `add_automation_lane` | `{trackId, laneName, paramID}` | `"ok"` | **Disabled by default** — must `set_automation_enabled`. |
+| `set_automation_points` | `{trackId, lane, points[{time,value}], mode:"replace"}` | `"ok"` | Key is `time` (beats). |
+| `mix_report` | `{filePath, bpm, sections[{name,start,end}]}` | peak/RMS/bands/pumpDepth | Band cutoffs: sub<40, bass<300, body<2000, high>6000. |
+| `psy_fm_load_preset` | `{trackId, slotIndex, preset}` | `"loaded preset: ..."` | preset ∈ {growlBass, acidLead, metallicPluck, riser}. |
+| `psy_fm_get_analysis` | `{trackId, slotIndex}` | `{activeVoices, opEgLevels}` | Live audio-thread data (lock-free atomics). |
+| `psy_fm_set_mod_route` | `{trackId, slotIndex, source, dest, depth}` | `"ok"` | source ∈ {ratioSweepLFO, feedbackLFO, modWheel, velocity, barClock}; dest ∈ {op1Ratio..op6Ratio, op6Feedback}. |
+| `psy_fm_clear_mod_matrix` | `{trackId, slotIndex}` | `"ok"` | Removes all modulation routes. |
+| `slice_clip_at_playhead` | `{clipId}` | `"sliced clip N at playhead"` | Works for audio and MIDI clips. |
+| `slice_clip_at_times` | `{clipId, times[beats]}` | `"sliced clip N at M positions"` | Times are timeline-absolute beats. |
+| `slice_clip_at_transients` | `{clipId}` | `"sliced clip N at transients"` | Audio clips only. |
+| `set_clip_stretch_mode` | `{clipId, mode}` | `"ok"` | mode: 0=Off, 1=TempoMatch, 2=ManualRatio. |
+| `set_clip_stretch_ratio` | `{clipId, ratio}` | `"ok"` | ratio: 0.25–4.0. |
+| `tempo_match_clip` | `{clipId}` | `"tempo-matched clip N"` | Requires sourceBpm set. |
+| `fit_clip_to_loop` | `{clipId}` | `"fit clip N to loop"` | Stretches clip to fill loop region. |
 
 **rootNote (the #1 audible-mix mistake):** set it so the sample plays at its
 NATURAL pitch in the register you place it. Verified natural-pitch roots by
@@ -138,6 +183,34 @@ Default pattern variables: totalBeats ≈ 128–160 per 32–40 bars (v1-simple)
 to 512–544 (v3/v4/v5 long-form). Render duration =
 `ExportManager::calculateProjectDuration(...)` exactly — never a fixed
 window, or you get dead-tail silence in the render.
+
+### One-call alternative: `generate_psytrance`
+
+Instead of hand-computing 2,600+ notes via the per-role templates below,
+use the `generate_psytrance` MCP tool (one call writes the complete score):
+
+```python
+result = await mcp_call("generate_psytrance", {
+    "paletteTrackIds": {"kick": 0, "bass": 1, "hat": 2, "arp": 3,
+                        "stab": 4, "pad": 5, "riser": 6, "down": 7},
+    "sections": [
+        {"name": "intro", "start": 0, "end": 32},
+        {"name": "build", "start": 32, "end": 64},
+        {"name": "mainA", "start": 64, "end": 192},
+        {"name": "mini", "start": 192, "end": 224},
+        {"name": "mainB", "start": 224, "end": 352},
+        {"name": "breakdown", "start": 352, "end": 384},
+        {"name": "finale", "start": 384, "end": 512}
+    ],
+    "keyRoot": 5, "scaleMode": 1, "density": 0.7, "seed": 42
+})
+# result = {clips:[{role,trackId,clipId,noteCount}], skipped, totalBeats, notesTotal}
+```
+
+The tool writes one clip per mapped role at beat 0 spanning the arrangement.
+Unmapped roles are reported in `skipped`. Returns a compact summary (no
+note payload — use `get_clip` for detail). NOTES ONLY — kit (sample loading)
+and production (FX/LFO/automation) stay separate MCP steps per palette.
 
 Per-role pattern templates (all verified in the production tests):
 
@@ -208,6 +281,84 @@ Macro sweep recipe: points every 32 beats, values 0.1→0.7 across the track
 for energy growth (bass EQ freq), plus a breakdown riser point-cluster
 (0.1 @ 0, 0.12 @ 188, 0.3 @ 192, 0.7 @ 206, 0.35 @ 224).
 
+## 5b. FM synthesis for psytrance (internal instrument)
+
+HDAW has a psytrance-focused FM synthesizer (`ActiveType::PsyFm`) alongside the
+classic DX7 FM synth (`ActiveType::FmSynth`). The PsyFm engine is designed
+specifically for psytrance timbres: growl basses, acid leads, metallic plucks,
+and risers.
+
+### Quick start: FM growl bass
+
+```
+# 1. Create a MIDI track and add the PsyFm FX slot
+trackId = await mcp("add_track", {"name": "FM Growl"})
+await mcp("add_fx", {"trackId": trackId, "fxType": "psy_fm"})
+
+# 2. Load a preset routing (sets algorithm, mod matrix, default params)
+await mcp("psy_fm_load_preset", {"trackId": trackId, "slotIndex": 0, "preset": "growlBass"})
+
+# 3. Add a MIDI clip with notes
+clipId = await mcp("add_midi_clip", {"trackId": trackId, "start": 0, "length": 32})
+await mcp("add_notes", {"clipId": clipId, "notes": [
+    {"start": 0.5, "duration": 0.4, "pitch": 36, "velocity": 110},
+    {"start": 1.5, "duration": 0.4, "pitch": 36, "velocity": 110}
+]})
+
+# 4. Add an LFO to modulate the feedback (targetParamID 306 = OP6Feedback)
+await mcp("add_lfo", {"trackId": trackId})
+await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
+    "waveform": 0, "rateSync": true, "rate": 1, "depth": 0.4,
+    "bipolar": false, "targetParamID": 306})
+```
+
+### Available presets
+
+| Preset | Algorithm | Character | Best for |
+|--------|-----------|-----------|----------|
+| `growlBass` | op6→op5→op1 | Feedback-modulated growl, settling envelope | Offbeat rolling bass, acid bass |
+| `acidLead` | op6→op1 | High feedback, near self-oscillation | Screaming leads, filter-sweep-style performance |
+| `metallicPluck` | op4→op2→op1 | Non-integer ratios, fast transient | Metallic stabs, alien plucks, percussive FM |
+| `riser` | op5→op3→op1 | Ratio-sweep LFO, nested modulation | Risers, FX sweeps, tension builders |
+
+### Track-level modulation targets
+
+The track's `ModulationManager` routes LFOs to FM destinations via `targetParamID`:
+
+| targetParamID | Destination | Effect |
+|---------------|-------------|--------|
+| 300 | OP1 Ratio | Modulates carrier ratio (pitch/timbre shift) |
+| 301 | OP2 Ratio | Modulates modulator 2 ratio |
+| 302 | OP3 Ratio | Modulates modulator 3 ratio |
+| 303 | OP4 Ratio | Modulates modulator 4 ratio |
+| 304 | OP5 Ratio | Modulates modulator 5 ratio |
+| 305 | OP6 Ratio | Modulates modulator 6 ratio |
+| 306 | OP6 Feedback | Modulates feedback amount (aggression/noise) |
+| 307 | Output Level | Modulates master output level |
+| 308 | Ratio Sweep Rate | Modulates the internal ratio-sweep LFO rate (nested) |
+
+### Operator envelopes (set_internal_fx_param indices)
+
+Each of the 6 operators has its own ADSR envelope:
+
+| Indices | Operator | ADSR |
+|---------|----------|------|
+| 7–10 | OP1 | Attack, Decay, Sustain, Release |
+| 11–14 | OP2 | Attack, Decay, Sustain, Release |
+| 15–18 | OP3 | Attack, Decay, Sustain, Release |
+| 19–22 | OP4 | Attack, Decay, Sustain, Release |
+| 23–26 | OP5 | Attack, Decay, Sustain, Release |
+| 27–30 | OP6 | Attack, Decay, Sustain, Release |
+
+Envelope recipes: pluck = atk 0.001, dec 0.15, sus 0.0, rel 0.1; pad = atk 0.5, dec 2.0, sus 0.9, rel 1.0; growl = atk 0.005, dec 0.4, sus 0.8, rel 0.1.
+
+### Combining FM with the production stack
+
+- **Bass:** `psy_fm` + `growlBass` preset. LFO → OP6Feedback (306) for evolving growl.
+- **Lead:** `psy_fm` + `acidLead` preset. Mod wheel → feedback for performance control.
+- **Stabs:** `psy_fm` + `metallicPluck` preset. Fast envelope on non-integer operators.
+- **Risers:** `psy_fm` + `riser` preset. Bar clock auto-speeds ratio-sweep LFO.
+
 ## 6. Mix + master (all measured)
 
 - **Clipping is PRE-master.** If peaks pin at 1.000 and master gain changes
@@ -222,6 +373,12 @@ for energy growth (bass EQ freq), plus a breakdown riser point-cluster
   First renders were sub:high ≈ 300–1000:1 (kick+bass only). If bands are
   sub-dominant, it's usually rootNotes/velocities, not the master.
 - `set_master_gain` after faders; keep master ≤ ~0.9 pre-canary.
+
+**Verified canary numbers (2026-08-30 F-minor session, 140 BPM, 400 beats):**
+- Canary at master 0.25 → peak 0.407 → truePeak ≈ 1.63 → final `min(0.90/1.63,1.0)` = 0.55.
+- Final peak 0.852; RMS arc: intro .030 / build .082 / mainA .095 / mini .023 / mainB .096 / breakdown .040 / finale .113.
+- `pumpDepth` 0.74, `kickProminence` 0.74.
+- **Fader set that rendered safely at master 0.55:** kick .85, bass .80, hats 1.0, stabs .95, arp .90, pads .75, riser .90, down .90.
 
 ## 7. Verify + iterate loop (do this on EVERY render)
 
@@ -248,6 +405,16 @@ diagnostics.
   `%TEMP%\hdaw_capture\run_with_capture.ps1` (procdump) when iterating on
   engine changes, and keep the automation lanes' normalized values in the
   safe 0.01–0.85 range.
+
+## 8.5. MCP launcher (fixed 2026-08-30)
+
+The `mcp-launch.bat` launcher was broken by commit `667f108` (unescaped inner
+double quotes in cmd.exe). Fix: crash-capture logic extracted to
+`mcp-launch-capture.ps1` (repo root), invoked via `powershell -File`. The bat
+calls it with `powershell -NoProfile -ExecutionPolicy Bypass -File`. Behavior
+preserved: engine started with inherited stdio (stdout stays pure JSON-RPC),
+procdump attached as watcher, exit-code propagation. `HDAW_NO_CRASH_CAPTURE=1`
+bypasses the procdump attach.
 
 ## 9. Contract traps that WILL bite again (from the 8/26–27 handoff)
 
@@ -276,6 +443,57 @@ diagnostics.
    {F,G,Ab,Bb,C,Db,Eb} produced an entirely in-key track with progressions
    like i–VII–VI–VII (A) and VI–VII–i–i (B). Don't hand-type chromatic
    pitches into a long score.
+8. **`related_samples` path normalization:** the tool does case-sensitive,
+   exact string matching on paths. Cluster output paths may use different
+   case or separators than the stored entries. Fixed in LibraryClusterer.cpp
+   (2026-08-30) — now normalizes through `juce::File` for case-insensitive,
+   separator-agnostic comparison.
+9. **Output-size discipline:** `add_notes` returns the complete `noteIds`
+   array (1,129 ids for a large arp clip). Over MCP these blow past client
+   output guards. Prefer `includeIds:false` when available; `list_notes`
+   routinely exceeds the guard. `list_clips` lacks `noteCount` (orphan
+   detection requires `list_notes` round-trips).
+10. **Unknown MCP tool names abort the script:** calling a non-existent tool
+    (e.g. `hdaw_add_automation_points` — real name is `set_automation_points`)
+    throws inside mcpScript with zero output, while invalid-args returns
+    `{ok:false}`. Always verify tool names with `tools.search` first.
+11. **`export_audio` start/end are SECONDS. AGAIN.** (2026-09-01 session.)
+    Four renders cut short by passing beats. Convert: `seconds = beats × 60
+    / BPM`, and verify the produced file size ≈ `duration × sampleRate ×
+    channels × bytesPerSample` before analyzing. The WAV byte count is the
+    ground truth for what you actually rendered.
+12. **Async exports cancel in-flight work silently.** Starting a second
+    export while one renders aborts the first with no error surfaced to the
+    caller — two "export started" acks, one missing file. Serialize: wait
+    for the output file to reach its expected byte size before starting
+    the next export, never pipeline them.
+13. **Verify the arrangement by scanning the rendered WAV, never the score
+    bookkeeping.** Section maps, note ranges, and beat math in the build
+    script can all be wrong while every tool call returns "ok". The 2026-09-01
+    session found a full-instrumentation block inside a "breakdown" that the
+    score claimed was empty — and a breakdown dip that the map said didn't
+    exist. Decode the WAV, compute an RMS envelope (mind: interleaved stereo
+    → per-sample time = index×stride/(sr×ch)), and locate the quiet regions
+    empirically.
+14. **Layering the same register/rhythm = masking, not reinforcement.** The
+    FM growl doubled the sample bass (same offbeats, same pitches, same
+    octave) and was completely inaudible in the mix despite measuring RMS
+    0.23 soloed. Distinct synth layers need distinct register, rhythm, or
+    role (growl OWNS the low offbeats in its sections; sample bass rests or
+    moves register). Solo-probe each synth layer (`export_audio trackIds`)
+    before judging it in the full mix.
+15. **`psy_fm` live-engine MCP tools fail with "track not found"** (open bug
+    2026-09-01): `psy_fm_load_preset` and friends go through
+    `getMainProcessor()->getTrack()` → null, while the ValueTree path
+    (`set_internal_fx_param`) works. Workaround: configure via
+    `set_internal_fx_param` indices (see §5b). The frontend Router_PsyFm
+    shares the same pattern and likely fails the same way. See
+    `docs/handoffs/2026-09-01-psyfm-bugs-handoff.md`.
+16. **Don't trust response-less side effects.** A tool call whose result you
+    don't inspect may have errored (`remove_notes` silently no-oped once —
+    wrong assumption, breakdown stayed full). Check the response text ("removed
+    N notes"), use `dryRun` first for destructive ops, and re-`list_notes` to
+    confirm the range is actually empty.
 
 ## 10. Where the evidence lives
 

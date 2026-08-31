@@ -483,8 +483,15 @@ RelatedResult relatedToItem(const std::vector<ClusterItem>& items,
     r.method = methodName(method);
     const int n = static_cast<int>(items.size());
     int seed = -1;
+    // Normalize the query path through juce::File for case-insensitive,
+    // separator-agnostic comparison (handoff 2026-08-30 §5 — "entry not
+    // found" when cluster output path used different case/separator).
+    const juce::File queryFile(filePath);
     for (int i = 0; i < n; ++i)
-        if (items[static_cast<size_t>(i)].path == filePath) { seed = i; break; }
+    {
+        const juce::File entryFile(items[static_cast<size_t>(i)].path);
+        if (entryFile == queryFile) { seed = i; break; }
+    }
     if (seed < 0) return r; // found = false
     r.found = true;
     r.seedName = items[static_cast<size_t>(seed)].name;

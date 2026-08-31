@@ -84,6 +84,7 @@ public:
 
     // ProjectCommands — instrument part composer
     InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
+    PsytranceResult generatePsytrance(const HDAW::PsytranceParams& params) override;
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify,
                                      bool allowGlobalScale) override;
@@ -176,6 +177,19 @@ public:
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                         float value) override;
+
+    // ── PsyFm preset/matrix commands (tree-first, deviceless-safe) ──
+    /// Load a named psytrance preset: writes all 33 params + psyFmMatrix +
+    /// psyFmSweepRate in one undo transaction. No-op when slot is not psy_fm
+    /// or when presetName is unknown. Returns true on success.
+    bool setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
+                              const std::string& presetName);
+    /// Upsert a single modulation route (add-or-update by source+dest key).
+    void setFxSlotPsyFmModRoute(int trackIndex, int slotIndex,
+                                const std::string& srcName,
+                                const std::string& destName, float depth);
+    /// Clear all modulation routes on a psy_fm slot.
+    void clearFxSlotPsyFmModRoutes(int trackIndex, int slotIndex);
     void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
     void respawnFxSlot(int trackIndex, int slotIndex) override;
     void setSamplerSample(int trackIndex, int slotIndex,
@@ -183,6 +197,7 @@ public:
     void setSamplerMode(int trackIndex, int slotIndex, const std::string& mode);
     void setSamplerProperty(int trackIndex, int slotIndex,
                             const std::string& property, bool value);
+    void setSamplerKeyRange(int trackIndex, int slotIndex, int keyLow, int keyHigh) override;
     void setSamplerSliceMode(int trackIndex, int slotIndex,
                              const std::string& sliceMode,
                              double sliceGrid, double sliceSensitivity);

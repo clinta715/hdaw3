@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
-project(HDAW VERSION 0.25.0 LANGUAGES CXX)
+# CMP0141 (New in 3.25): honor CMAKE_MSVC_DEBUG_INFORMATION_FORMAT. The ninja
+# build dir (build-ninja/, see build-fast.bat) configures with =Embedded
+# (/Z7) so sccache + parallel cl processes never contend on a shared .pdb
+# (C1041). VS generator keeps its default ProgramDatabase behavior.
+if(POLICY CMP0141)
+    cmake_policy(SET CMP0141 NEW)
+endif()
+project(HDAW VERSION 0.25.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -118,6 +125,7 @@ add_library(HDAW_lib STATIC
     src/engine/ExportManager.cpp
     src/engine/MainAudioProcessor.cpp
     src/engine/PhraseGenerator.cpp
+    src/engine/PsytranceGenerator.cpp
     src/engine/PatternLibrary.cpp
     src/engine/EnvelopeGenerator.cpp
     src/engine/Generative.cpp
@@ -125,6 +133,13 @@ add_library(HDAW_lib STATIC
     src/engine/RhythmPatternGenerator.cpp
     src/engine/SamplerEngine.cpp
     src/engine/FmSynthEngine.cpp
+    src/engine/GrowlBassEngine.cpp
+    src/engine/PsyArpEngine.cpp
+    src/engine/PsyFmOperator.cpp
+    src/engine/PsyFmModMatrix.cpp
+    src/engine/PsyFmPatches.cpp
+    src/engine/PsyFmEngine.cpp
+    src/engine/PsyFmAlgorithms.cpp
     src/engine/Dx7SysexImport.cpp
     src/engine/msfa/fm_core.cc
     src/engine/msfa/fm_op_kernel.cc
@@ -189,6 +204,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_FxPreset.cpp
     src/mcp/McpTools_Sampler.cpp
     src/mcp/McpTools_FmSynth.cpp
+    src/mcp/McpTools_PsyFm.cpp
     src/mcp/McpTools_MidiFx.cpp
     src/mcp/McpTools_Automation.cpp
     src/mcp/McpTools_Send.cpp
@@ -218,6 +234,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Library.cpp
     src/frontend/router/Router_Sampler.cpp
     src/frontend/router/Router_Pool.cpp
+    src/frontend/router/Router_PsyFm.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

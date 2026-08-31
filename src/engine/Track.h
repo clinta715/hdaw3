@@ -64,6 +64,8 @@ public:
     // recreates the slot's DSP objects under stateLock, so a concurrent
     // setInternalParam would write into the object being destroyed.
     void setFxSlotInternalParam(int slotIndex, int paramIndex, float value);
+    void setFxSlotPsyFmMatrix(int slotIndex, const juce::String& encoded);
+    void setFxSlotPsyFmSweepRate(int slotIndex, float hz);
 
     void setAutomationTrees(const juce::ValueTree& automationList);
     AutomationManager& getAutomation(int index) { return *automationManagers[index]; }

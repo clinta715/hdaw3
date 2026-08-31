@@ -14,6 +14,7 @@ bus layout propagation.
 The fix (v0.7.0+): also blacklist files when the scanner exits with a non-zero code, using reason `"scan_failure"`. This joins the existing "crash" blacklist and skips re-scanning.
 
 The relevant code path in `scanAll()` (`src/engine/PluginManager.cpp:174-198`):
+
 - **Exit code 0** → success, parsed JSON → `knownPluginList.addType`
 - **Exit code 1** → normal failure, pedal deleted → now blacklisted as `"scan_failure"`
 - **Exit code ≥2** → crash, pedal preserved → blacklisted as `"crash"` (existing logic)
@@ -266,3 +267,98 @@ diagnosing "only DirectSound devices show up", check COM state before
 blaming the device manager. RDP sessions are an expected false alarm:
 their WASAPI endpoint set is session-scoped (render-only "Remote
 Audio"), which is correct, not a regression.
+
+## PsyFm: a mod target that writes an unused value is a silent no-op — wire the destination, not a knob near it (2026-09-01)
+
+The PsyFm track-level LFO target `306` (`FmModParamIDs::Op6Feedback`, doc'd
+as "modulates OP6 feedback amount") originally wrote
+`pool.feedbackLFORateHz` — the *rate* of an internal LFO — and with an
+empty mod matrix that LFO wasn't routed anywhere, so **target 306 did
+nothing at all**. It looked wired (a real pool field was written, no
+crash, no warning) and was only exposed when a composed track's growl
+showed zero movement. Same family as the `setProperty` unchanged-value
+no-op: the write succeeds, the feature doesn't exist.
+
+Fix (2026-09-01): `PsyFmModSourcePool::feedbackOffset` (additive, applied
+in `PsyFmModMatrix::apply()` before routes), Track.cpp target 306 writes
+the offset, and `PsyFmEngine::prepare()` seeds a default
+`FeedbackLFO → Op6Feedback (0.35)` route when the matrix is empty so the
+offset always lands on the audio path.
+
+**Rule:** for every modulation/automation target, trace the written value
+to the sample it changes before calling it done. A test that wiggles the
+input and asserts the DSP state changed (not the pool field) is the
+correct gate.
+
+## PsyFm: voice-reclamation checks must run AFTER the render pass, not before
+
+`PsyFmEngine::render()` originally checked `isActive()` on each voice's
+envelopes *before* calling the algorithm render. Envelopes that finished
+mid-block were only observed one block later — mostly harmless, but
+`PsyFmEngineTest.NoteOffEventuallyDeactivatesVoice` exposed the real
+problem: with a zero-release envelope the check-before-render ordering
+combined with per-block envelope advancement left voices pinned `live`
+longer than the test horizon in some orderings. The fix is structural,
+not test-tuning: **set block params → render the block → THEN check
+`isActive()` and reclaim**. A liveness decision computed from state the
+current pass is about to change is always stale.
+
+**Rule:** any per-block "is it done?" gate must read state that reflects
+the work of the current block. Run it after the DSP, not before.
+
+## PsyFm: additive mod depth on one destination needs a combined ceiling — stacked LFOs drove feedback to runaway
+
+Two track-level LFOs routed at `Op6Feedback` (saw 1/beat depth 0.5 + sine
+slow depth 0.4) summed to ±0.45 of additive offset on a 0.5 base
+feedback. `PsyFmModMatrix::apply()` clamps the *combined* value to 0..1,
+so the clamp was technically satisfied — at ~0.95 feedback, where the PM
+feedback chain generates enormous energy. The export hard-clipped (peak
+1.000, RMS pinned flat at the clamp across every loud section — a flat
+RMS plateau that looked like a limiter). Each LFO alone was fine.
+
+Current state: per-route depth is unvalidated; the sum is clamped, not
+bounded by construction. Consider: per-destination combined-depth budget
+in `PsyFmModMatrix`, or a soft-saturation on the mod sum.
+
+**Rule:** when several modulators can target one destination, the failure
+mode is the SUM, not the individual depths. Verify with two LFOs maxed,
+not one, and read the rendered WAV (peak + RMS plateau) — the flatline is
+the signature.
+
+## Internal FX params reach DSP unclamped — one out-of-range value silenced every export at 0.6s (2026-08-31)
+
+`TrackFXSlot` stores `param_N` values from the ValueTree and pushes them
+into the internal DSP objects **raw**. A saved project carried reverb
+`param_0` (Room Size, def [0,1]) = **900.0** — plausibly a units mix-up
+with PsyArp's size-in-seconds param. JUCE Freeverb maps roomSize → comb
+feedback ≈ `0.7 + 0.28×roomSize` ⇒ loop gain ≈ **252** ⇒ the export
+render diverged exponentially (RMS 0.02 → 1098 → 7e13 → `inf` → `NaN`
+within 0.6s of audio) and the WAV writer wrote NaN as **zeros**. Result:
+correct-length exports with healthy audio until exactly 0.6s, then hard
+silence "regardless of content" — the runaway track poisons the master
+sum. Full write-up with the evidence chain:
+`docs/handoffs/2026-09-17-export-silence-investigation.md`.
+
+Three sites pushed unclamped values: `prepare()` (tree restore → DSP),
+`loadParamsFromTree()`, `setInternalParam()`. `setAutomationParam()` was
+already safe (denormalizes through the param defs). The signature to
+recognize: an export that cuts at an *exact sample* mid-block with
+full-scale clipping right before the silence — check the per-block RMS
+trace (`ExportDebug` log) for `inf`/`NaN` before blaming bounds checks or
+transport.
+
+**Fix (v0.25.1):** defs-driven `clampToParamDef()` applied in `prepare()`,
+`loadParamsFromTree()`, `setInternalParam()`, plus a write-side clamp in
+`AudioEngineCommands::setFxSlotParam` before the `param_N` property write
+(so RPC `project.setFxSlotParam` and MCP `set_internal_fx_param` can no
+longer persist out-of-range values). Regression suite:
+`InternalFxParamClamp` in `tests/unit/engine/internal_fx_param_clamp_test.cpp`.
+
+**Rule:** any value that reaches recursive DSP (comb/feedback networks:
+reverb, delay/chorus/phaser feedback, FM feedback) must be clamped to its
+param def at EVERY entry point — tree restore, live param set, and the
+property write. One unclamped path is enough to poison saved projects and
+silence exports. And: a root-cause narrative written without rebuilding +
+reproducing is speculation — the first "root cause" for this bug (clip
+bounds check) was disproven by the project file alone (no 0.6s clips
+exist; 301s clips died at 0.6s too).

@@ -97,13 +97,13 @@ s.registerTool({"sampler_get_state",
                     if (si < static_cast<int>(chain.size()) && chain[si])
                     {
                         auto* engine = chain[si]->samplerEngineForTest();
-                        state["hasSound"] = (engine != nullptr && engine->currentSound() != nullptr);
                         if (engine)
                             state["activeVoices"] = engine->activeVoiceCount();
                     }
                 }
             }
 
+            state["hasSound"] = !slotTree.getProperty("sampleFile", "").toString().isEmpty();
             state["sliceMode"] = QString::fromStdString(slotTree.getProperty("sliceMode", "transient").toString().toStdString());
             state["sliceGrid"] = static_cast<double>(slotTree.getProperty("sliceGrid", 0.25));
             state["sliceSensitivity"] = static_cast<double>(slotTree.getProperty("sliceSensitivity", 0.5));
@@ -113,6 +113,9 @@ s.registerTool({"sampler_get_state",
             for (const auto& tok : sliceTokens)
                 slicePoints.append(tok.trim().getDoubleValue());
             state["slicePoints"] = slicePoints;
+
+            state["keyRangeLow"] = static_cast<int>(slotTree.getProperty("keyRangeLow", -1));
+            state["keyRangeHigh"] = static_cast<int>(slotTree.getProperty("keyRangeHigh", -1));
 
             return McpToolResult::text(
                 QString::fromUtf8(QJsonDocument(state).toJson(QJsonDocument::Compact)));
@@ -224,6 +227,32 @@ s.registerTool({"trigger_sampler_slice",
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(
                 QJsonObject{{"ok", r.ok},
                             {"totalSlices", r.totalSlices}}).toJson(QJsonDocument::Compact)));
+        }});
+
+s.registerTool({"set_sampler_key_range",
+        "Set the MIDI note range for a sampler FX slot. When a key range is set (keyLow and keyHigh are 0..127), only MIDI notes in that range are rendered by this sampler; notes outside the range pass to the next slot. Set both to -1 to restore full-range (default behavior). Enables multiple samplers on one track to each handle different note ranges (e.g. riser + downlifter).",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"keyLow",    QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",127}}},
+                  {"keyHigh",   QJsonObject{{"type","integer"},{"minimum",-1},{"maximum",127}}}},
+                  {"trackId","slotIndex","keyLow","keyHigh"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= static_cast<int>(fxSlots.size()))
+                return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "sampler")
+                return McpToolResult::text("slot is not a sampler", true);
+            int keyLow = a.value("keyLow").toInt(-1);
+            int keyHigh = a.value("keyHigh").toInt(-1);
+            e->getAudioEngineCommands().setSamplerKeyRange(ti, si, keyLow, keyHigh);
+            return McpToolResult::text(
+                QString::fromUtf8(QJsonDocument(QJsonObject{
+                    {"ok", true},
+                    {"keyRangeLow", keyLow},
+                    {"keyRangeHigh", keyHigh}}).toJson(QJsonDocument::Compact)));
         }});
 
 }

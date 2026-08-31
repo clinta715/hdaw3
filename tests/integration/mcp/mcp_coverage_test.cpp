@@ -1821,6 +1821,190 @@ TEST_F(McpCoverageTest, FilterFxParamsRealUnitsAndRebuildSurvival) {
     EXPECT_NEAR(rp[2].value, 1.5f, 0.01f);
 }
 
+// P1.3 (plan 2026-08-30): get_internal_fx_param reads back CURRENT internal
+// FX param values in REAL units after set_internal_fx_param — the
+// metadata-only gap from the 8/30 handoff B5/B8. The read path is
+// ReadModelImpl::getInternalFxParams (same ValueTree param_N storage the
+// engine loads from; no render, no DSP access). list_fx_params now reports the
+// value too, symmetric with its plugin branch.
+TEST_F(McpCoverageTest, GetInternalFxParamReadsBackRealUnits) {
+    // EQ slot: set Frequency + Gain, leave Q untouched.
+    auto addEq = call("add_fx", {{"trackId", 0}, {"fxType", "eq"}});
+    ASSERT_FALSE(isError(addEq)) << text(addEq).toStdString();
+    EXPECT_EQ(text(addEq).mid(text(addEq).indexOf('=') + 1).toInt(), 0);
+
+    // list_fx_params carries metadata AND the current value.
+    auto list = QJsonDocument::fromJson(
+        callText("list_fx_params", {{"trackId", 0}, {"slotIndex", 0}}).toString().toUtf8()).object();
+    auto params = list.value("params").toArray();
+    ASSERT_EQ(params.size(), 3);
+    EXPECT_EQ(params.at(0).toObject().value("name").toString().toStdString(), "Frequency");
+    EXPECT_TRUE(params.at(0).toObject().contains("value"));
+    EXPECT_NEAR(params.at(0).toObject().value("value").toDouble(), 1000.0, 1e-6); // default before set
+
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 0}, {"value", 3600.0}})));
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 2}, {"value", 2.5}})));
+
+    auto getObj = QJsonDocument::fromJson(
+        callText("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}}).toString().toUtf8()).object();
+    auto got = getObj.value("params").toArray();
+    ASSERT_EQ(got.size(), 3);
+    EXPECT_EQ(got.at(0).toObject().value("index").toInt(), 0);
+    EXPECT_EQ(got.at(0).toObject().value("name").toString().toStdString(), "Frequency");
+    EXPECT_NEAR(got.at(0).toObject().value("value").toDouble(), 3600.0, 1e-3);
+    EXPECT_NEAR(got.at(1).toObject().value("value").toDouble(), 0.7, 1e-6);   // Q untouched -> default
+    EXPECT_NEAR(got.at(2).toObject().value("value").toDouble(), 2.5, 1e-3);   // Gain
+    EXPECT_NEAR(got.at(2).toObject().value("minValue").toDouble(), -24.0, 1e-6);
+
+    // Compressor slot: threshold/ratio in real dB/ratio units.
+    auto addComp = call("add_fx", {{"trackId", 0}, {"fxType", "compressor"}});
+    ASSERT_FALSE(isError(addComp)) << text(addComp).toStdString();
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 1}, {"paramIndex", 0}, {"value", -18.0}})));
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 1}, {"paramIndex", 1}, {"value", 4.0}})));
+    auto compObj = QJsonDocument::fromJson(
+        callText("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 1}}).toString().toUtf8()).object();
+    auto comp = compObj.value("params").toArray();
+    ASSERT_EQ(comp.size(), 4);
+    EXPECT_NEAR(comp.at(0).toObject().value("value").toDouble(), -18.0, 1e-3);
+    EXPECT_NEAR(comp.at(1).toObject().value("value").toDouble(), 4.0, 1e-3);
+
+    // Sampler slot: env params read back WITHOUT a sample loaded — the tree is
+    // the source of truth (handoff B8: no render predictor needed for values).
+    auto addSam = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(addSam)) << text(addSam).toStdString();
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 2}, {"paramIndex", 0}, {"value", 0.5}})));
+    auto samObj = QJsonDocument::fromJson(
+        callText("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 2}}).toString().toUtf8()).object();
+    auto sam = samObj.value("params").toArray();
+    ASSERT_EQ(sam.size(), 10);
+    EXPECT_EQ(sam.at(0).toObject().value("name").toString().toStdString(), "Attack");
+    EXPECT_NEAR(sam.at(0).toObject().value("value").toDouble(), 0.5, 1e-6);
+    EXPECT_NEAR(sam.at(4).toObject().value("value").toDouble(), 0.0, 1e-6);   // Transpose untouched -> 0
+}
+
+// P1.3 validation (Gate 9): errors are tool-named (handoff B-note: bare
+// validator messages were un-attributable across a burst).
+TEST_F(McpCoverageTest, GetInternalFxParamValidation) {
+    // Slot out of range -> tool-named error.
+    auto r1 = call("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 5}});
+    EXPECT_TRUE(isError(r1)) << text(r1).toStdString();
+    EXPECT_TRUE(text(r1).contains("get_internal_fx_param")) << text(r1).toStdString();
+
+    // Empty/unknown FX type (add_fx with no fxType) is not an internal FX.
+    auto addEmpty = call("add_fx", {{"trackId", 0}});
+    ASSERT_FALSE(isError(addEmpty)) << text(addEmpty).toStdString();
+    auto r2 = call("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}});
+    EXPECT_TRUE(isError(r2)) << text(r2).toStdString();
+    EXPECT_TRUE(text(r2).contains("get_internal_fx_param")) << text(r2).toStdString();
+}
+
+// W1 (plan 2026-08-30): generate_psytrance — one call writes the complete
+// key-disciplined score onto the caller's palette tracks (Guide §4 grammar).
+// Covers tool registration, palette mapping, compact output (B6: no note
+// payload), determinism, unmapped-role reporting, and tool-named validation.
+TEST_F(McpCoverageTest, GeneratePsytranceRoundTrip) {
+    QStringList toolNames;
+    for (const auto& t : toolList())
+        toolNames << t.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("generate_psytrance"));
+
+    // Palette: 8 sampler-less tracks (notes/clips only — no samples needed).
+    auto addTrack = [this](const QString& name) {
+        auto r = callText("add_track", {{"name", name}});
+        auto obj = QJsonDocument::fromJson(r.toString().toUtf8()).object();
+        return obj.value("trackId").toInt(-1);
+    };
+    QJsonObject pt;
+    for (const char* role : { "kick", "bass", "hat", "arp", "stab", "pad", "riser", "down" })
+    {
+        const int t = addTrack(QString("Psy%1").arg(role));
+        ASSERT_GE(t, 3) << "palette track " << role;
+        pt[role] = t;
+    }
+
+    QJsonArray sections;
+    sections.append(QJsonObject{ { "name", "intro" },     { "start", 0.0 },   { "end", 32.0 } });
+    sections.append(QJsonObject{ { "name", "build" },     { "start", 32.0 },  { "end", 64.0 } });
+    sections.append(QJsonObject{ { "name", "mainA" },     { "start", 64.0 },  { "end", 192.0 } });
+    sections.append(QJsonObject{ { "name", "mini" },      { "start", 192.0 }, { "end", 224.0 } });
+    sections.append(QJsonObject{ { "name", "mainB" },     { "start", 224.0 }, { "end", 352.0 } });
+    sections.append(QJsonObject{ { "name", "breakdown" }, { "start", 352.0 }, { "end", 384.0 } });
+    sections.append(QJsonObject{ { "name", "finale" },    { "start", 384.0 }, { "end", 512.0 } });
+
+    auto args = QJsonObject{
+        { "paletteTrackIds", pt },
+        { "sections", sections },
+        { "keyRoot", 5 },
+        { "scaleMode", 1 },
+        { "density", 0.7 },
+        { "seed", 42 } };
+
+    auto r = call("generate_psytrance", args);
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    // B6: compact output — a summary, never the 2,000+ note payload.
+    EXPECT_LT(text(r).size(), 4096) << text(r).left(200).toStdString();
+    auto res = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(res.value("totalBeats").toDouble(), 512.0);
+    EXPECT_GT(res.value("notesTotal").toInt(), 1500); // ~2,600 in the reference track
+    EXPECT_EQ(res.value("notesSkipped").toInt(), 0);
+    auto clips = res.value("clips").toArray();
+    EXPECT_EQ(clips.size(), 8);
+
+    QSet<int> seenTracks;
+    for (const auto& cv : clips)
+    {
+        auto c = cv.toObject();
+        const QString role = c.value("role").toString();
+        EXPECT_TRUE(pt.contains(role)) << "unknown role " << role.toStdString();
+        EXPECT_EQ(c.value("trackId").toInt(), pt.value(role).toInt(-1))
+            << "role " << role.toStdString() << " landed on the wrong track";
+        EXPECT_GT(c.value("noteCount").toInt(), 0) << role.toStdString();
+        EXPECT_GE(c.value("clipId").toInt(), 0);
+        seenTracks.insert(c.value("trackId").toInt());
+    }
+    EXPECT_EQ(seenTracks.size(), 8);
+    // Clap is unmapped → correctly reported as skipped.
+    auto skippedArr = res.value("skipped").toArray();
+    QStringList skippedList;
+    for (const auto& s : skippedArr) skippedList << s.toString();
+    EXPECT_TRUE(skippedList.isEmpty() || skippedList.contains("clap"))
+        << "only clap should be skipped, got: " << skippedList.join(", ").toStdString();
+
+    // Determinism: same seed + params → identical note counts everywhere.
+    auto r2 = call("generate_psytrance", args);
+    ASSERT_FALSE(isError(r2));
+    auto res2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    auto clips2 = res2.value("clips").toArray();
+    ASSERT_EQ(clips2.size(), clips.size());
+    for (int i = 0; i < clips.size(); ++i)
+        EXPECT_EQ(clips.at(i).toObject().value("noteCount").toInt(),
+                  clips2.at(i).toObject().value("noteCount").toInt());
+
+    // Unmapped optional roles are reported as skipped, not errors; the clap
+    // role defaults to the hat track when omitted.
+    auto ptNoFx = pt;
+    ptNoFx.remove("riser");
+    ptNoFx.remove("down");
+    auto argsNoFx = args;
+    argsNoFx["paletteTrackIds"] = ptNoFx;
+    auto r3 = call("generate_psytrance", argsNoFx);
+    ASSERT_FALSE(isError(r3)) << text(r3).toStdString();
+    auto res3 = QJsonDocument::fromJson(text(r3).toUtf8()).object();
+    auto skipped = res3.value("skipped").toArray();
+    EXPECT_TRUE(skipped.contains("riser")) << QJsonDocument(skipped).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_TRUE(skipped.contains("down")) << QJsonDocument(skipped).toJson(QJsonDocument::Compact).toStdString();
+
+    // Validation: a bad palette track id is a tool-named error and nothing is
+    // written (Gate 9 + no partial writes).
+    auto ptBad = pt;
+    ptBad["kick"] = 999;
+    auto argsBad = args;
+    argsBad["paletteTrackIds"] = ptBad;
+    auto r4 = call("generate_psytrance", argsBad);
+    EXPECT_TRUE(isError(r4)) << text(r4).toStdString();
+    EXPECT_TRUE(text(r4).contains("generate_psytrance")) << text(r4).toStdString();
+}
+
 
 // ============================================================================
 // BREAK CHOPPER / COMPOSER — docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P2-1

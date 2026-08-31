@@ -18,6 +18,7 @@ import MidiFxChain from "./components/MidiFxChain";
 import ModulationPanel from "./components/ModulationPanel";
 import SamplerEditor from "./components/SamplerEditor";
 import FmAnalysisPanel from "./components/FmAnalysisPanel";
+import PsyFmEditor from "./components/PsyFmEditor";
 import UndoHistory from "./components/UndoHistory";
 import Inspector from "./components/Inspector";
 import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
@@ -43,6 +44,7 @@ const SMidiFxChain = withHookSentinel(MidiFxChain, "MidiFxChain");
 const SModulationPanel = withHookSentinel(ModulationPanel, "ModulationPanel");
 const SSamplerEditor = withHookSentinel(SamplerEditor, "SamplerEditor");
 const SFmAnalysisPanel = withHookSentinel(FmAnalysisPanel, "FmAnalysisPanel");
+const SPsyFmEditor = withHookSentinel(PsyFmEditor, "PsyFmEditor");
 const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
 const STempoEditor = withHookSentinel(TempoEditor, "TempoEditor");
 const SPresetBrowser = withHookSentinel(PresetBrowser, "PresetBrowser");
@@ -223,6 +225,7 @@ function App() {
     { id: "inspector", label: "Inspector", content: <Inspector /> },
     { id: "arranger", label: "Arranger", content: <SArrangerChainEditor /> },
     { id: "fm-analysis", label: "FM Analysis", content: <SFmAnalysisPanel /> },
+    { id: "psy-fm", label: "Psy FM", content: <SPsyFmEditor /> },
     { id: "tempo", label: "Tempo", content: <STempoEditor rpc={rpc} /> },
     { id: "presets", label: "Presets", content: <SPresetBrowser /> },
   ], []);

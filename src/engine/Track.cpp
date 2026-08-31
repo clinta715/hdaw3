@@ -237,6 +237,7 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
         {
             slot->prepare(fxSpec);
             slot->loadParamsFromTree(slotTree);
+            slot->loadPsyFmStateFromTree(slotTree); // restore mod matrix + sweep rate
         }
 
         fxChain.push_back(std::move(slot));
@@ -527,6 +528,19 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                 }
             }
         }
+        // Multi-sampler key-range buffer management: if any sampler in the
+        // chain has a key range set, clear the buffer once so partial samplers
+        // accumulate cleanly without stale audio from earlier FX.
+        if (!midiMessages.isEmpty())
+        {
+            bool anyPartialSampler = false;
+            for (const auto& s : fxChain)
+                if (s && s->getType() == "sampler" && s->hasKeyRange())
+                    { anyPartialSampler = true; break; }
+            if (anyPartialSampler)
+                buffer.clear();
+        }
+
         for (const auto& slot : fxChain)
         {
             if (slot)
@@ -615,6 +629,48 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                             float base = fxChain[si]->getAutomationParam(pi);
                             fxChain[si]->setAutomationParam(pi,
                                 juce::jlimit(0.0f, 1.0f, base + modVal));
+                        }
+                    }
+                    else if (pid >= FmModParamIDs::FirstFmParam && pid <= FmModParamIDs::LastFmParam)
+                    {
+                        // FM modulation targets — apply to PsyFm engine in the FX chain.
+                        // Find the first PsyFm slot on this track.
+                        for (auto& slot : fxChain)
+                        {
+                            if (slot && slot->getType() == "psy_fm")
+                            {
+                                auto* psyFm = slot->psyFmEngine();
+                                if (psyFm)
+                                {
+                                    auto& pool = psyFm->getModSourcePool();
+                                    switch (pid)
+                                    {
+                                        case FmModParamIDs::Op1Ratio:
+                                        case FmModParamIDs::Op2Ratio:
+                                        case FmModParamIDs::Op3Ratio:
+                                        case FmModParamIDs::Op4Ratio:
+                                        case FmModParamIDs::Op5Ratio:
+                                        case FmModParamIDs::Op6Ratio:
+                                        {
+                                            // Modulate ratio via the mod source pool's mod wheel value
+                                            // (the matrix routes modWheel → OpNRatio)
+                                            pool.modWheelValue = juce::jlimit(-1.0f, 1.0f, modVal);
+                                            break;
+                                        }
+                                        case FmModParamIDs::Op6Feedback:
+                                            pool.feedbackOffset = juce::jlimit(-1.0f, 1.0f, modVal) * 0.5f;
+                                            break;
+                                        case FmModParamIDs::OutputLevel:
+                                            psyFm->setOutputLevel(juce::jlimit(0.0f, 1.0f, 0.4f + modVal * 0.3f));
+                                            break;
+                                        case FmModParamIDs::RatioSweepRate:
+                                            pool.ratioSweepLFORateHz = 0.1f + modVal * 5.0f;
+                                            break;
+                                        default: break;
+                                    }
+                                }
+                                break; // apply to first psy_fm slot only
+                            }
                         }
                     }
                 }
@@ -783,6 +839,25 @@ void Track::setFxSlotInternalParam(int slotIndex, int paramIndex, float value)
         return;
     if (fxChain[static_cast<size_t>(slotIndex)])
         fxChain[static_cast<size_t>(slotIndex)]->setInternalParam(paramIndex, value);
+}
+
+void Track::setFxSlotPsyFmMatrix(int slotIndex, const juce::String& encoded)
+{
+    // Mirror the lesson 13 / stateLock guard from setFxSlotInternalParam.
+    const juce::SpinLock::ScopedLockType lock(stateLock);
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size()))
+        return;
+    if (fxChain[static_cast<size_t>(slotIndex)])
+        fxChain[static_cast<size_t>(slotIndex)]->applyModMatrixFromString(encoded);
+}
+
+void Track::setFxSlotPsyFmSweepRate(int slotIndex, float hz)
+{
+    const juce::SpinLock::ScopedLockType lock(stateLock);
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxChain.size()))
+        return;
+    if (fxChain[static_cast<size_t>(slotIndex)])
+        fxChain[static_cast<size_t>(slotIndex)]->applySweepRate(hz);
 }
 
 void Track::setVolume(float newVolume)

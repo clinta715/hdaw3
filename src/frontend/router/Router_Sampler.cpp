@@ -123,7 +123,17 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
         for (float p : s.slicePoints)
             slicePoints.append(static_cast<double>(p));
         obj["slicePoints"] = slicePoints;
+        obj["keyRangeLow"] = s.keyRangeLow;
+        obj["keyRangeHigh"] = s.keyRangeHigh;
         return { false, obj };
+    }
+    if (m == "setKeyRange") {
+        int ti, si, keyLow, keyHigh;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+            || !requireInt(o, "keyLow", keyLow, nullptr) || !requireInt(o, "keyHigh", keyHigh, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, keyLow, keyHigh required");
+        cmds.setSamplerKeyRange(ti, si, keyLow, keyHigh);
+        return { false, QJsonObject{{"ok", true}, {"keyRangeLow", keyLow}, {"keyRangeHigh", keyHigh}} };
     }
 
     return makeError(-32601, "unknown sampler method: " + m);

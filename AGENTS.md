@@ -1,16 +1,19 @@
 ﻿# AGENTS.md
 
 **MANDATORY:** Before ANY code change in this project, invoke the `hdaw-guard` skill:
+
 ```
 skill: "hdaw-guard"
 ```
+
+Skill file: [`docs/skills/hdaw-guard/SKILL.md`](docs/skills/hdaw-guard/SKILL.md).
 This skill enforces plan-first development, guards against the 16 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
 
 Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.25.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.25.1** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -26,17 +29,17 @@ pitfall, search the relevant file; for architecture start with
 `docs/architecture.md`; for realtime constraints see `docs/realtime-safety.md`.
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | [`docs/architecture.md`](docs/architecture.md) | Build, version management, key classes, GUI-engine decoupling, frontend architecture, timestretch, JUCE 9 migration, **beats-vs-seconds unit convention** |
 | [`docs/realtime-safety.md`](docs/realtime-safety.md) | Audio-thread safety rules, hardening lessons, diagnostic pattern, plugin process isolation (default ON), **transport-stopped early-out (audio buzz) + idle-child stall-detector false-positives, auto-stop / projectEndSample staleness + play() re-entry race, message pump for headless/test processes, AudioProcessorGraph thread-safety / pump-park, DSP-state listener races, latency evaluation, quality/fidelity evaluation** |
-| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup** |
+| [`docs/pitfalls-juce.md`](docs/pitfalls-juce.md) | VST3 scan blacklisting, default project samples, DBG macro collision, build pipeline (MOC/PDB), AudioProcessorGraph bus layout, **setProperty no-op on unchanged value, notify.transport dedup**, **internal FX param clamping (reverb roomSize=900 → NaN export silence)** |
 | [`docs/pitfalls-frontend.md`](docs/pitfalls-frontend.md) | Stale closures after async, optimistic placement + syncSnapshot conflict, drag double-movement, store vs prop reads, **vertical fader `direction: reverse` invalid** |
 | [`docs/testing-mcp.md`](docs/testing-mcp.md) | GTest suite, TransportLoopback test seam, MCP server architecture, MCP tool safety, file browser audio preview |
 | [`docs/valuetree-listener-contract.md`](docs/valuetree-listener-contract.md) | ValueTree listener registration contract, orphan prevention, ReadModel alternative, audit checklist, **delta-sync cannot compute derived state** |
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
 | [`docs/adr-automation-model.md`](docs/adr-automation-model.md) | ADR: track-based automation as the primary model (clip-based/relative deferred), beats-vs-seconds implication |
 | [`docs/bitwig-reference.md`](docs/bitwig-reference.md) | Bitwig Studio UI/architecture design reference with HDAW-side takeaways |
-| [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Psytrance composition via MCP: style canon, sample pipeline, score grammar, FX/LFO/automation recipes, mix + verification, contract traps — distilled from the 2026-08-26/27 composition sessions (recipes: `psytrance_composition_stress_test.cpp`) |
+| [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Psytrance composition via MCP: style canon, sample pipeline, score grammar, FX/LFO/automation recipes, **FM synthesis (PsyFm engine, presets, modulation targets 300–308)**, slicing/timestretch tools, mix + verification, contract traps — distilled from the 2026-08-26/27 composition sessions and 2026-09-01 FM integration (recipes: `psytrance_composition_stress_test.cpp`) |
 | [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
 | [`docs/archive/superpowers/`](docs/archive/superpowers/) | Historical plans/specs (Jun–Aug 2026). Completed work — context only, not live specs. Current plans live in `docs/plans/` |
 
@@ -73,11 +76,13 @@ checked-in `.codebase-memory/` directory.
 5. **Graph-wide analysis** — `query_graph` for Cypher. Functions carry
    complexity/hot-path properties (`transitive_loop_depth`,
    `linear_scan_in_loop`, `alloc_in_loop`) — e.g. the hidden-O(n²) hunter:
+
    ```cypher
    MATCH (f:Function) WHERE f.transitive_loop_depth >= 3 OR f.linear_scan_in_loop >= 1
    RETURN f.qualified_name, f.transitive_loop_depth, f.linear_scan_in_loop
    ORDER BY f.transitive_loop_depth DESC
    ```
+
 6. **Architecture at a glance** — `get_architecture` (Leiden clusters =
    de-facto modules, often cutting across folder layout), `get_graph_schema`,
    `detect_changes` (diff since a ref/date).
@@ -409,6 +414,30 @@ These cost real debugging time — read before touching the relevant area:
     WASAPI endpoint set is session-scoped (render-only "Remote Audio"),
     which is correct behavior, not a regression. See `docs/pitfalls-juce.md`.
 
+23. **Internal FX params reach the DSP unclamped — one out-of-range value
+    silenced every export at exactly 0.6s.** A saved project carried reverb
+    `param_0` (Room Size, valid [0,1]) = **900.0**; `TrackFXSlot` pushed it
+    raw into `juce::dsp::Reverb` (Freeverb) → comb feedback ≈ `0.7 +
+    0.28×900` ≈ 252 → the export render diverged exponentially (RMS 0.02 →
+    1098 → 7e13 → `inf` → `NaN` in 0.6s of audio) and the WAV writer wrote
+    NaN as **zeros**: correct-length exports, healthy audio, then hard
+    silence "regardless of content" (the runaway track poisons the master
+    sum). Three unclamped sites: `prepare()`, `loadParamsFromTree()`,
+    `setInternalParam()`; fixed (v0.25.1) with defs-driven
+    `clampToParamDef()` at all three plus a write-side clamp in
+    `AudioEngineCommands::setFxSlotParam` before the `param_N` property
+    write (covers RPC + MCP, which share the command layer). Diagnostic
+    signature: export cuts at an EXACT sample mid-block with full-scale
+    clipping right before the cut → check the per-block RMS trace for
+    `inf`/`NaN` before blaming bounds checks or transport. **Rules:** (a)
+    any value reaching recursive DSP (comb/feedback networks) must be
+    clamped to its param def at EVERY entry point — one unclamped path
+    poisons saved projects; (b) a root-cause narrative written without
+    rebuilding + reproducing is speculation — this bug's first "root
+    cause" (clip bounds check) was disproven by the project file alone
+    (no 0.6s clips existed; 301s clips died at 0.6s too). See
+    `docs/pitfalls-juce.md`, `docs/handoffs/2026-09-17-export-silence-investigation.md`.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what
@@ -492,12 +521,12 @@ over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
 This development system runs **Windows PowerShell 5.1**, where `&&` and `&` (as a command separator) are **not valid**. Every command in AGENTS.md, scripts, and docs must use PowerShell-native syntax:
 
 | Goal | Use this | Not this |
-|------|----------|----------|
+| ------ | ---------- | ---------- |
 | Run commands sequentially (fail on error) | `cmd1; if ($?) { cmd2 }` | `cmd1 && cmd2` |
 | Run commands sequentially (ignore errors) | `cmd1; cmd2` | `cmd1 & cmd2` |
 | Run in subshell / change dir | Use the `workdir` parameter on tool calls, or `Set-Location` | `cd dir && cmd` |
 | Background jobs | `Start-Job { ... }` | `cmd &` |
-| Boolean AND / OR | `if ($?) { ... }` / `if ($LASTEXITCODE -eq 0) { ... }` | `&&` / `||` |
+| Boolean AND / OR | `if ($?) { ... }` / `if ($LASTEXITCODE -eq 0) { ... }` | `&&` / ` | | ` |
 
 **When writing new commands in this project**, always prefer PowerShell-compatible forms. Existing references to `&&` in documentation (including this file, `README.md`, and `docs/`) are legacy from bash-originated docs and should be updated on sight.
 
@@ -508,7 +537,7 @@ updates NONE of them**. If a frontend fix "doesn't take effect after
 rebuilding," this is almost certainly why:
 
 | Run mode | Binary | Frontend source | To pick up frontend changes |
-|----------|--------|-----------------|------------------------------|
+| ---------- | -------- | ----------------- | ------------------------------ |
 | **Packaged Electron** | `frontend/release/win-unpacked/HDAW.exe` | Frozen in `resources/app.asar` | **Repackage:** `frontend\build.bat` (or `npm run build; if ($?) { npm run package:dir }`). Ctrl+Shift+R does nothing here. |
 | **Browser (standalone exe)** | `build/Debug/HDAW.exe` | Embedded via `frontend.qrc` | `frontend\build.bat` forces a clean C++ rebuild when `dist/` is newer (AUTORCC under the VS generator does NOT treat changed `dist/` as a rebuild trigger). |
 | **Vite dev server** | `npm run dev` (+ engine for WS on 8766) | Live from `frontend/src` | Hard-refresh the browser (Ctrl+Shift+R). No build needed. |
@@ -594,6 +623,7 @@ for a fix marker) before trusting the package.
 ## Version Management
 
 Version numbers are stored in **two places** and must be kept in sync manually:
+
 - `CMakeLists.txt` → `project(HDAW VERSION 0.25.0 ...)` — **canonical** for C++.
 - `frontend/package.json` → `"version": "0.25.0"` — **canonical** for the frontend.
 
@@ -637,7 +667,7 @@ must live inside this mosaic — do not add floating/absolute-positioned panels
 to the core workflow.
 
 | Region | Grid area | Role | Model |
-|--------|-----------|------|-------|
+| -------- | ----------- | ------ | ------- |
 | Transport | `transport` (top, 48px) | Play/stop/record, position, tempo, global toggles | Always present |
 | Track headers | `headers` (left, 220px) | Track list, mute/solo, selection | Always present |
 | Timeline | `timeline` (center) | Arranger — clips, ruler, lanes | Always present |
@@ -696,7 +726,7 @@ audio in the project, independent of the arrangement:
 - **Color = meaning, never decoration.** Track/clip identity, state, and signal:
 
   | Token | Meaning |
-  |-------|---------|
+  | ------- | --------- |
   | `--accent` (amber `#d97706`) | focus / active / selection / interaction |
   | `--mute-color` (amber) / `--solo-color` (green) | mutually-exclusive track states — kept far apart in hue on purpose |
   | `--vu-green/yellow/red` | signal level |

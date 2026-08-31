@@ -417,6 +417,26 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                     // This calls processBlock on all nodes in topological order:
                     // MidiClipProcessor → Track (with CLAP instruments) → MasterBus → AudioOutput.
                     renderGraph.processBlock(buffer, midiBuffer);
+                    
+                    // Debug: log transport position and buffer levels every 10 blocks
+                    if (blocksDone % 10 == 0)
+                    {
+                        double currentTimeSec = static_cast<double>(samplesRendered) / sampleRate;
+                        double currentBeat = currentTimeSec * renderTransport.getBPM() / 60.0;
+                        float bufferRMS = 0.0f;
+                        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                        {
+                            const float* data = buffer.getReadPointer(ch);
+                            for (int s = 0; s < buffer.getNumSamples(); ++s)
+                                bufferRMS += data[s] * data[s];
+                        }
+                        bufferRMS = std::sqrt(bufferRMS / (buffer.getNumChannels() * buffer.getNumSamples()));
+                        HDAW_LOG("ExportDebug", "Block " + juce::String(blocksDone) 
+                            + ": sample=" + juce::String(samplesRendered)
+                            + " time=" + juce::String(currentTimeSec, 3) + "s"
+                            + " beat=" + juce::String(currentBeat, 2)
+                            + " rms=" + juce::String(bufferRMS, 6));
+                    }
     
                     renderTransport.advance(numThisBlock);
     

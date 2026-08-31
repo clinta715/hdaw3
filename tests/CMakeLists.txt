@@ -44,12 +44,16 @@ add_executable(hdaw_tests
     unit/engine/sampler_voice_test.cpp
     unit/engine/sampler_engine_test.cpp
     unit/engine/fm_synth_test.cpp
+    unit/engine/psyfm_test.cpp
+    unit/engine/growl_bass_engine_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
     unit/engine/sampler_fxslot_test.cpp
+    unit/engine/sampler_key_range_test.cpp
     unit/engine/realtime_safety_test.cpp
     unit/engine/audio_pool_dedup_test.cpp
     unit/engine/track_fx_rebuild_race_test.cpp
+    unit/engine/internal_fx_param_clamp_test.cpp
     unit/engine/render_sequence_release_test.cpp
     unit/engine/streaming_clip_source_test.cpp
     unit/engine/streaming_pool_test.cpp
@@ -96,6 +100,7 @@ add_executable(hdaw_tests
     unit/engine/export_volume_bypass_test.cpp
     unit/engine/export_bake_timeout_test.cpp
     unit/engine/psytrance_composition_stress_test.cpp
+    unit/engine/psytrance_generator_test.cpp
     unit/engine/jungle_composition_stress_test.cpp
     unit/engine/instrument_part_test.cpp
     unit/engine/audition_test.cpp

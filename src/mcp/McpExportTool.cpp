@@ -72,7 +72,8 @@ void registerExportTool(McpServer& s) {
 
             auto& em = e->getMainProcessor()->getExportManager();
             if (em.isExporting()) {
-                return McpToolResult::text("export already in progress", true);
+                return McpToolResult::text(
+                    "another export is in progress — use cancel_export to abort it first", true);
             }
 
             juce::ValueTree projectCopy = e->getProjectModel().getTree().createCopy();

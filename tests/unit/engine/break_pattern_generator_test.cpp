@@ -274,3 +274,47 @@ TEST(BreakPatternGenerator, StyleNameRoundTrip)
     Style out;
     EXPECT_FALSE(BreakPatternGenerator::styleFromName("bogus", out));
 }
+
+// Regression (2026-09-02 session): with more detected slices than 7-bit MIDI
+// can address from baseNote (e.g. 108 slices at baseNote 60 -> pitch 167),
+// the generator emitted pitches > 127, which crashed the render thread
+// (MidiClipProcessor's 128-wide pitch tables, MSVC "array subscript out of
+// range"). The effective slice pool must cap at 128 - baseNote, and asNotes
+// must additionally clamp defensively.
+TEST(BreakPatternGenerator, PitchesStayMidiAddressableWhenSlicesExceedRange)
+{
+    for (Style s : { Style::Amen, Style::TwoStep, Style::Halftime,
+                     Style::JungleEdit, Style::Random })
+    {
+        BreakPatternGenerator::Params p;
+        p.style = s;
+        p.sliceCount = 108;   // grid-sliced amen: 0.25-beat grid over 27 beats
+        p.baseNote = 60;
+        p.bars = 8;
+        p.ghostFills = 2;
+        p.seed = 4242;
+        const auto ns = notes(p, 60);
+        ASSERT_FALSE(ns.empty()) << BreakPatternGenerator::styleName(s);
+        for (const auto& n : ns)
+        {
+            EXPECT_GE(n.pitch, 0) << "style=" << BreakPatternGenerator::styleName(s);
+            EXPECT_LE(n.pitch, 127) << "style=" << BreakPatternGenerator::styleName(s);
+        }
+    }
+}
+
+// baseNote near the top of the range leaves few addressable slices; the
+// generator must stay bounded (and non-empty while at least one slice fits).
+TEST(BreakPatternGenerator, HighBaseNoteCapsSlicePool)
+{
+    BreakPatternGenerator::Params p;
+    p.style = Style::Random;
+    p.sliceCount = 40;
+    p.baseNote = 120;         // only 8 addressable pitches (120..127)
+    p.bars = 4;
+    p.seed = 9;
+    const auto ns = notes(p, 120);
+    ASSERT_FALSE(ns.empty());
+    for (const auto& n : ns)
+        EXPECT_LE(n.pitch, 127);
+}
