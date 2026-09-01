@@ -31,6 +31,62 @@ recipe driven over the wire.
 - Length: real tracks are 5–8 min. Our v3 was 2:08 and felt skeletal;
   v4 (3:56) and v5 (3:28) with full sections are the shape to copy.
 
+## 0.5 Sound-design canon (2026-09 additions)
+
+Seven principles from the production sessions. They extend §0 and inform
+§4/§5 choices.
+
+1. **Random synth FX are welcome.** Glitches, zaps, noise bursts, alien
+   blips — throw them in as dedicated ear-candy/FX tracks. Almost any sound
+   works if it is (a) filtered hard enough or (b) made rhythmic
+   (gated/quantized to the grid). See §4 "FX/blip track" recipe.
+
+2. **Filter discipline — the growly metallic edge.** Synths are heavily
+   filtered, usually twice: one filter ON the synth, then a SECOND filter
+   pass after it, then a waveshaping distortion that squares off the tops
+   of the waveform. Chain: `[instrument] → filter FX → filter FX →
+   waveshaper/distortion FX`. In HDAW:
+   - **growl_bass** has built-in waveshaping (`ClipType` 0=SoftTanh,
+     1=SoftAtan, 2=Hard, 3=Bitcrush) plus `Drive dB` (0–40) and an
+     internal filter (LP/BP, cutoff/res/env-amount). This covers the
+     "instrument filter + distortion" in one slot.
+   - Add 1–2 external `filter` FX slots after for the second (and third)
+     filter pass. Automate the last filter's cutoff for movement.
+   - Alternative: `psy_fm` with high feedback (param_306 = OP6Feedback)
+     produces waveshaping naturally.
+
+3. **Anything can be ear candy if it's rhythmic or filtered.** A wrong-
+   sounding beep becomes psytrance the moment it's gated to 16ths or LP-
+   filtered into the background. Don't audition sounds for "beauty" —
+   audition them for rhythmic function.
+
+4. **Kick + bass are the root; everything else is garnish.** Nearly
+   anything can go ON TOP of the kick/bass skeleton — mix decisions protect
+   the low end first (sidechain pump, sub headroom), and every added layer
+   is mixed UNDER the backbone, not with it.
+
+5. **Leads are arps.** Nearly all psytrance leads are arpeggios built
+   from one scale (raga-like modes: Harmonic Minor index 7,
+   Phrygian index 3, Dorian index 2 — any with exotic intervals).
+   Compose leads PROGRAMMATICALLY: pick a scale-degree pattern
+   (e.g. 0-1-3-2-0-4-3-2 cycling), map to `scaleNote`, repeat with
+   variations — don't hand-type melodies. The `psyarp` internal synth
+   (§5c) is purpose-built for this.
+
+6. **Non-arp leads are monotonic or simple intervals.** When a lead
+   isn't an arp, it's usually 1–3 pitches (root + b2 or root + 5th) with
+   the interest coming from timbre/filter/timing, not pitch. Simple-
+   interval stabs over the bass root are the idiom.
+
+7. **Long-track variation = tweak the repetition.** The 16th-note lead
+   repeating for 8 bars is correct — variation comes from: L/R phasing
+   (auto-pan LFOs, targetParamID 2), LFO rate/depth changes between
+   sections, cutoff sweeps (automation lanes on filter params), feedback/
+   resonance changes, and per-section FX-state changes. Repetition of
+   NOTES + evolution of TIMBRE is the genre's core long-form device.
+
+---
+
 ## 1. The 7-step workflow
 
 1. **Index libraries** — make the sample packs HDAW-registered + analyzed.
@@ -122,8 +178,8 @@ await mcp_call("set_track", {"trackId": t, "volume": vol})
 The key tools and their shapes, distilled from the composition sessions:
 
 | Tool | Key params | Returns | Notes |
-|------|-----------|---------|-------|
-| `add_midi_clip` | `{trackId, start, length, name}` | `"clipId=N"` text | Clips are beats. |
+| ------ | ----------- | --------- | ------- |
+| `add_midi_clip` | `{trackId, start, length, name}` | `{"clipId":N}` JSON | Clips are beats. |
 | `add_notes` | `{clipId, notes[{start,duration,pitch,velocity}], relative}` | full `noteIds` array | Note starts are **clip-local** by default; `relative:false` = timeline-absolute. |
 | `sampler_set_sample` | `{trackId, slotIndex, filePath, rootNote}` | `"ok"` | Must be slot 0 (add_fx first). All sampler slots on a track share MIDI. |
 | `set_internal_fx_param` | `{trackId, slotIndex, paramIndex, value}` | `"ok"` | REAL units (Hz, dB, ratio). `list_fx_params` reveals indices/min/max. |
@@ -170,7 +226,7 @@ the clip start from every note start.
 One clip per role spanning the whole arrangement; sections are beat ranges:
 
 | Section | Beats (v4 @140) | Contents |
-|---|---|---|
+| --- | --- | --- |
 | Intro | 0–32 | pads (soft), sparse hat quarters from bar 4, atmos |
 | Build | 32–64 | + hats, perc, claps on 2/4, riser |
 | Main A | 64–192 | full stack: kick+bass+hats+arp+stabs+pads |
@@ -253,7 +309,7 @@ Per-role internal FX chains + LFOs — this is what the "too stripped down"
 first renders lacked. Verified full recipe (v3/v4/v5):
 
 | Role | FX chain (slots) | LFOs / automation |
-|---|---|---|
+| --- | --- | --- |
 | Kick | compressor (slot1: thr −18, ratio 4) → EQ (slot2: freq 3600) | — |
 | Bass | EQ (slot1) → compressor (slot2: thr −20, ratio 3) | LFO0: 2 cycles/beat sine → EQ cutoff (targetParam 200), depth 0.28; LFO1: 1/beat pump → Volume (target 1), depth 0.6, phase 180 |
 | Hats | reverb (mix 0.75, size 0.30) | — (flanger-rate automation in stress variants) |
@@ -315,7 +371,7 @@ await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
 ### Available presets
 
 | Preset | Algorithm | Character | Best for |
-|--------|-----------|-----------|----------|
+| -------- | ----------- | ----------- | ---------- |
 | `growlBass` | op6→op5→op1 | Feedback-modulated growl, settling envelope | Offbeat rolling bass, acid bass |
 | `acidLead` | op6→op1 | High feedback, near self-oscillation | Screaming leads, filter-sweep-style performance |
 | `metallicPluck` | op4→op2→op1 | Non-integer ratios, fast transient | Metallic stabs, alien plucks, percussive FM |
@@ -326,7 +382,7 @@ await mcp("set_lfo_param", {"trackId": trackId, "lfoIndex": 0,
 The track's `ModulationManager` routes LFOs to FM destinations via `targetParamID`:
 
 | targetParamID | Destination | Effect |
-|---------------|-------------|--------|
+| --------------- | ------------- | -------- |
 | 300 | OP1 Ratio | Modulates carrier ratio (pitch/timbre shift) |
 | 301 | OP2 Ratio | Modulates modulator 2 ratio |
 | 302 | OP3 Ratio | Modulates modulator 3 ratio |
@@ -342,7 +398,7 @@ The track's `ModulationManager` routes LFOs to FM destinations via `targetParamI
 Each of the 6 operators has its own ADSR envelope:
 
 | Indices | Operator | ADSR |
-|---------|----------|------|
+| --------- | ---------- | ------ |
 | 7–10 | OP1 | Attack, Decay, Sustain, Release |
 | 11–14 | OP2 | Attack, Decay, Sustain, Release |
 | 15–18 | OP3 | Attack, Decay, Sustain, Release |
@@ -358,6 +414,95 @@ Envelope recipes: pluck = atk 0.001, dec 0.15, sus 0.0, rel 0.1; pad = atk 0.5, 
 - **Lead:** `psy_fm` + `acidLead` preset. Mod wheel → feedback for performance control.
 - **Stabs:** `psy_fm` + `metallicPluck` preset. Fast envelope on non-integer operators.
 - **Risers:** `psy_fm` + `riser` preset. Bar clock auto-speeds ratio-sweep LFO.
+
+## 5c. Psytrance internal instruments (new in v0.25.1)
+
+Two purpose-built psytrance synths ship as internal FX types. They
+complement the `psy_fm` synth (§5b) — use them as the primary instruments
+for the corresponding roles.
+
+### growl_bass — dedicated offbeat rolling bass
+
+```
+add_fx { trackId, fxType: "growl_bass" }
+set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
+```
+
+| Index | Name | Range | Role in §0.5 canon |
+| ------- | ------ | ------- | -------------------- |
+| 0 | Fundamental Hz | 20–200 (def 55) | Bass register |
+| 1 | Mod Ratio | 0.5–8 (def 1.5) | FM depth/grit |
+| 2 | Mod Depth | 0–1 (def 0.6) | FM intensity |
+| 3 | Mod Shape | 0=Sin,1=Tri,2=Sq | Waveform color |
+| 4 | **Clip Type** | 0=SoftTanh,1=SoftAtan,2=Hard,3=Bitcrush | **Principle 2: waveshaping** |
+| 5 | **Drive dB** | 0–40 (def 18) | **Principle 2: distortion intensity** |
+| 6 | Asymmetry | −1–1 (def 0.15) | Odd-harmonic color |
+| 7 | Bitcrush Bits | 2–16 (def 8) | Digital grit (ClipType=3 only) |
+| 8 | **Filter Cutoff** | 20–20000 (def 800) | **Principle 2: first filter** |
+| 9 | Filter Res | 0.1–20 (def 4) | Resonance sweep |
+| 10 | Filter Env Amt | 0–1 (def 0.7) | Pluck/open feel |
+| 11 | Filter Type | 0=LP, 1=BP | Tone color |
+| 12–15 | ADSR | ms (0.1–100/1000) | Envelope |
+| 16 | Output Level | 0–1 (def 0.4) | Volume |
+| 17–19 | Unison | enable/voices/detune | Width/spread |
+| 20–21 | Ratio Jitter | enable/amount | Organic pitch wobble |
+| 22–23 | Formant | enable/morph | Vocal vowel quality |
+| 24–25 | Sidechain | drive/amount | Kick pump (principle 4) |
+
+**Key principle 2 recipe:** ClipType=2 (Hard), Drive=25–35, Filter
+Cutoff=600–1200, Res=6–10. Add an external `filter` FX slot after
+for the second filter pass (principle 2: instrument filter → external
+filter → …). Automate the external cutoff across sections.
+
+### psyarp — built-in arpeggiator synth (principle 5)
+
+```
+add_fx { trackId, fxType: "psyarp" }
+set_internal_fx_param { trackId, slotIndex, paramIndex: N, value: V }
+```
+
+| Index | Name | Range | Role |
+| ------- | ------ | ------- | ------ |
+| 0 | Osc Shape | 0=Saw,1=Sq,2=SuperSaw | Timbre |
+| 1 | Unison Voices | 1–4 (def 2) | Width |
+| 2 | Unison Detune | 0–50 (def 8) | Spread |
+| 3 | **Pattern Shape** | 0=UpDown,1=Asym332,2=Random | **Arp pattern** |
+| 4 | Octave Range | 1–4 (def 3) | Register spread |
+| 5 | Bars Per Motif | 0.5–8 (def 2) | Phrase length |
+| 6 | Filter Cutoff | 20–20000 (def 600) | Built-in filter |
+| 7 | Filter Res | 0.1–20 (def 7) | Resonance |
+| 8 | **Filter Sweep Bars** | 0.5–16 (def 4) | **Principle 7: cutoff evolution** |
+| 9–12 | Delay | time/feedback/ping-pong/wet | Stereo depth |
+| 13–15 | Reverb | size/wet-on-dry/wet-on-delay | Space |
+| 16–18 | Phaser | enable/rate/depth | **Principle 7: L/R movement** |
+| 19 | Output Level | 0–1 (def 0.4) | Volume |
+
+**Key principle 5 recipe:** feed notes from `scaleNote` in F harmonic
+minor (scale mode 7). Pattern Shape=0 (UpDown) or 2 (Random). Octave
+Range=2–3. Bars Per Motif=2–4. Filter Sweep Bars=4–8 (cutoff drifts
+across the motif, principle 7). Phaser Enable=1, Rate=0.1–0.5
+(principle 7: L/R phasing). Add an external `filter` FX slot after for
+the second filter pass (principle 2).
+
+**Root notes for arp:** use `scaleNote(degree, octave)` from the project
+scale (F harmonic minor mode=7, root=5). Degrees 0–6 map to
+{F,G,Ab,Bb,C,Db,E}. Feed the resulting MIDI pitches into the psyarp clip.
+
+### Combining the instruments
+
+| Role | Instrument | Why |
+| ------ | ----------- | ----- |
+| Bass | growl_bass | Dedicated growl, built-in waveshaper + filter + sidechain |
+| Arp lead | psyarp | Dedicated arpeggiator, built-in sweep + phaser + delay |
+| Stab/acid lead | psy_fm (acidLead preset) | High-feedback screaming tones |
+| FX/blips | psy_fm (metallicPluck preset) | Non-integer ratios, alien perc |
+| Pad | external sampler (chorus+reverb FX) | Sustained texture |
+
+After the internal instrument, add 1–2 `filter` FX slots for the
+second/third filter pass (principle 2), then an EQ or compressor for
+final tone shaping.
+
+---
 
 ## 6. Mix + master (all measured)
 
@@ -375,6 +520,7 @@ Envelope recipes: pluck = atk 0.001, dec 0.15, sus 0.0, rel 0.1; pad = atk 0.5, 
 - `set_master_gain` after faders; keep master ≤ ~0.9 pre-canary.
 
 **Verified canary numbers (2026-08-30 F-minor session, 140 BPM, 400 beats):**
+
 - Canary at master 0.25 → peak 0.407 → truePeak ≈ 1.63 → final `min(0.90/1.63,1.0)` = 0.55.
 - Final peak 0.852; RMS arc: intro .030 / build .082 / mainA .095 / mini .023 / mainB .096 / breakdown .040 / finale .113.
 - `pumpDepth` 0.74, `kickProminence` 0.74.
@@ -397,6 +543,7 @@ diagnostics.
 - `export_audio` ignores trackIds (always full project); serialize calls
   ("export already in progress"); use a FRESH filename per render and wait
   for the file size to stabilize; output is 24-bit PCM.
+- Since v0.25.2: `export_audio` uses atomic CAS guard; `queue:true` waits for previous export (120s timeout) instead of immediate reject; `cancel_export` still aborts.
 - Render the REAL project duration (see §4), not a fixed window.
 - Save `.hdaw` projects next to renders: `.tmp_dnb_theme/<name>.hdaw` +
   `<name>.wav`. Renders from the keep-flag run land there by convention.
@@ -436,7 +583,7 @@ bypasses the procdump attach.
    'hdaw')` then `load_project` from the last save. Save often on long
    builds (`.tmp_dnb_theme/<name>.hdaw` after every section pass).
 6. **`add_track` returns plain text** `trackId=N routed=1` — parse it; other
-   tools mix "ok" text and JSON; try both.
+   tools mix "ok" text and JSON; try both. `add_midi_clip`/`add_audio_clip` now return JSON `{"clipId":N}` since v0.25.2 (parse both).
 7. **Key discipline:** derive every pitch (bass roots, arp tones, stab
    triads, pad voicings, breakdown melody, even kick root) from ONE scale's
    degree set — v5's `fMinorDeg(degree, octave)` helper over

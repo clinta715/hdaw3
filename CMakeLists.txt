@@ -17,16 +17,32 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #    2-5 seconds per configure even when nothing changed.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
-# 2. Use sccache (Windows ccache equivalent) if available.
-#    Caches compilation results across builds, reducing rebuild time by 50-80%
-#    for unchanged files. Falls back gracefully if not installed.
-find_program(SCCACHE_EXECUTABLE sccache)
-if(SCCACHE_EXECUTABLE)
-    message(STATUS "Found sccache: ${SCCACHE_EXECUTABLE}")
-    set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
-    set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
+# 2. Optional sccache compiler launcher (OPT-IN, default OFF).
+#    2026-08-31: sccache auto-detect removed. With PCH enabled (below) nearly
+#    every TU is non-cacheable to sccache (/Fp /Yc), so it added pure risk:
+#    cache-dir permission failures, server 'address in use' flakiness, and
+#    perturbed PDB contention timing (C1041) under parallel cl. Re-enable
+#    explicitly with -DHDAW_USE_SCCACHE=ON if you run a no-PCH workflow.
+option(HDAW_USE_SCCACHE "Wrap cl.exe with sccache (requires no-PCH workflow)" OFF)
+if(HDAW_USE_SCCACHE)
+    find_program(SCCACHE_EXECUTABLE sccache)
+    if(SCCACHE_EXECUTABLE)
+        message(STATUS "sccache launcher ON: ${SCCACHE_EXECUTABLE}")
+        set(CMAKE_C_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${SCCACHE_EXECUTABLE})
+    else()
+        message(FATAL_ERROR "HDAW_USE_SCCACHE=ON but sccache not found in PATH")
+    endif()
 else()
-    message(STATUS "sccache not found; install via 'scoop install sccache' for faster rebuilds")
+    message(STATUS "sccache launcher OFF (default; -DHDAW_USE_SCCACHE=ON to enable)")
+endif()
+
+# 2b. Embedded debug info (/Z7) for ALL configs on Ninja. Parallel cl + shared
+# .pdb (/Zi) under load hits C1041/C1090 'cannot open program database' —
+# /Z7 embeds codeview into each .obj and removes the shared-PDB choke point.
+# (CMP0141 honors this variable; VS generator default unchanged.)
+if(NOT DEFINED CMAKE_MSVC_DEBUG_INFORMATION_FORMAT)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
 endif()
 
 # Generate common/Version.h with the project version so C++ code can
@@ -213,6 +229,8 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Modulation.cpp
     src/mcp/McpTools_Library.cpp
     src/mcp/McpTools_Settings.cpp
+    src/mcp/McpTools_Engine.cpp
+    src/mcp/McpTools_Tuning.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp

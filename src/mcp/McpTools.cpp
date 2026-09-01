@@ -1,6 +1,7 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
 #include "McpExportTool.h"
+#include "McpTools_Engine.h"
 #include "McpServer.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
@@ -103,8 +104,11 @@ void registerAllTools(McpServer& s) {
     registerSessionDomain(s, e);
     registerLibraryDomain(s, e);
     registerSettingsDomain(s, e);
+    registerTuningTools(s, e);
     registerExportTool(s);
     registerCancelExportTool(s);
+    registerEngineInfoTool(s);
+    registerEngineRestartTool(s);
 }
 
 } // namespace mcp

@@ -47,6 +47,8 @@ public:
     // Arp engine
     void setPatternShape(int v) noexcept { patternShape_.store(v, std::memory_order_relaxed); }
     void setOctaveRange(int v) noexcept { octaveRange_.store(v, std::memory_order_relaxed); }
+    // Arp step-rate division: 0 = 1/16 (default), 1 = 1/8, 2 = 1/4.
+    void setStepRateIndex(int v) noexcept { arpStepRateIndex_.store(v, std::memory_order_relaxed); }
     void setBarsPerMotifLoop(float v) noexcept { barsPerMotifLoop_.store(v, std::memory_order_relaxed); }
 
     // Filter (slow sweep)
@@ -87,11 +89,14 @@ private:
         std::set<int> heldNotes;           // currently held MIDI notes
         std::vector<int> sequence;         // generated arp pattern (MIDI pitches)
         int seqIndex = 0;                  // current position in sequence
-        double currentStepBeat = 0.0;      // beat position of current step
+        long long lastStepIndex = 0;       // grid-locked step clock: floor(beat / step)
+        bool stepClockStarted = false;     // armed on the first step check; the first
+                                           // trigger then snaps to the NEXT boundary
         int currentNote = -1;              // sounding note (-1 = none)
         double noteOffBeat = 0.0;          // beat when current note should release
         int channel = 1;                   // MIDI channel
         double lastBeat = 0.0;             // last transport beat (for step advancement)
+        bool sequenceDirty = false;        // held-note set changed -> rebuild sequence
         int motifCount = 0;                // bars elapsed in current motif loop
     };
 
@@ -158,6 +163,7 @@ private:
 
     std::atomic<int>   patternShape_{ 0 };       // Asymmetric332
     std::atomic<int>   octaveRange_{ 3 };
+    std::atomic<int>   arpStepRateIndex_{ 0 };   // 0=1/16, 1=1/8, 2=1/4
     std::atomic<float> barsPerMotifLoop_{ 2.0f };
 
     std::atomic<float> filterCutoffHz_{ 600.0f };

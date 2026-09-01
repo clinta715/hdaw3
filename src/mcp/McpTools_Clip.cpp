@@ -45,7 +45,8 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
             int cid = static_cast<int>(c.getProperty(IDs::clipID));
             tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
-            return McpToolResult::text(QString("clipId=%1").arg(cid));
+            QJsonObject result{{"clipId", cid}};
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"add_audio_clip", "Add an audio clip referencing a source file.",
@@ -72,7 +73,8 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(ti)), nullptr);
             int cid = static_cast<int>(c.getProperty(IDs::clipID));
             tl.getChild(ti).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
-            return McpToolResult::text(QString("clipId=%1").arg(cid));
+            QJsonObject result{{"clipId", cid}};
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"remove_clip", "Remove a clip (destructive).",

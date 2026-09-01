@@ -49,5 +49,6 @@ void registerPsyFmTools(McpServer& s, AudioEngine* e);
 void registerSessionDomain(McpServer& s, AudioEngine* e);
 void registerLibraryDomain(McpServer& s, AudioEngine* e);
 void registerSettingsDomain(McpServer& s, AudioEngine* e);
+void registerTuningTools(McpServer& s, AudioEngine* e);
 
 } // namespace mcp

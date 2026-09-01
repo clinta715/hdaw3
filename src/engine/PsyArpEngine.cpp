@@ -68,8 +68,14 @@ void PsyArpEngine::rebuildArpSequence()
     // Collect sorted base notes
     std::vector<int> base(arp_.heldNotes.begin(), arp_.heldNotes.end());
     std::sort(base.begin(), base.end());
+    if (base.empty())
+        return;  // defense in depth: every caller guards, but the modulo
+                 // branches below divide by base.size()
 
-    const int octaves = std::max(1, octaveRange_.load(std::memory_order_relaxed));
+    // Upper clamp: the param def range is 1..4; a raw/legacy value (set via
+    // setOctaveRange bypassing the slot clamp) must not grow the sequence
+    // unbounded. Lower clamp mirrors std::max(1, ...) below.
+    const int octaves = juce::jlimit(1, 8, octaveRange_.load(std::memory_order_relaxed));
     const auto shape = static_cast<PatternShape>(patternShape_.load(std::memory_order_relaxed));
 
     switch (shape)
@@ -121,7 +127,13 @@ void PsyArpEngine::rebuildArpSequence()
             for (int i = 0; i < octaves * 8; ++i)
             {
                 int oct = i % octaves;
-                int noteIdx = static_cast<int>(rng()) % static_cast<int>(base.size());
+                // rng() yields uint32: casting FIRST wraps half of all draws to
+                // negative ints, and C++ % keeps the dividend's sign, so
+                // base[noteIdx] subscripted a negative index (MSVC debug:
+                // <vector> "vector subscript out of range" assert; release:
+                // OOB read -> garbage pitches). Modulo in the unsigned domain
+                // instead; base.size() <= 128 so the int cast stays exact.
+                int noteIdx = static_cast<int>(rng() % base.size());
                 arp_.sequence.push_back(base[noteIdx] + 12 * oct);
             }
             break;
@@ -208,7 +220,8 @@ void PsyArpEngine::processDelay(float& inL, float& inR, float& outL, float& outR
     const float feedback = delayFeedback_.load(std::memory_order_relaxed);
     const float pingPong = delayPingPongWidth_.load(std::memory_order_relaxed);
 
-    if (wetLevel <= 0.001f || delay_.bufferL.empty())
+    if (wetLevel <= 0.001f || delay_.bufferL.empty()
+        || delay_.bufferR.size() != delay_.bufferL.size())
     {
         outL = inL;
         outR = inR;
@@ -254,6 +267,21 @@ void PsyArpEngine::processReverb(float inL, float inR, float& outL, float& outR)
     float mix = std::max(wetOnDry, wetOnDelay);
 
     if (mix <= 0.001f)
+    {
+        outL = inL;
+        outR = inR;
+        return;
+    }
+
+    // The comb/allpass buffers are allocated in prepare(). A render() that
+    // reaches here without a prepare() (or with a 0 Hz prepare) would
+    // subscript EMPTY vectors (MSVC debug: "vector subscript out of range"
+    // assert in <vector> operator[]) and divide by zero in the position
+    // modulo — bail out to dry signal instead (same contract as
+    // processDelay's empty guard).
+    if (reverb_.combBuffer[0].empty() || reverb_.combBuffer[1].empty()
+        || reverb_.combBuffer[2].empty() || reverb_.combBuffer[3].empty()
+        || reverb_.allpassBuffer[0].empty() || reverb_.allpassBuffer[1].empty())
     {
         outL = inL;
         outR = inR;
@@ -379,26 +407,46 @@ void PsyArpEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         {
             arp_.heldNotes.insert(msg.getNoteNumber());
             arp_.channel = msg.getChannel();
+            arp_.sequenceDirty = true;
         }
         else if (msg.isNoteOff())
         {
             arp_.heldNotes.erase(msg.getNoteNumber());
+            arp_.sequenceDirty = true;
         }
     }
     midi.clear();  // We consume all MIDI — this is a synth, not a pass-through
 
     // ── Arp pattern advancement ──
-    // Advance the arp sequencer based on transport beat position
-    // The arp runs at 1/16 note rate (0.25 beats at default)
-    const float arpRateBeats = 0.25f;  // 16th notes
+    // Advance the arp sequencer based on transport beat position.
+    // Step rate division (param 20): 0 = 1/16 (0.25 beats, default for
+    // backward compat), 1 = 1/8 (0.5), 2 = 1/4 (1.0). Drives BOTH the grid
+    // step clock and the 80% gate release below. Read once per block.
+    static constexpr float kStepRateBeats[3] = { 0.25f, 0.5f, 1.0f };
+    const float arpRateBeats =
+        kStepRateBeats[juce::jlimit(0, 2,
+            arpStepRateIndex_.load(std::memory_order_relaxed))];
     const float currentBeat = static_cast<float>(arp_.lastBeat);
     const float blockEndBeat = currentBeat + static_cast<float>(numSamples) * beatsPerSample;
 
-    // Rebuild sequence if held notes changed
-    if (arp_.sequence.empty() && !arp_.heldNotes.empty())
+    // Rebuild the sequence whenever the held-note set changed (chord change,
+    // including abutting off==on boundaries within one block), or whenever the
+    // sequence is somehow empty while notes are held. Previously the sequence
+    // was only built once (on the first chord) and then went stale: later
+    // chords kept playing the first chord's pitches, and a stale seqIndex
+    // survived rebuilds that shrank the sequence. Rebuilds happen at most
+    // once per block, on the audio thread, same allocation pattern as before.
+    if (arp_.sequenceDirty || (arp_.sequence.empty() && !arp_.heldNotes.empty()))
+    {
+        arp_.sequenceDirty = false;
         rebuildArpSequence();
-    else if (!arp_.heldNotes.empty() && arp_.sequence.empty())
-        rebuildArpSequence();
+        // Re-anchor: a rebuild can shrink the sequence while seqIndex is
+        // larger than its new size.
+        if (arp_.sequence.empty())
+            arp_.seqIndex = 0;
+        else
+            arp_.seqIndex %= static_cast<int>(arp_.sequence.size());
+    }
 
     // ── Per-sample synthesis ──
     buffer.clear();
@@ -414,30 +462,60 @@ void PsyArpEngine::render(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         // ── Arp step check ──
         float sampleBeat = currentBeat + static_cast<float>(s) * beatsPerSample;
 
-        // Check if we've passed the next arp step
+        // Grid-locked arp step clock. Steps are derived from the transport
+        // beat position (floor(sampleBeat / arpRateBeats)), NOT accumulated
+        // from the first trigger: a chord landing mid-16th (off-grid) must
+        // not phase-shift every subsequent step off the transport grid.
+        // Step boundaries sit at k * arpRateBeats; a step triggers exactly
+        // when floor(sampleBeat / arpRateBeats) changes.
         if (!arp_.sequence.empty() && arp_.heldNotes.empty())
         {
-            // No held notes — silence this sample
+            // All notes released — stop the arp voice so the oscillator
+            // silences (delay/reverb tails decay naturally). The old code
+            // left currentNote sounding forever here.
+            arp_.currentNote = -1;
         }
         else if (!arp_.sequence.empty())
         {
-            float nextStepBeat = arp_.currentStepBeat + arpRateBeats;
-            if (sampleBeat >= nextStepBeat)
+            // Release the current note when its 80% gate expires. Checked
+            // every sample — the old code only evaluated the release when a
+            // new step fired, so notes sustained through the gate gap.
+            if (arp_.currentNote >= 0 && sampleBeat >= arp_.noteOffBeat)
+                arp_.currentNote = -1;
+
+            const double beatPos = static_cast<double>(sampleBeat);
+            if (std::isfinite(beatPos))
             {
-                // Release previous note
-                if (arp_.currentNote >= 0 && sampleBeat >= arp_.noteOffBeat)
+                const long long stepIndex = static_cast<long long>(
+                    std::floor(beatPos / static_cast<double>(arpRateBeats)));
+
+                if (!arp_.stepClockStarted)
                 {
-                    arp_.currentNote = -1;
+                    // Arm the clock on the current grid cell WITHOUT
+                    // triggering: the first note snaps to the NEXT grid
+                    // boundary, never mid-grid (no phase shift from an
+                    // off-grid chord start).
+                    arp_.stepClockStarted = true;
+                    arp_.lastStepIndex = stepIndex;
                 }
+                else if (stepIndex != arp_.lastStepIndex)
+                {
+                    arp_.lastStepIndex = stepIndex;
 
-                // Advance to next step
-                arp_.currentStepBeat = nextStepBeat;
-                arp_.seqIndex = (arp_.seqIndex + 1)
-                    % static_cast<int>(arp_.sequence.size());
+                    // Advance to the next step and trigger the new note.
+                    arp_.seqIndex = (arp_.seqIndex + 1)
+                        % static_cast<int>(arp_.sequence.size());
+                    // Defensive: no path may subscript sequence out of range,
+                    // even if a future edit breaks the rebuild invariants
+                    // (MSVC debug: "vector subscript out of range" assert).
+                    arp_.seqIndex = std::clamp(arp_.seqIndex, 0,
+                        static_cast<int>(arp_.sequence.size()) - 1);
 
-                // Trigger new note
-                arp_.currentNote = arp_.sequence[arp_.seqIndex];
-                arp_.noteOffBeat = nextStepBeat + arpRateBeats * 0.8f; // 80% gate
+                    arp_.currentNote = arp_.sequence[arp_.seqIndex];
+                    // 80% gate: release at 0.8 steps into the grid cell.
+                    arp_.noteOffBeat = (static_cast<double>(stepIndex) + 0.8)
+                        * static_cast<double>(arpRateBeats);
+                }
             }
         }
 

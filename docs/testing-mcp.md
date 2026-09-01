@@ -155,6 +155,23 @@ Protocol) server so an LLM client (Claude Desktop, opencode, etc.)
 can drive the DAW. 36 tools cover transport, tracks, clips, MIDI notes,
 composition (`PhraseGenerator`), FX, automation, undo, and audio export.
 
+### Engine binary update flow (`engine_info` / `engine_restart`)
+
+Rebuilding `HDAW_headless.exe` does not update a **running** engine — the
+process keeps executing the old image (lesson 21: a stale binary looks
+healthy and answers every RPC, but contains none of the fixes). The update
+flow is: rebuild → `engine_info` with `buildBinaryPath` set to the fresh
+binary (returns `stale: true` when the build tree is newer than the running
+process) → `engine_restart`, which refuses while an export renders (never
+silently cancels a long render; override with `force: true`) and then
+schedules `QCoreApplication::exit(42)` 300 ms after the tool response is
+flushed — exit code 42 means *intentional restart*, and `mcp-launch.bat`
+propagates it, re-copies the fresh binary, and size-verifies the copy before
+relaunching. The MCP client must reconnect afterwards (`mcp.reload` or a
+launcher relaunch). Both tools are read-only/restart-only by contract:
+`engine_info` never mutates, and `engine_restart` performs no engine-side
+cleanup — the normal shutdown path owns AudioEngine teardown.
+
 - **Two transports**, both behind the `Transport` interface
   (`src/mcp/McpTransport.h`): `McpTransportStdio` (newline-delimited
   JSON over `stdin`/`stdout`, with a dedicated reader thread that

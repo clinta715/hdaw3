@@ -38,20 +38,34 @@ ExportManager::~ExportManager()
         renderThread.join();
 }
 
+bool ExportManager::waitForIdle(uint32_t timeoutMs)
+{
+    const auto deadline = juce::Time::getMillisecondCounter() + timeoutMs;
+    while (active.load())
+    {
+        if (cancelFlag.load())
+            return false;
+        if (juce::Time::getMillisecondCounter() >= deadline)
+            return false;
+        juce::Thread::sleep(10);
+    }
+    return true;
+}
+
 bool ExportManager::startExport(const juce::ValueTree& projectTree,
                                 juce::AudioFormatManager& formatManager,
                                 PluginManager* pluginManager, const juce::File& outputPath,
                                 double sampleRate, double startTime, double duration,
                                 Format format, int bitDepth)
 {
-    if (active.load())
+    bool expected = false;
+    if (!active.compare_exchange_strong(expected, true))
     {
         HDAW_LOG("Export", "startExport rejected: a previous export is still active");
         return false;
     }
 
     cancelFlag = false;
-    active = true;
 
     if (renderThread.joinable())
         renderThread.join();

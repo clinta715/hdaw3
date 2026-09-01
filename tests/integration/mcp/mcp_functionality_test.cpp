@@ -101,6 +101,35 @@ protected:
         return content[0].toObject().value("text").toString();
     }
 
+    int parseClipId(const QString& resp) {
+        QString s = resp.trimmed();
+        if (s.startsWith('{')) {
+            auto doc = QJsonDocument::fromJson(s.toUtf8());
+            if (doc.isObject() && doc.object().contains("clipId"))
+                return doc.object().value("clipId").toInt();
+        }
+        // Try clipId= or "clipId": patterns
+        int idx = s.indexOf("clipId");
+        if (idx >= 0) {
+            int eq = s.indexOf('=', idx);
+            int colon = s.indexOf(':', idx);
+            int pos = -1;
+            if (eq >= 0 && colon >= 0) pos = std::min(eq, colon);
+            else if (eq >= 0) pos = eq;
+            else if (colon >= 0) pos = colon;
+            if (pos >= 0) {
+                int start = pos + 1;
+                while (start < s.size() && !s[start].isDigit() && s[start] != '-') ++start;
+                int end = start;
+                while (end < s.size() && s[end].isDigit()) ++end;
+                if (end > start) return s.mid(start, end - start).toInt();
+            }
+        }
+        // Fallback: first integer
+        for (int i = 0; i < s.size(); ++i) if (s[i].isDigit()) { int j=i; while(j < s.size() && s[j].isDigit()) ++j; return s.mid(i, j-i).toInt(); }
+        return s.mid(s.indexOf('=') + 1).toInt();
+    }
+
     // Get track list
     QJsonArray trackList() {
         auto t = callText("list_tracks");
@@ -245,7 +274,7 @@ TEST_F(GuiFuncTest, AddMidiClip) {
 
     // Extract clipId from response text "clipId=N"
     QString resp = text(r);
-    int clipId = resp.mid(resp.indexOf('=') + 1).toInt();
+    int clipId = parseClipId(resp);
     auto c = findClip(clipId);
     EXPECT_FALSE(c.isEmpty());
     EXPECT_EQ(c.value("trackId").toInt(), 0);
@@ -259,14 +288,14 @@ TEST_F(GuiFuncTest, AddMidiClipWithName) {
         {"trackId", 0}, {"start", 8.0}, {"length", 2.0}, {"name", "Melody"}
     });
     EXPECT_FALSE(isError(r));
-    int clipId = text(r).mid(text(r).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(r));
     auto c = findClip(clipId);
     EXPECT_EQ(c.value("name").toString().toStdString(), "Melody");
 }
 
 TEST_F(GuiFuncTest, RemoveClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
     ASSERT_GT(clipId, 0);
 
     int before = clipCount();
@@ -278,7 +307,7 @@ TEST_F(GuiFuncTest, RemoveClip) {
 
 TEST_F(GuiFuncTest, MoveClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto r = call("move_clip", {{"clipId", clipId}, {"start", 16.0}});
     EXPECT_FALSE(isError(r));
@@ -291,7 +320,7 @@ TEST_F(GuiFuncTest, MoveClipToDifferentTrack) {
     call("add_track", {{"name", "Track 2"}});
 
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto r = call("move_clip", {{"clipId", clipId}, {"trackId", trackCountBefore}});
     EXPECT_FALSE(isError(r));
@@ -301,7 +330,7 @@ TEST_F(GuiFuncTest, MoveClipToDifferentTrack) {
 
 TEST_F(GuiFuncTest, SetClipProperties) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("set_clip", {{"clipId", clipId}, {"name", "Renamed"}});
     call("set_clip", {{"clipId", clipId}, {"gain", 0.75}});
@@ -319,7 +348,7 @@ TEST_F(GuiFuncTest, SetClipProperties) {
 
 TEST_F(GuiFuncTest, DuplicateClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     int before = clipCount();
     auto r = call("duplicate_clip", {{"clipId", clipId}});
@@ -327,7 +356,7 @@ TEST_F(GuiFuncTest, DuplicateClip) {
     EXPECT_EQ(clipCount(), before + 1);
 
     // The duplicated clip should have a different ID
-    int newClipId = text(r).mid(text(r).indexOf('=') + 1).toInt();
+    int newClipId = parseClipId(text(r));
     EXPECT_NE(newClipId, clipId);
 
     // Original and duplicate should have the same start
@@ -339,10 +368,10 @@ TEST_F(GuiFuncTest, DuplicateClip) {
 
 TEST_F(GuiFuncTest, DuplicateClipToNewPosition) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto r = call("duplicate_clip", {{"clipId", clipId}, {"start", 16.0}});
-    int newClipId = text(r).mid(text(r).indexOf('=') + 1).toInt();
+    int newClipId = parseClipId(text(r));
     auto dup = findClip(newClipId);
     EXPECT_NEAR(dup.value("start").toDouble(), 16.0, 0.01);
 }
@@ -363,7 +392,7 @@ TEST_F(GuiFuncTest, AddMidiClipInvalidTrack) {
 
 TEST_F(GuiFuncTest, AddNote) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto r = call("add_note", {
         {"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
@@ -383,7 +412,7 @@ TEST_F(GuiFuncTest, AddNote) {
 
 TEST_F(GuiFuncTest, AddMultipleNotes) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
@@ -398,7 +427,7 @@ TEST_F(GuiFuncTest, AddMultipleNotes) {
 
 TEST_F(GuiFuncTest, SetNote) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto noteResp = call("add_note", {{"clipId", clipId}, {"pitch", 60},
                                        {"start", 0.0}, {"duration", 1.0},
@@ -415,7 +444,7 @@ TEST_F(GuiFuncTest, SetNote) {
 
 TEST_F(GuiFuncTest, RemoveNotesByFilter) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
@@ -432,7 +461,7 @@ TEST_F(GuiFuncTest, RemoveNotesByFilter) {
 
 TEST_F(GuiFuncTest, ClearNotes) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
@@ -450,7 +479,7 @@ TEST_F(GuiFuncTest, ClearNotes) {
 // only prior way to count notes in a range was remove_notes dryRun).
 TEST_F(GuiFuncTest, ListNotesWithFilters) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 16.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
@@ -511,7 +540,7 @@ TEST_F(GuiFuncTest, ListNotesWithFilters) {
 
 TEST_F(GuiFuncTest, AddNoteToNonMidiClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto r = call("add_note", {{"clipId", clipId}, {"pitch", 60},
                                 {"start", 0.0}, {"duration", 1.0}, {"velocity", 100}});
@@ -520,7 +549,7 @@ TEST_F(GuiFuncTest, AddNoteToNonMidiClip) {
 
 TEST_F(GuiFuncTest, CcPointAddGetSetRemove) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto addCc = call("add_cc_point", {{"clipId", clipId}, {"controllerNumber", 74},
                                        {"beat", 1.0}, {"value", 100}});
@@ -630,7 +659,7 @@ TEST_F(GuiFuncTest, UndoRemoveTrack) {
 TEST_F(GuiFuncTest, UndoRedoClip) {
     int before = clipCount();
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
     EXPECT_EQ(clipCount(), before + 1);
 
     call("undo", {});
@@ -643,7 +672,7 @@ TEST_F(GuiFuncTest, UndoRedoClip) {
 
 TEST_F(GuiFuncTest, UndoMoveClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto before = findClip(clipId);
     double origStart = before.value("start").toDouble();
@@ -670,7 +699,7 @@ TEST_F(GuiFuncTest, UndoSetTrackVolume) {
 
 TEST_F(GuiFuncTest, UndoAddNote) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
@@ -844,7 +873,7 @@ TEST_F(GuiFuncTest, GetProjectSummary) {
 
 TEST_F(GuiFuncTest, RemoveClipDryRun) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     int before = clipCount();
     auto r = call("remove_clip", {{"clipId", clipId}, {"dryRun", true}});
@@ -855,7 +884,7 @@ TEST_F(GuiFuncTest, RemoveClipDryRun) {
 
 TEST_F(GuiFuncTest, DuplicateClipDryRun) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     int before = clipCount();
     auto r = call("duplicate_clip", {{"clipId", clipId}, {"dryRun", true}});
@@ -893,7 +922,7 @@ TEST_F(GuiFuncTest, ManyClipsOnOneTrack) {
 
 TEST_F(GuiFuncTest, ManyNotesInClip) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     for (int i = 0; i < 20; ++i) {
         auto r = call("add_note", {
@@ -912,7 +941,7 @@ TEST_F(GuiFuncTest, UndoAllOperations) {
     call("add_track", {{"name", "Track A"}});
     call("add_track", {{"name", "Track B"}});
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                        {"duration", 1.0}, {"velocity", 100}});
 
@@ -940,8 +969,7 @@ TEST_F(GuiFuncTest, GeneratePhraseAndDuplicate) {
     EXPECT_FALSE(isError(gen));
 
     QString genText = text(gen);
-    int clipId = genText.mid(genText.indexOf('=') + 1,
-                             genText.indexOf(' ') - genText.indexOf('=') - 1).toInt();
+    int clipId = parseClipId(genText);
 
     auto notes = getNotes(clipId);
     EXPECT_GT(notes.size(), 0);
@@ -958,10 +986,10 @@ TEST_F(GuiFuncTest, GeneratePhraseAndDuplicate) {
 
 TEST_F(GuiFuncTest, TrackWithMultipleClipsAndNotes) {
     auto add1 = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clip1 = text(add1).mid(text(add1).indexOf('=') + 1).toInt();
+    int clip1 = parseClipId(text(add1));
 
     auto add2 = call("add_midi_clip", {{"trackId", 0}, {"start", 8.0}, {"length", 4.0}});
-    int clip2 = text(add2).mid(text(add2).indexOf('=') + 1).toInt();
+    int clip2 = parseClipId(text(add2));
 
     for (int i = 0; i < 5; ++i) {
         call("add_note", {{"clipId", clip1}, {"pitch", 60 + i}, {"start", i * 0.5},
@@ -1008,7 +1036,7 @@ TEST_F(GuiFuncTest, InvalidClipOperations) {
 
 TEST_F(GuiFuncTest, InvalidNoteOperations) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     auto note = call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                                   {"duration", 1.0}, {"velocity", 100}});
@@ -1032,7 +1060,7 @@ TEST_F(GuiFuncTest, SaveAndLoadProject) {
 
     call("add_track", {{"name", "Guitar"}});
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
     call("add_note", {{"clipId", clipId}, {"pitch", 60}, {"start", 0.0},
                       {"duration", 1.0}, {"velocity", 100}});
     call("set_track", {{"trackId", 0}, {"volume", 0.75}});
@@ -1172,7 +1200,7 @@ TEST_F(GuiFuncTest, BatchClipCreation) {
 
 TEST_F(GuiFuncTest, BatchNoteCreation) {
     auto add = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 16.0}});
-    int clipId = text(add).mid(text(add).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(add));
 
     for (int i = 0; i < 64; ++i) {
         auto r = call("add_note", {
@@ -1229,7 +1257,7 @@ TEST_F(GuiFuncTest, GenerateClipGainEnvelope) {
         {"sourceFile", wavPath}, {"name", "EnvTest"}
     });
     ASSERT_FALSE(isError(clipR)) << text(clipR).toStdString();
-    int clipId = text(clipR).mid(text(clipR).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(clipR));
 
     auto r = call("generate_clip_gain_envelope", {{"clipId", clipId}, {"shape", "adsr"}});
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
@@ -1238,7 +1266,7 @@ TEST_F(GuiFuncTest, GenerateClipGainEnvelope) {
 TEST_F(GuiFuncTest, GenerateClipCcLane) {
     auto clipR = call("add_midi_clip", {{"trackId", 0}, {"start", 0.0}, {"length", 4.0}});
     ASSERT_FALSE(isError(clipR));
-    int clipId = text(clipR).mid(text(clipR).indexOf('=') + 1).toInt();
+    int clipId = parseClipId(text(clipR));
 
     auto r = call("generate_clip_cc_lane", {
         {"clipId", clipId}, {"controllerNumber", 1}, {"shape", "sine"}

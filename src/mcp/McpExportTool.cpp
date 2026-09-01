@@ -27,7 +27,7 @@ void registerExportTool(McpServer& s) {
     if (!e) return;
 
     s.registerTool({"export_audio",
-        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cancellation is explicit via the cancel_export tool, which aborts an in-progress render and deletes the partial file.",
+        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cancellation is explicit via the cancel_export tool, which aborts an in-progress render and deletes the partial file. Optional queue=true waits up to 120s for a prior export to finish instead of immediately rejecting (CAS-guarded; still fails if timeout or cancelled).",
         objSchema({{"outputPath", QJsonObject{{"type","string"}}},
                   {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav","aiff","flac"}}}},
                   {"start",      QJsonObject{{"type","number"}}},
@@ -35,7 +35,8 @@ void registerExportTool(McpServer& s) {
                   {"sampleRate", QJsonObject{{"type","number"},{"minimum",8000},{"maximum",192000}}},
                   {"bitDepth",   QJsonObject{{"type","integer"},{"enum", QJsonArray{16,24,32}}}},
                   {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
-                  {"dryRun",     QJsonObject{{"type","boolean"}}}},
+                  {"dryRun",     QJsonObject{{"type","boolean"}}},
+                  {"queue",      QJsonObject{{"type","boolean"}}}},
                  {"outputPath"}),
         "export",
         [e, &s](const QJsonObject& a) -> McpToolResult {
@@ -72,8 +73,14 @@ void registerExportTool(McpServer& s) {
 
             auto& em = e->getMainProcessor()->getExportManager();
             if (em.isExporting()) {
-                return McpToolResult::text(
-                    "another export is in progress — use cancel_export to abort it first", true);
+                bool queue = a.value("queue").toBool(false);
+                if (queue) {
+                    if (!em.waitForIdle(120000))
+                        return McpToolResult::text("timeout waiting for previous export to finish (queue expired or cancelled)", true);
+                } else {
+                    return McpToolResult::text(
+                        "another export is in progress — use cancel_export to abort it first or retry with queue=true to wait", true);
+                }
             }
 
             juce::ValueTree projectCopy = e->getProjectModel().getTree().createCopy();

@@ -22,6 +22,7 @@ add_executable(hdaw_tests
     integration/mcp/mcp_server_test.cpp
     integration/mcp/mcp_functionality_test.cpp
     integration/mcp/mcp_coverage_test.cpp
+    integration/mcp/engine_tools_test.cpp
     unit/proxy/common_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp
@@ -46,6 +47,7 @@ add_executable(hdaw_tests
     unit/engine/fm_synth_test.cpp
     unit/engine/psyfm_test.cpp
     unit/engine/growl_bass_engine_test.cpp
+    unit/engine/psyarp_engine_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
     unit/engine/sampler_fxslot_test.cpp

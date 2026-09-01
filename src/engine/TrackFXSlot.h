@@ -199,6 +199,7 @@ public:
                 {17, "Phaser Rate",        0.15f,  0.01f,  5.0f },
                 {18, "Phaser Depth",       0.3f,   0.0f,   1.0f },
                 {19, "Output Level",       0.4f,   0.0f,   1.0f },
+                {20, "Step Rate",          0.0f,   0.0f,   2.0f },  // 0=1/16, 1=1/8, 2=1/4
             };
         if (type == "psy_fm")
             return {
@@ -631,6 +632,7 @@ public:
                 if (internalParamValues.size() > 17) psyArp->setPhaserRateHz(internalParamValues[17]);
                 if (internalParamValues.size() > 18) psyArp->setPhaserDepth(internalParamValues[18]);
                 if (internalParamValues.size() > 19) psyArp->setOutputLevel(internalParamValues[19]);
+                if (internalParamValues.size() > 20) psyArp->setStepRateIndex(static_cast<int>(internalParamValues[20]));
                 break;
             }
             case ActiveType::PsyFm:
@@ -1484,6 +1486,7 @@ private:
                     case 17: psyArp->setPhaserRateHz(value); break;
                     case 18: psyArp->setPhaserDepth(value); break;
                     case 19: psyArp->setOutputLevel(value); break;
+                    case 20: psyArp->setStepRateIndex(static_cast<int>(value)); break;
                     default: return;
                 }
                 break;

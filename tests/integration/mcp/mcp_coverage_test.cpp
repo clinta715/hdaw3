@@ -131,13 +131,40 @@ protected:
         return resp.value("result").toObject().value("tools").toArray();
     }
 
+    int parseClipId(const QString& resp) {
+        QString s = resp.trimmed();
+        if (s.startsWith('{')) {
+            auto doc = QJsonDocument::fromJson(s.toUtf8());
+            if (doc.isObject() && doc.object().contains("clipId"))
+                return doc.object().value("clipId").toInt();
+        }
+        int idx = s.indexOf("clipId");
+        if (idx >= 0) {
+            int eq = s.indexOf('=', idx);
+            int colon = s.indexOf(':', idx);
+            int pos = -1;
+            if (eq >= 0 && colon >= 0) pos = std::min(eq, colon);
+            else if (eq >= 0) pos = eq;
+            else if (colon >= 0) pos = colon;
+            if (pos >= 0) {
+                int start = pos + 1;
+                while (start < s.size() && !s[start].isDigit() && s[start] != '-') ++start;
+                int end = start;
+                while (end < s.size() && s[end].isDigit()) ++end;
+                if (end > start) return s.mid(start, end - start).toInt();
+            }
+        }
+        for (int i = 0; i < s.size(); ++i) if (s[i].isDigit()) { int j=i; while(j < s.size() && s[j].isDigit()) ++j; return s.mid(i, j-i).toInt(); }
+        return s.mid(s.indexOf('=') + 1).toInt();
+    }
+
     int addMidiClip(int trackId, double start, double length, const QString& name = {}) {
         QJsonObject args{{"trackId", trackId}, {"start", start}, {"length", length}};
         if (!name.isEmpty()) args["name"] = name;
         auto r = call("add_midi_clip", args);
         if (isError(r)) return -1;
         QString resp = text(r);
-        return resp.mid(resp.indexOf('=') + 1).toInt();
+        return parseClipId(resp);
     }
 
     int addNote(int clipId, int pitch, double start, double duration, int velocity = 100) {

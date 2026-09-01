@@ -45,6 +45,12 @@ public:
     // over liveness, but log loudly before blocking.
     void cancelAndJoin(uint32_t drainTimeoutMs = 10000);
 
+    // Poll active with 10ms sleep until idle or timeout/cancel. Returns true
+    // if idle before deadline, false on timeout or cancellation. Used by
+    // queue=true export paths (MCP + frontend) to wait for a prior export
+    // without TOCTOU: caller waits then re-attempts startExport CAS.
+    bool waitForIdle(uint32_t timeoutMs);
+
     std::function<void(float)> onProgress;
     std::function<void(bool success, const juce::String& message)> onComplete;
 

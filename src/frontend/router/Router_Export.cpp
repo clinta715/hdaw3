@@ -6,6 +6,7 @@
 #include "../../engine/AudioEngine.h"
 #include "../../engine/ExportManager.h"
 
+#include <QCoreApplication>
 #include <QEventLoop>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -54,8 +55,23 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         if (mainProc == nullptr)
             return makeError(-32603, "audio engine not initialized");
         auto& em = mainProc->getExportManager();
-        if (em.isExporting())
-            return makeError(-32603, "export already in progress");
+        if (em.isExporting()) {
+            bool queue = optBool(o, "queue", false, nullptr);
+            if (queue) {
+                // Poll with event processing so progress notifications and
+                // cancel requests keep flowing; bounded 120s wait.
+                const auto deadline = juce::Time::getMillisecondCounter() + 120000u;
+                while (em.isExporting()) {
+                    if (juce::Time::getMillisecondCounter() >= deadline)
+                        return makeError(-32603, "timeout waiting for previous export to finish (queue expired or cancelled)");
+                    // Keep Qt event loop alive so cancel/progress still dispatch.
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+                    juce::Thread::sleep(10);
+                }
+            } else {
+                return makeError(-32603, "export already in progress — retry with queue=true to wait");
+            }
+        }
 
         juce::File outFile(juce::String(path.toUtf8().constData()));
         if (outFile.existsAsFile()) outFile.deleteFile();
