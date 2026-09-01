@@ -216,6 +216,10 @@ float PsyArpEngine::processSVF(float input, float cutoff, float resonance, float
 
 void PsyArpEngine::processDelay(float& inL, float& inR, float& outL, float& outR)
 {
+    // Convert delay time from beats to samples
+    const float samplesPerBeat = static_cast<float>(sampleRate_ * 60.0) / static_cast<float>(bpm_);
+    delay_.delaySamples = static_cast<int>(delayTimeBeats_.load(std::memory_order_relaxed) * samplesPerBeat);
+
     const float wetLevel = delayWetLevel_.load(std::memory_order_relaxed);
     const float feedback = delayFeedback_.load(std::memory_order_relaxed);
     const float pingPong = delayPingPongWidth_.load(std::memory_order_relaxed);
