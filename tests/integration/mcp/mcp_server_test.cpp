@@ -1491,13 +1491,12 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
 // instances inside one export, several isolated instances on the live graph)
 // through the real MCP export_audio path and requires completion within the
 // wait budget; a hang regression trips the waitExportComplete timeout.
-// DISABLED 2026-09-02: flaky in-suite ("Export cancelled." mid-render ~1 in 2
-// full-suite runs; passes consistently standalone). Same cancel family as
-// DiagnosticClapExportMatrix's documented saga; the rebuild-vs-drain fix
-// (ExportManager::usesDedicatedDomain) resolved the matrix but a second
-// cancel path remains for this test's 3-children-plus-3-offline-instances
-// shape. Re-enable after the plugin-host export-cancel campaign.
-TEST(McpServer, DISABLED_ExportAudioWithMultipleIsolatedInstances) {
+// 2026-09-02: previously DISABLED for in-suite "Export cancelled." flakes.
+// Root cause: startExport set active=true while the dedicated-domain flag was
+// only published later inside renderThreadFunc — a queued live rebuild landing
+// in that window drained (cancelAndJoin) and cancelled the export. Fixed by
+// publishing dedicatedDomainActive in startExport before the thread starts.
+TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
     AudioEngine engine;
     engine.initialize();
 
