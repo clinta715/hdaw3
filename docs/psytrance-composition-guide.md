@@ -117,6 +117,12 @@ python3 register_library.py --path "E:\samples\Some Pack" --name Short-Name
 python3 analyze_multi.py      # multi-folder, models loaded once, strided
 ```
 
+Sidecar records now carry `key` and `bpm` (filename tag first — `Am`,
+`F#m`, `C min`, `128 BPM` — then Krumhansl chroma / onset-tempo estimation).
+FileLibraryManager ingests them on scan: sidecar key overrides the native
+chroma guess; sidecar bpm fills in when the entry has none. `search_library`
+key/BPM filters therefore match analyzed pads/loops directly.
+
 - `analyze.sh --library` writes the registry via script — safe only when NO
   engine is running (an engine restart clobbers externally-written registry
   entries; while a DAW/MCP engine may run, register via MCP `add_library`).
@@ -285,8 +291,9 @@ Per-role pattern templates (all verified in the production tests):
   of each beat +12 for the classic psy arp glint. Velocity ~90, dur 0.2.
 - **Stabs:** triad chord on beat 2 of each bar (`start: bar*4 + 1.0`),
   in-key voicing, velocity ~96, duration 1.3.
-- **Pads:** long notes every bar (`{chordTone, bar*4}` + a second tone
-  +0.5), duration 4.0, velocity ~64, whole arrangement.
+- **Pads:** gated chord beds — triads or 7ths on 8th/16th grids,
+  with one home harmony and at most one secondary harmony center.
+  Use `pad` as the thick wash, not a single long note.
 - **Breakdown melody:** slow long reverbed phrase (e.g. `{69,74,71,76}` at
   +8 beats, dur 3.0, velocity 95) over the pad wash.
 - **Transitions:** reverse cymbal/hat samples at 4–8 beat spots before each
@@ -303,6 +310,127 @@ you MUST pass `enableOpenHat:false` + `enableSnare:false` or stray tracks
 appear; generated note templates are staccato (0.1–0.7 beat durations) →
 through a gating sampler they render quiet, so lengthen via `set_note`.
 
+### §4B Incremental Markov mode — build 2 bars at a time (`generate_psytrance_markov`)
+
+Where `generate_psytrance` preplans the WHOLE song from a section table, the
+Markov mode grows the arrangement incrementally: a pool of role elements
+(kick, bass, hat, arp, stab, pad, clap) starts minimal and the track evolves
+2 bars at a time under a seeded Markov chain. Pure deterministic engine
+(`PsytranceMarkovGenerator`, no engine dependency), wired end-to-end:
+MCP tool `generate_psytrance_markov` → RPC `generatePsytranceMarkov` →
+`AudioEngineCommands::generatePsytranceMarkov` (same clip-writing contract as
+the legacy path: one clip per produced role at beat 0 spanning
+`totalBars*4` beats, notes clip-local, ONE undo unit).
+
+**Pool-of-elements philosophy.** The arrangement is not a fixed schedule; it
+is a pool of layers that enter, hold, vary, and leave. Global active-layer
+count stays within `[minTracks, maxTracks]` (default 2..6). Percussive roles
+`{kick, hat, clap}` additionally stay within `[minPercTracks, maxPercTracks]`
+(default 1..3) *inside* the global bounds — at perc-max a percussive Add is
+suppressed (a non-perc layer is picked instead), at perc-min a percussive
+Remove is suppressed. If no target is valid under both limit sets the chain
+falls back to Keep/Swap/FilterSweep. This is what makes build-ups and
+breakdowns EMERGE instead of being scheduled.
+
+**Two-tier model.** A slow section-energy state
+(`sparse | build | peak | breakdown`; see the vague-timing note below —
+`sectionCycleBars` (default 32) is the base of a jittered schedule, not a
+fixed grid) biases the fast per-window weights: build boosts AddLayer and
+suppresses RemoveLayer; peak boosts Keep and micro-variation; breakdown
+forces subtractive moves until `minTracks`, then re-builds; sparse is
+add-heavy with removal off. The fast tier is the 2-bar Markov operating
+inside the eligibility the slow tier grants.
+
+**Cadence table (nested variation clocks).** Everything moving every 2 bars
+sounds busy — most elements hold steady while 1–2 move:
+
+| Clock | Actions |
+| ----- | ------- |
+| 2-bar (any window) | Keep, FilterSweep, NoteLengthVariant, PadVariant, RhythmVariant, ArpVariant, FxHit, Breakbeat, velocity/accent micro-shifts |
+| 4-bar boundary | AddLayer / RemoveLayer for melodic roles (bass, arp, stab, pad) |
+| 8-bar hold | bass remove/swap and kick remove wait until the layer ran >= 8 bars |
+| 16–32 bar | KeyChange (periodic, `everyBars` default 32) + section-energy re-roll |
+
+**Slow-tier timing is deliberately vague.** `sectionCycleBars` is a gravity
+well, not a grid: each section draws its length seeded ({0.5×, 0.75×, 1×,
+1.25×, 1.5×} × base, even-rounded), biased by character — sparse/breakdown
+run short, peaks sustain. A state may renew itself once inside the base
+cycle; past that it is force-advanced (sparse→build→peak→breakdown), so
+buildups/breakdowns drift in time but always arrive. A section change is
+never silent — the transition window always carries a structural/FX action
+(never Keep) — and a staleness ramp pushes swap/remove the longer nothing
+structural happens, so no element sits unchanged for too long.
+
+**Action table.**
+
+| Action | Effect |
+| ------ | ------ |
+| Keep | nothing structural (the hypnotic default) |
+| AddLayer | activate an inactive mapped layer (age-0 start); at maxTracks it evicts the oldest-weighted layer (swap) |
+| RemoveLayer | deactivate a layer — target weighted by age (`1 + age*0.5`): longest-running most likely replaced |
+| SwapPattern | A/B progression + bass-octave toggle; target from the lead family (arp/stab/pad/bass) age-weighted |
+| FxHit | riser roll (8× crescendo 8ths) or downlifter into the window |
+| Breakbeat | kick alternates 4-on-floor / broken (beat 2 dropped) |
+| FilterSweep | emits an automation point `{role, filterCutoff, startBeat, value, durationBeats}` targeting the OLDEST pitched active layer |
+| RhythmVariant | hat cycles {offbeat 8ths → 16ths → roll-bars → ghost shuffle}; kick toggles broken |
+| ArpVariant | arp direction {up, down, updown, random-walk}, degree rotation, or +12 octave lift for the window |
+| NoteLengthVariant | gate-length multiplier from {0.5, 0.75, 1.0} for bass/arp/stab (staccato..full) |
+| PadVariant | toggles pad voicing (triad/7th), pulse grid (8th/16th), and home/secondary harmony while staying in-key |
+| KeyChange | PERIODIC: every `everyBars` (>= 8), key shifts +1/+2 scale degrees (or `keyShiftDegrees`) for the remainder; direction seeded ONCE at start; all later notes stay in the NEW scale |
+
+**Age-based replacement.** Every active layer accumulates running bars (+2
+per window; reset on re-add). RemoveLayer / SwapPattern / evict-on-max pick
+their target with weight `1 + age*0.5`, so the longest-running layer is
+replaced first — the mix keeps circulating instead of fossilizing. Ages are
+recorded per step in `steps[]` (parallel `activeRoles`/`ages` arrays).
+
+**Determinism.** Same seed + params → byte-identical score. The full 64-bit
+seed feeds the mt19937 via `seed_seq`; every stochastic choice (section
+state, action, target, accent, density extras) consumes the RNG in a FIXED
+window order: section re-roll → (KeyChange short-circuit) → action draw →
+target draws → accent draw → note extras.
+
+**Accent micro-variation.** Even a repeating hat pattern gets a small seeded
+per-window accent shift (±6 velocity) plus a beat-1 accent — constant
+variation that never announces itself.
+
+**Example params JSON.**
+
+```json
+{
+  "paletteTrackIds": { "kick": 0, "bass": 1, "hat": 2, "arp": 3,
+                        "stab": 4, "pad": 5, "riser": 6, "down": 7, "clap": 8 },
+  "totalBars": 64, "keyRoot": 5, "scaleMode": 1,
+  "density": 0.7, "seed": 42,
+  "minTracks": 2, "maxTracks": 6,
+  "minPercTracks": 1, "maxPercTracks": 3,
+  "everyBars": 32, "sectionCycleBars": 32, "keyShiftDegrees": 0,
+  "progressionA": [0, 5, 3, 4], "progressionB": [3, 4, 0, 0]
+}
+```
+
+Returns `{clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount,
+stepsLast, automationsCount}` — steps are summarized (count + last entries)
+to keep the tool output under ~4KB; the RPC surface returns the full
+`steps[]` (barStart, action, targetRole, activeRoles, ages, keyRoot,
+section) and `automations[]` for verification and for driving automation
+lanes.
+
+**Genre-concurrency tuning guidance.** Psytrance convention: percussion
+2..8 simultaneous elements (this pool caps at 3 percussive roles —
+`maxPercTracks` is validated <= 3), bass EXACTLY one layer (never doubled —
+the engine models it as a single pool element that swaps pattern/octave
+instead of duplicating), leads 1..4 (the default `maxTracks: 6` with a
+single bass leaves exactly that headroom). Start with defaults; for a
+darker minimal roll use `minTracks: 2, maxTracks: 4, density: 0.4`.
+
+**Roadmap (automation-point family, not wired yet).** The FilterSweep
+automation-point output is the template for later actions in the same
+family: sidechain pump depth, FX send builds (delay/reverb over a phrase),
+stereo width/pan drift, macro mix HP-sweep during builds, reverb tail
+drift. These map onto `automations[]` entries with different `param`
+values — no new wiring needed when they land.
+
 ## 5. Production stack (the difference between a sketch and a psytrance track)
 
 Per-role internal FX chains + LFOs — this is what the "too stripped down"
@@ -315,7 +443,7 @@ first renders lacked. Verified full recipe (v3/v4/v5):
 | Hats | reverb (mix 0.75, size 0.30) | — (flanger-rate automation in stress variants) |
 | Lead | flanger (rate 0.5, depth 0.6) → compressor → reverb (mix 0.9, size 0.22) | LFO: saw 0.5 → flanger rate (200), depth 0.4 |
 | Stabs | reverb (mix 0.85, size 0.42) → delay (feedback 0.19, dry 0.45, wet 0.22) | — |
-| Pads | chorus (params 0/1/4 = 1.4/0.65/0.55) → reverb (params 0/2 = 0.95/0.35) | LFO0: slow volume swell (→ Volume, target 1, depth 0.22); LFO1: 1/beat pump (depth 0.4, phase 180) |
+| Pads | chorus (params 0/1/4 = 1.4/0.65/0.55) → reverb (params 0/2 = 0.95/0.35) | LFO0: slow volume swell (→ Volume, target 1, depth 0.22); LFO1: 1/beat pump (depth 0.4, phase 180); pad generator now prefers full triad/7th voicings and can pulse on 8th- or 16th-note grid steps when gated |
 
 **LFO contract (verified):** `add_lfo(track)` then `set_lfo_param` with
 `waveform` (0=sin,1=tri,2=saw), `rateSync:1`, `rate` in the units the

@@ -9,6 +9,14 @@ skill: "hdaw-guard"
 Skill file: [`docs/skills/hdaw-guard/SKILL.md`](docs/skills/hdaw-guard/SKILL.md).
 This skill enforces plan-first development, guards against the 16 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
 
+**Sound-engine stability rule (standing):** Do NOT introduce new complexity to the underlying
+sound engine — anything touching `processBlock`, DSP chains, render/export, or playback paths —
+without discussing it with the user first. Engine changes carry outsized debugging costs
+(lessons 3/5/7/8/11–23) for features that can often be skipped or achieved another way
+(score-level generation, MCP/ValueTree wiring, or parameters of existing FX). Default to
+non-engine implementations; propose engine-touching work as a discussion item with effort and
+risk notes BEFORE implementing. Rendering and playback stability outrank new features.
+
 Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.

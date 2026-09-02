@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.25.0
+**Current version**: 0.26.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.25.0)
+## What works today (v0.26.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -168,6 +168,10 @@ pass `Debug` for breakpoint debugging.
 - **Default MIDI library** — on first launch, creates
   `%APPDATA%/HDAW/MIDI` with example files (C Major Scale, Drum
   Pattern, Chord Progression) and auto-scans it.
+- **Key/BPM detection** — audio scans estimate BPM (file metadata, else
+  aubio-based detection) and key (chromagram); TimbreLib sidecar
+  `.timbre.json` files (tags, description, key, BPM, DSP features) are
+  ingested automatically when newer than their audio.
 - **Incremental scanning** — only re-indexes files whose modification
   time has changed; deleted files are pruned automatically.
 - **Partitioning** — libraries with >50k entries are saved as
@@ -184,8 +188,11 @@ can drive the DAW. 50 tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
 generation with snare support and Techno/House/DnB genre styles +
 polyrhythmic & euclidean rhythm pattern generation
-(`RhythmPatternGenerator`)), FX, automation, undo, audio export, and
-file library.
+(`RhythmPatternGenerator`) + incremental seeded Markov arrangement
+(`generate_psytrance_markov`: role-pool layering, thick chord pads with
+rhythmic gating, and a vaguely-timed section-energy structure so
+build-ups/breakdowns emerge instead of landing on a fixed grid)), FX,
+automation, undo, audio export, and file library.
 
 ### Launching the stdio server (Claude Desktop, opencode, etc.)
 
@@ -321,6 +328,40 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.26.0 — Markov composition mode, vague macro-structure, timbre key/BPM
+
+**Markov composition (`generate_psytrance_markov`):**
+- New pure-engine `PsytranceMarkovGenerator`: grows a psytrance arrangement
+  2 bars at a time under a seeded Markov chain over a role pool
+  (kick/bass/hat/arp/stab/pad/clap). Wired end-to-end: MCP tool →
+  `generatePsytranceMarkov` RPC → clip writing, with full unit coverage
+  (`psytrance_markov_test.cpp`).
+- **Thick chord pads**: pads emit triad/7th chord stacks with rhythmic
+  8th/16th-note gating; a `PadVariant` action toggles voicing, pulse grid, and
+  a secondary harmony (instead of thin root+fifth pads).
+- **Vague macro-structure**: `sectionCycleBars` is a gravity well, not a grid —
+  section lengths are drawn seeded per section (sparse/breakdowns short, peaks
+  sustain); a state cannot outstay the base cycle (forced advance), section
+  transitions are never silent (always a structural/FX action), and a
+  staleness ramp pushes swap/remove so elements never sit unchanged for long.
+- Key discipline preserved: 1 home key + at most 1 secondary key per track.
+
+**Sample-library key/BPM (timbre pipeline):**
+- `timbre-lib` analyzer now emits `key` (filename tag first — `Am`, `F#m`,
+  `C min`, `G# Minor` — then Krumhansl chroma estimation) and `bpm` (filename
+  tag — `128 BPM`, `126_BPM` — then onset-tempo estimation) into
+  `timbre_index.json` and per-file `.timbre.json` sidecars.
+- `FileLibraryManager` ingests sidecar key/BPM during scan (sidecar key
+  overrides the native chroma guess; sidecar BPM fills only unknown entries),
+  and audio scans gain an aubio-based BPM fallback when file metadata carries
+  no tempo. `search_library` key/BPM filters now match analyzed packs directly.
+- `timbre-lib/backfill_keybpm.py`: fast key/BPM backfill for already-analyzed
+  sidecars (~0.2s/file, Windows python). All 248 psy-pack sidecars backfilled.
+
+**Tests:** `PsytranceMarkov.*` (14 tests incl. section jitter/caps/audibility
+gates), `FileLibraryTest` sidecar key/BPM + BPM-fallback tests; 41/41 green in
+the touched suites.
 
 ### v0.25.0 — Long-composition engine fixes, list_notes, crash capture
 

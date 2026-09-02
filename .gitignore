@@ -170,6 +170,7 @@ clap-libs/
 test.zip
 .tmp_*
 *.tmp
+*.bak
 
 # Export-silence investigation scratch (repro/bisect/causality drivers + WAVs)
 repro_out/
