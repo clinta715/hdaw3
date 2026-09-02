@@ -85,6 +85,7 @@ public:
     // ProjectCommands — instrument part composer
     InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
     PsytranceResult generatePsytrance(const HDAW::PsytranceParams& params) override;
+    PsytranceMarkovResult generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& params) override;
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify,
                                      bool allowGlobalScale) override;

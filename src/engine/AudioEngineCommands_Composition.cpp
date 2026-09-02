@@ -7,6 +7,7 @@
 #include "PhraseGenerator.h"
 #include "RhythmPatternGenerator.h"
 #include "PsytranceGenerator.h"
+#include "PsytranceMarkovGenerator.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -406,6 +407,31 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
     {
         result.error = "failed to start render";
         return result;
+    }
+
+    // Probe for any graph rebuilds that may have been queued during the
+    // export start-up window. Mirrors the pre-export settle above; without
+    // this, a rebuild arriving after startExport can cancel the export
+    // mid-bake via MainAudioProcessor::rebuildRoutingGraph → cancelAndJoin.
+    if (juce::MessageManager::getInstance() != nullptr
+        && !juce::MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        auto graphSettled = std::make_shared<std::atomic<bool>>(false);
+        struct GraphSettleProbe final : public juce::CallbackMessage
+        {
+            std::shared_ptr<std::atomic<bool>> settled;
+            explicit GraphSettleProbe(std::shared_ptr<std::atomic<bool>> s)
+                : settled(std::move(s)) {}
+            void messageCallback() override
+            {
+                settled->store(true, std::memory_order_release);
+            }
+        };
+        (new GraphSettleProbe(graphSettled))->post();
+        const auto settleDeadline = juce::Time::getMillisecondCounter() + 2000u;
+        while (!graphSettled->load(std::memory_order_acquire)
+               && juce::Time::getMillisecondCounter() < settleDeadline)
+            juce::Thread::sleep(10);
     }
 
     // Block-wait for the bake + render. The message pump is a separate thread
@@ -1427,6 +1453,98 @@ ProjectCommands::PsytranceResult AudioEngineCommands::generatePsytrance(const HD
     for (const auto& clip : score.clips)
     {
         ProjectCommands::PsytranceResult::Clip out;
+        out.role = clip.role;
+        out.trackIndex = clip.trackIndex;
+
+        // One clip per role at beat 0 spanning the whole arrangement → note
+        // starts are clip-local (= absolute beats; guide §9.1 contract).
+        const double bpm = engine_.getTransportManager().getBPM();
+        auto c = model.createMidiClipEmpty("Psy" + clip.role,
+                                           HDAW::beatsToSeconds(0.0, bpm),
+                                           HDAW::beatsToSeconds(score.totalBeats, bpm));
+        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(clip.trackIndex)), &um);
+        auto noteList = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!noteList.isValid())
+        {
+            noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+            c.addChild(noteList, -1, &um);
+        }
+
+        int written = 0;
+        for (const auto& n : clip.notes)
+        {
+            if (n.startBeat >= score.totalBeats) { ++result.notesSkipped; continue; }
+            if (written >= kMaxNotesPerClip)     { ++result.notesSkipped; continue; }
+            auto note = model.createMidiNote(n.pitch,
+                                             static_cast<float>(n.velocity) / 127.0f,
+                                             n.startBeat, n.durationBeats);
+            noteList.addChild(note, -1, &um);
+            ++written;
+        }
+        out.noteCount = written;
+        out.clipId = static_cast<int>(c.getProperty(IDs::clipID));
+        if (out.clipId < 0) out.clipId = -1;
+
+        model.getTrackListTree().getChild(clip.trackIndex)
+            .getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
+        result.clips.push_back(std::move(out));
+    }
+
+    endTransaction();
+    return result;
+}
+
+ProjectCommands::PsytranceMarkovResult
+AudioEngineCommands::generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& params)
+{
+    ProjectCommands::PsytranceMarkovResult result;
+
+    // Pure generation first — if the params are rejected, nothing is written
+    // and the caller gets a tool-named error (no partial writes).
+    const auto score = HDAW::PsytranceMarkovGenerator::generate(params);
+    if (!score.error.empty())
+    {
+        result.error = "generate_psytrance_markov: " + score.error;
+        return result;
+    }
+
+    auto& model = engine_.getProjectModel();
+    const int trackCount = model.getTrackListTree().getNumChildren();
+
+    // Validate every role's track BEFORE any mutation (no partial writes).
+    for (const auto& clip : score.clips)
+        if (clip.trackIndex < 0 || clip.trackIndex >= trackCount)
+        {
+            result.error = "generate_psytrance_markov: role '" + clip.role
+                         + "' track index out of range";
+            return result;
+        }
+
+    result.totalBeats = score.totalBeats;
+    result.notesTotal = score.notesTotal;
+    result.skippedRoles = score.skipped;
+    for (const auto& s : score.steps)
+    {
+        ProjectCommands::PsytranceMarkovResult::Step out;
+        out.barStart = s.barStart;
+        out.action = HDAW::PsytranceMarkovGenerator::actionName(s.action);
+        out.targetRole = s.targetRole;
+        out.activeRoles = s.activeRoles;
+        out.ages = s.ages;
+        out.keyRoot = s.keyRoot;
+        out.section = s.section;
+        result.steps.push_back(std::move(out));
+    }
+    for (const auto& a : score.automations)
+        result.automations.push_back({ a.role, a.param, a.startBeat, a.value, a.durationBeats });
+
+    auto& um = model.getUndoManager();
+    beginTransaction("Generate psytrance (Markov)");
+
+    constexpr int kMaxNotesPerClip = 8192; // MidiClipProcessor cache ceiling
+    for (const auto& clip : score.clips)
+    {
+        ProjectCommands::PsytranceMarkovResult::Clip out;
         out.role = clip.role;
         out.trackIndex = clip.trackIndex;
 

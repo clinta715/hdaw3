@@ -6,6 +6,7 @@
 #include "../../engine/ArrangementGenerator.h"
 #include "../../engine/RhythmPatternGenerator.h"
 #include "../../engine/PsytranceGenerator.h"
+#include "../../engine/PsytranceMarkovGenerator.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
 #include "../../engine/PatternLibrary.h"
@@ -798,6 +799,82 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         QJsonObject res{
             { "clips", clips },
             { "skipped", skipped },
+            { "totalBeats", r.totalBeats },
+            { "notesTotal", r.notesTotal },
+            { "notesSkipped", r.notesSkipped }
+        };
+        if (!r.error.empty())
+            res["error"] = QString::fromStdString(r.error);
+        return { false, res };
+    }
+
+    if (m == "generatePsytranceMarkov") {
+        HDAW::PsytranceMarkovParams p;
+        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
+        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        p.density = optDouble(o, "density", 0.7, nullptr);
+        p.seed = optInt<uint64_t>(o, "seed", 0, nullptr);
+        p.totalBars = optInt(o, "totalBars", 32, nullptr);
+        p.minTracks = optInt(o, "minTracks", 2, nullptr);
+        p.maxTracks = optInt(o, "maxTracks", 6, nullptr);
+        p.minPercTracks = optInt(o, "minPercTracks", 1, nullptr);
+        p.maxPercTracks = optInt(o, "maxPercTracks", 3, nullptr);
+        p.everyBars = optInt(o, "everyBars", 32, nullptr);
+        p.sectionCycleBars = optInt(o, "sectionCycleBars", 32, nullptr);
+        p.keyShiftDegrees = optInt(o, "keyShiftDegrees", 0, nullptr);
+        if (o.contains("progressionA") && o.value("progressionA").isArray())
+            for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+        if (o.contains("progressionB") && o.value("progressionB").isArray())
+            for (const auto& v : o.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+        if (o.contains("paletteTrackIds") && o.value("paletteTrackIds").isObject())
+        {
+            const auto obj = o.value("paletteTrackIds").toObject();
+            auto set = [&](const QString& role, int& out) { if (obj.contains(role)) out = obj.value(role).toInt(-1); };
+            set("kick", p.kick);     set("bass", p.bass);
+            set("hat", p.hat);       set("arp", p.arp);
+            set("stab", p.stab);     set("pad", p.pad);
+            set("riser", p.riser);   set("down", p.down);
+            set("clap", p.clap);
+        }
+        auto r = c.generatePsytranceMarkov(p);
+        QJsonArray clips;
+        for (const auto& rc : r.clips)
+            clips.append(QJsonObject{
+                { "role", QString::fromStdString(rc.role) },
+                { "trackId", rc.trackIndex },
+                { "clipId", rc.clipId },
+                { "noteCount", rc.noteCount } });
+        QJsonArray skipped;
+        for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+        QJsonArray steps;
+        for (const auto& s : r.steps)
+        {
+            QJsonArray roles;
+            for (const auto& role : s.activeRoles) roles.append(QString::fromStdString(role));
+            QJsonArray ages;
+            for (const auto& a : s.ages) ages.append(a);
+            steps.append(QJsonObject{
+                { "barStart", s.barStart },
+                { "action", QString::fromStdString(s.action) },
+                { "targetRole", QString::fromStdString(s.targetRole) },
+                { "activeRoles", roles },
+                { "ages", ages },
+                { "keyRoot", s.keyRoot },
+                { "section", QString::fromStdString(s.section) } });
+        }
+        QJsonArray automations;
+        for (const auto& a : r.automations)
+            automations.append(QJsonObject{
+                { "role", QString::fromStdString(a.role) },
+                { "param", QString::fromStdString(a.param) },
+                { "startBeat", a.startBeat },
+                { "value", a.value },
+                { "durationBeats", a.durationBeats } });
+        QJsonObject res{
+            { "clips", clips },
+            { "skipped", skipped },
+            { "steps", steps },
+            { "automations", automations },
             { "totalBeats", r.totalBeats },
             { "notesTotal", r.notesTotal },
             { "notesSkipped", r.notesSkipped }

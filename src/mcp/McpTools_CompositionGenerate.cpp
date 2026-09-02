@@ -9,6 +9,7 @@
 #include "../engine/PluginManager.h"
 #include "../engine/Track.h"
 #include "../engine/PhraseGenerator.h"
+#include "../engine/PsytranceMarkovGenerator.h"
 #include "../engine/ArrangementGenerator.h"
 #include "engine/RhythmPatternGenerator.h"
 #include "../engine/PatternLibrary.h"
@@ -565,6 +566,96 @@ s.registerTool({"generate_psytrance",
                             {"totalBeats", r.totalBeats},
                             {"notesTotal", r.notesTotal},
                             {"notesSkipped", r.notesSkipped}}).toJson(QJsonDocument::Compact)));
+        }});
+
+s.registerTool({"generate_psytrance_markov",
+        "Compose a psytrance arrangement INCREMENTALLY (guide §4B): a pool of role layers (kick,bass,hat,arp,stab,pad,clap) grows and changes 2 bars at a time under a seeded Markov chain. Actions: Keep, AddLayer, RemoveLayer, SwapPattern, FxHit, Breakbeat, FilterSweep (filterCutoff automation point), RhythmVariant (hat/kick pattern change), ArpVariant, NoteLengthVariant (bass/arp/stab/pad gate-length changes), periodic KeyChange (everyBars, whole scale degrees). Global active-layer count stays within [minTracks,maxTracks]; percussive roles {kick,hat,clap} stay within [minPercTracks,maxPercTracks]. A slow section-energy tier (sparse/build/peak/breakdown; sectionCycleBars is the base of a seeded jittered schedule, so build-ups/breakdowns drift in time yet always arrive — a state never outstays the base cycle and section changes are always audible) biases the fast weights, and a staleness ramp pushes swap/remove when nothing structural happened recently. Age-biased replacement: layers running longest are replaced first; bass and kick hold >= 8 bars; melodic add/remove only on 4-bar boundaries. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index; unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount, stepsLast, automationsCount} — steps summarized (count + last entries) to keep output compact.",
+        objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},
+                      {"description","role name -> track index (kick,bass,hat,arp,stab,pad,clap,riser,down)"},
+                      {"additionalProperties", QJsonObject{{"type","integer"}}}}},
+                  {"totalBars", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",256},
+                      {"description","arrangement length in bars (even, rounds up); totalBeats = totalBars*4"}}},
+                  {"keyRoot", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
+                  {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",12}}},
+                  {"density", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},
+                  {"seed", QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"minTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",7}}},
+                  {"maxTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",7}}},
+                  {"minPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",3}}},
+                  {"maxPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",3}}},
+                  {"everyBars", QJsonObject{{"type","integer"},{"minimum",0},
+                      {"description","periodic KeyChange boundary in bars (0 = off, else >= 8; default 32)"}}},
+                  {"sectionCycleBars", QJsonObject{{"type","integer"},{"minimum",0},
+                      {"description","slow section-energy clock in bars (0 = off, else >= 8; default 32)"}}},
+                  {"keyShiftDegrees", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11},
+                      {"description","KeyChange size in scale degrees (0 = seeded +1/+2)"}}},
+                  {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
+                  {"progressionB", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}}},
+                 {"paletteTrackIds"}),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::PsytranceMarkovParams p;
+            p.keyRoot = a.value("keyRoot").toInt(0);
+            p.scaleMode = a.value("scaleMode").toInt(1);
+            p.density = a.value("density").toDouble(0.7);
+            p.seed = a.contains("seed") ? static_cast<uint64_t>(a.value("seed").toVariant().toULongLong()) : 0;
+            p.totalBars = a.contains("totalBars") ? a.value("totalBars").toInt(32) : 32;
+            p.minTracks = a.contains("minTracks") ? a.value("minTracks").toInt(2) : 2;
+            p.maxTracks = a.contains("maxTracks") ? a.value("maxTracks").toInt(6) : 6;
+            p.minPercTracks = a.contains("minPercTracks") ? a.value("minPercTracks").toInt(1) : 1;
+            p.maxPercTracks = a.contains("maxPercTracks") ? a.value("maxPercTracks").toInt(3) : 3;
+            p.everyBars = a.contains("everyBars") ? a.value("everyBars").toInt(32) : 32;
+            p.sectionCycleBars = a.contains("sectionCycleBars") ? a.value("sectionCycleBars").toInt(32) : 32;
+            p.keyShiftDegrees = a.contains("keyShiftDegrees") ? a.value("keyShiftDegrees").toInt(0) : 0;
+            if (a.contains("progressionA"))
+                for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+            if (a.contains("progressionB"))
+                for (const auto& v : a.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+            const auto pt = a.value("paletteTrackIds").toObject();
+            auto set = [&](const char* role, int& out) { if (pt.contains(role)) out = pt.value(role).toInt(-1); };
+            set("kick", p.kick);     set("bass", p.bass);
+            set("hat", p.hat);       set("arp", p.arp);
+            set("stab", p.stab);     set("pad", p.pad);
+            set("riser", p.riser);   set("down", p.down);
+            set("clap", p.clap);
+            auto r = e->getProjectCommands().generatePsytranceMarkov(p);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            QJsonArray clips;
+            for (const auto& rc : r.clips)
+                clips.append(QJsonObject{{"role", QString::fromStdString(rc.role)},
+                                         {"trackId", rc.trackIndex},
+                                         {"clipId", rc.clipId},
+                                         {"noteCount", rc.noteCount}});
+            QJsonArray skipped;
+            for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+            // Steps summarized: count + last 3 entries (output stays < ~4KB).
+            QJsonObject stepsLast;
+            stepsLast["barStarts"] = QJsonArray{};
+            QJsonArray lastArr;
+            const int n = static_cast<int>(r.steps.size());
+            for (int i = std::max(0, n - 3); i < n; ++i)
+            {
+                const auto& s = r.steps[(size_t) i];
+                QJsonArray roles;
+                for (const auto& role : s.activeRoles) roles.append(QString::fromStdString(role));
+                lastArr.append(QJsonObject{{"barStart", s.barStart},
+                                           {"action", QString::fromStdString(s.action)},
+                                           {"targetRole", QString::fromStdString(s.targetRole)},
+                                           {"activeRoles", roles},
+                                           {"keyRoot", s.keyRoot},
+                                           {"section", QString::fromStdString(s.section)}});
+            }
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(
+                QJsonObject{{"clips", clips},
+                            {"skipped", skipped},
+                            {"totalBeats", r.totalBeats},
+                            {"notesTotal", r.notesTotal},
+                            {"notesSkipped", r.notesSkipped},
+                            {"stepsCount", n},
+                            {"stepsLast", lastArr},
+                            {"automationsCount", static_cast<int>(r.automations.size())}})
+                .toJson(QJsonDocument::Compact)));
         }});
 
 }

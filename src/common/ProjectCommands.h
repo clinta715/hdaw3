@@ -5,6 +5,7 @@
 #include "../engine/EnvelopeGenerator.h"
 #include "../engine/AutomationPreset.h"
 #include "../engine/PsytranceGenerator.h"
+#include "../engine/PsytranceMarkovGenerator.h"
 
 namespace HDAW { struct ArrangementParams; }
 
@@ -428,6 +429,46 @@ public:
     };
 
     virtual PsytranceResult generatePsytrance(const HDAW::PsytranceParams& params) = 0;
+
+    // ── Psytrance INCREMENTAL Markov generation (guide §4B) ──
+    // Same clip-writing contract as generatePsytrance (one clip per produced
+    // role at beat 0 spanning totalBeats, notes clip-local, one undo unit),
+    // but the score comes from the incremental 2-bar Markov engine: a pool of
+    // role layers grows/changes window by window under min/max + percussive
+    // sublimits, with age-biased replacement and a slow section-energy tier.
+    // steps[] records every 2-bar decision (debug/verify); automations[] are
+    // returned as DATA (FilterSweep filterCutoff points) — apply them with
+    // the standard automation tools.
+    struct PsytranceMarkovResult {
+        struct Clip { std::string role; int trackIndex = -1; int clipId = -1; int noteCount = 0; };
+        struct Step {
+            int barStart = 0;
+            std::string action;              // MarkovAction name
+            std::string targetRole;
+            std::vector<std::string> activeRoles;
+            std::vector<int> ages;           // parallel to activeRoles (running bars)
+            int keyRoot = -1;
+            std::string section;             // sparse|build|peak|breakdown
+        };
+        struct Automation {
+            std::string role;
+            std::string param;               // "filterCutoff"
+            double startBeat = 0.0;
+            double value = 0.0;
+            double durationBeats = 0.0;
+        };
+        std::vector<Clip> clips;
+        std::vector<std::string> skippedRoles;
+        std::vector<Step> steps;
+        std::vector<Automation> automations;
+        double totalBeats = 0.0;
+        int notesTotal = 0;
+        int notesSkipped = 0;   // notes dropped past a clip's note ceiling
+        std::string error;      // non-empty → nothing was written
+    };
+
+    virtual PsytranceMarkovResult
+    generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& params) = 0;
 
     // ── Plugin preset audition ──
     // Solo-renders a plugin (on a temp probe track when trackIndex < 0, or an
