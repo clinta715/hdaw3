@@ -1108,6 +1108,31 @@ bool writeSilentWav(const juce::File& wavFile, int samples = 44100) {
     return true;
 }
 
+// Mono 16-bit WAV carrying a 1-sample click every beat — deterministic input
+// for the BpmDetector fallback path in extractAudioMetadata.
+bool writeClickTrainWav(const juce::File& wavFile, double bpm,
+                        double seconds = 5.0, double sampleRate = 44100.0) {
+    auto outStream = wavFile.createOutputStream();
+    if (outStream == nullptr) return false;
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(outStream.get(), sampleRate, 1, 16, {}, 0));
+    if (writer == nullptr) return false;
+    outStream.release(); // writer takes ownership
+    const int n = (int) (seconds * sampleRate);
+    juce::AudioBuffer<float> buffer(1, n);
+    buffer.clear();
+    auto* w = buffer.getWritePointer(0);
+    const double interval = 60.0 / bpm;
+    for (double t = 0.0; t < seconds; t += interval) {
+        const int idx = (int) (t * sampleRate);
+        if (idx >= 0 && idx < n) w[idx] = 1.0f;
+    }
+    writer->writeFromAudioSampleBuffer(buffer, 0, n);
+    writer.reset();
+    return true;
+}
+
 // Sidecar JSON whose `dsp` dict carries all 20 keys (kDspFeatureKeys order
 // does not matter to the parser — it looks keys up by name). Three dims carry
 // the family signal; the rest are plausible constants.
@@ -1174,6 +1199,80 @@ TEST_F(FileLibraryTest, SidecarDspFeaturesIngestedWhenAllTwentyKeysPresent) {
     // (no partial vectors, no imputation).
     EXPECT_EQ(results[1].dspFeatures.size(), 0u);
     EXPECT_TRUE(results[1].tags.contains("bright high chime"));
+}
+
+// Sidecar key/bpm from the TimbreLib analyzer: sidecar key overwrites the
+// native chroma guess; sidecar bpm fills in only when the entry has none.
+TEST_F(FileLibraryTest, SidecarKeyAndBpmIngested) {
+    auto audioDir = tempDir.getChildFile("sidecar_keybpm");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("tagged.wav")));
+    audioDir.getChildFile("tagged.wav.timbre.json").replaceWithText(
+        "{\"key\":\"F#m\",\"bpm\":145.0,\"dsp_words\":\"dark pad\","
+        "\"prose\":\"A dark pad.\",\"captions\":[],\"tags\":[]}");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("KeyBpm", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].key, "F#m");
+    EXPECT_DOUBLE_EQ(results[0].bpm, 145.0);
+
+    // The key filter path sees the ingested key (case-insensitive contains).
+    auto byKey = mgr.search("", "audio", {}, -1, -1, -1, -1, "f#");
+    ASSERT_EQ(byKey.size(), 1u);
+    EXPECT_EQ(byKey[0].name, "tagged.wav");
+}
+
+// No sidecar key/bpm fields -> both stay at their native defaults (empty key
+// is fine, bpm 0.0 for silence) and nothing crashes.
+TEST_F(FileLibraryTest, SidecarWithoutKeyBpmLeavesDefaults) {
+    auto audioDir = tempDir.getChildFile("sidecar_nokeybpm");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeSilentWav(audioDir.getChildFile("plain.wav")));
+    audioDir.getChildFile("plain.wav.timbre.json").replaceWithText(
+        "{\"dsp_words\":\"soft pad\",\"prose\":\"A soft pad.\","
+        "\"captions\":[],\"tags\":[]}");
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("NoKeyBpm", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_DOUBLE_EQ(results[0].bpm, 0.0); // silence -> detector returns 0
+    // Native chroma on silence degenerates to "C" (first-root tie in
+    // detectKey) — the point here is that omitting key/bpm from the sidecar
+    // still ingests cleanly and never crashes.
+    EXPECT_FALSE(results[0].key.isEmpty());
+}
+
+// BPM fallback: audio with no tempo metadata gets an aubio-based estimate
+// from the same decoded buffer used for the chroma key detection.
+TEST_F(FileLibraryTest, AudioBpmFallbackDetectsClickTrain) {
+    auto audioDir = tempDir.getChildFile("bpm_fallback");
+    audioDir.createDirectory();
+    ASSERT_TRUE(writeClickTrainWav(audioDir.getChildFile("click120.wav"), 120.0));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("BpmFallback", audioDir.getFullPathName(), "audio");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_GE(results[0].bpm, 118.0);
+    EXPECT_LE(results[0].bpm, 122.0);
 }
 
 // dspFeatures round-trip through save/load (schemaVersion 2 entry cache).

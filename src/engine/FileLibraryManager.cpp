@@ -1,5 +1,6 @@
 // src/engine/FileLibraryManager.cpp
 #include "FileLibraryManager.h"
+#include "BpmDetector.h"
 #include <juce_core/juce_core.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -815,6 +816,20 @@ void FileLibraryManager::applyTimbreSidecar(LibraryEntry& entry, const juce::Fil
     entry.tags = parts.joinIntoString(", ");
     entry.description = obj->getProperty("prose").toString();
 
+    // key/bpm: written by the TimbreLib analyzer (filename-tag first, then
+    // audio-based estimation). The sidecar is the curated source, so a
+    // non-empty sidecar key OVERWRITES the native chroma guess; bpm only
+    // fills in when the entry has none (0.0 = unknown).
+    auto sidecarKey = obj->getProperty("key").toString().trim();
+    if (sidecarKey.isNotEmpty())
+        entry.key = sidecarKey;
+    auto sidecarBpm = obj->getProperty("bpm");
+    if (sidecarBpm.isDouble() || sidecarBpm.isInt() || sidecarBpm.isInt64()) {
+        const double b = (double) sidecarBpm;
+        if (b > 0.0 && b < 1000.0 && entry.bpm <= 0.0)
+            entry.bpm = b;
+    }
+
     // dsp: object with the 20 numeric keys in kDspFeatureKeys. Accepted only
     // when ALL 20 keys are present and finite — no partial vectors, no
     // imputation (features stay empty).
@@ -869,6 +884,21 @@ LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
         try {
             juce::AudioBuffer<float> buf((int)reader->numChannels, blockSize);
             reader->read(&buf, 0, blockSize, 0, true, true);
+
+            // BPM fallback: when file metadata carries no usable tempo, run the
+            // aubio-based detector on a mono mixdown of the SAME decoded buffer
+            // (still on the scan threadpool — never the audio thread). Best-effort:
+            // 0.0 means "unknown" and leaves the field empty for consumers.
+            if (entry.bpm <= 0.0) {
+                juce::AudioBuffer<float> mono(1, blockSize);
+                mono.clear();
+                for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+                    mono.addFrom(0, 0, buf, ch, 0, blockSize);
+                auto bpmRes = BpmDetector::detect(mono.getWritePointer(0), blockSize,
+                                                  reader->sampleRate);
+                if (bpmRes.bpm > 0.0)
+                    entry.bpm = bpmRes.bpm;
+            }
 
             std::vector<double> pitchClassCounts(12, 0.0);
             juce::dsp::FFT fft(kFftOrder);
