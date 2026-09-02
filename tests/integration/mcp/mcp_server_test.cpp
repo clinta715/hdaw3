@@ -1496,13 +1496,22 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
     engine.initialize();
 
     // Find a CLAP instrument plugin from the cache (loaded by initialize()).
-    // Prefer an instrument (isInstrument) since we generate MIDI phrases;
-    // fall back to any CLAP if no instrument is cached.
+    // Prefer a known-good instrument (ShinRonin renders reliably) since
+    // many CLAPs render silence with the generated phrase; fall back to any
+    // instrument, then any CLAP.
     QString clapPluginId;
     for (const auto& pd : engine.getPluginManager().getPlugins()) {
-        if (pd.pluginFormatName == "CLAP" && pd.isInstrument) {
+        if (pd.pluginFormatName == "CLAP" && pd.name.contains("ShinRonin")) {
             clapPluginId = QString::fromStdString(pd.createIdentifierString().toStdString());
             break;
+        }
+    }
+    if (clapPluginId.isEmpty()) {
+        for (const auto& pd : engine.getPluginManager().getPlugins()) {
+            if (pd.pluginFormatName == "CLAP" && pd.isInstrument) {
+                clapPluginId = QString::fromStdString(pd.createIdentifierString().toStdString());
+                break;
+            }
         }
     }
     if (clapPluginId.isEmpty()) {
