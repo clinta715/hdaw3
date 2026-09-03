@@ -14,6 +14,7 @@
 #include "engine/SamplerEngine.h"
 #include "engine/FmSynthEngine.h"
 #include "engine/GrowlBassEngine.h"
+#include "engine/SaturatorEngine.h"
 #include "DecodedSoundPool.h"
 #include "PsyArpEngine.h"
 #include "PsyFmEngine.h"
@@ -105,6 +106,19 @@ public:
                 { 0, "Cutoff",    1000.0f,   20.0f, 20000.0f },
                 { 1, "Mode",         0.0f,    0.0f,     2.0f },
                 { 2, "Resonance",    0.7f,    0.1f,    10.0f },
+            };
+        // Drive -> selectable transfer curve -> DC block -> dry/wet mix ->
+        // output trim, 2x oversampled (plan 2026-09-02). Type is an int enum
+        // (0=SoftTanh, 1=SoftAtan, 2=Hard, 3=Bitcrush); Bits applies to the
+        // Bitcrush curve only. Output dB trims the WET path only.
+        if (type == "saturator")
+            return {
+                { 0, "Drive dB",   12.0f,   0.0f,  40.0f },
+                { 1, "Type",        0.0f,   0.0f,   3.0f },
+                { 2, "Asymmetry",   0.0f,  -1.0f,   1.0f },
+                { 3, "Mix",         1.0f,   0.0f,   1.0f },
+                { 4, "Output dB",   0.0f, -24.0f,  24.0f },
+                { 5, "Bits",        8.0f,   2.0f,  16.0f },
             };
         if (type == "sampler")
             return {
@@ -270,6 +284,8 @@ public:
             activeType = ActiveType::PsyArp;
         else if (type == "psy_fm")
             activeType = ActiveType::PsyFm;
+        else if (type == "saturator")
+            activeType = ActiveType::Saturator;
         else if (type == "plugin")
             activeType = ActiveType::Plugin;
         else
@@ -302,8 +318,21 @@ public:
 
     juce::String getType() const { return slotType; }
     bool isPlugin() const { return isExternal; }
+
     bool isBypassed() const { return bypassed.load(std::memory_order_relaxed); }
     void setBypassed(bool b) { bypassed.store(b, std::memory_order_relaxed); }
+
+    // Reported latency of the internal DSP for PDC (summed by
+    // Track::updateLatency alongside the hosted-plugin latencies). The
+    // oversampler is built with useIntegerLatency=true, so its
+    // getLatencyInSamples() is already an integer and the down-path applies
+    // the matching fractional delay. 0 for every other slot kind.
+    int getLatencySamples() const
+    {
+        return (activeType == ActiveType::Saturator && over_ != nullptr)
+            ? static_cast<int>(over_->getLatencyInSamples())
+            : 0;
+    }
 
     const juce::String& getPluginID() const { return pluginIdentifier; }
     bool isIsolated() const { return isolated; }
@@ -546,6 +575,32 @@ public:
                 filter = std::make_unique<juce::dsp::StateVariableTPTFilter<float>>();
                 filter->prepare(spec);
                 applyFilterParamsFromValues();
+                break;
+            }
+            case ActiveType::Saturator:
+            {
+                // DC-blocker coefficient is sample-rate aware; default 48k
+                // only applies before the first prepare.
+                sat_[0].setSampleRate(spec.sampleRate);
+                sat_[1].setSampleRate(spec.sampleRate);
+                sat_[0].reset();
+                sat_[1].reset();
+                // First oversampling integration in the codebase (plan
+                // 2026-09-02 Task 2). Constructor verified against JUCE 9.0.1
+                // juce_Oversampling.h:98: (numChannels, factor, filterType,
+                // isMaxQuality, useIntegerLatency) where factor is the
+                // EXPONENT (2^factor stages) — factor 1 = 2x oversampling.
+                // useIntegerLatency=true keeps the reported latency an exact
+                // integer (Track::setLatencySamples is int) and the down-path
+                // adds the matching fractional delay.
+                over_ = std::make_unique<juce::dsp::Oversampling<float>>(
+                    2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
+                    true, true);
+                over_->initProcessing(static_cast<size_t>(spec.maximumBlockSize));
+                over_->reset();
+                // Push current internalParamValues through the same apply
+                // path setInternalParam uses (filter precedent).
+                applySaturatorParamsFromValues();
                 break;
             }
             case ActiveType::Sampler:
@@ -844,6 +899,43 @@ public:
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
             case ActiveType::Compressor:  if (comp)   comp->process(context);    break;
             case ActiveType::Filter:      if (filter) filter->process(context);  break;
+            case ActiveType::Saturator:
+            {
+                if (over_ == nullptr) break;
+                // Mix == 0 exactly is a bit-identical bypass (plan Gate 1):
+                // skip the whole oversampled path and leave the block
+                // untouched. (Mixing inside the oversampled domain — as
+                // below — would still pass the dry through the halfband
+                // filters, adding the oversampler latency.)
+                if (internalParamValues.size() > 3 && internalParamValues[3] == 0.0f)
+                    break;
+                // Float reads straight from internalParamValues in process()
+                // follow the delay-case precedent (fb/wetMix) — benign tear
+                // tolerance, written only under Track::stateLock.
+                const float mix = (internalParamValues.size() > 3)
+                    ? internalParamValues[3] : 1.0f;
+                // Output trim applies to the WET path ONLY, so Mix=0 stays an
+                // exact bypass and dry keeps unity gain at any Output dB.
+                const float outGain = juce::Decibels::decibelsToGain(
+                    (internalParamValues.size() > 4) ? internalParamValues[4] : 0.0f);
+                auto upBlock = over_->processSamplesUp(block);
+                const auto numCh = (std::min)(upBlock.getNumChannels(),
+                                              static_cast<size_t>(2));
+                const auto numSamples = upBlock.getNumSamples();
+                for (size_t ch = 0; ch < numCh; ++ch)
+                {
+                    auto* data = upBlock.getChannelPointer(ch);
+                    auto& satEngine = sat_[ch < 2 ? ch : 0];
+                    for (size_t i = 0; i < numSamples; ++i)
+                    {
+                        const float dry = data[i];
+                        const float wet = outGain * satEngine.processSampleDCBlocked(dry);
+                        data[i] = dry + mix * (wet - dry);
+                    }
+                }
+                over_->processSamplesDown(block);
+                break;
+            }
             case ActiveType::Chorus:
             case ActiveType::Flanger:     if (chorusDsp) chorusDsp->process(context); break;
             case ActiveType::Phaser:      if (phaserDsp) phaserDsp->process(context); break;
@@ -869,6 +961,9 @@ public:
         if (growlBass) growlBass->prepare(sampleRate_, 0);
         if (psyArp)    psyArp->prepare(sampleRate_, 0);
         if (psyFm)     psyFm->prepare(sampleRate_, 0);
+        sat_[0].reset();
+        sat_[1].reset();
+        if (over_)     over_->reset();
         // Sampler voices stop on sound swap; no explicit reset needed.
     }
 
@@ -1149,7 +1244,7 @@ public:
     }
 
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, Saturator };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -1176,6 +1271,10 @@ private:
     std::unique_ptr<GrowlBassEngine> growlBass;
     std::unique_ptr<PsyArpEngine> psyArp;
     std::unique_ptr<PsyFmEngine> psyFm;
+    // Saturator: two engines so each channel keeps its own DC-blocker state;
+    // oversampler preallocated here in prepare (audio thread only touches it).
+    SaturatorEngine sat_[2];
+    std::unique_ptr<juce::dsp::Oversampling<float>> over_;
 
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
@@ -1384,6 +1483,16 @@ private:
                 applyFilterParamsFromValues();
                 break;
             }
+            case ActiveType::Saturator:
+            {
+                // Engines are plain members (no null window before prepare):
+                // re-push the full state so any of drive/type/asym/bits can
+                // move through one path. Mix (3) and Output dB (4) are read
+                // by process() from internalParamValues directly (delay
+                // precedent) — nothing to push here.
+                applySaturatorParamsFromValues();
+                break;
+            }
             case ActiveType::Sampler:
             {
                 if (! sampler) return;
@@ -1588,6 +1697,36 @@ private:
                                : juce::dsp::StateVariableTPTFilterType::bandpass);
         filter->setCutoffFrequency(freq);
         filter->setResonance(res);
+    }
+
+    // Push the stored saturator params into both channel engines. Type (1)
+    // and Bits (5) are int enums: round fractional automation/command values
+    // and store the rounded result so reads report what the DSP actually
+    // runs (filter Mode pattern :1375-1380). Callers hold Track::stateLock
+    // (setInternalParam / prepare) per the lesson-13 DSP-write contract.
+    void applySaturatorParamsFromValues()
+    {
+        if (internalParamValues.size() > 1)
+        {
+            const float rounded = static_cast<float>(juce::roundToInt(internalParamValues[1]));
+            internalParamValues[1] = juce::jlimit(0.0f, 3.0f, rounded);
+        }
+        if (internalParamValues.size() > 5)
+        {
+            const float rounded = static_cast<float>(juce::roundToInt(internalParamValues[5]));
+            internalParamValues[5] = juce::jlimit(2.0f, 16.0f, rounded);
+        }
+        const float driveDb = (internalParamValues.size() > 0) ? internalParamValues[0] : 12.0f;
+        const int   type    = (internalParamValues.size() > 1) ? juce::roundToInt(internalParamValues[1]) : 0;
+        const float asym    = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.0f;
+        const float bits    = (internalParamValues.size() > 5) ? internalParamValues[5] : 8.0f;
+        for (auto& engine : sat_)
+        {
+            engine.setDriveDb(driveDb);
+            engine.setType(type);
+            engine.setAsymmetry(asym);
+            engine.setBits(bits); // engine rounds/clamps internally
+        }
     }
 
     void rebuildParamCache()

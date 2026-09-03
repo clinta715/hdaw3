@@ -148,3 +148,37 @@ TEST (InternalFxParamClamp, DelayFeedbackClamped)
     EXPECT_TRUE (renderSineAndCheckFinite (slot, peak));
     EXPECT_LE (peak, 10.0f);
 }
+
+// Saturator (plan 2026-09-02 Task 2, lesson-23 contract): every poison value
+// must clamp to the documented def at the setInternalParam entry point, and
+// the clamped state must render finite end-to-end. Def layout:
+// 0=Drive dB [0,40], 1=Type [0,3], 2=Asymmetry [-1,1], 3=Mix [0,1],
+// 4=Output dB [-24,24], 5=Bits [2,16].
+TEST (InternalFxParamClamp, SaturatorPoisonClamped)
+{
+    HDAW::TrackFXSlot slot ("saturator");
+    auto spec = makeSpec();
+    slot.prepare (spec);
+
+    ASSERT_GE (slot.getInternalParamValues().size(), (size_t) 6);
+
+    // Drive dB 900 -> 40 (def max; the engine-side clamp is belt+braces).
+    slot.setInternalParam (0, 900.0f);
+    EXPECT_FLOAT_EQ (slot.getInternalParamValues()[0], 40.0f);
+    // Mix -5 -> 0 (exact-bypass boundary).
+    slot.setInternalParam (3, -5.0f);
+    EXPECT_FLOAT_EQ (slot.getInternalParamValues()[3], 0.0f);
+    // Asymmetry 7 -> 1.
+    slot.setInternalParam (2, 7.0f);
+    EXPECT_FLOAT_EQ (slot.getInternalParamValues()[2], 1.0f);
+    // Bits -99 -> 2.
+    slot.setInternalParam (5, -99.0f);
+    EXPECT_FLOAT_EQ (slot.getInternalParamValues()[5], 2.0f);
+
+    // Re-enable wet so the poisoned-but-clamped DSP state is actually
+    // exercised: 3 s of sine must stay finite (peak bounded).
+    slot.setInternalParam (3, 1.0f);
+    float peak = 0.0f;
+    EXPECT_TRUE (renderSineAndCheckFinite (slot, peak));
+    EXPECT_LE (peak, 10.0f);
+}

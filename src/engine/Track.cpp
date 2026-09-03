@@ -62,6 +62,8 @@ void Track::updateLatency()
     {
         if (slot != nullptr && slot->getPluginInstance() != nullptr)
             totalLatency += slot->getPluginInstance()->getLatencySamples();
+        else if (slot != nullptr)
+            totalLatency += slot->getLatencySamples(); // internal FX (saturator oversampler)
     }
     setLatencySamples(totalLatency);
 }

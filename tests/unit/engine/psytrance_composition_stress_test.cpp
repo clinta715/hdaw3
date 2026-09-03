@@ -2097,3 +2097,223 @@ TEST(PsytranceComposition, DarkForestV5)
     juce::Logger::writeToLog("V5: truePeak=" + juce::String(truePeak, 3)
         + " finalPeak=" + juce::String(finalPeak, 3) + " dur=" + juce::String(dur, 1));
 }
+
+
+// ── Saturator internal FX (plan 2026-09-02 Task 2) ──────────────────────────
+
+namespace {
+
+// Correlated (Goertzel) energy in dB of the given frequencies over an exact-
+// cycle window of channel 0. The saturator tests render whole seconds of
+// 440 Hz so the fundamental and every measured harmonic complete an integer
+// number of cycles inside the window (no leakage), and skip the first second
+// so the oversampler/DC-blocker startup transient is excluded.
+double harmonicEnergyDb (const juce::AudioBuffer<float>& buf, double sr,
+                         int startSample, int numSamples,
+                         const double* freqs, int numFreqs)
+{
+    double energy = 0.0;
+    const double twoPi = juce::MathConstants<double>::twoPi;
+    for (int h = 0; h < numFreqs; ++h)
+    {
+        double re = 0.0, im = 0.0;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const double s = buf.getSample (0, startSample + i);
+            const double ang = -twoPi * freqs[h] * static_cast<double> (startSample + i) / sr;
+            re += s * std::cos (ang);
+            im += s * std::sin (ang);
+        }
+        energy += re * re + im * im;
+    }
+    return 10.0 * std::log10 (energy + 1e-12);
+}
+
+} // namespace
+
+// Gate 1: Mix = 0 must be a BIT-IDENTICAL bypass through a real routing
+// rebuild — the slot (Mix 0 exact, Drive maxed) leaves the block untouched,
+// so a bypassed slot and the active slot render identical buffers. If the
+// implementation ever routes Mix=0 through the oversampled path, the halfband
+// filters delay the signal by the oversampler latency and this fails.
+TEST (InternalFx, SaturatorDryMixBitIdentical)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addFxSlot (0, "saturator");
+    cmds.setFxSlotParam (0, 0, 0, 40.0f); // Drive dB max — maximum contrast
+    cmds.setFxSlotParam (0, 0, 3, 0.0f);  // Mix = 0 -> exact bypass
+
+    // Gate 1/10 seam: the saturator must survive a REAL rebuild (tree ->
+    // TrackFXSlot("saturator") -> prepare -> loadParamsFromTree) with its
+    // params restored onto the live slot.
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack (0);
+    ASSERT_NE (track, nullptr);
+    ASSERT_GE (track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at (0).get();
+    ASSERT_EQ (slot->getType().toStdString(), "saturator");
+    const auto restored = slot->getInternalParamValues();
+    ASSERT_GE (restored.size(), 4u);
+    EXPECT_FLOAT_EQ (restored[0], 40.0f);
+    EXPECT_FLOAT_EQ (restored[3], 0.0f);
+
+    constexpr double sr = 48000.0;
+    constexpr int n = 96000;
+    juce::AudioBuffer<float> input (2, n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float t = static_cast<float> (i) / static_cast<float> (sr);
+        const float v = 0.5f * std::sin (juce::MathConstants<float>::twoPi * 440.0f * t);
+        input.setSample (0, i, v);
+        input.setSample (1, i, v);
+    }
+
+    // Render through the track in DEVICE-SIZED chunks: the slot's oversampler
+    // is sized to the prepared maximumBlockSize, so (unlike the blockwise
+    // stateless filters) a saturator slot must never see a larger block.
+    const int kChunk = (std::max)(1, track->getBlockSize());
+    auto renderThroughTrack = [&](juce::AudioBuffer<float>& buf) {
+        juce::MidiBuffer m;
+        for (int start = 0; start < buf.getNumSamples(); start += kChunk)
+        {
+            const int count = std::min(kChunk, buf.getNumSamples() - start);
+            juce::AudioBuffer<float> block (2, count);
+            for (int ch = 0; ch < 2; ++ch)
+                block.copyFrom (ch, 0, buf, ch, start, count);
+            track->processBlock (block, m);
+            for (int ch = 0; ch < 2; ++ch)
+                buf.copyFrom (ch, start, block, ch, 0, count);
+        }
+    };
+
+    juce::AudioBuffer<float> active (input);
+    renderThroughTrack (active);
+    slot->setBypassed (true);
+    juce::AudioBuffer<float> bypassed (input);
+    renderThroughTrack (bypassed);
+
+    ASSERT_EQ (active.getNumSamples(), bypassed.getNumSamples());
+    long long mismatches = 0;
+    for (int ch = 0; ch < active.getNumChannels(); ++ch)
+    {
+        const float* a = active.getReadPointer (ch);
+        const float* b = bypassed.getReadPointer (ch);
+        for (int i = 0; i < active.getNumSamples(); ++i)
+            if (a[i] != b[i])
+                ++mismatches;
+    }
+    EXPECT_EQ (mismatches, 0) << "Mix=0 must be a bit-identical bypass";
+}
+
+// Gate 3: saturation must actually saturate. 440 Hz sine through the live
+// (rebuilt) slot at Mix=1: Drive 24 dB must add strictly more 2nd-5th
+// harmonic energy than Drive 0 (which is ~transparent). Measured with
+// integer-cycle Goertzel correlation, DC-blocker/oversampler warm-up skipped.
+TEST (InternalFx, SaturatorDriveAddsHarmonics)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    cmds.addFxSlot (0, "saturator"); // defaults: Type SoftTanh, Mix 1, Out 0 dB
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack (0);
+    ASSERT_NE (track, nullptr);
+    ASSERT_GE (track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at (0).get();
+    ASSERT_EQ (slot->getType().toStdString(), "saturator");
+
+    constexpr double sr = 48000.0;
+    constexpr int n = 96000;      // 2 s
+    constexpr int skip = 48000;   // drop the first second (startup transient)
+    juce::AudioBuffer<float> input (2, n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float t = static_cast<float> (i) / static_cast<float> (sr);
+        const float v = 0.5f * std::sin (juce::MathConstants<float>::twoPi * 440.0f * t);
+        input.setSample (0, i, v);
+        input.setSample (1, i, v);
+    }
+    const double harmonics[4] = { 880.0, 1320.0, 1760.0, 2200.0 };
+
+    // DEVICE-SIZED chunks (see SaturatorDryMixBitIdentical): the oversampler
+    // is sized to the prepared maximumBlockSize.
+    const int kChunk = (std::max)(1, track->getBlockSize());
+    auto renderThroughSlot = [&](juce::AudioBuffer<float>& buf) {
+        juce::MidiBuffer m;
+        for (int start = 0; start < buf.getNumSamples(); start += kChunk)
+        {
+            const int count = std::min(kChunk, buf.getNumSamples() - start);
+            juce::AudioBuffer<float> block (2, count);
+            for (int ch = 0; ch < 2; ++ch)
+                block.copyFrom (ch, 0, buf, ch, start, count);
+            slot->process (block, m);
+            for (int ch = 0; ch < 2; ++ch)
+                buf.copyFrom (ch, start, block, ch, 0, count);
+        }
+    };
+
+    cmds.setFxSlotParam (0, 0, 0, 0.0f); // Drive 0 dB
+    juce::AudioBuffer<float> clean (input);
+    slot->reset();
+    renderThroughSlot (clean);
+    const double cleanDb = harmonicEnergyDb (clean, sr, skip, n - skip,
+                                             harmonics, 4);
+
+    cmds.setFxSlotParam (0, 0, 0, 24.0f); // Drive 24 dB
+    juce::AudioBuffer<float> driven (input);
+    slot->reset();
+    renderThroughSlot (driven);
+    const double drivenDb = harmonicEnergyDb (driven, sr, skip, n - skip,
+                                              harmonics, 4);
+
+    std::cout << "SaturatorDrive: h2-h5 clean=" << cleanDb
+              << " driven=" << drivenDb
+              << " dB (delta=" << (drivenDb - cleanDb) << ")" << std::endl;
+    EXPECT_GT (drivenDb, cleanDb) << "drive must add 2nd-5th harmonic energy";
+}
+
+// Gate 4 / lesson 7: the saturator's oversampler latency must reach the
+// track's reported latency exactly once. Track latency before vs after
+// adding the slot differs by exactly the slot's reported latency (integer,
+// because the oversampler is built with useIntegerLatency=true).
+TEST (InternalFx, SaturatorLatencyMatchesOversampler)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    auto* track = engine.getMainProcessor()->getTrack (0);
+    ASSERT_NE (track, nullptr);
+    ASSERT_EQ (track->getNumFXSlots(), 0);
+    const int before = track->getLatencySamples();
+
+    cmds.addFxSlot (0, "saturator");
+    engine.drainPendingRoutingRebuild();
+    engine.getMainProcessor()->rebuildRoutingGraph();
+    engine.drainPendingRoutingRebuild();
+
+    ASSERT_GE (track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at (0).get();
+    ASSERT_EQ (slot->getType().toStdString(), "saturator");
+    const int slotLat = slot->getLatencySamples();
+    EXPECT_GT (slotLat, 0) << "2x oversampling must report latency";
+    std::cout << "SaturatorLatency: before=" << before
+              << " after=" << track->getLatencySamples()
+              << " slot=" << slotLat << std::endl;
+    EXPECT_EQ (track->getLatencySamples() - before, slotLat)
+        << "Track::updateLatency must sum the internal slot latency once";
+}
