@@ -37,6 +37,9 @@ public:
     virtual void setTrackHidden(int trackIndex, bool hidden) = 0;
     virtual void moveTrackIntoFolder(int trackIndex, int folderIndex) = 0;
     virtual void moveTrackOutOfFolder(int trackIndex) = 0;
+    // Track-count query for router-level validation. Default body returns
+    // negative = unknown; router skips upper-bound check.
+    virtual int getTrackCount() const { return -1; }
 
     // Send operations
     virtual void setTrackSendLevel(int trackIndex, int sendIndex, float level) = 0;

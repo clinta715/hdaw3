@@ -642,6 +642,11 @@ void AudioEngineCommands::clearFxSlotPsyFmModRoutes(int trackIndex, int slotInde
 
 // ─── FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2) ───
 
+int AudioEngineCommands::getTrackCount() const
+{
+    return engine_.getProjectModel().getTrackListTree().getNumChildren();
+}
+
 HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
 {
     HDAW::ChainPreset preset;

@@ -292,6 +292,32 @@ TEST(FrontendServer, MissingParamReturnsError) {
     s.tearDown();
 }
 
+// saveFxChainPreset with a positive out-of-range trackIndex must fail with
+// -32602 "track not found" (router upper-bound check via getTrackCount)
+// instead of minting a 0-slot junk preset file as success.
+TEST(FrontendServer, SaveFxChainPresetRejectsOutOfRangeTrack) {
+    EngineAndServer s;
+    s.setUp();
+
+    TestClient client;
+    ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+
+    QJsonObject badParams{ { "trackIndex", 999 }, { "name", "junk-should-not-exist" } };
+    auto resp = client.call(100, "project.saveFxChainPreset", badParams);
+    ASSERT_TRUE(resp.contains("error"));
+    EXPECT_EQ(resp.value("error").toObject().value("code").toInt(), -32602);
+    EXPECT_TRUE(resp.value("error").toObject().value("message").toString().contains("track not found"));
+
+    // Negative index stays rejected too.
+    QJsonObject negParams{ { "trackIndex", -1 }, { "name", "junk-should-not-exist" } };
+    auto negResp = client.call(101, "project.saveFxChainPreset", negParams);
+    ASSERT_TRUE(negResp.contains("error"));
+    EXPECT_EQ(negResp.value("error").toObject().value("code").toInt(), -32602);
+
+    client.close();
+    s.tearDown();
+}
+
 // New RPC method contract: audio.fm_synthImportSysex loads a DX7 .syx file
 // into an FM synth FX slot. Exercises the full path the drop handler uses:
 // addFxSlot → read.getFxSlots → audio.fm_synthImportSysex → live engine.

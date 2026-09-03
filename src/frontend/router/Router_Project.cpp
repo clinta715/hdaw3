@@ -353,11 +353,10 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", name, nullptr))
             return makeError(-32602, "trackIndex and name required");
         // exportFxChain returns an empty preset for an out-of-range index,
-        // which would save a 0-slot junk file as success. Reject the
-        // expressible bound here (mirror of the save_fx_chain MCP twin's
-        // ti<0 check); the upper bound is enforced engine-side by
-        // applyFxChain, as ProjectCommands exposes no track-count query.
-        if (i < 0)
+        // which would save a 0-slot junk file as success. Reject both bounds
+        // here: getTrackCount() < 0 means unknown (skip upper-bound check).
+        int n = c.getTrackCount();
+        if (i < 0 || (n >= 0 && i >= n))
             return makeError(-32602, "track not found");
         HDAW::ChainPreset p = c.exportFxChain(i);
         p.name = juce::String(name);

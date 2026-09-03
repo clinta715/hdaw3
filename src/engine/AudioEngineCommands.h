@@ -199,6 +199,7 @@ public:
     HDAW::ChainPreset exportFxChain(int trackIndex) override;
     bool applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
                       juce::String* error = nullptr) override;
+    int getTrackCount() const override;
     void setSamplerSample(int trackIndex, int slotIndex,
                           const std::string& filePath, int rootNote = 60) override;
     void setSamplerMode(int trackIndex, int slotIndex, const std::string& mode);
