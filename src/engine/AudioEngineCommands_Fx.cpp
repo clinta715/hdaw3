@@ -868,6 +868,8 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
         auto slotTree = findFxSlot(trackIndex, slotIndex);
         if (!slotTree.isValid())
         {
+            if (auto* proc = engine_.getMainProcessor())
+                proc->rebuildTrackFX(trackIndex);
             endTransaction();
             return fail("applyFxChain: failed to create slot "
                         + juce::String(slotIndex));
@@ -887,6 +889,8 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
             // a stray prop.
             if (idx < 0)
             {
+                if (auto* proc = engine_.getMainProcessor())
+                    proc->rebuildTrackFX(trackIndex);
                 endTransaction();
                 return fail("applyFxChain: param '" + kv.first + "' rejected during apply");
             }

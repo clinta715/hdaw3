@@ -162,9 +162,9 @@ public:
     // Restart a crashed isolated plugin FX slot via the crash-recovery manager.
     virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;
     // FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2). exportFxChain
-    // snapshots a track's chain into an HDAW::ChainPreset (read-only: no tree
-    // mutation, no undo, no rebuild; live plugin state is captured into the
-    // tree first, ProjectSerializer.cpp:64-84 pattern). applyFxChain validates
+    // snapshots a track's chain into an HDAW::ChainPreset. Captures live plugin
+    // state into the tree (nullptr undo, like ProjectSerializer) before reading;
+    // no undo entry, no rebuild. applyFxChain validates
     // the whole preset (Gate 9) before any write, replaces the chain in ONE
     // undo transaction with a SINGLE rebuildTrackFX at the end, and routes
     // param writes through setFxSlotParam (write-side clamp, lesson 23).
