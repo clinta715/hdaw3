@@ -159,7 +159,7 @@ pass `Debug` for breakpoint debugging.
   persist across launches** (driver, device, sample rate, buffer size
   restored on startup with fallback to defaults).
 - MCP HTTP server host is configurable in Preferences (defaults to
-  `127.0.0.1`). `--no-mcp` CLI flag fully implemented.
+  `127.0.0.1`).
 
 - Generative composition: PhraseGeneratorDialog (phrase styles, chords, progressions) gained a Rhythm mode — polyrhythmic/euclidean drum patterns, snare toggle, and house/techno/dnb genre styles.
 

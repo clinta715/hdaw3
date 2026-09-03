@@ -85,8 +85,8 @@ full list of working features and the priority-ordered roadmap, see
   - **Default (browser mode):** `HDAW.exe` — starts engine + WebSocket server (port 8766) + HTTP server (port 8765), opens system browser to `http://127.0.0.1:8765`. The React SPA is bundled in Qt resources and served by the C++ HTTP server.
   - **Headless (Electron mode):** `HDAW_headless.exe --headless` — starts engine + WebSocket server only. Electron spawns this as a child process and connects via WebSocket.
 - CLI flags: `--mcp-stdio` forces headless stdio MCP server (run when
-  launched as a subprocess by an MCP client), `--no-mcp` disables MCP
-  entirely, `--mcp-http-port=<N>` overrides the MCP HTTP server's bind
+  launched as a subprocess by an MCP client), `--mcp-http-port=<N>`
+  overrides the MCP HTTP server's bind
   port. `--port=N` overrides the WebSocket port (default 8766). `--http-port=N` overrides the HTTP serving port (default 8765).
 - Plugin process isolation is **ON by default** — every VST3/CLAP plugin
   runs in a separate `hdaw_plugin_host.exe` child process. Disable with

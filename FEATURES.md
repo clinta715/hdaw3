@@ -221,7 +221,6 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 - [x] Bugfix: midiCcRecordArmed data race (now atomic<bool>)
 - [x] Preferences: Audio Settings (driver/device/SR/buffer), MIDI device persistence, count-in bars
 - [x] MCP HTTP host configurable via Preferences (was hardcoded 127.0.0.1)
-- [x] `--no-mcp` CLI flag implemented (disables MCP HTTP auto-start)
 - [x] MIDI clip editor properties (transpose / quantize / velocity-offset / humanize, operates on all notes)
 - [x] MIDI note thumbnails on the timeline arrange view (pitch-range-fitted mini piano-roll per clip)
 - [x] Zoom buttons + Ctrl+wheel zoom in piano roll and audio/sample editor
