@@ -47,6 +47,7 @@ add_executable(hdaw_tests
     unit/engine/fm_synth_test.cpp
     unit/engine/psyfm_test.cpp
     unit/engine/growl_bass_engine_test.cpp
+    unit/engine/saturator_engine_test.cpp
     unit/engine/psyarp_engine_test.cpp
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
