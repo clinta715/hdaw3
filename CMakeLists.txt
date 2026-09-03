@@ -144,6 +144,7 @@ add_library(HDAW_lib STATIC
     src/engine/PsytranceGenerator.cpp
     src/engine/PsytranceMarkovGenerator.cpp
     src/engine/PatternLibrary.cpp
+    src/engine/ChainLibrary.cpp
     src/engine/EnvelopeGenerator.cpp
     src/engine/Generative.cpp
     src/engine/ArrangementGenerator.cpp
