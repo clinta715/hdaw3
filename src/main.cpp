@@ -5,7 +5,6 @@
 //   HDAW.exe --http-port=9001   (custom HTTP port)
 //   HDAW.exe --mcp-stdio        (headless MCP over stdin/stdout)
 //   HDAW.exe --headless         (headless WebSocket server)
-//   HDAW.exe --no-mcp           (default mode without MCP)
 
 #include <QCoreApplication>
 #include <QSettings>
@@ -91,7 +90,6 @@ int main(int argc, char *argv[])
 
     const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
     const bool headlessFrontend = parseFlag(argc, argv, "--headless");
-    const bool noMcp = parseFlag(argc, argv, "--no-mcp");
 
     const char* modeName = "UI (engine + browser)";
     if (headlessMcp) modeName = "HEADLESS MCP (--mcp-stdio)";
