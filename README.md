@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.26.0
+**Current version**: 0.27.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.26.0)
+## What works today (v0.27.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -99,6 +99,10 @@ pass `Debug` for breakpoint debugging.
   record-arm, automation toggle, VU meter.
 - Per-track FX chain editor in the FX Chain panel. Drag the handle
   to reorder slots, or use the up/down arrows.
+- **Whole-channel FX chain presets**: save / list / load / delete,
+  stored per-user; applying a preset is one undo unit and rebuilds
+  the live chain. Reachable from the FX Chain panel preset bar,
+  RPC, and MCP.
 - Per-track MIDI channel routing (1-16) via track header context menu.
 - Per-track automation lane editor in the Automation panel
   (Volume, Pan, Mute are default lanes; plugin FX parameters
@@ -110,7 +114,12 @@ pass `Debug` for breakpoint debugging.
 - JUCE 8 audio device management with `AudioDeviceManager`.
 - Per-track `AudioProcessor` instances summing through buses.
 - Internal FX: gain, EQ, compressor, reverb, delay (via
-  `juce_dsp`).
+  `juce_dsp`); PsyFm FM synth added to the FX panel list (parity
+  gap).
+- **Saturator internal FX**: drive with 4 transfer curves
+  (SoftTanh/SoftAtan/Hard/Bitcrush), asymmetry, 2× oversampled
+  with latency reported into PDC, DC-blocked, dry/wet + output
+  trim, per-param clamping.
 - Plugin hosting: VST3 and CLAP via JUCE's native format
   loaders. Plugin Manager dialog scans known paths and lists
   detected plugins. Plugin search filter in FX slot combo box.
@@ -328,6 +337,36 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.27.0 — FX chain presets + standalone saturator FX
+
+**FX chain presets:**
+- ChainLibrary JSON storage (user dir, sanitized names, duplicate
+  uniquification, corrupt-file safe); `exportFxChain`/`applyFxChain`
+  engine commands — atomic apply (all validation before mutation),
+  single undo unit, sampler file-mode/root and byte-identical plugin
+  state preserved.
+- 4 RPC routes (`project.saveFxChainPreset`/`listFxChainPresets`/
+  `loadFxChainPreset`/`deleteFxChainPreset`) + 4 MCP tools
+  (`save_fx_chain`/`list_fx_chains`/`load_fx_chain`/
+  `delete_fx_chain`) + docked preset bar in the FX Chain panel
+  (stale-response guards, busy-gating).
+- Load by id or name (ambiguous name rejected); preset-apply
+  failure paths rebuild the live chain.
+
+**Saturator FX:**
+- Header-only `SaturatorEngine` (NaN/Inf-immune, sample-rate-aware
+  20 Hz DC blocker, 2^bits bipolar bitcrush); `TrackFXSlot`
+  integration with 6 clamped params (Drive dB 0–40, Type 0–3,
+  Asymmetry −1..1, Mix 0–1, Output dB ±24, Bits 2–16).
+- 2× oversampling (polyphase IIR halfband, factor-is-exponent trap
+  documented); 4-sample latency summed into track PDC; Mix=0
+  renders bit-identical to bypass; clamp sites include the
+  automation path (newly closed lesson-23 gap).
+- Measured: 18 kHz decimation-fold −42.7 dB, neutral fidelity
+  −0.13 dB, harmonics +33.8 dB at Drive 24.
+
+**Tests:** full suite now 1328 tests / 216 suites, 0 failed.
 
 ### v0.26.0 — Markov composition mode, vague macro-structure, timbre key/BPM
 

@@ -9,19 +9,13 @@ skill: "hdaw-guard"
 Skill file: [`docs/skills/hdaw-guard/SKILL.md`](docs/skills/hdaw-guard/SKILL.md).
 This skill enforces plan-first development, guards against the 16 recurring pitfalls, requires dependency analysis, and alerts on anti-patterns. It is non-negotiable for every task.
 
-**Sound-engine stability rule (standing):** Do NOT introduce new complexity to the underlying
-sound engine — anything touching `processBlock`, DSP chains, render/export, or playback paths —
-without discussing it with the user first. Engine changes carry outsized debugging costs
-(lessons 3/5/7/8/11–23) for features that can often be skipped or achieved another way
-(score-level generation, MCP/ValueTree wiring, or parameters of existing FX). Default to
-non-engine implementations; propose engine-touching work as a discussion item with effort and
-risk notes BEFORE implementing. Rendering and playback stability outrank new features.
+**Sound-engine stability rule (standing):** Bug fixes to the sound engine proceed without prior discussion, and transparent/reversible/low-blast-radius performance improvements proceed as well. Changes with wide blast radius — anything touching `processBlock`, DSP chains, render/export, playback paths, plugin isolation, or internal/external FX contracts — require discussion with the user FIRST, with effort + risk notes BEFORE implementing. Engine changes carry outsized debugging costs (lessons 3/5/7/8/11–23) for features that can often be achieved another way (score-level generation, MCP/ValueTree wiring, or parameters of existing FX); default to non-engine implementations. Rendering and playback stability outrank new features.
 
 Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.25.1** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.27.0** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -569,9 +563,13 @@ for a fix marker) before trusting the package.
 
 ## Testing
 
-- **C++ engine tests (gtest):** `build/Debug/hdaw_tests.exe`
+- **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
-  - 1015 tests across 182 suites: MCP tools/server, transport, tracks, clips,
+  - Full suite: ~1328 tests, ~13 min. Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery).
+  - Current baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
+  - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
+  - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
+  - 1015→1328 tests across 182→216 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
     ripple delete, ghost clips, stretch, markers, error conditions, batch ops,
     plugin isolation, audio pool, streaming, arranger, session, library,
