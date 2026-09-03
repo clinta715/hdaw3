@@ -193,6 +193,12 @@ public:
     void clearFxSlotPsyFmModRoutes(int trackIndex, int slotIndex);
     void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) override;
     void respawnFxSlot(int trackIndex, int slotIndex) override;
+    // ── FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2) ──
+    // Export/import commands around HDAW::ChainPreset (engine/ChainLibrary.h).
+    // See ProjectCommands.h for the contract.
+    HDAW::ChainPreset exportFxChain(int trackIndex) override;
+    bool applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
+                      juce::String* error = nullptr) override;
     void setSamplerSample(int trackIndex, int slotIndex,
                           const std::string& filePath, int rootNote = 60) override;
     void setSamplerMode(int trackIndex, int slotIndex, const std::string& mode);

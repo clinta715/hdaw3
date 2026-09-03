@@ -80,6 +80,7 @@ add_executable(hdaw_tests
     unit/engine/pattern_placer_test.cpp
     unit/engine/pattern_library_test.cpp
     unit/engine/chain_library_test.cpp
+    unit/engine/fx_chain_preset_test.cpp
     unit/engine/arranger_test.cpp
     unit/engine/bar_snap_test.cpp
     unit/engine/ghost_clips_test.cpp

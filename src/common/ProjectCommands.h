@@ -2,12 +2,13 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <juce_core/juce_core.h>
 #include "../engine/EnvelopeGenerator.h"
 #include "../engine/AutomationPreset.h"
 #include "../engine/PsytranceGenerator.h"
 #include "../engine/PsytranceMarkovGenerator.h"
 
-namespace HDAW { struct ArrangementParams; }
+namespace HDAW { struct ArrangementParams; struct ChainPreset; }
 
 class ProjectCommands
 {
@@ -160,6 +161,19 @@ public:
     virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
     // Restart a crashed isolated plugin FX slot via the crash-recovery manager.
     virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;
+    // FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2). exportFxChain
+    // snapshots a track's chain into an HDAW::ChainPreset (read-only: no tree
+    // mutation, no undo, no rebuild; live plugin state is captured into the
+    // tree first, ProjectSerializer.cpp:64-84 pattern). applyFxChain validates
+    // the whole preset (Gate 9) before any write, replaces the chain in ONE
+    // undo transaction with a SINGLE rebuildTrackFX at the end, and routes
+    // param writes through setFxSlotParam (write-side clamp, lesson 23).
+    // Missing sampler samples are skipped with an HDAW_LOG warning (never a
+    // silent pass, Gate 2). Full type lives in engine/ChainLibrary.h (forward
+    // declared above to avoid an include cycle).
+    virtual HDAW::ChainPreset exportFxChain(int trackIndex) = 0;
+    virtual bool applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
+                              juce::String* error = nullptr) = 0;
 
     // Automation
     virtual bool addAutomationLane(int trackIndex, const std::string& laneName, int paramID = 0) = 0;
