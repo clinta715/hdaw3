@@ -1,6 +1,23 @@
 #pragma once
 // PsytranceMarkovGenerator — incremental 2-bar Markov psytrance score
-// generation. A pool of elements (roles) grows the track 2 bars at a time;
+// generation.
+//
+// COMPONENT ARCHITECTURE (0.29.0): generate() is a thin delegate — the
+// orchestrator is MarkovArranger (src/engine/MarkovArranger.{h,cpp}), which
+// drives PercussionEngine (themes, 16-step grids, rotation), HarmonyEngine
+// (key, progressions, chord tones, pitched emission) and TextureEngine
+// (riser/downlifter + filter sweeps). Each component owns a style-parameter
+// struct (PercussionStyle/HarmonyStyle/TextureStyle) — the seam where future
+// genre style packs (JSON) land. Shared role predicates and draw primitives
+// live in MarkovRoles.h.
+//
+// Same-seed determinism is the only sequencing contract (same seed + params
+// → byte-identical score, run to run). The 0.29.0 component refactor
+// preserved the seeded draw order, so per-seed scores carry over from 0.28.x;
+// per-seed continuity across future versions is NOT contractual — a reorder
+// is acceptable (tests are self-comparisons and property sweeps).
+//
+// A pool of elements (roles) grows the track 2 bars at a time;
 // each 2-bar window a seeded std::mt19937 (seed_seq from the full uint64)
 // picks the next variation action in a FIXED draw order, so the same seed +
 // params reproduce a byte-identical score. Global min/max active tracks plus

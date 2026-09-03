@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.24)
 if(POLICY CMP0141)
     cmake_policy(SET CMP0141 NEW)
 endif()
-project(HDAW VERSION 0.28.0 LANGUAGES C CXX)
+project(HDAW VERSION 0.29.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -143,6 +143,15 @@ add_library(HDAW_lib STATIC
     src/engine/PhraseGenerator.cpp
     src/engine/PsytranceGenerator.cpp
     src/engine/PsytranceMarkovGenerator.cpp
+    src/engine/MarkovRoles.h
+    src/engine/MarkovArranger.h
+    src/engine/MarkovArranger.cpp
+    src/engine/PercussionEngine.h
+    src/engine/PercussionEngine.cpp
+    src/engine/HarmonyEngine.h
+    src/engine/HarmonyEngine.cpp
+    src/engine/TextureEngine.h
+    src/engine/TextureEngine.cpp
     src/engine/PatternLibrary.cpp
     src/engine/ChainLibrary.cpp
     src/engine/EnvelopeGenerator.cpp

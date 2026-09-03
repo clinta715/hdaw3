@@ -322,6 +322,26 @@ MCP tool `generate_psytrance_markov` → RPC `generatePsytranceMarkov` →
 the legacy path: one clip per produced role at beat 0 spanning
 `totalBars*4` beats, notes clip-local, ONE undo unit).
 
+**Component architecture.** The generator is decomposed into four
+genre-agnostic components, each owning a style-parameter struct:
+`MarkovArranger` (orchestrator — validation, active-set bookkeeping, Markov
+action selection, section-energy schedule, clip assembly),
+`PercussionEngine` (percussive themes, 16-step velocity grids, unit
+rotation), `HarmonyEngine` (key, progressions, chord tones, pitched
+emission) and `TextureEngine` (riser/downlifter accents, filter sweeps).
+The style structs (`PercussionStyle`/`HarmonyStyle`/`TextureStyle`, in
+`src/engine/`) are the seam where future genre style packs (JSON) land, and
+where P2 (riff-centric harmony, in HarmonyEngine) and P3 (long-form
+textures, dub bursts, in TextureEngine) will extend. Genre breadth =
+parameter presets, not new generators; cross-generator combination is an
+agent-level move (multiple MCP calls), never engine coupling.
+
+> Same-seed determinism is the only sequencing contract (same seed + params
+> → byte-identical score, run to run). The 0.29.0 component refactor
+> preserved the seeded draw order, so per-seed scores carry over from
+> 0.28.x; per-seed continuity across future versions is NOT contractual —
+> a reorder is acceptable (tests are self-comparisons and property sweeps).
+
 **Pool-of-elements philosophy.** The arrangement is not a fixed schedule; it
 is a pool of layers that enter, hold, vary, and leave. Global active-layer
 count stays within `[minTracks, maxTracks]` (default 2..6, ceiling 9).
