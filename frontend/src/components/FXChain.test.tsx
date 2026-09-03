@@ -5,6 +5,7 @@ import FXChain from "./FXChain";
 import { rpc } from "../rpc";
 import { useUiStore } from "../store/uiStore";
 import { useAutomationStore } from "../store/automationStore";
+import { useNotifyStore } from "../store/notifyStore";
 import type { FxSlotSnapshot } from "../rpc/types";
 
 vi.mock("../rpc", () => ({
@@ -56,6 +57,7 @@ describe("FXChain", () => {
     mockedOnNotification.mockReset();
     mockedOnNotification.mockReturnValue(vi.fn());
     useAutomationStore.setState({ lastClickedParamID: null });
+    useNotifyStore.getState().clear();
     useUiStore.setState({
       selectedTrackIndex: null,
       crashedFxSlots: {},
@@ -385,6 +387,42 @@ describe("FXChain", () => {
   });
 
   describe("preset management", () => {
+    it("renders the chain preset bar, applies the selected preset, and surfaces warnings", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getFxSlots") return Promise.resolve([]);
+        if (method === "project.listFxChainPresets") return Promise.resolve([
+          { id: "1", name: "Driven", slotCount: 2 },
+        ]);
+        if (method === "project.loadFxChainPreset") return Promise.resolve({
+          ok: true,
+          warnings: ["Missing plugin replaced with a bypassed slot"],
+        });
+        return Promise.resolve([]);
+      });
+      const user = userEvent.setup();
+      render(<FXChain />);
+
+      const presetSelect = await screen.findByTitle("FX chain presets");
+      expect(screen.getByRole("option", { name: "Driven (2)" })).toBeInTheDocument();
+      await user.selectOptions(presetSelect, "1");
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+
+      await waitFor(() => {
+        expect(mockedCall).toHaveBeenCalledWith("project.loadFxChainPreset", {
+          trackIndex: 0,
+          id: "1",
+        });
+        expect(mockedCall.mock.calls.filter(([method]) => method === "read.getFxSlots")).toHaveLength(2);
+        expect(useNotifyStore.getState().toasts).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            level: "info",
+            message: "Missing plugin replaced with a bypassed slot",
+          }),
+        ]));
+      });
+    });
+
     it("clicking Presets calls listPrograms RPC", async () => {
       useUiStore.setState({ selectedTrackIndex: 0 });
       mockedCall.mockImplementation((method: string) => {
@@ -564,7 +602,9 @@ describe("FXChain", () => {
       mockedCall.mockResolvedValue([]);
       const { rerender } = render(<FXChain />);
 
-      useUiStore.setState({ selectedTrackIndex: 0 });
+      act(() => {
+        useUiStore.setState({ selectedTrackIndex: 0 });
+      });
       rerender(<FXChain />);
       await flushRead();
 

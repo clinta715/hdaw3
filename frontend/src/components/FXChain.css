@@ -18,9 +18,83 @@
 
 .fx-header {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.fx-header-main {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+}
+
+.fx-chain-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+}
+
+.fx-chain-preset-select,
+.fx-chain-preset-name {
+  min-width: 0;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  font-size: 10px;
+}
+
+.fx-chain-preset-select {
+  flex: 1 1 140px;
+}
+
+.fx-chain-preset-name {
+  flex: 1 1 110px;
+  padding: 0 6px;
+}
+
+.fx-chain-preset-name::placeholder {
+  color: var(--text-muted);
+}
+
+.fx-chain-preset-select:focus,
+.fx-chain-preset-name:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.fx-chain-preset-btn {
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 10px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.fx-chain-preset-btn:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+}
+
+.fx-chain-preset-btn:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.fx-chain-preset-delete:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .fx-title {
@@ -435,6 +509,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .fx-chain-preset-btn,
   .fx-slot-crash,
   .fx-slot-crash-btn {
     transition: none;

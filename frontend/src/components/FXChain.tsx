@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useUiStore } from "../store/uiStore";
 import { useAutomationStore } from "../store/automationStore";
+import { reportRpcError, useNotifyStore } from "../store/notifyStore";
 import { rpc } from "../rpc";
 import { FxSlotSnapshot } from "../rpc/types";
 import PopUpBrowser, { type ContentItem } from "./PopUpBrowser";
@@ -38,6 +39,12 @@ interface CartridgeInfo {
   totalVoices: number;
   voiceIndex: number;
   voices: CartridgeVoice[];
+}
+
+interface FxChainPreset {
+  id: string;
+  name: string;
+  slotCount: number;
 }
 
 // Map value from real range to 0-1000 for slider, or just show as percentage
@@ -84,6 +91,9 @@ export default function FXChain() {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [cartridgeInfo, setCartridgeInfo] = useState<Map<number, CartridgeInfo>>(new Map());
   const [voiceMenuSlot, setVoiceMenuSlot] = useState<number | null>(null);
+  const [chainPresets, setChainPresets] = useState<FxChainPreset[]>([]);
+  const [selectedChainPresetId, setSelectedChainPresetId] = useState("");
+  const [chainPresetName, setChainPresetName] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,6 +163,83 @@ export default function FXChain() {
   }, [menuOpen]);
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
+
+  const refreshChainPresets = useCallback(async () => {
+    try {
+      const data = await rpc.call("project.listFxChainPresets", {});
+      if (!Array.isArray(data)) return;
+      const next = data.filter((item): item is FxChainPreset => {
+        if (!item || typeof item !== "object") return false;
+        const preset = item as Partial<FxChainPreset>;
+        return typeof preset.id === "string"
+          && typeof preset.name === "string"
+          && typeof preset.slotCount === "number";
+      });
+      setChainPresets(next);
+      setSelectedChainPresetId((current) =>
+        next.some((preset) => preset.id === current) ? current : (next[0]?.id ?? "")
+      );
+    } catch (e) {
+      reportRpcError("project.listFxChainPresets", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedTrackIndex != null) refreshChainPresets();
+  }, [selectedTrackIndex, refreshChainPresets]);
+
+  const applyChainPreset = useCallback(async () => {
+    if (selectedTrackIndex == null || !selectedChainPresetId) return;
+    const trackIndex = selectedTrackIndex;
+    try {
+      const data = await rpc.call("project.loadFxChainPreset", {
+        trackIndex,
+        id: selectedChainPresetId,
+      });
+      const warnings = data && typeof data === "object"
+        ? (data as { warnings?: unknown }).warnings
+        : undefined;
+      if (Array.isArray(warnings)) {
+        for (const warning of warnings) {
+          useNotifyStore.getState().push({ level: "info", message: String(warning) });
+        }
+      }
+      refresh();
+    } catch (e) {
+      reportRpcError("project.loadFxChainPreset", e);
+    }
+  }, [selectedTrackIndex, selectedChainPresetId, refresh]);
+
+  const saveChainPreset = useCallback(async () => {
+    const name = chainPresetName.trim();
+    if (selectedTrackIndex == null || !name) return;
+    const trackIndex = selectedTrackIndex;
+    try {
+      const data = await rpc.call("project.saveFxChainPreset", { trackIndex, name });
+      const savedId = data && typeof data === "object" ? String((data as { id?: unknown }).id ?? "") : "";
+      setChainPresetName("");
+      await refreshChainPresets();
+      if (savedId) setSelectedChainPresetId(savedId);
+    } catch (e) {
+      reportRpcError("project.saveFxChainPreset", e);
+    }
+  }, [selectedTrackIndex, chainPresetName, refreshChainPresets]);
+
+  const deleteChainPreset = useCallback(async () => {
+    if (!selectedChainPresetId || !confirm("Delete this preset?")) return;
+    const id = selectedChainPresetId;
+    const previous = chainPresets;
+    const next = previous.filter((preset) => preset.id !== id);
+    setChainPresets(next);
+    setSelectedChainPresetId(next[0]?.id ?? "");
+    try {
+      await rpc.call("project.deleteFxChainPreset", { id });
+    } catch (e) {
+      setChainPresets(previous);
+      setSelectedChainPresetId(id);
+      reportRpcError("project.deleteFxChainPreset", e);
+    }
+  }, [selectedChainPresetId, chainPresets]);
 
   const addSlot = useCallback(async (fxType: string, pluginId: string = "") => {
     if (selectedTrackIndex == null) return;
@@ -461,11 +548,12 @@ export default function FXChain() {
   return (
     <div className="fx-chain">
       <div className="fx-header">
-        <span className="fx-title">FX Chain — Track {selectedTrackIndex}</span>
-        <div className="fx-add-menu-container" ref={menuRef}>
-          <button className="fx-add-btn" onClick={() => setMenuOpen(o => !o)}>+ Add FX</button>
-          {menuOpen && (
-            <div className="fx-dropdown">
+        <div className="fx-header-main">
+          <span className="fx-title">FX Chain — Track {selectedTrackIndex}</span>
+          <div className="fx-add-menu-container" ref={menuRef}>
+            <button className="fx-add-btn" onClick={() => setMenuOpen(o => !o)}>+ Add FX</button>
+            {menuOpen && (
+              <div className="fx-dropdown">
               <div className="fx-dropdown-section">
                 <div className="fx-dropdown-label">Internal</div>
                 {INTERNAL_FX.map(fx => (
@@ -508,8 +596,33 @@ export default function FXChain() {
                   Browse Devices...
                 </button>
               </div>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="fx-chain-preset-row" data-testid="fx-chain-preset-bar">
+          <select
+            className="fx-chain-preset-select"
+            title="FX chain presets"
+            value={selectedChainPresetId}
+            onChange={(e) => setSelectedChainPresetId(e.target.value)}
+          >
+            {chainPresets.length === 0 && <option value="">No presets</option>}
+            {chainPresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.name} ({preset.slotCount})</option>
+            ))}
+          </select>
+          <button className="fx-chain-preset-btn" onClick={applyChainPreset} disabled={!selectedChainPresetId}>Apply</button>
+          <input
+            className="fx-chain-preset-name"
+            value={chainPresetName}
+            onChange={(e) => setChainPresetName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") saveChainPreset(); }}
+            placeholder="Preset name"
+            aria-label="FX chain preset name"
+          />
+          <button className="fx-chain-preset-btn" onClick={saveChainPreset} disabled={!chainPresetName.trim()}>Save</button>
+          <button className="fx-chain-preset-btn fx-chain-preset-delete" onClick={deleteChainPreset} disabled={!selectedChainPresetId}>Delete</button>
         </div>
       </div>
       {browseOpen && (
