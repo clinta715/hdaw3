@@ -220,6 +220,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Fx.cpp
     src/mcp/McpTools_FxSlot.cpp
     src/mcp/McpTools_FxPreset.cpp
+    src/mcp/McpTools_FxChain.cpp
     src/mcp/McpTools_Sampler.cpp
     src/mcp/McpTools_FmSynth.cpp
     src/mcp/McpTools_PsyFm.cpp

@@ -155,7 +155,7 @@ const ChainLibrary& ChainLibrary::userLibrary()
     return lib;
 }
 
-juce::String ChainLibrary::savePreset(const ChainPreset& p)
+juce::String ChainLibrary::savePreset(const ChainPreset& p) const
 {
     if (p.name.trim().isEmpty())
         return {};
@@ -211,7 +211,7 @@ std::vector<ChainPreset> ChainLibrary::listPresets() const
     return result;
 }
 
-ChainPreset ChainLibrary::loadPreset(const juce::String& id)
+ChainPreset ChainLibrary::loadPreset(const juce::String& id) const
 {
     ChainPreset empty;
     if (id.isEmpty())
@@ -226,7 +226,7 @@ ChainPreset ChainLibrary::loadPreset(const juce::String& id)
     return readPresetFile(file, root_);
 }
 
-bool ChainLibrary::deletePreset(const juce::String& id)
+bool ChainLibrary::deletePreset(const juce::String& id) const
 {
     if (id.isEmpty())
         return false;

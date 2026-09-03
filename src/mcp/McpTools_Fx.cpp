@@ -9,6 +9,7 @@ void registerFxTools(McpServer& s, AudioEngine* e)
 {
     registerFxSlotTools(s, e);
     registerFxPresetTools(s, e);
+    registerFxChainTools(s, e);
     registerSamplerTools(s, e);
     registerFmSynthTools(s, e);
     registerPsyFmTools(s, e);

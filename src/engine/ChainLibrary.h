@@ -38,10 +38,10 @@ class ChainLibrary {
 public:
     explicit ChainLibrary(const juce::File& root);
     static const ChainLibrary& userLibrary();  // userApplicationDataDirectory/HDAW/chains (mirror src/mcp/McpTools_CompositionPattern.cpp)
-    juce::String savePreset(const ChainPreset& p);   // root/user/<sanitized>.json, uniquified -N
+    juce::String savePreset(const ChainPreset& p) const;   // root/user/<sanitized>.json, uniquified -N
     std::vector<ChainPreset> listPresets() const;    // scan *.json like PatternLibrary.cpp:392
-    ChainPreset loadPreset(const juce::String& id);
-    bool deletePreset(const juce::String& id);       // refuses ids under _factory/
+    ChainPreset loadPreset(const juce::String& id) const;
+    bool deletePreset(const juce::String& id) const;       // refuses ids under _factory/
 private:
     juce::File root_, userDir_;
     mutable std::mutex mutex_;

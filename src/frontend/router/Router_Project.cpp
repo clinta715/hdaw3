@@ -1,3 +1,8 @@
+// ChainLibrary.h MUST stay the first include: Qt defines a `slots` macro
+// (qobjectdefs.h, via QSettings/QObject below) that would otherwise rewrite
+// the HDAW::ChainPreset::slots member. This TU uses no Qt signals/slots
+// keywords (verified by grep), so the macro is dropped after the includes.
+#include "../../engine/ChainLibrary.h"
 #include "Router_Project.h"
 #include "RouterHelpers.h"
 
@@ -16,6 +21,12 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+
+// See note at the top of this file: drop Qt's `slots` macro so
+// HDAW::ChainPreset::slots stays a plain member below.
+#ifdef slots
+#undef slots
+#endif
 
 using namespace frontend::router_helpers;
 
@@ -335,6 +346,80 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
             return makeError(-32602, "trackIndex and slotIndex required");
         c.respawnFxSlot(i, s);
         return { false, QJsonValue::Null };
+    }
+    // --- FX chain presets (plan 2026-09-02-fx-chain-presets, Task 3) ---
+    if (m == "saveFxChainPreset") {
+        int i; std::string name;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireString(o, "name", name, nullptr))
+            return makeError(-32602, "trackIndex and name required");
+        HDAW::ChainPreset p = c.exportFxChain(i);
+        p.name = juce::String(name);
+        juce::String id = HDAW::ChainLibrary::userLibrary().savePreset(p);
+        if (id.isEmpty())
+            return makeError(-32602, "failed to save chain preset");
+        QJsonObject out;
+        out["id"] = QString::fromStdString(id.toStdString());
+        return { false, out };
+    }
+    if (m == "listFxChainPresets") {
+        QJsonArray arr;
+        for (const auto& p : HDAW::ChainLibrary::userLibrary().listPresets()) {
+            QJsonObject e;
+            e["id"] = QString::fromStdString(p.id.toStdString());
+            e["name"] = QString::fromStdString(p.name.toStdString());
+            e["slotCount"] = static_cast<int>(p.slots.size());
+            arr.append(e);
+        }
+        return { false, arr };
+    }
+    if (m == "loadFxChainPreset") {
+        int i;
+        if (!requireInt(o, "trackIndex", i, nullptr))
+            return makeError(-32602, "trackIndex required");
+        bool hasId = o.contains("id") && o.value("id").isString();
+        bool hasName = o.contains("name") && o.value("name").isString();
+        if (!hasId && !hasName)
+            return makeError(-32602, "id or name required");
+        const auto& lib = HDAW::ChainLibrary::userLibrary();
+        HDAW::ChainPreset preset;
+        if (hasId) {
+            // Both given: id wins (deterministic); name-only resolves below.
+            preset = lib.loadPreset(juce::String(o.value("id").toString().toStdString()));
+            if (preset.id.isEmpty())
+                return makeError(-32602, "chain preset not found");
+        } else {
+            juce::String want(o.value("name").toString().toStdString());
+            int matches = 0;
+            for (const auto& p : lib.listPresets()) {
+                if (p.name == want) { preset = p; ++matches; }
+            }
+            if (matches == 0)
+                return makeError(-32602, "chain preset not found");
+            if (matches > 1)
+                return makeError(-32602, "ambiguous chain preset name");
+        }
+        juce::String error;
+        if (!c.applyFxChain(i, preset, &error))
+            return makeError(-32602, QString::fromStdString(error.toStdString()));
+        // NOTE: warnings is always empty. applyFxChain has no warnings
+        // channel by design (Task 2 contract): a missing sampler sample is
+        // an HDAW_LOG plus a slot applied without its sample — never a
+        // silent pass, never a hard failure. The array exists for schema
+        // stability so a future warnings channel needs no shape change.
+        QJsonObject out;
+        out["ok"] = true;
+        out["warnings"] = QJsonArray{};
+        return { false, out };
+    }
+    if (m == "deleteFxChainPreset") {
+        std::string id;
+        if (!requireString(o, "id", id, nullptr))
+            return makeError(-32602, "id required");
+        if (!HDAW::ChainLibrary::userLibrary().deletePreset(juce::String(id)))
+            return makeError(-32602, "chain preset not found or not deletable");
+        QJsonObject out;
+        out["ok"] = true;
+        return { false, out };
     }
     if (m == "sampler.setSample") {
         int ti, si; std::string filePath; int root = 60;

@@ -2626,4 +2626,49 @@ TEST_F(McpCoverageTest, MixReportSections)
     juce::File(wavPath.toStdString()).deleteFile();
 }
 
+// Task 3 (plan 2026-09-02-fx-chain-presets): save_fx_chain -> list_fx_chains
+// -> load_fx_chain round-trip over MCP; the restored chain is asserted on the
+// LIVE processor (Gate 2), not the ReadModel.
+TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
+    // Prologue: remove leftovers from a previous interrupted run so the
+    // name lookup below resolves to exactly one preset.
+    {
+        auto existing = QJsonDocument::fromJson(
+            callText("list_fx_chains", {}).toString().toUtf8()).array();
+        for (const auto& v : existing) {
+            auto o = v.toObject();
+            if (o.value("name").toString() == "MCP Test Chain")
+                EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", o.value("id").toString()}})));
+        }
+    }
+
+    auto r1 = call("add_fx", {{"trackId", 0}, {"fxType", "compressor"}});
+    ASSERT_FALSE(isError(r1)) << text(r1).toStdString();
+
+    auto r2 = call("save_fx_chain", {{"trackId", 0}, {"name", "MCP Test Chain"}});
+    ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto savedId = QJsonDocument::fromJson(text(r2).toUtf8()).object().value("id").toString();
+    EXPECT_FALSE(savedId.isEmpty()) << text(r2).toStdString();
+
+    auto listText = callText("list_fx_chains", {});
+    auto arr = QJsonDocument::fromJson(listText.toString().toUtf8()).array();
+    bool found = false;
+    for (const auto& v : arr)
+        if (v.toObject().value("name").toString() == "MCP Test Chain") found = true;
+    EXPECT_TRUE(found) << listText.toString().toStdString();
+
+    ASSERT_FALSE(isError(call("remove_fx", {{"trackId", 0}, {"slotIndex", 0}})));
+
+    auto r4 = call("load_fx_chain", {{"trackId", 0}, {"name", "MCP Test Chain"}});
+    ASSERT_FALSE(isError(r4)) << text(r4).toStdString();
+
+    // LIVE processor assertion (Gate 2/10): the rebuilt Track owns the slot.
+    auto* track = engine->getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->getFXChain().size(), 1u);
+
+    // Epilogue: leave no preset files behind.
+    EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", savedId}})));
+}
+
 } // namespace
