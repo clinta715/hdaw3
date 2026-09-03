@@ -72,6 +72,8 @@ public:
                 lastContext_.store(contextId, std::memory_order_relaxed);
             }
         }
+#else
+        juce::ignoreUnused(buffer, sampleRate, contextId);
 #endif // JUCE_DEBUG
     }
 

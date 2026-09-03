@@ -171,9 +171,9 @@ public:
     // Get current position in seconds
     double getCurrentPositionSeconds() const
     {
-        const int64_t currentSample = getCurrentSample();
+        const int64_t samplePos = getCurrentSample();
         const double sr = getSampleRate();
-        return sr > 0 ? static_cast<double>(currentSample) / sr : 0.0;
+        return sr > 0 ? static_cast<double>(samplePos) / sr : 0.0;
     }
 
     void setTempoMap(std::shared_ptr<const std::vector<TempoPoint>> map)

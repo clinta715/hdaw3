@@ -482,7 +482,7 @@ public:
                 outCh = clap->getNumOutputChannels();
             else if (auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get()))
                 outCh = proxySlot->getReportedNumOutputChannels();
-            pluginWorkspaceChannels = (outCh > spec.numChannels) ? outCh : 0;
+            pluginWorkspaceChannels = (outCh > static_cast<int>(spec.numChannels)) ? outCh : 0;
             if (pluginWorkspaceChannels > 0)
                 pluginWorkspace.setSize(pluginWorkspaceChannels, spec.maximumBlockSize);
             if (auto* proxySlot = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get()))

@@ -17,6 +17,7 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override
     {
+        juce::ignoreUnused(sampleRate);
         scratchBuffer.setSize(2, samplesPerBlock);
     }
 
