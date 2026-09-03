@@ -1,13 +1,17 @@
 // src/engine/ChainLibrary.cpp
 // File storage for named FX-chain presets. Mirrors src/engine/PatternLibrary.cpp:
 // root/user/<sanitized>.json, uniquified with -N, load by relative path,
-// scan of *.json. JSON carries "version": 1; unknown future fields are
-// ignored on load. No exceptions across API boundaries: empty id / empty
-// preset signal failure.
-#include "engine/ChainLibrary.h"
+// scan of *.json. JSON carries "version"; unknown future fields are
+// ignored on load (best-effort). No exceptions across API boundaries:
+// empty id / empty preset signal failure. All public methods perform
+// blocking file IO: message thread (or background/test thread) only,
+// never the audio thread.
+#include "ChainLibrary.h"
+#include "common/DebugLog.h"
+
+namespace HDAW {
 
 namespace {
-constexpr int kChainPresetVersion = 1;
 
 juce::String sanitizeFileName(const juce::String& name)
 {
@@ -34,6 +38,8 @@ ChainPreset presetFromObject(juce::DynamicObject* obj)
     ChainPreset p;
     if (obj == nullptr)
         return p;
+    if (obj->hasProperty("version"))
+        p.version = (int) obj->getProperty("version");
     p.name = obj->getProperty("name").toString();
     if (auto* slotsVar = obj->getProperty("slots").getArray())
     {
@@ -76,7 +82,7 @@ ChainPreset presetFromObject(juce::DynamicObject* obj)
 juce::DynamicObject::Ptr presetToObject(const ChainPreset& p)
 {
     juce::DynamicObject::Ptr obj = new juce::DynamicObject();
-    obj->setProperty("version", kChainPresetVersion);
+    obj->setProperty("version", p.version);
     obj->setProperty("name", p.name);
     juce::Array<juce::var> slotsArr;
     for (const auto& s : p.slots)
@@ -116,11 +122,21 @@ ChainPreset readPresetFile(const juce::File& file, const juce::File& root)
     auto json = juce::JSON::parse(file.loadFileAsString());
     auto* obj = json.getDynamicObject();
     if (obj == nullptr)
+    {
+        HDAW_LOG("ChainLibrary",
+                 "skipping unparseable preset file: " + file.getFullPathName());
         return empty;
+    }
     ChainPreset p = presetFromObject(obj);
     p.id = file.getRelativePathFrom(root).replaceCharacter('\\', '/');
     return p;
 }
+
+bool isFactoryId(const juce::String& id)
+{
+    return id.startsWith("_factory/") || id.startsWith("_factory\\");
+}
+
 } // namespace
 
 ChainLibrary::ChainLibrary(const juce::File& root)
@@ -131,7 +147,7 @@ ChainLibrary::ChainLibrary(const juce::File& root)
     userDir_.createDirectory();
 }
 
-ChainLibrary ChainLibrary::userLibrary()
+const ChainLibrary& ChainLibrary::userLibrary()
 {
     static ChainLibrary lib(
         juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
@@ -143,6 +159,8 @@ juce::String ChainLibrary::savePreset(const ChainPreset& p)
 {
     if (p.name.trim().isEmpty())
         return {};
+
+    std::lock_guard<std::mutex> lock(mutex_);
 
     userDir_.createDirectory();
     juce::String sanitized = sanitizeFileName(p.name);
@@ -168,8 +186,10 @@ juce::String ChainLibrary::savePreset(const ChainPreset& p)
     return file.getRelativePathFrom(root_).replaceCharacter('\\', '/');
 }
 
-std::vector<ChainPreset> ChainLibrary::listPresets()
+std::vector<ChainPreset> ChainLibrary::listPresets() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
+
     std::vector<ChainPreset> result;
     if (! userDir_.isDirectory())
         return result;
@@ -180,6 +200,12 @@ std::vector<ChainPreset> ChainLibrary::listPresets()
         ChainPreset p = readPresetFile(iter.getFile(), root_);
         if (p.id.isEmpty())
             continue;
+        if (p.name.isEmpty())
+        {
+            HDAW_LOG("ChainLibrary",
+                     "skipping preset with empty name: " + iter.getFile().getFullPathName());
+            continue;
+        }
         result.push_back(std::move(p));
     }
     return result;
@@ -190,6 +216,8 @@ ChainPreset ChainLibrary::loadPreset(const juce::String& id)
     ChainPreset empty;
     if (id.isEmpty())
         return empty;
+
+    std::lock_guard<std::mutex> lock(mutex_);
 
     juce::File file = root_.getChildFile(id.replaceCharacter('/', juce::File::getSeparatorChar()));
     if (! file.isAChildOf(root_))
@@ -202,6 +230,10 @@ bool ChainLibrary::deletePreset(const juce::String& id)
 {
     if (id.isEmpty())
         return false;
+    if (isFactoryId(id))
+        return false;
+
+    std::lock_guard<std::mutex> lock(mutex_);
 
     juce::File file = root_.getChildFile(id.replaceCharacter('/', juce::File::getSeparatorChar()));
     if (! file.isAChildOf(root_))
@@ -210,3 +242,5 @@ bool ChainLibrary::deletePreset(const juce::String& id)
         return false;
     return file.deleteFile();
 }
+
+} // namespace HDAW
