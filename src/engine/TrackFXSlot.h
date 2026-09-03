@@ -326,11 +326,13 @@ public:
     // Track::updateLatency alongside the hosted-plugin latencies). The
     // oversampler is built with useIntegerLatency=true, so its
     // getLatencyInSamples() is already an integer and the down-path applies
-    // the matching fractional delay. 0 for every other slot kind.
+    // the matching fractional delay; roundToInt guards the float
+    // representation error (e.g. 168.9999f must not truncate to 168).
+    // 0 for every other slot kind.
     int getLatencySamples() const
     {
         return (activeType == ActiveType::Saturator && over_ != nullptr)
-            ? static_cast<int>(over_->getLatencyInSamples())
+            ? juce::roundToInt(over_->getLatencyInSamples())
             : 0;
     }
 
@@ -398,6 +400,11 @@ public:
             if (paramIndex >= static_cast<int>(defs.size()))
                 return;
             float realValue = denormalizeParam(normalizedValue, defs[static_cast<size_t>(paramIndex)]);
+            // Lesson-23 contract: automation/modulation is an entry point
+            // into internalParamValues — clamp after denormalize exactly like
+            // setInternalParam, so out-of-range normalized writes (e.g. >1)
+            // can't reach recursive DSP unclamped.
+            realValue = clampToParamDef(paramIndex, realValue);
             internalParamValues[static_cast<size_t>(paramIndex)] = realValue;
             applyInternalParamToDsp(paramIndex, realValue);
         }
@@ -580,19 +587,21 @@ public:
             case ActiveType::Saturator:
             {
                 // DC-blocker coefficient is sample-rate aware; default 48k
-                // only applies before the first prepare.
-                sat_[0].setSampleRate(spec.sampleRate);
-                sat_[1].setSampleRate(spec.sampleRate);
+                // only applies before the first prepare. Engine runs in
+                // oversampled domain; keep 20 Hz design cutoff.
+                sat_[0].setSampleRate(spec.sampleRate * 2.0f);
+                sat_[1].setSampleRate(spec.sampleRate * 2.0f);
                 sat_[0].reset();
                 sat_[1].reset();
                 // First oversampling integration in the codebase (plan
-                // 2026-09-02 Task 2). Constructor verified against JUCE 9.0.1
-                // juce_Oversampling.h:98: (numChannels, factor, filterType,
-                // isMaxQuality, useIntegerLatency) where factor is the
-                // EXPONENT (2^factor stages) — factor 1 = 2x oversampling.
-                // useIntegerLatency=true keeps the reported latency an exact
-                // integer (Track::setLatencySamples is int) and the down-path
-                // adds the matching fractional delay.
+                // 2026-09-02 Task 2). Constructor verified against the
+                // FetchContent JUCE 8.0.0 source (build/_deps/juce-src),
+                // juce_Oversampling.cpp:548-594: (numChannels, factor,
+                // filterType, isMaxQuality, useIntegerLatency) where factor
+                // is the EXPONENT (2^factor stages) — factor 1 = 2x
+                // oversampling. useIntegerLatency=true keeps the reported
+                // latency an exact integer (Track::setLatencySamples is int)
+                // and the down-path adds the matching fractional delay.
                 over_ = std::make_unique<juce::dsp::Oversampling<float>>(
                     2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR,
                     true, true);

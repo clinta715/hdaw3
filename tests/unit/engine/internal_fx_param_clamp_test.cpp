@@ -182,3 +182,35 @@ TEST (InternalFxParamClamp, SaturatorPoisonClamped)
     EXPECT_TRUE (renderSineAndCheckFinite (slot, peak));
     EXPECT_LE (peak, 10.0f);
 }
+
+// Lesson-23 5th entry point: the automation/modulation path
+// (setAutomationParam -> denormalizeParam) must land clamped in
+// internalParamValues for internal slots, mirroring setInternalParam.
+// A normalized write >1 previously denormalized past the def max
+// (Saturator Drive 60 dB, delay feedback 1.485) and fed recursive DSP
+// unclamped — delay feedback is a pre-existing runaway risk.
+TEST (InternalFxParamClamp, AutomationPathClamps)
+{
+    auto spec = makeSpec();
+
+    // Saturator Drive dB def [0, 40]: normalized 1.5 denormalizes to 60.
+    HDAW::TrackFXSlot sat ("saturator");
+    sat.prepare (spec);
+    ASSERT_GE (sat.getInternalParamValues().size(), (size_t) 1);
+    sat.setAutomationParam (0, 1.5f);
+    EXPECT_FLOAT_EQ (sat.getInternalParamValues()[0], 40.0f);
+    // The normalized getter maps the clamped value back to the top of range.
+    EXPECT_NEAR (sat.getAutomationParam (0), 1.0f, 1e-5f);
+
+    // Delay Feedback def [0, 0.99]: normalized 1.5 denormalizes to 1.485.
+    HDAW::TrackFXSlot delay ("delay");
+    delay.prepare (spec);
+    ASSERT_GE (delay.getInternalParamValues().size(), (size_t) 2);
+    delay.setAutomationParam (1, 1.5f);
+    EXPECT_FLOAT_EQ (delay.getInternalParamValues()[1], 0.99f);
+
+    // The clamped delay state must render finite end-to-end.
+    float peak = 0.0f;
+    EXPECT_TRUE (renderSineAndCheckFinite (delay, peak));
+    EXPECT_LE (peak, 10.0f);
+}
