@@ -2369,6 +2369,19 @@ TEST (InternalFx, SaturatorAliasingSuppressed)
     auto* slot = track->getFXChain().at (0).get();
     ASSERT_EQ (slot->getType().toStdString(), "saturator");
 
+    // Synthesis and FFT bin math below are 48 kHz-specific (exact-cycle
+    // windows, 96k-oversampler fold analysis), but the engine prepares at the
+    // device rate — on a 44.1 kHz machine the 10 kHz fundamental falls outside
+    // the analysis bands and every gate passes vacuously. Re-prepare the track
+    // at 48 kHz the way AudioProcessorGraph does, then ASSERT the live rate so
+    // a mismatch aborts loudly (per this file's assert-early convention)
+    // instead of skipping or passing on broken premises.
+    track->setRateAndBufferSizeDetails (48000.0, track->getBlockSize());
+    track->prepareToPlay (48000.0, track->getBlockSize());
+    ASSERT_NEAR (track->getSampleRate(), 48000.0, 1.0)
+        << "test hard-codes sr=48000 for synthesis and bin math; "
+           "the 48 kHz re-prepare did not take";
+
     constexpr double sr = 48000.0;
     constexpr int n = 96000;    // 2 s rendered
     constexpr int skip = 48000; // analyse the 2nd second only
@@ -2423,6 +2436,14 @@ TEST (InternalFx, SaturatorAliasingSuppressed)
     const double aliasDb = std::max (
         std::max (peakMagDbBetween (20.0, 9700.0), peakMagDbBetween (10300.0, 19700.0)),
         peakMagDbBetween (20300.0, 23900.0));
+
+    // Sanity floor: the wet path must actually render the fundamental
+    // (Drive 24 dB hard clip puts it ~+2 dB). Without this, a broken wet
+    // path or a rate mismatch would let every gate below pass vacuously
+    // at near-silence.
+    EXPECT_GT (fundDb, 0.0)
+        << "fundamental missing from the wet render — the suppression "
+           "gates below are meaningless without it";
 
     // Diagnostics: where do the strongest peaks actually sit?
     {
@@ -2491,6 +2512,16 @@ TEST (InternalFx, SaturatorNeutralFidelity)
     ASSERT_GE (track->getNumFXSlots(), 1);
     auto* slot = track->getFXChain().at (0).get();
     ASSERT_EQ (slot->getType().toStdString(), "saturator");
+
+    // Synthesis is 48 kHz-specific (exact-cycle 2nd-second window) but the
+    // engine prepares at the device rate — re-prepare the track at 48 kHz
+    // the way AudioProcessorGraph does, then ASSERT the live rate so a
+    // mismatch aborts loudly instead of passing on broken premises.
+    track->setRateAndBufferSizeDetails (48000.0, track->getBlockSize());
+    track->prepareToPlay (48000.0, track->getBlockSize());
+    ASSERT_NEAR (track->getSampleRate(), 48000.0, 1.0)
+        << "test hard-codes sr=48000 for synthesis math; "
+           "the 48 kHz re-prepare did not take";
 
     constexpr double sr = 48000.0;
     constexpr int n = 96000;
