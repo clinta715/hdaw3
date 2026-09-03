@@ -65,7 +65,8 @@ Last updated: 2026-07-30
 - ✅ **FX presets** (plugin factory presets via Presets button in FX chain; browse + select via pluginParam.listPrograms)
 - ✅ **FX A/B comparison** (A/B button on each plugin FX slot; swap A↔B)
 - ✅ **Modulation FX** (chorus, flanger, phaser via juce::dsp)
-- ❌ **Distortion/saturation, filters, limiter/maximizer, tuner**
+- ✅ **Saturation/drive** (internal "saturator" FX: Drive dB, Type (0=SoftTanh, 1=SoftAtan, 2=Hard, 3=Bitcrush), Asymmetry, Mix, Output dB, Bits; 2x oversampled, 4-sample latency reported into PDC; reachable via MCP `add_fx`, RPC `project.addFxSlot`, and the FX Chain panel dropdown)
+- ❌ **Dedicated distortion, filters, limiter/maximizer, tuner**
 - ❌ **Spectrum analyzer / tuner / oscilloscope** (metering FX)
 - ✅ **FX chain presets** (save/list/load/delete entire chains; RPC: `project.saveFxChainPreset`, `project.listFxChainPresets`, `project.loadFxChainPreset`, `project.deleteFxChainPreset`; MCP: `save_fx_chain`, `list_fx_chains`, `load_fx_chain`, `delete_fx_chain`)
 - ❌ **Per-slot wet/dry (mix) knob, oversampling**

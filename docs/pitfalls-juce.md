@@ -362,3 +362,51 @@ silence exports. And: a root-cause narrative written without rebuilding +
 reproducing is speculation — the first "root cause" for this bug (clip
 bounds check) was disproven by the project file alone (no 0.6s clips
 exist; 301s clips died at 0.6s too).
+
+## Oversampling first precedent (saturator, 2026-09)
+
+The saturator is the first `juce::dsp::Oversampling` integration in the
+codebase (`TrackFXSlot` Saturator case, plan 2026-09-02). Gotchas it
+surfaced, all verified against the FetchContent JUCE 8.0.0 source:
+
+- **The `factor` ctor arg is the EXPONENT, not the multiple.**
+  `Oversampling(numChannels, factor, filterType, isMaxQuality,
+  useIntegerLatency)` loops `n < newFactor` adding one 2x stage each
+  (juce_Oversampling.cpp:548-594) - factor 2 means 4x, factor 1 means 2x.
+  The saturator wants 2x and passes factor 1.
+- **Stage buffers are sized to the PREPARED block size
+  (`initProcessing(maximumBlockSize)`).** Feeding a larger block is
+  jassert-only in debug (`numSamples * factor <= buffer.getNumSamples()`)
+  and a silent heap overrun in Release - the spectral tests hit this as
+  0xC0000005 until they chunked renders at the prepared block size. Any
+  test or offline path driving a slot directly must render in
+  prepared-block-size chunks.
+- **A DSP engine running inside the oversampled domain sees the multiplied
+  rate.** The saturator's DC blocker designs its one-pole for 20 Hz; at the
+  internal 96k rate it must be told `setSampleRate(spec.sampleRate * 2.0f)`
+  in `prepare()`, or a fixed-cutoff filter actually runs at 2x its design
+  cutoff.
+- **Report oversampler latency with `juce::roundToInt`, never
+  `static_cast<int>`.** Build with `useIntegerLatency=true` (keeps
+  `getLatencyInSamples()` an exact integer and makes the down-path apply
+  the matching fractional delay), but the float can still carry
+  representation error - 168.9999f truncates to 168. The saturator reports
+  4 samples; `Track::updateLatency` sums it into PDC automatically.
+- **Lesson-23 clamp discipline now covers the automation entry point too.**
+  `setAutomationParam` denormalizes 0..1 through the param defs, but
+  denormalize alone maps an out-of-range normalized write (e.g. >1.0 from
+  automation/modulation) outside the def range - it now clamps via
+  `clampToParamDef` after denormalize, exactly like `setInternalParam`.
+  (The 2026-08-31 entry above calls `setAutomationParam` "already safe" -
+  that was true only for in-range normalized values.)
+- **Spectral unit tests must assert the LIVE device rate
+  (`track->getSampleRate()`) before any synthesis + FFT bin math.** The
+  engine prepares at the device rate, so on a 44.1k machine every 48k
+  bin-math assertion passes vacuously. Re-preparing a track to 48k needs
+  `setRateAndBufferSizeDetails` + `prepareToPlay` - `prepareToPlay` alone
+  does not set the base rate.
+
+**Rule:** treat the oversampler as a block-size and sample-rate contract:
+feed it only prepared-block-size buffers, design any DSP inside it for
+`sampleRate * factor`, report its latency through `roundToInt`, and clamp
+every entry point into its params - including automation.

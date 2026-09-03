@@ -465,6 +465,37 @@ Macro sweep recipe: points every 32 beats, values 0.1→0.7 across the track
 for energy growth (bass EQ freq), plus a breakdown riser point-cluster
 (0.1 @ 0, 0.12 @ 188, 0.3 @ 192, 0.7 @ 206, 0.35 @ 224).
 
+**Drive recipe (saturator, verified):** chain order matters - shape the tone
+at the source first, saturate second, level last:
+growl clip (ClipType/Drive) -> saturator (SoftTanh, ~18 dB Drive, Mix 1) ->
+compressor (4:1). The growl's own waveshaper (growl_bass param 4 ClipType /
+param 5 Drive dB, or `psy_fm` growlBass preset) provides the coarse grit;
+the saturator adds the final "teeth" without third-party plugins.
+
+```python
+t = await mcp_call("add_track", {"name": "Growl Drive"})
+await mcp_call("add_fx", {"trackId": t, "fxType": "growl_bass"})    # slot 0
+await mcp_call("set_internal_fx_param", {"trackId": t, "slotIndex": 0,
+                                         "paramIndex": 4, "value": 2})   # ClipType = Hard
+await mcp_call("set_internal_fx_param", {"trackId": t, "slotIndex": 0,
+                                         "paramIndex": 5, "value": 30})  # Drive 30 dB
+await mcp_call("add_fx", {"trackId": t, "fxType": "saturator"})     # slot 1
+await mcp_call("set_internal_fx_param", {"trackId": t, "slotIndex": 1,
+                                         "paramIndex": 1, "value": 0})   # Type = SoftTanh
+await mcp_call("set_internal_fx_param", {"trackId": t, "slotIndex": 1,
+                                         "paramIndex": 0, "value": 18})  # Drive 18 dB
+await mcp_call("set_internal_fx_param", {"trackId": t, "slotIndex": 1,
+                                         "paramIndex": 3, "value": 1})   # Mix 1 (full wet blend)
+await mcp_call("add_fx", {"trackId": t, "fxType": "compressor"})     # slot 2, ratio 4:1
+```
+
+Saturator params (`set_internal_fx_param`, REAL units: Drive dB 0-40,
+Type 0-3 (0=SoftTanh, 1=SoftAtan, 2=Hard, 3=Bitcrush), Asymmetry -1..1,
+Mix 0-1, Output dB -24..24 (trims the WET path only), Bits 2-16 (Bitcrush
+only); Mix=0 is a bit-identical bypass). The 2x oversampler adds a
+4-sample latency that is reported by the slot and summed into track PDC
+automatically - no manual compensation.
+
 ## 5a. Reusable FX chain preset: Jordan cave-dub
 
 For a Jordan cave-dub voice, build `sampler -> filter -> delay`, then save the
