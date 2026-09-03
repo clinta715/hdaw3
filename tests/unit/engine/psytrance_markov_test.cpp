@@ -36,7 +36,7 @@ HDAW::PsytranceMarkovParams baseParams(uint64_t seed = 42, int totalBars = 32)
     p.seed = seed;
     p.totalBars = totalBars;
     p.kick = 0; p.bass = 1; p.hat = 2; p.arp = 3; p.stab = 4; p.pad = 5;
-    p.riser = 6; p.down = 7; p.clap = 8;
+    p.riser = 6; p.down = 7; p.clap = 8; p.snare = 9; p.rim = 10;
     return p;
 }
 
@@ -44,8 +44,15 @@ int percCount(const HDAW::MarkovStep& s)
 {
     int n = 0;
     for (const auto& r : s.activeRoles)
-        if (r == "kick" || r == "hat" || r == "clap") ++n;
+        if (r == "kick" || r == "hat" || r == "clap" || r == "snare" || r == "rim")
+            ++n;
     return n;
+}
+
+bool hasRole(const HDAW::MarkovStep& s, const char* role)
+{
+    return std::find(s.activeRoles.begin(), s.activeRoles.end(), role)
+           != s.activeRoles.end();
 }
 
 std::string actionOf(const HDAW::MarkovStep& s)
@@ -141,11 +148,16 @@ TEST(PsytranceMarkov, KeyDiscipline)
 
     // Coverage union: every role must produce a clip for at least one fixed
     // seed (which seed lands where is the Markov's business — that a full
-    // palette is reachable is the gate).
-    for (const char* role : { "kick", "bass", "hat", "arp", "stab", "pad", "clap", "riser", "down" })
+    // palette is reachable is the gate). Seed list 42..57: the perc-theme
+    // hold reshuffled the action draw, so slow-activating roles (pad, and
+    // snare/rim which only enter via AddLayer) need a wider union in 48 bars.
+    // snare/rim are FIXED-PITCH perc voices (38/37, like hat 44 / clap 42) —
+    // excluded from the pitched-role scale check above by design.
+    for (const char* role : { "kick", "bass", "hat", "snare", "rim", "arp",
+                              "stab", "pad", "clap", "riser", "down" })
     {
         bool any = false;
-        for (uint64_t seed : { 42ull, 43ull, 44ull })
+        for (uint64_t seed = 42; seed <= 57; ++seed)
         {
             auto ps = baseParams(seed, 48);
             ps.everyBars = 16;
@@ -154,7 +166,7 @@ TEST(PsytranceMarkov, KeyDiscipline)
             ASSERT_TRUE(ss.error.empty()) << ss.error;
             any = any || (notesOf(ss, role) != nullptr);
         }
-        EXPECT_TRUE(any) << role << " never produced a clip across seeds 42/43/44";
+        EXPECT_TRUE(any) << role << " never produced a clip across seeds 42..57";
     }
 }
 
@@ -182,7 +194,8 @@ TEST(PsytranceMarkov, Determinism)
 TEST(PsytranceMarkov, MinMaxAndPercSublimitsEnforced)
 {
     struct Cfg { int mn, mx, pmn, pmx; };
-    const Cfg cfgs[] = { { 2, 4, 1, 2 }, { 2, 6, 1, 3 }, { 3, 5, 2, 3 }, { 4, 6, 1, 1 } };
+    const Cfg cfgs[] = { { 2, 4, 1, 2 }, { 2, 6, 1, 3 }, { 3, 5, 2, 3 },
+                         { 4, 6, 1, 1 }, { 3, 9, 2, 5 } }; // last: 5-perc pool
     for (const auto& cf : cfgs)
     {
         for (uint64_t seed : { 1ull, 7ull, 42ull })
@@ -262,18 +275,20 @@ TEST(PsytranceMarkov, AgeBiasedRemoval)
         << "oldest=" << oldestPicked << " of " << removals;
 }
 
-// ── Variant actions occur and are audible: hat rhythm changes, gate length
-//    changes note durations, pad-specific variation is reachable. ─────────
+// ── Variant actions occur and are audible: theme rotation changes the hat
+//    grid, gate length changes note durations, pad-specific variation is
+//    reachable. ─────────────────────────────────────────────────────────────
 TEST(PsytranceMarkov, VariantsOccur)
 {
     // Union across fixed seeds: WHICH seed shows a given variant is the
     // Markov's business — that every variant action is reachable and AUDIBLE
-    // is the gate.
+    // is the gate. 128 bars: the 32-bar perc-theme hold delays
+    // RhythmVariant/Breakbeat to bar >= 32, so short runs cannot show them.
     bool rhythm = false, arp = false, nlen = false, hatChanged = false;
     std::set<int> durCents; // 1/100 beat resolution
     for (uint64_t seed : { 42ull, 43ull, 44ull, 45ull, 46ull, 47ull, 48ull, 49ull })
     {
-        auto p = baseParams(seed, 64);
+        auto p = baseParams(seed, 128);
         p.density = 1.0;
         const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
         ASSERT_TRUE(s.error.empty()) << s.error;
@@ -281,6 +296,11 @@ TEST(PsytranceMarkov, VariantsOccur)
         for (const auto& st : s.steps)
         {
             rhythm = rhythm || actionOf(st) == "RhythmVariant";
+            // P1 convention: RhythmVariant rotates the whole percussive
+            // theme (hat/snare/rim grids + kick flag) as one unit.
+            if (actionOf(st) == "RhythmVariant")
+                EXPECT_EQ(st.targetRole, "theme")
+                    << "seed " << seed << ": RhythmVariant target " << st.targetRole;
             arp = arp || actionOf(st) == "ArpVariant";
             nlen = nlen || actionOf(st) == "NoteLengthVariant";
         }
@@ -291,7 +311,8 @@ TEST(PsytranceMarkov, VariantsOccur)
                 for (const auto& n : *notes)
                     durCents.insert((int) std::lround(n.durationBeats * 100.0));
 
-        // Hat rhythm pattern changes: non-offbeat-8th grid positions appear.
+        // Hat rhythm pattern changes (theme rotations): non-offbeat-8th grid
+        // positions appear once a rotated theme's euclidean grid lands them.
         if (auto* hats = notesOf(s, "hat"))
             for (const auto& n : *hats)
             {
@@ -424,14 +445,371 @@ TEST(PsytranceMarkov, BassAndKickMinHold)
     EXPECT_GE(bassEvents + kickEvents, 2) << "gate never exercised (vacuous)";
 }
 
+// ── Floor canon: kick+bass are removed ONLY in breakdown sections — any
+//    step where the floor leaves activeRoles (RemoveLayer or evict-on-max)
+//    must run in "breakdown". With the section tier off the floor is never
+//    removed at all. Fixed seed sweep 100..139. ─────────────────────────────
+TEST(PsytranceMarkov, FloorRolesOnlyDropInBreakdown)
+{
+    auto contains = [](const std::vector<std::string>& v, const char* r) {
+        return std::find(v.begin(), v.end(), r) != v.end();
+    };
+    int breakdownSteps = 0;
+    for (uint64_t seed = 100; seed < 140; ++seed)
+    {
+        auto p = baseParams(seed, 64);
+        p.sectionCycleBars = 16;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (size_t i = 0; i < s.steps.size(); ++i)
+        {
+            const auto& st = s.steps[i];
+            if (st.section == "breakdown") ++breakdownSteps;
+            for (const char* role : { "kick", "bass" })
+            {
+                // RemoveLayer targeting the floor: the step's section must be
+                // breakdown (also holds for evict-on-max — same gate).
+                if (actionOf(st) == "RemoveLayer" && st.targetRole == role)
+                    EXPECT_EQ(st.section, "breakdown")
+                        << "seed " << seed << ": RemoveLayer(" << role << ") at bar "
+                        << st.barStart << " in section " << st.section;
+                // Presence drop: floor left activeRoles this window.
+                if (i > 0 && contains(s.steps[i - 1].activeRoles, role)
+                    && !contains(st.activeRoles, role))
+                    EXPECT_EQ(st.section, "breakdown")
+                        << "seed " << seed << ": " << role << " dropped at bar "
+                        << st.barStart << " in section " << st.section;
+            }
+        }
+    }
+    EXPECT_GT(breakdownSteps, 0)
+        << "breakdown never reached across seeds 100..139 (gate vacuous)";
+
+    // Section tier off (sectionCycleBars=0): the state can never be
+    // breakdown, so kick and bass may NEVER leave activeRoles.
+    for (uint64_t seed = 100; seed < 140; ++seed)
+    {
+        auto p = baseParams(seed, 64);
+        p.sectionCycleBars = 0;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (const auto& st : s.steps)
+            for (const char* role : { "kick", "bass" })
+                EXPECT_TRUE(contains(st.activeRoles, role))
+                    << "seed " << seed << ": " << role << " left activeRoles at bar "
+                    << st.barStart << " with the section tier off";
+    }
+}
+
+// ── Floor canon bias (non-vacuous): breakdown removals DO hit the floor and
+//    drop windows (section change into build) DO re-add it — aggregate over
+//    the same fixed seed sweep. ─────────────────────────────────────────────
+TEST(PsytranceMarkov, BreakdownPrefersFloorAndDropReturn)
+{
+    int breakdownFloorRemovals = 0, dropFloorAdds = 0;
+    for (uint64_t seed = 100; seed < 140; ++seed)
+    {
+        auto p = baseParams(seed, 64);
+        p.sectionCycleBars = 16;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (size_t i = 0; i < s.steps.size(); ++i)
+        {
+            const auto& st = s.steps[i];
+            if (actionOf(st) == "RemoveLayer" && st.section == "breakdown"
+                && (st.targetRole == "kick" || st.targetRole == "bass"))
+                ++breakdownFloorRemovals;
+            // The drop: the window where the section transitioned into build.
+            if (i > 0 && actionOf(st) == "AddLayer"
+                && st.section == "build" && s.steps[i - 1].section != "build"
+                && (st.targetRole == "kick" || st.targetRole == "bass"))
+                ++dropFloorAdds;
+        }
+    }
+    EXPECT_GE(breakdownFloorRemovals, 1)
+        << "breakdown removal never targeted the floor across seeds 100..139 — bias too weak";
+    EXPECT_GE(dropFloorAdds, 1)
+        << "no drop window ever re-added the floor across seeds 100..139 — bias too weak";
+}
+
+// ── Perc-theme hold (P1 ontology): RhythmVariant ROTATIONS are >= 32 bars
+//    apart (themeAge clock, reset on rotation only). The kick flag rides its
+//    own clock that treats BOTH Breakbeat and rotation as kick-pattern
+//    events (a rotation may swap the flag): every BREAKBEAT must wait >= 32
+//    bars since the previous kick-affecting event. A ROTATION shortly after
+//    a Breakbeat stays legal — rotations are gated by themeAge alone (and
+//    they reset the kick clock for the NEXT Breakbeat). Fixed seed sweep
+//    200..239, 96 bars. ─────────────────────────────────────────────────────
+TEST(PsytranceMarkov, PercPatternHoldEnforced)
+{
+    int rotations = 0, breakbeats = 0;
+    for (uint64_t seed = 200; seed < 240; ++seed)
+    {
+        auto p = baseParams(seed, 96);
+        p.sectionCycleBars = 16;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        // Event bars are checked PER SEED (each run has its own hold clocks).
+        std::vector<int> rotationBars;
+        bool hasKickEvent = false;
+        int prevKickEvent = 0;
+        for (const auto& st : s.steps)
+        {
+            const auto act = actionOf(st);
+            if (act == "RhythmVariant")
+            {
+                EXPECT_EQ(st.targetRole, "theme")
+                    << "seed " << seed << ": RhythmVariant target " << st.targetRole;
+                rotationBars.push_back(st.barStart);
+                prevKickEvent = st.barStart; // a rotation resets the kick clock too
+                hasKickEvent = true;
+            }
+            else if (act == "Breakbeat")
+            {
+                EXPECT_EQ(st.targetRole, "kick");
+                if (hasKickEvent)
+                    EXPECT_GE(st.barStart - prevKickEvent, 32)
+                        << "seed " << seed << ": Breakbeat at bar " << st.barStart
+                        << " only " << (st.barStart - prevKickEvent)
+                        << " bars after the previous kick-pattern event at bar "
+                        << prevKickEvent;
+                ++breakbeats;
+                prevKickEvent = st.barStart;
+                hasKickEvent = true;
+            }
+        }
+        std::sort(rotationBars.begin(), rotationBars.end());
+        rotations += (int) rotationBars.size();
+        for (size_t i = 1; i < rotationBars.size(); ++i)
+            EXPECT_GE(rotationBars[i] - rotationBars[i - 1], 32)
+                << "seed " << seed << ": rotations at bars "
+                << rotationBars[i - 1] << " -> " << rotationBars[i]
+                << " (theme hold is 32 bars)";
+    }
+    EXPECT_GE(rotations + breakbeats, 1)
+        << "no theme rotation / breakbeat across seeds 200..239 (gate vacuous)";
+}
+
+// ── Snare/rim voices (P1): fixed-pitch perc layers (38/37) that enter via
+//    AddLayer only — notes appear exactly in the windows where the role is
+//    active (both directions), and min/max + the 5-role perc sublimit hold.
+//    Fixed seed sweep 300..339, 96 bars, two limit shapes (defaults + the
+//    new 5-perc / 9-track ceilings). ────────────────────────────────────────
+TEST(PsytranceMarkov, SnareRimRolesGenerate)
+{
+    int seedsWithSnare = 0, seedsWithRim = 0;
+    struct Cfg { int mn, mx, pmn, pmx; };
+    const Cfg cfgs[] = { { 2, 6, 1, 3 }, { 3, 9, 1, 5 } };
+    for (const auto& cf : cfgs)
+    {
+        for (uint64_t seed = 300; seed < 340; ++seed)
+        {
+            auto p = baseParams(seed, 96);
+            p.minTracks = cf.mn; p.maxTracks = cf.mx;
+            p.minPercTracks = cf.pmn; p.maxPercTracks = cf.pmx;
+            const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+            ASSERT_TRUE(s.error.empty()) << s.error;
+            ASSERT_FALSE(s.steps.empty());
+            for (const auto& st : s.steps)
+            {
+                EXPECT_GE((int) st.activeRoles.size(), cf.mn) << "bar " << st.barStart;
+                EXPECT_LE((int) st.activeRoles.size(), cf.mx) << "bar " << st.barStart;
+                EXPECT_GE(percCount(st), cf.pmn) << "bar " << st.barStart;
+                EXPECT_LE(percCount(st), cf.pmx) << "bar " << st.barStart;
+            }
+
+            for (const char* role : { "snare", "rim" })
+            {
+                const int wantPitch = role == std::string("snare") ? 38 : 37;
+                std::set<size_t> windowsWithNotes;
+                if (const auto* notes = notesOf(s, role))
+                {
+                    for (const auto& n : *notes)
+                    {
+                        EXPECT_EQ(n.pitch, wantPitch)
+                            << role << " must be pitch-fixed ("
+                            << n.pitch << " at beat " << n.startBeat << ")";
+                        const size_t w = (size_t) std::min(
+                            (int) (n.startBeat / 8.0), (int) s.steps.size() - 1);
+                        EXPECT_TRUE(hasRole(s.steps[w], role))
+                            << role << " note at beat " << n.startBeat
+                            << " while inactive (window " << w << ")";
+                        windowsWithNotes.insert(w);
+                    }
+                }
+                bool everActive = false;
+                for (size_t w = 0; w < s.steps.size(); ++w)
+                {
+                    if (!hasRole(s.steps[w], role)) continue;
+                    everActive = true;
+                    EXPECT_GT(windowsWithNotes.count(w), 0u)
+                        << role << " active in window " << w << " with no notes";
+                }
+                if (everActive)
+                    (role == std::string("snare") ? seedsWithSnare : seedsWithRim)++;
+            }
+        }
+    }
+    EXPECT_GT(seedsWithSnare, 0) << "snare never became active (gate vacuous)";
+    EXPECT_GT(seedsWithRim, 0) << "rim never became active (gate vacuous)";
+}
+
+// ── Percussive themes rotate as a UNIT (P1): the hat/snare/rim grids and
+//    the kick flag move together. Per-bar note-pattern signatures (sorted
+//    step/velocity tuples) are derived from the score notes; whenever the
+//    hat signature changes between consecutive bars (hat active on BOTH),
+//    every simultaneously-active theme voice must change at the same bar.
+//    Also: bars 0..31 always show the canonical theme-0 hat grid (no
+//    rotation before the 32-bar hold). Fixed seed sweep 400..439, 96 bars. ─
+TEST(PsytranceMarkov, ThemeRotatesAsUnit)
+{
+    using Sig = std::set<std::pair<int, int>>; // (16th step, velocity)
+    const Sig canonicalHat = { { 2, 98 }, { 6, 92 }, { 10, 92 }, { 14, 92 } };
+    const int kBars = 96;
+    int unitRotations = 0;
+    for (uint64_t seed = 400; seed < 440; ++seed)
+    {
+        auto p = baseParams(seed, kBars);
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        ASSERT_EQ(s.steps.size(), (size_t) (kBars / 2));
+
+        auto sigsOf = [&](const char* role) {
+            std::vector<Sig> sigs((size_t) kBars);
+            if (const auto* notes = notesOf(s, role))
+                for (const auto& n : *notes)
+                {
+                    const int bar = (int) (n.startBeat / 4.0);
+                    const int step =
+                        (int) std::lround((n.startBeat - bar * 4.0) * 4.0);
+                    sigs[(size_t) bar].insert({ step, n.velocity });
+                }
+            return sigs;
+        };
+        const auto hatSig = sigsOf("hat");
+        const auto snareSig = sigsOf("snare");
+        const auto rimSig = sigsOf("rim");
+        auto activeAt = [&](const char* role, int bar) {
+            return hasRole(s.steps[(size_t) (bar / 2)], role); // 2-bar windows
+        };
+
+        // Theme 0 sanity: no rotation before the hold — wherever the hat
+        // runs in bars 0..31 it plays the canonical offbeat grid.
+        for (int bar = 0; bar < 32; ++bar)
+            if (activeAt("hat", bar))
+                EXPECT_EQ(hatSig[(size_t) bar], canonicalHat)
+                    << "seed " << seed << ": hat left the canonical theme at bar "
+                    << bar << " (< 32)";
+
+        // Unit rotation: a hat-grid change with the hat active on BOTH bars
+        // is a rotation — every other ACTIVE theme voice must change too.
+        for (int bar = 0; bar + 1 < kBars; ++bar)
+        {
+            if (!activeAt("hat", bar) || !activeAt("hat", bar + 1)) continue;
+            if (hatSig[(size_t) bar] == hatSig[(size_t) bar + 1]) continue;
+            bool unitHeld = true;
+            for (const char* voice : { "snare", "rim" })
+            {
+                if (!activeAt(voice, bar) || !activeAt(voice, bar + 1)) continue;
+                const auto& sig = voice == std::string("snare") ? snareSig : rimSig;
+                if (sig[(size_t) bar] == sig[(size_t) bar + 1]) unitHeld = false;
+            }
+            EXPECT_TRUE(unitHeld)
+                << "seed " << seed << ": hat grid changed at bar " << bar
+                << " but an active theme voice did not rotate with it";
+            if (unitHeld) ++unitRotations;
+        }
+    }
+    EXPECT_GE(unitRotations, 1)
+        << "no unit theme rotation observed across seeds 400..439 (gate vacuous)";
+}
+
+// ── Volume fade automation (P0 ontology): non-floor layers enter/leave with
+//    engine-emitted volume fade pairs; the floor (kick/bass) and bar-0
+//    initial activations are hard-edged (no volume entries). Fade-in length
+//    follows the group: CORE (arp/stab/pad) 4 bars, PERC (hat/snare/rim/
+//    clap) 2 bars; fade-out is always 2 bars. Fixed seed sweep 200..239,
+//    96 bars each. ──────────────────────────────────────────────────────────
+TEST(PsytranceMarkov, FadeAutomationOnAddRemove)
+{
+    auto isFloor = [](const std::string& r) { return r == "kick" || r == "bass"; };
+    auto fadeInBars = [](const std::string& r) -> double {
+        return (r == "arp" || r == "stab" || r == "pad") ? 4.0 : 2.0;
+    };
+    int volumeEntries = 0, fadesChecked = 0;
+    for (uint64_t seed = 200; seed < 240; ++seed)
+    {
+        auto p = baseParams(seed, 96);
+        p.sectionCycleBars = 16;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+
+        auto hasEntry = [&](const std::string& role, double startBeat, double value) {
+            for (const auto& a : s.automations)
+                if (a.param == "volume" && a.role == role
+                    && std::abs(a.startBeat - startBeat) < 1e-9
+                    && std::abs(a.value - value) < 1e-9)
+                    return true;
+            return false;
+        };
+
+        for (const auto& st : s.steps)
+        {
+            const auto act = actionOf(st);
+            if (act != "AddLayer" && act != "RemoveLayer") continue;
+            if (st.targetRole.empty() || isFloor(st.targetRole)) continue;
+            const int bar = st.barStart;
+            if (bar <= 0) continue; // bar-0 activations: no fades
+
+            if (act == "AddLayer")
+            {
+                const double lenBeats = 4.0 * fadeInBars(st.targetRole);
+                EXPECT_TRUE(hasEntry(st.targetRole, bar * 4.0, 0.0))
+                    << "seed " << seed << ": no fade-in start for " << st.targetRole
+                    << " at bar " << bar;
+                EXPECT_TRUE(hasEntry(st.targetRole, bar * 4.0 + lenBeats, 1.0))
+                    << "seed " << seed << ": no fade-in end for " << st.targetRole
+                    << " at bar " << bar;
+            }
+            else // RemoveLayer (fade-out; evict-on-max rides AddLayer steps)
+            {
+                const double startBeat = std::max(0.0, (bar - 2) * 4.0);
+                EXPECT_TRUE(hasEntry(st.targetRole, startBeat, 1.0))
+                    << "seed " << seed << ": no fade-out start for " << st.targetRole
+                    << " at bar " << bar;
+                EXPECT_TRUE(hasEntry(st.targetRole, bar * 4.0, 0.0))
+                    << "seed " << seed << ": no fade-out end for " << st.targetRole
+                    << " at bar " << bar;
+            }
+            ++fadesChecked;
+        }
+
+        for (const auto& a : s.automations)
+        {
+            if (a.param != "volume") continue;
+            ++volumeEntries;
+            // Floor roles never fade; a bar-0 fade-in start (value 0 at beat 0)
+            // never happens (fade-outs clamped to beat 0 start at value 1).
+            EXPECT_FALSE(isFloor(a.role))
+                << "seed " << seed << ": floor role " << a.role << " carries a volume fade";
+            EXPECT_FALSE(a.value == 0.0 && a.startBeat == 0.0)
+                << "seed " << seed << ": bar-0 fade-in start leaked";
+        }
+    }
+    EXPECT_GT(volumeEntries, 0) << "no volume fades across seeds 200..239 (gate vacuous)";
+    EXPECT_GE(fadesChecked, 10) << "fade coverage too thin to gate on";
+}
+
 // ── Two-tier cadence: micro/2-bar-clock actions dominate; structural mass
-//    changes stay rare over a 32-bar default run. ──────────────────────────
+//    changes stay rare. 96 bars: the 32-bar perc-pattern hold gates
+//    RhythmVariant/Breakbeat to bar >= 32, so the sweep must span at least
+//    two hold windows for those micro actions to be exercisable. ───────────
 TEST(PsytranceMarkov, MicroActionsDominate)
 {
     int micro = 0, total = 0;
     for (uint64_t seed : { 5ull, 6ull, 7ull })
     {
-        const auto s = HDAW::PsytranceMarkovGenerator::generate(baseParams(seed, 32));
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(baseParams(seed, 96));
         ASSERT_TRUE(s.error.empty()) << s.error;
         for (const auto& st : s.steps)
         {
@@ -554,7 +932,26 @@ TEST(PsytranceMarkov, ValidationRejectsBadParams)
     { auto p = baseParams(); p.totalBars = 258; expectError(p, "totalBars 258"); }
     { auto p = baseParams(); p.minTracks = 3; p.maxTracks = 2; expectError(p, "min>max"); }
     { auto p = baseParams(); p.minPercTracks = 2; p.maxPercTracks = 1; expectError(p, "perc min>max"); }
-    { auto p = baseParams(); p.maxPercTracks = 4; expectError(p, "maxPerc 4 > pool"); }
+    // Perc pool is 5 now (kick+hat+clap+snare+rim): maxPerc 4..5 are valid, 6 is not.
+    {
+        auto p = baseParams();
+        p.maxPercTracks = 4;
+        EXPECT_TRUE(HDAW::PsytranceMarkovGenerator::generate(p).error.empty()) << "maxPerc 4";
+        p.maxPercTracks = 5;
+        EXPECT_TRUE(HDAW::PsytranceMarkovGenerator::generate(p).error.empty()) << "maxPerc 5";
+        p.maxPercTracks = 6;
+        expectError(p, "maxPerc 6 > pool");
+    }
+    // maxTracks ceiling is 9 now: 8..9 valid, 10 is not.
+    {
+        auto p = baseParams();
+        p.maxTracks = 8;
+        EXPECT_TRUE(HDAW::PsytranceMarkovGenerator::generate(p).error.empty()) << "maxTracks 8";
+        p.maxTracks = 9;
+        EXPECT_TRUE(HDAW::PsytranceMarkovGenerator::generate(p).error.empty()) << "maxTracks 9";
+        p.maxTracks = 10;
+        expectError(p, "maxTracks 10");
+    }
     { auto p = baseParams(); p.minTracks = 1; p.maxTracks = 1; p.maxPercTracks = 2;
       expectError(p, "maxPerc>maxTracks"); }
     { auto p = baseParams(); p.minPercTracks = 3; p.minTracks = 2; expectError(p, "minPerc>minTracks"); }
@@ -562,6 +959,7 @@ TEST(PsytranceMarkov, ValidationRejectsBadParams)
     { auto p = baseParams(); p.sectionCycleBars = 4; expectError(p, "sectionCycleBars 4"); }
     { auto p = baseParams(); p.bass = -2; expectError(p, "track index -2"); }
     { auto p = baseParams(); p.kick = -1; p.hat = -1; p.clap = -1;
+      p.snare = -1; p.rim = -1;
       expectError(p, "minPerc without mapped perc"); }
     // odd totalBars rounds UP to the next even count (spec).
     {
@@ -574,7 +972,8 @@ TEST(PsytranceMarkov, ValidationRejectsBadParams)
     // no roles mapped at all
     {
         auto p = baseParams();
-        p.kick = p.bass = p.hat = p.arp = p.stab = p.pad = p.riser = p.down = p.clap = -1;
+        p.kick = p.bass = p.hat = p.arp = p.stab = p.pad = p.riser = p.down = p.clap
+            = p.snare = p.rim = -1;
         const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
         EXPECT_FALSE(s.error.empty());
         EXPECT_NE(s.error.find("mapped"), std::string::npos) << s.error;
@@ -591,7 +990,7 @@ TEST(PsytranceMarkovCommand, RoundTripClipsOnRightTracksOneUndo)
     cmds.setTempo(140.0);
     engine.drainPendingRoutingRebuild();
 
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < 11; ++i) // full palette incl. snare/rim
         ASSERT_GE(cmds.addTrack("Psy" + std::to_string(i), -1, -1, 0), 0);
     engine.drainPendingRoutingRebuild();
 
@@ -629,7 +1028,7 @@ TEST(PsytranceMarkovCommand, RoundTripClipsOnRightTracksOneUndo)
     cmds.undo();
     engine.drainPendingRoutingRebuild();
     int remaining = 0;
-    for (int t = 0; t < 9; ++t)
+    for (int t = 0; t < 11; ++t)
     {
         auto track = m.getTrackListTree().getChild(t);
         remaining += track.getChildWithName(IDs::CLIP_LIST).getNumChildren();
@@ -640,7 +1039,7 @@ TEST(PsytranceMarkovCommand, RoundTripClipsOnRightTracksOneUndo)
     cmds.redo();
     engine.drainPendingRoutingRebuild();
     int restored = 0;
-    for (int t = 0; t < 9; ++t)
+    for (int t = 0; t < 11; ++t)
     {
         auto track = m.getTrackListTree().getChild(t);
         restored += track.getChildWithName(IDs::CLIP_LIST).getNumChildren();
@@ -659,7 +1058,7 @@ TEST(PsytranceMarkovCommand, BadTrackRejectedNoPartialWrites)
 
     auto p = baseParams(42, 32);
     p.bass = 999;
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < 11; ++i)
         cmds.addTrack("T" + std::to_string(i), -1, -1, 0);
     engine.drainPendingRoutingRebuild();
 
@@ -670,7 +1069,7 @@ TEST(PsytranceMarkovCommand, BadTrackRejectedNoPartialWrites)
     EXPECT_TRUE(r.clips.empty());
 
     auto& m = engine.getProjectModel();
-    for (int t = 0; t < 9; ++t)
+    for (int t = 0; t < 11; ++t)
         EXPECT_EQ(m.getTrackListTree().getChild(t)
                       .getChildWithName(IDs::CLIP_LIST)
                       .getNumChildren(),
@@ -696,6 +1095,149 @@ TEST(PsytranceMarkovCommand, InvalidParamsToolNamedError)
     EXPECT_TRUE(r.clips.empty());
 }
 
+// ── Command layer: "volume" fades are written onto the REAL Volume lane
+//    (paramID 1) of each fading role's track — live ValueTree assert, points
+//    in SECONDS (beats→seconds at 140 bpm), factory hold placeholders
+//    replaced, fader-authoritative default lane re-enabled; unmapped-role
+//    fades are counted in automationsSkipped; the whole run (clips + lane
+//    writes) stays ONE undo unit. ──────────────────────────────────────────
+TEST(PsytranceMarkovCommand, VolumeFadesWrittenToLanesSkipsCountedOneUndo)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.setTempo(140.0);
+    engine.drainPendingRoutingRebuild();
+    for (int i = 0; i < 11; ++i) // full palette incl. snare/rim
+        ASSERT_GE(cmds.addTrack("F" + std::to_string(i), -1, -1, 0), 0);
+    engine.drainPendingRoutingRebuild();
+    auto& m = engine.getProjectModel();
+
+    auto volumeLane = [&m](int trackIdx) {
+        auto track = m.getTrackListTree().getChild(trackIdx);
+        auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
+        return autoList.getChildWithProperty(IDs::name, juce::String("Volume"));
+    };
+    const double secPerBeat = 60.0 / 140.0;
+
+    // Pick the seed with the PURE generator (no engine writes): first fixed
+    // seed whose 96-bar score carries volume fades.
+    uint64_t chosenSeed = 0;
+    for (uint64_t seed = 42; seed < 62 && chosenSeed == 0; ++seed)
+    {
+        auto p = baseParams(seed, 96);
+        p.sectionCycleBars = 16;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (const auto& a : s.automations)
+            if (a.param == "volume") { chosenSeed = seed; break; }
+    }
+    ASSERT_NE(chosenSeed, 0u) << "no seed 42..61 produced volume fades (gate vacuous)";
+
+    auto p = baseParams(chosenSeed, 96);
+    p.sectionCycleBars = 16;
+    auto r = cmds.generatePsytranceMarkov(p);
+    ASSERT_TRUE(r.error.empty()) << r.error;
+    // All-mapped run: every volume fade resolves (unmapped roles never reach
+    // the fade path here), so nothing may be skipped.
+    EXPECT_EQ(r.automationsSkipped, 0);
+
+    // Group volume fades by role and resolve each role's track via the
+    // written clips (fading roles were active, so they all produced clips).
+    std::map<std::string, std::vector<const ProjectCommands::PsytranceMarkovResult::Automation*>>
+        fadesByRole;
+    for (const auto& a : r.automations)
+        if (a.param == "volume") fadesByRole[a.role].push_back(&a);
+    ASSERT_FALSE(fadesByRole.empty());
+
+    auto trackOfRole = [&](const std::string& role) -> int {
+        for (const auto& rc : r.clips)
+            if (rc.role == role) return rc.trackIndex;
+        return -1;
+    };
+
+    for (const auto& [role, fades] : fadesByRole)
+    {
+        const int trackIdx = trackOfRole(role);
+        ASSERT_GE(trackIdx, 0) << role << " faded but produced no clip";
+
+        auto lane = volumeLane(trackIdx);
+        ASSERT_TRUE(lane.isValid()) << role << ": Volume lane missing on track " << trackIdx;
+        EXPECT_EQ(static_cast<int>(lane.getProperty(IDs::paramID, 0)), 1) << role;
+        // Fader-authoritative default (lane disabled) was cleared for the fades.
+        EXPECT_TRUE(static_cast<bool>(lane.getProperty(IDs::automationEnabled, false)))
+            << role << ": Volume lane still disabled after fade write";
+
+        auto points = lane.getChildWithName(IDs::POINT_LIST);
+        ASSERT_TRUE(points.isValid());
+        for (const auto* f : fades)
+        {
+            const double wantTime = f->startBeat * secPerBeat;
+            bool found = false;
+            for (int i = 0; i < points.getNumChildren(); ++i)
+            {
+                auto pt = points.getChild(i);
+                if (std::abs(static_cast<double>(pt.getProperty(IDs::startTime, -1.0)) - wantTime) < 1e-9
+                    && std::abs(static_cast<double>(pt.getProperty(IDs::gain, -1.0)) - f->value) < 1e-9)
+                { found = true; break; }
+            }
+            EXPECT_TRUE(found) << role << ": fade point beat " << f->startBeat
+                               << " value " << f->value << " missing on track "
+                               << trackIdx << "'s Volume lane";
+        }
+    }
+
+    // ONE undo unit: the lane writes revert with the clips (factory hold
+    // points + disabled state restored).
+    cmds.undo();
+    engine.drainPendingRoutingRebuild();
+    for (const auto& [role, fades] : fadesByRole)
+    {
+        const int trackIdx = trackOfRole(role);
+        auto lane = volumeLane(trackIdx);
+        ASSERT_TRUE(lane.isValid());
+        auto points = lane.getChildWithName(IDs::POINT_LIST);
+        ASSERT_TRUE(points.isValid());
+        EXPECT_EQ(points.getNumChildren(), 2)
+            << role << ": undo did not restore the factory Volume lane";
+        EXPECT_FALSE(static_cast<bool>(lane.getProperty(IDs::automationEnabled, true)))
+            << role << ": undo did not restore the fader-authoritative state";
+    }
+    // (Left undone: the unmapped-role run below needs the factory lanes.)
+
+    // ── Unmapped-role fades are counted, not silently dropped: with arp
+    //    unmapped, an AddLayer(arp) fade cannot resolve a track and must land
+    //    in automationsSkipped (arp's former track stays untouched). ────────
+    uint64_t skipSeed = 0;
+    int expectedSkips = 0;
+    for (uint64_t seed = 42; seed < 82 && skipSeed == 0; ++seed)
+    {
+        auto ps = baseParams(seed, 96);
+        ps.sectionCycleBars = 16;
+        ps.arp = -1;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(ps);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        int arpFades = 0;
+        for (const auto& a : s.automations)
+            if (a.param == "volume" && a.role == "arp") ++arpFades;
+        if (arpFades > 0) { skipSeed = seed; expectedSkips = arpFades; }
+    }
+    ASSERT_NE(skipSeed, 0u) << "no seed produced unmapped-role fades (gate vacuous)";
+    {
+        auto ps = baseParams(skipSeed, 96);
+        ps.sectionCycleBars = 16;
+        ps.arp = -1;
+        auto r2 = cmds.generatePsytranceMarkov(ps);
+        ASSERT_TRUE(r2.error.empty()) << r2.error;
+        EXPECT_EQ(r2.automationsSkipped, expectedSkips);
+        // Track 3 (arp's would-be track) kept its factory Volume lane.
+        auto arpLane = volumeLane(3);
+        ASSERT_TRUE(arpLane.isValid());
+        EXPECT_EQ(arpLane.getChildWithName(IDs::POINT_LIST).getNumChildren(), 2);
+        EXPECT_FALSE(static_cast<bool>(arpLane.getProperty(IDs::automationEnabled, true)));
+    }
+}
+
 // ── Router twin: dispatchComposition round-trips the JSON the MCP/frontend
 //    would send and returns the steps/automations payloads. ────────────────
 TEST(PsytranceMarkovRouter, DispatchCompositionRoundTrip)
@@ -705,14 +1247,15 @@ TEST(PsytranceMarkovRouter, DispatchCompositionRoundTrip)
     auto& cmds = engine.getProjectCommands();
     cmds.setTempo(140.0);
     engine.drainPendingRoutingRebuild();
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < 11; ++i) // full palette incl. snare/rim
         cmds.addTrack("R" + std::to_string(i), -1, -1, 0);
     engine.drainPendingRoutingRebuild();
 
     QJsonObject params;
     params["paletteTrackIds"] = QJsonObject{
         { "kick", 0 }, { "bass", 1 }, { "hat", 2 }, { "arp", 3 },
-        { "stab", 4 }, { "pad", 5 }, { "riser", 6 }, { "down", 7 }, { "clap", 8 } };
+        { "stab", 4 }, { "pad", 5 }, { "riser", 6 }, { "down", 7 }, { "clap", 8 },
+        { "snare", 9 }, { "rim", 10 } };
     params["keyRoot"] = 5;
     params["scaleMode"] = 1;
     params["density"] = 0.7;

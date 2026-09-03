@@ -314,8 +314,8 @@ through a gating sampler they render quiet, so lengthen via `set_note`.
 
 Where `generate_psytrance` preplans the WHOLE song from a section table, the
 Markov mode grows the arrangement incrementally: a pool of role elements
-(kick, bass, hat, arp, stab, pad, clap) starts minimal and the track evolves
-2 bars at a time under a seeded Markov chain. Pure deterministic engine
+(kick, bass, hat, snare, rim, arp, stab, pad, clap) starts minimal and the
+track evolves 2 bars at a time under a seeded Markov chain. Pure deterministic engine
 (`PsytranceMarkovGenerator`, no engine dependency), wired end-to-end:
 MCP tool `generate_psytrance_markov` → RPC `generatePsytranceMarkov` →
 `AudioEngineCommands::generatePsytranceMarkov` (same clip-writing contract as
@@ -324,13 +324,86 @@ the legacy path: one clip per produced role at beat 0 spanning
 
 **Pool-of-elements philosophy.** The arrangement is not a fixed schedule; it
 is a pool of layers that enter, hold, vary, and leave. Global active-layer
-count stays within `[minTracks, maxTracks]` (default 2..6). Percussive roles
-`{kick, hat, clap}` additionally stay within `[minPercTracks, maxPercTracks]`
-(default 1..3) *inside* the global bounds — at perc-max a percussive Add is
+count stays within `[minTracks, maxTracks]` (default 2..6, ceiling 9).
+Percussive roles `{kick, hat, clap, snare, rim}` additionally stay within
+`[minPercTracks, maxPercTracks]` (default 1..3, ceiling 5 — the perc pool is
+now five voices) *inside* the global bounds — at perc-max a percussive Add is
 suppressed (a non-perc layer is picked instead), at perc-min a percussive
 Remove is suppressed. If no target is valid under both limit sets the chain
 falls back to Keep/Swap/FilterSweep. This is what makes build-ups and
 breakdowns EMERGE instead of being scheduled.
+
+**Three-group element ontology (P0).** Roles partition into three groups,
+encoded as predicates in `PsytranceMarkovGenerator` (`isFloorRole`,
+`isCoreRole`, `isPercRole`, `isFxRole` — bass is intentionally BOTH
+floor-protected AND core-group):
+
+| Group | Roles | Meaning | Transitions |
+| ----- | ----- | ------- | ----------- |
+| CORE | arp, stab, pad (+ bass) | persistent tonal identity — varied by synth tweaks (ArpVariant, NoteLengthVariant, SwapPattern), not constant re-rolls | volume fade-in **4 bars** |
+| PERC | kick, hat, clap, snare, rim | coordinated percussive THEMES held >= 32 bars between rotations (snare pitch 38, rim 37 — fixed-pitch voices; hat 44, clap 42) | volume fade-in **2 bars** (hat/snare/rim/clap only) |
+| FX | riser, down | composed texture accents (FxHit / KeyChange) | no fades |
+| floor (CORE subset) | kick, bass | the protected foundation — breakdown-only removal | **hard-edged: NO fades, in or out** |
+
+**Volume fades are engine-written; filterCutoff stays advisory.** Every
+non-floor AddLayer/RemoveLayer/evict emits `volume` automation points that
+`generatePsytranceMarkov` writes FOR REAL onto the target track's Volume lane
+(paramID 1) inside the same undo unit — fade rules:
+
+| Event | Points (beats) | Length |
+| ----- | -------------- | ------ |
+| AddLayer, bar > 0, non-floor | `0.0` at `bar*4` → `1.0` at `bar*4 + len*4` | CORE len 4 bars, PERC len 2 bars |
+| RemoveLayer / evict-on-max, bar > 0, non-floor | `1.0` at `(bar-2)*4` → `0.0` at `bar*4` | 2 bars (start clamped >= beat 0) |
+| bar-0 initial activations, ALL floor adds/removes | — none — | hard-edged |
+
+The lane write reuses the `add_automation_lane`/`add_automation_point`
+command path (paramID 1, points stored in seconds, appended — the runtime
+cache sorts). A disabled (fader-authoritative) Volume lane is RE-ENABLED for
+generated fades — a disabled lane would swallow the points silently (same
+enable-on-write contract as `automation_preset`); the factory hold
+placeholders (0 s/16 s) are dropped when untouched so they cannot ramp a
+fade-out back to unity. `automationsSkipped` in the result counts volume
+fades that could NOT be written (unmapped role, out-of-range track, or
+Volume-lane conflict). The `filterCutoff` points (FilterSweep) remain
+ADVISORY data — apply them yourself with `set_automation_points` (the target
+paramID depends on the track's FX chain).
+
+**Percussive THEMES rotate as a unit (P1).** The percussive groove is not a
+bag of independent pattern variables — it is a THEME: one coordinated set of
+16-step velocity grids for hat/snare/rim plus the kick broken/straight flag.
+Theme 0 is the canonical opener: offbeat-8th hats with the beat-1 offbeat
+slightly accented (98 vs 92, baked into the grid), silent snare/rim, straight
+kick. The theme SET (T seeded 2..3) is drawn ONCE at generation start, at a
+fixed RNG draw position before the window loop: each non-canonical theme
+seeds `RhythmPatternGenerator::Params` per voice (euclidean, grid=16,
+bars=1 — the generator itself stays pure/no-RNG; only its PARAMS come from
+the mt19937: pulseA hits, pulseB hits 0..3, rotations 0..15, velocities).
+Snare themes lean ghost/soft (velocities 45..80, 2..5 hits, optional seeded
+2/4 backbeat accent at 90 on steps 4/12), rim themes stay sparse (1..4
+hits), hat themes run denser (4..12 hits); the kick flag draws ~35% broken.
+All voices of a theme rotate TOGETHER — that is the point: the groove evolves
+as one coordinated statement, never as drifting soloists.
+
+**Rotation rules.** `themeAge` counts bars since the last rotation and
+resets on rotation ONLY. `RhythmVariant` rotates to the next theme (ALL
+grids + the kick flag move together; `targetRole` is `"theme"`) and is viable
+only once `themeAge >= 32` (and at least one theme voice — hat/snare/rim/
+kick — is audible, so the hold clock is never spent on a no-op). A theme may
+leave a voice silent — theme 0 carries no snare/rim — but an ACTIVE voice
+never goes silent: it falls back to its canonical filler grid (snare: 2/4
+backbeat, rim: sparse 16th pushes into beats 3/1, both at velocity 100 — a
+level no seeded theme grid uses, so the two are never confusable) until the
+next rotation brings a theme that has that voice. `Breakbeat`
+toggles the CURRENT theme's kick flag (the flip persists per theme, so
+rotating back later keeps the flipped feel); it is viable only once >= 32
+bars have passed since the last kick-pattern structure event — a Breakbeat
+OR a rotation (a rotation may swap the kick flag, so it resets the kick
+clock too). Expect a groove to establish for >= 32 bars (eight 4-bar
+phrases) before it mutates. Because theme grids ARE the velocity carrier
+(theme 0 bakes its beat-1 accent into the grid), the old per-window hat
+accent jitter (±6) and the density-gated window-end flourish were retired in
+P1 — a bar's grid signature now only changes when the theme rotates, which
+keeps unit rotation audible and verifiable.
 
 **Two-tier model.** A slow section-energy state
 (`sparse | build | peak | breakdown`; see the vague-timing note below —
@@ -349,7 +422,21 @@ sounds busy — most elements hold steady while 1–2 move:
 | 2-bar (any window) | Keep, FilterSweep, NoteLengthVariant, PadVariant, RhythmVariant, ArpVariant, FxHit, Breakbeat, velocity/accent micro-shifts |
 | 4-bar boundary | AddLayer / RemoveLayer for melodic roles (bass, arp, stab, pad) |
 | 8-bar hold | bass remove/swap and kick remove wait until the layer ran >= 8 bars |
+| 32-bar pattern hold | perc THEME rotations (RhythmVariant) wait until the theme held >= 32 bars; Breakbeat (and rotations, as kick-affecting) wait >= 32 bars on the kick clock |
 | 16–32 bar | KeyChange (periodic, `everyBars` default 32) + section-energy re-roll |
+
+**Floor canon (kick + bass protection).** Genre convention: the kick/bass
+floor only drops out as a tension device — it never leaks away during normal
+sections. The engine gates both roles: `RemoveLayer` (and evict-on-max) may
+only target kick or bass while the section state is `breakdown`, where the
+age-weighted pick additionally favors the floor (×8 weight) so the breakdown
+actually strips the foundation. At the drop — the window where the section
+transitions into `build` — the floor's return is preferred (kick first, then
+bass; seeded 75%, bias never force). The 8-bar min-hold and the 4-bar melodic
+cadence (bass) still apply on top. With the section tier off
+(`sectionCycleBars: 0`) the state can never be `breakdown`, so the floor is
+simply never removed. Broken-kick flips (`Breakbeat`) remain normal
+2-bar-clock variation — they change the pattern, not the presence.
 
 **Slow-tier timing is deliberately vague.** `sectionCycleBars` is a gravity
 well, not a grid: each section draws its length seeded ({0.5×, 0.75×, 1×,
@@ -367,12 +454,12 @@ structural happens, so no element sits unchanged for too long.
 | ------ | ------ |
 | Keep | nothing structural (the hypnotic default) |
 | AddLayer | activate an inactive mapped layer (age-0 start); at maxTracks it evicts the oldest-weighted layer (swap) |
-| RemoveLayer | deactivate a layer — target weighted by age (`1 + age*0.5`): longest-running most likely replaced |
+| RemoveLayer | deactivate a layer — target weighted by age (`1 + age*0.5`): longest-running most likely replaced (kick/bass are floor-protected: breakdown-only, ×8 floor weight there) |
 | SwapPattern | A/B progression + bass-octave toggle; target from the lead family (arp/stab/pad/bass) age-weighted |
 | FxHit | riser roll (8× crescendo 8ths) or downlifter into the window |
-| Breakbeat | kick alternates 4-on-floor / broken (beat 2 dropped) |
+| Breakbeat | toggles the CURRENT theme's kick flag (4-on-floor / broken, beat 2 dropped); only after >= 32 bars since the last kick-pattern event (Breakbeat OR rotation) |
 | FilterSweep | emits an automation point `{role, filterCutoff, startBeat, value, durationBeats}` targeting the OLDEST pitched active layer |
-| RhythmVariant | hat cycles {offbeat 8ths → 16ths → roll-bars → ghost shuffle}; kick toggles broken |
+| RhythmVariant | rotates the percussive THEME one step — hat/snare/rim grids + kick flag move TOGETHER (targetRole `"theme"`); only after the theme held >= 32 bars |
 | ArpVariant | arp direction {up, down, updown, random-walk}, degree rotation, or +12 octave lift for the window |
 | NoteLengthVariant | gate-length multiplier from {0.5, 0.75, 1.0} for bass/arp/stab (staccato..full) |
 | PadVariant | toggles pad voicing (triad/7th), pulse grid (8th/16th), and home/secondary harmony while staying in-key |
@@ -390,16 +477,20 @@ state, action, target, accent, density extras) consumes the RNG in a FIXED
 window order: section re-roll → (KeyChange short-circuit) → action draw →
 target draws → accent draw → note extras.
 
-**Accent micro-variation.** Even a repeating hat pattern gets a small seeded
-per-window accent shift (±6 velocity) plus a beat-1 accent — constant
-variation that never announces itself.
+**Accent shaping lives in the theme grids.** Since P1, hat/snare/rim
+velocities come straight from the current theme's 16-step grid — theme 0
+bakes its beat-1 offbeat accent (98) into the grid, and euclidean-derived
+themes carry their own velocity contour. The per-window ±6 accent jitter of
+P0 was retired so a bar's grid signature changes ONLY on rotation (see the
+rotation rules above).
 
 **Example params JSON.**
 
 ```json
 {
   "paletteTrackIds": { "kick": 0, "bass": 1, "hat": 2, "arp": 3,
-                        "stab": 4, "pad": 5, "riser": 6, "down": 7, "clap": 8 },
+                        "stab": 4, "pad": 5, "riser": 6, "down": 7, "clap": 8,
+                        "snare": 9, "rim": 10 },
   "totalBars": 64, "keyRoot": 5, "scaleMode": 1,
   "density": 0.7, "seed": 42,
   "minTracks": 2, "maxTracks": 6,
@@ -410,26 +501,30 @@ variation that never announces itself.
 ```
 
 Returns `{clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount,
-stepsLast, automationsCount}` — steps are summarized (count + last entries)
-to keep the tool output under ~4KB; the RPC surface returns the full
-`steps[]` (barStart, action, targetRole, activeRoles, ages, keyRoot,
-section) and `automations[]` for verification and for driving automation
-lanes.
+stepsLast, automationsCount, automationsSkipped}` — steps are summarized
+(count + last entries) to keep the tool output under ~4KB; the RPC surface
+returns the full `steps[]` (barStart, action, targetRole, activeRoles, ages,
+keyRoot, section) and `automations[]` for verification. `volume` entries in
+`automations[]` are already written to real lanes by the tool (see the fade
+rules above); `automationsSkipped` reports fade entries that could not be
+written. `filterCutoff` entries remain advisory — drive them with
+`set_automation_points`.
 
 **Genre-concurrency tuning guidance.** Psytrance convention: percussion
-2..8 simultaneous elements (this pool caps at 3 percussive roles —
-`maxPercTracks` is validated <= 3), bass EXACTLY one layer (never doubled —
+2..8 simultaneous elements (this pool caps at 5 percussive roles —
+`maxPercTracks` is validated <= 5), bass EXACTLY one layer (never doubled —
 the engine models it as a single pool element that swaps pattern/octave
 instead of duplicating), leads 1..4 (the default `maxTracks: 6` with a
-single bass leaves exactly that headroom). Start with defaults; for a
-darker minimal roll use `minTracks: 2, maxTracks: 4, density: 0.4`.
+single bass leaves exactly that headroom; the hard ceiling is 9). Start with
+defaults; for a darker minimal roll use `minTracks: 2, maxTracks: 4,
+density: 0.4`.
 
-**Roadmap (automation-point family, not wired yet).** The FilterSweep
-automation-point output is the template for later actions in the same
-family: sidechain pump depth, FX send builds (delay/reverb over a phrase),
-stereo width/pan drift, macro mix HP-sweep during builds, reverb tail
-drift. These map onto `automations[]` entries with different `param`
-values — no new wiring needed when they land.
+**Roadmap (automation-point family).** The FilterSweep filterCutoff output
+(volume fades are already engine-written — see the ontology section above)
+is the template for later actions in the same family: sidechain pump depth,
+FX send builds (delay/reverb over a phrase), stereo width/pan drift, macro
+mix HP-sweep during builds, reverb tail drift. These map onto `automations[]`
+entries with different `param` values — no new wiring needed when they land.
 
 ## 5. Production stack (the difference between a sketch and a psytrance track)
 
@@ -454,8 +549,11 @@ below. LFOs on the SAME target accumulate (pump + swell on pads sum).
 **Automation lanes (verified):** `add_automation_lane(track, name, paramID)` +
 `add_automation_point(track, name, beat, value)` +
 **`set_automation_enabled(track, lane, true)` — lanes default OFF and
-silently do nothing until enabled.** Lane values are NORMALIZED 0..1 (except
-Volume-lane raw gain and sampler-Transpose semitones). FX-param lane IDs:
+silently do nothing until enabled.** (Exception: the Volume fades written by
+`generate_psytrance_markov` enable the target Volume lane themselves — and
+`automation_preset` does the same for the lane it writes.) Lane values are
+NORMALIZED 0..1 (except Volume-lane raw gain and sampler-Transpose semitones).
+FX-param lane IDs:
 `100 + slotIndex*100 + paramIndex` (e.g. bass EQ slot1 → 200 = cutoff freq;
 lead phaser slot1 → 201/202 = depth/CF; flanger slot1 → 200 = rate).
 Automation DOES drive internal FX (EQ/phaser/flanger) end-to-end — verified
@@ -495,6 +593,39 @@ Mix 0-1, Output dB -24..24 (trims the WET path only), Bits 2-16 (Bitcrush
 only); Mix=0 is a bit-identical bypass). The 2x oversampler adds a
 4-sample latency that is reported by the slot and summed into track PDC
 automatically - no manual compensation.
+
+### Preset toolkit (factory chains + preset tools)
+
+HDAW ships 8 built-in factory chains (internal FX only, seeded to
+`_factory/*.json` on first run, edits on disk survive upgrades, never
+deletable). `list_fx_chains` returns them with `source:"factory"` and ids
+`_factory/<File_Name>.json`; user chains carry `source:"user"`.
+
+| Chain | Role | Slots (key params) |
+| --- | --- | --- |
+| `Kick Punch` | kick | saturator 14 dB SoftTanh mix 0.6 → eq 55 Hz −3 dB (sub) → eq 4 kHz +3 dB (click) |
+| `Bass Glue` | bass | eq 120 Hz +1.5 dB → compressor −18 dB 3:1 → saturator 8 dB gentle |
+| `Hat Air` | hats | eq 9 kHz +3 dB → reverb size 0.25 damp 0.3 wet 0.30 (short/bright) |
+| `Pad Shimmer` | pads | chorus 0.6 Hz depth 0.45 → reverb size 0.92 wet 0.42 (large/lush) |
+| `Acid Lead` | lead/arp | filter LP 1.2 kHz res 4.5 → delay SyncToTempo dotted-1/8 fb 0.45 |
+| `Arp Width` | arps | chorus subtle → delay SyncToTempo 1/16 fb 0.30 |
+| `Stab Snip` | stabs | eq 1.8 kHz Q 3.5 −2.5 dB (narrow mids) → phaser subtle |
+| `Riser Sweep` | risers | filter LP 400 Hz res 6 (sweep it with an automation lane) → reverb size 0.95 wet 0.5 |
+
+| Tool | Notes |
+| --- | --- |
+| `list_fx_chains` / `load_fx_chain` | ids may be `_factory/<File_Name>.json`; name resolution covers factory presets too |
+| `save_fx_chain` | saves to the user dir — save tweaked variants as the project's own palette |
+| `delete_fx_chain` | user presets only; factory ids are refused and the file stays |
+| `list_plugin_presets` / `search_plugin_presets` / `load_plugin_preset` | host-enumerable plugin programs |
+| `load_plugin_preset_file` | load .fxp/.syx from disk |
+| `automation_preset` | lane shapes: `pump`, `macro`, `openClose`, `riser`, `sine`, `square` |
+| `fm_synth_load_preset` / `fm_synth_import_sysex` | DX7 voice bank load / SysEx import |
+| `list_cluster_presets` / `get_cluster_preset` | saved `cluster_library` presets |
+
+Workflow: compose (markov/phrases) → `load_fx_chain` per role from the
+factory roster above → tweak individual knobs (`set_fx_param` normalized /
+`set_internal_fx_param` real units) → `save_fx_chain` the variant.
 
 ## 5a. Reusable FX chain preset: Jordan cave-dub
 

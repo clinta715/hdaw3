@@ -100,9 +100,10 @@ pass `Debug` for breakpoint debugging.
 - Per-track FX chain editor in the FX Chain panel. Drag the handle
   to reorder slots, or use the up/down arrows.
 - **Whole-channel FX chain presets**: save / list / load / delete,
-  stored per-user; applying a preset is one undo unit and rebuilds
-  the live chain. Reachable from the FX Chain panel preset bar,
-  RPC, and MCP.
+  stored per-user, incl. built-in factory presets (psytrance
+  per-role chains, read-only); applying a preset is one undo unit
+  and rebuilds the live chain. Reachable from the FX Chain panel
+  preset bar, RPC, and MCP.
 - Per-track MIDI channel routing (1-16) via track header context menu.
 - Per-track automation lane editor in the Automation panel
   (Volume, Pan, Mute are default lanes; plugin FX parameters

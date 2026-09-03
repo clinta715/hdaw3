@@ -569,9 +569,9 @@ s.registerTool({"generate_psytrance",
         }});
 
 s.registerTool({"generate_psytrance_markov",
-        "Compose a psytrance arrangement INCREMENTALLY (guide §4B): a pool of role layers (kick,bass,hat,arp,stab,pad,clap) grows and changes 2 bars at a time under a seeded Markov chain. Actions: Keep, AddLayer, RemoveLayer, SwapPattern, FxHit, Breakbeat, FilterSweep (filterCutoff automation point), RhythmVariant (hat/kick pattern change), ArpVariant, NoteLengthVariant (bass/arp/stab/pad gate-length changes), periodic KeyChange (everyBars, whole scale degrees). Global active-layer count stays within [minTracks,maxTracks]; percussive roles {kick,hat,clap} stay within [minPercTracks,maxPercTracks]. A slow section-energy tier (sparse/build/peak/breakdown; sectionCycleBars is the base of a seeded jittered schedule, so build-ups/breakdowns drift in time yet always arrive — a state never outstays the base cycle and section changes are always audible) biases the fast weights, and a staleness ramp pushes swap/remove when nothing structural happened recently. Age-biased replacement: layers running longest are replaced first; bass and kick hold >= 8 bars; melodic add/remove only on 4-bar boundaries. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index; unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount, stepsLast, automationsCount} — steps summarized (count + last entries) to keep output compact.",
+        "Compose a psytrance arrangement INCREMENTALLY (guide §4B): a pool of role layers (kick,bass,hat,snare,rim,arp,stab,pad,clap) grows and changes 2 bars at a time under a seeded Markov chain. Actions: Keep, AddLayer, RemoveLayer, SwapPattern, FxHit, Breakbeat (toggles the CURRENT theme's kick broken flag), FilterSweep (filterCutoff automation point), RhythmVariant (rotates the percussive THEME one step — ALL voices + kick flag move together; targetRole \"theme\"), ArpVariant, NoteLengthVariant (bass/arp/stab/pad gate-length changes), periodic KeyChange (everyBars, whole scale degrees). Global active-layer count stays within [minTracks,maxTracks] (maxTracks <= 9); percussive roles {kick,hat,clap,snare,rim} stay within [minPercTracks,maxPercTracks] (maxPercTracks <= 5). A slow section-energy tier (sparse/build/peak/breakdown; sectionCycleBars is the base of a seeded jittered schedule, so build-ups/breakdowns drift in time yet always arrive — a state never outstays the base cycle and section changes are always audible) biases the fast weights, and a staleness ramp pushes swap/remove when nothing structural happened recently. Age-biased replacement: layers running longest are replaced first; bass and kick hold >= 8 bars; melodic add/remove only on 4-bar boundaries. Floor canon: bass and kick are only removed during breakdown sections (the tension device) and are preferentially re-added at the drop (transition into build); with the section tier off (sectionCycleBars=0) they are never removed. Three-group element ontology: CORE (arp/stab/pad/bass — persistent tonal identity, varied by synth tweaks), PERC (kick/hat/clap — themed pattern sets) and FX (riser/down — composed texture); kick+bass are the protected floor subset of CORE. Volume fade-in/out automation is written to REAL volume lanes for non-floor layers (core 4 bars in, perc 2 bars in, 2 bars out; floor roles enter/leave hard-edged — no fades). Percussive THEMES: the groove is one coordinated set of 16-step velocity grids for hat/snare/rim plus a kick broken flag — snare (pitch 38) leans ghost/soft with an optional 2/4 backbeat accent, rim (37) stays sparse, hats (44) run denser; clap (42) stays the canonical theme-independent 2/4 backbeat. Theme 0 is the canonical opener (offbeat-8th hats, silent snare/rim, straight kick); the theme SET (2-3 themes) is derived once at generation start by seeding the euclidean RhythmPatternGenerator from the master seed. A theme must hold >= 32 bars before RhythmVariant rotates to the next (themeAge resets on rotation only); Breakbeat needs >= 32 bars since the last kick-pattern event (Breakbeat OR rotation). automationsSkipped reports volume-fade entries that could not be written (unmapped role, out-of-range track, or Volume-lane conflict); a disabled (fader-authoritative) Volume lane is re-enabled so generated fades play. filterCutoff points remain advisory — apply them via set_automation_points. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index; unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount, stepsLast, automationsCount, automationsSkipped} — steps summarized (count + last entries) to keep output compact.",
         objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},
-                      {"description","role name -> track index (kick,bass,hat,arp,stab,pad,clap,riser,down)"},
+                      {"description","role name -> track index (kick,bass,hat,snare,rim,arp,stab,pad,clap,riser,down)"},
                       {"additionalProperties", QJsonObject{{"type","integer"}}}}},
                   {"totalBars", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",256},
                       {"description","arrangement length in bars (even, rounds up); totalBeats = totalBars*4"}}},
@@ -579,10 +579,10 @@ s.registerTool({"generate_psytrance_markov",
                   {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",12}}},
                   {"density", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},
                   {"seed", QJsonObject{{"type","integer"},{"minimum",0}}},
-                  {"minTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",7}}},
-                  {"maxTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",7}}},
-                  {"minPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",3}}},
-                  {"maxPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",3}}},
+                  {"minTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",9}}},
+                  {"maxTracks", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",9}}},
+                  {"minPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",5}}},
+                  {"maxPercTracks", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",5}}},
                   {"everyBars", QJsonObject{{"type","integer"},{"minimum",0},
                       {"description","periodic KeyChange boundary in bars (0 = off, else >= 8; default 32)"}}},
                   {"sectionCycleBars", QJsonObject{{"type","integer"},{"minimum",0},
@@ -614,7 +614,8 @@ s.registerTool({"generate_psytrance_markov",
             const auto pt = a.value("paletteTrackIds").toObject();
             auto set = [&](const char* role, int& out) { if (pt.contains(role)) out = pt.value(role).toInt(-1); };
             set("kick", p.kick);     set("bass", p.bass);
-            set("hat", p.hat);       set("arp", p.arp);
+            set("hat", p.hat);       set("snare", p.snare);
+            set("rim", p.rim);       set("arp", p.arp);
             set("stab", p.stab);     set("pad", p.pad);
             set("riser", p.riser);   set("down", p.down);
             set("clap", p.clap);
@@ -654,7 +655,8 @@ s.registerTool({"generate_psytrance_markov",
                             {"notesSkipped", r.notesSkipped},
                             {"stepsCount", n},
                             {"stepsLast", lastArr},
-                            {"automationsCount", static_cast<int>(r.automations.size())}})
+                            {"automationsCount", static_cast<int>(r.automations.size())},
+                            {"automationsSkipped", r.automationsSkipped}})
                 .toJson(QJsonDocument::Compact)));
         }});
 

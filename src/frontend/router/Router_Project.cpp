@@ -374,6 +374,7 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
             e["id"] = QString::fromStdString(p.id.toStdString());
             e["name"] = QString::fromStdString(p.name.toStdString());
             e["slotCount"] = static_cast<int>(p.slots.size());
+            e["source"] = p.isFactory ? QString("factory") : QString("user");
             arr.append(e);
         }
         return { false, arr };

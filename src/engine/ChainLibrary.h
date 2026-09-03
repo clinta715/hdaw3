@@ -8,7 +8,11 @@ namespace HDAW {
 
 // Named FX-chain preset: an ordered list of FX slots that can be saved to
 // disk and re-applied to a track. Persisted as JSON under
-// root/user/<sanitized>.json (see ChainLibrary).
+// root/user/<sanitized>.json (user presets, writable) or
+// root/_factory/<sanitized>.json (built-in factory presets seeded by the
+// ChainLibrary constructor; never overwritten once present, never
+// deletable). Ids are root-relative: "user/<name>.json" or
+// "_factory/<name>.json" (see ChainLibrary).
 //
 // Threading: all ChainLibrary methods perform blocking file IO and are NOT
 // realtime-safe. Call them from the message thread (or a background/test
@@ -32,6 +36,10 @@ struct ChainPreset {
     };
     juce::String id, name;
     std::vector<Slot> slots;
+    // True when the preset came from the read-only _factory/ tree (built-in
+    // content). Set by readPresetFile from the id prefix, so both list
+    // results and loadPreset results carry it.
+    bool isFactory = false;
 };
 
 class ChainLibrary {
@@ -39,10 +47,11 @@ public:
     explicit ChainLibrary(const juce::File& root);
     static const ChainLibrary& userLibrary();  // userApplicationDataDirectory/HDAW/chains (mirror src/mcp/McpTools_CompositionPattern.cpp)
     juce::String savePreset(const ChainPreset& p) const;   // root/user/<sanitized>.json, uniquified -N
-    std::vector<ChainPreset> listPresets() const;    // scan *.json like PatternLibrary.cpp:392
+    std::vector<ChainPreset> listPresets() const;    // scan *.json in _factory/ then user/ (factory first), like PatternLibrary.cpp:428
     ChainPreset loadPreset(const juce::String& id) const;
     bool deletePreset(const juce::String& id) const;       // refuses ids under _factory/
 private:
+    void seedFactoryPresetsIfMissing();    // ctor tail: write each built-in _factory/<name>.json only if absent
     juce::File root_, userDir_;
     mutable std::mutex mutex_;
 };

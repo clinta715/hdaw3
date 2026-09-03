@@ -1,7 +1,9 @@
 #include "engine/PsytranceMarkovGenerator.h"
 #include "engine/PhraseGenerator.h"
+#include "engine/RhythmPatternGenerator.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <random>
@@ -26,13 +28,100 @@ inline int wrapDegree(int d, int len) { int r = d % len; return r < 0 ? r + len 
 
 inline bool isPercRole(const std::string& r)
 {
-    return r == "kick" || r == "hat" || r == "clap";
+    return r == "kick" || r == "hat" || r == "clap" || r == "snare" || r == "rim";
 }
 
-// Core pool (layers that count toward min/max tracks), fixed order.
-const char* kCoreRoles[7] = { "kick", "bass", "hat", "arp", "stab", "pad", "clap" };
+// ── Three-group element ontology (P0) ────────────────────────────────────
+// FLOOR  = kick, bass      — protected tonal foundation (breakdown-only
+//                            removal; hard-edged enters/leaves, NO fades).
+// CORE   = arp, stab, pad, bass — persistent tonal identity, varied by
+//                            synth tweaks (bass is BOTH floor-protected
+//                            AND core-group; predicates overlap on purpose).
+// PERC   = kick, hat, clap, snare, rim — isPercRole; themed pattern sets
+//                            held >= 32 bars between flips (see PercTheme).
+// FX     = riser, down     — composed texture accents.
+inline bool isFloorRole(const std::string& r) { return r == "kick" || r == "bass"; }
+inline bool isCoreRole(const std::string& r)
+{
+    return r == "arp" || r == "stab" || r == "pad" || r == "bass";
+}
+inline bool isFxRole(const std::string& r) { return r == "riser" || r == "down"; }
+
+// Percussive THEME hold: the whole groove (hat/snare/rim grids + the kick
+// broken flag) is one unit — a rotation must leave it in place for at least
+// this many bars so the groove establishes before it mutates (themeAge is
+// tracked in bars and gates RhythmVariant viability; a rotation resets it).
+// The kick flag additionally rides its own clock (Breakbeat OR rotation
+// resets it) so the backbeat structure never flips faster than the hold.
+constexpr int kPercPatternHoldBars = 32;
+
+// Core pool (layers that count toward min/max tracks), fixed order — the
+// perc voices cluster up front (kick,bass,hat,snare,rim) and the melodic
+// tail keeps its P0 relative order.
+const char* kCoreRoles[9] = { "kick", "bass", "hat", "snare", "rim",
+                              "arp", "stab", "pad", "clap" };
 // Lead family = age-biased replacement candidates (spec: arp,stab,pad,bass).
 const char* kLeadFamily[4] = { "bass", "arp", "stab", "pad" };
+
+// ── Percussive themes (P1) ───────────────────────────────────────────────
+// A theme is ONE coordinated groove statement: 16-step velocity grids per
+// voice (0 = silent, else velocity) for hat/snare/rim plus the kick broken
+// flag. Theme 0 is the canonical opener (offbeat-8th hats, beat-1 offbeat
+// slightly accented, silent snare/rim, straight kick); themes 1..T-1 seed
+// RhythmPatternGenerator::Params (euclidean, grid=16, bars=1 — the generator
+// itself stays pure/no-RNG) from the generation mt19937 and convert the
+// returned notes to step-velocity arrays (dedupe by step, louder wins).
+// All voices of a theme rotate TOGETHER (unit rotation).
+struct PercTheme {
+    bool kickBroken = false;
+    std::array<uint8_t, 16> hat{};   // 0 = silent, else velocity
+    std::array<uint8_t, 16> snare{}; // pitch 38 (acoustic snare)
+    std::array<uint8_t, 16> rim{};   // pitch 37 (side stick)
+};
+
+// Fixed-pitch perc voices — all distinct (clap 42, hat 44 below).
+constexpr int kSnarePitch = 38;
+constexpr int kRimPitch = 37;
+constexpr int kHatPitch = 44;
+constexpr int kClapPitch = 42;
+
+// Canonical opener theme (bar 0 until the first rotation — >= 32 bars).
+PercTheme canonicalTheme()
+{
+    PercTheme t;
+    t.hat[2]  = 98;  // beat-1 offbeat accent (baked into the grid)
+    t.hat[6]  = 92;
+    t.hat[10] = 92;
+    t.hat[14] = 92;
+    return t;
+}
+
+// Filler grids for a voice the current theme leaves SILENT (theme 0 is the
+// canonical snare/rim-free opener): while the voice is ACTIVE it plays the
+// filler, so an added layer is never a silent fade target; the theme's own
+// grid takes over on the next rotation. Filler velocities (100) sit OUTSIDE
+// every seeded theme velocity range, so a theme grid can never equal a
+// filler — unit rotation stays observable (a rotation always changes an
+// active voice's bar signature).
+const std::array<uint8_t, 16> kSnareFiller = [] {
+    std::array<uint8_t, 16> g{}; // canonical 2/4 backbeat (layers with the clap)
+    g[4] = 100; g[12] = 100;
+    return g;
+}();
+const std::array<uint8_t, 16> kRimFiller = [] {
+    std::array<uint8_t, 16> g{}; // sparse 16th pushes into beats 3 and 1
+    g[7] = 100; g[15] = 100;
+    return g;
+}();
+
+// A voice's effective grid: the theme's own cells when the theme HAS that
+// voice, the canonical filler when it does not.
+inline const std::array<uint8_t, 16>& gridOrFiller(
+    const std::array<uint8_t, 16>& grid, const std::array<uint8_t, 16>& filler)
+{
+    for (uint8_t v : grid) if (v != 0) return grid;
+    return filler;
+}
 
 // Slow-tier section-energy states (production-theory two-tier model).
 enum class SectionEnergy { Sparse, Build, Peak, Breakdown };
@@ -91,10 +180,11 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     if (p.density < 0.0 || p.density > 1.0) { score.error = "density must be in 0..1"; return score; }
     if (p.totalBars < 1 || p.totalBars > 256) { score.error = "totalBars must be in 1..256"; return score; }
     if (p.minTracks < 1) { score.error = "minTracks must be >= 1"; return score; }
-    if (p.maxTracks > 7) { score.error = "maxTracks must be <= 7"; return score; }
+    if (p.maxTracks > 9) { score.error = "maxTracks must be <= 9"; return score; }
     if (p.minTracks > p.maxTracks) { score.error = "minTracks must be <= maxTracks"; return score; }
     if (p.minPercTracks < 0) { score.error = "minPercTracks must be >= 0"; return score; }
-    if (p.maxPercTracks > 3) { score.error = "maxPercTracks must be <= 3 (pool is kick+hat+clap)"; return score; }
+    if (p.maxPercTracks > 5)
+    { score.error = "maxPercTracks must be <= 5 (pool is kick+hat+clap+snare+rim)"; return score; }
     if (p.minPercTracks > p.maxPercTracks) { score.error = "minPercTracks must be <= maxPercTracks"; return score; }
     if (p.maxPercTracks > p.maxTracks) { score.error = "maxPercTracks must be <= maxTracks"; return score; }
     if (p.minPercTracks > p.minTracks) { score.error = "minPercTracks must be <= minTracks"; return score; }
@@ -105,17 +195,29 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     if (p.sectionCycleBars < 0 || (p.sectionCycleBars > 0 && p.sectionCycleBars < 8))
     { score.error = "sectionCycleBars must be 0 (off) or >= 8"; return score; }
 
-    int roleTracks[9] = { p.kick, p.bass, p.hat, p.arp, p.stab, p.pad, p.riser, p.down, p.clap };
+    // Role → palette track index for the core layers (FX roles excluded).
+    auto roleTrack = [&p](const std::string& r) -> int {
+        if (r == "kick")  return p.kick;
+        if (r == "bass")  return p.bass;
+        if (r == "hat")   return p.hat;
+        if (r == "snare") return p.snare;
+        if (r == "rim")   return p.rim;
+        if (r == "arp")   return p.arp;
+        if (r == "stab")  return p.stab;
+        if (r == "pad")   return p.pad;
+        if (r == "clap")  return p.clap;
+        return -1;
+    };
+
+    const int roleTracks[] = { p.kick, p.bass, p.hat, p.snare, p.rim, p.arp,
+                               p.stab, p.pad, p.riser, p.down, p.clap };
     for (int t : roleTracks)
         if (t < -1) { score.error = "track indices must be -1 (unmapped) or >= 0"; return score; }
 
     int mappedCount = 0, mappedPercCount = 0;
     for (const char* r : kCoreRoles)
     {
-        const int t = r == std::string("kick") ? p.kick  : r == std::string("bass") ? p.bass
-                    : r == std::string("hat")  ? p.hat   : r == std::string("arp")  ? p.arp
-                    : r == std::string("stab") ? p.stab  : r == std::string("pad")  ? p.pad
-                                                   : p.clap;
+        const int t = roleTrack(r);
         if (t >= 0) { ++mappedCount; if (isPercRole(r)) ++mappedPercCount; }
     }
     if (mappedCount == 0) { score.error = "no palette roles mapped"; return score; }
@@ -154,6 +256,8 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     RoleCtx kick  = makeRole("kick",  p.kick);
     RoleCtx bass  = makeRole("bass",  p.bass);
     RoleCtx hat   = makeRole("hat",   p.hat);
+    RoleCtx snare = makeRole("snare", p.snare);
+    RoleCtx rim   = makeRole("rim",   p.rim);
     RoleCtx arp   = makeRole("arp",   p.arp);
     RoleCtx stab  = makeRole("stab",  p.stab);
     RoleCtx pad   = makeRole("pad",   p.pad);
@@ -182,18 +286,14 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     std::map<std::string, int> ages; // running bars; absent = 0 (fresh (re-)add)
     auto percActiveCount = [&active]() {
         int n = 0;
-        for (const char* r : { "kick", "hat", "clap" }) if (active.count(r)) ++n;
+        for (const auto& r : active) if (isPercRole(r)) ++n;
         return n;
     };
     auto tryActivate = [&](const std::string& role) -> bool {
         bool mapped = false;
         for (const char* r : kCoreRoles) if (role == r)
         {
-            const int t = role == "kick" ? p.kick  : role == "bass" ? p.bass
-                        : role == "hat"  ? p.hat   : role == "arp"  ? p.arp
-                        : role == "stab" ? p.stab  : role == "pad"  ? p.pad
-                                                           : p.clap;
-            mapped = t >= 0;
+            mapped = roleTrack(role) >= 0;
             break;
         }
         if (!mapped || active.count(role)) return false;
@@ -225,9 +325,62 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
         startActivate(r);
     }
 
-    // ── Variation state (mutated by the variant actions) ──
-    int hatMode = 0;             // 0 offbeat 8ths, 1 16ths, 2 roll-bars, 3 ghost shuffle
-    bool kickBroken = false;     // 4-on-floor vs broken (Breakbeat/RhythmVariant)
+    // ── Percussive theme set (P1): drawn ONCE, at this fixed draw position
+    //    before the window loop, then rotated as a UNIT ──
+    // Theme 0 is the canonical opener. Themes 1..T-1 (T seeded 2..3) derive
+    // each voice's 16-step grid from the euclidean RhythmPatternGenerator —
+    // PURE, so its PARAMS are seeded from the mt19937 in a fixed order
+    // (pulseA hits, pulseB hits, rotations, velocities) and the returned
+    // notes convert to step-velocity arrays (dedupe by step, louder wins).
+    // Snare leans ghost/soft with an optional 2/4 backbeat accent (90 on
+    // steps 4/12), rim stays sparse, hats run denser; kickBroken draws ~35%.
+    auto drawVoiceGrid = [&](int hitsLo, int hitsHi, int velALo, int velAHi,
+                             int velBLo, int velBHi) -> std::array<uint8_t, 16> {
+        RhythmPatternGenerator::Params rp;
+        rp.grid = 16;
+        rp.bars = 1;
+        rp.pulseA = rngInt(hitsLo, hitsHi);
+        rp.pulseB = rngInt(0, 3); // 0 disables the second pulse
+        rp.rotationA = rngInt(0, 15);
+        rp.rotationB = rngInt(0, 15);
+        rp.velocityA = rngInt(velALo, velAHi);
+        rp.velocityB = rngInt(velBLo, velBHi);
+        // pitchA/pitchB stay defaults — a grid stores per-voice velocity only
+        std::array<uint8_t, 16> grid{};
+        for (const auto& n : RhythmPatternGenerator::generate(rp))
+        {
+            const int step = (int) std::lround(n.startBeat * 4.0);
+            if (step < 0 || step > 15) continue;
+            grid[(size_t) step] = (uint8_t) std::max<int>(grid[(size_t) step], n.velocity);
+        }
+        return grid;
+    };
+    auto drawTheme = [&]() -> PercTheme {
+        PercTheme t;
+        t.kickBroken = rng01() < 0.35;
+        t.hat   = drawVoiceGrid(4, 12, 88, 104, 64, 84); // denser, brighter
+        t.snare = drawVoiceGrid(2, 5, 60, 80, 45, 60);   // ghost/soft base
+        if (rng01() < 0.5)                               // optional 2/4 backbeat
+        {
+            t.snare[4]  = 90;
+            t.snare[12] = 90;
+        }
+        t.rim = drawVoiceGrid(1, 4, 70, 90, 50, 64);     // sparse
+        return t;
+    };
+    const int themeCount = rngInt(2, 3);
+    std::vector<PercTheme> themes;
+    themes.reserve((size_t) themeCount);
+    themes.push_back(canonicalTheme());
+    for (int t = 1; t < themeCount; ++t) themes.push_back(drawTheme());
+    int themeIndex = 0;  // current theme; RhythmVariant rotates (targetRole "theme")
+    // Theme hold clocks in bars (P0 hold, now unit-wide): +windowBars per
+    // window. themeAge resets on ROTATION only; kickClock resets on every
+    // kick-pattern structure event (Breakbeat OR rotation — a rotation may
+    // swap the kick flag too). A flip is only viable once its clock reaches
+    // kPercPatternHoldBars — the groove establishes before it mutates.
+    int themeAge = 0;
+    int kickClock = 0;
     int arpDir = 0;              // 0 up, 1 down, 2 updown, 3 random-walk
     int arpRot = 0;              // degree-sequence rotation
     bool arpLiftWindow = false;  // +12 for one window
@@ -289,14 +442,21 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     int windowsSinceStructural = 0; // windows since last Add/Remove/Swap
 
     // Fixed role iteration order for age-weighted draws (std::set is sorted).
-    auto ageWeightedPick = [&](const std::vector<std::string>& candidates) -> std::string {
+    // floorMult > 1 biases the genre floor (kick/bass) — used by the
+    // breakdown removal preference; 1.0 keeps the plain age-weighted draw.
+    auto ageWeightedPick = [&](const std::vector<std::string>& candidates,
+                               double floorMult = 1.0) -> std::string {
         if (candidates.empty()) return "";
+        auto weight = [&](const std::string& c) {
+            const double base = 1.0 + 0.5 * (double) ages[c];
+            return (floorMult != 1.0 && (c == "kick" || c == "bass")) ? base * floorMult : base;
+        };
         double totalW = 0.0;
-        for (const auto& c : candidates) totalW += 1.0 + 0.5 * (double) ages[c];
+        for (const auto& c : candidates) totalW += weight(c);
         double r = rng01() * totalW;
         for (const auto& c : candidates)
         {
-            r -= 1.0 + 0.5 * (double) ages[c];
+            r -= weight(c);
             if (r < 0.0) return c;
         }
         return candidates.back();
@@ -328,10 +488,47 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
     };
     auto canRemoveTarget = [&](const std::string& r, int bar) {
         if ((int) active.size() <= p.minTracks) return false;
+        // Floor canon: kick+bass are the genre floor — they only drop out as
+        // a tension device inside a breakdown (and are preferred to return at
+        // the drop). With the section tier off (sectionCycleBars=0) the state
+        // can never be breakdown, so the floor is simply never removed.
+        if (isFloorRole(r) && section != SectionEnergy::Breakdown)
+            return false;
         if (!isPercRole(r) && bar % 4 != 0) return false; // melodic remove: 4-bar boundary
         if (r == "bass" && ages[r] < kBassHoldBars) return false; // bass min-hold
         if (r == "kick" && ages[r] < kKickHoldBars) return false; // kick min-hold
         return !isPercRole(r) || percActiveCount() > p.minPercTracks;
+    };
+    // Theme-hold viability (P1): a rotation may only fire once the current
+    // theme has held kPercPatternHoldBars AND at least one theme voice
+    // (hat/snare/rim/kick) is audible — rotating with nothing audible would
+    // spend the hold clock on a no-op. Used by the weight gating AND the
+    // execution re-check.
+    auto themeRotationViable = [&]() {
+        if (themeAge < kPercPatternHoldBars) return false;
+        for (const char* r : { "hat", "snare", "rim", "kick" })
+            if (active.count(r) != 0) return true;
+        return false;
+    };
+
+    // ── Volume fade automation (P0 ontology) ──
+    // Non-floor layers enter/leave with engine-written volume fades; the
+    // floor enters/leaves HARD-EDGED (hard edges are the point of the floor)
+    // and bar-0 initial activations are never faded. The command layer
+    // writes "volume" entries to real Volume lanes (paramID 1);
+    // filterCutoff stays advisory.
+    auto emitFadeIn = [&](const std::string& role, int bar) {
+        if (bar <= 0 || isFloorRole(role)) return;
+        const double lenBeats = 4.0 * (isCoreRole(role) ? 4 : 2); // core 4 bars, perc 2 bars
+        score.automations.push_back({ role, "volume", bar * 4.0, 0.0, lenBeats });
+        score.automations.push_back({ role, "volume", bar * 4.0 + lenBeats, 1.0, lenBeats });
+    };
+    auto emitFadeOut = [&](const std::string& role, int bar) {
+        if (bar <= 0 || isFloorRole(role)) return;
+        const double lenBeats = 8.0; // 2 bars
+        const double startBeat = std::max(0.0, (bar - 2) * 4.0);
+        score.automations.push_back({ role, "volume", startBeat, 1.0, lenBeats });
+        score.automations.push_back({ role, "volume", bar * 4.0, 0.0, lenBeats });
     };
 
     for (int bar = 0; bar < totalBars; bar += 2)
@@ -385,13 +582,19 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
             bool anyAddable = false;
             for (const char* r : kCoreRoles)
                 if (!active.count(r) && canAddTarget(r, bar)) { anyAddable = true; break; }
-            bool pitchedActive = false, variantable = false, gateable = false;
+            bool pitchedActive = false, gateable = false;
             for (const auto& a : active)
             {
                 if (a == "arp" || a == "stab" || a == "pad" || a == "bass") pitchedActive = true;
-                if (a == "kick" || a == "hat") variantable = true;
                 if (a == "bass" || a == "arp" || a == "stab" || a == "pad") gateable = true;
             }
+            // Theme-hold eligibility (P1): see themeRotationViable — the kick
+            // flag rides its own clock (Breakbeat, or a rotation that swaps
+            // the flag). Weights stay 0 with no eligible target so the single
+            // draw is never biased by dead slots.
+            const bool themeEligible = themeRotationViable();
+            const bool kickEligible = active.count("kick") != 0
+                                      && kickClock >= kPercPatternHoldBars;
 
             double wAdd    = anyAddable ? std::max(0.0, 1.6 - 1.3 * pos) : 0.0; // high near min
             double wRemove = 0.0;
@@ -400,9 +603,9 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
             double wKeep   = 2.0; // hypnotic anchor: most windows hold steady
             double wSwap   = pitchedActive ? 0.5 : 0.0;
             double wFx     = (riserMapped || downMapped) ? 0.35 : 0.0;
-            double wBreak  = active.count("kick") ? 0.35 : 0.0;
+            double wBreak  = kickEligible ? 0.35 : 0.0;
             double wFilter = pitchedActive ? 0.45 : 0.0;
-            double wRhythm = variantable ? 0.5 : 0.0;
+            double wRhythm = themeEligible ? 0.5 : 0.0;
             double wArp    = active.count("arp") ? 0.45 : 0.0;
             double wNoteLn = gateable ? 0.45 : 0.0;
 
@@ -528,7 +731,20 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
                 if (!active.count(r) && canAddTarget(r, bar)) inactive.push_back(r);
             if (!inactive.empty())
             {
-                targetRole = inactive[rngInt(0, (int) inactive.size() - 1)];
+                // Drop-return bias: the transition INTO Build is THE drop —
+                // prefer the floor's return (kick first, then bass) with a
+                // seeded 75% draw. Bias, never force: when the draw declines
+                // or the floor is not addable, the uniform pick below runs.
+                std::string floorPref;
+                if (sectionChanged && section == SectionEnergy::Build)
+                {
+                    if (!active.count("kick") && canAddTarget("kick", bar)) floorPref = "kick";
+                    else if (!active.count("bass") && canAddTarget("bass", bar)) floorPref = "bass";
+                }
+                if (!floorPref.empty() && rng01() < 0.75)
+                    targetRole = floorPref;
+                else
+                    targetRole = inactive[rngInt(0, (int) inactive.size() - 1)];
                 if ((int) active.size() >= p.maxTracks)
                 {
                     // evict-on-max: age-weighted replacement, cadence + perc-min aware.
@@ -552,10 +768,20 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
                         targetRole.clear();
                     }
                     else
+                    {
                         active.erase(evict);
+                        emitFadeOut(evict, bar);
+                    }
                 }
+                // The fade rides the AddLayer ACTION (target picked, eviction
+                // did not downgrade to Keep) — including targets whose track
+                // is unmapped: those reach the command layer and are counted
+                // in automationsSkipped rather than silently dropped.
                 if (chosen == MarkovAction::AddLayer)
+                {
                     tryActivate(targetRole);
+                    emitFadeIn(targetRole, bar);
+                }
             }
         }
         else if (chosen == MarkovAction::RemoveLayer)
@@ -564,9 +790,14 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
             for (const auto& a : active) if (canRemoveTarget(a, bar)) removable.push_back(a);
             if (!removable.empty())
             {
-                targetRole = ageWeightedPick(removable); // longest-running most likely
+                // Breakdown drop preference: bias the pick toward the floor
+                // (kick/bass) so the tension actually strips the foundation;
+                // a draw landing elsewhere is fine (bias, never force).
+                const double floorMult = section == SectionEnergy::Breakdown ? 8.0 : 1.0;
+                targetRole = ageWeightedPick(removable, floorMult); // longest-running most likely
                 active.erase(targetRole);
                 ages.erase(targetRole);
+                emitFadeOut(targetRole, bar);
             }
         }
         else if (chosen == MarkovAction::SwapPattern)
@@ -589,7 +820,11 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
         }
         else if (chosen == MarkovAction::Breakbeat)
         {
-            kickBroken = !kickBroken; // alternates 4-on-floor / broken
+            // Toggle the CURRENT theme's kick flag — it persists per theme,
+            // so rotating back to that theme later keeps the flipped feel.
+            themes[(size_t) themeIndex].kickBroken =
+                !themes[(size_t) themeIndex].kickBroken;
+            kickClock = 0;            // the kick pattern flipped: kick clock restarts
             targetRole = "kick";
         }
         else if (chosen == MarkovAction::FilterSweep)
@@ -603,13 +838,17 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
         }
         else if (chosen == MarkovAction::RhythmVariant)
         {
-            // Mutate one percussive role's rhythm for >= 1 window.
-            const bool hatOn = active.count("hat") != 0, kickOn = active.count("kick") != 0;
-            if (hatOn && kickOn) targetRole = rngInt(0, 1) == 0 ? "hat" : "kick";
-            else if (hatOn)      targetRole = "hat";
-            else if (kickOn)     targetRole = "kick";
-            if (targetRole == "hat") hatMode = rngInt(0, 3);
-            else if (targetRole == "kick") kickBroken = !kickBroken;
+            // Rotate the WHOLE theme one step (hat/snare/rim grids + kick
+            // flag move together) — only a theme that has held
+            // kPercPatternHoldBars is eligible (weight gating above); this
+            // re-check mirrors the other no-target paths.
+            if (themeRotationViable())
+            {
+                themeIndex = (themeIndex + 1) % (int) themes.size();
+                themeAge = 0;  // rotation is the ONLY themeAge reset
+                kickClock = 0; // the incoming theme may carry a different kick flag
+                targetRole = "theme";
+            }
             else chosen = MarkovAction::Keep;
         }
         else if (chosen == MarkovAction::ArpVariant)
@@ -654,9 +893,12 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
             ++windowsSinceStructural;
 
         // ── Notes for this window ──
-        // Accent micro-variation: one seeded accent shift per window (a 2-bar
-        // clock micro action — constant variation that never announces itself).
-        const int hatAccent = rngInt(-6, 6);
+        // The theme grids ARE the velocity-shaping carrier now (P1): accents
+        // live in the grids themselves (theme 0 bakes its beat-1 offbeat
+        // accent into the grid), so the per-window accent jitter and the
+        // density-gated flourish are retired — a bar's grid signature only
+        // changes when the THEME rotates, which keeps unit rotation audible
+        // and verifiable.
         const int windowBars = std::min(2, totalBars - bar);
         for (int wb = 0; wb < windowBars; ++wb)
         {
@@ -664,53 +906,43 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
             const int deg = swapFlag ? progB[wrapDegree(curBar, lenB)]
                                      : progA[wrapDegree(curBar, lenA)];
             const int kickPitch = diaRoot(curKeyRoot, 2);
-            const int clapPitch = 42;
-            const int hatOff = 44, hatRoll = 48;
+
+            // HAT/SNARE/RIM — the current theme's 16-step velocity grids
+            // (step s lands at s*0.25 beats; all three rotate as a unit).
+            // A theme may leave a voice silent (theme 0 has no snare/rim):
+            // an ACTIVE voice then plays its canonical filler (see
+            // kSnareFiller/kRimFiller) so added layers are never silent.
+            const PercTheme& theme = themes[(size_t) themeIndex];
+            if (hat.track >= 0 || snare.track >= 0 || rim.track >= 0)
+            {
+                const auto& snareGrid = gridOrFiller(theme.snare, kSnareFiller);
+                const auto& rimGrid   = gridOrFiller(theme.rim,   kRimFiller);
+                const double barBeat = curBar * 4.0;
+                for (int st = 0; st < 16; ++st)
+                {
+                    const double stepBeat = barBeat + st * 0.25;
+                    if (active.count("hat") && hat.track >= 0 && theme.hat[(size_t) st])
+                        hat.add(stepBeat, kHatPitch, theme.hat[(size_t) st],
+                                0.2, kMaxNotesPerClip);
+                    if (active.count("snare") && snare.track >= 0 && snareGrid[(size_t) st])
+                        snare.add(stepBeat, kSnarePitch, snareGrid[(size_t) st],
+                                  0.15, kMaxNotesPerClip);
+                    if (active.count("rim") && rim.track >= 0 && rimGrid[(size_t) st])
+                        rim.add(stepBeat, kRimPitch, rimGrid[(size_t) st],
+                                0.15, kMaxNotesPerClip);
+                }
+            }
 
             for (int b = 0; b < 4; ++b)
             {
                 const double beatAbs = curBar * 4.0 + b;
 
-                // KICK — 4-on-floor, or broken (beat 2 dropped); accent on beat 1
+                // KICK — 4-on-floor, or the current theme's broken flag
+                // (beat 2 dropped); accent on beat 1
                 if (active.count("kick") && kick.track >= 0)
                 {
-                    if (!kickBroken || b != 2)
+                    if (!theme.kickBroken || b != 2)
                         kick.add(beatAbs, kickPitch, b == 0 ? 127 : 122, 1.9, kMaxNotesPerClip);
-                }
-                // HAT — mode-driven rhythm (RhythmVariant cycles the modes)
-                if (active.count("hat") && hat.track >= 0)
-                {
-                    switch (hatMode)
-                    {
-                        case 1: // 16ths (kick's downbeats stay clean)
-                            hat.add(beatAbs + 0.25, hatOff, 84 + hatAccent, 0.2, kMaxNotesPerClip);
-                            hat.add(beatAbs + 0.5,  hatOff, 92 + hatAccent, 0.2, kMaxNotesPerClip);
-                            hat.add(beatAbs + 0.75, hatOff, 84 + hatAccent, 0.2, kMaxNotesPerClip);
-                            break;
-                        case 2: // roll-bars: 16th roll into each bar, offbeats after
-                            if (b == 0)
-                            {
-                                hat.add(beatAbs + 0.0,  hatRoll, 98 + hatAccent,  0.2, kMaxNotesPerClip);
-                                hat.add(beatAbs + 0.25, hatRoll, 101 + hatAccent, 0.2, kMaxNotesPerClip);
-                                hat.add(beatAbs + 0.5,  hatRoll, 104 + hatAccent, 0.2, kMaxNotesPerClip);
-                                hat.add(beatAbs + 0.75, hatRoll, 107 + hatAccent, 0.2, kMaxNotesPerClip);
-                            }
-                            else
-                                hat.add(beatAbs + 0.5, hatOff, 92 + hatAccent, 0.2, kMaxNotesPerClip);
-                            break;
-                        case 3: // ghost-note shuffle: offbeat + quiet ghost 16th
-                            hat.add(beatAbs + 0.5, hatOff, 92 + hatAccent, 0.2, kMaxNotesPerClip);
-                            if ((curBar + b) % 2 == 1)
-                                hat.add(beatAbs + 0.75, hatOff, 60, 0.15, kMaxNotesPerClip);
-                            break;
-                        default: // offbeat 8ths (canonical) + seeded accent
-                            hat.add(beatAbs + 0.5, hatOff,
-                                    (b == 0 ? 98 : 92) + hatAccent, 0.2, kMaxNotesPerClip);
-                            break;
-                    }
-                    // density-gated window-end flourish (kept from the legacy roll)
-                    if (hatMode == 0 && wb == 1 && b == 3 && rng01() < density * 0.3)
-                        hat.add(beatAbs + 0.75, hatRoll, 98, 0.2, kMaxNotesPerClip);
                 }
                 // BASS — offbeat 8th, gate-multiplied (NoteLengthVariant)
                 if (active.count("bass") && bass.track >= 0)
@@ -785,9 +1017,9 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
                     else
                         addPadChord(beatAbs, 84, 4.0);
                 }
-                // CLAP — 2/4 backbeat
+                // CLAP — canonical 2/4 backbeat (theme-independent by design)
                 if (active.count("clap") && clap.track >= 0 && (b == 1 || b == 3))
-                    clap.add(beatAbs, clapPitch, 100, 0.15, kMaxNotesPerClip);
+                    clap.add(beatAbs, kClapPitch, 100, 0.15, kMaxNotesPerClip);
             }
         }
         // FX accents (FxHit windows + KeyChange transition FX) — pitched from
@@ -810,8 +1042,12 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
         // ── Age update: +windowBars per active role (reset happens on re-add);
         //    the step below records POST-update ages = bars actually run by the
         //    time this window's audio ends — exactly what the next window's
-        //    cadence guard (and the min-hold test) compare against. ──
+        //    cadence guard (and the min-hold test) compare against. The theme
+        //    clocks advance every window regardless of layer state; themeAge
+        //    resets on rotation only, kickClock also on Breakbeat. ──
         for (const auto& a : active) ages[a] += windowBars;
+        themeAge += windowBars;
+        kickClock += windowBars;
 
         // ── Record the step (post-action snapshot + post-update ages) ──
         MarkovStep step;
@@ -830,7 +1066,8 @@ PsytranceMarkovScore PsytranceMarkovGenerator::generate(const PsytranceMarkovPar
         if (std::find(score.skipped.begin(), score.skipped.end(), role) == score.skipped.end())
             score.skipped.push_back(role);
     };
-    for (RoleCtx* rc : { &kick, &bass, &hat, &arp, &stab, &pad, &clap, &riser, &down })
+    for (RoleCtx* rc : { &kick, &bass, &hat, &snare, &rim, &arp, &stab, &pad,
+                         &clap, &riser, &down })
     {
         if (rc->track < 0 || rc->clip.notes.empty()) { markSkipped(rc->clip.role); continue; }
         std::sort(rc->clip.notes.begin(), rc->clip.notes.end(),

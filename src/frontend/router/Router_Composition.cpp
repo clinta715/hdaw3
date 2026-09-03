@@ -831,7 +831,8 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             const auto obj = o.value("paletteTrackIds").toObject();
             auto set = [&](const QString& role, int& out) { if (obj.contains(role)) out = obj.value(role).toInt(-1); };
             set("kick", p.kick);     set("bass", p.bass);
-            set("hat", p.hat);       set("arp", p.arp);
+            set("hat", p.hat);       set("snare", p.snare);
+            set("rim", p.rim);       set("arp", p.arp);
             set("stab", p.stab);     set("pad", p.pad);
             set("riser", p.riser);   set("down", p.down);
             set("clap", p.clap);
@@ -877,7 +878,8 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "automations", automations },
             { "totalBeats", r.totalBeats },
             { "notesTotal", r.notesTotal },
-            { "notesSkipped", r.notesSkipped }
+            { "notesSkipped", r.notesSkipped },
+            { "automationsSkipped", r.automationsSkipped }
         };
         if (!r.error.empty())
             res["error"] = QString::fromStdString(r.error);

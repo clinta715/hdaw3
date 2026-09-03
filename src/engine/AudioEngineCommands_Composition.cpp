@@ -48,6 +48,48 @@ std::string toLowerAscii(std::string s)
     return s;
 }
 
+// ── Volume-fade lane writing (P0 psytrance ontology) ─────────────────────
+
+// True when the lane's point list is EXACTLY the untouched factory pair the
+// default project ships on every Volume lane (hold points 0s→1.0 and
+// 16s→1.0). Those placeholders exist to hold the lane at unity when enabled;
+// left in place they would ramp a generated fade-out back to 1.0 at 16s, so
+// they are dropped before the first generated fade lands.
+bool isUntouchedFactoryVolumePoints(const juce::ValueTree& pointList)
+{
+    if (!pointList.isValid() || pointList.getNumChildren() != 2) return false;
+    auto isHold = [](const juce::ValueTree& pt, double t) {
+        return std::abs(static_cast<double>(pt.getProperty(IDs::startTime, -1.0)) - t) < 1e-9
+            && std::abs(static_cast<double>(pt.getProperty(IDs::gain, -1.0)) - 1.0) < 1e-9;
+    };
+    auto p0 = pointList.getChild(0);
+    auto p1 = pointList.getChild(1);
+    return (isHold(p0, 0.0) && isHold(p1, 16.0)) || (isHold(p0, 16.0) && isHold(p1, 0.0));
+}
+
+// Upsert one automation point (SECONDS domain) onto a POINT_LIST: a point at
+// the exact same time is re-valued, otherwise the point is APPENDED — points
+// accumulate across add/remove cycles (the runtime cache sorts by time;
+// AutomationManager::rebuildCache). Same property/conversion contract as the
+// add_automation_point RPC path.
+void upsertAutomationPoint(juce::ValueTree pointList, double timeSec, double value,
+                           juce::UndoManager& um)
+{
+    for (int i = 0; i < pointList.getNumChildren(); ++i)
+    {
+        auto pt = pointList.getChild(i);
+        if (static_cast<double>(pt.getProperty(IDs::startTime, 0.0)) == timeSec)
+        {
+            pt.setProperty(IDs::gain, value, &um);
+            return;
+        }
+    }
+    juce::ValueTree pt(IDs::POINT);
+    pt.setProperty(IDs::startTime, timeSec, nullptr);
+    pt.setProperty(IDs::gain, value, nullptr);
+    pointList.addChild(pt, -1, &um);
+}
+
 // Role → typed-preset defaults for the 9 role-defaultable InstrumentPartParams
 // fields. Indexed 0=bass, 1=lead, 2=chords, 3=drums. A field whose explicitMask
 // bit is NOT set receives its role default; explicit values always win.
@@ -1580,6 +1622,76 @@ AudioEngineCommands::generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& 
         model.getTrackListTree().getChild(clip.trackIndex)
             .getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
         result.clips.push_back(std::move(out));
+    }
+
+    // ── Volume fades: "volume" automations are written FOR REAL onto each
+    //    role's Volume lane (paramID 1) inside this same transaction (ONE
+    //    undo unit with the clips). filterCutoff entries stay advisory. ──
+    {
+        // Beats at this boundary, seconds in the tree — the same conversion
+        // the add_automation_point RPC performs (docs/architecture.md).
+        const double bpm = static_cast<double>(
+            model.getTree().getProperty(IDs::tempo, 120.0));
+        auto roleToTrack = [&](const std::string& role) -> int {
+            if (role == "kick")  return params.kick;
+            if (role == "bass")  return params.bass;
+            if (role == "hat")   return params.hat;
+            if (role == "snare") return params.snare;
+            if (role == "rim")   return params.rim;
+            if (role == "arp")   return params.arp;
+            if (role == "stab")  return params.stab;
+            if (role == "pad")   return params.pad;
+            if (role == "clap")  return params.clap;
+            return -1; // riser/down FX roles carry no volume fades
+        };
+        std::vector<int> touchedTracks;
+        for (const auto& a : score.automations)
+        {
+            if (a.param != "volume") continue; // filterCutoff: advisory only
+            const int trackIdx = roleToTrack(a.role);
+            if (trackIdx < 0 || trackIdx >= trackCount)
+            { ++result.automationsSkipped; continue; }
+
+            // Ensure the Volume lane exists via the SAME internal command
+            // path the add_automation_lane RPC uses (idempotent on the
+            // default lane every track ships; false = name/paramID conflict).
+            if (!addAutomationLane(trackIdx, "Volume", 1))
+            { ++result.automationsSkipped; continue; }
+            auto lane = findAutomationLane(trackIdx, "Volume");
+            if (!lane.isValid()) { ++result.automationsSkipped; continue; }
+
+            // Fader-authoritative (lane disabled) is cleared for generated
+            // fades: writing points into a disabled lane would swallow them
+            // silently. Same enable-on-write contract as applyAutomationPreset.
+            if (!static_cast<bool>(lane.getProperty(IDs::automationEnabled, true)))
+                lane.setProperty(IDs::automationEnabled, true, &um);
+
+            auto pointList = lane.getChildWithName(IDs::POINT_LIST);
+            if (!pointList.isValid())
+            {
+                pointList = juce::ValueTree(IDs::POINT_LIST);
+                lane.addChild(pointList, -1, &um);
+            }
+            if (isUntouchedFactoryVolumePoints(pointList))
+            {
+                // Drop the factory hold placeholders so they cannot ramp a
+                // fade-out back to unity at 16s; user-authored points are
+                // kept (accumulate via upsert below).
+                while (pointList.getNumChildren() > 0)
+                    pointList.removeChild(0, &um);
+            }
+            upsertAutomationPoint(pointList, HDAW::beatsToSeconds(a.startBeat, bpm),
+                                  a.value, um);
+
+            if (std::find(touchedTracks.begin(), touchedTracks.end(), trackIdx)
+                == touchedTracks.end())
+                touchedTracks.push_back(trackIdx);
+        }
+        // One automation-cache refresh per touched track (command-thread,
+        // same seam every automation RPC uses).
+        if (auto* proc = engine_.getMainProcessor())
+            for (int t : touchedTracks)
+                proc->rebuildAutomationCache(t);
     }
 
     endTransaction();

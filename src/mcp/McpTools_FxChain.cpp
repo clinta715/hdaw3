@@ -51,7 +51,7 @@ s.registerTool({"save_fx_chain",
         }});
 
 s.registerTool({"list_fx_chains",
-        "List saved FX chain presets (id, name, slotCount).",
+        "List FX chain presets (id, name, slotCount, source). Includes built-in factory presets (source \"factory\": psytrance per-role chains shipped with HDAW, e.g. Kick Punch, Bass Glue, Acid Lead; they can be listed and loaded but never deleted) and user-saved presets (source \"user\").",
         objSchema(QJsonObject{}, QJsonArray{}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
@@ -62,6 +62,7 @@ s.registerTool({"list_fx_chains",
                 o["id"] = QString::fromStdString(p.id.toStdString());
                 o["name"] = QString::fromStdString(p.name.toStdString());
                 o["slotCount"] = static_cast<int>(p.slots.size());
+                o["source"] = p.isFactory ? QString("factory") : QString("user");
                 arr.append(o);
             }
             return McpToolResult::text(
@@ -69,7 +70,7 @@ s.registerTool({"list_fx_chains",
         }});
 
 s.registerTool({"load_fx_chain",
-        "Load a saved FX chain preset onto a track, replacing its chain in one undo unit. Give id or name (name must resolve to exactly one preset).",
+        "Load a saved FX chain preset onto a track, replacing its chain in one undo unit. Give id or name (name must resolve to exactly one preset). Ids may be user presets or built-in factory presets (\"_factory/<File_Name>.json\" from list_fx_chains — the 8 psytrance per-role chains); name resolution covers factory presets too.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                   {"id",      QJsonObject{{"type","string"}}},
                   {"name",    QJsonObject{{"type","string"}}}}, {"trackId"}),
@@ -119,7 +120,7 @@ s.registerTool({"load_fx_chain",
         }});
 
 s.registerTool({"delete_fx_chain",
-        "Delete a saved FX chain preset.",
+        "Delete a saved FX chain preset. Built-in factory presets (id starting with \"_factory/\") cannot be deleted — the request fails and the file stays.",
         objSchema({{"id", QJsonObject{{"type","string"}}}}, {"id"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {

@@ -453,9 +453,15 @@ public:
     // but the score comes from the incremental 2-bar Markov engine: a pool of
     // role layers grows/changes window by window under min/max + percussive
     // sublimits, with age-biased replacement and a slow section-energy tier.
-    // steps[] records every 2-bar decision (debug/verify); automations[] are
-    // returned as DATA (FilterSweep filterCutoff points) — apply them with
-    // the standard automation tools.
+    // steps[] records every 2-bar decision (debug/verify); automations[] mix
+    // two param kinds: "volume" fade points are WRITTEN FOR REAL by the
+    // command layer (to the target track's Volume lane, paramID 1 — a
+    // disabled/fader-authoritative lane is re-enabled for generated fades),
+    // while "filterCutoff" points (FilterSweep) stay ADVISORY data — apply
+    // them with the standard automation tools (target paramID depends on the
+    // track's FX chain). automationsSkipped counts volume-fade entries that
+    // could not be written (unmapped role, out-of-range track, or Volume-lane
+    // conflict).
     struct PsytranceMarkovResult {
         struct Clip { std::string role; int trackIndex = -1; int clipId = -1; int noteCount = 0; };
         struct Step {
@@ -469,7 +475,7 @@ public:
         };
         struct Automation {
             std::string role;
-            std::string param;               // "filterCutoff"
+            std::string param;               // "volume" (engine-written fade) | "filterCutoff" (advisory)
             double startBeat = 0.0;
             double value = 0.0;
             double durationBeats = 0.0;
@@ -481,6 +487,7 @@ public:
         double totalBeats = 0.0;
         int notesTotal = 0;
         int notesSkipped = 0;   // notes dropped past a clip's note ceiling
+        int automationsSkipped = 0; // volume fades that could not be written (unmapped role / lane conflict)
         std::string error;      // non-empty → nothing was written
     };
 
