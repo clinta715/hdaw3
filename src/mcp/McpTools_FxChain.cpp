@@ -10,18 +10,9 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
-#include "../engine/AudioEngineCommands_Helpers.h"
-#include "../engine/EnvelopeGenerator.h"
-#include "../engine/MainAudioProcessor.h"
-#include "../engine/ProjectPool.h"
-#include "../engine/TrackFXSlot.h"
-#include "../engine/Dx7SysexImport.h"
-#include "../engine/MidiFx.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
-#include <algorithm>
-#include <optional>
 #include <vector>
 
 // See note at the top of this file: drop Qt's `slots` macro so

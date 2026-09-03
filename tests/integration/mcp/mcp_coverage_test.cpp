@@ -2630,6 +2630,12 @@ TEST_F(McpCoverageTest, MixReportSections)
 // -> load_fx_chain round-trip over MCP; the restored chain is asserted on the
 // LIVE processor (Gate 2), not the ReadModel.
 TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
+    // Unique name per run (millisecond counter): concurrent/sequential runs
+    // — and leftovers from interrupted runs — can never make the exact-name
+    // lookup below resolve ambiguously.
+    const QString chainName =
+        QString("MCP Test Chain ") + QString::number(juce::Time::getMillisecondCounter());
+
     // Prologue: remove leftovers from a previous interrupted run so the
     // name lookup below resolves to exactly one preset.
     {
@@ -2637,7 +2643,7 @@ TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
             callText("list_fx_chains", {}).toString().toUtf8()).array();
         for (const auto& v : existing) {
             auto o = v.toObject();
-            if (o.value("name").toString() == "MCP Test Chain")
+            if (o.value("name").toString() == chainName)
                 EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", o.value("id").toString()}})));
         }
     }
@@ -2645,7 +2651,7 @@ TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
     auto r1 = call("add_fx", {{"trackId", 0}, {"fxType", "compressor"}});
     ASSERT_FALSE(isError(r1)) << text(r1).toStdString();
 
-    auto r2 = call("save_fx_chain", {{"trackId", 0}, {"name", "MCP Test Chain"}});
+    auto r2 = call("save_fx_chain", {{"trackId", 0}, {"name", chainName}});
     ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
     auto savedId = QJsonDocument::fromJson(text(r2).toUtf8()).object().value("id").toString();
     EXPECT_FALSE(savedId.isEmpty()) << text(r2).toStdString();
@@ -2654,21 +2660,34 @@ TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
     auto arr = QJsonDocument::fromJson(listText.toString().toUtf8()).array();
     bool found = false;
     for (const auto& v : arr)
-        if (v.toObject().value("name").toString() == "MCP Test Chain") found = true;
+        if (v.toObject().value("name").toString() == chainName) found = true;
     EXPECT_TRUE(found) << listText.toString().toStdString();
 
-    ASSERT_FALSE(isError(call("remove_fx", {{"trackId", 0}, {"slotIndex", 0}})));
+    // NOTE: EXPECT (not ASSERT) from here on: the epilogue cleanup must run
+    // on ALL paths, and an ASSERT_* early-return would skip it, leaking the
+    // preset file into the real user chains dir.
+    EXPECT_FALSE(isError(call("remove_fx", {{"trackId", 0}, {"slotIndex", 0}})));
 
-    auto r4 = call("load_fx_chain", {{"trackId", 0}, {"name", "MCP Test Chain"}});
-    ASSERT_FALSE(isError(r4)) << text(r4).toStdString();
+    auto r4 = call("load_fx_chain", {{"trackId", 0}, {"name", chainName}});
+    EXPECT_FALSE(isError(r4)) << text(r4).toStdString();
 
     // LIVE processor assertion (Gate 2/10): the rebuilt Track owns the slot.
     auto* track = engine->getMainProcessor()->getTrack(0);
-    ASSERT_NE(track, nullptr);
-    EXPECT_EQ(track->getFXChain().size(), 1u);
+    EXPECT_NE(track, nullptr);
+    if (track != nullptr)
+        EXPECT_EQ(track->getFXChain().size(), 1u);
 
-    // Epilogue: leave no preset files behind.
-    EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", savedId}})));
+    // Epilogue: leave no preset files behind (runs on all paths; sweeps by
+    // name so it also covers a save that returned no id).
+    {
+        auto existing = QJsonDocument::fromJson(
+            callText("list_fx_chains", {}).toString().toUtf8()).array();
+        for (const auto& v : existing) {
+            auto o = v.toObject();
+            if (o.value("name").toString() == chainName)
+                EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", o.value("id").toString()}})));
+        }
+    }
 }
 
 } // namespace
