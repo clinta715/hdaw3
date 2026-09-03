@@ -67,7 +67,7 @@ Last updated: 2026-07-30
 - ✅ **Modulation FX** (chorus, flanger, phaser via juce::dsp)
 - ❌ **Distortion/saturation, filters, limiter/maximizer, tuner**
 - ❌ **Spectrum analyzer / tuner / oscilloscope** (metering FX)
-- ❌ **FX chain presets** (save/load entire FX chain configurations)
+- ✅ **FX chain presets** (save/list/load/delete entire chains; RPC: `project.saveFxChainPreset`, `project.listFxChainPresets`, `project.loadFxChainPreset`, `project.deleteFxChainPreset`; MCP: `save_fx_chain`, `list_fx_chains`, `load_fx_chain`, `delete_fx_chain`)
 - ❌ **Per-slot wet/dry (mix) knob, oversampling**
 
 ## 7. Automation

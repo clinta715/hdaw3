@@ -47,7 +47,7 @@ Features needed to reach parity with commercial DAWs, organized by priority tier
 ### Plugin Hosting
 - [x] **Plugin presets** — save/recall/load plugin factory presets ✅ Done (Presets button in FX chain; browse + select from plugin's built-in presets via pluginParam.listPrograms)
 - [x] **Plugin state save/load per slot** — `getStateInformation`/`setStateInformation` wired to project ✅ Done (base64 in FX_SLOT.pluginState; round-trip tested)
-- [ ] **FX chain presets** — save/load entire FX chain configurations
+- [x] **FX chain presets** — save/list/load/delete entire FX chain configurations ✅ Done (RPC: `project.saveFxChainPreset`, `project.listFxChainPresets`, `project.loadFxChainPreset`, `project.deleteFxChainPreset`; MCP: `save_fx_chain`, `list_fx_chains`, `load_fx_chain`, `delete_fx_chain`)
 - [x] **FX A/B comparison** — compare two plugin states ✅ Done (A/B button on each plugin FX slot; first click captures snapshot B, subsequent clicks swap A↔B)
 - [ ] **Plugin categorization / tagging** — organize plugins by type/instrument/effect
 - [ ] **MIDI effect plugins** — distinguish MIDI FX from audio FX

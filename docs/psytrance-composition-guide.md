@@ -465,6 +465,47 @@ Macro sweep recipe: points every 32 beats, values 0.1→0.7 across the track
 for energy growth (bass EQ freq), plus a breakdown riser point-cluster
 (0.1 @ 0, 0.12 @ 188, 0.3 @ 192, 0.7 @ 206, 0.35 @ 224).
 
+## 5a. Reusable FX chain preset: Jordan cave-dub
+
+For a Jordan cave-dub voice, build `sampler -> filter -> delay`, then save the
+three slots as **Dusty Skank**. Use `list_fx_params` before
+`set_internal_fx_param` to choose the filter cutoff/resonance and delay time,
+feedback, and mix in their real-unit ranges.
+
+```python
+track_id = await mcp_call("add_track", {"name": "Jordan Cave Dub"})
+await mcp_call("add_fx", {"trackId": track_id, "fxType": "sampler"})
+await mcp_call("sampler_set_sample", {"trackId": track_id, "slotIndex": 0,
+                                      "filePath": win_path, "rootNote": root})
+await mcp_call("add_fx", {"trackId": track_id, "fxType": "filter"})  # slot 1
+await mcp_call("add_fx", {"trackId": track_id, "fxType": "delay"})   # slot 2
+
+# Track LFOs are separate from FX-chain presets. Configure each property with
+# one set_lfo_param call; filter slot 1 param 0 has targetParamID 200.
+lfo = await mcp_call("add_lfo", {"trackId": track_id})
+lfo_index = lfo["lfoIndex"]
+await mcp_call("set_lfo_param", {"trackId": track_id, "lfoIndex": lfo_index,
+                                 "param": "waveform", "value": 0})
+await mcp_call("set_lfo_param", {"trackId": track_id, "lfoIndex": lfo_index,
+                                 "param": "rateSync", "value": 1})
+await mcp_call("set_lfo_param", {"trackId": track_id, "lfoIndex": lfo_index,
+                                 "param": "rate", "value": 0.25})
+await mcp_call("set_lfo_param", {"trackId": track_id, "lfoIndex": lfo_index,
+                                 "param": "depth", "value": 0.35})
+await mcp_call("set_lfo_param", {"trackId": track_id, "lfoIndex": lfo_index,
+                                 "param": "targetParamID", "value": 200})
+
+saved = await mcp_call("save_fx_chain", {"trackId": track_id,
+                                          "name": "Dusty Skank"})
+presets = await mcp_call("list_fx_chains", {})
+await mcp_call("load_fx_chain", {"trackId": another_track_id,
+                                  "id": saved["id"]})
+# Recreate the LFO on another_track_id with add_lfo + set_lfo_param; loading
+# the preset replaces its FX slots but does not copy track modulation.
+# Delete only when the reusable preset is no longer wanted:
+await mcp_call("delete_fx_chain", {"id": saved["id"]})
+```
+
 ## 5b. FM synthesis for psytrance (internal instrument)
 
 HDAW has a psytrance-focused FM synthesizer (`ActiveType::PsyFm`) alongside the

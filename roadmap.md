@@ -65,7 +65,7 @@ multiple times across phases.
 1. ~~Modulation FX — chorus/flanger/phaser/tremolo~~ ✅ *(chorus/flanger/phaser done; tremolo remaining)*
 2. Distortion/saturation, filters, limiter/maximizer, tuner
 3. Spectrum analyzer / oscilloscope
-4. ~~FX presets & preset browser~~ ✅ (plugin factory presets done; FX chain presets remaining)
+4. ~~FX presets & preset browser~~ ✅ (plugin factory and FX chain presets done; RPC: `project.saveFxChainPreset`, `project.listFxChainPresets`, `project.loadFxChainPreset`, `project.deleteFxChainPreset`; MCP: `save_fx_chain`, `list_fx_chains`, `load_fx_chain`, `delete_fx_chain`)
 5. Per-slot wet/dry knob, oversampling
 
 ## Phase 6 — Automation
