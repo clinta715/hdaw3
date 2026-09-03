@@ -33,6 +33,16 @@ async function flushRead() {
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 const TWO_SLOTS: FxSlotSnapshot[] = [
   { slotIndex: 0, fxType: "eq", pluginId: "", pluginName: "EQ", pluginFormat: "", bypassed: false, paramCount: 3 },
   { slotIndex: 1, fxType: "plugin", pluginId: "/plugins/Delay.vst3", pluginName: "Delay", pluginFormat: "VST3", bypassed: false, paramCount: 4 },
@@ -423,6 +433,124 @@ describe("FXChain", () => {
       });
     });
 
+    it("prevents duplicate saves while a save is pending", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      const save = deferred<{ id: string }>();
+      let listCalls = 0;
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getFxSlots") return Promise.resolve([]);
+        if (method === "project.listFxChainPresets") {
+          listCalls += 1;
+          return Promise.resolve(listCalls === 1 ? [] : [
+            { id: "saved", name: "Focused", slotCount: 0 },
+          ]);
+        }
+        if (method === "project.saveFxChainPreset") return save.promise;
+        return Promise.resolve([]);
+      });
+      const user = userEvent.setup();
+      render(<FXChain />);
+
+      const name = await screen.findByLabelText("FX chain preset name");
+      await user.type(name, "Focused");
+      const saveButton = screen.getByRole("button", { name: "Save" });
+      fireEvent.click(saveButton);
+      fireEvent.click(saveButton);
+
+      expect(mockedCall.mock.calls.filter(([method]) => method === "project.saveFxChainPreset")).toHaveLength(1);
+      expect(name).toBeDisabled();
+      expect(saveButton).toBeDisabled();
+
+      await act(async () => save.resolve({ id: "saved" }));
+      await waitFor(() => expect(screen.getByTitle("FX chain presets")).toHaveValue("saved"));
+    });
+
+    it("does not refresh the new track when an apply on the previous track completes", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      const apply = deferred<{ ok: boolean }>();
+      mockedCall.mockImplementation((method: string, params?: { trackIndex?: number }) => {
+        if (method === "read.getFxSlots") {
+          return Promise.resolve(params?.trackIndex === 1 ? BYPASSED_SLOT : []);
+        }
+        if (method === "project.listFxChainPresets") return Promise.resolve([
+          { id: "1", name: "Driven", slotCount: 1 },
+        ]);
+        if (method === "project.loadFxChainPreset") return apply.promise;
+        return Promise.resolve([]);
+      });
+      const user = userEvent.setup();
+      const { container } = render(<FXChain />);
+
+      await user.click(await screen.findByRole("button", { name: "Apply" }));
+      act(() => useUiStore.setState({ selectedTrackIndex: 1 }));
+      await waitFor(() => expect(container.querySelectorAll(".fx-slot")).toHaveLength(1));
+
+      await act(async () => apply.resolve({ ok: true }));
+      await flushRead();
+
+      expect(mockedCall).toHaveBeenCalledWith("project.loadFxChainPreset", {
+        trackIndex: 0,
+        id: "1",
+      });
+      expect(mockedCall.mock.calls.filter(([method, params]) =>
+        method === "read.getFxSlots" && params.trackIndex === 1
+      )).toHaveLength(1);
+      expect(container.querySelector(".fx-slot-type")).toHaveTextContent("reverb");
+    });
+
+    it("ignores a late preset list response after a newer refresh", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      const oldList = deferred<Array<{ id: string; name: string; slotCount: number }>>();
+      const newList = deferred<Array<{ id: string; name: string; slotCount: number }>>();
+      let listCalls = 0;
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getFxSlots") return Promise.resolve([]);
+        if (method === "project.listFxChainPresets") {
+          listCalls += 1;
+          return listCalls === 1 ? oldList.promise : newList.promise;
+        }
+        return Promise.resolve([]);
+      });
+      render(<FXChain />);
+
+      act(() => useUiStore.setState({ selectedTrackIndex: 1 }));
+      await act(async () => newList.resolve([{ id: "new", name: "New", slotCount: 1 }]));
+      await screen.findByRole("option", { name: "New (1)" });
+
+      await act(async () => oldList.resolve([{ id: "old", name: "Old", slotCount: 2 }]));
+      await flushRead();
+
+      expect(screen.queryByRole("option", { name: "Old (2)" })).not.toBeInTheDocument();
+      expect(screen.getByTitle("FX chain presets")).toHaveValue("new");
+    });
+
+    it("clears a deleted selection when the follow-up list refresh fails", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      let listCalls = 0;
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getFxSlots") return Promise.resolve([]);
+        if (method === "project.listFxChainPresets") {
+          listCalls += 1;
+          return listCalls === 1
+            ? Promise.resolve([{ id: "delete-me", name: "Temporary", slotCount: 0 }])
+            : Promise.reject(new Error("refresh failed"));
+        }
+        return Promise.resolve([]);
+      });
+      const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+      const user = userEvent.setup();
+      render(<FXChain />);
+
+      const presetSelect = await screen.findByTitle("FX chain presets");
+      const deleteButton = screen.getByRole("button", { name: "Delete" });
+      const name = screen.getByLabelText("FX chain preset name");
+      await user.click(deleteButton);
+
+      await waitFor(() => expect(name).not.toBeDisabled());
+      expect(presetSelect).toHaveValue("");
+      confirmSpy.mockRestore();
+    });
+
     it("clicking Presets calls listPrograms RPC", async () => {
       useUiStore.setState({ selectedTrackIndex: 0 });
       mockedCall.mockImplementation((method: string) => {
@@ -609,6 +737,29 @@ describe("FXChain", () => {
       await flushRead();
 
       expect(mockedCall).toHaveBeenCalledWith("read.getFxSlots", expect.objectContaining({ trackIndex: 0 }));
+    });
+
+    it("ignores a late slot response from the previously selected track", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      const trackA = deferred<FxSlotSnapshot[]>();
+      const trackB = deferred<FxSlotSnapshot[]>();
+      mockedCall.mockImplementation((method: string, params?: { trackIndex?: number }) => {
+        if (method === "read.getFxSlots") {
+          return params?.trackIndex === 0 ? trackA.promise : trackB.promise;
+        }
+        return Promise.resolve([]);
+      });
+      const { container } = render(<FXChain />);
+
+      act(() => useUiStore.setState({ selectedTrackIndex: 1 }));
+      await act(async () => trackB.resolve(BYPASSED_SLOT));
+      await waitFor(() => expect(container.querySelector(".fx-slot-type")).toHaveTextContent("reverb"));
+
+      await act(async () => trackA.resolve(TWO_SLOTS));
+      await flushRead();
+
+      expect(container.querySelectorAll(".fx-slot")).toHaveLength(1);
+      expect(container.querySelector(".fx-slot-type")).toHaveTextContent("reverb");
     });
   });
 });

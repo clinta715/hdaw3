@@ -21,12 +21,12 @@ test("saves and reapplies an FX chain preset", async ({ page }) => {
   const presetBar = page.getByTestId("fx-chain-preset-bar");
   await expect(presetBar).toBeVisible({ timeout: 10000 });
 
-  const presetName = `E2E Compressor ${Date.now()}`;
-  await presetBar.getByLabel("FX chain preset name").fill(presetName);
-  await presetBar.getByRole("button", { name: "Save" }).click();
-
+  const presetName = `E2E Compressor ${Date.now()} ${Math.random().toString(36).slice(2)}`;
   let presetId = "";
   try {
+    await presetBar.getByLabel("FX chain preset name").fill(presetName);
+    await presetBar.getByRole("button", { name: "Save" }).click();
+
     await expect(async () => {
       const presets = await rpcCall<FxChainPreset[]>(page, "project.listFxChainPresets", {});
       presetId = presets.find((preset) => preset.name === presetName)?.id ?? "";
@@ -48,6 +48,12 @@ test("saves and reapplies an FX chain preset", async ({ page }) => {
       expect(current.some((slot) => slot.fxType === "compressor")).toBe(false);
     }).toPass({ timeout: 10000 });
 
+    await page.locator(".bt-tab", { hasText: "Mixer" }).click();
+    await page.locator(".bt-tab", { hasText: "FX Chain" }).click();
+    await expect(async () => {
+      expect(await page.locator(".fx-slot").count()).toBe(slots.length - 1);
+    }).toPass({ timeout: 10000 });
+
     await presetBar.locator("select").selectOption(presetId);
     await presetBar.getByRole("button", { name: "Apply" }).click();
 
@@ -55,7 +61,15 @@ test("saves and reapplies an FX chain preset", async ({ page }) => {
       const restored = await rpcCall<FxSlot[]>(page, "read.getFxSlots", { trackIndex: 0 });
       expect(restored.some((slot) => slot.fxType === "compressor")).toBe(true);
     }).toPass({ timeout: 10000 });
+
+    await expect(async () => {
+      expect(await page.locator(".fx-slot").count()).toBe(slots.length);
+    }).toPass({ timeout: 10000 });
   } finally {
+    if (!presetId) {
+      const presets = await rpcCall<FxChainPreset[]>(page, "project.listFxChainPresets", {});
+      presetId = presets.find((preset) => preset.name === presetName)?.id ?? "";
+    }
     if (presetId) await rpcCall(page, "project.deleteFxChainPreset", { id: presetId });
   }
 });
