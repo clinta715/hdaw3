@@ -67,10 +67,12 @@ const INTERNAL_FX = [
   { label: "Flanger", fxType: "flanger" },
   { label: "Phaser", fxType: "phaser" },
   { label: "Filter", fxType: "filter" },
+  { label: "Saturator", fxType: "saturator" },
   { label: "Sampler", fxType: "sampler" },
   { label: "FM Synth", fxType: "fm_synth" },
   { label: "Growl Bass", fxType: "growl_bass" },
   { label: "PsyArp", fxType: "psyarp" },
+  { label: "PsyFm", fxType: "psy_fm" },
 ];
 
 export default function FXChain() {

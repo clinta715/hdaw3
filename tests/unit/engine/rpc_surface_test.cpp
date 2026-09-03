@@ -806,8 +806,10 @@ TEST(FxSurface, AddMultipleInternalFxTypes)
     cmds.addFxSlot(0, 0); // EQ
     cmds.addFxSlot(0, 1); // Compressor
     cmds.addFxSlot(0, 2); // Reverb
+    cmds.addFxSlot(0, "saturator"); // string overload — plan 2026-09-02 Task 3
 
-    EXPECT_GE(static_cast<int>(engine.getReadModel().getFxSlots(0).size()), 3);
+    EXPECT_GE(static_cast<int>(engine.getReadModel().getFxSlots(0).size()), 4);
+    EXPECT_EQ(engine.getReadModel().getFxSlots(0)[3].fxType, "saturator");
 }
 
 TEST(FxSurface, BypassMidiFxSlot)

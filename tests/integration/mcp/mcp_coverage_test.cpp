@@ -1848,6 +1848,56 @@ TEST_F(McpCoverageTest, FilterFxParamsRealUnitsAndRebuildSurvival) {
     EXPECT_NEAR(rp[2].value, 1.5f, 0.01f);
 }
 
+// Plan 2026-09-02 Task 3: the saturator internal FX must be reachable through
+// the MCP surface — add_fx accepts the type (schema enum), list_fx_params
+// reports its 6 real-unit defs, set/get_internal_fx_param round-trip, and the
+// slot survives a full routing rebuild with its params restored on the LIVE
+// processor (Gate 1/10; pattern copied from FilterFxParamsRealUnitsAndRebuildSurvival).
+TEST_F(McpCoverageTest, SaturatorReachability) {
+    auto addR = call("add_fx", {{"trackId", 0}, {"fxType", "saturator"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+
+    // list_fx_params: 6 params in real units (defs table contract).
+    auto listObj = QJsonDocument::fromJson(
+        callText("list_fx_params", {{"trackId", 0}, {"slotIndex", 0}}).toString().toUtf8()).object();
+    auto params = listObj.value("params").toArray();
+    ASSERT_EQ(params.size(), 6);
+    EXPECT_EQ(params.at(0).toObject().value("name").toString().toStdString(), "Drive dB");
+    EXPECT_EQ(params.at(0).toObject().value("minValue").toDouble(), 0.0);
+    EXPECT_EQ(params.at(0).toObject().value("maxValue").toDouble(), 40.0);
+    EXPECT_EQ(params.at(1).toObject().value("name").toString().toStdString(), "Type");
+    EXPECT_EQ(params.at(1).toObject().value("maxValue").toDouble(), 3.0);
+    EXPECT_EQ(params.at(3).toObject().value("name").toString().toStdString(), "Mix");
+    EXPECT_EQ(params.at(5).toObject().value("name").toString().toStdString(), "Bits");
+
+    // set_internal_fx_param (real units): Drive 24 dB.
+    EXPECT_FALSE(isError(call("set_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}, {"paramIndex", 0}, {"value", 24.0}})));
+
+    // get_internal_fx_param reads the CURRENT value back.
+    auto getObj = QJsonDocument::fromJson(
+        callText("get_internal_fx_param", {{"trackId", 0}, {"slotIndex", 0}}).toString().toUtf8()).object();
+    auto got = getObj.value("params").toArray();
+    ASSERT_EQ(got.size(), 6);
+    EXPECT_EQ(got.at(0).toObject().value("name").toString().toStdString(), "Drive dB");
+    EXPECT_NEAR(got.at(0).toObject().value("value").toDouble(), 24.0, 1e-3);
+
+    // Gate 1/10: full rebuild; the LIVE slot keeps the type + restored params,
+    // and the 2x oversampler reports latency on the live processor.
+    engine->drainPendingRoutingRebuild();
+    engine->getMainProcessor()->rebuildRoutingGraph();
+    engine->drainPendingRoutingRebuild();
+    auto* track = engine->getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    auto* slot = track->getFXChain().at(0).get();
+    EXPECT_EQ(slot->getType().toStdString(), "saturator");
+    auto vals = slot->getInternalParamValues();
+    ASSERT_GE(vals.size(), 6u);
+    EXPECT_NEAR(vals[0], 24.0f, 0.01f);
+    EXPECT_GT(slot->getLatencySamples(), 0)
+        << "2x oversampler must report latency on the live slot";
+}
+
 // P1.3 (plan 2026-08-30): get_internal_fx_param reads back CURRENT internal
 // FX param values in REAL units after set_internal_fx_param — the
 // metadata-only gap from the 8/30 handoff B5/B8. The read path is
