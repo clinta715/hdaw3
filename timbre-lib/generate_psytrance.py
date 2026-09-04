@@ -250,13 +250,27 @@ def generate_arrangement(bars: int, style: str) -> List[ArrangementSection]:
 # ── MCP Client ─────────────────────────────────────────────────────────────
 
 class McpClient:
-    def __init__(self, host: str = "127.0.0.1", port: int = 8766):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8766, engine_bin: str = None):
         self.host = host
         self.port = port
+        self.engine_bin = engine_bin
         self.ws = None
+        self.proc = None
         self.request_id = 0
 
     async def connect(self):
+        if self.engine_bin:
+            # Stdio transport: spawn the headless engine and speak JSON-RPC
+            # over its stdin/stdout (tools/call is not served over the WS 8766
+            # endpoint; only --mcp-stdio exposes the MCP tool surface).
+            import asyncio
+            self.proc = await asyncio.create_subprocess_exec(
+                self.engine_bin, "--mcp-stdio",
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT)
+            await self.send("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}})
+            await self.recv()
+            return
         import websockets
         self.ws = await websockets.connect(f"ws://{self.host}:{self.port}")
         # Initialize
@@ -271,11 +285,26 @@ class McpClient:
             "method": method,
             "params": params or {}
         }
-        await self.ws.send(json.dumps(msg))
+        line = (json.dumps(msg) + "\n").encode("utf-8")
+        if self.proc:
+            self.proc.stdin.write(line)
+            await self.proc.stdin.drain()
+        else:
+            await self.ws.send(json.dumps(msg))
 
     async def recv(self) -> Any:
-        raw = await self.ws.recv()
-        return json.loads(raw)
+        # Skip interleaved notifications; return the response matching the
+        # current request id.
+        while True:
+            if self.proc:
+                raw = await self.proc.stdout.readline()
+                if not raw:
+                    raise RuntimeError("engine stdout closed")
+            else:
+                raw = (await self.ws.recv()).encode("utf-8")
+            msg = json.loads(raw)
+            if isinstance(msg, dict) and "id" in msg and msg["id"] == self.request_id:
+                return msg
 
     async def call(self, tool: str, args: Dict[str, Any]) -> Any:
         await self.send("tools/call", {"name": tool, "arguments": args})
@@ -287,7 +316,12 @@ class McpClient:
         return resp.get("error", "unknown error")
 
     async def close(self):
-        if self.ws:
+        if self.proc:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+        elif self.ws:
             await self.ws.close()
 
 # ── Track Builder ──────────────────────────────────────────────────────────
@@ -416,6 +450,8 @@ async def build_track(config: TrackConfig, client: McpClient):
 # ── Main ───────────────────────────────────────────────────────────────────
 
 async def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Generate a psytrance track in HDAW")
     parser.add_argument("--bpm", type=float, default=138.0, help="Tempo in BPM")
     parser.add_argument("--bars", type=int, default=64, help="Length in bars")
@@ -425,6 +461,9 @@ async def main():
     parser.add_argument("--seed", type=int, default=-1, help="Random seed (-1 = random)")
     parser.add_argument("--host", default="127.0.0.1", help="HDAW WebSocket host")
     parser.add_argument("--port", type=int, default=8766, help="HDAW WebSocket port")
+    parser.add_argument("--engine-bin", default=None,
+                        help="spawn this headless engine over stdio (preferred; "
+                             "tools/call is not served over WS 8766)")
     parser.add_argument("--dry-run", action="store_true", help="Print patterns without sending to HDAW")
     args = parser.parse_args()
 
@@ -448,7 +487,7 @@ async def main():
         print(f"\nScale notes: {scale[:12]}...")
         return
 
-    client = McpClient(args.host, args.port)
+    client = McpClient(args.host, args.port, args.engine_bin)
     try:
         await client.connect()
         await build_track(config, client)
