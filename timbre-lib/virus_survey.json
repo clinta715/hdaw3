@@ -1,0 +1,130 @@
+{
+  "formats": {
+    "bcsingle": {
+      "failed": 0,
+      "files": 1,
+      "mapped_params": {
+        "avg": 23.0,
+        "max": 23,
+        "min": 23
+      },
+      "name_ok": 1,
+      "parsed": 1,
+      "patches": 1,
+      "top_unmapped": [
+        "fx_chorus",
+        "fx_delay",
+        "keytrack",
+        "lfo1",
+        "lfo2",
+        "osc2_fm_amount",
+        "ring_mod"
+      ]
+    },
+    "stdmidi": {
+      "failed": 0,
+      "files": 19,
+      "mapped_params": {
+        "avg": 23.0,
+        "max": 23,
+        "min": 23
+      },
+      "name_ok": 2344,
+      "parsed": 2375,
+      "patches": 2375,
+      "top_unmapped": [
+        "keytrack",
+        "lfo1",
+        "lfo2",
+        "fx_delay",
+        "fx_chorus",
+        "osc_sync",
+        "osc2_fm_amount",
+        "noise_level",
+        "ring_mod"
+      ]
+    },
+    "tdm": {
+      "failed": 0,
+      "files": 104,
+      "mapped_params": {
+        "avg": 23.0,
+        "max": 23,
+        "min": 23
+      },
+      "name_ok": 104,
+      "parsed": 104,
+      "patches": 104,
+      "top_unmapped": [
+        "fx_delay",
+        "keytrack",
+        "lfo1",
+        "lfo2",
+        "osc2_fm_amount",
+        "fx_chorus",
+        "ring_mod",
+        "osc_sync",
+        "noise_level"
+      ]
+    },
+    "tibank": {
+      "failed": 0,
+      "files": 19,
+      "mapped_params": {
+        "avg": 23.0,
+        "max": 23,
+        "min": 23
+      },
+      "name_ok": 2432,
+      "parsed": 2432,
+      "patches": 2432,
+      "top_unmapped": [
+        "keytrack",
+        "lfo1",
+        "lfo2",
+        "fx_delay",
+        "fx_chorus",
+        "osc2_fm_amount",
+        "osc_sync",
+        "noise_level",
+        "ring_mod"
+      ]
+    },
+    "vhc": {
+      "failed": 0,
+      "files": 1,
+      "mapped_params": {
+        "avg": 23.0,
+        "max": 23,
+        "min": 23
+      },
+      "name_ok": 125,
+      "parsed": 128,
+      "patches": 128,
+      "top_unmapped": [
+        "fx_delay",
+        "keytrack",
+        "lfo1",
+        "lfo2",
+        "osc2_fm_amount",
+        "fx_chorus",
+        "ring_mod",
+        "osc_sync",
+        "noise_level"
+      ]
+    }
+  },
+  "generated_at": "2026-03-23T00:38:29.985411+00:00",
+  "sources": {
+    "bcsingle": 1,
+    "stdmidi": 19,
+    "tdm": 104,
+    "tibank": 19,
+    "vhc": 1
+  },
+  "totals": {
+    "parsed": 5040,
+    "patches": 5040,
+    "unmapped_any": 5040
+  }
+}

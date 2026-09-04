@@ -57,6 +57,37 @@ workflow are untouched.
   (23 tests: per-role pass/fail signals, bad-input schema, DSP-only fallback,
   stable JSON).
 
+## Virus patch decoder + sub-synth survivability survey (standalone)
+
+    python virus_patch.py --survey "D:\pdf\Virus Presets" --out virus_survey.json
+    python virus_patch.py --dump <file.syx|.mid|.vhc|tdm-chunk>
+
+Parses the four Access Virus patch containers found in the preset library
+(B/C single sysex, TI bank, Digidesign TDM chunk, Std-MIDI bank, VHC bank),
+extracts each patch name + parameters, maps onto the HDAW `sub_synth`
+internal FX params (0-23), and reports what survives and what is dropped.
+Pure stdlib + numpy; no librosa/ML deps; never writes into the source
+library. Survey output goes to the `--out` path only.
+
+- Formats: `bcsingle` (267B), `tibank` (128x524B), `tdm` (DigiVrusSS01
+  chunk), `stdmidi` (run-length sysex unwrapped), `vhc` (128x267B).
+- Checksum-verified against the documented Virus B/C SysEx spec
+  (`(dev + 0x10 + bank + prog + sum(data)) & 0x7F`).
+- Mapped: osc1/osc2 wave+level, osc2 detune->cents, sub level/octave,
+  cutoff, resonance, drive, amp ADSR, output, legato, portamento, filter
+  type, filter env amount + ADSR.
+- Unmapped (reported explicitly, never silently dropped): osc2_fm_amount,
+  ring_mod, lfo1, lfo2, keytrack, filter_slope_24db, osc_sync, fx_chorus,
+  fx_delay, fx_reverb, mod_matrix, noise_level.
+- Survey report schema:
+  `{generated_at, sources, formats: {fmt: {files, patches, parsed, failed,
+  name_ok, mapped_params: {avg,min,max}, top_unmapped}}, totals}`.
+- Stable output: identical inputs produce byte-identical
+  `json.dumps(report, sort_keys=True)`.
+- Tests: `python -m pytest test_virus_patch.py -q` (34 tests: per-format
+  parsing on real fixtures, mapping contract, stable JSON, error paths,
+  survey invariants).
+
 ## Use in HDAW (MCP tools)
     1. add_library  {name, path: "D:\\...\\samples", type: "audio"}
     2. scan_library {id}                      # HDAW indexes files natively
