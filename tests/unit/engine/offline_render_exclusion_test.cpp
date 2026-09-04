@@ -91,7 +91,10 @@ TEST(OfflineRenderExclusion, WindowedRenderTimeoutJoinsBeforeReturning)
            "was not joined (orphaned render races the next rebuild/save)";
 }
 
-TEST(OfflineRenderExclusion, RebuildCancelsAndJoinsActiveRender)
+// Non-isolated (in-process plugin) renders share the message-thread plugin
+// instantiation path with a live rebuild, so rebuildRoutingGraph still drains
+// them (the original handoff-B1/F1 orphaned-render protection).
+TEST(OfflineRenderExclusion, RebuildDrainsNonIsolatedRender)
 {
     EnvGuard g("HDAW_EXPORT_BAKE_TIMEOUT_MS", "60000");
     (void)g;
@@ -101,6 +104,10 @@ TEST(OfflineRenderExclusion, RebuildCancelsAndJoinsActiveRender)
 
     auto* proc = engine.getMainProcessor();
     ASSERT_NE(proc, nullptr);
+
+    // In-process plugins -> the export is NOT a dedicated-domain render, so
+    // the rebuild must keep draining it (original orphaned-render protection).
+    engine.getPluginManager().isolationEnabled = false;
 
     auto& em = proc->getExportManager();
 
@@ -120,8 +127,7 @@ TEST(OfflineRenderExclusion, RebuildCancelsAndJoinsActiveRender)
     ASSERT_TRUE(em.isExporting()) << "startExport should have set isExporting true";
 
     // Now trigger a full routing-graph rebuild — the crash sequence:
-    // verify-timeout → save/rebuild. Post-fix, cancelAndJoin runs first.
-    // Pre-fix: the render is NOT cancelled, so isExporting stays true here.
+    // verify-timeout → save/rebuild. Non-dedicated renders are drained first.
     proc->rebuildRoutingGraph();
 
     // Render must have been cancelled+joined; isExporting false.
@@ -139,6 +145,54 @@ TEST(OfflineRenderExclusion, RebuildCancelsAndJoinsActiveRender)
     // Cleanup
     tempWav.deleteFile();
     saveProj.deleteFile();
+}
+
+// Isolated exports render through a dedicated plugin domain (own offline
+// PluginManager/graph/children namespace), so a live rebuild cannot alias
+// their nodes — the rebuild must leave the export RUNNING (2026-09-02: the
+// unconditional drain cancelled healthy isolated CLAP exports mid-render).
+TEST(OfflineRenderExclusion, RebuildLeavesIsolatedExportRunning)
+{
+    EnvGuard g("HDAW_EXPORT_BAKE_TIMEOUT_MS", "60000");
+    (void)g;
+
+    AudioEngine engine;
+    engine.initialize();
+
+    auto* proc = engine.getMainProcessor();
+    ASSERT_NE(proc, nullptr);
+    ASSERT_TRUE(engine.getPluginManager().isolationEnabled)
+        << "test requires default isolation";
+
+    auto& em = proc->getExportManager();
+
+    juce::ValueTree treeCopy = engine.getProjectModel().getTree().createCopy();
+    auto& fm = engine.getProjectPool().getFormatManager();
+    juce::File tempWav = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_test_drain_iso.wav");
+    tempWav.deleteFile();
+
+    ASSERT_FALSE(em.isExporting()) << "export already in progress (unexpected)";
+    ASSERT_TRUE(em.startExport(treeCopy, fm, &engine.getPluginManager(), tempWav,
+                                48000.0, 0.0, 600.0, HDAW::ExportManager::WAV, 24));
+    ASSERT_TRUE(em.isExporting()) << "startExport should have set isExporting true";
+    ASSERT_TRUE(em.usesDedicatedDomain()) << "isolated export should use a dedicated domain";
+
+    // Full rebuild while the isolated export is in flight.
+    proc->rebuildRoutingGraph();
+
+    // New contract: the dedicated-domain export SURVIVES the live rebuild.
+    EXPECT_TRUE(em.isExporting()) << "isolated export was cancelled by a live rebuild";
+
+    // Cleanup: explicit cancel, then wait for the render thread to join.
+    // NOTE: waitForIdle() returns false as soon as cancelFlag is set (by
+    // design), so poll isExporting() with our own deadline here.
+    em.cancel();
+    const auto stopDeadline = juce::Time::getMillisecondCounter() + 30000;
+    while (em.isExporting() && juce::Time::getMillisecondCounter() < stopDeadline)
+        juce::Thread::sleep(10);
+    EXPECT_FALSE(em.isExporting()) << "export did not stop after explicit cancel";
+    tempWav.deleteFile();
 }
 
 TEST(OfflineRenderExclusion, SaveProjectDrainsOrphanedRender)

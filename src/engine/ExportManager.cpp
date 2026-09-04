@@ -67,6 +67,15 @@ bool ExportManager::startExport(const juce::ValueTree& projectTree,
 
     cancelFlag = false;
 
+    // Publish the dedicated-domain decision BEFORE the render thread starts.
+    // rebuildRoutingGraph consults usesDedicatedDomain() to skip the drain;
+    // a queued rebuild can land between active=true and the render thread
+    // setting this flag inside renderThreadFunc, and that window is exactly
+    // the cancel race (drain -> cancelFlag -> export cancelled at 0.4s). The
+    // condition must match the offline-domain creation in renderThreadFunc.
+    dedicatedDomainActive.store(pluginManager != nullptr && pluginManager->isolationEnabled,
+                                std::memory_order_release);
+
     if (renderThread.joinable())
         renderThread.join();
 
@@ -185,6 +194,17 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
         exportPluginManager = HDAW::PluginManager::createOfflineCopy(*pluginManager);
         exportPluginManager->setProxyNamespacePrefix("export_");
     }
+    // Track whether this export uses a dedicated plugin domain (isolated children).
+    // When true, live rebuilds cannot alias offline nodes/children/pipes, so the
+    // unconditional drain in rebuildRoutingGraph can be skipped (fixes the
+    // bake-vs-drain race that cancelled isolated CLAP exports).
+    const bool useDedicatedDomain = (exportPluginManager != nullptr && pluginManager != nullptr && pluginManager->isolationEnabled);
+    dedicatedDomainActive.store(useDedicatedDomain, std::memory_order_release);
+    struct DedicatedDomainGuard {
+        std::atomic<bool>& flag;
+        explicit DedicatedDomainGuard(std::atomic<bool>& f) : flag(f) {}
+        ~DedicatedDomainGuard() { flag.store(false, std::memory_order_release); }
+    } dedicatedGate(dedicatedDomainActive);
 
     // Suppress crash-recovery respawn for the ENTIRE export duration,
     // including teardown. A crashed plugin during offline export should

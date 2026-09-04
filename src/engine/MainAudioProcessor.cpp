@@ -594,10 +594,20 @@ void MainAudioProcessor::rebuildRoutingGraph(bool loading)
         // this teardown is the silent-death use-after-free family (lessons 12/14,
         // postmortem §6). Drain here so EVERY rebuild caller (load, structural
         // commands, undo, tests) is covered without each remembering to do it.
-        if (exportManager.isExporting())
+        // For isolated exports the offline graph uses a dedicated plugin domain
+        // (separate AudioProcessorGraph, ProxyProcessManager namespace,
+        // liveProxySlots) so live rebuilds cannot alias offline nodes — skip the
+        // drain to avoid the bake-vs-drain race that cancelled isolated CLAP
+        // exports (bake probe enqueued after graph's async updater cannot land
+        // while pump is parked for rebuild).
+        if (exportManager.isExporting() && !exportManager.usesDedicatedDomain())
         {
             HDAW_LOG("RoutingDiag", "rebuildRoutingGraph: draining in-flight offline render before rebuild");
             exportManager.cancelAndJoin();
+        }
+        else if (exportManager.isExporting())
+        {
+            HDAW_LOG("RoutingDiag", "rebuildRoutingGraph: export uses dedicated domain - skipping drain");
         }
         if (decodedPool != nullptr)
             decodedPool->pruneUnreferenced();

@@ -40,30 +40,46 @@ TEST(PluginIsolation, HostExePathResolves) {
     EXPECT_TRUE(path.find("hdaw_plugin_host.exe") != std::string::npos);
 }
 
-// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
-// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
-// to load. e917c1f deliberately replaced that with a passthrough fallback in
-// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
-// still communicate; the pluginFailed/crash-recovery design depends on it).
-// The child now never exits, so the crash callback correctly never fires —
-// dead-child detection is covered by HardKillFiresCrashCallback,
-// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
-// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
-// fallback is reverted, or rewrite the test to the new "child stays alive and
-// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
-TEST(PluginIsolation, DISABLED_SpawnWithBadPluginExits) {
-    // Spawn with a non-existent plugin. The child sends READY then exits
-    // because loadPlugin fails. Verify the spawn succeeds and the child dies.
+// Current contract (post-e917c1f): a failed plugin load no longer exits the
+// child. PluginHost::loadPlugin() falls back to an internal passthrough
+// processor, so the child STAYS ALIVE, its control/audio loops keep running,
+// and the parent's proxy can still communicate — the pluginFailed /
+// crash-recovery design depends on this. This test pins the new contract:
+// spawn succeeds, the child survives, and the pipe still answers PREPARE
+// (result=1 — the fallback is not a plugin failure).
+TEST(PluginIsolation, SpawnWithBadPluginStaysAlive) {
+    // Spawn with a non-existent plugin: loadPlugin fails and swaps in the
+    // passthrough fallback instead of exiting the child.
     ProxyProcessManager mgr;
 
     bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9001);
-    ASSERT_TRUE(spawned) << "Child should send READY before exiting";
+    ASSERT_TRUE(spawned) << "Child should send READY";
 
-    // Give the child time to exit (loadPlugin fails → child returns 1)
+    // Give any failure path time to play out; the passthrough fallback must
+    // keep the child alive (the pre-e917c1f contract exited the child here).
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    // The child should now be dead
-    EXPECT_FALSE(mgr.isAlive(9001));
+    EXPECT_TRUE(mgr.isAlive(9001))
+        << "child must stay alive after a failed plugin load (passthrough fallback)";
+
+    // The proxy must remain communicable: the control loop still answers
+    // PREPARE and the fallback processor makes the audio loop go live.
+    auto* pipe = mgr.getPipe(9001);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9001;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp))
+        << "child should answer PREPARE after the failed load";
+    EXPECT_EQ(prepareResp.result, 1u)
+        << "PREPARE succeeds on the passthrough fallback";
 
     mgr.killPluginHost(9001, KillMode::KillHard);
 }
@@ -97,18 +113,14 @@ TEST(PluginIsolation, KillReportsNotAlive) {
     EXPECT_FALSE(mgr.isAlive(9003));
 }
 
-// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
-// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
-// to load. e917c1f deliberately replaced that with a passthrough fallback in
-// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
-// still communicate; the pluginFailed/crash-recovery design depends on it).
-// The child now never exits, so the crash callback correctly never fires —
-// dead-child detection is covered by HardKillFiresCrashCallback,
-// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
-// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
-// fallback is reverted, or rewrite the test to the new "child stays alive and
-// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
-TEST(PluginIsolation, DISABLED_CheckAllChildrenFiresCallback) {
+// Current contract (post-e917c1f): a bad plugin path no longer kills the
+// child, so the check sweep is exercised with a deterministic external kill
+// instead — the same mechanism as HardKillFiresCrashCallback:
+// TerminateProcess directly on the child handle (NOT killPluginHost, which
+// erases the entry before checkAllChildren can observe it). The sweep must
+// detect the dead child and fire the per-slot crash callback with its id.
+#if HDAW_PLUGIN_ISOLATION
+TEST(PluginIsolation, CheckAllChildrenFiresCallback) {
     ProxyProcessManager mgr;
 
     std::atomic<int> crashCount{0};
@@ -119,20 +131,26 @@ TEST(PluginIsolation, DISABLED_CheckAllChildrenFiresCallback) {
         crashedSlotId.store(slotId);
     });
 
-    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\fake.vst3", 9004);
+    bool spawned = mgr.spawnPluginHost("__passthrough__", 9004);
     ASSERT_TRUE(spawned);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(9004));
 
-    // Wait for child to exit
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    // Deterministic external kill on the child handle.
+    auto* info = mgr.getChildInfo(9004);
+    ASSERT_NE(info, nullptr);
+    ASSERT_NE(info->processHandle, INVALID_HANDLE_VALUE);
+    TerminateProcess(info->processHandle, 0);
 
-    // checkAllChildren should detect the dead child and fire the callback
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+
+    // checkAllChildren detects the dead child and fires the callback.
     mgr.checkAllChildren();
 
     EXPECT_GE(crashCount.load(), 1);
     EXPECT_EQ(crashedSlotId.load(), 9004u);
-
-    mgr.killPluginHost(9004, KillMode::KillHard);
 }
+#endif
 
 // ========================================================================
 // Shared memory / processBlock tests (no child process needed)
@@ -432,20 +450,12 @@ TEST(PluginIsolation, MultipleChildrenSpawnIndependently) {
     SUCCEED();
 }
 
-// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
-// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
-// to load. e917c1f deliberately replaced that with a passthrough fallback in
-// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
-// still communicate; the pluginFailed/crash-recovery design depends on it).
-// The child now never exits, so the crash callback correctly never fires —
-// dead-child detection is covered by HardKillFiresCrashCallback,
-// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
-// use deterministic death mechanisms). Re-enable when the e917c1f passthrough
-// fallback is reverted, or rewrite the test to the new "child stays alive and
-// renders silence" contract (see docs/plans/2026-08-11-multiport-sentinel-width-test.md).
-TEST(PluginIsolation, DISABLED_CrashDetectionViaSelfExit) {
-    // Spawn with bad plugin — child exits on its own (not killed).
-    // checkAllChildren should detect the dead child and fire the callback.
+// Current contract (post-e917c1f): a bad plugin path no longer exits the
+// child, so self-exit is exercised with the __crash__ sentinel — the plugin
+// calls std::_Exit(3) in its first processBlock, a deterministic SELF-exit
+// (no killPluginHost involved). The death must surface through the check
+// sweep as a crash callback carrying the right slot id.
+TEST(PluginIsolation, CrashDetectionViaSelfExit) {
     ProxyProcessManager mgr;
 
     std::atomic<int> callbackCount{0};
@@ -456,19 +466,52 @@ TEST(PluginIsolation, DISABLED_CrashDetectionViaSelfExit) {
         lastCrashedSlot.store(slotId);
     });
 
-    bool spawned = mgr.spawnPluginHost("C:\\nonexistent\\crashtest.vst3", 9030);
-    ASSERT_TRUE(spawned);
+    ASSERT_TRUE(mgr.spawnPluginHost("__crash__", 9030));
+    ASSERT_TRUE(mgr.isAlive(9030));
 
-    // Wait for the child to exit (loadPlugin fails → child returns 1)
-    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    // PREPARE starts the audio loop.
+    auto* pipe = mgr.getPipe(9030);
+    ASSERT_NE(pipe, nullptr);
 
-    // checkAllChildren should detect the dead child
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = 9030;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    pipe->receiveResp(prepareResp);
+
+    // Write audio so the child processes a block and self-exits (_Exit(3)).
+    auto* shm = mgr.getShm(9030);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    int retries = 50;
+    while (hdr->numChannels == 0 && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    if (hdr->numChannels > 0) {
+        uint32_t totalSamples = hdr->blockSize * hdr->numChannels;
+        std::vector<float> audio(totalSamples, 0.5f);
+        shm->writeInput(audio.data(), totalSamples);
+    }
+
+    // Wait for the SELF-exit (not an external kill).
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+    while (mgr.isAlive(9030) && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    EXPECT_FALSE(mgr.isAlive(9030))
+        << "__crash__ should self-exit in its first processBlock";
+
     mgr.checkAllChildren();
 
     EXPECT_GE(callbackCount.load(), 1);
     EXPECT_EQ(lastCrashedSlot.load(), 9030u);
-
-    mgr.killPluginHost(9030, KillMode::KillHard);
 }
 
 TEST(PluginIsolation, ProcessBlockWithSharedMemory) {
@@ -1298,20 +1341,14 @@ TEST(PluginIsolation, ProcessBlockWithZeroCapacity) {
             EXPECT_FLOAT_EQ(buffer.getSample(ch, s), 0.0f);
 }
 
-// DISABLED: This test spawns a nonexistent plugin (C:\nonexistent\*.vst3) and
-// asserts the pre-e917c1f contract that the child EXITS when the plugin fails
-// to load. e917c1f deliberately replaced that with a passthrough fallback in
-// PluginHost::loadPlugin() so the child STAYS ALIVE (the parent's proxy can
-// still communicate; the pluginFailed/crash-recovery design depends on it).
-// The child now never exits, so the crash callback correctly never fires —
-// dead-child detection is covered by HardKillFiresCrashCallback,
-// CrashIsolationDuringProcessBlock and HealthMonitorDetectsDeadChild (which
-// use deterministic death mechanisms). Per-slot callback dispatch is covered
-// by HardKillFiresCrashCallback / HealthMonitorDetectsDeadChild. Re-enable
-// when the e917c1f passthrough fallback is reverted, or rewrite the test to
-// the new "child stays alive and renders silence" contract (see
-// docs/plans/2026-08-11-multiport-sentinel-width-test.md).
-TEST(PluginIsolation, DISABLED_PerSlotCrashCallback) {
+// Current contract (post-e917c1f): a bad plugin path no longer kills the
+// child, so per-slot crash dispatch is exercised with deterministic external
+// kills — the same mechanism as HardKillFiresCrashCallback. Each slot's
+// callback must fire for its OWN death only, an already-reported death must
+// not re-fire on a later sweep, and the second death must dispatch only the
+// second slot.
+#if HDAW_PLUGIN_ISOLATION
+TEST(PluginIsolation, PerSlotCrashCallback) {
     ProxyProcessManager mgr;
 
     std::atomic<int> slotAFires{0};
@@ -1324,19 +1361,42 @@ TEST(PluginIsolation, DISABLED_PerSlotCrashCallback) {
         slotBFires.fetch_add(1);
     });
 
-    mgr.spawnPluginHost("C:\\nonexistent\\a.vst3", 9080);
-    mgr.spawnPluginHost("C:\\nonexistent\\b.vst3", 9081);
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", 9080));
+    ASSERT_TRUE(mgr.spawnPluginHost("__passthrough__", 9081));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(9080));
+    ASSERT_TRUE(mgr.isAlive(9081));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    // Kill slot A only (external kill on the child handle).
+    auto* infoA = mgr.getChildInfo(9080);
+    ASSERT_NE(infoA, nullptr);
+    ASSERT_NE(infoA->processHandle, INVALID_HANDLE_VALUE);
+    TerminateProcess(infoA->processHandle, 0);
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
     mgr.checkAllChildren();
 
     EXPECT_GE(slotAFires.load(), 1) << "slot 9080 callback should fire";
+    EXPECT_EQ(slotBFires.load(), 0)
+        << "slot 9081 callback must NOT fire for slot A's death";
+
+    // Then kill slot B: its own callback fires; A's must not re-fire.
+    auto* infoB = mgr.getChildInfo(9081);
+    ASSERT_NE(infoB, nullptr);
+    ASSERT_NE(infoB->processHandle, INVALID_HANDLE_VALUE);
+    TerminateProcess(infoB->processHandle, 0);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    mgr.checkAllChildren();
+
     EXPECT_GE(slotBFires.load(), 1) << "slot 9081 callback should fire";
+    EXPECT_EQ(slotAFires.load(), 1)
+        << "an already-reported death must not re-fire on a later sweep";
 
     mgr.killPluginHost(9080, KillMode::KillHard);
     mgr.killPluginHost(9081, KillMode::KillHard);
 }
+#endif
 
 TEST(PluginIsolation, RemoveSlotCrashCallback) {
     ProxyProcessManager mgr;

@@ -27,6 +27,7 @@ public:
 
     void cancel();
     bool isExporting() const { return active.load(); }
+    bool usesDedicatedDomain() const { return dedicatedDomainActive.load(std::memory_order_acquire); }
 
     // Last result message produced by the most recent render thread
     // (exact: "Export complete." on success; descriptive failure text
@@ -71,6 +72,7 @@ private:
 
     std::atomic<bool> active{ false };
     std::atomic<bool> cancelFlag{ false };
+    std::atomic<bool> dedicatedDomainActive{ false };
     std::thread renderThread;
     mutable std::mutex lastMsgMutex;
     juce::String lastMessage;
