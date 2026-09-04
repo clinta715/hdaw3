@@ -172,6 +172,9 @@ test.zip
 *.tmp
 *.bak
 
+# Patch-sweep output (probe WAVs + aggregated reports from timbre-lib/sweep_dx7_patches.py)
+timbre-lib/sweep_out/
+
 # Export-silence investigation scratch (repro/bisect/causality drivers + WAVs)
 repro_out/
 tools/.ruff_cache/
