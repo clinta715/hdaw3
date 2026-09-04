@@ -1878,11 +1878,23 @@ TEST(PsytranceComposition, DarkForestV5)
         kk.push_back({ fMinorDeg(0, 2), b }); // F2
     }
     buildPattern(kickT, kk, 122, 1.9);
+    // band fix: kick owns 40-120 Hz + 2.5-5 kHz click. Gentler comp
+    // (-22 dB / 2.5:1, release 90 ms) stops the -18/4:1 peak squash that
+    // buried the transient instead of just leveling it.
     addFx(kickT, "compressor", 1);
-    cmds.setFxSlotParam(kickT, 1, 0, -18.0f);
-    cmds.setFxSlotParam(kickT, 1, 1, 4.0f);
+    cmds.setFxSlotParam(kickT, 1, 0, -22.0f);
+    cmds.setFxSlotParam(kickT, 1, 1, 2.5f);
+    cmds.setFxSlotParam(kickT, 1, 3, 90.0f);
     addFx(kickT, "eq", 2);
     cmds.setFxSlotParam(kickT, 2, 0, 3600.0f);
+    cmds.setFxSlotParam(kickT, 2, 1, 1.2f);
+    cmds.setFxSlotParam(kickT, 2, 2, 3.5f);
+    // band fix: 82 Hz +4 dB Q1.0 pushes the kick's fundamental forward;
+    // the kick owns <120 Hz so its band gets the accent (iter2/3 tuning).
+    addFx(kickT, "eq", 3);
+    cmds.setFxSlotParam(kickT, 3, 0, 82.0f);
+    cmds.setFxSlotParam(kickT, 3, 1, 1.0f);
+    cmds.setFxSlotParam(kickT, 3, 2, 4.0f);
 
     // ---- BASS: offbeat 8ths on the progression roots; F2-based, dark ----
     std::vector<std::pair<int, double>> be;
@@ -1895,19 +1907,36 @@ TEST(PsytranceComposition, DarkForestV5)
         for (int b = bar * 4; b < bar * 4 + 4; ++b)
             be.push_back({ fMinorDeg(deg, 2 + oct), b + 0.5 });
     }
-    buildPattern(bassT, be, 112, 0.4);
+    // band fix iter2: 0.3-beat gate stops the offbeat ring filling the
+    // pre-hit window where the kick must read.
+    buildPattern(bassT, be, 112, 0.3);
     addFx(bassT, "eq", 1);
+    // band fix: bass owns 60-250 Hz; 170 Hz +2 dB Q0.9 fattens the body
+    // ABOVE the kick fundamental (F2 ~87 Hz) so the bands do not overlap.
+    cmds.setFxSlotParam(bassT, 1, 0, 170.0f);
+    cmds.setFxSlotParam(bassT, 1, 1, 0.9f);
+    cmds.setFxSlotParam(bassT, 1, 2, 2.0f);
     addFx(bassT, "compressor", 2);
     cmds.setFxSlotParam(bassT, 2, 0, -20.0f);
     cmds.setFxSlotParam(bassT, 2, 1, 3.0f);
+    cmds.setFxSlotParam(bassT, 2, 3, 60.0f);
+    // band fix: LP 3500 (slot 3) keeps the bass out of the stab/hat mids and
+    // highs; the BassSweep lane + LFO0 below now target this REAL filter
+    // (pid 400 = slot3 param0) instead of a 0 dB eq peak.
+    addFx(bassT, "filter", 3);
+    cmds.setFxSlotParam(bassT, 3, 0, 3500.0f);
+    cmds.setFxSlotParam(bassT, 3, 1, 0.0f);
+    cmds.setFxSlotParam(bassT, 3, 2, 0.7f);
     cmds.addLfo(bassT);
     lfo(bassT, 0, "waveform", 0);
     lfo(bassT, 0, "rateSync", 1);
     lfo(bassT, 0, "rate", 2.0);
-    lfo(bassT, 0, "depth", 0.30);
+    lfo(bassT, 0, "depth", 0.05);
     lfo(bassT, 0, "bipolar", 1);
-    lfo(bassT, 0, "targetParamID", 200);
-    pumpLfo(bassT, 1, 0.55);
+    lfo(bassT, 0, "targetParamID", 400);
+    // band fix iter2: deeper time-domain duck (gainMul = max(1+mod,0) =>
+    // 0.28x on-beat) opens the kick's low window between bass notes.
+    pumpLfo(bassT, 1, 0.72);
 
     // ---- HATS: quarters in build, offbeat 8ths + rolls, reverb ----
     std::vector<std::pair<int, double>> hh;
@@ -1926,9 +1955,18 @@ TEST(PsytranceComposition, DarkForestV5)
         }
     }
     buildPattern(hatT, hh, 92, 0.2);
+    // band fix: hats own 3-16 kHz. Tighter, damped reverb (room 0.50,
+    // wet 0.20, damping 0.65) stops the wash feeding the mids.
     addFx(hatT, "reverb", 1);
-    cmds.setFxSlotParam(hatT, 1, 0, 0.75f);
-    cmds.setFxSlotParam(hatT, 1, 2, 0.30f);
+    cmds.setFxSlotParam(hatT, 1, 0, 0.50f);
+    cmds.setFxSlotParam(hatT, 1, 1, 0.70f);
+    cmds.setFxSlotParam(hatT, 1, 2, 0.16f);
+    // band fix: HP 500 AFTER the sampler, BEFORE the reverb (insert at slot 1
+    // shifts the reverb to slot 2) keeps the hats out of the kick's low room.
+    addFx(hatT, "filter", 1);
+    cmds.setFxSlotParam(hatT, 1, 0, 500.0f);
+    cmds.setFxSlotParam(hatT, 1, 1, 1.0f);
+    cmds.setFxSlotParam(hatT, 1, 2, 0.7f);
 
     // ---- LEAD ARP: 16th chord-tone arps (Fm7 / DbM7 / Eb7 voicings) ----
     // chord tones per progression degree: 0->{0,2,4,5}, 4->{4,6,1,3+7?} use
@@ -1953,14 +1991,23 @@ TEST(PsytranceComposition, DarkForestV5)
     }
     buildPattern(leadT, la, 85, 0.2);
     addFx(leadT, "delay", 1);
+    // band fix: lead arp owns 175 Hz-4 kHz; trim delay feedback + mix.
     cmds.setFxSlotParam(leadT, 1, 0, 0.17f);
-    cmds.setFxSlotParam(leadT, 1, 1, 0.4f);
-    cmds.setFxSlotParam(leadT, 1, 2, 0.32f);
+    cmds.setFxSlotParam(leadT, 1, 1, 0.35f);
+    cmds.setFxSlotParam(leadT, 1, 2, 0.26f);
     addFx(leadT, "reverb", 2);
-    cmds.setFxSlotParam(leadT, 2, 0, 0.9f);
-    cmds.setFxSlotParam(leadT, 2, 2, 0.25f);
+    // smaller damped reverb (0.60 / 0.16 wet / 0.70 damping) un-washes it.
+    cmds.setFxSlotParam(leadT, 2, 0, 0.60f);
+    cmds.setFxSlotParam(leadT, 2, 1, 0.70f);
+    cmds.setFxSlotParam(leadT, 2, 2, 0.16f);
     addFx(leadT, "compressor", 3);
     pumpLfo(leadT, 0, 0.45);
+    // band fix: HP 150 AFTER the sampler, BEFORE the delay (insert at slot 1
+    // shifts delay/reverb/comp up) so the arp never feeds the low end.
+    addFx(leadT, "filter", 1);
+    cmds.setFxSlotParam(leadT, 1, 0, 150.0f);
+    cmds.setFxSlotParam(leadT, 1, 1, 1.0f);
+    cmds.setFxSlotParam(leadT, 1, 2, 0.7f);
 
     // Breakdown melody: slow F-minor phrase (degrees), reverbed.
     std::vector<std::pair<int, double>> bm;
@@ -1988,11 +2035,26 @@ TEST(PsytranceComposition, DarkForestV5)
     }
     buildPattern(stabT, st, 96, 1.3);
     addFx(stabT, "flanger", 1);
+    // band fix: stabs own 175-1200 Hz; flanger depth down.
     cmds.setFxSlotParam(stabT, 1, 0, 0.5f);
-    cmds.setFxSlotParam(stabT, 1, 1, 0.55f);
+    cmds.setFxSlotParam(stabT, 1, 1, 0.45f);
     addFx(stabT, "reverb", 2);
-    cmds.setFxSlotParam(stabT, 2, 0, 0.9f);
-    cmds.setFxSlotParam(stabT, 2, 2, 0.42f);
+    // smaller damped reverb (0.55 / 0.20 wet / 0.70 damping).
+    cmds.setFxSlotParam(stabT, 2, 0, 0.55f);
+    cmds.setFxSlotParam(stabT, 2, 1, 0.70f);
+    cmds.setFxSlotParam(stabT, 2, 2, 0.20f);
+    // band fix: HP 140 AFTER the sampler, BEFORE flanger/reverb (insert at
+    // slot 1 shifts them up) keeps the stabs out of the mud band.
+    addFx(stabT, "filter", 1);
+    cmds.setFxSlotParam(stabT, 1, 0, 140.0f);
+    cmds.setFxSlotParam(stabT, 1, 1, 1.0f);
+    cmds.setFxSlotParam(stabT, 1, 2, 0.7f);
+    // band fix iter2: LP 2200 caps stabs at their 175-2200 band; keeps
+    // the flanger/verb sizzle out of the kick/hat 2-6 kHz click band.
+    addFx(stabT, "filter", 4);
+    cmds.setFxSlotParam(stabT, 4, 0, 2200.0f);
+    cmds.setFxSlotParam(stabT, 4, 1, 0.0f);
+    cmds.setFxSlotParam(stabT, 4, 2, 0.7f);
 
     // ---- PADS: held Fm7 voicings throughout (intro + breakdown carrier) ----
     std::vector<std::pair<int, double>> pp;
@@ -2011,8 +2073,10 @@ TEST(PsytranceComposition, DarkForestV5)
     cmds.setFxSlotParam(padT, 1, 1, 0.65f);
     cmds.setFxSlotParam(padT, 1, 4, 0.55f);
     addFx(padT, "reverb", 2);
-    cmds.setFxSlotParam(padT, 2, 0, 0.95f);
-    cmds.setFxSlotParam(padT, 2, 2, 0.38f);
+    // band fix: pads own 174-900 Hz + air; reverb 0.65 / 0.24 wet / 0.70 damp.
+    cmds.setFxSlotParam(padT, 2, 0, 0.65f);
+    cmds.setFxSlotParam(padT, 2, 1, 0.70f);
+    cmds.setFxSlotParam(padT, 2, 2, 0.24f);
     cmds.addLfo(padT);
     lfo(padT, 0, "waveform", 1);
     lfo(padT, 0, "rateSync", 1);
@@ -2021,6 +2085,12 @@ TEST(PsytranceComposition, DarkForestV5)
     lfo(padT, 0, "bipolar", 1);
     lfo(padT, 0, "targetParamID", 1);
     pumpLfo(padT, 1, 0.38);
+    // band fix: HP 130 APPENDED at the chain end (slot 3) so slot 1 stays the
+    // chorus — the Riser lane below targets pid 200 = slot1 param0.
+    addFx(padT, "filter", 3);
+    cmds.setFxSlotParam(padT, 3, 0, 130.0f);
+    cmds.setFxSlotParam(padT, 3, 1, 1.0f);
+    cmds.setFxSlotParam(padT, 3, 2, 0.7f);
 
     // ---- REVERSE downlifters into main A + finale ----
     if (revT != hatT)
@@ -2045,10 +2115,10 @@ TEST(PsytranceComposition, DarkForestV5)
                 lane.setProperty(IDs::automationEnabled, true,
                                  &engine.getProjectModel().getUndoManager());
     };
-    setLane(bassT, "BassSweep", 200,
-            { { 64.0, 0.12f }, { 128.0, 0.35f }, { 192.0, 0.55f },
-              { 224.0, 0.20f }, { 288.0, 0.45f }, { 352.0, 0.60f },
-              { 384.0, 0.30f }, { 448.0, 0.55f }, { 512.0, 0.66f } });
+    setLane(bassT, "BassSweep", 400,
+            { { 64.0, 0.10f }, { 128.0, 0.30f }, { 192.0, 0.45f },
+              { 224.0, 0.15f }, { 288.0, 0.35f }, { 352.0, 0.48f },
+              { 384.0, 0.22f }, { 448.0, 0.42f }, { 512.0, 0.55f } });
     setLane(padT, "Riser", 200,
             { { 0.0, 0.10f }, { 60.0, 0.12f }, { 64.0, 0.70f }, { 128.0, 0.30f },
               { 188.0, 0.14f }, { 192.0, 0.75f }, { 224.0, 0.35f },
@@ -2096,6 +2166,11 @@ TEST(PsytranceComposition, DarkForestV5)
     EXPECT_GE(finalPeak, 0.35f) << "final render too quiet";
     juce::Logger::writeToLog("V5: truePeak=" + juce::String(truePeak, 3)
         + " finalPeak=" + juce::String(finalPeak, 3) + " dur=" + juce::String(dur, 1));
+    // stdout mirror: juce::Logger lands in OutputDebugString (lost without a
+    // debugger), so print the gate numbers to stdout for gtest console runs.
+    std::cout << "V5: truePeak=" << juce::String(truePeak, 3).toStdString()
+              << " finalPeak=" << juce::String(finalPeak, 3).toStdString()
+              << " dur=" << juce::String(dur, 1).toStdString() << std::endl;
 }
 
 
