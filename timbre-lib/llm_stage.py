@@ -43,3 +43,46 @@ def run_llm(evidence, model_path, n_ctx=4096, max_tokens=220, temperature=0.4, n
         ],
         max_tokens=max_tokens, temperature=temperature)
     return out["choices"][0]["message"]["content"].strip()
+
+
+# ── Role-aware probe evaluation (synth probe analyzer) ───────────────────────
+# Additive: adds ROLE_SYSTEM + build_probe_evidence + run_llm_role without
+# touching SYSTEM/USER/build_evidence/close/run_llm above. Role thresholds are
+# NOT embedded here — they live in role_targets.py and are never in a prompt.
+
+ROLE_SYSTEM = """You are a sound designer evaluating a synthesized probe against the psytrance production role: {role}.
+You only explain the measured evidence provided below. Never override a deterministic role check and never invent instruments, effects, or parameter values that the evidence does not support.
+Give 2-3 sentences plus concrete, evidence-backed suggestions based on the measurements."""
+
+
+def build_probe_evidence(words, tags, captions, role, name=None, plugin=None):
+    """Assemble the role-aware evidence block for the probe LLM call."""
+    meta = []
+    if role:
+        meta.append(f"role: {role}")
+    if name:
+        meta.append(f"patch name: {name}")
+    if plugin:
+        meta.append(f"plugin: {plugin}")
+    ev = [" | ".join(meta)]
+    ev.append("DSP measurements -> " + words)
+    ev.append("CLAP top caption matches: " + ", ".join(c for c, _ in captions))
+    ev.append("Sound-event tags (CLAP zero-shot): " + ", ".join(t for t, _ in tags))
+    return "\n".join(ev)
+
+
+def run_llm_role(evidence, role, model_path, n_ctx=4096, max_tokens=220, temperature=0.4, n_gpu_layers=-1):
+    """Role-aware LLM prose. Uses ROLE_SYSTEM (formatted with the role) and the
+    caller-supplied evidence; reuses the module-global _LLM cache. Raises
+    ImportError when llama_cpp is missing (analyze_probe guards it)."""
+    global _LLM
+    from llama_cpp import Llama  # raises ImportError when llama_cpp is missing
+    if _LLM is None:
+        _LLM = Llama(model_path=model_path, n_ctx=n_ctx, n_gpu_layers=n_gpu_layers, verbose=False)
+    out = _LLM.create_chat_completion(
+        messages=[
+            {"role": "system", "content": ROLE_SYSTEM.format(role=role)},
+            {"role": "user", "content": evidence},
+        ],
+        max_tokens=max_tokens, temperature=temperature)
+    return out["choices"][0]["message"]["content"].strip()

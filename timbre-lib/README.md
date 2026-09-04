@@ -28,6 +28,35 @@ or point TIMBRE_PY at a venv that has the stack.
 Scores: dsp_words x3, captions x2, tags x1, prose x1, filename x0.5.
 Prints Windows paths ready for HDAW MCP.
 
+## Synth probe analyzer (standalone, WAV-in)
+    python analyze_probe.py <probe.wav> --role ROLE [--name N] [--plugin P]
+        [--gguf PATH] [--no-clap] [--no-llm]
+
+Evaluates a rendered VST/CLAP instrument probe against a psytrance production
+role and prints one stable JSON report on stdout. Deterministic role checks
+(`role_targets.py`) produce the verdict; the optional local LLM (Qwen via
+`llm_stage.py`) only explains measured evidence and can never override a check.
+No `.timbre.json` sidecars are written; `lib_analyze.py` and the library-index
+workflow are untouched.
+
+- Roles: `kick`, `bass`, `hat`, `snare`, `rim`, `clap`, `lead`, `arp`, `stab`,
+  `pad`, `riser`, `fx` (aliases like `hihat`, `sub`, `sfx` accepted).
+- Pipeline: validate path/role -> load 48k mono (librosa, scipy fallback) ->
+  finite check -> DSP descriptors (`timbre.extract` + `spectral_evolution`) ->
+  optional CLAP captions/tags -> optional LLM prose -> `check_role` +
+  `build_recommendations`.
+- Report: `{input, role, measurements, roleCheck, description,
+  recommendations, warnings, error}`. Schema stays valid when CLAP/LLM are
+  unavailable (explicit `warnings`). Recommendations are priority-ranked:
+  `critical` (silence/clipping/non-finite/severely-wrong-register), `high`
+  (failed role check), `medium` (pass near a threshold edge), `low` (creative
+  variation).
+- Exit 0 for any completed analysis (incl. critical findings); exit 1 for error
+  reports (missing/malformed/unreadable/invalid role).
+- Test suite (first pytest in repo): `python -m pytest test_analyze_probe.py -q`
+  (23 tests: per-role pass/fail signals, bad-input schema, DSP-only fallback,
+  stable JSON).
+
 ## Use in HDAW (MCP tools)
     1. add_library  {name, path: "D:\\...\\samples", type: "audio"}
     2. scan_library {id}                      # HDAW indexes files natively
