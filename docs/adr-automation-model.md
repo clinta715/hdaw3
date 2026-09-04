@@ -57,6 +57,24 @@ Rationale:
   existing timeline conversion. That coupling is why it is intentionally
   postponed rather than bolted on now.
 
+## pid ranges (lane `paramID` address space)
+
+Lane `paramID` is a track-wide address with three ranges (explicit since the
+2026-09-02 pid-routing fix; previously implicit):
+
+- `1` / `2` / `3` — volume / pan / mute.
+- `100..999` — audio FX chain compound: `100 + slotIndex * 100 + paramIndex`.
+- `1000..1999` — MIDI FX chain compound: `1000 + slotIndex * 100 + paramIndex`.
+
+The engine decodes in `Track::processBlock` (automation record/apply, LFO
+targets); `ReadModelImpl::getAutomatableParams` encodes. The 2026-08-06
+MIDI-FX-modulation plan's original `200+` MIDI-FX range is **superseded** —
+it collided with the audio compound at slot 1 (pid 200 = audio slot 1 param 0),
+which made every audio-FX lane on slot >= 1 and every UI-created MIDI-FX lane
+inert. `AutomationPanel`/`ModulationPanel` compose audio-FX pids as the
+`100+` compound and pass MIDI-FX pids (which the snapshot carries as the full
+`1000+` value) through unchanged.
+
 ## Consequences
 
 - **Per-clip / per-note animation is NOT delivered by clip automation.** It is

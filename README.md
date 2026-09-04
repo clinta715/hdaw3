@@ -159,8 +159,8 @@ pass `Debug` for breakpoint debugging.
   persistence, count-in bars configuration. **Audio device settings
   persist across launches** (driver, device, sample rate, buffer size
   restored on startup with fallback to defaults).
-- MCP HTTP server host is configurable in Preferences (defaults to
-  `127.0.0.1`).
+- MCP HTTP server host/port are configurable in Preferences and persist
+  in `QSettings` (defaults to `127.0.0.1:18765`).
 
 - Generative composition: PhraseGeneratorDialog (phrase styles, chords, progressions) gained a Rhythm mode — polyrhythmic/euclidean drum patterns, snare toggle, and house/techno/dnb genre styles.
 
@@ -223,11 +223,24 @@ client's MCP config:
 HDAW detects piped stdio and runs headless (no GUI) with the MCP stdio
 transport. The process exits when the client closes the pipes.
 
+### Launching MCP HTTP
+
+Use `--mcp-http` to persist and enable the loopback HTTP transport at
+startup. Optional overrides:
+
+```bash
+HDAW.exe --mcp-http --mcp-http-host=127.0.0.1 --mcp-http-port=18765
+```
+
+The same settings are exposed in Preferences under **MCP HTTP** and can
+be toggled live via `settings.getMcpHttpConfig` / `settings.setMcpHttpConfig`.
+The HTTP route remains `POST /mcp` on the loopback interface only.
+
 ### Optional HTTP transport (loopback only)
 
-In the GUI, enable **Tools → MCP HTTP Server**. Defaults: `127.0.0.1:8765`.
-Configurable in **Preferences → MCP**. Binds loopback only; no
-authentication. Do not expose beyond loopback.
+In the GUI, enable **Preferences → MCP HTTP**. Defaults:
+`127.0.0.1:18765`. Binds loopback only; no authentication. Do not expose
+beyond loopback.
 
 ### Safety
 

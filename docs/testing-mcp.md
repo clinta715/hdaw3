@@ -41,6 +41,10 @@ its tests live under `tests/unit/mcp/` and `tests/integration/mcp/`.
   flaky at the start of iteration 2. A comment in the test file
   documents this. A future fix is to make the test order-independent
   (e.g. by isolating the audio device).
+- **HTTP runtime path coverage**: `McpServer.EngineSettingsStartMcpHttp`
+  enables `mcp/httpEnabled` in `QSettings`, starts `AudioEngine` with the
+  persisted config, and verifies a real `POST /mcp` round-trip on the
+  loopback transport.
 
 ### Async routing-rebuild drain seam
 
@@ -176,8 +180,9 @@ cleanup — the normal shutdown path owns AudioEngine teardown.
   (`src/mcp/McpTransport.h`): `McpTransportStdio` (newline-delimited
   JSON over `stdin`/`stdout`, with a dedicated reader thread that
   posts requests to the server via `Qt::QueuedConnection`) and
-  `McpTransportHttp` (Streamable HTTP, configurable host via Preferences
-  `mcp/httpHost`, defaults to `127.0.0.1`, no auth). `McpTransportLoopback` is the in-memory test transport.
+  `McpTransportHttp` (Streamable HTTP, configurable host/port via Preferences
+  `mcp/httpHost` / `mcp/httpPort`, defaults to `127.0.0.1:18765`, no auth).
+  `McpTransportLoopback` is the in-memory test transport.
 - **Tool safety**: every destructive tool (`remove_*`, `clear_notes`,
   `duplicate_clip`, `export_audio`) accepts `dryRun: true` and reports
   what it would do without mutating. Every mutation goes through the
