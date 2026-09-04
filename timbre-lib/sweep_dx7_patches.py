@@ -32,12 +32,18 @@ ProjectCommands::setFmPatch, which writes fmPatchData into the slot ValueTree
 gtests). For sub_synth, sub_synth_import_sysex routes through
 AudioEngineCommands::loadVirusPatch, which persists the mapped sub_synth
 params (param_N 0..22) to the slot ValueTree so offline exports hear them.
-KNOWN ENGINE LIMITATION (verified 2026-09-04): the offline tree-copy render
-path (export_audio / audition) currently renders a fixed FM tone that is
-invariant to the imported patch bytes, so per-patch WAVs come out
-byte-identical regardless of fmPatchData; this is an engine-side issue outside
-the tool's control. --host/--port are accepted for CLI compatibility and
-reported in meta.engine_ws.
+RESOLVED (verified 2026-09-04): the offline tree-copy render path
+(export_audio / audition) previously rendered a fixed FM tone that was
+invariant to the imported patch bytes, so per-patch WAVs came out
+byte-identical regardless of fmPatchData. Root cause: FmSynthEngine::prepare()
+re-seeded patchData_ to the DX7 init patch on the reset issued before an
+offline export. Fixed by seeding init exactly once (initPatchSeeded_) and
+restoring fmPatchData via TrackFXSlot::loadFmPatchFromTree in every
+rebuildFXChain (RoutingManager::buildTrackProcessor prepares the track BEFORE
+rebuildFXChain, so fxSpec.sampleRate > 0 on the offline path). Verified by
+gtest FmPatchOfflineExport.*: two real cartridge voices export byte-different
+WAVs, and an imported patch differs from the default init tone. --host/--port
+are accepted for CLI compatibility and reported in meta.engine_ws.
 
 Exit codes: 0 = completed (per-patch failures are recorded in the report),
 1 = fatal (bad args / engine unreachable / no patches found / probe setup

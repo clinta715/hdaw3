@@ -98,11 +98,14 @@ No frontend changes.
   `analyze_probe.py` role-check JSON.
 - **SPSC / projections:** none new — patch params are slot ValueTree props,
   written through existing commands. FileLibraryManager is message-thread-only.
-- **Known engine caveat (document, don't block on):** `sweep_dx7_patches.py`
-  notes offline export renders an FM tone invariant to imported patch bytes
-  (dated 2026-09-04). The sub_synth tree-copy path restores `param_N`, so
-  `audition_patch`'s live audition is expected to work; the export/audition
-  path for FM is a separate pre-existing engine issue outside this plan.
+- **FM offline render caveat — RESOLVED (verified 2026-09-04):** the offline
+  export previously rendered a fixed FM tone invariant to imported patch bytes
+  (root cause: `FmSynthEngine::prepare()` re-seeded the DX7 init patch on the
+  pre-export reset). Fixed: init seeded exactly once (`initPatchSeeded_`) +
+  `TrackFXSlot::loadFmPatchFromTree` restores `fmPatchData` on every
+  `rebuildFXChain`. Verified by `FmPatchOfflineExport.*`: two real cartridge
+  voices export byte-different WAVs, and an imported patch differs from the
+  default init tone.
 
 ---
 

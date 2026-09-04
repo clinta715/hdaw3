@@ -65,6 +65,7 @@ add_executable(hdaw_tests
     unit/engine/clip_streaming_e2e_test.cpp
     unit/engine/track_mixer_state_test.cpp
     unit/engine/fm_patch_persistence_test.cpp
+    unit/engine/fm_patch_offline_export_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
     unit/engine/operator_logic_test.cpp
