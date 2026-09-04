@@ -215,4 +215,78 @@ describe("AutomationPanel", () => {
     // via the dependency array at all.
     expect(renderCount).toBeLessThan(5);
   });
+
+  describe("param pid composition", () => {
+    // Engine pid ranges: 100..999 = audio fxChain compound 100 + slot*100 + param;
+    // 1000..1999 = midiFxChain compound (snapshot carries the full pid in paramIndex).
+    it("add lane composes audio compound pid (slot 1 param 0 -> 200)", async () => {
+      const params = [{ slotIndex: 1, paramIndex: 0, name: "Cutoff", automatable: true }];
+      const rpc = mockRpc({ lanes: [], params });
+      const { container } = render(<AutomationPanel rpc={rpc} />);
+      const select = await waitFor(() => {
+        const el = container.querySelector("select.ap-param-select") as HTMLSelectElement;
+        expect(el).not.toBeNull();
+        expect(el).not.toBeDisabled();
+        return el;
+      });
+      fireEvent.change(select, { target: { value: "1:0" } });
+      fireEvent.click(screen.getByText("+ Add Lane"));
+      await waitFor(() => {
+        expect(rpc.call).toHaveBeenCalledWith("project.addAutomationLane", {
+          trackIndex: 0,
+          laneName: "S1 Cutoff",
+          paramID: 200,
+        });
+      });
+    });
+
+    it("add lane passes midiFx pid through (paramIndex 1000 -> 1000)", async () => {
+      const params = [{ slotIndex: 0, paramIndex: 1000, name: "Arp Rate", automatable: true }];
+      const rpc = mockRpc({ lanes: [], params });
+      const { container } = render(<AutomationPanel rpc={rpc} />);
+      const select = await waitFor(() => {
+        const el = container.querySelector("select.ap-param-select") as HTMLSelectElement;
+        expect(el).not.toBeNull();
+        expect(el).not.toBeDisabled();
+        return el;
+      });
+      fireEvent.change(select, { target: { value: "0:1000" } });
+      fireEvent.click(screen.getByText("+ Add Lane"));
+      await waitFor(() => {
+        expect(rpc.call).toHaveBeenCalledWith("project.addAutomationLane", {
+          trackIndex: 0,
+          laneName: "S0 Arp Rate",
+          paramID: 1000,
+        });
+      });
+    });
+
+    it("bound filter uses the composed pid for audio entries", async () => {
+      const params = [
+        { slotIndex: 1, paramIndex: 0, name: "Cutoff", automatable: true },
+        { slotIndex: 0, paramIndex: 5, name: "Gain", automatable: true },
+      ];
+      const boundLane = mkLane({ laneIndex: 0, name: "S1 Cutoff", paramID: 200 });
+      const rpc = mockRpc({ lanes: [boundLane], params });
+      render(<AutomationPanel rpc={rpc} />);
+      await waitFor(() => {
+        expect(screen.queryByText("S1 · Cutoff")).not.toBeInTheDocument();
+        expect(screen.getByText("S0 · Gain")).toBeInTheDocument();
+      });
+    });
+
+    it("bound filter passes midiFx pid through (paramIndex 1000)", async () => {
+      const params = [
+        { slotIndex: 0, paramIndex: 1000, name: "Arp Rate", automatable: true },
+        { slotIndex: 0, paramIndex: 5, name: "Gain", automatable: true },
+      ];
+      const boundLane = mkLane({ laneIndex: 0, name: "S0 Arp Rate", paramID: 1000 });
+      const rpc = mockRpc({ lanes: [boundLane], params });
+      render(<AutomationPanel rpc={rpc} />);
+      await waitFor(() => {
+        expect(screen.queryByText("S0 · Arp Rate")).not.toBeInTheDocument();
+        expect(screen.getByText("S0 · Gain")).toBeInTheDocument();
+      });
+    });
+  });
 });

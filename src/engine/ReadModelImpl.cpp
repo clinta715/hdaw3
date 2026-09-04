@@ -778,6 +778,8 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
     // parameter metadata (TrackFXSlot::rebuildParamCache). The slot index is
     // preserved so callers can reconstruct the compound paramID
     // (100 + slotIndex*100 + paramIndex) used by the automation system.
+    // pid ranges (see docs/adr-automation-model.md): 1/2/3 = volume/pan/mute,
+    // 100..999 = fxChain slot*100+param, 1000..1999 = midiFxChain slot*100+param.
     auto& fxChain = track->getFXChain();
     for (int si = 0; si < static_cast<int>(fxChain.size()); ++si)
     {
@@ -797,7 +799,9 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
         }
     }
 
-    // Walk the live MIDI FX chain.
+    // Walk the live MIDI FX chain. midiFx entries carry the FULL compound pid
+    // (1000 + slotIndex*100 + paramIndex) in paramIndex — callers pass it
+    // through as-is (unlike audio slots, whose paramIndex is the bare index).
     auto& midiFxChain = track->getMidiFxChain();
     for (int si = 0; si < static_cast<int>(midiFxChain.size()); ++si)
     {
@@ -810,7 +814,7 @@ std::vector<AutomatableParamSnapshot> ReadModelImpl::getAutomatableParams(int tr
         {
             AutomatableParamSnapshot aps;
             aps.slotIndex = si;
-            aps.paramIndex = 200 + si * 100 + p.index;
+            aps.paramIndex = 1000 + si * 100 + p.index;
             aps.name = slot->getType().toStdString() + "." + p.name.toStdString();
             aps.automatable = true;
             result.push_back(aps);

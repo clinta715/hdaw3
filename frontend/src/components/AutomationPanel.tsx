@@ -14,6 +14,14 @@ const PARAM_NAMES: Record<number, string> = {
   3: "Mute",
 };
 
+// Engine pid composition. getAutomatableParams snapshots carry a BARE
+// paramIndex for audio FX entries (compose 100 + slotIndex*100 + paramIndex,
+// range 100..999) and the FULL pid in paramIndex (>= 1000) for MIDI-FX
+// entries (pass through unchanged).
+function composePid(slotIndex: number, paramIndex: number): number {
+  return paramIndex >= 1000 ? paramIndex : 100 + slotIndex * 100 + paramIndex;
+}
+
 interface Props {
   rpc: RpcClient;
 }
@@ -88,10 +96,12 @@ export default function AutomationPanel({ rpc }: Props) {
     const paramIndex = Number(idxStr);
     const chosen = automatableParams.find((p) => p.slotIndex === slotIndex && p.paramIndex === paramIndex);
     if (!chosen) return;
-    // Compound paramID consumed by the engine: 100 + slotIndex*100 + paramIndex.
-    // Lane name is prefixed with the slot so two plugins that each expose a
-    // param named "Gain" don't collide on the name-keyed store/RPC path.
-    const paramID = 100 + slotIndex * 100 + paramIndex;
+    // Compound paramID consumed by the engine (see composePid): audio entries
+    // compose 100 + slotIndex*100 + paramIndex; MIDI-FX entries (paramIndex
+    // >= 1000) pass the full pid through. Lane name is prefixed with the slot
+    // so two plugins that each expose a param named "Gain" don't collide on
+    // the name-keyed store/RPC path.
+    const paramID = composePid(slotIndex, paramIndex);
     const laneName = `S${slotIndex} ${chosen.name}`;
     try {
       await rpc.call("project.addAutomationLane", {
@@ -133,7 +143,7 @@ export default function AutomationPanel({ rpc }: Props) {
   // paramIDs against a paramIndex — a namespace mismatch that always passed.)
   const boundParamIDs = new Set(lanes.map((l) => l.paramID));
   const availableParams = automatableParams.filter(
-    (p) => !boundParamIDs.has(100 + p.slotIndex * 100 + p.paramIndex)
+    (p) => !boundParamIDs.has(composePid(p.slotIndex, p.paramIndex))
   );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

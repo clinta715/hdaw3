@@ -49,8 +49,11 @@ export default function ModulationPanel() {
     if (selectedTrackIndex == null) { setTargetOptions(BUILTIN_TARGETS); return; }
     try {
       const params = await rpc.call("read.getAutomatableParams", { trackIndex: selectedTrackIndex }) as AutomatableParamSnapshot[];
+      // Engine pid composition: audio FX entries carry a BARE paramIndex ->
+      // compose 100 + slotIndex*100 + paramIndex (range 100..999); MIDI-FX
+      // entries carry the FULL pid in paramIndex (>= 1000) and pass through.
       const fxTargets: TargetOption[] = params.map((p) => ({
-        paramIndex: p.paramIndex,
+        paramIndex: p.paramIndex >= 1000 ? p.paramIndex : 100 + p.slotIndex * 100 + p.paramIndex,
         label: p.name,
       }));
       setTargetOptions([...BUILTIN_TARGETS, ...fxTargets]);

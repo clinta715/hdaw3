@@ -194,6 +194,44 @@ describe("ModulationPanel", () => {
       await flushRead();
       expect(screen.getByText("Reverb Mix")).toBeInTheDocument();
     });
+
+    it("composes audio compound pid for audio FX entries (slot 1 param 0 -> option value 200)", async () => {
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getModulationLfos") return Promise.resolve(ONE_LFO);
+        if (method === "read.getAutomatableParams") return Promise.resolve([
+          { slotIndex: 1, paramIndex: 0, name: "Cutoff", automatable: true },
+        ]);
+        return Promise.resolve([]);
+      });
+      render(<ModulationPanel />);
+      await flushRead();
+      const targetSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+      const option = Array.from(targetSelect.querySelectorAll("option")).find(
+        (o) => o.textContent === "Cutoff"
+      );
+      expect(option).toBeDefined();
+      // Engine pid range 100..999 = audio fxChain compound 100 + slot*100 + param.
+      expect(option!.value).toBe("200");
+    });
+
+    it("passes midiFx pid through (paramIndex 1000 -> option value 1000)", async () => {
+      mockedCall.mockImplementation((method: string) => {
+        if (method === "read.getModulationLfos") return Promise.resolve(ONE_LFO);
+        if (method === "read.getAutomatableParams") return Promise.resolve([
+          { slotIndex: 0, paramIndex: 1000, name: "Arp Rate", automatable: true },
+        ]);
+        return Promise.resolve([]);
+      });
+      render(<ModulationPanel />);
+      await flushRead();
+      const targetSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+      const option = Array.from(targetSelect.querySelectorAll("option")).find(
+        (o) => o.textContent === "Arp Rate"
+      );
+      expect(option).toBeDefined();
+      // Engine pid range 1000..1999 = midiFxChain; snapshot already carries the full pid.
+      expect(option!.value).toBe("1000");
+    });
   });
 
   describe("waveform selector", () => {
