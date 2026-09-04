@@ -6,6 +6,7 @@
 #include "../engine/PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
 #include "TrackFXSlot.h"
+#include "engine/FmSynthEngine.h"
 #include "engine/VirusSysexImport.h"
 #include "engine/SliceDetector.h"
 #include "engine/PsyFmState.h"
@@ -13,7 +14,6 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
-#include <optional>
 
 // Qt defines `slots` as a keyword macro (qobjectdefs.h); TUs in this project
 // that pull in Qt headers (directly or transitively, e.g. via AudioEngine.h)
@@ -320,6 +320,43 @@ void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int para
 
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
+}
+
+void AudioEngineCommands::setFmPatch(int trackIndex, int slotIndex,
+                                     const std::string& patchBase64)
+{
+    // Tree-first (deviceless-safe): the fmPatchData property is what
+    // tree-copy renders (export/gain-stage/audition) and save/load restore.
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid()) return;
+    if (slot.getProperty(IDs::fxType, "").toString() != "fm_synth") return;
+
+    // Gate 9: validate at the command boundary — exactly 156 bytes.
+    juce::MemoryBlock block;
+    if (!block.fromBase64Encoding(juce::String(patchBase64)))
+        return;
+    if (block.getSize() != FmSynthEngine::kPatchSize)
+        return;
+
+    // nullptr undo — matches the pluginState volatile-cache convention in
+    // applyPluginProgram (AudioEngineCommands_Composition.cpp).
+    slot.setProperty(IDs::fmPatchData, juce::String(patchBase64), nullptr);
+
+    // Live load (best-effort): no crash when the live processor/track/slot is
+    // absent — the tree write above is what headless/no-device exports need.
+    if (auto* proc = engine_.getMainProcessor())
+    {
+        auto* track = proc->getTrack(trackIndex);
+        if (track)
+        {
+            auto& chain = track->getFXChain();
+            if (slotIndex >= 0 && slotIndex < static_cast<int>(chain.size()) && chain[slotIndex])
+            {
+                if (auto* fm = chain[slotIndex]->fmSynthEngine())
+                    fm->loadPatch(static_cast<const uint8_t*>(block.getData()));
+            }
+        }
+    }
 }
 
 AudioEngineCommands::VirusLoadResult AudioEngineCommands::loadVirusPatch(

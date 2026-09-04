@@ -199,6 +199,10 @@ namespace IDs {
     DECLARE_ID(pluginState)
     DECLARE_ID(pluginPath)
 
+    // FM synth DX7 patch (base64 of the 156-byte VCED patch; tree-persisted
+    // so tree-copy renders and save/load restore the imported patch)
+    DECLARE_ID(fmPatchData)
+
     // Tempo track
     DECLARE_ID(TEMPO_POINT_LIST)
     DECLARE_ID(TEMPO_POINT)

@@ -213,14 +213,47 @@ def parse_cartridge(data):
     return voices
 
 
+def parse_raw_bank(data):
+    """Parse a raw 4096-byte VMEM bank -> [32 voice dicts].
+
+    Mirrors ``parse_cartridge`` but for an unframed bank: exactly 32 voices x
+    128 packed bytes with NO ``F0 43`` header, no checksum, and no trailing
+    ``F7`` (some files carry a stray trailing ``F7``, making them 4097 bytes).
+    The payload is the whole file (minus the trailing F7)."""
+    if len(data) == 4097 and data[4096] == 0xF7:
+        data = data[:4096]
+    if len(data) != VMEM_TOTAL:
+        return [_error_voice("raw", "expected 4096 or 4097 bytes")]
+    if data[0] == 0xF0 and data[1] == 0x43:
+        return [_error_voice("raw", "not a raw bank (framed sysex header)")]
+    voices = []
+    for v in range(32):
+        packed = data[v * 128:(v + 1) * 128]
+        vced = _unpack_vmem_voice(packed)
+        voices.append(_voice_base("raw", vced, extra={
+            "algorithm": vced[ALGO_OFF] & 0x1F,
+            "feedback": vced[FEEDBACK_OFF] & 0x07,
+            "voiceCount": 32,
+            "index": v,
+        }))
+    return voices
+
+
 PARSERS = {
     "single": parse_single,
     "cartridge": parse_cartridge,
+    "raw": parse_raw_bank,
 }
 
 
 def detect_format(data, path=""):
     """Guess the DX7 container from the header bytes (mirrors the C++)."""
+    # Raw 4096-byte VMEM bank: unframed (NOT F0 43), exactly 4096 bytes, or
+    # 4097 with a trailing F7. Checked before the framed-header early return
+    # because raw banks have no F0 43 to match on.
+    if len(data) == 4096 or (len(data) == 4097 and data[4096] == 0xF7):
+        if not (data[0] == 0xF0 and data[1] == 0x43):
+            return "raw"
     if len(data) < 6 or data[0] != 0xF0 or data[1] != 0x43:
         return None
     data_len = (data[4] << 7) | data[5]

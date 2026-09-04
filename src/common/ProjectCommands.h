@@ -161,6 +161,13 @@ public:
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
     virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                 float value) = 0;
+    // Load a raw DX7 patch (base64 of the 156-byte VCED layout) into an
+    // "fm_synth" FX slot. Writes the patch to the slot's ValueTree (fmPatchData)
+    // so tree-copy renders (export/gain-stage/audition) and save/load hear it,
+    // then applies it live (best-effort). No-op when the slot is missing or is
+    // not an fm_synth, or when the base64 decodes to a size != 156.
+    virtual void setFmPatch(int trackIndex, int slotIndex,
+                            const std::string& patchBase64) = 0;
     virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
     // Restart a crashed isolated plugin FX slot via the crash-recovery manager.
     virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;

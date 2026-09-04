@@ -139,19 +139,44 @@ TEST(Dx7SysexImport, VmemUnpackBitPackedFields) {
     packed[11] = 0x0B;
     packed[12] = 0x55;
     packed[13] = 0x32;
+    packed[14] = 80;
     packed[15] = 0x0F;
+    packed[16] = 99;
 
     uint8_t unpacked[156] = {};
     unpackVmemVoice(packed, unpacked);
 
-    EXPECT_EQ(unpacked[11], 3u);
-    EXPECT_EQ(unpacked[12], 1u);
-    EXPECT_EQ(unpacked[13], 5u);
-    EXPECT_EQ(unpacked[14], 10u);
-    EXPECT_EQ(unpacked[15], 2u);
-    EXPECT_EQ(unpacked[16], 6u);
-    EXPECT_EQ(unpacked[18], 1u);
-    EXPECT_EQ(unpacked[19], 7u);
+    EXPECT_EQ(unpacked[11], 0x0Bu & 0x03u);       // left curve  = 3
+    EXPECT_EQ(unpacked[12], (0x0Bu >> 2) & 0x03u); // right curve = 2
+    EXPECT_EQ(unpacked[13], 0x55u & 0x07u);        // rate scale  = 5
+    EXPECT_EQ(unpacked[14], 0x32u & 0x03u);        // amp mod sens = 2
+    EXPECT_EQ(unpacked[15], (0x32u >> 2) & 0x07u); // key vel sens = 4
+    EXPECT_EQ(unpacked[16], 80u);                  // output level = 80
+    EXPECT_EQ(unpacked[17], 0x0Fu & 0x01u);        // osc mode = 1
+    EXPECT_EQ(unpacked[18], (0x0Fu >> 1) & 0x1Fu); // freq coarse = 7
+    EXPECT_EQ(unpacked[19], 99u);                  // freq fine = 99
+    EXPECT_EQ(unpacked[20], (0x55u >> 3) & 0x0Fu); // detune = 10
+}
+
+TEST(Dx7SysexImport, VmemUnpackOutputLevelAndOscMode) {
+    uint8_t packed[128] = {};
+    // All six operators: output level = 75, osc mode bit0 = 1 (fixed),
+    // detune bits (packed 12 high nibble) set to verify the detune slot.
+    for (int op = 0; op < 6; ++op) {
+        packed[op * 17 + 14] = 75;
+        packed[op * 17 + 15] = 0x01;
+        packed[op * 17 + 12] = (10 << 3);
+    }
+
+    uint8_t unpacked[156] = {};
+    unpackVmemVoice(packed, unpacked);
+
+    for (int op = 0; op < 6; ++op) {
+        SCOPED_TRACE("op " + std::to_string(op));
+        EXPECT_EQ(unpacked[op * 21 + 16], 75u);
+        EXPECT_EQ(unpacked[op * 21 + 17], 1u);
+        EXPECT_EQ(unpacked[op * 21 + 20], 10u);
+    }
 }
 
 TEST(Dx7SysexImport, VmemUnpackGlobalSection) {
@@ -277,4 +302,50 @@ TEST(Dx7SysexImport, CartridgeAlgorithmAndFeedback) {
     ASSERT_EQ(voices.size(), 32u);
     EXPECT_EQ(voices[0].algorithm, 31);
     EXPECT_EQ(voices[0].feedback, 7);
+}
+
+TEST(Dx7SysexImport, RawBankReturns32Voices) {
+    std::vector<uint8_t> data(4096);
+    for (int v = 0; v < 32; ++v) {
+        for (int j = 0; j < 128; ++j)
+            data[v * 128 + j] = static_cast<uint8_t>(((v + 1) * 16 + j) & 0x7F);
+        // Packed op0 output level (byte 14) -> VCED op0 output level [16].
+        data[v * 128 + 14] = static_cast<uint8_t>(40 + v);
+    }
+
+    auto voices = parseCartridgeSysex(data.data(), data.size());
+    ASSERT_EQ(voices.size(), 32u);
+    for (int v = 0; v < 32; ++v) {
+        SCOPED_TRACE("voice " + std::to_string(v));
+        EXPECT_EQ(voices[v].patchData[16], static_cast<uint8_t>(40 + v));
+        EXPECT_FALSE(voices[v].voiceName.empty());
+        // algorithm/feedback consistent with packed[110]/[111].
+        EXPECT_EQ(voices[v].algorithm,
+                  static_cast<int>(data[v * 128 + 110] & 0x1F));
+        EXPECT_EQ(voices[v].feedback,
+                  static_cast<int>((data[v * 128 + 111] >> 1) & 0x07));
+        EXPECT_EQ(voices[v].patchData[155], 0x3F);
+    }
+    bool differ = false;
+    for (int v = 1; v < 32 && !differ; ++v)
+        differ = (voices[v].patchData != voices[0].patchData);
+    EXPECT_TRUE(differ);
+}
+
+TEST(Dx7SysexImport, RawBankRejectsWrongSize) {
+    std::vector<uint8_t> d4095(4095, 0x20);
+    std::vector<uint8_t> d4098(4098, 0x20);
+    EXPECT_TRUE(parseCartridgeSysex(d4095.data(), d4095.size()).empty());
+    EXPECT_TRUE(parseCartridgeSysex(d4098.data(), d4098.size()).empty());
+}
+
+TEST(Dx7SysexImport, RawBankTrailingF7Accepted) {
+    std::vector<uint8_t> data(4096);
+    for (int v = 0; v < 32; ++v)
+        for (int j = 0; j < 128; ++j)
+            data[v * 128 + j] = static_cast<uint8_t>(((v + 1) * 16 + j) & 0x7F);
+    data.push_back(0xF7);
+
+    auto voices = parseCartridgeSysex(data.data(), data.size());
+    EXPECT_EQ(voices.size(), 32u);
 }

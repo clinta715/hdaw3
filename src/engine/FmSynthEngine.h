@@ -37,6 +37,9 @@ public:
     // Load a raw DX7 patch (156 bytes). Message thread only.
     void loadPatch(const uint8_t patch[kPatchSize]);
 
+    // Read the currently loaded patch (156 bytes). Message thread only.
+    const uint8_t* patchData() const noexcept { return patchData_; }
+
     // Inspection
     struct FmVoiceStatus {
         uint32_t amp[6];
@@ -79,6 +82,7 @@ private:
     Controllers controllers_;
     FmCore engineMsfa_;
     uint8_t patchData_[kPatchSize]{};
+    bool initPatchSeeded_ = false;
 
     static constexpr int kBlockSize = 64;
     float extra_buf_[kBlockSize] = {};

@@ -26,6 +26,7 @@ private:
     ReaderThread readerThread_;
     McpServer* server_ = nullptr;
     std::atomic<bool> stopped_{false};
+    bool stdinClosed_ = false;   // the stdin handle/fd must be closed exactly once in stop()
     QMutex stdoutMtx_;
 };
 }

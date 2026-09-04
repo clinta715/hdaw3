@@ -40,24 +40,31 @@ void FmSynthEngine::prepare(double sampleRate, int /*maxBlockSize*/)
     // Seed a DX7 "init" patch so envelopes open immediately on note-on.
     // Each operator is 21 bytes: EG rates [0..3], EG levels [4..7], ...
     // rates=99 = fastest attack/decay/release, levels: 99,99,99,0 = full sustain.
-    std::memset(patchData_, 0, kPatchSize);
-    for (int op = 0; op < 6; ++op)
+    // Runs exactly once per engine: a later prepare()/reset() (e.g. the reset
+    // issued by Track::releaseResources() before an offline export) must not
+    // re-seed over a patch that was already loaded into patchData_.
+    if (!initPatchSeeded_)
     {
-        const int off = op * 21;
-        patchData_[off + 0] = 99; // EG Rate 1 (attack)
-        patchData_[off + 1] = 99; // EG Rate 2 (decay 1)
-        patchData_[off + 2] = 99; // EG Rate 3 (decay 2)
-        patchData_[off + 3] = 99; // EG Rate 4 (release)
-        patchData_[off + 4] = 99; // EG Level 1
-        patchData_[off + 5] = 99; // EG Level 2
-        patchData_[off + 6] = 99; // EG Level 3
-        patchData_[off + 7] = 0;  // EG Level 4 (silence)
-        patchData_[off + 16] = 60; // Output level (moderate — was 99, caused clipping)
+        std::memset(patchData_, 0, kPatchSize);
+        for (int op = 0; op < 6; ++op)
+        {
+            const int off = op * 21;
+            patchData_[off + 0] = 99; // EG Rate 1 (attack)
+            patchData_[off + 1] = 99; // EG Rate 2 (decay 1)
+            patchData_[off + 2] = 99; // EG Rate 3 (decay 2)
+            patchData_[off + 3] = 99; // EG Rate 4 (release)
+            patchData_[off + 4] = 99; // EG Level 1
+            patchData_[off + 5] = 99; // EG Level 2
+            patchData_[off + 6] = 99; // EG Level 3
+            patchData_[off + 7] = 0;  // EG Level 4 (silence)
+            patchData_[off + 16] = 60; // Output level (moderate — was 99, caused clipping)
+        }
+        patchData_[134] = 0; // Algorithm 0
+        patchData_[135] = 0; // Feedback 0
+        patchData_[126] = 99; patchData_[127] = 99; patchData_[128] = 99; patchData_[129] = 99; // Pitch EG rates (DX7 init)
+        patchData_[130] = 50; patchData_[131] = 50; patchData_[132] = 50; patchData_[133] = 50; // Pitch EG levels: 50 = neutral (no bend)
+        initPatchSeeded_ = true;
     }
-    patchData_[134] = 0; // Algorithm 0
-    patchData_[135] = 0; // Feedback 0
-    patchData_[126] = 99; patchData_[127] = 99; patchData_[128] = 99; patchData_[129] = 99; // Pitch EG rates (DX7 init)
-    patchData_[130] = 50; patchData_[131] = 50; patchData_[132] = 50; patchData_[133] = 50; // Pitch EG levels: 50 = neutral (no bend)
 
     for (auto& v : voices_)
     {
@@ -165,7 +172,11 @@ void FmSynthEngine::loadPatch(const uint8_t patch[kPatchSize])
 {
     std::memcpy(patchData_, patch, kPatchSize);
     lfo_.reset(patchData_ + 137);
-    paramsDirty_.store(true, std::memory_order_release);
+    // The freshly loaded patch is authoritative: clear the pending-params flag
+    // so applyPendingParams does NOT overwrite the patch's op-level/algorithm/
+    // feedback/LFO bytes with the current (possibly default) atomic values on
+    // the next render. A later param setter re-marks paramsDirty_ and wins.
+    paramsDirty_.store(false, std::memory_order_release);
 }
 
 void FmSynthEngine::applyPendingParams()

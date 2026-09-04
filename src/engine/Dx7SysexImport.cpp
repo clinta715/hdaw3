@@ -59,21 +59,22 @@ void unpackVmemVoice(const uint8_t packed[128], uint8_t unpacked[156]) {
         u[9]  = p[9];
         u[10] = p[10];
 
-        u[11] = p[11] & 0x07;
-        u[12] = (p[11] >> 3) & 0x07;
+        // VMEM packed layout (Dexed Documentation/sysex-format.txt):
+        // p11: LC bits0-1, RC bits2-3 | p12: RS bits0-2, DET bits3-6 |
+        // p13: AMS bits0-1, KVS bits2-4 | p14: OUTPUT LEVEL (0-99) |
+        // p15: M bit0, FC bits1-5 | p16: FREQ FINE (0-99)
+        u[11] = p[11] & 0x03;               // left curve
+        u[12] = (p[11] >> 2) & 0x03;        // right curve
 
-        u[13] = p[12] & 0x07;
-        u[14] = (p[12] >> 3) & 0x0F;
+        u[13] = p[12] & 0x07;               // rate scale
+        u[14] = p[13] & 0x03;               // amp mod sens
+        u[15] = (p[13] >> 2) & 0x07;        // key vel sens
+        u[16] = p[14];                      // output level (0-99)
 
-        u[15] = p[13] & 0x07;
-        u[16] = (p[13] >> 3) & 0x07;
-
-        u[17] = p[14];
-
-        u[18] = p[15] & 0x01;
-        u[19] = (p[15] >> 1) & 0x1F;
-
-        u[20] = p[16];
+        u[17] = p[15] & 0x01;               // osc mode
+        u[18] = (p[15] >> 1) & 0x1F;        // freq coarse
+        u[19] = p[16];                      // freq fine (0-99)
+        u[20] = (p[12] >> 3) & 0x0F;        // detune
     }
 
     for (int i = 0; i < 8; ++i)
@@ -99,26 +100,17 @@ void unpackVmemVoice(const uint8_t packed[128], uint8_t unpacked[156]) {
     unpacked[155] = 0x3F;
 }
 
-std::vector<Dx7Voice> parseCartridgeSysex(const uint8_t* data, size_t size) {
-    if (size < 4104 || data[0] != 0xF0 || data[1] != 0x43)
-        return {};
-
-    if (data[3] != 0x09)
-        return {};
-
-    // Accept both spec (0x20) and Dexed variant (0x10) at byte 4.
-    // File size is ground truth — 4104 = 6 header + 4096 data + 1 checksum + 1 F7.
-    constexpr size_t kVoiceDataLen = 4096;
-
-    if (!verifyChecksum(data + 6, kVoiceDataLen + 1))
-        return {};
-
+// Unpack a full 32-voice bank from its 4096 packed bytes (128 bytes/voice),
+// setting the name (VCED 145-154, trimmed), algorithm and feedback. Shared by
+// the framed-cartridge path (payload = data + 6) and the raw 4096-byte VMEM
+// bank path (payload = data).
+static std::vector<Dx7Voice> unpackBank(const uint8_t* data) {
     std::vector<Dx7Voice> voices;
     voices.reserve(32);
 
     for (int v = 0; v < 32; ++v) {
         Dx7Voice voice;
-        unpackVmemVoice(data + 6 + v * 128, voice.patchData.data());
+        unpackVmemVoice(data + v * 128, voice.patchData.data());
 
         char nameBuf[11] = {};
         std::memcpy(nameBuf, voice.patchData.data() + 145, 10);
@@ -134,6 +126,32 @@ std::vector<Dx7Voice> parseCartridgeSysex(const uint8_t* data, size_t size) {
     }
 
     return voices;
+}
+
+std::vector<Dx7Voice> parseCartridgeSysex(const uint8_t* data, size_t size) {
+    // Raw 4096-byte VMEM bank: exactly 32 voices x 128 packed bytes, with NO
+    // F0 43 sysex framing, no checksum, no trailing F7. Some raw banks carry
+    // a trailing F7 (4097 bytes) that is not part of the payload. Detect by
+    // size + absence of the framing header; the payload starts at byte 0.
+    if (size >= 4096 && size <= 4097 &&
+        !(data[0] == 0xF0 && data[1] == 0x43) &&
+        (size == 4096 || (size == 4097 && data[4096] == 0xF7)))
+        return unpackBank(data);
+
+    if (size < 4104 || data[0] != 0xF0 || data[1] != 0x43)
+        return {};
+
+    if (data[3] != 0x09)
+        return {};
+
+    // Accept both spec (0x20) and Dexed variant (0x10) at byte 4.
+    // File size is ground truth — 4104 = 6 header + 4096 data + 1 checksum + 1 F7.
+    constexpr size_t kVoiceDataLen = 4096;
+
+    if (!verifyChecksum(data + 6, kVoiceDataLen + 1))
+        return {};
+
+    return unpackBank(data + 6);
 }
 
 } // namespace HDAW

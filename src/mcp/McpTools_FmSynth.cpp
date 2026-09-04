@@ -9,6 +9,7 @@
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
+#include "../engine/FmSynthEngine.h"
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
 #include <QJsonArray>
@@ -49,18 +50,11 @@ s.registerTool({"fm_synth_load_preset",
                 if (!ok) return McpToolResult::text("invalid hex at offset " + QString::number(i), true);
             }
 
-            auto* proc = e->getMainProcessor();
-            if (!proc) return McpToolResult::text("audio engine not initialized", true);
-            auto* track = proc->getTrack(ti);
-            if (!track) return McpToolResult::text("track not found", true);
-            auto& chain = track->getFXChain();
-            if (si >= (int)chain.size() || !chain[si])
-                return McpToolResult::text("FX slot not found in chain", true);
-            auto* slot = chain[si].get();
-            if (!slot->fmSynthEngine())
-                return McpToolResult::text("FM synth engine not initialized", true);
-
-            slot->fmSynthEngine()->loadPatch(patch);
+            // Route through the command: writes fmPatchData to the slot tree
+            // (so tree-copy renders and save/load hear it) and applies live
+            // best-effort. Works without an audio device.
+            juce::MemoryBlock block(patch, FmSynthEngine::kPatchSize);
+            e->getProjectCommands().setFmPatch(ti, si, block.toBase64Encoding().toStdString());
             return McpToolResult::text("ok");
         }});
 
@@ -111,6 +105,16 @@ s.registerTool({"fm_synth_import_sysex",
                     voice = voices[vi];
                     resolvedVoiceIndex = vi;
                 }
+            } else if ((fileSize == 4096 || fileSize == 4097) && !(bytes[0] == 0xF0 && bytes[1] == 0x43)) {
+                // Raw 4096-byte VMEM bank (no sysex framing, no checksum;
+                // 4097 = trailing F7). Routes through the cartridge parser,
+                // which unpacks all 32 voices.
+                voices = HDAW::parseCartridgeSysex(bytes, fileSize);
+                int vi = a.value("voiceIndex").toInt(0);
+                if (vi >= 0 && vi < (int)voices.size()) {
+                    voice = voices[vi];
+                    resolvedVoiceIndex = vi;
+                }
             } else {
                 return McpToolResult::text(
                     "not a recognized DX7 SysEx file (expected F0 43 00 00 or F0 43 00 09 header)", true);
@@ -119,18 +123,11 @@ s.registerTool({"fm_synth_import_sysex",
             if (!voice.has_value())
                 return McpToolResult::text("failed to parse SysEx data (bad checksum or size)", true);
 
-            auto* proc = e->getMainProcessor();
-            if (!proc) return McpToolResult::text("audio engine not initialized", true);
-            auto* track = proc->getTrack(ti);
-            if (!track) return McpToolResult::text("track not found", true);
-            auto& chain = track->getFXChain();
-            if (si >= (int)chain.size() || !chain[si])
-                return McpToolResult::text("FX slot not found in chain", true);
-            auto* slot = chain[si].get();
-            if (!slot->fmSynthEngine())
-                return McpToolResult::text("FM synth engine not initialized", true);
-
-            slot->fmSynthEngine()->loadPatch(voice->patchData.data());
+            // Route through the command: writes fmPatchData to the slot tree
+            // (so tree-copy renders and save/load hear it) and applies live
+            // best-effort. Works without an audio device.
+            juce::MemoryBlock block(voice->patchData.data(), FmSynthEngine::kPatchSize);
+            e->getProjectCommands().setFmPatch(ti, si, block.toBase64Encoding().toStdString());
 
             QJsonObject result;
             result["ok"] = true;

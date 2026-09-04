@@ -178,6 +178,8 @@ public:
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                         float value) override;
+    void setFmPatch(int trackIndex, int slotIndex,
+                    const std::string& patchBase64) override;
 
     /// Result of importing an Access Virus SysEx patch into a sub_synth slot.
     struct VirusLoadResult {

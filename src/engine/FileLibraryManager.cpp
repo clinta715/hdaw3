@@ -1115,13 +1115,32 @@ std::vector<LibraryEntry> FileLibraryManager::search(const juce::String& query,
             auto it = entries.find(id);
             if (it == entries.end()) continue;
             for (const auto& entry : it->second) {
-                if (queryLower.isNotEmpty()
-                    && !entry.name.toLowerCase().contains(queryLower)
-                    && !entry.path.toLowerCase().contains(queryLower)
-                    && !entry.key.toLowerCase().contains(queryLower)
-                    && !entry.tags.toLowerCase().contains(queryLower)
-                    && !entry.description.toLowerCase().contains(queryLower))
-                    continue;
+                // Tokenized AND match: split the (lowercased) query on
+                // whitespace and require EVERY non-empty token to appear
+                // (case-insensitively) in the entry's combined searchable
+                // text. This is a strict superset of the former whole-string
+                // literal substring match, so multi-word natural-language
+                // queries ("gritty dark bass") work while single-word and
+                // exact-substring behavior is unchanged.
+                if (queryLower.isNotEmpty())
+                {
+                    juce::String haystack = (entry.name + " " + entry.path + " " + entry.key + " "
+                                             + entry.tags + " " + entry.description).toLowerCase();
+                    juce::StringArray tokens;
+                    tokens.addTokens(queryLower, true); // split on whitespace
+                    bool matched = true;
+                    for (const auto& t : tokens)
+                    {
+                        if (t.isEmpty()) continue;
+                        if (!haystack.contains(t))
+                        {
+                            matched = false;
+                            break;
+                        }
+                    }
+                    if (!matched)
+                        continue;
+                }
                 if (durationMin >= 0 && entry.durationSeconds < durationMin) continue;
                 if (durationMax >= 0 && entry.durationSeconds > durationMax) continue;
                 double effBpm = entry.bpm > 0.0 ? entry.bpm : entry.tempo;

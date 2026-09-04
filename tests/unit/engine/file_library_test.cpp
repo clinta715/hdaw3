@@ -165,6 +165,46 @@ TEST_F(FileLibraryTest, SearchByName) {
     EXPECT_EQ(upper[0].name, "alpha.mid");
 }
 
+TEST_F(FileLibraryTest, SearchMultiWordTokenAnd) {
+    // A patch library with a fake patch file + a .dx7.json sidecar whose
+    // description carries the search words non-contiguously (FileLibraryManager
+    // ingests the sidecar via applyPatchSidecar, which reads `description` and
+    // `engine`). This exercises the tokenized AND search: every whitespace-
+    // separated token must appear (case-insensitively) in the combined
+    // searchable text.
+    auto patchDir = tempDir.getChildFile("mw_patch");
+    patchDir.createDirectory();
+    auto patchFile = patchDir.getChildFile("my_patch.syx");
+    patchFile.replaceWithText("fake syx bytes");
+    auto sidecar = patchFile.getFullPathName() + ".dx7.json";
+    juce::File(sidecar).replaceWithText(
+        juce::String(R"({"engine":"fm_synth","description":"rough and gritty, dark character, great for a bass line"})"));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("MW", patchDir.getFullPathName(), "patch");
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning()) << "scan did not complete in time";
+
+    // All three words present, non-contiguously -> AND match.
+    auto multi = mgr.search("gritty dark bass");
+    ASSERT_EQ(multi.size(), 1u);
+    EXPECT_EQ(multi[0].path, patchFile.getFullPathName());
+
+    // Single-word regression: still matches.
+    auto single = mgr.search("dark");
+    ASSERT_EQ(single.size(), 1u);
+
+    // A word absent from every field -> AND semantics exclude it.
+    auto absent = mgr.search("celestial arp");
+    EXPECT_EQ(absent.size(), 0u);
+
+    // Empty query still returns everything.
+    auto all = mgr.search("");
+    ASSERT_EQ(all.size(), 1u);
+}
+
 TEST_F(FileLibraryTest, SearchFiltersByType) {
     auto midiDir = tempDir.getChildFile("ftype_midi");
     midiDir.createDirectory();

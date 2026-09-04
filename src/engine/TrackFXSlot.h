@@ -2,13 +2,16 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 #include "../common/DebugLog.h"
 #include "../common/RealtimeGuard.h"
+#include "../model/ProjectModel.h"
 #include "CLAPPluginInstance.h"
 #include "../proxy/PluginProxySlot.h"
 #include "engine/SamplerEngine.h"
@@ -691,37 +694,18 @@ public:
                 if (internalParamValues.size() > 23) fmSynth->setLfoPitchDepth(internalParamValues[23]);
                 if (internalParamValues.size() > 24) fmSynth->setLfoAmpDepth(internalParamValues[24]);
                 if (internalParamValues.size() > 25) fmSynth->setLfoWaveform(static_cast<int>(internalParamValues[25]));
-                break;
-            }
-            case ActiveType::SubSynth:
-            {
-                if (!subSynth)
-                    subSynth = std::make_unique<SubtractiveSynthEngine>();
-                subSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
-                if (internalParamValues.size() > 0) subSynth->setOsc1Wave(juce::roundToInt(internalParamValues[0]));
-                if (internalParamValues.size() > 1) subSynth->setOsc1Level(internalParamValues[1]);
-                if (internalParamValues.size() > 2) subSynth->setOsc2Wave(juce::roundToInt(internalParamValues[2]));
-                if (internalParamValues.size() > 3) subSynth->setOsc2Level(internalParamValues[3]);
-                if (internalParamValues.size() > 4) subSynth->setOsc2DetuneCents(internalParamValues[4]);
-                if (internalParamValues.size() > 5) subSynth->setSubLevel(internalParamValues[5]);
-                if (internalParamValues.size() > 6) subSynth->setSubOctave(juce::roundToInt(internalParamValues[6]));
-                if (internalParamValues.size() > 7) subSynth->setCutoffHz(internalParamValues[7]);
-                if (internalParamValues.size() > 8) subSynth->setResonance(internalParamValues[8]);
-                if (internalParamValues.size() > 9) subSynth->setDrive(internalParamValues[9]);
-                if (internalParamValues.size() > 10) subSynth->setAttackSeconds(internalParamValues[10]);
-                if (internalParamValues.size() > 11) subSynth->setDecaySeconds(internalParamValues[11]);
-                if (internalParamValues.size() > 12) subSynth->setSustain(internalParamValues[12]);
-                if (internalParamValues.size() > 13) subSynth->setReleaseSeconds(internalParamValues[13]);
-                if (internalParamValues.size() > 14) subSynth->setOutputLevel(internalParamValues[14]);
-                if (internalParamValues.size() > 15) subSynth->setLegato(internalParamValues[15] >= 0.5f);
-                if (internalParamValues.size() > 16) subSynth->setPortamentoSeconds(internalParamValues[16]);
-                if (internalParamValues.size() > 17) subSynth->setFilterType(juce::roundToInt(internalParamValues[17]));
-                if (internalParamValues.size() > 18) subSynth->setFilterEnvAmount(internalParamValues[18]);
-                if (internalParamValues.size() > 19) subSynth->setFilterAttackSeconds(internalParamValues[19]);
-                if (internalParamValues.size() > 20) subSynth->setFilterDecaySeconds(internalParamValues[20]);
-                if (internalParamValues.size() > 21) subSynth->setFilterSustain(internalParamValues[21]);
-                if (internalParamValues.size() > 22) subSynth->setFilterReleaseSeconds(internalParamValues[22]);
-                if (internalParamValues.size() > 23) subSynth->setPitchBendRange(internalParamValues[23]);
+                // Consume a patch staged before the engine existed (restore
+                // path). Applied AFTER the default param pushes: loadPatch
+                // clears paramsDirty_, so the stored patch is authoritative and
+                // the default param pushes above cannot clobber its op-level /
+                // algorithm / feedback / LFO bytes on the next render. Explicit
+                // param_N properties (loadParamsFromTree / loadFmPatchFromTree,
+                // which run after this prepare) still re-mark dirty and win.
+                if (stagedFmPatch_)
+                {
+                    fmSynth->loadPatch(stagedFmPatch_->data());
+                    stagedFmPatch_.reset();
+                }
                 break;
             }
             case ActiveType::GrowlBass:
@@ -803,6 +787,37 @@ public:
                 {
                     psyFm->setAlgorithm(growlBassAlgorithm);
                 }
+                break;
+            }
+            case ActiveType::SubSynth:
+            {
+                if (!subSynth)
+                    subSynth = std::make_unique<SubtractiveSynthEngine>();
+                subSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                if (internalParamValues.size() > 0) subSynth->setOsc1Wave(juce::roundToInt(internalParamValues[0]));
+                if (internalParamValues.size() > 1) subSynth->setOsc1Level(internalParamValues[1]);
+                if (internalParamValues.size() > 2) subSynth->setOsc2Wave(juce::roundToInt(internalParamValues[2]));
+                if (internalParamValues.size() > 3) subSynth->setOsc2Level(internalParamValues[3]);
+                if (internalParamValues.size() > 4) subSynth->setOsc2DetuneCents(internalParamValues[4]);
+                if (internalParamValues.size() > 5) subSynth->setSubLevel(internalParamValues[5]);
+                if (internalParamValues.size() > 6) subSynth->setSubOctave(juce::roundToInt(internalParamValues[6]));
+                if (internalParamValues.size() > 7) subSynth->setCutoffHz(internalParamValues[7]);
+                if (internalParamValues.size() > 8) subSynth->setResonance(internalParamValues[8]);
+                if (internalParamValues.size() > 9) subSynth->setDrive(internalParamValues[9]);
+                if (internalParamValues.size() > 10) subSynth->setAttackSeconds(internalParamValues[10]);
+                if (internalParamValues.size() > 11) subSynth->setDecaySeconds(internalParamValues[11]);
+                if (internalParamValues.size() > 12) subSynth->setSustain(internalParamValues[12]);
+                if (internalParamValues.size() > 13) subSynth->setReleaseSeconds(internalParamValues[13]);
+                if (internalParamValues.size() > 14) subSynth->setOutputLevel(internalParamValues[14]);
+                if (internalParamValues.size() > 15) subSynth->setLegato(internalParamValues[15] >= 0.5f);
+                if (internalParamValues.size() > 16) subSynth->setPortamentoSeconds(internalParamValues[16]);
+                if (internalParamValues.size() > 17) subSynth->setFilterType(juce::roundToInt(internalParamValues[17]));
+                if (internalParamValues.size() > 18) subSynth->setFilterEnvAmount(internalParamValues[18]);
+                if (internalParamValues.size() > 19) subSynth->setFilterAttackSeconds(internalParamValues[19]);
+                if (internalParamValues.size() > 20) subSynth->setFilterDecaySeconds(internalParamValues[20]);
+                if (internalParamValues.size() > 21) subSynth->setFilterSustain(internalParamValues[21]);
+                if (internalParamValues.size() > 22) subSynth->setFilterReleaseSeconds(internalParamValues[22]);
+                if (internalParamValues.size() > 23) subSynth->setPitchBendRange(internalParamValues[23]);
                 break;
             }
             case ActiveType::None:
@@ -1095,6 +1110,37 @@ public:
         }
     }
 
+    // Rebuild path (Gate 1/10): restore an imported DX7 patch (fmPatchData,
+    // base64 of the 156-byte VCED layout) onto the live FM engine. Called after
+    // prepare() + loadParamsFromTree() in Track::rebuildFXChain. When the engine
+    // exists, loads it directly; otherwise stages the patch so prepare() can
+    // consume it. ALWAYS stages as well: Track::prepareToPlay re-runs
+    // slot->prepare() (which re-seeds patchData_ to the init patch) after
+    // rebuildFXChain, so prepare() must re-apply the staged patch. loadPatch
+    // clears paramsDirty_, so any explicit param_N overrides present in the
+    // tree are re-applied here to keep the "param edits win" precedence.
+    // Absent/invalid property = no-op (default init patch stays).
+    void loadFmPatchFromTree(const juce::ValueTree& slotTree)
+    {
+        if (activeType != ActiveType::FmSynth) return;
+        juce::String b64 = slotTree.getProperty(IDs::fmPatchData, "").toString();
+        if (b64.isEmpty()) return;
+        juce::MemoryBlock block;
+        if (!block.fromBase64Encoding(b64) || block.getSize() != FmSynthEngine::kPatchSize) return;
+        stagedFmPatch_.emplace();
+        std::memcpy(stagedFmPatch_->data(), block.getData(), FmSynthEngine::kPatchSize);
+        if (fmSynth)
+        {
+            fmSynth->loadPatch(static_cast<const uint8_t*>(block.getData()));
+            for (size_t i = 0; i < internalParamValues.size(); ++i)
+            {
+                juce::String propName = "param_" + juce::String(static_cast<int>(i));
+                if (slotTree.hasProperty(juce::Identifier(propName)))
+                    applyInternalParamToDsp(static_cast<int>(i), internalParamValues[i]);
+            }
+        }
+    }
+
     void loadSamplerState (const juce::ValueTree& slotTree,
                            juce::AudioFormatManager* formatManager = nullptr,
                            HDAW::DecodedSoundPool* decodedPool = nullptr)
@@ -1381,6 +1427,11 @@ private:
 
     std::shared_ptr<const SamplerSound> stagedSound_;
     SamplerEngine::Params stagedParams_;
+
+    // Staged DX7 patch for an FM synth slot whose engine does not exist yet
+    // (headless/no-device rebuilds): loadFmPatchFromTree stores it here and
+    // prepare() consumes it once the FmSynthEngine is created.
+    std::optional<std::array<uint8_t, FmSynthEngine::kPatchSize>> stagedFmPatch_;
 
     // Multi-sampler key-range routing: MIDI note range for this sampler slot.
     // -1 = full range (default, current behavior); 0..127 = restricted range.

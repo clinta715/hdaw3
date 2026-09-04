@@ -240,6 +240,7 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             slot->prepare(fxSpec);
             slot->loadParamsFromTree(slotTree);
             slot->loadPsyFmStateFromTree(slotTree); // restore mod matrix + sweep rate
+            slot->loadFmPatchFromTree(slotTree);    // restore imported DX7 patch
         }
 
         fxChain.push_back(std::move(slot));
@@ -440,10 +441,10 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                             currentVal = panPosition.getCurrentValue() * 0.5f + 0.5f;
                         else if (pid == 3)
                             currentVal = isMuted.load() ? 1.0f : 0.0f;
-                        else if (pid >= 200)
+                        else if (pid >= 1000)
                         {
-                            int si = (pid - 200) / 100;
-                            int pi = (pid - 200) % 100;
+                            int si = (pid - 1000) / 100;
+                            int pi = (pid - 1000) % 100;
                             if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
                                 currentVal = midiFxChain[si]->getAutomationParam(pi);
                         }
@@ -467,10 +468,10 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                                 panPosition.setTargetValue(static_cast<float>(value * 2.0f - 1.0f));
                             else if (pid == 3)
                                 isMuted.store(value >= 0.5f);
-                            else if (pid >= 200)
+                            else if (pid >= 1000)
                             {
-                                int si = (pid - 200) / 100;
-                                int pi = (pid - 200) % 100;
+                                int si = (pid - 1000) / 100;
+                                int pi = (pid - 1000) % 100;
                                 if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
                                     midiFxChain[si]->setAutomationParam(pi, static_cast<float>(value));
                             }
@@ -611,10 +612,10 @@ void Track::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mid
                         modGain = modVal;
                     else if (pid == 2)
                         modPan = modVal;
-                    else if (pid >= 200)
+                    else if (pid >= 1000)
                     {
-                        int si = (pid - 200) / 100;
-                        int pi = (pid - 200) % 100;
+                        int si = (pid - 1000) / 100;
+                        int pi = (pid - 1000) % 100;
                         if (si < static_cast<int>(midiFxChain.size()) && midiFxChain[si])
                         {
                             float base = midiFxChain[si]->getAutomationParam(pi);
