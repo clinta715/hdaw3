@@ -317,3 +317,106 @@ TEST_F(FileLibraryPatchTest, AuditionPatchSniffsEngineFromFile) {
     EXPECT_TRUE(result.value("ok").toBool());
     EXPECT_EQ(result.value("engine").toString().toStdString(), "sub_synth");
 }
+
+// ── timbre clustering for patches (dsp sidecar ingest) ──────────────────────
+namespace {
+
+// Patch sidecar (virus schema) whose `dsp` dict carries ALL kDspFeatureCount
+// keys in kDspFeatureKeys order. Every dim = base + 0.5*i, so two sidecars with
+// near bases are near-identical in dsp space while a large base is far away.
+juce::String patchSidecarWithDsp(const char* desc, double base) {
+    juce::String json =
+        "{\"schema\":\"hdaw.virus.patch.v1\",\"engine\":\"sub_synth\","
+        "\"roleCheck\":{\"role\":\"bass\",\"verdict\":\"pass\"},"
+        "\"description\":\"" + juce::String(desc) + "\",\"dsp\":{";
+    for (int i = 0; i < HDAW::kDspFeatureCount; ++i) {
+        if (i > 0) json += ",";
+        json += "\"" + juce::String(HDAW::kDspFeatureKeys[i]) + "\":"
+              + juce::String(base + 0.5 * (double)i, 6);
+    }
+    json += "}}";
+    return json;
+}
+
+// Same shape but NO `dsp` key — the patch still has text/tags signal.
+juce::String plainPatchSidecar(const char* desc) {
+    return "{\"schema\":\"hdaw.virus.patch.v1\",\"engine\":\"sub_synth\","
+           "\"roleCheck\":{\"role\":\"bass\",\"verdict\":\"pass\"},"
+           "\"description\":\"" + juce::String(desc) + "\"}";
+}
+
+const HDAW::Cluster* clusterWithMember(const HDAW::ClusterOutcome& o,
+                                       const juce::String& name) {
+    for (const auto& c : o.clusters)
+        for (const auto& m : c.members)
+            if (m.name == name) return &c;
+    return nullptr;
+}
+
+} // namespace
+
+// dspFeatures ingested from the patch sidecar `dsp` dict — all 20 keys.
+TEST_F(FileLibraryPatchTest, PatchSidecarDspIngested) {
+    static_assert(HDAW::kDspFeatureCount == 20, "dsp contract is 20 keys");
+
+    auto dir = makePatchDir();
+    auto patchFile = dir.getChildFile("bcsingle.syx");
+    writeSidecar(patchFile, patchSidecarWithDsp("Bass with dsp", 1.0));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Patch Lib", dir.getFullPathName(), "patch");
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+
+    auto e = mgr.getEntry(id, patchFile.getFullPathName());
+    ASSERT_EQ(e.name, "bcsingle.syx");
+    ASSERT_EQ(e.dspFeatures.size(), (size_t)HDAW::kDspFeatureCount)
+        << "all 20 dsp keys present + finite must populate dspFeatures";
+    // Spot-check dims in kDspFeatureKeys order: dim5 = centroid = 1.0 + 2.5.
+    EXPECT_NEAR(e.dspFeatures[5], 3.5, 1e-6);
+    EXPECT_NEAR(e.dspFeatures[12], 7.0, 1e-6); // mel_low
+}
+
+// clusterLibrary with method "dsp" over a patch library: near-identical dsp
+// vectors cluster together, a far vector separates, and an entry without a dsp
+// sidecar is excluded to unassigned.
+TEST_F(FileLibraryPatchTest, PatchLibraryClusterableByDsp) {
+    auto dir = tempDir.getChildFile("patch_cluster");
+    dir.createDirectory();
+    auto src = virusFixture();
+    const juce::String names[] = {"patch_a.syx", "patch_b.syx",
+                                  "patch_c.syx", "patch_d.syx"};
+    for (const auto& n : names)
+        src.copyFileTo(dir.getChildFile(n));
+
+    writeSidecar(dir.getChildFile("patch_a.syx"), patchSidecarWithDsp("a", 1.0));
+    writeSidecar(dir.getChildFile("patch_b.syx"), patchSidecarWithDsp("b", 1.05));
+    writeSidecar(dir.getChildFile("patch_c.syx"), patchSidecarWithDsp("c", 50.0));
+    writeSidecar(dir.getChildFile("patch_d.syx"), plainPatchSidecar("d"));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("Patch Lib", dir.getFullPathName(), "patch");
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+    ASSERT_EQ(mgr.search("", "patch").size(), 4u);
+
+    juce::String error;
+    auto outcome = mgr.clusterLibrary(juce::StringArray{id}, 2, "dsp", error);
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    ASSERT_EQ(outcome.method, "dsp");
+
+    // The two near-identical vectors (a, b) must land in the same cluster.
+    auto* clusterA = clusterWithMember(outcome, "patch_a.syx");
+    auto* clusterB = clusterWithMember(outcome, "patch_b.syx");
+    ASSERT_NE(clusterA, nullptr) << "patch_a must be clustered";
+    ASSERT_NE(clusterB, nullptr) << "patch_b must be clustered";
+    EXPECT_EQ(clusterA, clusterB) << "near-identical dsp vectors share a cluster";
+
+    // The far vector separates, and the no-dsp entry is unassigned for dsp.
+    EXPECT_NE(clusterWithMember(outcome, "patch_c.syx"), clusterA);
+    bool inUnassigned = false;
+    for (const auto& u : outcome.unassigned)
+        if (u.name == "patch_d.syx") { inUnassigned = true; break; }
+    EXPECT_TRUE(inUnassigned) << "entry without a dsp sidecar is excluded (unassigned) for method dsp";
+    EXPECT_EQ(clusterWithMember(outcome, "patch_d.syx"), nullptr);
+}

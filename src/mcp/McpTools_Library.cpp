@@ -281,13 +281,16 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
     };
 
     s.registerTool({"cluster_library",
-        "Cluster entries from one or more audio libraries into k groups by timbre "
-        "(text tags/description + numeric dsp features from TimbreLib sidecars). "
-        "Omit libraryIds to cluster ALL audio libraries. k omitted (0) = auto "
-        "(silhouette). method: hybrid (default) | text | dsp. "
-        "saveAs names the result as a cluster preset (response gains presetId); "
-        "clusterId narrows the SAVED preset to one cluster (c1..cK) — unassigned "
-        "is omitted — without changing the returned clusters.",
+        "Cluster entries from one or more audio or patch libraries into k groups by "
+        "timbre (text tags/description + numeric dsp features from TimbreLib "
+        "sidecars). Patch entries cluster by timbre only when their sidecar carries "
+        "a rendered-probe dsp vector (the sweep writes it); entries without one fall "
+        "to text-only clustering / unassigned. Omit libraryIds to cluster ALL audio "
+        "or patch libraries. k omitted (0) = auto (silhouette). method: hybrid "
+        "(default) | text | dsp. saveAs names the result as a cluster preset "
+        "(response gains presetId); clusterId narrows the SAVED preset to one "
+        "cluster (c1..cK) — unassigned is omitted — without changing the returned "
+        "clusters.",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
                    {"k", QJsonObject{{"type","integer"}}},
@@ -436,10 +439,13 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
 
     s.registerTool({"related_samples",
         "Find entries similar to a seed sample (filePath) or to a text query, "
-        "within one or more audio libraries — nearest neighbours by timbre "
-        "(tags/description + dsp features). Exactly one of filePath or query "
-        "is required. limit default 10, max 100. Each result hit includes "
-        "libraryId (the audio library the entry belongs to).",
+        "within one or more audio or patch libraries — nearest neighbours by "
+        "timbre (tags/description + dsp features). Patch entries cluster by "
+        "timbre only when their sidecar carries a rendered-probe dsp vector "
+        "(the sweep writes it); entries without one fall to text-only "
+        "clustering / unassigned. Exactly one of filePath or query is "
+        "required. limit default 10, max 100. Each result hit includes "
+        "libraryId (the audio or patch library the entry belongs to).",
         objSchema({{"libraryIds", QJsonObject{{"type","array"},
                     {"items", QJsonObject{{"type","string"}}}}},
                    {"filePath", QJsonObject{{"type","string"}}},

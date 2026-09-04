@@ -125,6 +125,18 @@ ENGINES = {
 
 ACCESS_VIRUS_HEADER = b"\xf0\x00\x20\x33\x01"  # first 5 bytes of a Virus SysEx
 
+# The 20-key DSP feature vector returned by timbre.extract() (what the probe
+# analyzer's `measurements` carry). MUST match kDspFeatureKeys in
+# src/engine/LibraryClusterer.h exactly — the C++ ingest (applyPatchSidecar /
+# applyTimbreSidecar) requires ALL 20 keys present and finite, else the entry
+# has no dsp signal and clusters by text only.
+DSP_KEYS = (
+    "duration", "rms", "peak", "crest_dB", "zcr", "centroid", "bandwidth",
+    "rolloff85", "rolloff95", "flatness", "spectral_crest", "spec_irregularity",
+    "mel_low", "mel_mid", "mel_high", "attack_s", "decay_s", "f0_hz",
+    "tonal_fraction", "f0_sweep",
+)
+
 
 def sanitize(s):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s)
@@ -607,20 +619,46 @@ def write_patch_sidecar(entry, args, cfg):
         return warnings
     sidecar_path = src + cfg["sidecar_suffix"]
     sidecar = _build_sidecar(entry, args, cfg)
+    # dsp: the rendered-probe timbre vector (timbre.extract's 20 keys, already
+    # in analysis["measurements"]) so cluster_library / related_samples can
+    # cluster patches by timbre. Probe-context-specific — cluster only patches
+    # swept with the same role/seed/window/bpm. Missing/partial keys simply
+    # yield a smaller dict; the C++ ingest then leaves dspFeatures empty.
+    measurements = analysis.get("measurements") or {}
+    dsp = {k: measurements[k] for k in DSP_KEYS if k in measurements}
+    if dsp:
+        sidecar["dsp"] = dsp
     # Do-not-downgrade guard: a DSP-only re-run must never clobber an existing
-    # curated (Qwen) description; --gguf overwrites.
+    # curated (Qwen) description; --gguf overwrites. When an existing sidecar
+    # carries a description (and this run is NOT --gguf), MERGE instead of
+    # skipping: preserve the curated description while refreshing `dsp` and
+    # roleCheck.verdict from the fresh analysis — so a DSP-only re-sweep adds
+    # `dsp` to sidecars originally written by dx7_patch.py / virus_patch.py.
     if os.path.exists(sidecar_path):
+        existing_sidecar = None
         existing_desc = ""
         try:
             with open(sidecar_path, "r", encoding="utf-8") as fh:
-                existing = json.load(fh)
-            existing_desc = (existing or {}).get("description") or ""
+                existing_sidecar = json.load(fh)
+            existing_desc = (existing_sidecar or {}).get("description") or ""
         except Exception:  # noqa: BLE001 - malformed sidecar is overwritten
+            existing_sidecar = None
             existing_desc = ""
         if existing_desc and args.gguf is None:
-            warnings.append(
-                f"sidecar kept (existing description non-empty, no --gguf): "
-                f"{sidecar_path}")
+            merged = dict(existing_sidecar or {})
+            merged["description"] = existing_desc
+            if dsp:
+                merged["dsp"] = dsp
+            if isinstance(merged.get("roleCheck"), dict):
+                merged["roleCheck"]["verdict"] = verdict
+            else:
+                merged["roleCheck"] = {"verdict": verdict}
+            try:
+                with open(sidecar_path, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(merged, indent=2))
+                entry["sidecar_written"] = True
+            except OSError as e:
+                warnings.append(f"sidecar write failed for {sidecar_path}: {e}")
             return warnings
     try:
         with open(sidecar_path, "w", encoding="utf-8") as fh:
@@ -1092,7 +1130,11 @@ def build_parser():
                          "<patch>.virus.json (sub_synth) sidecar next to each "
                          "analyzed patch with its (Qwen) description + role "
                          "verdict, so FileLibraryManager / search_library "
-                         "can index it")
+                         "can index it; also writes a dsp feature vector "
+                         "(rendered-probe timbre) so cluster_library can "
+                         "cluster patches; dsp is probe-context-specific — "
+                         "cluster only patches swept with the same "
+                         "role/seed/window/bpm")
     ap.add_argument("--bpm", type=float, default=138.0,
                     help="tempo for note timing (default 138)")
     ap.add_argument("--window", type=float, default=4.0,

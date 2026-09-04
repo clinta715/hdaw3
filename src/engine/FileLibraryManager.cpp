@@ -918,6 +918,11 @@ LibraryEntry FileLibraryManager::extractPatchMetadata(const juce::File& file) {
 //   roleVerdict — sidecar roleCheck.verdict (pass/fail/unknown/empty)
 //   unmapped    — comma-joined `unmapped` array (Virus features with no
 //                 sub_synth equivalent)
+//   dspFeatures — the sidecar `dsp` object: the 20-key rendered-probe timbre
+//                 vector (kDspFeatureKeys) written by sweep_dx7_patches.py
+//                 --sidecars. Accepted only when ALL 20 keys are present and
+//                 finite (same contract as the audio sidecar); otherwise the
+//                 entry has no dsp signal and clusters by text only.
 // Missing sidecar and malformed JSON are tolerated — fields stay empty and no
 // exception escapes (must never break the scan's per-file try/catch).
 void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File& patchFile) {
@@ -992,6 +997,26 @@ void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File
         }
     }
     entry.tags = tags.joinIntoString(", ");
+
+    // dsp: object with the 20 numeric keys in kDspFeatureKeys (same contract
+    // as the audio sidecar ingest above — accepted only when ALL 20 keys are
+    // present and finite, no partial vectors / no imputation). Written by
+    // sweep_dx7_patches.py --sidecars from the rendered-probe
+    // timbre.extract() vector; probe-context-specific, so cluster only
+    // patches swept with the same role/seed/window/bpm.
+    if (auto* dsp = obj->getProperty("dsp").getDynamicObject()) {
+        std::vector<double> vals;
+        vals.reserve((size_t)kDspFeatureCount);
+        bool ok = true;
+        for (int i = 0; i < kDspFeatureCount; ++i) {
+            const juce::var& v = dsp->getProperty(kDspFeatureKeys[i]);
+            if (!v.isDouble() && !v.isInt() && !v.isInt64()) { ok = false; break; }
+            const double d = (double)v;
+            if (!std::isfinite(d)) { ok = false; break; }
+            vals.push_back(d);
+        }
+        if (ok) entry.dspFeatures = std::move(vals);
+    }
 }
 
 LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {
@@ -1190,30 +1215,34 @@ bool FileLibraryManager::collectClusterEntries(const juce::StringArray& libraryI
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (libraryIds.isEmpty()) {
-            // Omitted scope = ALL audio-type libraries (midi excluded).
+            // Omitted scope = ALL audio- and patch-type libraries (midi
+            // excluded). Patch entries cluster by timbre only when their
+            // sidecar carries a rendered-probe dsp vector (the sweep writes
+            // it); entries without one fall to text-only / unassigned.
             for (const auto& lib : libraries)
-                if (lib.type == "audio") selected.push_back(lib.id);
+                if (lib.type == "audio" || lib.type == "patch") selected.push_back(lib.id);
             if (selected.empty()) {
-                error = "no audio libraries found";
+                error = "no audio or patch libraries found";
                 return false;
             }
         } else {
             // Provided scope = exactly those libraries. Unknown ids and known
-            // non-audio ids are errors listing the offenders — never silent skips.
+            // non-audio/non-patch ids are errors listing the offenders — never
+            // silent skips.
             juce::StringArray unknown, notAudio;
             for (const auto& id : libraryIds) {
                 const LibraryInfo* found = nullptr;
                 for (const auto& lib : libraries)
                     if (lib.id == id) { found = &lib; break; }
                 if (found == nullptr) unknown.add(id);
-                else if (found->type != "audio") notAudio.add(id);
+                else if (found->type != "audio" && found->type != "patch") notAudio.add(id);
             }
             if (!unknown.isEmpty()) {
                 error = "unknown library ids: " + unknown.joinIntoString(", ");
                 return false;
             }
             if (!notAudio.isEmpty()) {
-                error = "not audio libraries: " + notAudio.joinIntoString(", ");
+                error = "not audio or patch libraries: " + notAudio.joinIntoString(", ");
                 return false;
             }
             selected.assign(libraryIds.begin(), libraryIds.end());
