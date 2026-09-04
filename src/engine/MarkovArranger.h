@@ -12,8 +12,22 @@
 
 namespace HDAW {
 
+// The "closest correct number of patterns" for a section type: the resolved
+// layer bounds + target the explicit section script uses when the caller
+// does not override them (psytrance production canon).
+struct MarkovSectionBudget {
+    int minTracks = 1;
+    int maxTracks = 3;
+    int minPercTracks = 1;
+    int maxPercTracks = 2;
+    int targetCount = 2;
+};
+
 struct MarkovArranger {
     static PsytranceMarkovScore run(const PsytranceMarkovParams& params);
+    // Default budget for a section type. Aliases accepted (intro/outro ->
+    // sparse, drop/climax -> peak); unknown types fall back to sparse.
+    static MarkovSectionBudget sectionDefaults(const std::string& type);
 };
 
 } // namespace HDAW

@@ -29,7 +29,36 @@ const char* sectionName(SectionEnergy s)
     return "build";
 }
 
+// Canonical type string -> energy (aliases already normalized by validation).
+SectionEnergy sectionFromType(const std::string& type)
+{
+    if (type == "build")     return SectionEnergy::Build;
+    if (type == "peak")      return SectionEnergy::Peak;
+    if (type == "breakdown") return SectionEnergy::Breakdown;
+    return SectionEnergy::Sparse;
+}
+
+// One resolved explicit-script window: energy, bar range and the effective
+// layer bounds (spec override, else the type budget) built once per section.
+struct ScriptSection {
+    SectionEnergy energy = SectionEnergy::Sparse;
+    int startBar = 0; // inclusive cumulative bar offset
+    int effMinTracks = 1, effMaxTracks = 3, effMinPerc = 1, effMaxPerc = 2;
+    int targetCount = 2;
+};
+
 } // namespace
+
+MarkovSectionBudget MarkovArranger::sectionDefaults(const std::string& typeIn)
+{
+    std::string type = typeIn;
+    if (type == "intro" || type == "outro") type = "sparse";
+    else if (type == "drop" || type == "climax") type = "peak";
+    if (type == "build")     return { 2, 5, 1, 3, 4 };
+    if (type == "peak")      return { 4, 9, 2, 4, 7 };
+    if (type == "breakdown") return { 1, 3, 1, 2, 2 };
+    return { 1, 3, 1, 2, 2 }; // sparse + unknown fall back to the sparse budget
+}
 
 PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
 {
@@ -86,6 +115,92 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     if (p.minTracks > mappedCount) { score.error = "minTracks exceeds mapped role count"; return score; }
     if (p.minPercTracks > mappedPercCount) { score.error = "minPercTracks exceeds mapped percussive roles"; return score; }
 
+    // ── Explicit section script (optional): the caller's arrangement shape.
+    //    When sections is empty the seeded slow tier + global bounds drive
+    //    everything (byte-identical to pre-script behavior). Aliases accepted:
+    //    intro/outro -> sparse, drop/climax -> peak. Gate 9: unknown types,
+    //    malformed bars and inconsistent/out-of-range resolved bounds are
+    //    rejected here (tool-named errors, nothing generated). ──
+    std::vector<ScriptSection> script;
+    if (!p.sections.empty())
+    {
+        int acc = 0;
+        for (size_t i = 0; i < p.sections.size(); ++i)
+        {
+            const auto& spec = p.sections[i];
+            const std::string canon = (spec.type == "intro" || spec.type == "outro") ? "sparse"
+                : (spec.type == "drop" || spec.type == "climax") ? "peak" : spec.type;
+            if (canon != "sparse" && canon != "build" && canon != "peak" && canon != "breakdown")
+            {
+                score.error = "sections[" + std::to_string(i)
+                    + "].type must be sparse|build|peak|breakdown "
+                      "(aliases intro/outro->sparse, drop/climax->peak)";
+                return score;
+            }
+            if (spec.bars < 2 || spec.bars % 2 != 0 || spec.bars > 256)
+            {
+                score.error = "sections[" + std::to_string(i)
+                    + "].bars must be even, >= 2, <= 256";
+                return score;
+            }
+            const MarkovSectionBudget b = MarkovArranger::sectionDefaults(canon);
+            ScriptSection ss;
+            ss.energy = sectionFromType(canon);
+            ss.startBar = acc;
+            acc += spec.bars;
+            ss.effMinTracks = spec.minTracks >= 0 ? spec.minTracks : b.minTracks;
+            ss.effMaxTracks = spec.maxTracks >= 0 ? spec.maxTracks : b.maxTracks;
+            ss.effMinPerc   = spec.minPercTracks >= 0 ? spec.minPercTracks : b.minPercTracks;
+            ss.effMaxPerc   = spec.maxPercTracks >= 0 ? spec.maxPercTracks : b.maxPercTracks;
+            ss.targetCount  = b.targetCount;
+            // Resolved-bounds validation: the same ceilings/consistency the
+            // global params enforce, applied to each resolved script window.
+            if (ss.effMinTracks < 1 || ss.effMaxTracks > 9)
+            {
+                score.error = "sections[" + std::to_string(i)
+                    + "] resolved minTracks/maxTracks must be within 1..9";
+                return score;
+            }
+            if (ss.effMinPerc < 0 || ss.effMaxPerc > 5)
+            {
+                score.error = "sections[" + std::to_string(i)
+                    + "] resolved minPercTracks/maxPercTracks must be within 0..5";
+                return score;
+            }
+            if (ss.effMinTracks > ss.effMaxTracks)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: minTracks must be <= maxTracks";
+                return score;
+            }
+            if (ss.effMinPerc > ss.effMaxPerc)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: minPercTracks must be <= maxPercTracks";
+                return score;
+            }
+            if (ss.effMaxPerc > ss.effMaxTracks)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: maxPercTracks must be <= maxTracks";
+                return score;
+            }
+            if (ss.effMinPerc > ss.effMinTracks)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: minPercTracks must be <= minTracks";
+                return score;
+            }
+            if (ss.effMinTracks > mappedCount)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: minTracks exceeds mapped role count";
+                return score;
+            }
+            if (ss.effMinPerc > mappedPercCount)
+            {
+                score.error = "sections[" + std::to_string(i) + "]: minPercTracks exceeds mapped percussive roles";
+                return score;
+            }
+            script.push_back(ss);
+        }
+    }
+
     // totalBars: even, round up (spec). 255 → 256, 1 → 2.
     const int totalBars = p.totalBars + (p.totalBars % 2);
     const double totalBeats = totalBars * 4.0;
@@ -128,6 +243,25 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     // ── Key-change direction: ONE seeded choice at generation start ──
     harmony.initKey(p.keyRoot, p.scaleMode, rng, p.keyShiftDegrees);
 
+    // ── Effective per-window layer bounds ─────────────────────────────────
+    // Script mode resolves {min,max,percs} per window from the spec overrides
+    // or the section-type budget; with no script the effective bounds stay the
+    // global params, so the seeded path is byte-identical. targetCount < 0
+    // means no explicit target-layer bias (script-empty path).
+    int effMinTracks = p.minTracks;
+    int effMaxTracks = p.maxTracks;
+    int effMinPercTracks = p.minPercTracks;
+    int effMaxPercTracks = p.maxPercTracks;
+    int targetCount = -1;
+    if (!script.empty())
+    {
+        effMinTracks = script.front().effMinTracks;
+        effMaxTracks = script.front().effMaxTracks;
+        effMinPercTracks = script.front().effMinPerc;
+        effMaxPercTracks = script.front().effMaxPerc;
+        targetCount = script.front().targetCount;
+    }
+
     // ── Start state: kick+hat if mapped (perc-min aware), fill to minTracks ──
     std::set<std::string> active;
     std::map<std::string, int> ages; // running bars; absent = 0 (fresh (re-)add)
@@ -153,13 +287,13 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     // the arp lead the stack (genre: full sections always carry them) — the
     // Markov can strip them later, but the track starts as a track.
     auto startActivate = [&](const std::string& role) -> bool {
-        if ((int) active.size() >= p.maxTracks) return false;
-        if (isPercRole(role) && percActiveCount() >= p.maxPercTracks) return false;
+        if ((int) active.size() >= effMaxTracks) return false;
+        if (isPercRole(role) && percActiveCount() >= effMaxPercTracks) return false;
         return tryActivate(role);
     };
     startActivate("kick");
     startActivate("hat");
-    while (percActiveCount() < p.minPercTracks) // perc floor (clap tops up)
+    while (percActiveCount() < effMinPercTracks) // perc floor (clap tops up)
     {
         if (p.clap >= 0 && !active.count("clap")) { if (!startActivate("clap")) break; }
         else break;
@@ -168,7 +302,7 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     startActivate("arp");
     for (const char* r : { "stab", "pad" }) // melodic fill to the floor
     {
-        if ((int) active.size() >= p.minTracks) break;
+        if ((int) active.size() >= effMinTracks) break;
         startActivate(r);
     }
 
@@ -178,6 +312,7 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
 
     // ── Slow tier: section energy (sparse/build/peak/breakdown) ──
     SectionEnergy section = (SectionEnergy) rngInt(0, 2); // seeded opener (no breakdown start)
+    if (!script.empty()) section = script.front().energy; // script mode: start where the script says
     auto advanceSection = [&]() { // seeded transition at each slow boundary
         const double r = rng01();
         switch (section)
@@ -264,16 +399,16 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
         if (!percR && bar % 4 != 0) return false; // melodic add: 4-bar boundary only
         const int count = (int) active.size();
         const int percN = percActiveCount();
-        if (count < p.maxTracks)
-            return percR ? percN < p.maxPercTracks : true;
+        if (count < effMaxTracks)
+            return percR ? percN < effMaxPercTracks : true;
         // count == maxTracks → evict path (swap keeps the total constant)
-        if (percR) return percN < p.maxPercTracks;
+        if (percR) return percN < effMaxPercTracks;
         bool nonPercActive = false;
         for (const auto& a : active) if (!isPercRole(a)) { nonPercActive = true; break; }
-        return nonPercActive || percN > p.minPercTracks;
+        return nonPercActive || percN > effMinPercTracks;
     };
     auto canRemoveTarget = [&](const std::string& r, int bar) {
-        if ((int) active.size() <= p.minTracks) return false;
+        if ((int) active.size() <= effMinTracks) return false;
         // Floor canon: kick+bass are the genre floor — they only drop out as
         // a tension device inside a breakdown (and are preferred to return at
         // the drop). With the section tier off (sectionCycleBars=0) the state
@@ -283,7 +418,7 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
         if (!isPercRole(r) && bar % 4 != 0) return false; // melodic remove: 4-bar boundary
         if (r == "bass" && ages[r] < kBassHoldBars) return false; // bass min-hold
         if (r == "kick" && ages[r] < kKickHoldBars) return false; // kick min-hold
-        return !isPercRole(r) || percActiveCount() > p.minPercTracks;
+        return !isPercRole(r) || percActiveCount() > effMinPercTracks;
     };
 
     // ── Volume fade automation (P0 ontology) ──
@@ -306,6 +441,8 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
         score.automations.push_back({ role, "volume", bar * 4.0, 0.0, lenBeats });
     };
 
+    size_t scriptIdx = 0; // active script-section index (script mode only)
+
     for (int bar = 0; bar < totalBars; bar += 2)
     {
         const int activeCount = (int) active.size();
@@ -318,7 +455,25 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
         // (4) execution target draws, (5) accent micro-variation, (6) note extras.
         const bool sectionBoundary = kBaseCycle > 0 && bar >= nextSectionBar;
         bool sectionChanged = false;
-        if (sectionBoundary)
+        if (!script.empty())
+        {
+            // Script mode: resolve the active script window for this bar (the
+            // final spec covers the arrangement tail). Overrides the seeded
+            // schedule AND the effective per-window layer bounds.
+            while (scriptIdx + 1 < script.size() && bar >= script[scriptIdx + 1].startBar)
+                ++scriptIdx;
+            const ScriptSection& win = script[scriptIdx];
+            const SectionEnergy prevSection = section;
+            section = win.energy;
+            effMinTracks = win.effMinTracks;
+            effMaxTracks = win.effMaxTracks;
+            effMinPercTracks = win.effMinPerc;
+            effMaxPercTracks = win.effMaxPerc;
+            targetCount = win.targetCount;
+            sectionChanged = section != prevSection;
+            if (sectionChanged) sectionStartBar = bar;
+        }
+        else if (sectionBoundary)
         {
             const SectionEnergy prevSection = section;
             const int sectionAge = bar - sectionStartBar;
@@ -350,8 +505,8 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
         }
         else
         {
-            const int range = std::max(1, p.maxTracks - p.minTracks);
-            const double pos = (double) (activeCount - p.minTracks) / (double) range;
+            const int range = std::max(1, effMaxTracks - effMinTracks);
+            const double pos = (double) (activeCount - effMinTracks) / (double) range;
             bool anyAddable = false;
             for (const char* r : kCoreRoles)
                 if (!active.count(r) && canAddTarget(r, bar)) { anyAddable = true; break; }
@@ -394,12 +549,22 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
                 case SectionEnergy::Peak:
                     wKeep *= 1.5; wSwap *= 1.2; wRemove *= 0.7; break;
                 case SectionEnergy::Breakdown:
-                    if (activeCount > p.minTracks) { wAdd = 0.0; wRemove *= 2.2; }
+                    if (activeCount > effMinTracks) { wAdd = 0.0; wRemove *= 2.2; }
                     else wAdd *= 2.0; // subtracted to the floor → re-build
                     break;
             }
 
-            if (activeCount >= p.maxTracks) wAdd *= 0.6;         // evict-swap is pricier
+            // Target-layer bias (explicit script only): steer the active count
+            // toward the section's "closest correct number" of layers. Gentle
+            // and fully deterministic (same seed + params -> identical) — the
+            // hard [min,max] clamp still bounds the count.
+            if (targetCount >= 0)
+            {
+                if (activeCount < targetCount) { wAdd *= 1.4; wKeep *= 0.85; }
+                else if (activeCount > targetCount) { wRemove *= 1.4; }
+            }
+
+            if (activeCount >= effMaxTracks) wAdd *= 0.6;       // evict-swap is pricier
             // Density scales the variation probability (Keep is the anchor).
             const double varScale = 0.25 + 1.5 * density;
             wAdd *= varScale; wRemove *= varScale; wSwap *= varScale; wFx *= varScale;
@@ -519,7 +684,7 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
                     targetRole = floorPref;
                 else
                     targetRole = inactive[rngInt(0, (int) inactive.size() - 1)];
-                if ((int) active.size() >= p.maxTracks)
+                if ((int) active.size() >= effMaxTracks)
                 {
                     // evict-on-max: age-weighted replacement, cadence + perc-min aware.
                     std::vector<std::string> evictable, evictableNonPerc;

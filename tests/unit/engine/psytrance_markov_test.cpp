@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
 #include "engine/PsytranceMarkovGenerator.h"
+#include "engine/MarkovArranger.h"
 #include "engine/PsytranceGenerator.h"
 #include "engine/PhraseGenerator.h"
 #include "engine/AudioEngineCommands_Helpers.h"
@@ -17,6 +18,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 // PsytranceMarkovGenerator gates (guide §4B — incremental 2-bar generation):
@@ -915,6 +917,187 @@ TEST(PsytranceMarkov, SectionTransitionsAreAudible)
     EXPECT_GE(transitions, 8) << "not enough section movement to gate on";
 }
 
+// ── Explicit section script: step.section labels follow the script exactly,
+//    and section changes land on the scripted (even-bar) boundaries. Script
+//    uses the DEFAULT budgets (no per-section overrides); the final spec
+//    covers the arrangement tail. ──────────────────────────────────────────
+TEST(PsytranceMarkov, SectionScriptRespected)
+{
+    for (uint64_t seed : { 2ull, 42ull, 43ull })
+    {
+        auto p = baseParams(seed, 64);
+        p.sections = { { "sparse", 8 }, { "build", 16 }, { "breakdown", 8 }, { "peak", 32 } };
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        ASSERT_EQ(s.steps.size(), 32u);
+
+        auto expected = [](int bar) -> const char* {
+            if (bar < 8)  return "sparse";
+            if (bar < 24) return "build";
+            if (bar < 32) return "breakdown";
+            return "peak"; // tail coverage to the arrangement end
+        };
+        std::string prev;
+        for (const auto& st : s.steps)
+        {
+            EXPECT_EQ(st.section, expected(st.barStart)) << "bar " << st.barStart;
+            if (!prev.empty() && prev != st.section)
+                EXPECT_EQ(st.barStart % 2, 0)
+                    << "section changed mid-window at bar " << st.barStart;
+            prev = st.section;
+        }
+    }
+}
+
+// ── Per-section layer bounds: a build capped at 2 layers never exceeds it,
+//    and a peak floored at 7 layers reliably reaches that floor (the count
+//    converges to the section budget; removals below the floor are blocked).
+//    The counts are backed by real produced clips. ─────────────────────────
+TEST(PsytranceMarkov, SectionScriptPerSectionBounds)
+{
+    auto p = baseParams(42, 72);
+    p.sections = {
+        { "build", 8,  -1, 2, -1, 2 }, // build capped at 2 layers (perc too)
+        { "peak", 64,   7, -1, -1, -1 }, // peak floored at 7 layers
+    };
+    const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+    ASSERT_TRUE(s.error.empty()) << s.error;
+
+    int maxBuild = 0, maxPeak = 0;
+    std::set<std::string> peakRoles;
+    for (const auto& st : s.steps)
+    {
+        const int n = (int) st.activeRoles.size();
+        if (st.section == "build")
+            maxBuild = std::max(maxBuild, n);
+        else if (st.section == "peak")
+        {
+            maxPeak = std::max(maxPeak, n);
+            for (const auto& r : st.activeRoles) peakRoles.insert(r);
+        }
+    }
+    EXPECT_LE(maxBuild, 2) << "build exceeded its 2-layer cap";
+    EXPECT_GE(maxPeak, 7) << "peak never reached its 7-layer floor";
+
+    // The layer counts are backed by real produced clips (steps + clips gate).
+    EXPECT_GE((int) peakRoles.size(), 7);
+    for (const auto& r : peakRoles)
+        EXPECT_NE(notesOf(s, r.c_str()), nullptr)
+            << r << " active in peak but produced no clip";
+}
+
+// ── Floor canon with a script: with a breakdown in the script, kick/bass
+//    are only ever removed inside breakdown steps (RemoveLayer or presence
+//    drop), and the breakdown actually strips the floor (non-vacuous).
+//    Mirrors FloorRolesOnlyDropInBreakdown with the script driving the
+//    sections instead of the seeded schedule. ──────────────────────────────
+TEST(PsytranceMarkov, SectionScriptFloorRemovalOnlyInBreakdown)
+{
+    auto contains = [](const std::vector<std::string>& v, const char* r) {
+        return std::find(v.begin(), v.end(), r) != v.end();
+    };
+    int breakdownSteps = 0, breakdownFloorRemovals = 0;
+    for (uint64_t seed = 100; seed < 140; ++seed)
+    {
+        auto p = baseParams(seed, 64);
+        p.sections = { { "sparse", 8 }, { "build", 16 },
+                       { "breakdown", 16 }, { "peak", 24 } };
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (size_t i = 0; i < s.steps.size(); ++i)
+        {
+            const auto& st = s.steps[i];
+            if (st.section == "breakdown") ++breakdownSteps;
+            for (const char* role : { "kick", "bass" })
+            {
+                // RemoveLayer targeting the floor: the step's section must be
+                // breakdown (also holds for evict-on-max — same gate).
+                if (actionOf(st) == "RemoveLayer" && st.targetRole == role)
+                {
+                    EXPECT_EQ(st.section, "breakdown")
+                        << "seed " << seed << ": RemoveLayer(" << role << ") at bar "
+                        << st.barStart << " in section " << st.section;
+                    if (st.section == "breakdown") ++breakdownFloorRemovals;
+                }
+                // Presence drop: floor left activeRoles this window.
+                if (i > 0 && contains(s.steps[i - 1].activeRoles, role)
+                    && !contains(st.activeRoles, role))
+                    EXPECT_EQ(st.section, "breakdown")
+                        << "seed " << seed << ": " << role << " dropped at bar "
+                        << st.barStart << " in section " << st.section;
+            }
+        }
+    }
+    EXPECT_GT(breakdownSteps, 0) << "script never reached a breakdown (gate vacuous)";
+    EXPECT_GT(breakdownFloorRemovals, 0)
+        << "breakdown never removed the floor across seeds 100..139 (gate vacuous)";
+}
+
+// ── Determinism with a script: same seed + script byte-identical; a
+//    different seed differs. ───────────────────────────────────────────────
+TEST(PsytranceMarkov, DeterminismWithScript)
+{
+    auto make = [](uint64_t seed) {
+        auto p = baseParams(seed, 64);
+        p.sections = { { "sparse", 8 }, { "build", 16 },
+                       { "breakdown", 8 }, { "peak", 32 } };
+        return HDAW::PsytranceMarkovGenerator::generate(p);
+    };
+    const auto a = make(42);
+    const auto b = make(42);
+    ASSERT_TRUE(a.error.empty()) << a.error;
+    EXPECT_TRUE(sameScore(a, b));
+
+    const auto c = make(43);
+    EXPECT_FALSE(sameScore(a, c)) << "different seed + script must differ";
+}
+
+// ── The per-section default budgets (the "closest correct number of
+//    patterns") match psytrance production canon; aliases and unknown types
+//    resolve to the canonical budgets. ─────────────────────────────────────
+TEST(PsytranceMarkov, SectionDefaultsBudgets)
+{
+    auto expectBudget = [](const char* type, int mn, int mx, int pmn, int pmx, int target) {
+        const auto b = HDAW::MarkovArranger::sectionDefaults(type);
+        EXPECT_EQ(b.minTracks, mn) << type;
+        EXPECT_EQ(b.maxTracks, mx) << type;
+        EXPECT_EQ(b.minPercTracks, pmn) << type;
+        EXPECT_EQ(b.maxPercTracks, pmx) << type;
+        EXPECT_EQ(b.targetCount, target) << type;
+    };
+    expectBudget("sparse",    1, 3, 1, 2, 2);
+    expectBudget("build",     2, 5, 1, 3, 4);
+    expectBudget("peak",      4, 9, 2, 4, 7);
+    expectBudget("breakdown", 1, 3, 1, 2, 2);
+    // Aliases (intro/outro -> sparse, drop/climax -> peak) and unknown types
+    // (fall back to sparse) resolve to the canonical budgets.
+    expectBudget("intro",     1, 3, 1, 2, 2);
+    expectBudget("outro",     1, 3, 1, 2, 2);
+    expectBudget("drop",      4, 9, 2, 4, 7);
+    expectBudget("climax",    4, 9, 2, 4, 7);
+    expectBudget("unknown",   1, 3, 1, 2, 2);
+}
+
+// ── Section-script validation (Gate 9): unknown types, malformed bars and
+//    min>max are rejected with named errors and nothing is generated. ──────
+TEST(PsytranceMarkov, SectionScriptRejectsBadInput)
+{
+    auto expectError = [](std::vector<HDAW::MarkovSectionSpec> sections, const char* what) {
+        auto p = baseParams(42, 64);
+        p.sections = std::move(sections);
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        EXPECT_FALSE(s.error.empty()) << what;
+        EXPECT_TRUE(s.clips.empty()) << what;
+        EXPECT_TRUE(s.steps.empty()) << what;
+    };
+    expectError({ { "foo", 8 } }, "unknown type");
+    expectError({ { "sparse", 3 } }, "odd bars");
+    expectError({ { "sparse", 1 } }, "bars < 2");
+    expectError({ { "sparse", 300 } }, "bars > 256");
+    expectError({ { "build", 8, 5, 2, -1, -1 } }, "min > max");
+    expectError({ { "peak", 8, -1, -1, 4, 2 } }, "perc min > max");
+}
+
 // ── Validation (Gate 9): tool-named errors, nothing generated. ────────────
 TEST(PsytranceMarkov, ValidationRejectsBadParams)
 {
@@ -1282,4 +1465,94 @@ TEST(PsytranceMarkovRouter, DispatchCompositionRoundTrip)
     auto bad = frontend::dispatchComposition(engine, "generatePsytranceMarkovX",
                                              QJsonValue(params));
     EXPECT_TRUE(bad.isError);
+}
+
+// ── Command layer: bad section-script input is rejected with a tool-named
+//    error and no partial writes (Gate 9 at the command boundary). ─────────
+TEST(PsytranceMarkovCommand, SectionScriptRejectsBadInput)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    engine.drainPendingRoutingRebuild();
+    for (int i = 0; i < 11; ++i)
+        cmds.addTrack("SC" + std::to_string(i), -1, -1, 0);
+    engine.drainPendingRoutingRebuild();
+
+    struct Bad { std::vector<HDAW::MarkovSectionSpec> sections; const char* needle; };
+    const Bad bads[] = {
+        { { { "foo", 8 } }, "type" },
+        { { { "sparse", 3 } }, "bars" },
+        { { { "sparse", 1 } }, "bars" },
+        { { { "sparse", 300 } }, "bars" },
+        { { { "build", 8, 5, 2, -1, -1 } }, "minTracks" },
+        { { { "peak", 8, -1, -1, 4, 2 } }, "minPercTracks" },
+    };
+    for (const auto& b : bads)
+    {
+        auto p = baseParams(42, 64);
+        p.sections = b.sections;
+        const auto r = cmds.generatePsytranceMarkov(p);
+        EXPECT_FALSE(r.error.empty()) << "bad sections accepted";
+        EXPECT_NE(r.error.find("generate_psytrance_markov"), std::string::npos) << r.error;
+        EXPECT_NE(r.error.find(b.needle), std::string::npos) << r.error;
+        EXPECT_TRUE(r.clips.empty()) << "partial writes on rejected input";
+    }
+}
+
+// ── Router twin: a sections payload round-trips through dispatchComposition
+//    (steps carry the scripted section labels), and a malformed sections
+//    payload is rejected at the boundary. ──────────────────────────────────
+TEST(PsytranceMarkovRouter, SectionsScriptRoundTrip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.setTempo(140.0);
+    engine.drainPendingRoutingRebuild();
+    for (int i = 0; i < 11; ++i) // full palette incl. snare/rim
+        cmds.addTrack("RS" + std::to_string(i), -1, -1, 0);
+    engine.drainPendingRoutingRebuild();
+
+    QJsonObject params;
+    params["paletteTrackIds"] = QJsonObject{
+        { "kick", 0 }, { "bass", 1 }, { "hat", 2 }, { "arp", 3 },
+        { "stab", 4 }, { "pad", 5 }, { "riser", 6 }, { "down", 7 }, { "clap", 8 },
+        { "snare", 9 }, { "rim", 10 } };
+    params["keyRoot"] = 5;
+    params["seed"] = 42;
+    params["totalBars"] = 64;
+    QJsonArray sections;
+    sections.append(QJsonObject{{"type", "sparse"}, {"bars", 8}});
+    sections.append(QJsonObject{{"type", "build"}, {"bars", 16}});
+    sections.append(QJsonObject{{"type", "breakdown"}, {"bars", 8}});
+    sections.append(QJsonObject{{"type", "peak"}, {"bars", 32}});
+    params["sections"] = sections;
+
+    auto res = frontend::dispatchComposition(engine, "generatePsytranceMarkov",
+                                             QJsonValue(params));
+    ASSERT_FALSE(res.isError);
+    const auto payload = res.payload.toObject();
+    const auto steps = payload.value("steps").toArray();
+    ASSERT_EQ(steps.size(), 32);
+    auto expected = [](int bar) -> const char* {
+        if (bar < 8)  return "sparse";
+        if (bar < 24) return "build";
+        if (bar < 32) return "breakdown";
+        return "peak";
+    };
+    for (const auto& st : steps)
+    {
+        const auto o = st.toObject();
+        EXPECT_EQ(o.value("section").toString().toStdString(),
+                  expected(o.value("barStart").toInt()))
+            << "bar " << o.value("barStart").toInt();
+    }
+
+    // A malformed sections payload is rejected at the boundary.
+    QJsonObject bad = params;
+    bad["sections"] = QJsonArray{QJsonValue(42)};
+    auto res2 = frontend::dispatchComposition(engine, "generatePsytranceMarkov",
+                                              QJsonValue(bad));
+    EXPECT_TRUE(res2.isError);
 }

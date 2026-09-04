@@ -75,6 +75,24 @@
 
 namespace HDAW {
 
+// Explicit section-script entry (optional). When PsytranceMarkovParams::
+// sections is non-empty it replaces the seeded slow-tier schedule: the
+// arrangement is a run of {type, bars} blocks, each resolving its own layer
+// bounds from the per-section overrides or the section-type budget
+// (MarkovArranger::sectionDefaults) and gently biasing the active count
+// toward the section's target layer count. When sections is empty the
+// seeded jittered schedule + global min/max/perc bounds drive everything
+// (byte-identical to pre-script behavior).
+struct MarkovSectionSpec {
+    std::string type;        // "sparse"|"build"|"peak"|"breakdown"
+                             // (aliases: intro/outro -> sparse, drop/climax -> peak)
+    int bars = 8;            // section length in bars (even, >= 2, <= 256)
+    int minTracks = -1;      // -1 = use the type default from sectionDefaults
+    int maxTracks = -1;
+    int minPercTracks = -1;
+    int maxPercTracks = -1;
+};
+
 struct PsytranceMarkovParams {
     int keyRoot = 0;       // 0..11 — scale root pitch class
     int scaleMode = 1;     // PhraseGenerator scale index (0..12)
@@ -93,6 +111,7 @@ struct PsytranceMarkovParams {
         riser = -1, down = -1, clap = -1, snare = -1, rim = -1; // NoteLengthVariant may target bass/arp/stab/pad
     std::vector<int> progressionA; // optional degree overrides (default i-VII-VI-VII)
     std::vector<int> progressionB; // optional degree overrides (default VI-VII-i-i)
+    std::vector<MarkovSectionSpec> sections; // empty = current seeded behavior
 };
 
 enum class MarkovAction {

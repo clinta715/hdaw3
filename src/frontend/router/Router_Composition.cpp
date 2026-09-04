@@ -837,6 +837,25 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             set("riser", p.riser);   set("down", p.down);
             set("clap", p.clap);
         }
+        if (o.contains("sections"))
+        {
+            if (!o.value("sections").isArray())
+                return makeError(-32602, "sections must be an array");
+            for (const auto& v : o.value("sections").toArray())
+            {
+                if (!v.isObject())
+                    return makeError(-32602, "sections entries must be objects");
+                const auto so = v.toObject();
+                HDAW::MarkovSectionSpec spec;
+                spec.type = optString(so, "type", "");
+                spec.bars = optInt(so, "bars", 8, nullptr);
+                spec.minTracks = optInt(so, "minTracks", -1, nullptr);
+                spec.maxTracks = optInt(so, "maxTracks", -1, nullptr);
+                spec.minPercTracks = optInt(so, "minPercTracks", -1, nullptr);
+                spec.maxPercTracks = optInt(so, "maxPercTracks", -1, nullptr);
+                p.sections.push_back(spec);
+            }
+        }
         auto r = c.generatePsytranceMarkov(p);
         QJsonArray clips;
         for (const auto& rc : r.clips)
