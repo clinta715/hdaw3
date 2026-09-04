@@ -171,9 +171,27 @@ void PluginManager::loadCache()
         if (xml != nullptr)
         {
             knownPluginList.recreateFromXml(*xml);
+            // Prune stale entries whose file no longer exists on disk
+            // (e.g. plugin uninstalled but scan cache still references it).
+            // Only prune path-like identifiers; skip empty/scheme-only ids.
+            int pruned = 0;
+            auto types = knownPluginList.getTypes();
+            knownPluginList.clear();
+            for (auto& desc : types)
+            {
+                const bool isPathLike = desc.fileOrIdentifier.contains("\\") || desc.fileOrIdentifier.contains("/") || desc.fileOrIdentifier.contains(":");
+                if (isPathLike && !juce::File(desc.fileOrIdentifier).existsAsFile())
+                {
+                    ++pruned;
+                    continue;
+                }
+                knownPluginList.addType(desc);
+            }
+            if (pruned > 0)
+                HDAW_LOG("PluginCache", ("Pruned " + juce::String(pruned) + " stale plugin entries").toStdString().c_str());
             knownPlugins.clear();
-            const auto& types = knownPluginList.getTypes();
-            for (const auto& desc : types)
+            const auto& prunedTypes = knownPluginList.getTypes();
+            for (const auto& desc : prunedTypes)
                 knownPlugins.push_back(desc);
         }
     }
