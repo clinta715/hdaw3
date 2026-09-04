@@ -175,6 +175,9 @@ test.zip
 # Patch-sweep output (probe WAVs + aggregated reports from timbre-lib/sweep_dx7_patches.py)
 timbre-lib/sweep_out/
 
+# Composition-demo artifacts (demo library dirs, exported WAVs, lib ids)
+timbre-lib/demo_libs/
+
 # Export-silence investigation scratch (repro/bisect/causality drivers + WAVs)
 repro_out/
 tools/.ruff_cache/
