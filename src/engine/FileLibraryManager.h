@@ -42,13 +42,21 @@ struct LibraryEntry {
     // (kDspFeatureKeys, LibraryClusterer.h) are present and finite; otherwise
     // empty. Ingested since schemaVersion 2 of the per-library entry cache.
     std::vector<double> dspFeatures;
+
+    // Patch-library sidecar (patch libraries, type "patch"). Populated from
+    // `<file>.virus.json` / `<file>.dx7.json` (see applyPatchSidecar); empty
+    // when no sidecar exists or the sidecar is malformed.
+    juce::String patchEngine;  // "sub_synth" | "fm_synth" | empty
+    juce::String patchParams;  // compact JSON from the sidecar mappedParams/params
+    juce::String roleVerdict;  // sidecar roleCheck verdict (pass/fail/unknown/empty)
+    juce::String unmapped;     // comma-joined unmapped feature list
 };
 
 struct LibraryInfo {
     juce::String id;
     juce::String name;
     juce::String path;
-    juce::String type; // "midi" or "audio"
+    juce::String type; // "midi", "audio", or "patch"
     juce::String lastScan;
     int fileCount = 0;
     bool autoScan = false;
@@ -150,7 +158,9 @@ private:
     void scanDirectory(const juce::String& id, const juce::File& dir);
     LibraryEntry extractMidiMetadata(const juce::File& file);
     LibraryEntry extractAudioMetadata(const juce::File& file);
+    LibraryEntry extractPatchMetadata(const juce::File& file);
     static void applyTimbreSidecar(LibraryEntry& entry, const juce::File& audioFile);
+    static void applyPatchSidecar(LibraryEntry& entry, const juce::File& patchFile);
     // When outLibraryIds is non-null, it receives the library id for each
     // entry in `out` (same order/index) so callers can attribute entries
     // back to their library.

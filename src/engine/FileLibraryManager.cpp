@@ -95,6 +95,11 @@ LibraryInfo FileLibraryManager::getLibraryInfo(const juce::String& id) const {
 juce::String FileLibraryManager::addLibrary(const juce::String& name,
                                              const juce::String& path,
                                              const juce::String& type) {
+    // Gate 9: whitelist the library type at the trust boundary — midi/audio
+    // (pre-existing) and patch (2026-09-04). Unknown types are rejected with
+    // an empty id rather than silently persisted.
+    if (type != "midi" && type != "audio" && type != "patch")
+        return {};
     juce::String id = juce::Uuid().toString().removeCharacters("-{}").substring(0, 12);
     LibraryInfo info;
     info.id = id;
@@ -332,6 +337,10 @@ void FileLibraryManager::loadLibraryEntries(const juce::String& id) {
         e.format = eObj->getProperty("format").toString();
         e.tags = eObj->getProperty("tags").toString(); // missing -> empty
         e.description = eObj->getProperty("description").toString(); // missing -> empty
+        e.patchEngine = eObj->getProperty("patchEngine").toString(); // missing -> empty
+        e.patchParams = eObj->getProperty("patchParams").toString(); // missing -> empty
+        e.roleVerdict = eObj->getProperty("roleVerdict").toString(); // missing -> empty
+        e.unmapped = eObj->getProperty("unmapped").toString();       // missing -> empty
         if (auto* dspArr = eObj->getProperty("dspFeatures").getArray()) {
             std::vector<double> vals;
             vals.reserve(dspArr->size());
@@ -419,6 +428,10 @@ void FileLibraryManager::saveLibraryEntries(const juce::String& id) {
         obj->setProperty("format", e.format);
         obj->setProperty("tags", e.tags);
         obj->setProperty("description", e.description);
+        obj->setProperty("patchEngine", e.patchEngine);
+        obj->setProperty("patchParams", e.patchParams);
+        obj->setProperty("roleVerdict", e.roleVerdict);
+        obj->setProperty("unmapped", e.unmapped);
         if (e.dspFeatures.size() == (size_t)kDspFeatureCount) {
             juce::Array<juce::var> dspArr;
             for (const double d : e.dspFeatures) dspArr.add(d);
@@ -481,6 +494,16 @@ static bool entryHasTimbreData(const LibraryEntry& entry) {
         || !entry.dspFeatures.empty();
 }
 
+// True when any patch-sidecar-derived field is populated. Same incremental
+// rescan role as entryHasTimbreData for audio: an entry scanned before a
+// sidecar existed, or whose sidecar mtime is not newer than a future-dated
+// patch mtime, must be re-ingested on the next scan.
+static bool entryHasPatchData(const LibraryEntry& entry) {
+    return !entry.patchEngine.isEmpty() || !entry.patchParams.isEmpty()
+        || !entry.roleVerdict.isEmpty() || !entry.unmapped.isEmpty()
+        || !entry.description.isEmpty() || !entry.tags.isEmpty();
+}
+
 void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File& dir) {
     if (!dir.isDirectory()) {
         juce::Logger::writeToLog("FileLibraryManager: directory not found: " + dir.getFullPathName());
@@ -505,7 +528,9 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
 
     const juce::String wildcard = (type == "audio")
         ? juce::String("*.wav;*.aiff;*.aif;*.mp3;*.flac;*.ogg")
-        : juce::String("*.mid;*.midi");
+        : (type == "patch")
+            ? juce::String("*.syx;*.mid;*.midi;*.vhc")
+            : juce::String("*.mid;*.midi");
 
     // Build map of existing entries by path for incremental comparison
     std::unordered_map<juce::String, LibraryEntry> existingByPath;
@@ -550,17 +575,31 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                 //     data — the entry predates the sidecar, or the sidecar's
                 //     mtime is not newer than a future-dated audio mtime, so
                 //     the tags were skipped. Re-run to ingest them.
-                bool rescanForTimbre = false;
+                // Patch libraries mirror the same logic over the virus/dx7
+                // sidecar (entryHasPatchData).
+                bool rescanForSidecar = false;
                 if (type == "audio") {
                     auto sidecar = juce::File(filePath + ".timbre.json");
                     if (sidecar.existsAsFile()) {
                         if (sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
-                            rescanForTimbre = true;
+                            rescanForSidecar = true;
                         else if (!entryHasTimbreData(it->second))
-                            rescanForTimbre = true;
+                            rescanForSidecar = true;
+                    }
+                } else if (type == "patch") {
+                    juce::File sidecar;
+                    auto virusSidecar = juce::File(filePath + ".virus.json");
+                    auto dx7Sidecar = juce::File(filePath + ".dx7.json");
+                    if (virusSidecar.existsAsFile()) sidecar = virusSidecar;
+                    else if (dx7Sidecar.existsAsFile()) sidecar = dx7Sidecar;
+                    if (sidecar.existsAsFile()) {
+                        if (sidecar.getLastModificationTime().toMilliseconds() > it->second.modifiedTime)
+                            rescanForSidecar = true;
+                        else if (!entryHasPatchData(it->second))
+                            rescanForSidecar = true;
                     }
                 }
-                if (!rescanForTimbre) {
+                if (!rescanForSidecar) {
                     newEntries.push_back(it->second); // reuse existing entry
                     needsRescan = false;
                 }
@@ -569,9 +608,13 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
 
         if (needsRescan) {
             try {
-                LibraryEntry entry = (type == "audio")
-                    ? extractAudioMetadata(file)
-                    : extractMidiMetadata(file);
+                LibraryEntry entry;
+                if (type == "audio")
+                    entry = extractAudioMetadata(file);
+                else if (type == "patch")
+                    entry = extractPatchMetadata(file);
+                else
+                    entry = extractMidiMetadata(file);
                 entry.name = file.getFileName();
                 entry.path = filePath;
                 entry.size = file.getSize();
@@ -579,6 +622,8 @@ void FileLibraryManager::scanDirectory(const juce::String& id, const juce::File&
                 entry.modified = juce::Time(entry.modifiedTime).toISO8601(true);
                 if (type == "audio")
                     applyTimbreSidecar(entry, file);
+                else if (type == "patch")
+                    applyPatchSidecar(entry, file);
                 newEntries.push_back(std::move(entry));
             } catch (const std::exception& e) {
                 juce::Logger::writeToLog("FileLibraryManager: failed to extract metadata for "
@@ -846,6 +891,107 @@ void FileLibraryManager::applyTimbreSidecar(LibraryEntry& entry, const juce::Fil
         }
         if (ok) entry.dspFeatures = std::move(vals);
     }
+}
+
+// Patch-library metadata: a patch file (syx/mid/midi/vhc) has no structural
+// metadata to decode at scan time — name/path/size/modified are filled by the
+// scanDirectory per-file branch, and the searchable fields (patchEngine,
+// patchParams, roleVerdict, unmapped, tags, description) come from the
+// sidecar via applyPatchSidecar. Only `format` is set here.
+LibraryEntry FileLibraryManager::extractPatchMetadata(const juce::File& file) {
+    LibraryEntry entry;
+    entry.format = file.getFileExtension().toLowerCase()
+                       .fromFirstOccurrenceOf(".", false, false);
+    return entry;
+}
+
+// Reads a patch sidecar next to the patch file — `<patch>.virus.json` first,
+// else `<patch>.dx7.json` (chosen by whichever exists; the sidecar's `engine`
+// key is honored on top of the naming). Populates:
+//   tags        — unmapped feature names + "role:<verdict>" + up to 2 mapped
+//                 param names (comma-joined, so search_library finds patches)
+//   description — the sidecar `description`
+//   patchEngine — sidecar `engine` ("sub_synth" | "fm_synth"), else derived
+//                 from the sidecar filename
+//   patchParams — compact JSON of the sidecar mappedParams (virus) / params
+//                 (dx7) — the bytes a loader can replay onto a synth slot
+//   roleVerdict — sidecar roleCheck.verdict (pass/fail/unknown/empty)
+//   unmapped    — comma-joined `unmapped` array (Virus features with no
+//                 sub_synth equivalent)
+// Missing sidecar and malformed JSON are tolerated — fields stay empty and no
+// exception escapes (must never break the scan's per-file try/catch).
+void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File& patchFile) {
+    auto virusSidecar = juce::File(patchFile.getFullPathName() + ".virus.json");
+    auto dx7Sidecar = juce::File(patchFile.getFullPathName() + ".dx7.json");
+    juce::File sidecar;
+    if (virusSidecar.existsAsFile()) sidecar = virusSidecar;
+    else if (dx7Sidecar.existsAsFile()) sidecar = dx7Sidecar;
+    if (!sidecar.existsAsFile()) return;
+
+    juce::var json;
+    try {
+        auto content = sidecar.loadFileAsString();
+        if (content.isEmpty()) return;
+        json = juce::JSON::parse(content);
+    } catch (...) {
+        return; // malformed/unreadable sidecar — leave fields empty
+    }
+    auto* obj = json.getDynamicObject();
+    if (!obj) return;
+
+    juce::String engine = obj->getProperty("engine").toString().trim();
+    if (engine.isEmpty())
+        engine = sidecar.getFileName().contains(".virus.") ? "sub_synth"
+               : sidecar.getFileName().contains(".dx7.")   ? "fm_synth"
+               : juce::String();
+    entry.patchEngine = engine;
+    entry.description = obj->getProperty("description").toString();
+
+    // roleVerdict from roleCheck.verdict (the analyze_probe.py shape).
+    if (auto* rc = obj->getProperty("roleCheck").getDynamicObject())
+        entry.roleVerdict = rc->getProperty("verdict").toString().trim();
+
+    // unmapped: comma-joined array (virus sidecar); dx7 sidecars carry no
+    // unmapped list, so it stays empty.
+    juce::StringArray unmappedParts;
+    if (auto* unmappedArr = obj->getProperty("unmapped").getArray()) {
+        for (const auto& u : *unmappedArr) {
+            const juce::String s = u.toString().trim();
+            if (s.isNotEmpty()) unmappedParts.add(s);
+        }
+    }
+    entry.unmapped = unmappedParts.joinIntoString(",");
+
+    // patchParams: compact JSON of mappedParams (virus) else params (dx7).
+    juce::var paramsVal = obj->getProperty("mappedParams");
+    if (!paramsVal.isObject())
+        paramsVal = obj->getProperty("params");
+    if (paramsVal.isObject())
+        entry.patchParams = juce::JSON::toString(paramsVal);
+
+    // tags: unmapped + role verdict + up to 2 mapped param names. The
+    // mappedParams values carry the real name in their `param` field
+    // (virus: {"0":{"param":"osc1_wave",...}}); dx7 params fall back to a
+    // `name`/`param` field, then the bare key.
+    juce::StringArray tags;
+    for (const auto& u : unmappedParts) tags.add(u.trim());
+    if (entry.roleVerdict.isNotEmpty()) tags.add("role:" + entry.roleVerdict);
+    if (auto* mp = paramsVal.getDynamicObject()) {
+        int count = 0;
+        for (const auto& p : mp->getProperties()) {
+            if (count >= 2) break;
+            juce::String pname;
+            if (auto* vObj = p.value.getDynamicObject()) {
+                pname = vObj->getProperty("param").toString().trim();
+                if (pname.isEmpty())
+                    pname = vObj->getProperty("name").toString().trim();
+            }
+            if (pname.isEmpty())
+                pname = p.name.toString();
+            if (pname.isNotEmpty()) { tags.add(pname); ++count; }
+        }
+    }
+    entry.tags = tags.joinIntoString(", ");
 }
 
 LibraryEntry FileLibraryManager::extractAudioMetadata(const juce::File& file) {

@@ -64,6 +64,7 @@ add_executable(hdaw_tests
     unit/engine/streaming_pool_test.cpp
     unit/engine/clip_streaming_e2e_test.cpp
     unit/engine/track_mixer_state_test.cpp
+    unit/engine/fm_patch_persistence_test.cpp
     unit/engine/transport_manager_test.cpp
     unit/engine/midi_clip_processor_test.cpp
     unit/engine/operator_logic_test.cpp
@@ -104,6 +105,7 @@ add_executable(hdaw_tests
     unit/engine/automation_units_test.cpp
     unit/engine/automation_mode_test.cpp
     unit/engine/automation_preset_test.cpp
+    unit/engine/automation_pid_routing_test.cpp
     unit/engine/export_volume_bypass_test.cpp
     unit/engine/export_bake_timeout_test.cpp
     unit/engine/psytrance_composition_stress_test.cpp
@@ -124,6 +126,7 @@ add_executable(hdaw_tests
     unit/engine/punch_test.cpp
     unit/engine/send_test.cpp
     unit/engine/file_library_test.cpp
+    unit/engine/file_library_patch_test.cpp
     unit/engine/library_clusterer_test.cpp
     unit/engine/cluster_preset_store_test.cpp
     unit/common/read_model_test.cpp

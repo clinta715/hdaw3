@@ -10,6 +10,7 @@
 #include "../engine/ProjectPool.h"
 #include "../engine/TrackFXSlot.h"
 #include "../engine/Dx7SysexImport.h"
+#include "../engine/FmSynthEngine.h"
 #include "../engine/MidiFx.h"
 #include <QJsonArray>
 #include <QJsonObject>
@@ -18,6 +19,92 @@
 #include <optional>
 
 namespace mcp {
+
+namespace {
+
+struct ProbeNote {
+    int pitch;
+    float velocity;
+    double start;
+    double duration;
+};
+
+int patchRoleDefaultRoot(const QString& role)
+{
+    if (role == "bass") return 36;
+    if (role == "lead") return 72;
+    if (role == "pad")  return 48;
+    if (role == "stab") return 60;
+    if (role == "arp")  return 60;
+    if (role == "fx")   return 36;
+    if (role == "riser") return 36;
+    return 48;
+}
+
+// Deterministic role probe phrase in clip-local beats — a C++ translation of
+// timbre-lib/sweep_dx7_patches.py build_probe_notes (same shapes and role->
+// root defaults; the audition window is fixed at 8 beats, seed fixed at 12345).
+// Pitches are clamped to 0..127 by skipping out-of-range notes.
+std::vector<ProbeNote> buildPatchProbeNotes(const QString& role, int root,
+                                            double windowBeats)
+{
+    std::vector<ProbeNote> notes;
+    auto add = [&](int pitch, double start, double dur, float vel) {
+        if (pitch >= 0 && pitch <= 127)
+            notes.push_back({pitch, vel, start, dur});
+    };
+
+    if (role == "bass")
+    {
+        add(root, 0.0, windowBeats, 100.0f);
+    }
+    else if (role == "lead")
+    {
+        add(root, 0.0, windowBeats, 100.0f);
+        add(root + 4, 0.0, windowBeats, 90.0f);
+    }
+    else if (role == "pad")
+    {
+        add(root, 0.0, windowBeats, 100.0f);
+        add(root + 7, 0.0, windowBeats, 90.0f);
+        add(root + 12, 0.0, windowBeats, 80.0f);
+    }
+    else if (role == "stab")
+    {
+        for (double beat = 0.0; beat < windowBeats; beat += 2.0)
+        {
+            add(root, beat, 0.5, 100.0f);
+            add(root + 7, beat, 0.5, 100.0f);
+            add(root + 12, beat, 0.5, 100.0f);
+        }
+    }
+    else if (role == "arp")
+    {
+        static const int seq[] = { 0, 3, 7, 12, 7, 3 };
+        double t = 0.0;
+        int i = 0;
+        while (t < windowBeats)
+        {
+            add(root + seq[i % 6], t, 0.4, 100.0f);
+            t += 0.5;
+            ++i;
+        }
+    }
+    else
+    {
+        // riser / fx / unknown: 16-step rising gliss (the Python fallback,
+        // which also doubles as the percussive-role placeholder).
+        for (int k = 0; k < 16; ++k)
+        {
+            const double t = static_cast<double>(k);
+            if (t >= windowBeats) break;
+            add(root + k, t, 0.8, 100.0f);
+        }
+    }
+    return notes;
+}
+
+} // namespace
 
 void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
@@ -292,6 +379,176 @@ s.registerTool({"sub_synth_import_sysex",
             for (const auto& u : r.unmapped)
                 unmapped.append(QString::fromStdString(u));
             result["unmapped"] = unmapped;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
+        }});
+
+s.registerTool({"audition_patch",
+        "Load a synth patch file into a probe FX slot and place a role-appropriate "
+        "probe MIDI clip, so pressing play on the probe track auditions the patch. "
+        "Virus patches (.syx/.mid/.vhc) load via sub_synth; DX7 patches (.syx) via "
+        "fm_synth. Creates a probe track when trackId is omitted. engine is inferred "
+        "from the file when omitted: the sidecar engine key, else the DX7 header "
+        "(F0 43) -> fm_synth, else the Access header (F0 00 20 33) -> sub_synth, "
+        "else an error. role picks the probe phrase root (bass 36 / lead 72 / pad 48 / "
+        "stab 60 / arp 60 / fx 36 / riser 36; default pad); root overrides it. Live "
+        "audition only — no offline render. Returns {ok, trackId, slotIndex, name, engine, role}.",
+        objSchema({{"path",   QJsonObject{{"type","string"}}},
+                   {"engine", QJsonObject{{"type","string"},
+                       {"enum", QJsonArray{"sub_synth","fm_synth"}}}},
+                   {"role",   QJsonObject{{"type","string"}}},
+                   {"root",   QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+                   {"trackId",QJsonObject{{"type","integer"}}}},
+                  {"path"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            QString filePath = a.value("path").toString();
+            if (filePath.isEmpty())
+                return McpToolResult::text("path required", true);
+            juce::File patchFile(filePath.toStdString());
+            if (!patchFile.existsAsFile())
+                return McpToolResult::text("file not found: " + filePath, true);
+
+            // ── resolve engine: explicit arg, else sidecar engine key, else header ──
+            std::string engine = a.value("engine").toString().toStdString();
+            if (engine.empty())
+            {
+                auto sidecarEngine = [](const juce::File& sc) -> std::string {
+                    if (!sc.existsAsFile()) return {};
+                    auto j = juce::JSON::parse(sc.loadFileAsString());
+                    auto* o = j.getDynamicObject();
+                    return o ? o->getProperty("engine").toString().toStdString()
+                             : std::string();
+                };
+                engine = sidecarEngine(juce::File(patchFile.getFullPathName() + ".virus.json"));
+                if (engine.empty())
+                    engine = sidecarEngine(juce::File(patchFile.getFullPathName() + ".dx7.json"));
+                if (engine.empty())
+                {
+                    juce::MemoryBlock raw;
+                    if (patchFile.loadFileAsData(raw))
+                    {
+                        const auto* b = static_cast<const uint8_t*>(raw.getData());
+                        const size_t n = raw.getSize();
+                        if (n >= 2 && b[0] == 0xF0 && b[1] == 0x43)
+                            engine = "fm_synth";
+                        else if (n >= 5 && b[0] == 0xF0 && b[1] == 0x00
+                                 && b[2] == 0x20 && b[3] == 0x33)
+                            engine = "sub_synth";
+                    }
+                }
+                if (engine.empty())
+                    return McpToolResult::text(
+                        "could not determine patch engine — pass engine explicitly "
+                        "(sub_synth or fm_synth)", true);
+            }
+
+            // ── probe track (or reuse trackId) ──
+            auto& m = e->getProjectModel();
+            auto tl = m.getTrackListTree();
+            int trackId = a.contains("trackId") ? a.value("trackId").toInt() : -1;
+            if (trackId < 0 || trackId >= tl.getNumChildren())
+            {
+                const int idx = tl.getNumChildren();
+                juce::ValueTree t(IDs::TRACK);
+                t.setProperty(IDs::name, "Patch Probe", nullptr);
+                t.setProperty(IDs::volume, 0.85, nullptr);
+                t.setProperty(IDs::pan, 0.0, nullptr);
+                t.setProperty(IDs::isMuted, false, nullptr);
+                t.setProperty(IDs::isSoloed, false, nullptr);
+                t.setProperty(IDs::parentBus, 0, nullptr);
+                t.setProperty(IDs::color, static_cast<int>(
+                    ProjectModel::trackColorForIndex(idx)), nullptr);
+                t.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+                t.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+                t.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+                tl.addChild(t, -1, &m.getUndoManager());
+                trackId = idx;
+            }
+
+            // ── synth slot of the engine type ──
+            e->getProjectCommands().addFxSlot(trackId, engine, -1, "");
+            auto fxChain = tl.getChild(trackId).getChildWithName(IDs::FX_CHAIN);
+            const int n = fxChain.isValid() ? fxChain.getNumChildren() : 0;
+            const int slotIndex = n > 0 ? n - 1 : 0;
+
+            // ── load the patch ──
+            QString name = QString::fromUtf8(patchFile.getFileName().toRawUTF8());
+            if (engine == "sub_synth")
+            {
+                auto r = e->getAudioEngineCommands().loadVirusPatch(
+                    trackId, slotIndex, filePath.toStdString(), 0);
+                if (!r.ok)
+                    return McpToolResult::text(QString::fromStdString(r.error), true);
+                if (!r.name.empty())
+                    name = QString::fromStdString(r.name);
+            }
+            else if (engine == "fm_synth")
+            {
+                juce::MemoryBlock raw;
+                if (!patchFile.loadFileAsData(raw))
+                    return McpToolResult::text("failed to read file", true);
+                const auto* bytes = static_cast<const uint8_t*>(raw.getData());
+                const size_t fileSize = raw.getSize();
+                std::optional<HDAW::Dx7Voice> voice;
+                if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43
+                    && bytes[3] == 0x00)
+                    voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
+                else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43
+                         && bytes[3] == 0x09)
+                {
+                    auto voices = HDAW::parseCartridgeSysex(bytes, fileSize);
+                    if (!voices.empty()) voice = voices[0];
+                }
+                else
+                {
+                    return McpToolResult::text(
+                        "not a recognized DX7 SysEx file (expected F0 43 00 00 or F0 43 00 09 header)", true);
+                }
+                if (!voice.has_value())
+                    return McpToolResult::text("failed to parse SysEx data (bad checksum or size)", true);
+                juce::MemoryBlock block(voice->patchData.data(), FmSynthEngine::kPatchSize);
+                e->getProjectCommands().setFmPatch(trackId, slotIndex,
+                    block.toBase64Encoding().toStdString());
+                if (!voice->voiceName.empty())
+                    name = QString::fromStdString(voice->voiceName);
+            }
+            else
+            {
+                return McpToolResult::text("unsupported engine: " + QString::fromStdString(engine), true);
+            }
+
+            // ── role probe phrase clip ──
+            QString role = a.value("role").toString("pad");
+            const int root = a.contains("root") ? a.value("root").toInt()
+                                                : patchRoleDefaultRoot(role);
+            constexpr double kWindowBeats = 8.0;
+            const double bpm = m.getTree().getProperty(IDs::tempo, 120.0);
+            const double durSec = HDAW::beatsToSeconds(kWindowBeats, bpm);
+            auto clip = m.createMidiClipEmpty("Patch Probe", 0.0, durSec);
+            clip.setProperty(IDs::color, static_cast<int>(
+                ProjectModel::trackColorForIndex(trackId)), nullptr);
+            auto nl = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+            for (const auto& note : buildPatchProbeNotes(role, root, kWindowBeats))
+                nl.addChild(m.createMidiNote(note.pitch, note.velocity / 127.0f,
+                                             note.start, note.duration), -1, nullptr);
+            tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(clip, -1,
+                &m.getUndoManager());
+
+            // ── sync the live processor (Gate 2/6): the probe track must be in
+            // the routing graph with the loaded slot so pressing play is audible
+            // and the live slot values reflect the patch. rebuildRoutingGraph
+            // restores param_N / fmPatchData from the tree (Gate 1/10 path).
+            if (auto* proc = e->getMainProcessor())
+                proc->rebuildRoutingGraph();
+
+            QJsonObject result;
+            result["ok"] = true;
+            result["trackId"] = trackId;
+            result["slotIndex"] = slotIndex;
+            result["name"] = name;
+            result["engine"] = QString::fromStdString(engine);
+            result["role"] = role;
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});

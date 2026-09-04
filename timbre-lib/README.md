@@ -61,6 +61,7 @@ workflow are untouched.
 
     python virus_patch.py --survey "D:\pdf\Virus Presets" --out virus_survey.json
     python virus_patch.py --dump <file.syx|.mid|.vhc|tdm-chunk>
+    python virus_patch.py --sidecars "D:\pdf\Virus Presets" [--role bass]
 
 Parses the four Access Virus patch containers found in the preset library
 (B/C single sysex, TI bank, Digidesign TDM chunk, Std-MIDI bank, VHC bank),
@@ -68,6 +69,18 @@ extracts each patch name + parameters, maps onto the HDAW `sub_synth`
 internal FX params (0-23), and reports what survives and what is dropped.
 Pure stdlib + numpy; no librosa/ML deps; never writes into the source
 library. Survey output goes to the `--out` path only.
+
+- `--sidecars <dir>` writes `<patch>.virus.json` next to each patch file —
+  the sidecar HDAW's `FileLibraryManager` ingests for `add_library(type="patch")`
+  libraries (name, engine, format, bank/program, roleCheck, mappedParams,
+  unmapped, description). With `--role`, `roleCheck` is computed over the
+  mapped params as pseudo-measurements (patch bytes, not audio analysis — the
+  sidecar carries an explicit `note` saying so). Stable JSON: re-runs are
+  byte-identical.
+- DX7 sidecars: `python dx7_patch.py --sidecars <dir>` writes
+  `<patch>.dx7.json` (name, algorithm, feedback, full VCED params) for single
+  (163B) and cartridge (4104B) `.syx` dumps. The `fm_synth` engine loads them
+  via `fm_synth_import_sysex`.
 
 - Formats: `bcsingle` (267B), `tibank` (128x524B), `tdm` (DigiVrusSS01
   chunk), `stdmidi` (run-length sysex unwrapped), `vhc` (128x267B).

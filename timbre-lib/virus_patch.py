@@ -56,12 +56,23 @@ import os
 import sys
 
 import numpy as np
+import role_targets as RT
 
 # ---------------------------------------------------------------------------
 # Format-level constants
 # ---------------------------------------------------------------------------
 
 SUPPORTED_FORMATS = ("bcsingle", "tibank", "tdm", "stdmidi", "vhc")
+
+VIRUS_SCHEMA = "hdaw.virus.patch.v1"
+
+VIRUS_FORMAT_LABELS = {
+    "bcsingle": "B/C single",
+    "tibank": "TI bank",
+    "tdm": "TDM",
+    "stdmidi": "Std-MIDI",
+    "vhc": "HE bank",
+}
 
 MANUFACTURER = bytes((0x00, 0x20, 0x33))
 
@@ -745,6 +756,220 @@ def _survey_stamp(root):
 
 
 # ---------------------------------------------------------------------------
+# Patch sidecars (the searchable-library descriptions)
+# ---------------------------------------------------------------------------
+#
+# ``--sidecars <dir>`` writes ``<file>.virus.json`` next to every
+# patch-containing file under ``<dir>``, mirroring how lib_analyze.py
+# ``--sidecars`` writes ``<audio>.timbre.json``.  One sidecar per patch
+# FILE (the FileLibraryManager contract reads ``<file>.virus.json``); for
+# multi-patch containers (tibank/stdmidi/vhc) the sidecar represents the
+# first parsed patch -- a per-voice scheme is future work.  Patch files are
+# never modified.  Sidecars are ``json.dumps(sort_keys=True)`` so a re-run
+# over the same directory is byte-identical.
+
+def _pseudo_measurements(mapped):
+    """Map sub_synth param values to timbre/role measurement keys.
+
+    Virus patch bytes are not audio, so a real spectral analysis is
+    impossible here.  These pseudo-measurements are a *documented proxy*
+    over the mapped sub_synth params: cutoff -> centroid Hz (20 Hz at 0 ..
+    20 kHz at 1, exponential), sub level + cutoff -> mel_low, amp envelope
+    -> attack_s/decay_s, drive -> mel_high, resonance -> mel_mid.  The
+    resulting roleCheck verdict is honest about being a param-proxy (the
+    roleCheck ``note`` says so) and is NOT a substitute for the audio-based
+    analyze_probe role check.
+    """
+    def g(idx, default=0.0):
+        entry = mapped.get(str(idx))
+        return entry["value"] if entry else default
+
+    cutoff = g(7)
+    sub = g(5)
+    amp_attack = g(10)
+    amp_decay = g(11)
+    drive = g(9)
+    resonance = g(8)
+    return {
+        "centroid": round(20.0 * (1000.0 ** cutoff), 4),
+        "mel_low": round(min(1.0, 0.10 + sub * 0.55 + (1.0 - cutoff) * 0.20), 4),
+        "mel_mid": round(min(1.0, 0.20 + resonance * 0.25 + (1.0 - sub) * 0.20), 4),
+        "mel_high": round(min(1.0, 0.02 + drive * 0.30), 4),
+        "attack_s": round(0.01 + amp_attack * 0.50, 4),
+        "decay_s": round(0.05 + amp_decay * 1.20, 4),
+        "tonal_fraction": 1.0,   # oscillators present -> pitched source
+        "f0_hz": 0.0,            # no note/transpose info in the bytes
+        "f0_sweep": 0.0,
+        "flatness": 0.1,
+        "spec_irregularity": 0.05,
+    }
+
+
+_ROLE_CHECK_NOTE = (
+    "role check computed from mapped sub_synth params as pseudo-measurements "
+    "(patch bytes, not audio analysis)")
+
+
+def _role_check_for_mapped(mapped, role):
+    role = RT.normalize_role(role)
+    if not mapped:
+        return {"role": role, "verdict": "unknown",
+                "passed_count": 0, "total_count": 0, "checks": [],
+                "failures": [("no mapped sub_synth params to derive "
+                              "pseudo-measurements")],
+                "summary": "0/0 checks passed", "note": _ROLE_CHECK_NOTE}
+    rc = RT.check_role(role, _pseudo_measurements(mapped))
+    rc["note"] = _ROLE_CHECK_NOTE
+    return rc
+
+
+def _static_description(patch):
+    """Concise description from name/format/bank (no role given)."""
+    label = VIRUS_FORMAT_LABELS.get(patch.get("format", ""), "Virus")
+    name = str(patch.get("name", "")).strip()
+    parts = [f"Virus {label} patch"]
+    if name:
+        parts.append(f"'{name}'")
+    if patch.get("bank") is not None and patch.get("program") is not None:
+        parts.append(f"(bank {patch['bank']}, program {patch['program']})")
+    return " ".join(parts)
+
+
+def _describe_with_role(mapped, role_check, patch):
+    if not mapped:
+        return _static_description(patch)
+    words = _summarize_words(mapped)
+    if words:
+        return words
+    return role_check.get("summary") or _static_description(patch)
+
+
+def _summarize_words(mapped):
+    """timbre.summarize over the pseudo-measurements (timbre/scipy optional)."""
+    try:
+        import timbre
+        return timbre.summarize(_pseudo_measurements(mapped)) or None
+    except Exception:  # noqa: BLE001 - optional dependency fallback
+        return None
+
+
+def build_sidecar(patch, role=None, format=None):
+    """Build the ``<patch>.virus.json`` document for a parsed patch.
+
+    ``format`` is the container format the file was detected as (e.g.
+    "stdmidi" for a .mid bank whose inner patches are B/C singles); it
+    defaults to the parsed patch's own format."""
+    mapping = map_to_sub_synth(patch)
+    mapped = mapping["mapped"]
+    unmapped = [u["feature"] for u in mapping["unmapped"]]
+    side = {
+        "schema": VIRUS_SCHEMA,
+        "name": patch.get("name", ""),
+        "engine": "sub_synth",
+        "format": format or patch.get("format", ""),
+        "mappedParams": {
+            k: {"param": v["param"], "value": v["value"], "raw": v["raw"]}
+            for k, v in sorted(mapped.items())
+        },
+        "unmapped": unmapped,
+    }
+    if patch.get("bank") is not None:
+        side["bank"] = patch["bank"]
+    if patch.get("program") is not None:
+        side["program"] = patch["program"]
+    if role:
+        role_check = _role_check_for_mapped(mapped, role)
+        side["roleCheck"] = role_check
+        side["description"] = _describe_with_role(mapped, role_check, patch)
+    else:
+        side["description"] = _static_description(patch)
+    return side
+
+
+def _read_bytes(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def _sweep_file(full, role=None):
+    """Write one sidecar for a file -> (status, fmt, info)."""
+    try:
+        data = _read_bytes(full)
+    except OSError as e:
+        return ("failed", None, f"read failed: {e}")
+    fmt = detect_format(data, full)
+    if fmt is None:
+        return ("skipped", None, None)
+    try:
+        patches = PARSERS[fmt](data)
+    except Exception as e:  # noqa: BLE001 - a bad file must not kill the sweep
+        return ("failed", fmt, f"parse raised: {e}")
+    ok = [p for p in patches if not p["error"]]
+    if ok:
+        side = build_sidecar(ok[0], role=role, format=fmt)
+        out_path = full + ".virus.json"
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(side, sort_keys=True, indent=2) + "\n")
+        return ("parsed", fmt, out_path)
+    if not patches:
+        # Well-formed container (e.g. a .mid with no Virus sysex events):
+        # not a patch file, not a failure.
+        return ("skipped", fmt, None)
+    return ("failed", fmt, patches[0]["error"])
+
+
+def sweep_sidecars(root, role=None):
+    """Walk ``root`` writing ``<file>.virus.json`` per patch file.
+
+    Returns a summary dict; per-file failures are recorded, never raised.
+    Raises OSError if the root is unreadable/missing."""
+    formats = {fmt: {"files": 0, "parsed": 0, "failed": 0}
+               for fmt in SUPPORTED_FORMATS}
+    totals = {"files": 0, "parsed": 0, "failed": 0, "skipped": 0,
+              "sidecars": 0}
+    errors = []
+    for dirpath, _dirs, files in os.walk(root):
+        for fn in sorted(files):
+            full = os.path.join(dirpath, fn)
+            totals["files"] += 1
+            status, fmt, info = _sweep_file(full, role=role)
+            if status == "parsed":
+                totals["parsed"] += 1
+                totals["sidecars"] += 1
+                formats[fmt]["files"] += 1
+                formats[fmt]["parsed"] += 1
+            elif status == "failed":
+                totals["failed"] += 1
+                errors.append((full, info))
+                if fmt:
+                    formats[fmt]["files"] += 1
+                    formats[fmt]["failed"] += 1
+            else:
+                totals["skipped"] += 1
+    return {"root": root, "formats": formats, "totals": totals,
+            "errors": errors}
+
+
+def print_summary(summary):
+    out = sys.stdout
+    out.write(f"sidecar sweep: {summary['root']}\n")
+    out.write("format    files  parsed  failed\n")
+    for fmt in SUPPORTED_FORMATS:
+        f = summary["formats"][fmt]
+        out.write(f"{fmt:<9} {f['files']:>5} {f['parsed']:>7} {f['failed']:>7}\n")
+    t = summary["totals"]
+    out.write(f"{'total':<9} {t['files']:>5} {t['parsed']:>7} {t['failed']:>7}"
+              f"  (skipped {t['skipped']})\n")
+    out.write(f"sidecars written: {t['sidecars']}\n")
+    if summary["errors"]:
+        out.write("errors:\n")
+        for path, msg in summary["errors"][:20]:
+            out.write(f"  {path}: {msg}\n")
+        if len(summary["errors"]) > 20:
+            out.write(f"  ... and {len(summary['errors']) - 20} more\n")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -757,9 +982,35 @@ def main(argv=None):
     ap.add_argument("--out", metavar="PATH",
                     help="write the survey JSON to PATH (default stdout)")
     ap.add_argument("--dump", metavar="FILE", help="decode one file")
+    ap.add_argument("--sidecars", metavar="DIR",
+                    help="write <patch>.virus.json next to every patch file "
+                         "under DIR")
+    ap.add_argument("--role", metavar="R",
+                    help="role to check against SUPPORTED_ROLES (bass, lead, "
+                         "pad, ...) -- adds a roleCheck block to each sidecar")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+
+    if args.sidecars:
+        if not os.path.isdir(args.sidecars):
+            sys.stderr.write(f"sidecars root not found: {args.sidecars}\n")
+            return 1
+        role = args.role
+        if role is not None:
+            norm = RT.normalize_role(role)
+            if norm not in RT.SUPPORTED_ROLES:
+                sys.stderr.write(
+                    f"unsupported role '{role}' (supported: "
+                    f"{', '.join(RT.SUPPORTED_ROLES)})\n")
+                return 1
+        try:
+            summary = sweep_sidecars(args.sidecars, role=role)
+        except OSError as e:
+            sys.stderr.write(f"sidecar sweep failed: {e}\n")
+            return 1
+        print_summary(summary)
+        return 0
 
     if args.dump:
         with open(args.dump, "rb") as fh:

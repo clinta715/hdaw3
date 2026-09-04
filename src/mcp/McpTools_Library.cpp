@@ -133,10 +133,10 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"add_library", "Add a new file library (midi or audio).",
+    s.registerTool({"add_library", "Add a new file library (midi, audio, or patch).",
         objSchema({{"name", QJsonObject{{"type","string"}}},
                    {"path", QJsonObject{{"type","string"}}},
-                   {"type", QJsonObject{{"type","string"}, {"enum", QJsonArray{"midi","audio"}}}}},
+                   {"type", QJsonObject{{"type","string"}, {"enum", QJsonArray{"midi","audio","patch"}}}}},
                   {"name","path","type"}),
         "library",
         [lib](const QJsonObject& a) -> McpToolResult {
@@ -149,6 +149,9 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 juce::String(name.toUtf8().constData()),
                 juce::String(path.toUtf8().constData()),
                 juce::String(type.toUtf8().constData()));
+            if (id.isEmpty())
+                return McpToolResult::text(
+                    QString("unknown library type '%1' (expected midi, audio, or patch)").arg(type), true);
             QJsonObject obj{{"id", jstr(id)}};
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(obj).toJson(QJsonDocument::Compact)));
@@ -220,6 +223,10 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                 if (e.timeSignature.isNotEmpty()) obj["timeSignature"] = jstr(e.timeSignature);
                 if (e.tags.isNotEmpty()) obj["tags"] = jstr(e.tags);
                 if (e.description.isNotEmpty()) obj["description"] = jstr(e.description);
+                if (e.patchEngine.isNotEmpty()) obj["patchEngine"] = jstr(e.patchEngine);
+                if (e.patchParams.isNotEmpty()) obj["patchParams"] = jstr(e.patchParams);
+                if (e.roleVerdict.isNotEmpty()) obj["roleVerdict"] = jstr(e.roleVerdict);
+                if (e.unmapped.isNotEmpty()) obj["unmapped"] = jstr(e.unmapped);
                 arr.append(obj);
             }
             return McpToolResult::text(QString::fromUtf8(
@@ -253,6 +260,10 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
             };
             if (entry.tags.isNotEmpty()) obj["tags"] = jstr(entry.tags);
             if (entry.description.isNotEmpty()) obj["description"] = jstr(entry.description);
+            if (entry.patchEngine.isNotEmpty()) obj["patchEngine"] = jstr(entry.patchEngine);
+            if (entry.patchParams.isNotEmpty()) obj["patchParams"] = jstr(entry.patchParams);
+            if (entry.roleVerdict.isNotEmpty()) obj["roleVerdict"] = jstr(entry.roleVerdict);
+            if (entry.unmapped.isNotEmpty()) obj["unmapped"] = jstr(entry.unmapped);
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(obj).toJson(QJsonDocument::Compact)));
         }});
