@@ -1,6 +1,7 @@
 // HDAW Headless Engine — no Qt Widgets, no Qt GUI dependencies.
 // Builds as HDAW_headless.exe. Supports two modes:
 //   --mcp-stdio    MCP server over stdin/stdout (for Claude Desktop, opencode, etc.)
+//   --mcp-http     start loopback MCP HTTP and persist the setting
 //   --headless     WebSocket server for the HTML/Electron frontend (default port 8766)
 //   --port=N       Override the WebSocket port (only with --headless)
 //
@@ -21,6 +22,7 @@
 #include "common/DebugLog.h"
 #include "common/MessagePumpThread.h"
 #include "common/ScopedComInit.h"
+#include "common/SettingsKeys.h"
 #include <juce_core/juce_core.h>
 #include <juce_events/juce_events.h>
 #include <cstring>
@@ -76,9 +78,30 @@ int main(int argc, char *argv[])
     HDAW_JuceLogger juceLogger;
     juce::Logger::setCurrentLogger(&juceLogger);
 
+    QCoreApplication::setOrganizationName("HDAW");
+    QCoreApplication::setApplicationName("HDAW");
+
     const bool mcpStdio = parseFlag(argc, argv, "--mcp-stdio");
+    const bool enableMcpHttp = parseFlag(argc, argv, "--mcp-http");
     // Default to headless (WebSocket) mode when no flag is specified
     const bool headlessFrontend = !mcpStdio;
+
+    QString mcpHttpHost = QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost);
+    quint16 mcpHttpPort = SettingsKeys::kDefaultMcpHttpPort;
+    if (const char* hostArg = parseValue(argc, argv, "--mcp-http-host"))
+        mcpHttpHost = QString::fromUtf8(hostArg);
+    if (const char* portArg = parseValue(argc, argv, "--mcp-http-port")) {
+        bool ok = false;
+        auto parsed = QString::fromUtf8(portArg).toUShort(&ok);
+        if (ok && parsed > 0) mcpHttpPort = parsed;
+    }
+
+    if (enableMcpHttp) {
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
+        s.setValue(SettingsKeys::kKeyMcpHttpHost, mcpHttpHost);
+        s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(mcpHttpPort));
+    }
 
     QCoreApplication::setOrganizationName("HDAW");
     QCoreApplication::setApplicationName("HDAW");

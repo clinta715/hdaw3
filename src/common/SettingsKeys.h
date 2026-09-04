@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtGlobal>
+
 // QSettings key constants shared between UI and engine.
 // Kept header-only so both PreferencesDialog and AudioEngine can use them
 // without pulling Qt Widgets into the engine lib.
@@ -11,6 +13,14 @@ namespace SettingsKeys
     inline constexpr auto kKeyAudioInputDevice   = "audio/inputDevice";
     inline constexpr auto kKeyAudioSampleRate    = "audio/sampleRate";
     inline constexpr auto kKeyAudioBufferSize    = "audio/bufferSize";
+
+    // MCP HTTP
+    inline constexpr auto kKeyMcpHttpEnabled     = "mcp/httpEnabled";
+    inline constexpr auto kKeyMcpHttpHost        = "mcp/httpHost";
+    inline constexpr auto kKeyMcpHttpPort        = "mcp/httpPort";
+
+    inline constexpr const char* kDefaultMcpHttpHost = "127.0.0.1";
+    inline constexpr quint16 kDefaultMcpHttpPort = 18765;
 
     // Backup
     inline constexpr auto kKeyMaxBackups         = "backup/maxBackups";

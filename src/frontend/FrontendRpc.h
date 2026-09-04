@@ -26,6 +26,7 @@ namespace frontend {
 // client (frontend/src/rpc/client.ts) and the router switch in FrontendRouter.cpp.
 namespace method {
     inline constexpr const char* Project    = "project";
+    inline constexpr const char* Settings   = "settings";
     inline constexpr const char* Transport  = "transport";
     inline constexpr const char* AudioGraph = "audioGraph";
     inline constexpr const char* Read       = "read";

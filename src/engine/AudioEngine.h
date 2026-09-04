@@ -25,6 +25,14 @@
 #include <string>
 #include <vector>
 
+#include <QString>
+#include <QtGlobal>
+
+namespace mcp {
+class McpServer;
+class TransportHttp;
+}
+
 class AudioEngine : private juce::ValueTree::Listener, private juce::AsyncUpdater, private juce::Timer
 {
 public:
@@ -46,6 +54,18 @@ public:
     HDAW::AudioPreviewPlayer& getPreviewPlayer() { return *previewPlayer; }
     HDAW::SessionManager& getSessionManager() { return sessionManager; }
     HDAW::FileLibraryManager& getFileLibraryManager() { return fileLibraryManager; }
+
+    struct McpHttpConfig
+    {
+        bool enabled = false;
+        QString host;
+        quint16 port = 0;
+        bool running = false;
+        QString lastError;
+    };
+
+    McpHttpConfig getMcpHttpConfig() const;
+    bool setMcpHttpConfig(bool enabled, const QString& host, quint16 port, QString* error = nullptr);
 
     // Command interfaces (returning references for polymorphic use)
     ProjectCommands& getProjectCommands();
@@ -174,6 +194,11 @@ private:
 
     void rebuildTempoMap();
     void pushEffectiveMuteState();
+    void syncMcpHttpFromSettings();
+    bool startMcpHttp(const QString& host, quint16 port, QString* error = nullptr);
+    void stopMcpHttp();
+    static QString normalizeMcpHttpHost(const QString& host);
+    static bool isLoopbackMcpHttpHost(const QString& host);
 
     // Task 3 — incremental clip-mutation queue (behind HDAW_FORCE_INCREMENTAL_ROUTING).
     // The ValueTree listeners capture coalesced clip ops at mutation time; the
@@ -226,6 +251,14 @@ private:
     HDAW::SessionManager sessionManager;
     HDAW::FileLibraryManager fileLibraryManager;
     std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
+
+    std::unique_ptr<mcp::McpServer> mcpHttpServer;
+    std::unique_ptr<mcp::TransportHttp> mcpHttpTransport;
+    bool mcpHttpEnabled_ = false;
+    bool mcpHttpRunning_ = false;
+    QString mcpHttpHost_;
+    quint16 mcpHttpPort_ = 0;
+    QString mcpHttpLastError_;
 
     std::atomic<bool> midiCcRecordArmed{ false };
     MidiCcCallback midiCcCallback;

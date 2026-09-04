@@ -23,7 +23,7 @@
 namespace frontend {
 
 namespace {
-constexpr quint16 kDefaultPort = 8766;   // MCP HTTP is 8765; keep them distinct.
+constexpr quint16 kDefaultPort = 8766;   // MCP HTTP defaults to 18765; keep them distinct.
 constexpr int kPushIntervalMs = 33;      // ~30 Hz, matches the Qt GUI cadence.
 } // namespace
 

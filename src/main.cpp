@@ -4,6 +4,7 @@
 //   HDAW.exe --port=9000        (custom WebSocket port)
 //   HDAW.exe --http-port=9001   (custom HTTP port)
 //   HDAW.exe --mcp-stdio        (headless MCP over stdin/stdout)
+//   HDAW.exe --mcp-http         (start loopback MCP HTTP and persist the setting)
 //   HDAW.exe --headless         (headless WebSocket server)
 
 #include <QCoreApplication>
@@ -14,6 +15,7 @@
 #include "common/DebugLog.h"
 #include "common/MessagePumpThread.h"
 #include "common/ScopedComInit.h"
+#include "common/SettingsKeys.h"
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
@@ -42,7 +44,7 @@ class HDAW_JuceLogger : public juce::Logger
 };
 
 // Default WebSocket port for the HTML frontend.
-// Kept distinct from the MCP HTTP port (8765) so the two servers can coexist.
+// Kept distinct from the MCP HTTP port (18765) so the two servers can coexist.
 static constexpr quint16 kDefaultFrontendPort = 8766;
 
 static bool parseFlag(int argc, char** argv, const char* name)
@@ -88,8 +90,29 @@ int main(int argc, char *argv[])
     HDAW_JuceLogger juceLogger;
     juce::Logger::setCurrentLogger(&juceLogger);
 
+    QCoreApplication::setOrganizationName("HDAW");
+    QCoreApplication::setApplicationName("HDAW");
+
     const bool headlessMcp = parseFlag(argc, argv, "--mcp-stdio");
+    const bool enableMcpHttp = parseFlag(argc, argv, "--mcp-http");
     const bool headlessFrontend = parseFlag(argc, argv, "--headless");
+
+    QString mcpHttpHost = QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost);
+    quint16 mcpHttpPort = SettingsKeys::kDefaultMcpHttpPort;
+    if (const char* hostArg = parseValue(argc, argv, "--mcp-http-host"))
+        mcpHttpHost = QString::fromUtf8(hostArg);
+    if (const char* portArg = parseValue(argc, argv, "--mcp-http-port")) {
+        bool ok = false;
+        auto parsed = QString::fromUtf8(portArg).toUShort(&ok);
+        if (ok && parsed > 0) mcpHttpPort = parsed;
+    }
+
+    if (enableMcpHttp) {
+        QSettings s;
+        s.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
+        s.setValue(SettingsKeys::kKeyMcpHttpHost, mcpHttpHost);
+        s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(mcpHttpPort));
+    }
 
     const char* modeName = "UI (engine + browser)";
     if (headlessMcp) modeName = "HEADLESS MCP (--mcp-stdio)";

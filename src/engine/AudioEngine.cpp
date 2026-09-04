@@ -2,14 +2,20 @@
 #include "AudioEngineCommands_Helpers.h"
 #include <juce_events/juce_events.h>
 #include <QSettings>
+#include <QHostAddress>
 #include <cstdlib>
 #include <cmath>
 #include "../common/SettingsKeys.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
+#include "../mcp/McpServer.h"
+#include "../mcp/McpTools.h"
+#include "../mcp/McpTransportHttp.h"
 #include <algorithm>
 
 namespace {
+constexpr quint16 kDefaultMcpHttpPort = SettingsKeys::kDefaultMcpHttpPort;
+
 // Resolve the track index owning a MODULATION or MODULATION_LIST subtree.
 // `tree` may be the MODULATION node itself (parent = MODULATION_LIST) or the
 // MODULATION_LIST (parent = TRACK). Returns -1 if the track can't be found.
@@ -45,6 +51,15 @@ int trackIndexOf(const juce::ValueTree& trackTree, const juce::ValueTree& trackL
     for (int t = 0; t < trackList.getNumChildren(); ++t)
         if (trackList.getChild(t) == trackTree) return t;
     return -1;
+}
+
+bool isLoopbackHost(const QString& host)
+{
+    if (host.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0)
+        return true;
+
+    QHostAddress addr;
+    return addr.setAddress(host) && addr.isLoopback();
 }
 } // namespace
 
@@ -307,7 +322,148 @@ void AudioEngine::initialize()
     // Poll for audio-thread auto-stop requests (position exceeded project end).
     // The audio thread sets an atomic flag; this timer fires the proper
     // ValueTree stop command on the message thread so the UI updates.
+    syncMcpHttpFromSettings();
     startTimer(50);
+}
+
+QString AudioEngine::normalizeMcpHttpHost(const QString& host)
+{
+    const QString trimmed = host.trimmed();
+    if (trimmed.isEmpty() || trimmed.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0)
+        return QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost);
+    return trimmed;
+}
+
+bool AudioEngine::isLoopbackMcpHttpHost(const QString& host)
+{
+    return isLoopbackHost(normalizeMcpHttpHost(host));
+}
+
+AudioEngine::McpHttpConfig AudioEngine::getMcpHttpConfig() const
+{
+    QSettings s;
+    McpHttpConfig cfg;
+    cfg.enabled = s.value(SettingsKeys::kKeyMcpHttpEnabled, false).toBool();
+    cfg.host = s.value(SettingsKeys::kKeyMcpHttpHost, QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost)).toString();
+    cfg.port = static_cast<quint16>(s.value(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(kDefaultMcpHttpPort)).toInt());
+    cfg.running = mcpHttpRunning_;
+    cfg.lastError = mcpHttpLastError_;
+    return cfg;
+}
+
+bool AudioEngine::startMcpHttp(const QString& host, quint16 port, QString* error)
+{
+    const QString normalizedHost = normalizeMcpHttpHost(host);
+    if (!isLoopbackMcpHttpHost(normalizedHost))
+    {
+        const QString msg = QStringLiteral("MCP HTTP host must be loopback");
+        mcpHttpLastError_ = msg;
+        mcpHttpRunning_ = false;
+        HDAW_LOG("MCP", msg);
+        if (error) *error = msg;
+        return false;
+    }
+
+    if (!mcpHttpServer)
+    {
+        mcpHttpServer = std::make_unique<mcp::McpServer>();
+        mcpHttpServer->setEngine(this);
+        mcp::registerAllTools(*mcpHttpServer);
+    }
+
+    if (mcpHttpRunning_ && mcpHttpHost_ == normalizedHost && mcpHttpPort_ == port)
+    {
+        mcpHttpLastError_.clear();
+        if (error) error->clear();
+        return true;
+    }
+
+    if (mcpHttpTransport)
+    {
+        mcpHttpTransport->stop();
+        mcpHttpTransport.reset();
+    }
+
+    auto transport = std::make_unique<mcp::TransportHttp>(port, normalizedHost);
+    if (!transport->start(mcpHttpServer.get()))
+    {
+        mcpHttpLastError_ = transport->lastError();
+        mcpHttpRunning_ = false;
+        HDAW_LOG("MCP", QStringLiteral("MCP HTTP start failed: ") + mcpHttpLastError_);
+        if (error) *error = mcpHttpLastError_;
+        return false;
+    }
+
+    mcpHttpEnabled_ = true;
+    mcpHttpHost_ = normalizedHost;
+    mcpHttpPort_ = port;
+    mcpHttpRunning_ = true;
+    mcpHttpLastError_.clear();
+    mcpHttpTransport = std::move(transport);
+    HDAW_LOG("MCP", QStringLiteral("MCP HTTP listening on ") + normalizedHost + QStringLiteral(":") + QString::number(port));
+    if (error) error->clear();
+    return true;
+}
+
+void AudioEngine::stopMcpHttp()
+{
+    if (mcpHttpTransport)
+    {
+        mcpHttpTransport->stop();
+        mcpHttpTransport.reset();
+    }
+    mcpHttpRunning_ = false;
+}
+
+bool AudioEngine::setMcpHttpConfig(bool enabled, const QString& host, quint16 port, QString* error)
+{
+    const QString normalizedHost = normalizeMcpHttpHost(host);
+    if (!isLoopbackMcpHttpHost(normalizedHost))
+    {
+        const QString msg = QStringLiteral("MCP HTTP host must be loopback");
+        mcpHttpLastError_ = msg;
+        HDAW_LOG("MCP", msg);
+        if (error) *error = msg;
+        return false;
+    }
+    if (port == 0)
+    {
+        const QString msg = QStringLiteral("MCP HTTP port must be between 1 and 65535");
+        mcpHttpLastError_ = msg;
+        HDAW_LOG("MCP", msg);
+        if (error) *error = msg;
+        return false;
+    }
+
+    QSettings s;
+    s.setValue(SettingsKeys::kKeyMcpHttpEnabled, enabled);
+    s.setValue(SettingsKeys::kKeyMcpHttpHost, normalizedHost);
+    s.setValue(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(port));
+
+    mcpHttpEnabled_ = enabled;
+    mcpHttpHost_ = normalizedHost;
+    mcpHttpPort_ = port;
+
+    if (!enabled)
+    {
+        stopMcpHttp();
+        mcpHttpLastError_.clear();
+        if (error) error->clear();
+        return true;
+    }
+
+    return startMcpHttp(normalizedHost, port, error);
+}
+
+void AudioEngine::syncMcpHttpFromSettings()
+{
+    QSettings s;
+    const bool enabled = s.value(SettingsKeys::kKeyMcpHttpEnabled, false).toBool();
+    const QString host = s.value(SettingsKeys::kKeyMcpHttpHost, QString::fromUtf8(SettingsKeys::kDefaultMcpHttpHost)).toString();
+    const quint16 port = static_cast<quint16>(s.value(SettingsKeys::kKeyMcpHttpPort, static_cast<int>(kDefaultMcpHttpPort)).toInt());
+    QString error;
+    if (!setMcpHttpConfig(enabled, host, port, &error) && !error.isEmpty())
+        HDAW_LOG("MCP", QStringLiteral("MCP HTTP startup from settings failed: ") + error);
 }
 
 void AudioEngine::recordMidiCc(int channel, int controllerNumber, int value)
@@ -482,6 +638,7 @@ void AudioEngine::shutdown()
     // message pump thread after the AudioEngine (and its MainAudioProcessor /
     // AudioRecorder) is destroyed, dereferencing a dangling `this`.
     stopTimer();
+    stopMcpHttp();
 
     // Synchronize with the message pump thread and tear down every JUCE
     // message-dependent resource while the pump is parked. AudioEngine is

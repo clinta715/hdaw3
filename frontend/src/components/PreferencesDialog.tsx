@@ -102,6 +102,17 @@ interface AudioSetup {
   latencyMs: number;
 }
 
+interface McpHttpSetup {
+  enabled: boolean;
+  host: string;
+  port: number;
+  running: boolean;
+  lastError: string;
+}
+
+const DEFAULT_MCP_HTTP_HOST = "127.0.0.1";
+const DEFAULT_MCP_HTTP_PORT = 18765;
+
 export default function PreferencesDialog({ onClose }: Props) {
   const [midiDevices, setMidiDevices] = useState<string[]>([]);
   const [activeDevice, setActiveDevice] = useState<string>("");
@@ -119,6 +130,11 @@ export default function PreferencesDialog({ onClose }: Props) {
   const [maxBackups, setMaxBackups] = useState(10);
   const [pluginIsolation, setPluginIsolation] = useState(true);
   const [watchPlugins, setWatchPlugins] = useState(true);
+  const [mcpHttpEnabled, setMcpHttpEnabled] = useState(false);
+  const [mcpHttpHost, setMcpHttpHost] = useState(DEFAULT_MCP_HTTP_HOST);
+  const [mcpHttpPort, setMcpHttpPort] = useState(String(DEFAULT_MCP_HTTP_PORT));
+  const [mcpHttpRunning, setMcpHttpRunning] = useState(false);
+  const [mcpHttpLastError, setMcpHttpLastError] = useState("");
 
   const loadAudioSetup = useCallback(async () => {
     const [types, s, outputs, inputs, rates, bufs] = await Promise.all([
@@ -138,12 +154,19 @@ export default function PreferencesDialog({ onClose }: Props) {
   }, []);
 
   const loadSettings = useCallback(async () => {
-    const [tempo, ts, backups, isolation, watch] = await Promise.all([
+    const [tempo, ts, backups, isolation, watch, mcp] = await Promise.all([
       rpc.call("settings.getDefaultTempo").catch(() => 120),
       rpc.call("settings.getDefaultTimeSignature").catch(() => ({ numerator: 4, denominator: 4 })),
       rpc.call("settings.getMaxBackups").catch(() => 10),
       rpc.call("plugin.getIsolationEnabled").catch(() => true),
       rpc.call("plugin.getWatchPlugins").catch(() => true),
+      rpc.call("settings.getMcpHttpConfig").catch(() => ({
+        enabled: false,
+        host: DEFAULT_MCP_HTTP_HOST,
+        port: DEFAULT_MCP_HTTP_PORT,
+        running: false,
+        lastError: "",
+      })),
     ]);
     setDefaultTempo(tempo as number);
     const tsObj = ts as { numerator: number; denominator: number };
@@ -152,6 +175,12 @@ export default function PreferencesDialog({ onClose }: Props) {
     setMaxBackups(backups as number);
     setPluginIsolation(isolation as boolean);
     setWatchPlugins(watch as boolean);
+    const mcpObj = mcp as McpHttpSetup;
+    setMcpHttpEnabled(mcpObj.enabled);
+    setMcpHttpHost(mcpObj.host);
+    setMcpHttpPort(String(mcpObj.port));
+    setMcpHttpRunning(mcpObj.running);
+    setMcpHttpLastError(mcpObj.lastError ?? "");
   }, []);
 
   useEffect(() => {
@@ -229,6 +258,16 @@ export default function PreferencesDialog({ onClose }: Props) {
   const handleSetWatchPlugins = async (v: boolean) => {
     setWatchPlugins(v);
     await rpc.call("plugin.setWatchPlugins", { value: v }).catch(() => {});
+  };
+
+  const applyMcpHttpConfig = async (nextEnabled = mcpHttpEnabled) => {
+    const port = Number(mcpHttpPort);
+    await rpc.call("settings.setMcpHttpConfig", {
+      enabled: nextEnabled,
+      host: mcpHttpHost.trim(),
+      port,
+    }).catch(() => {});
+    await loadSettings();
   };
 
   return (
@@ -350,6 +389,48 @@ export default function PreferencesDialog({ onClose }: Props) {
                 onChange={(e) => handleSetWatchPlugins(e.target.checked)} />
               Watch Plugin Directories
             </label>
+          </section>
+          <section className="pref-section">
+            <h3>MCP HTTP</h3>
+            <label>
+              <input
+                type="checkbox"
+                checked={mcpHttpEnabled}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setMcpHttpEnabled(next);
+                  void applyMcpHttpConfig(next);
+                }}
+              />
+              Enable MCP HTTP
+            </label>
+            <label>
+              Host
+              <input
+                type="text"
+                value={mcpHttpHost}
+                onChange={(e) => setMcpHttpHost(e.target.value)}
+                onBlur={() => { void applyMcpHttpConfig(); }}
+                placeholder={DEFAULT_MCP_HTTP_HOST}
+              />
+            </label>
+            <label>
+              Port
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                value={mcpHttpPort}
+                onChange={(e) => setMcpHttpPort(e.target.value)}
+                onBlur={() => { void applyMcpHttpConfig(); }}
+              />
+            </label>
+            {mcpHttpRunning ? (
+              <p className="pref-note">MCP HTTP is running on POST /mcp.</p>
+            ) : (
+              <p className="pref-note">MCP HTTP is stopped.</p>
+            )}
+            {mcpHttpLastError && <p className="pref-note">Last error: {mcpHttpLastError}</p>}
           </section>
           <section className="pref-section">
             <h3>Engine Connection</h3>

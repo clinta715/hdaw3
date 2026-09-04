@@ -39,6 +39,8 @@ function setupRpcDefaults() {
         return true;
       case "plugin.getWatchPlugins":
         return true;
+      case "settings.getMcpHttpConfig":
+        return { enabled: false, host: "127.0.0.1", port: 18765, running: false, lastError: "" };
       case "midi.getAvailableDevices":
         return ["MIDI Keyboard"];
       case "midi.getOpenDevice":
@@ -89,6 +91,11 @@ describe("PreferencesDialog", () => {
   it("shows the Plugins section", () => {
     render(<PreferencesDialog onClose={vi.fn()} />);
     expect(screen.getByText("Plugins")).toBeInTheDocument();
+  });
+
+  it("shows the MCP HTTP section", () => {
+    render(<PreferencesDialog onClose={vi.fn()} />);
+    expect(screen.getByText("MCP HTTP")).toBeInTheDocument();
   });
 
   it("shows the Engine Connection section", () => {
@@ -144,6 +151,20 @@ describe("PreferencesDialog", () => {
       expect(mockedCall).toHaveBeenCalledWith("settings.getMaxBackups");
       expect(mockedCall).toHaveBeenCalledWith("plugin.getIsolationEnabled");
       expect(mockedCall).toHaveBeenCalledWith("plugin.getWatchPlugins");
+      expect(mockedCall).toHaveBeenCalledWith("settings.getMcpHttpConfig");
+    });
+  });
+
+  it("toggles MCP HTTP through settings RPC", async () => {
+    render(<PreferencesDialog onClose={vi.fn()} />);
+    const toggle = await screen.findByRole("checkbox", { name: "Enable MCP HTTP" });
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(mockedCall).toHaveBeenCalledWith("settings.setMcpHttpConfig", {
+        enabled: true,
+        host: "127.0.0.1",
+        port: 18765,
+      });
     });
   });
 });

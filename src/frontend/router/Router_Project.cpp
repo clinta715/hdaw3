@@ -7,6 +7,7 @@
 #include "RouterHelpers.h"
 
 #include "../../common/ProjectCommands.h"
+#include "../../engine/AudioEngine.h"
 #include "../../common/SettingsKeys.h"
 #include "../../engine/PhraseGenerator.h"
 #include "../../engine/ArrangementGenerator.h"
@@ -779,19 +780,24 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         return { false, QJsonObject{ { "found", r.found }, { "totalMissing", r.totalMissing } } };
     }
 
-    // --- Settings RPCs ---
-    if (m == "settings.getMaxBackups") { QSettings s; return { false, s.value(SettingsKeys::kKeyMaxBackups, 10).toInt() }; }
-    if (m == "settings.setMaxBackups") { int v; if (!requireInt(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyMaxBackups, v); return { false, QJsonValue::Null }; }
-    if (m == "settings.getDefaultTempo") { QSettings s; return { false, s.value(SettingsKeys::kKeyDefaultTempo, 120.0).toDouble() }; }
-    if (m == "settings.setDefaultTempo") { double v; if (!requireDouble(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyDefaultTempo, v); return { false, QJsonValue::Null }; }
-    if (m == "settings.getDefaultTimeSignature") {
+    return makeError(-32601, "unknown project method: " + m);
+}
+
+DispatchResult dispatchSettings(AudioEngine& engine, const QString& m, const QJsonValue& params) {
+    const auto o = paramsObject(params);
+
+    if (m == "getMaxBackups") { QSettings s; return { false, s.value(SettingsKeys::kKeyMaxBackups, 10).toInt() }; }
+    if (m == "setMaxBackups") { int v; if (!requireInt(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyMaxBackups, v); return { false, QJsonValue::Null }; }
+    if (m == "getDefaultTempo") { QSettings s; return { false, s.value(SettingsKeys::kKeyDefaultTempo, 120.0).toDouble() }; }
+    if (m == "setDefaultTempo") { double v; if (!requireDouble(o, "value", v, nullptr)) return makeError(-32602, "value required"); QSettings s; s.setValue(SettingsKeys::kKeyDefaultTempo, v); return { false, QJsonValue::Null }; }
+    if (m == "getDefaultTimeSignature") {
         QSettings s;
         QJsonObject ts;
         ts["numerator"] = s.value(SettingsKeys::kKeyDefaultTimeSigNum, 4).toInt();
         ts["denominator"] = s.value(SettingsKeys::kKeyDefaultTimeSigDen, 4).toInt();
         return { false, ts };
     }
-    if (m == "settings.setDefaultTimeSignature") {
+    if (m == "setDefaultTimeSignature") {
         int num, den;
         if (!requireInt(o, "numerator", num, nullptr) || !requireInt(o, "denominator", den, nullptr))
             return makeError(-32602, "numerator and denominator required");
@@ -801,7 +807,40 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         return { false, QJsonValue::Null };
     }
 
-    return makeError(-32601, "unknown project method: " + m);
+    if (m == "getMcpHttpConfig") {
+        const auto cfg = engine.getMcpHttpConfig();
+        return { false, QJsonObject{
+            { "enabled", cfg.enabled },
+            { "host", cfg.host },
+            { "port", static_cast<int>(cfg.port) },
+            { "running", cfg.running },
+            { "lastError", cfg.lastError },
+        } };
+    }
+    if (m == "setMcpHttpConfig") {
+        bool enabled = false;
+        std::string host;
+        int port = 0;
+        if (!requireBool(o, "enabled", enabled, nullptr)
+            || !requireString(o, "host", host, nullptr)
+            || !requireInt(o, "port", port, nullptr))
+            return makeError(-32602, "enabled, host, port required");
+        if (port < 1 || port > 65535)
+            return makeError(-32602, "port must be between 1 and 65535");
+        QString error;
+        if (!engine.setMcpHttpConfig(enabled, QString::fromStdString(host), static_cast<quint16>(port), &error))
+            return makeError(-32000, error.isEmpty() ? QStringLiteral("failed to update MCP HTTP") : error);
+        const auto cfg = engine.getMcpHttpConfig();
+        return { false, QJsonObject{
+            { "enabled", cfg.enabled },
+            { "host", cfg.host },
+            { "port", static_cast<int>(cfg.port) },
+            { "running", cfg.running },
+            { "lastError", cfg.lastError },
+        } };
+    }
+
+    return makeError(-32601, "unknown settings method: " + m);
 }
 
 } // namespace frontend

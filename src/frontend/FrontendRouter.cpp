@@ -51,6 +51,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
         }
         return dispatchProject(engine.getProjectCommands(), m, params);
     }
+    else if (ns == method::Settings) return dispatchSettings(engine, m, params);
     else if (ns == method::Transport)   return dispatchTransport(engine.getTransportCommands(), m, params);
     else if (ns == method::AudioGraph)  return dispatchAudioGraph(engine.getAudioGraphCommands(), m, params);
     else if (ns == method::Read) {

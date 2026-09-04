@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "engine/AudioEngine.h"
+#include "frontend/FrontendRouter.h"
 #include "frontend/FrontendServer.h"
 
 #include <QtWebSockets/QWebSocket>
@@ -25,6 +26,10 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
+#include <QVariant>
+#include <QSettings>
+
+#include "common/SettingsKeys.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -252,6 +257,55 @@ TEST(FrontendServer, SetMasterGainRpc) {
     EXPECT_NEAR(snap.value("masterGain").toDouble(1.0), 0.5, 1e-6);
 
     client.close();
+    s.tearDown();
+}
+
+TEST(FrontendServer, SettingsNamespaceExposesMcpHttpConfig) {
+    QCoreApplication::setOrganizationName(QStringLiteral("HDAW"));
+    QCoreApplication::setApplicationName(QStringLiteral("HDAW"));
+    QSettings settings;
+    struct SettingsGuard {
+        QSettings& settings;
+        QVariant enabled;
+        QVariant host;
+        QVariant port;
+        ~SettingsGuard() {
+            if (enabled.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpEnabled, enabled);
+            else settings.remove(SettingsKeys::kKeyMcpHttpEnabled);
+            if (host.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpHost, host);
+            else settings.remove(SettingsKeys::kKeyMcpHttpHost);
+            if (port.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpPort, port);
+            else settings.remove(SettingsKeys::kKeyMcpHttpPort);
+        }
+    } guard{ settings,
+             settings.value(SettingsKeys::kKeyMcpHttpEnabled),
+             settings.value(SettingsKeys::kKeyMcpHttpHost),
+             settings.value(SettingsKeys::kKeyMcpHttpPort) };
+
+    settings.setValue(SettingsKeys::kKeyMcpHttpEnabled, false);
+    settings.setValue(SettingsKeys::kKeyMcpHttpHost, QStringLiteral("127.0.0.1"));
+    settings.setValue(SettingsKeys::kKeyMcpHttpPort, 18765);
+    settings.sync();
+
+    EngineAndServer s;
+    s.setUp();
+
+    auto resp = frontend::dispatch(s.engine, "settings.getMcpHttpConfig", QJsonValue());
+    ASSERT_FALSE(resp.isError);
+    auto cfg = resp.payload.toObject();
+    EXPECT_TRUE(cfg.contains("enabled"));
+    EXPECT_TRUE(cfg.contains("host"));
+    EXPECT_TRUE(cfg.contains("port"));
+    EXPECT_TRUE(cfg.contains("running"));
+    EXPECT_TRUE(cfg.contains("lastError"));
+    EXPECT_FALSE(cfg.value("enabled").toBool());
+    EXPECT_EQ(cfg.value("host").toString(), QStringLiteral("127.0.0.1"));
+    EXPECT_EQ(cfg.value("port").toInt(), 18765);
+
+    auto setResp = frontend::dispatch(s.engine, "settings.setMcpHttpConfig",
+        QJsonObject{{"enabled", false}, {"host", "127.0.0.1"}, {"port", 18765}});
+    ASSERT_FALSE(setResp.isError);
+
     s.tearDown();
 }
 
