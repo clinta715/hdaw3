@@ -26,26 +26,37 @@ TEST(RealtimeSafety, CleanBufferDetectsNothing)
 
 TEST(RealtimeSafety, NaNInBufferTripsDetection)
 {
+#if !JUCE_DEBUG
+    GTEST_SKIP() << "BufferCheck is compiled out in release configs (JUCE_DEBUG=0); run a Debug build to exercise detectors";
+#else
     ResetGuard g;
     juce::AudioBuffer<float> buf(2, 256);
     buf.clear();
     buf.setSample(0, 100, std::numeric_limits<float>::quiet_NaN());
     HDAW::BufferCheck::checkBuffer(buf, 44100.0, 0);
     EXPECT_TRUE(HDAW::BufferCheck::anyProblemPending());
+#endif
 }
 
 TEST(RealtimeSafety, InfiniteInBufferTripsDetection)
 {
+#if !JUCE_DEBUG
+    GTEST_SKIP() << "BufferCheck is compiled out in release configs (JUCE_DEBUG=0); run a Debug build to exercise detectors";
+#else
     ResetGuard g;
     juce::AudioBuffer<float> buf(2, 256);
     buf.clear();
     buf.setSample(1, 50, std::numeric_limits<float>::infinity());
     HDAW::BufferCheck::checkBuffer(buf, 44100.0, 0);
     EXPECT_TRUE(HDAW::BufferCheck::anyProblemPending());
+#endif
 }
 
 TEST(RealtimeSafety, DCOffsetGrowthTripsDetection)
 {
+#if !JUCE_DEBUG
+    GTEST_SKIP() << "BufferCheck is compiled out in release configs (JUCE_DEBUG=0); run a Debug build to exercise detectors";
+#else
     ResetGuard g;
     juce::AudioBuffer<float> buf(2, 256);
     // Sustained DC of 0.5 for 256 samples at 44.1k = clear offset drift
@@ -53,6 +64,7 @@ TEST(RealtimeSafety, DCOffsetGrowthTripsDetection)
         buf.setSample(0, s, 0.5f);
     HDAW::BufferCheck::checkBuffer(buf, 44100.0, 0);
     EXPECT_TRUE(HDAW::BufferCheck::anyProblemPending());
+#endif
 }
 
 TEST(RealtimeSafety, ShortToneIsNotDC)
@@ -115,6 +127,9 @@ TEST(RealtimeSafety, LockBlockHelpsDetectPriorityInversion)
 
 TEST(RealtimeSafety, DrainProducesLogString)
 {
+#if !JUCE_DEBUG
+    GTEST_SKIP() << "BufferCheck is compiled out in release configs (JUCE_DEBUG=0); run a Debug build to exercise detectors";
+#else
     ResetGuard g;
     juce::AudioBuffer<float> buf(1, 64);
     buf.clear();
@@ -125,4 +140,5 @@ TEST(RealtimeSafety, DrainProducesLogString)
     EXPECT_TRUE(desc.contains("ctx=7"));
     // Nothing left after drain.
     EXPECT_FALSE(HDAW::BufferCheck::anyProblemPending());
+#endif
 }

@@ -176,6 +176,16 @@ TEST(PluginManagerInProcessVst3, InstantiatesRealVst3ByIdentifier)
     }
     if (vst3 == nullptr)
         GTEST_SKIP() << "No VST3 plugins in cache";
+    // Stale scan cache: entry may point to a file that no longer exists
+    if (!juce::File(vst3->fileOrIdentifier).existsAsFile())
+    {
+        bool anyValid = false;
+        for (const auto& d : pm.getPlugins())
+            if (d.pluginFormatName == "VST3" && juce::File(d.fileOrIdentifier).existsAsFile())
+                anyValid = true;
+        if (!anyValid)
+            GTEST_SKIP() << "No VST3 plugin file exists on disk (stale scan cache)";
+    }
 
     juce::PluginDescription desc;
     desc.fileOrIdentifier = vst3->createIdentifierString();

@@ -5,11 +5,13 @@
 #include "mcp/McpTransportLoopback.h"
 #include "mcp/McpTransportHttp.h"
 #include "mcp/McpJsonRpc.h"
+#include "common/SettingsKeys.h"
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QSettings>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -21,6 +23,7 @@
 #include <QThread>
 #include <QUrl>
 #include <QVector>
+#include <QVariant>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <cmath>
@@ -136,6 +139,67 @@ TEST(McpServer, HttpRoundTrip) {
     EXPECT_EQ(resp.value("id").toInt(), 1);
     EXPECT_TRUE(resp.value("result").isObject());
     EXPECT_TRUE(resp.value("error").isUndefined() || resp.value("error").isNull());
+}
+
+TEST(McpServer, EngineSettingsStartMcpHttp) {
+    QCoreApplication::setOrganizationName(QStringLiteral("HDAW"));
+    QCoreApplication::setApplicationName(QStringLiteral("HDAW"));
+    QSettings settings;
+    struct SettingsGuard {
+        QSettings& settings;
+        QVariant enabled;
+        QVariant host;
+        QVariant port;
+        ~SettingsGuard() {
+            if (enabled.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpEnabled, enabled);
+            else settings.remove(SettingsKeys::kKeyMcpHttpEnabled);
+            if (host.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpHost, host);
+            else settings.remove(SettingsKeys::kKeyMcpHttpHost);
+            if (port.isValid()) settings.setValue(SettingsKeys::kKeyMcpHttpPort, port);
+            else settings.remove(SettingsKeys::kKeyMcpHttpPort);
+        }
+    } guard{ settings,
+             settings.value(SettingsKeys::kKeyMcpHttpEnabled),
+             settings.value(SettingsKeys::kKeyMcpHttpHost),
+             settings.value(SettingsKeys::kKeyMcpHttpPort) };
+
+    settings.setValue(SettingsKeys::kKeyMcpHttpEnabled, true);
+    settings.setValue(SettingsKeys::kKeyMcpHttpHost, QStringLiteral("127.0.0.1"));
+    settings.setValue(SettingsKeys::kKeyMcpHttpPort, 18766);
+    settings.sync();
+
+    AudioEngine engine;
+    engine.initialize();
+
+    const auto cfg = engine.getMcpHttpConfig();
+    EXPECT_TRUE(cfg.enabled);
+    EXPECT_TRUE(cfg.running);
+    EXPECT_EQ(cfg.host, QStringLiteral("127.0.0.1"));
+    EXPECT_EQ(cfg.port, 18766);
+    EXPECT_TRUE(cfg.lastError.isEmpty()) << cfg.lastError.toStdString();
+
+    QNetworkAccessManager nam;
+    QNetworkRequest req(QUrl("http://127.0.0.1:18766/mcp"));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    QByteArray body = R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
+
+    QEventLoop loop;
+    QObject::connect(&nam, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
+    QNetworkReply* reply = nam.post(req, body);
+    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    ASSERT_EQ(reply->error(), QNetworkReply::NoError)
+        << "HTTP error: " << reply->errorString().toStdString();
+    auto resp = QJsonDocument::fromJson(reply->readAll()).object();
+    reply->deleteLater();
+
+    EXPECT_EQ(resp.value("jsonrpc").toString().toStdString(), std::string("2.0"));
+    EXPECT_EQ(resp.value("id").toInt(), 1);
+    EXPECT_TRUE(resp.value("result").isObject());
+    EXPECT_TRUE(resp.value("error").isUndefined() || resp.value("error").isNull());
+
+    engine.shutdown();
 }
 
 TEST(McpServer, InitializeAndList) {

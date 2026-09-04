@@ -41,7 +41,7 @@ float peakOf(const juce::File& wav)
 
 } // namespace
 
-TEST(ExportVolumeBypass, DISABLED_RealProjectVolumeSensitivity)
+TEST(ExportVolumeBypass, RealProjectVolumeSensitivity)
 {
     // The render-sequence bake for a 771-clip graph exceeds the 15 s default
     // bake window in Debug builds; the production export scripts set this to
