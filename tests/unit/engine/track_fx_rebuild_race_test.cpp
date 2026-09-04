@@ -12,6 +12,19 @@
 
 namespace {
 
+// The Access Virus B/C single fixture (copied from timbre-lib/testdata/virus/,
+// proven against the real preset library in slice 1). Resolved via __FILE__ so
+// the test is independent of the runner's working directory.
+juce::File virusFixtureFile()
+{
+    juce::File self(__FILE__);
+    juce::File dir = juce::File::isAbsolutePath(__FILE__)
+        ? self.getParentDirectory().getChildFile("testdata/virus")
+        : juce::File::getCurrentWorkingDirectory().getChildFile(
+            "tests/unit/engine/testdata/virus");
+    return dir.getChildFile("bcsingle.syx");
+}
+
 // Same hand-rolled RIFF writer as audio_pool_dedup_test.cpp — no JUCE writer
 // dependency, keeps the test self-contained.
 juce::File writeSineWav(const char* tag, int lengthSamples, double sr = 44100.0)
@@ -100,6 +113,75 @@ TEST(TrackFxRebuildRace, RebuildTrackFXSerializedAgainstAsyncGraphRebuild)
     }
 
     file.deleteFile();
+}
+
+TEST(TrackFxRebuildRace, SubSynthSlotSurvivesRebuildAndRestoresParams)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, "sub_synth", 0, "");
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+
+    cmds.setFxSlotParam(0, 0, 0, 2.0f);
+    cmds.setFxSlotParam(0, 0, 7, 1200.0f);
+    cmds.setFxSlotParam(0, 0, 15, 1.0f);
+    cmds.setFxSlotParam(0, 0, 16, 0.25f);
+    cmds.setFxSlotParam(0, 0, 17, 2.0f);
+    cmds.setFxSlotParam(0, 0, 18, 36.0f);
+    cmds.setFxSlotParam(0, 0, 23, 4.0f);
+
+    auto fxChainTree = engine.getProjectModel().getTrackListTree()
+        .getChild(0)
+        .getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChainTree.isValid());
+
+    track->rebuildFXChain(fxChainTree);
+
+    track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+
+    auto& chain = track->getFXChain();
+    ASSERT_FALSE(chain.empty());
+    ASSERT_NE(chain[0], nullptr);
+    EXPECT_EQ(chain[0]->getType(), "sub_synth");
+
+    const auto defs = chain[0]->getInternalParamDefs();
+    ASSERT_GE(defs.size(), 24u);
+    EXPECT_EQ(defs[15].name, "Legato");
+    EXPECT_EQ(defs[16].name, "Portamento");
+    EXPECT_EQ(defs[17].name, "Filter Type");
+    EXPECT_EQ(defs[18].name, "Filter Env Amount");
+    EXPECT_EQ(defs[23].name, "Pitch Bend Range");
+
+    const auto values = chain[0]->getInternalParamValues();
+    ASSERT_GE(values.size(), 24u);
+    EXPECT_FLOAT_EQ(values[0], 2.0f);
+    EXPECT_FLOAT_EQ(values[7], 1200.0f);
+    EXPECT_FLOAT_EQ(values[15], 1.0f);
+    EXPECT_FLOAT_EQ(values[16], 0.25f);
+    EXPECT_FLOAT_EQ(values[17], 2.0f);
+    EXPECT_FLOAT_EQ(values[18], 36.0f);
+    EXPECT_FLOAT_EQ(values[23], 4.0f);
+
+    auto params = engine.getReadModel().getInternalFxParams(0, 0);
+    ASSERT_FALSE(params.empty());
+    EXPECT_EQ(params[0].value, 2.0f);
+    EXPECT_EQ(params[7].value, 1200.0f);
+    EXPECT_EQ(params[15].value, 1.0f);
+    EXPECT_EQ(params[16].value, 0.25f);
+    EXPECT_EQ(params[17].value, 2.0f);
+    EXPECT_EQ(params[18].value, 36.0f);
+    EXPECT_EQ(params[23].value, 4.0f);
+
+    auto fxSlots = engine.getReadModel().getFxSlots(0);
+    ASSERT_FALSE(fxSlots.empty());
+    EXPECT_EQ(fxSlots[0].fxType, "sub_synth");
 }
 
 // Same shape on the default MIDI "Synth" track (index 1) for
@@ -288,4 +370,132 @@ TEST(TrackFxRebuildRace, RebuildMidiClipCacheSerializedAgainstAsyncGraphRebuild)
     }
 
     file.deleteFile();
+}
+
+// Lesson-10 / Gate-10 discipline for the Virus patch loader: the imported
+// patch writes sub_synth params 0..22 via setFxSlotParam (ValueTree), so it
+// must survive a rebuildFXChain() on the LIVE processor — a ReadModel-only
+// assertion would not prove the restored slot sounds right. The reserved
+// param 23 (Pitch Bend Range) is never written and must stay at its default.
+TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, "sub_synth", 0, "");
+
+    auto fixture = virusFixtureFile();
+    ASSERT_TRUE(fixture.existsAsFile())
+        << "missing fixture: " << fixture.getFullPathName();
+
+    auto r = engine.getAudioEngineCommands().loadVirusPatch(
+        0, 0, fixture.getFullPathName().toStdString(), 0);
+    ASSERT_TRUE(r.ok) << r.error;
+    EXPECT_EQ(r.name, "~WELCOME");
+    EXPECT_EQ(r.bank, 1);
+    EXPECT_EQ(r.program, 0);
+    EXPECT_EQ(r.mappedCount, 23);
+    ASSERT_EQ(r.unmapped.size(), 12u);
+
+    // The ValueTree carries the patch (params are the source of truth).
+    auto fxChainTree = engine.getProjectModel().getTrackListTree()
+        .getChild(0)
+        .getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChainTree.isValid());
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+
+    // Rebuild the FX chain from the tree (the projection seam) and assert the
+    // LIVE processor — params changed + the reserved param at default.
+    track->rebuildFXChain(fxChainTree);
+
+    track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    auto& chain = track->getFXChain();
+    ASSERT_FALSE(chain.empty());
+    ASSERT_NE(chain[0], nullptr);
+    EXPECT_EQ(chain[0]->getType(), "sub_synth");
+
+    const auto values = chain[0]->getInternalParamValues();
+    ASSERT_GE(values.size(), 24u);
+    EXPECT_FLOAT_EQ(values[0], 1.0f);           // osc1 wave -> Saw
+    EXPECT_NEAR(values[1], 0.503937f, 1e-3f);   // osc1 level 64/127
+    EXPECT_NEAR(values[4], 98.4375f, 1e-3f);    // osc2 detune +98.4 cents
+    EXPECT_NEAR(values[7], 86.8611f, 1e-3f);    // cutoff 20*pow(1000,27/127)
+    EXPECT_NEAR(values[8], 0.196850f, 1e-3f);   // resonance 25/127
+    EXPECT_FLOAT_EQ(values[11], 5.0f);          // amp decay max
+    EXPECT_NEAR(values[13], 0.052290f, 1e-3f);  // amp release
+    EXPECT_NEAR(values[14], 1.181102f, 1e-3f);  // output 100/127*1.5
+    EXPECT_NEAR(values[18], 14.25f, 1e-3f);     // filter env amount 83
+    EXPECT_NEAR(values[19], 0.213826f, 1e-3f);  // filter attack
+    EXPECT_FLOAT_EQ(values[22], 5.0f);          // filter release max
+    EXPECT_FLOAT_EQ(values[23], 2.0f);          // reserved param stays default
+
+    // ReadModel agrees (same ValueTree props the frontend renders).
+    auto params = engine.getReadModel().getInternalFxParams(0, 0);
+    bool foundCutoff = false;
+    for (const auto& p : params)
+        if (p.paramIndex == 7)
+        {
+            EXPECT_NEAR(p.value, 86.8611f, 1e-3f);
+            foundCutoff = true;
+        }
+    EXPECT_TRUE(foundCutoff);
+}
+
+// Gate 6: the patch must persist through a save/load round-trip — saveProject
+// writes the param_N props, loadProject restores them, and the rebuilt live
+// processor plays the patch (not just the ReadModel).
+TEST(TrackFxRebuildRace, SubSynthPatchLoadPersistsAcrossSaveLoad)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, "sub_synth", 0, "");
+
+    auto fixture = virusFixtureFile();
+    ASSERT_TRUE(fixture.existsAsFile());
+    auto r = engine.getAudioEngineCommands().loadVirusPatch(
+        0, 0, fixture.getFullPathName().toStdString(), 0);
+    ASSERT_TRUE(r.ok) << r.error;
+
+    auto tmp = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_virus_subsynth_roundtrip.hdaw");
+    tmp.deleteFile();
+    ASSERT_TRUE(cmds.saveProject(tmp.getFullPathName().toStdString()));
+    ASSERT_TRUE(cmds.loadProject(tmp.getFullPathName().toStdString()));
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_GE(track->getNumFXSlots(), 1);
+    auto& chain = track->getFXChain();
+    ASSERT_FALSE(chain.empty());
+    ASSERT_NE(chain[0], nullptr);
+    EXPECT_EQ(chain[0]->getType(), "sub_synth");
+
+    const auto values = chain[0]->getInternalParamValues();
+    ASSERT_GE(values.size(), 24u);
+    EXPECT_NEAR(values[1], 0.503937f, 1e-3f);
+    EXPECT_NEAR(values[4], 98.4375f, 1e-3f);
+    EXPECT_NEAR(values[7], 86.8611f, 1e-3f);
+    EXPECT_NEAR(values[14], 1.181102f, 1e-3f);
+    EXPECT_NEAR(values[18], 14.25f, 1e-3f);
+    EXPECT_FLOAT_EQ(values[23], 2.0f);          // reserved param stays default
+
+    auto params = engine.getReadModel().getInternalFxParams(0, 0);
+    bool found = false;
+    for (const auto& p : params)
+        if (p.paramIndex == 4)
+        {
+            EXPECT_NEAR(p.value, 98.4375f, 1e-3f);
+            found = true;
+        }
+    EXPECT_TRUE(found);
+
+    tmp.deleteFile();
 }

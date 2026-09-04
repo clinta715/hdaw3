@@ -1,6 +1,8 @@
 #include "TrackFXSlot.h"
 #include "../proxy/PluginProxySlot.h"
 
+// SubSynth wiring stays in the header-defined TrackFXSlot implementation.
+
 int HDAW::TrackFXSlot::proxySlotId() const
 {
     auto* p = dynamic_cast<proxy::PluginProxySlot*>(pluginInstance.get());

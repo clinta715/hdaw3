@@ -6,12 +6,14 @@
 #include "../engine/PluginManager.h"
 #include "../proxy/PluginProxySlot.h"
 #include "TrackFXSlot.h"
+#include "engine/VirusSysexImport.h"
 #include "engine/SliceDetector.h"
 #include "engine/PsyFmState.h"
 #include "engine/PsyFmModMatrix.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 // Qt defines `slots` as a keyword macro (qobjectdefs.h); TUs in this project
 // that pull in Qt headers (directly or transitively, e.g. via AudioEngine.h)
@@ -52,6 +54,7 @@ void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
         case 5: typeStr = "flanger"; break;
         case 6: typeStr = "phaser"; break;
         case 7: typeStr = "filter"; break;
+        case 8: typeStr = "sub_synth"; break;
         default: typeStr = "plugin"; break;
     }
 
@@ -317,6 +320,87 @@ void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int para
 
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
+}
+
+AudioEngineCommands::VirusLoadResult AudioEngineCommands::loadVirusPatch(
+    int trackIndex, int slotIndex, const std::string& filePath, int voiceIndex)
+{
+    VirusLoadResult result;
+    auto fail = [&](const juce::String& msg) -> VirusLoadResult {
+        result.error = msg.toStdString();
+        return result;
+    };
+
+    // Gate 9: validate the slot is a sub_synth BEFORE touching anything.
+    auto fxSlots = engine_.getReadModel().getFxSlots(trackIndex);
+    if (slotIndex < 0 || slotIndex >= static_cast<int>(fxSlots.size()))
+        return fail("slot not found");
+    if (fxSlots[static_cast<size_t>(slotIndex)].fxType != "sub_synth")
+        return fail("slot is not a sub_synth");
+
+    juce::File f(filePath);
+    if (!f.existsAsFile())
+        return fail("file not found: " + juce::String(filePath));
+
+    juce::MemoryBlock raw;
+    if (!f.loadFileAsData(raw))
+        return fail("failed to read file");
+
+    const auto* bytes = static_cast<const uint8_t*>(raw.getData());
+    const size_t fileSize = raw.getSize();
+
+    // Detect container: 267-byte B/C single, or a 524-byte-block TI bank
+    // (a full bank is 67072 bytes). Both must carry the Access manufacturer
+    // header F0 00 20 33 01.
+    std::optional<HDAW::VirusPatch> patch;
+    const bool hasVirusHeader = fileSize >= 5
+        && bytes[0] == 0xF0 && bytes[1] == 0x00 && bytes[2] == 0x20
+        && bytes[3] == 0x33 && bytes[4] == 0x01;
+
+    if (fileSize == 267 && hasVirusHeader)
+    {
+        patch = HDAW::parseBcSingle(bytes, fileSize);
+    }
+    else if (fileSize >= 524 && fileSize % 524 == 0 && hasVirusHeader)
+    {
+        auto patches = HDAW::parseTiBank(bytes, fileSize);
+        const int vi = voiceIndex < 0 ? 0 : voiceIndex;
+        if (vi < 0 || vi >= static_cast<int>(patches.size()))
+            return fail("voiceIndex out of range (" + juce::String(static_cast<int>(patches.size())) + " patches)");
+        patch = std::move(patches[static_cast<size_t>(vi)]);
+    }
+    else
+    {
+        return fail("not a recognized Access Virus SysEx file "
+                    "(expected 267-byte B/C single or 524-byte-block TI bank)");
+    }
+
+    if (!patch.has_value())
+        return fail("failed to parse SysEx data (bad header, size, or checksum)");
+
+    // One undo unit for the whole patch load (applyFxChain precedent): every
+    // setFxSlotParam writes under &um between the two beginNewTransaction
+    // calls coalesce into a single undo step. All validation happened above,
+    // so this loop cannot fail — the slot only changes here.
+    beginTransaction("Load Virus patch");
+    int mappedCount = 0;
+    for (int i = 0; i < 24; ++i)
+    {
+        if (patch->mapped[static_cast<size_t>(i)].has_value())
+        {
+            setFxSlotParam(trackIndex, slotIndex, i, *patch->mapped[static_cast<size_t>(i)]);
+            ++mappedCount;
+        }
+    }
+    endTransaction();
+
+    result.ok = true;
+    result.name = patch->name;
+    result.bank = patch->bank;
+    result.program = patch->program;
+    result.mappedCount = mappedCount;
+    result.unmapped = patch->unmapped;
+    return result;
 }
 
 void AudioEngineCommands::reorderFxSlots(int trackIndex, int fromSlot, int toSlot)

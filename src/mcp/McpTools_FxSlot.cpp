@@ -23,12 +23,12 @@ void registerFxSlotTools(McpServer& s, AudioEngine* e)
 {
 
 s.registerTool({"add_fx",
-        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm}, OR a pluginId.",
+        "Add an FX slot. fxType in {eq,compressor,reverb,delay,chorus,flanger,phaser,filter,saturator,sampler,fm_synth,growl_bass,psyarp,psy_fm,sub_synth}, OR a pluginId.",
         objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
                   {"fxType",   QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm"}}}},
-                  {"pluginId", QJsonObject{{"type","string"}}},
-                  {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
+                      {"enum", QJsonArray{"eq","compressor","reverb","delay","chorus","flanger","phaser","filter","saturator","sampler","fm_synth","growl_bass","psyarp","psy_fm","sub_synth"}}}},
+                   {"pluginId", QJsonObject{{"type","string"}}},
+                   {"position", QJsonObject{{"type","integer"}}}}, {"trackId"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
@@ -90,7 +90,7 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm).",
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         "fx",
@@ -146,7 +146,7 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm).",
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -187,7 +187,7 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, and psy_fm.",
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
@@ -214,7 +214,7 @@ s.registerTool({"set_internal_fx_param",
         }});
 
 s.registerTool({"get_internal_fx_param",
-        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units — the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth — no render, no DSP access, read-only).",
+        "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units — the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth — no render, no DSP access, read-only).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         "fx",
@@ -244,6 +244,56 @@ s.registerTool({"get_internal_fx_param",
             }
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
+        }});
+
+s.registerTool({"sub_synth_import_sysex",
+        "Import an Access Virus SysEx patch into a sub_synth FX slot. Supports B/C "
+        "single dumps (267 bytes) and TI banks (128 x 524-byte blocks). For banks, "
+        "loads voiceIndex (default 0). Maps the Virus patch onto the sub_synth "
+        "params 0-22 in real units (cutoff/envelopes/levels/waves/...); Virus "
+        "features with no sub_synth equivalent (FM, ring mod, LFOs, keytrack, FX, "
+        "mod matrix, noise) are reported in 'unmapped' — never silently dropped. "
+        "On a bad file/slot/checksum the slot is left unchanged.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                   {"slotIndex", QJsonObject{{"type","integer"}}},
+                   {"filePath",  QJsonObject{{"type","string"}}},
+                   {"voiceIndex",QJsonObject{{"type","integer"}}}},
+                   {"trackId","slotIndex","filePath"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
+                return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "sub_synth")
+                return McpToolResult::text("slot is not a sub_synth", true);
+
+            QString filePath = a.value("filePath").toString();
+            if (filePath.isEmpty())
+                return McpToolResult::text("filePath required", true);
+            juce::File syxFile(filePath.toStdString());
+            if (!syxFile.existsAsFile())
+                return McpToolResult::text("file not found: " + filePath, true);
+
+            const int vi = a.value("voiceIndex").toInt(0);
+            auto r = e->getAudioEngineCommands().loadVirusPatch(
+                ti, si, filePath.toStdString(), vi);
+            if (!r.ok)
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+
+            QJsonObject result;
+            result["ok"] = true;
+            result["name"] = QString::fromStdString(r.name);
+            result["bank"] = r.bank;
+            result["program"] = r.program;
+            result["mappedCount"] = r.mappedCount;
+            QJsonArray unmapped;
+            for (const auto& u : r.unmapped)
+                unmapped.append(QString::fromStdString(u));
+            result["unmapped"] = unmapped;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});
 
 }

@@ -179,6 +179,24 @@ public:
     void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                         float value) override;
 
+    /// Result of importing an Access Virus SysEx patch into a sub_synth slot.
+    struct VirusLoadResult {
+        bool ok = false;
+        std::string error;                 // populated when !ok
+        std::string name;                  // patch name (may carry a leading '~')
+        int bank = 0, program = 0;         // from the sysex header
+        int mappedCount = 0;               // how many sub_synth params were written
+        std::vector<std::string> unmapped; // Virus features with no sub_synth equivalent
+    };
+    /// Parse an Access Virus B/C single (267 B) or TI bank (128 x 524 B) from
+    /// `filePath` and map the selected patch onto the slot's sub_synth params
+    /// 0..22 in real units — one undo unit. `voiceIndex` picks a patch inside a
+    /// TI bank (default 0). Params are written ONLY via setFxSlotParam (the
+    /// stateLock-guarded command path). On any validation/parse failure the
+    /// slot is left unchanged and the result carries a clear `error`.
+    VirusLoadResult loadVirusPatch(int trackIndex, int slotIndex,
+                                   const std::string& filePath, int voiceIndex = 0);
+
     // ── PsyFm preset/matrix commands (tree-first, deviceless-safe) ──
     /// Load a named psytrance preset: writes all 33 params + psyFmMatrix +
     /// psyFmSweepRate in one undo transaction. No-op when slot is not psy_fm

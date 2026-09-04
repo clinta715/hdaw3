@@ -12,6 +12,7 @@
 #include "CLAPPluginInstance.h"
 #include "../proxy/PluginProxySlot.h"
 #include "engine/SamplerEngine.h"
+#include "engine/SubtractiveSynthEngine.h"
 #include "engine/FmSynthEngine.h"
 #include "engine/GrowlBassEngine.h"
 #include "engine/SaturatorEngine.h"
@@ -251,6 +252,33 @@ public:
                 {31, "Output Level",    0.4f,   0.0f,   1.0f },
                 {32, "Algorithm Preset",0.0f,   0.0f,   3.0f },
             };
+        if (type == "sub_synth")
+            return {
+                { 0, "Osc1 Wave",      0.0f,   0.0f,    3.0f },
+                { 1, "Osc1 Level",     0.6f,   0.0f,    1.0f },
+                { 2, "Osc2 Wave",      1.0f,   0.0f,    3.0f },
+                { 3, "Osc2 Level",     0.4f,   0.0f,    1.0f },
+                { 4, "Osc2 Detune",    8.0f, -1200.0f, 1200.0f },
+                { 5, "Sub Level",      0.35f,  0.0f,    1.0f },
+                { 6, "Sub Octave",    -1.0f,  -2.0f,    0.0f },
+                { 7, "Cutoff",      1800.0f,  20.0f, 20000.0f },
+                { 8, "Resonance",      0.15f,  0.0f,    0.99f },
+                { 9, "Drive",          0.0f,   0.0f,    1.0f },
+                {10, "Attack",         0.01f,  0.001f,  5.0f },
+                {11, "Decay",          0.18f,  0.001f,  5.0f },
+                {12, "Sustain",        0.65f,  0.0f,    1.0f },
+                {13, "Release",        0.18f,  0.001f,  5.0f },
+                {14, "Output Level",   0.8f,   0.0f,    1.5f },
+                {15, "Legato",         0.0f,   0.0f,    1.0f },
+                {16, "Portamento",     0.0f,   0.0f,    5.0f },
+                {17, "Filter Type",     0.0f,   0.0f,    3.0f },
+                {18, "Filter Env Amount",24.0f,  0.0f,   48.0f },
+                {19, "Filter Attack",   0.01f,  0.001f,  5.0f },
+                {20, "Filter Decay",    0.30f,  0.001f,  5.0f },
+                {21, "Filter Sustain",  0.70f,  0.0f,    1.0f },
+                {22, "Filter Release",  0.30f,  0.001f,  5.0f },
+                {23, "Pitch Bend Range",2.0f,   0.0f,   12.0f },
+            };
         return {};
     }
 
@@ -284,6 +312,8 @@ public:
             activeType = ActiveType::PsyArp;
         else if (type == "psy_fm")
             activeType = ActiveType::PsyFm;
+        else if (type == "sub_synth")
+            activeType = ActiveType::SubSynth;
         else if (type == "saturator")
             activeType = ActiveType::Saturator;
         else if (type == "plugin")
@@ -663,6 +693,37 @@ public:
                 if (internalParamValues.size() > 25) fmSynth->setLfoWaveform(static_cast<int>(internalParamValues[25]));
                 break;
             }
+            case ActiveType::SubSynth:
+            {
+                if (!subSynth)
+                    subSynth = std::make_unique<SubtractiveSynthEngine>();
+                subSynth->prepare(spec.sampleRate, static_cast<int>(spec.maximumBlockSize));
+                if (internalParamValues.size() > 0) subSynth->setOsc1Wave(juce::roundToInt(internalParamValues[0]));
+                if (internalParamValues.size() > 1) subSynth->setOsc1Level(internalParamValues[1]);
+                if (internalParamValues.size() > 2) subSynth->setOsc2Wave(juce::roundToInt(internalParamValues[2]));
+                if (internalParamValues.size() > 3) subSynth->setOsc2Level(internalParamValues[3]);
+                if (internalParamValues.size() > 4) subSynth->setOsc2DetuneCents(internalParamValues[4]);
+                if (internalParamValues.size() > 5) subSynth->setSubLevel(internalParamValues[5]);
+                if (internalParamValues.size() > 6) subSynth->setSubOctave(juce::roundToInt(internalParamValues[6]));
+                if (internalParamValues.size() > 7) subSynth->setCutoffHz(internalParamValues[7]);
+                if (internalParamValues.size() > 8) subSynth->setResonance(internalParamValues[8]);
+                if (internalParamValues.size() > 9) subSynth->setDrive(internalParamValues[9]);
+                if (internalParamValues.size() > 10) subSynth->setAttackSeconds(internalParamValues[10]);
+                if (internalParamValues.size() > 11) subSynth->setDecaySeconds(internalParamValues[11]);
+                if (internalParamValues.size() > 12) subSynth->setSustain(internalParamValues[12]);
+                if (internalParamValues.size() > 13) subSynth->setReleaseSeconds(internalParamValues[13]);
+                if (internalParamValues.size() > 14) subSynth->setOutputLevel(internalParamValues[14]);
+                if (internalParamValues.size() > 15) subSynth->setLegato(internalParamValues[15] >= 0.5f);
+                if (internalParamValues.size() > 16) subSynth->setPortamentoSeconds(internalParamValues[16]);
+                if (internalParamValues.size() > 17) subSynth->setFilterType(juce::roundToInt(internalParamValues[17]));
+                if (internalParamValues.size() > 18) subSynth->setFilterEnvAmount(internalParamValues[18]);
+                if (internalParamValues.size() > 19) subSynth->setFilterAttackSeconds(internalParamValues[19]);
+                if (internalParamValues.size() > 20) subSynth->setFilterDecaySeconds(internalParamValues[20]);
+                if (internalParamValues.size() > 21) subSynth->setFilterSustain(internalParamValues[21]);
+                if (internalParamValues.size() > 22) subSynth->setFilterReleaseSeconds(internalParamValues[22]);
+                if (internalParamValues.size() > 23) subSynth->setPitchBendRange(internalParamValues[23]);
+                break;
+            }
             case ActiveType::GrowlBass:
             {
                 if (!growlBass)
@@ -860,6 +921,16 @@ public:
             return;
         }
 
+        if (activeType == ActiveType::SubSynth)
+        {
+            if (subSynth)
+            {
+                subSynth->render(buffer, midiMessages);
+                midiMessages.clear();
+            }
+            return;
+        }
+
         if (activeType == ActiveType::None) return;
 
         juce::dsp::AudioBlock<float> block(buffer);
@@ -970,6 +1041,7 @@ public:
         if (growlBass) growlBass->prepare(sampleRate_, 0);
         if (psyArp)    psyArp->prepare(sampleRate_, 0);
         if (psyFm)     psyFm->prepare(sampleRate_, 0);
+        if (subSynth)  subSynth->prepare(sampleRate_, 0);
         sat_[0].reset();
         sat_[1].reset();
         if (over_)     over_->reset();
@@ -1253,7 +1325,7 @@ public:
     }
 
 private:
-    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, Saturator };
+    enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;
     std::atomic<bool> bypassed{ false };
@@ -1276,6 +1348,7 @@ private:
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
     std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>> filter;
     std::unique_ptr<SamplerEngine> sampler;
+    std::unique_ptr<SubtractiveSynthEngine> subSynth;
     std::unique_ptr<FmSynthEngine> fmSynth;
     std::unique_ptr<GrowlBassEngine> growlBass;
     std::unique_ptr<PsyArpEngine> psyArp;
@@ -1678,6 +1751,39 @@ private:
                         }
                         break;
                     }
+                    default: return;
+                }
+                break;
+            }
+            case ActiveType::SubSynth:
+            {
+                if (!subSynth) return;
+                switch (paramIndex)
+                {
+                    case 0: subSynth->setOsc1Wave(juce::roundToInt(value)); break;
+                    case 1: subSynth->setOsc1Level(value); break;
+                    case 2: subSynth->setOsc2Wave(juce::roundToInt(value)); break;
+                    case 3: subSynth->setOsc2Level(value); break;
+                    case 4: subSynth->setOsc2DetuneCents(value); break;
+                    case 5: subSynth->setSubLevel(value); break;
+                    case 6: subSynth->setSubOctave(juce::roundToInt(value)); break;
+                    case 7: subSynth->setCutoffHz(value); break;
+                    case 8: subSynth->setResonance(value); break;
+                    case 9: subSynth->setDrive(value); break;
+                    case 10: subSynth->setAttackSeconds(value); break;
+                    case 11: subSynth->setDecaySeconds(value); break;
+                    case 12: subSynth->setSustain(value); break;
+                    case 13: subSynth->setReleaseSeconds(value); break;
+                    case 14: subSynth->setOutputLevel(value); break;
+                    case 15: subSynth->setLegato(value >= 0.5f); break;
+                    case 16: subSynth->setPortamentoSeconds(value); break;
+                    case 17: subSynth->setFilterType(juce::roundToInt(value)); break;
+                    case 18: subSynth->setFilterEnvAmount(value); break;
+                    case 19: subSynth->setFilterAttackSeconds(value); break;
+                    case 20: subSynth->setFilterDecaySeconds(value); break;
+                    case 21: subSynth->setFilterSustain(value); break;
+                    case 22: subSynth->setFilterReleaseSeconds(value); break;
+                    case 23: subSynth->setPitchBendRange(value); break;
                     default: return;
                 }
                 break;

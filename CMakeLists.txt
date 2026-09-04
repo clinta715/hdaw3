@@ -152,6 +152,8 @@ add_library(HDAW_lib STATIC
     src/engine/HarmonyEngine.cpp
     src/engine/TextureEngine.h
     src/engine/TextureEngine.cpp
+    src/engine/SubtractiveSynthEngine.h
+    src/engine/SubtractiveSynthEngine.cpp
     src/engine/PatternLibrary.cpp
     src/engine/ChainLibrary.cpp
     src/engine/EnvelopeGenerator.cpp
@@ -168,6 +170,7 @@ add_library(HDAW_lib STATIC
     src/engine/PsyFmEngine.cpp
     src/engine/PsyFmAlgorithms.cpp
     src/engine/Dx7SysexImport.cpp
+    src/engine/VirusSysexImport.cpp
     src/engine/msfa/fm_core.cc
     src/engine/msfa/fm_op_kernel.cc
     src/engine/msfa/sin.cc

@@ -73,6 +73,7 @@ const INTERNAL_FX = [
   { label: "Growl Bass", fxType: "growl_bass" },
   { label: "PsyArp", fxType: "psyarp" },
   { label: "PsyFm", fxType: "psy_fm" },
+  { label: "Sub Synth", fxType: "sub_synth" },
 ];
 
 export default function FXChain() {

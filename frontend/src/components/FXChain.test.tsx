@@ -192,6 +192,23 @@ describe("FXChain", () => {
       expect(screen.queryByText("Internal")).not.toBeInTheDocument();
     });
 
+    it("selecting Sub Synth internal FX calls addFxSlot with sub_synth", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      mockedCall.mockResolvedValue([]);
+      const user = userEvent.setup();
+      render(<FXChain />);
+      await flushRead();
+
+      await user.click(screen.getByText("+ Add FX"));
+      expect(screen.getByText("Sub Synth")).toBeInTheDocument();
+      await user.click(screen.getByText("Sub Synth"));
+
+      expect(mockedCall).toHaveBeenCalledWith("project.addFxSlot", expect.objectContaining({
+        trackIndex: 0,
+        fxType: "sub_synth",
+      }));
+    });
+
     it("shows instruments section when instruments exist", async () => {
       useUiStore.setState({ selectedTrackIndex: 0 });
       mockedCall.mockImplementation((method: string) => {
