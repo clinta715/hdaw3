@@ -188,6 +188,13 @@ def find_sample(e, query, prefer):
     return None
 
 
+# Factory psytrance per-role FX chains (filters/saturation/reverb/compression),
+# loaded onto the track BEFORE the instrument is prepended at slot 0.
+CHAINS = {"kick": "Kick Punch", "bass": "Bass Glue", "hat": "Hat Air",
+          "arp": "Arp Width", "stab": "Stab Snip", "pad": "Pad Shimmer",
+          "riser": "Riser Sweep", "down": "Riser Sweep"}
+
+
 def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
     e.tool("new_project", {})
     e.tool("set_tempo", {"bpm": bpm})
@@ -204,6 +211,12 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
         if tid is None:
             print("add_track failed:", r)
             return
+        # Factory psytrance FX chain first (eq/comp/sat/reverb/filter per role),
+        # then prepend the instrument at slot 0 so FX run after it.
+        chain = CHAINS.get(role)
+        if chain:
+            lc = e.tool("load_fx_chain", {"trackId": tid, "name": chain})
+            print(f"{role}: fx chain {chain} -> {lc.get('ok')}")
         e.tool("add_fx", {"trackId": tid, "fxType": fx[role], "position": 0})
         tracks[role] = tid
     print("palette tracks:", tracks)
@@ -212,8 +225,8 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
     # the engines phase); balance so bass/pad/stab sit above the arp instead of
     # being masked by it.
     vols = {"kick": 0.9, "bass": 1.0, "hat": 0.55, "snare": 0.7, "rim": 0.6,
-            "arp": 0.32, "stab": 0.75, "pad": 0.7, "clap": 0.7, "riser": 0.5,
-            "down": 0.5}
+            "arp": 0.42, "stab": 0.9, "pad": 0.9, "clap": 0.7, "riser": 0.6,
+            "down": 0.6}
     for role, v in vols.items():
         e.tool("set_track", {"trackId": tracks[role], "volume": v})
 
