@@ -162,6 +162,98 @@ def search(e):
             print(f"   {os.path.basename(h.get('path',''))} [{h.get('patchEngine') or h.get('format')}] :: {(h.get('description') or '')[:70]}")
 
 
+TRACK5_SECTIONS = [
+    {"type": "intro", "bars": 8},
+    {"type": "build", "bars": 32},
+    {"type": "breakdown", "bars": 8},
+    {"type": "peak", "bars": 48},
+    {"type": "build", "bars": 24},
+    {"type": "breakdown", "bars": 8},
+    {"type": "peak", "bars": 40},
+    {"type": "outro", "bars": 8},
+]  # 176 bars == 704 beats == ~5.0 min @ 140 BPM
+
+
+def find_sample(e, query, prefer):
+    r = e.tool("search_library", {"query": query})
+    hits = r if isinstance(r, list) else []
+    for h in hits:
+        p = h.get("path", "")
+        if p.lower().endswith(".wav") and any(s in p.lower() for s in prefer):
+            return p
+    for h in hits:
+        p = h.get("path", "")
+        if p.lower().endswith(".wav"):
+            return p
+    return None
+
+
+def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
+    e.tool("new_project", {})
+    e.tool("set_tempo", {"bpm": bpm})
+    roles = ["kick", "bass", "hat", "snare", "rim", "arp", "stab", "pad",
+             "clap", "riser", "down"]
+    perc_note = {"kick": 41, "hat": 44, "snare": 38, "rim": 37, "clap": 42}
+    fx = {"kick": "sampler", "hat": "sampler", "snare": "sampler", "rim": "sampler",
+          "clap": "sampler", "bass": "psy_fm", "arp": "fm_synth", "stab": "fm_synth",
+          "pad": "fm_synth", "riser": "psy_fm", "down": "psy_fm"}
+    tracks = {}
+    for role in roles:
+        r = e.tool("add_track", {"name": role.title()})
+        tid = (r or {}).get("trackId")
+        if tid is None:
+            print("add_track failed:", r)
+            return
+        e.tool("add_fx", {"trackId": tid, "fxType": fx[role], "position": 0})
+        tracks[role] = tid
+    print("palette tracks:", tracks)
+
+    # Gain staging: fm_synth arps run ~2x hotter than psy_fm/growl (verified by
+    # the engines phase); balance so bass/pad/stab sit above the arp instead of
+    # being masked by it.
+    vols = {"kick": 0.9, "bass": 1.0, "hat": 0.55, "snare": 0.7, "rim": 0.6,
+            "arp": 0.32, "stab": 0.75, "pad": 0.7, "clap": 0.7, "riser": 0.5,
+            "down": 0.5}
+    for role, v in vols.items():
+        e.tool("set_track", {"trackId": tracks[role], "volume": v})
+
+    for role, note in perc_note.items():
+        src = find_sample(e, role, ["kick" if role == "kick" else role])
+        if src:
+            e.tool("sampler_set_sample",
+                   {"trackId": tracks[role], "slotIndex": 0,
+                    "filePath": src, "rootNote": note})
+            print(f"loaded {role} sample: {os.path.basename(src)}")
+
+    dx7dir = os.path.join(BASE, "demo_libs", "dx7")
+    patches = sorted(f for f in os.listdir(dx7dir) if not f.endswith(".json"))
+    for role, pf in zip(("arp", "stab", "pad"), patches[:3]):
+        imp = e.tool("fm_synth_import_sysex",
+                     {"trackId": tracks[role], "slotIndex": 0,
+                      "filePath": os.path.join(dx7dir, pf)})
+        print(f"loaded {pf} -> {role}: {imp.get('voiceName')}")
+
+    total_bars = sum(s["bars"] for s in TRACK5_SECTIONS)
+    gen = e.tool("generate_psytrance_markov", {
+        "paletteTrackIds": {role: tracks[role] for role in roles},
+        "totalBars": total_bars, "sections": TRACK5_SECTIONS,
+        "keyRoot": 5, "scaleMode": 1, "density": 0.8,
+        "seed": seed, "minTracks": 4, "maxTracks": 9,
+        "minPercTracks": 2, "maxPercTracks": 5, "sectionCycleBars": 0,
+    }, timeout=600)
+    print("markov:", json.dumps(gen)[:500])
+
+    # Trim the master bus so 11 summing tracks don't clip at full scale.
+    e.tool("set_master_gain", {"gain": 0.65})
+
+    out = os.path.join(BASE, "demo_libs", out_name)
+    exp = e.export_and_wait({"outputPath": out, "format": "wav", "sampleRate": 48000,
+                             "bitDepth": 24, "start": 0.0, "end": 0.0, "queue": True},
+                            timeout=600)
+    print("export:", exp)
+    print("wav:", out, os.path.exists(out))
+
+
 def compose(e, ids, seed=1337, total_bars=64, out_name="markov_demo.wav"):
     # Fresh project on the spawned engine; build palette tracks with internal
     # synths, load two found DX7 patches, run the markov generator, export.
@@ -204,6 +296,49 @@ def compose(e, ids, seed=1337, total_bars=64, out_name="markov_demo.wav"):
     print("wav:", out, os.path.exists(out))
 
 
+def engines(e):
+    """Render each internal synth in isolation and report peak/rms so we know
+    which engines actually output audio (and at what level)."""
+    import analyze_probe as AP
+    tests = [
+        ("fm_synth", "fm_synth", None),
+        ("fm_synth+patch", "fm_synth", "ACCORD01.SYX"),
+        ("psy_fm", "psy_fm", None),
+        ("sub_synth", "sub_synth", None),
+        ("growl_bass", "growl_bass", None),
+        ("psy_arp", "psyarp", None),
+        ("sampler", "sampler", None),
+    ]
+    for label, fxtype, patch in tests:
+        e.tool("new_project", {})
+        r = e.tool("add_track", {"name": label})
+        tid = (r or {}).get("trackId")
+        if tid is None:
+            print(f"{label}: add_track failed {r}")
+            continue
+        e.tool("add_fx", {"trackId": tid, "fxType": fxtype, "position": 0})
+        if patch:
+            p = os.path.join(BASE, "demo_libs", "dx7", patch)
+            if os.path.exists(p):
+                e.tool("fm_synth_import_sysex",
+                       {"trackId": tid, "slotIndex": 0, "filePath": p})
+        cl = e.tool("add_midi_clip", {"trackId": tid, "start": 0, "length": 8, "name": "Probe"})
+        cid = (cl or {}).get("clipId")
+        if cid is not None:
+            e.tool("add_notes", {"clipId": cid, "notes": [
+                {"pitch": 60, "start": 0, "duration": 8, "velocity": 100}]})
+        out = os.path.join(BASE, "demo_libs", "_engine_check.wav")
+        e.export_and_wait({"outputPath": out, "format": "wav", "sampleRate": 48000,
+                           "bitDepth": 24, "start": 0.0, "end": 4.0, "queue": True}, timeout=120)
+        if os.path.exists(out):
+            rep = AP.analyze_probe(out, "lead", use_clap=False, use_llm=False)
+            m = rep["measurements"]
+            print(f"{label:16s} rms={m['rms']:.4f} peak={m['peak']:.4f} centroid={m['centroid']:.0f}")
+            os.remove(out)
+        else:
+            print(f"{label:16s} NO WAV")
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -212,6 +347,7 @@ def main():
     ap.add_argument("--engine-bin", default=ENGINE)
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--bars", type=int, default=64)
+    ap.add_argument("--bpm", type=int, default=140)
     ap.add_argument("--out", default="markov_demo.wav")
     args = ap.parse_args()
     e = Engine(args.engine_bin)
@@ -226,6 +362,10 @@ def main():
             search(e)
         elif args.phase == "compose":
             compose(e, {}, seed=args.seed, total_bars=args.bars, out_name=args.out)
+        elif args.phase == "track5":
+            track5(e, {}, seed=args.seed, bpm=args.bpm, out_name=args.out)
+        elif args.phase == "engines":
+            engines(e)
         elif args.phase == "all":
             setup(e)
             cluster(e)
