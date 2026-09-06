@@ -53,6 +53,8 @@ public:
     // ProjectCommands — Clip operations
     int addAudioClip(int trackIndex, double start, double duration,
                      const std::string& sourceFile, const std::string& name) override;
+    ImportAudioResult importAudioFile(int trackIndex, double startBeats,
+                                      const std::string& path, bool alignToGrid = true) override;
     int addMidiClip(int trackIndex, double start, double duration,
                     const std::string& name) override;
     std::vector<int> importMidiFile(const std::string& filePath, int trackIndex = -1) override;
@@ -98,6 +100,7 @@ public:
     void setClipStretchRatio(int clipId, double ratio) override;
     void tempoMatchClip(int clipId) override;
     void fitClipToLoop(int clipId) override;
+    AlignGridResult alignClipToGrid(int clipId) override;
 
     // ProjectCommands — Slicing
     void sliceClipAtTimes(int clipId, const std::vector<double>& times) override;

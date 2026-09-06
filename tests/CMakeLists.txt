@@ -37,6 +37,8 @@ add_executable(hdaw_tests
     unit/engine/plugin_manager_scan_test.cpp
     unit/engine/markers_test.cpp
     unit/engine/stretch_test.cpp
+    unit/engine/loop_analyzer_test.cpp
+    unit/engine/loop_align_test.cpp
     unit/engine/modulation_test.cpp
     unit/engine/clip_source_processor_test.cpp
     unit/engine/sampler_sound_test.cpp
@@ -138,6 +140,7 @@ add_executable(hdaw_tests
     unit/frontend/frontend_server_test.cpp
     unit/frontend/ghost_clips_rpc_test.cpp
     unit/frontend/envelope_generation_rpc_test.cpp
+    unit/frontend/loop_align_rpc_test.cpp
     unit/frontend/rhythm_generation_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp

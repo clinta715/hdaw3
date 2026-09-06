@@ -46,6 +46,7 @@ export default function AudioClipEditor() {
   }, []);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [alignMsg, setAlignMsg] = useState("");
 
   const lastClipRef = useRef(clipId);
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function AudioClipEditor() {
       setStretchRatioVal(clip.stretchRatio);
       // Reset zoom to fit when switching clips.
       setZoom(1);
+      setAlignMsg("");
       if (waveformRef.current) waveformRef.current.scrollLeft = 0;
     }
   }, [clipId, clip, setZoom]);
@@ -185,6 +187,27 @@ export default function AudioClipEditor() {
   const commitStretchRatio = () => call("project.setClipStretchRatio", { clipId, ratio: stretchRatioRef.current });
 
   const fitToLoop = () => call("project.fitClipToLoop", { clipId });
+
+  const handleAlignToGrid = async () => {
+    const targetClipId = clipId;
+    if (targetClipId == null) return;
+    setAlignMsg("");
+    try {
+      const res = (await rpc.call("project.alignClipToGrid", { clipId: targetClipId })) as {
+        ok?: boolean;
+        bpm?: number;
+        bars?: number;
+        error?: string;
+      };
+      if (res && res.ok) {
+        setAlignMsg(`${res.bars} bars @ ${Math.round(res.bpm ?? 0)} BPM`);
+      } else {
+        setAlignMsg(res?.error || "Alignment failed");
+      }
+    } catch (err) {
+      setAlignMsg(typeof err === "string" ? err : "Alignment failed");
+    }
+  };
 
   const setOffset = (e: React.FocusEvent<HTMLInputElement>) => {
     const v = parseFloat(e.target.value);
@@ -369,6 +392,12 @@ export default function AudioClipEditor() {
                   <button className="ace-btn ace-btn--accent" onClick={fitToLoop}>
                     Fit to Loop
                   </button>
+                </div>
+                <div className="ace-row">
+                  <button className="ace-btn ace-btn--accent" onClick={handleAlignToGrid}>
+                    Detect & Align to Grid
+                  </button>
+                  {alignMsg && <span className="ace-val">{alignMsg}</span>}
                 </div>
               </div>
               <div className="ace-section-col">

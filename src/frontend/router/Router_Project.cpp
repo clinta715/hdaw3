@@ -229,6 +229,29 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "setClipStretchRatio") { int i; double v; if (!requireInt(o, "clipId", i, nullptr) || !requireDouble(o, "ratio", v, nullptr)) return makeError(-32602, "clipId and ratio required"); c.setClipStretchRatio(i, v); return { false, QJsonValue::Null }; }
     if (m == "tempoMatchClip")      { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.tempoMatchClip(i); return { false, QJsonValue::Null }; }
     if (m == "fitClipToLoop")       { int i; if (!requireInt(o, "clipId", i, nullptr)) return makeError(-32602, "clipId required"); c.fitClipToLoop(i); return { false, QJsonValue::Null }; }
+    if (m == "importAudioFile") {
+        int i; double start; std::string path; bool align = true;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireDouble(o, "start", start, nullptr) || !requireString(o, "path", path, nullptr)) return makeError(-32602, "trackIndex, start, path required");
+        if (o.contains("alignToGrid")) align = o.value("alignToGrid").toBool();
+        auto r = c.importAudioFile(i, start, path, align);
+        QJsonObject out;
+        out["clipId"] = r.clipId; out["aligned"] = r.aligned;
+        out["bpm"] = r.bpm; out["confidence"] = r.confidence;
+        out["bars"] = r.bars; out["beatsPerBar"] = r.beatsPerBar;
+        out["ratio"] = r.ratio; out["offset"] = r.offset; out["duration"] = r.duration;
+        if (!r.error.empty()) out["error"] = QString::fromStdString(r.error);
+        return { false, out };
+    }
+    if (m == "alignClipToGrid") {
+        int id; if (!requireInt(o, "clipId", id, nullptr)) return makeError(-32602, "clipId required");
+        auto r = c.alignClipToGrid(id);
+        QJsonObject out;
+        out["ok"] = r.ok; out["bpm"] = r.bpm; out["confidence"] = r.confidence;
+        out["bars"] = r.bars; out["beatsPerBar"] = r.beatsPerBar;
+        out["ratio"] = r.ratio; out["offset"] = r.offset; out["duration"] = r.duration;
+        if (!r.error.empty()) out["error"] = QString::fromStdString(r.error);
+        return { false, out };
+    }
 
     // --- MIDI notes ---
     if (m == "addNote") {

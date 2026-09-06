@@ -160,12 +160,11 @@ function FolderNode({ entry, depth, onPreviewFile }: { entry: DirEntry; depth: n
     const startBeat = tr.currentTimeSeconds * (tr.bpm / 60);
 
     if (isAudio(fileName)) {
-      await rpc.call("project.addAudioClip", {
+      await rpc.call("project.importAudioFile", {
+        path: filePath,
         trackIndex: selectedTrack,
         start: startBeat,
-        duration: 4,
-        sourceFile: filePath,
-        name: fileName,
+        alignToGrid: true,
       }).catch(() => {});
     } else if (isMidi(fileName)) {
       await rpc.call("project.addMidiClip", {

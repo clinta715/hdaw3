@@ -160,7 +160,7 @@ describe("ImportDialog", () => {
   });
 
   describe("import flow — audio", () => {
-    it("clicking Import calls project.addAudioClip with correct params", async () => {
+    it("clicking Import calls project.importAudioFile with correct params", async () => {
       mockedCall.mockResolvedValue({});
       render(<ImportDialog mode="audio" onClose={onClose} onImport={onImport} />);
       const input = screen.getByPlaceholderText("path/to/audio.wav");
@@ -169,12 +169,11 @@ describe("ImportDialog", () => {
       fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
       await waitFor(() => {
-        expect(mockedCall).toHaveBeenCalledWith("project.addAudioClip", {
+        expect(mockedCall).toHaveBeenCalledWith("project.importAudioFile", {
           trackIndex: 0,
           start: expect.closeTo(4, 1),
-          duration: 4,
-          sourceFile: "C:/songs/beat.wav",
-          name: "beat.wav",
+          path: "C:/songs/beat.wav",
+          alignToGrid: true,
         });
       });
     });
@@ -212,7 +211,7 @@ describe("ImportDialog", () => {
 
       await waitFor(() => {
         expect(mockedCall).toHaveBeenCalledWith(
-          "project.addAudioClip",
+          "project.importAudioFile",
           expect.objectContaining({ trackIndex: 1 })
         );
       });
@@ -254,7 +253,7 @@ describe("ImportDialog", () => {
       });
     });
 
-    it("extracts filename from Windows-style path", async () => {
+    it("passes path from Windows-style path", async () => {
       mockedCall.mockResolvedValue({});
       render(<ImportDialog mode="audio" onClose={onClose} onImport={onImport} />);
       fireEvent.change(screen.getByPlaceholderText("path/to/audio.wav"), {
@@ -265,13 +264,13 @@ describe("ImportDialog", () => {
 
       await waitFor(() => {
         expect(mockedCall).toHaveBeenCalledWith(
-          "project.addAudioClip",
-          expect.objectContaining({ name: "loop.wav" })
+          "project.importAudioFile",
+          expect.objectContaining({ path: "D:\\music\\project\\loop.wav" })
         );
       });
     });
 
-    it("extracts filename from Unix-style path", async () => {
+    it("passes path from Unix-style path", async () => {
       mockedCall.mockResolvedValue({});
       render(<ImportDialog mode="audio" onClose={onClose} onImport={onImport} />);
       fireEvent.change(screen.getByPlaceholderText("path/to/audio.wav"), {
@@ -282,8 +281,8 @@ describe("ImportDialog", () => {
 
       await waitFor(() => {
         expect(mockedCall).toHaveBeenCalledWith(
-          "project.addAudioClip",
-          expect.objectContaining({ name: "beat.wav" })
+          "project.importAudioFile",
+          expect.objectContaining({ path: "/home/user/audio/beat.wav" })
         );
       });
     });

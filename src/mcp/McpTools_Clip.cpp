@@ -384,6 +384,41 @@ void registerClipTools(McpServer& s, AudioEngine* e)
             e->getProjectCommands().fitClipToLoop(clipId);
             return McpToolResult::text(QString("fit clip %1 to loop").arg(clipId));
         }});
+
+    s.registerTool({"align_clip_to_grid",
+        "Detect a loop's musical grid (BPM + phase + integer bar count) from an "
+        "audio clip's source file and fit the clip to the project beat grid.",
+        objSchema({{"clipId", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int clipId = a.value("clipId").toInt();
+            auto r = e->getProjectCommands().alignClipToGrid(clipId);
+            if (r.ok)
+                return McpToolResult::text(QString("aligned clip %1: %2 bars @ %3 BPM (ratio %4)")
+                    .arg(clipId).arg(r.bars).arg(r.bpm).arg(r.ratio, 0, 'f', 3));
+            return McpToolResult::text(QString("align failed: %1").arg(QString::fromStdString(r.error)));
+        }});
+
+    s.registerTool({"import_audio_file",
+        "Import an audio file as a clip at the given track and beat position, "
+        "optionally running loop-grid alignment.",
+        objSchema({{"path",       QJsonObject{{"type","string"}}},
+                   {"trackIndex", QJsonObject{{"type","integer"}}},
+                   {"startBeat",  QJsonObject{{"type","number"}}},
+                   {"alignToGrid",QJsonObject{{"type","boolean"}}}}, {"path"}),
+        "clip",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int trackIndex = a.value("trackIndex").toInt(-1);
+            double startBeat = a.value("startBeat").toDouble(0.0);
+            bool align = a.value("alignToGrid").toBool(true);
+            auto r = e->getProjectCommands().importAudioFile(
+                trackIndex, startBeat, a.value("path").toString().toStdString(), align);
+            if (r.clipId < 0)
+                return McpToolResult::text(r.error.empty() ? QString("import failed")
+                                                           : QString::fromStdString(r.error), true);
+            return McpToolResult::text(QString("imported clipId=%1 aligned=%2 bars=%3 bpm=%4 ratio=%5")
+                .arg(r.clipId).arg(r.aligned ? "yes" : "no").arg(r.bars).arg(r.bpm).arg(r.ratio));
+        }});
 }
 
 } // namespace mcp

@@ -2,6 +2,7 @@
 #include "AudioEngine.h"
 #include "BpmDetector.h"
 #include "BarSnap.h"
+#include "LoopAnalyzer.h"
 #include "../model/ProjectModel.h"
 #include "../engine/ProjectPool.h"
 #include "../common/DebugLog.h"
@@ -28,7 +29,8 @@ double HDAW::readBpmFromMetadata(juce::AudioFormatReader* reader)
     return 0.0;
 }
 
-bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackIdx)
+int HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackIdx,
+                          double startTimeSec, bool alignToGrid)
 {
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
@@ -38,14 +40,14 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
         if (trackList.getNumChildren() == 0)
         {
             HDAW_LOG("AudioImport", "no tracks available and no trackIdx supplied");
-            return false;
+            return -1;
         }
         resolvedTrack = 0;
     }
     if (resolvedTrack >= trackList.getNumChildren())
     {
         HDAW_LOG("AudioImport", "trackIdx out of range: " + QString::number(resolvedTrack));
-        return false;
+        return -1;
     }
 
     auto trackTree = trackList.getChild(resolvedTrack);
@@ -71,14 +73,60 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
     }
 
     double startTime = 0.0;
-    for (int i = 0; i < clipList.getNumChildren(); ++i)
+    if (startTimeSec >= 0.0)
     {
-        auto c = clipList.getChild(i);
-        double end = static_cast<double>(c.getProperty(IDs::startTime))
-                   + static_cast<double>(c.getProperty(IDs::duration));
-        startTime = (std::max)(startTime, end);
+        startTime = startTimeSec;
+    }
+    else
+    {
+        for (int i = 0; i < clipList.getNumChildren(); ++i)
+        {
+            auto c = clipList.getChild(i);
+            double end = static_cast<double>(c.getProperty(IDs::startTime))
+                       + static_cast<double>(c.getProperty(IDs::duration));
+            startTime = (std::max)(startTime, end);
+        }
     }
 
+    // Grid alignment path: when the source is a musical loop, fit it to the
+    // project beat grid (BPM + phase + integer bar count) and let the
+    // stretchMode/stretchRatio listener rebuild the routing graph.
+    if (alignToGrid && reader != nullptr)
+    {
+        HDAW::LoopAnalysis analysis = HDAW::LoopAnalyzer::analyze(
+            path.toUtf8().constData(), pool.getFormatManager());
+        if (analysis.ok)
+        {
+            double projectBpm = model.getTree().getProperty(IDs::tempo, 120.0);
+            double targetDuration = analysis.bars * analysis.beatsPerBar * (60.0 / projectBpm);
+            double ratio = juce::jlimit(0.25, 4.0, targetDuration / analysis.loopSpanSourceSeconds);
+            double clipDuration = analysis.loopSpanSourceSeconds * ratio;
+            double clipOffset = analysis.downbeatOffset * ratio;
+
+            auto clip = model.createAudioClip(fi.baseName().toUtf8().constData(),
+                                              startTime, duration,
+                                              path.toUtf8().constData());
+            clipList.addChild(clip, -1, &model.getUndoManager());
+            int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
+
+            auto& um = model.getUndoManager();
+            clip.setProperty(IDs::sourceBpm, analysis.bpm, &um);
+            clip.setProperty(IDs::offset, clipOffset, &um);
+            clip.setProperty(IDs::duration, clipDuration, &um);
+            clip.setProperty(IDs::stretchMode, 2, &um);
+            // stretchRatio LAST: its listener triggers the routing rebuild
+            // (which reads the final offset/duration), so no explicit rebuild.
+            clip.setProperty(IDs::stretchRatio, ratio, &um);
+
+            HDAW_LOG("AudioImport", "grid-aligned import: " + path
+                     + " bpm=" + QString::number(analysis.bpm, 'f', 2)
+                     + " bars=" + QString::number(analysis.bars)
+                     + " ratio=" + QString::number(ratio, 'f', 4));
+            return clipId;
+        }
+    }
+
+    // Fallback path (existing behavior): silence-trim + metadata/aubio BPM.
     double clipOffset = 0.0;
     double clipDuration = duration;
     if (reader != nullptr)
@@ -95,6 +143,7 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
     if (clipOffset > 0.0)
         clip.setProperty(IDs::offset, clipOffset, &model.getUndoManager());
     clipList.addChild(clip, -1, &model.getUndoManager());
+    int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
 
     if (reader != nullptr)
     {
@@ -107,7 +156,10 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
             const int totalSamples = static_cast<int>(reader->lengthInSamples);
             const int n = (std::min)(totalSamples, maxSamples);
             std::vector<float> buf(n);
-            reader->read(&buf, 0, n, 0, true, false);
+            juce::AudioBuffer<float> mono(1, n);
+            reader->read(&mono, 0, n, 0, true, true);
+            const float* p = mono.getReadPointer(0);
+            std::copy(p, p + n, buf.begin());
             auto det = BpmDetector::detect(buf.data(), n, reader->sampleRate);
             bpm = det.bpm;
         }
@@ -119,7 +171,7 @@ bool HDAW::importAudioFile(AudioEngine& engine, const QString& path, int trackId
     }
 
     engine.getMainProcessor()->rebuildRoutingGraph();
-    return true;
+    return clipId;
 }
 
 bool HDAW::normalizeAudioFile(AudioEngine& engine, const QString& sourcePath, QString& outPath)

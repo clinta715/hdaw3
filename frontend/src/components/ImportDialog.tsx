@@ -29,17 +29,15 @@ export default function ImportDialog({ mode, onClose, onImport }: ImportDialogPr
 
     const tr = useTransportStore.getState().transport;
     const startBeat = tr.currentTimeSeconds * (tr.bpm / 60);
-    const fileName = filePath.trim().split(/[/\\]/).pop() ?? filePath.trim();
 
     if (mode === "audio") {
       const params: Record<string, unknown> = {
+        path: filePath.trim(),
         trackIndex: trackChoice === "new" ? 0 : parseInt(trackChoice, 10),
         start: startBeat,
-        duration: 4,
-        sourceFile: filePath.trim(),
-        name: fileName,
+        alignToGrid: true,
       };
-      await rpc.call("project.addAudioClip", params).catch(() => {});
+      await rpc.call("project.importAudioFile", params).catch(() => {});
     } else {
       const trackIndex = trackChoice === "new" ? -1 : parseInt(trackChoice, 10);
       await rpc.call("project.importMidiFile", {

@@ -1,10 +1,12 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngineCommands_Helpers.h"
 #include "AudioEngine.h"
+#include "AudioImport.h"
 #include "ArrangementGenerator.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 
+#include <cmath>
 #include <limits>
 
 // ─── ProjectCommands — Clip operations ────────────────────────────
@@ -34,6 +36,46 @@ int AudioEngineCommands::addAudioClip(int trackIndex, double start, double durat
     int clipId = static_cast<int>(clip.getProperty(IDs::clipID, 0));
     clipList.addChild(clip, -1, &um);
     return clipId;
+}
+
+AudioEngineCommands::ImportAudioResult AudioEngineCommands::importAudioFile(
+    int trackIndex, double startBeats, const std::string& path, bool alignToGrid)
+{
+    ImportAudioResult result;
+
+    // Beats → seconds at the project BPM (same convention as addAudioClip).
+    double bpm = engine_.getTransportManager().getBPM();
+    double startSec = HDAW::beatsToSeconds(startBeats, bpm);
+
+    int clipId = HDAW::importAudioFile(engine_, QString::fromStdString(path), trackIndex,
+                                       startSec, alignToGrid);
+    if (clipId < 0)
+    {
+        result.error = "import failed";
+        return result;
+    }
+
+    result.clipId = clipId;
+    int trackIdx = -1;
+    auto clip = findClipById(clipId, trackIdx);
+    if (clip.isValid())
+    {
+        result.aligned = (static_cast<int>(clip.getProperty(IDs::stretchMode, 0)) == 2);
+        result.bpm = static_cast<double>(clip.getProperty(IDs::sourceBpm, 0.0));
+        result.ratio = static_cast<double>(clip.getProperty(IDs::stretchRatio, 0.0));
+        result.offset = static_cast<double>(clip.getProperty(IDs::offset, 0.0));
+        result.duration = static_cast<double>(clip.getProperty(IDs::duration, 0.0));
+        if (result.aligned && result.bpm > 0.0 && result.duration > 0.0)
+        {
+            // Best-effort bar count (not stored state): the post-stretch
+            // duration converted to beats at the source tempo, divided by the
+            // bar length in beats.
+            double beats = HDAW::secondsToBeats(result.duration, result.bpm);
+            result.bars = static_cast<int>(std::lround(beats / result.beatsPerBar));
+            if (result.bars < 1) result.bars = 0;
+        }
+    }
+    return result;
 }
 
 int AudioEngineCommands::addMidiClip(int trackIndex, double start, double duration,

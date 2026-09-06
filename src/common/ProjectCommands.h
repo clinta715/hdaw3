@@ -55,6 +55,23 @@ public:
     // Clip operations
     virtual int addAudioClip(int trackIndex, double start, double duration,
                              const std::string& sourceFile, const std::string& name) = 0;
+    // importAudioFile imports an audio file as a clip at `startBeats` (beats;
+    // converted to seconds at the project BPM) on `trackIndex`, optionally
+    // running loop-grid alignment. Returns the clip id + alignment summary.
+    struct ImportAudioResult {
+        int clipId = -1;
+        bool aligned = false;      // true when grid alignment was applied (stretchMode==2)
+        double bpm = 0.0;
+        double confidence = 0.0;
+        int bars = 0;
+        int beatsPerBar = 4;
+        double ratio = 0.0;
+        double offset = 0.0;
+        double duration = 0.0;
+        std::string error;
+    };
+    virtual ImportAudioResult importAudioFile(int trackIndex, double startBeats,
+                                              const std::string& path, bool alignToGrid = true) = 0;
     virtual int addMidiClip(int trackIndex, double start, double duration,
                             const std::string& name) = 0;
     virtual std::vector<int> importMidiFile(const std::string& filePath, int trackIndex = -1) = 0;
@@ -119,6 +136,23 @@ public:
     // fitClipToLoop stretches the entire source to span the loop region
     // exactly (Mode=ManualRatio, ratio=loopLength/sourceDuration).
     virtual void fitClipToLoop(int clipId) = 0;
+    // alignClipToGrid detects the loop's musical grid (BPM + phase + integer
+    // bar count + slack) from its source audio and fits the clip to the
+    // project beat grid: Mode=ManualRatio with the grid-derived ratio, and an
+    // offset/duration that trim leading/trailing slack. Requires a readable
+    // source file; returns ok=false (with error) when no grid is detectable.
+    struct AlignGridResult {
+        bool ok = false;
+        double bpm = 0.0;
+        double confidence = 0.0;
+        int bars = 0;
+        int beatsPerBar = 4;
+        double ratio = 0.0;
+        double offset = 0.0;
+        double duration = 0.0;
+        std::string error;
+    };
+    virtual AlignGridResult alignClipToGrid(int clipId) = 0;
 
     // MIDI note operations
     virtual int addNote(int clipId, int pitch, int velocity,

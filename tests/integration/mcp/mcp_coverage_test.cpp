@@ -29,6 +29,44 @@ QJsonObject parseOne(const QByteArray& buf) {
     return QJsonDocument::fromJson(line).object();
 }
 
+// Writes a 4-bar 120 BPM 4-on-floor percussion loop (8 s total, 16 kicks at
+// 0.5 s intervals) to a temporary mono WAV and returns its path. Caller deletes.
+QString makePercussionLoopWav() {
+    juce::File f = juce::File::getSpecialLocation(
+        juce::File::SpecialLocationType::tempDirectory)
+        .getNonexistentChildFile("hdaw_mcp_loop_align", ".wav", false);
+    juce::WavAudioFormat fmt;
+    std::unique_ptr<juce::FileOutputStream> fos(f.createOutputStream());
+    if (fos == nullptr) return {};
+    std::unique_ptr<juce::AudioFormatWriter> w(
+        fmt.createWriterFor(fos.get(), 44100, 1, 16, {}, 0));
+    if (w == nullptr) return {};
+    fos.release(); // writer owns it now
+    const double sampleRate = 44100.0;
+    const double beat = 0.5; // 120 BPM
+    const int total = static_cast<int>(8.0 * sampleRate);
+    juce::AudioBuffer<float> buf(1, total);
+    buf.clear();
+    const double amp = 0.5;
+    const double freq = 55.0;
+    const double decay = 0.012;
+    const int burstSamples = static_cast<int>(0.04 * sampleRate);
+    for (int b = 0; b < 16; ++b)
+    {
+        const int start = static_cast<int>(b * beat * sampleRate);
+        for (int i = 0; i < burstSamples && start + i < total; ++i)
+        {
+            const double t = static_cast<double>(i) / sampleRate;
+            buf.setSample(0, start + i, static_cast<float>(
+                amp * std::sin(2.0 * juce::MathConstants<double>::pi * freq * t)
+                    * std::exp(-t / decay)));
+        }
+    }
+    w->writeFromAudioSampleBuffer(buf, 0, total);
+    w.reset();
+    return QString::fromStdString(f.getFullPathName().toStdString());
+}
+
 class McpCoverageTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -2738,6 +2776,80 @@ TEST_F(McpCoverageTest, FxChainPresetRoundTrip) {
                 EXPECT_FALSE(isError(call("delete_fx_chain", {{"id", o.value("id").toString()}})));
         }
     }
+}
+
+// ── Loop grid alignment (plan 2026-09-05-loop-grid-alignment, Task B) ───────
+// align_clip_to_grid and import_audio_file tools registered (G5) and exercised
+// end-to-end against a synthetic 4-bar/120 BPM percussion loop.
+
+TEST_F(McpCoverageTest, AlignClipToGridTool) {
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("align_clip_to_grid"));
+
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    auto addR = call("add_audio_clip", {{"trackId", 0}, {"start", 0.0},
+                                        {"length", 16.0}, {"sourceFile", wavPath}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    int clipId = parseClipId(text(addR));
+    ASSERT_GT(clipId, 0);
+
+    auto r = call("align_clip_to_grid", {{"clipId", clipId}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("aligned clip"));
+    EXPECT_TRUE(text(r).contains("bars"));
+    EXPECT_TRUE(text(r).contains("BPM"));
+
+    // Error path: unknown clipId is reported in the result text (the command
+    // returns ok=false; the tool surfaces it as "align failed: ...", not a
+    // JSON-RPC tool error).
+    auto bad = call("align_clip_to_grid", {{"clipId", 99999}});
+    EXPECT_FALSE(isError(bad));
+    EXPECT_TRUE(text(bad).contains("align failed"));
+
+    juce::File(wavPath.toStdString()).deleteFile();
+}
+
+TEST_F(McpCoverageTest, ImportAudioFileTool) {
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("import_audio_file"));
+
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    auto r = call("import_audio_file", {{"path", wavPath}, {"trackIndex", 0},
+                                        {"startBeat", 0.0}, {"alignToGrid", true}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    QString resp = text(r);
+    EXPECT_TRUE(resp.contains("clipId="));
+    EXPECT_TRUE(resp.contains("aligned=yes"));
+    EXPECT_TRUE(resp.contains("bars="));
+
+    int clipId = parseClipId(resp);
+    ASSERT_GT(clipId, 0);
+    auto c = findClip(clipId);
+    ASSERT_FALSE(c.isEmpty()) << "imported clip missing from list_clips";
+
+    // The imported clip really carries grid-aligned props (ReadModel).
+    auto snap = engine->getReadModel().getClip(clipId);
+    EXPECT_GT(snap.sourceBpm, 0.0);
+    EXPECT_EQ(snap.stretchMode, 2);
+    EXPECT_GT(snap.stretchRatio, 0.0);
+
+    // Error path: an out-of-range trackIndex fails the import (the free
+    // function logs + returns -1), surfaced as a tool error. Note a
+    // nonexistent FILE still creates a clip (missing-source fallback), so a
+    // bad track is the reliable failure path.
+    auto bad = call("import_audio_file", {{"path", wavPath}, {"trackIndex", 99}});
+    EXPECT_TRUE(isError(bad));
+    EXPECT_TRUE(text(bad).contains("import failed"));
+
+    juce::File(wavPath.toStdString()).deleteFile();
 }
 
 } // namespace

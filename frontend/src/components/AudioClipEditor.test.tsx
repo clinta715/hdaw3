@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent } from "@testing-library/react";
+import { render, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import AudioClipEditor from "./AudioClipEditor";
 import { useProjectStore } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
@@ -240,5 +240,32 @@ describe("AudioClipEditor", () => {
     fireEvent.click(gearBtn);
     const loopInput = container.querySelector('input[type="checkbox"]');
     expect(loopInput).toBeInTheDocument();
+  });
+
+  it("Detect & Align to Grid calls project.alignClipToGrid and shows result", async () => {
+    const { rpc } = await import("../rpc");
+    vi.mocked(rpc.call).mockResolvedValue({ ok: true, bpm: 120, bars: 4 });
+    const { container, getByText } = render(<AudioClipEditor />);
+    const gearBtn = container.querySelector('.ace-zoom-btn[title="Show advanced controls"]') as HTMLButtonElement;
+    fireEvent.click(gearBtn);
+    const alignBtn = getByText("Detect & Align to Grid") as HTMLButtonElement;
+    expect(alignBtn).toBeInTheDocument();
+    fireEvent.click(alignBtn);
+    expect(rpc.call).toHaveBeenCalledWith("project.alignClipToGrid", { clipId: 1 });
+    await waitFor(() => {
+      expect(getByText("4 bars @ 120 BPM")).toBeInTheDocument();
+    });
+  });
+
+  it("Detect & Align to Grid shows the error string on failure", async () => {
+    const { rpc } = await import("../rpc");
+    vi.mocked(rpc.call).mockResolvedValue({ ok: false, error: "no transients found" });
+    const { container, getByText } = render(<AudioClipEditor />);
+    const gearBtn = container.querySelector('.ace-zoom-btn[title="Show advanced controls"]') as HTMLButtonElement;
+    fireEvent.click(gearBtn);
+    fireEvent.click(getByText("Detect & Align to Grid") as HTMLButtonElement);
+    await waitFor(() => {
+      expect(getByText("no transients found")).toBeInTheDocument();
+    });
   });
 });

@@ -199,8 +199,10 @@ add_library(HDAW_lib STATIC
     src/engine/AutomationClipboard.cpp
     src/engine/BpmDetector.cpp
     src/engine/BarSnap.cpp
+    src/engine/AudioImport.cpp
     src/engine/AudioPreviewPlayer.cpp
 src/engine/StretchRenderer.cpp
+    src/engine/LoopAnalyzer.cpp
     src/engine/StretchCache.cpp
     src/engine/TransientDetector.cpp
     src/engine/FileLibraryManager.cpp
