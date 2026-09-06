@@ -43,6 +43,11 @@ set "BUILD_DIR=%ROOT%\build"
 :: Pass Debug or Release as the first argument to override.
 set "CONFIG=%~1"
 if "%CONFIG%"=="" set "CONFIG=RelWithDebInfo"
+:: ── WSL time-sync hook: snap the WSL clock to the Windows host before any
+::    build (clock drift -> ninja/MSBuild misjudge mtimes through drvfs/9p ->
+::    stale-`.obj`/stale-bundle traps - AGENTS.md lessons 15/21). Never fails
+::    the build; no-op when not in WSL or synced within HDAW_TIME_SYNC_INTERVAL.
+call "%ROOT%\scripts\time-sync.cmd"
 
 :: ── 1. Frontend (React SPA + Electron main/preload). prebuild regenerates
 ::    src/version.ts automatically; this single command covers the whole FE.

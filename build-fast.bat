@@ -30,6 +30,12 @@ set "ROOT=%~dp0"
 set "BUILD_DIR=%ROOT%build"
 if not "%HDAW_BUILD_DIR%"=="" set "BUILD_DIR=%HDAW_BUILD_DIR%"
 set CONFIG=RelWithDebInfo
+REM ── WSL time-sync hook ─────────────────────────────────────────────────────
+REM Snap the WSL clock to the Windows host before ANY build. WSL2 clock drift
+REM makes ninja/MSBuild misjudge mtimes through drvfs/9p (stale-`.obj` / stale-
+REM bundle traps - AGENTS.md lessons 15/21). Never fails the build; no-op when
+REM not in WSL or when synced within HDAW_TIME_SYNC_INTERVAL seconds.
+call "%~dp0scripts\time-sync.cmd"
 
 REM Auto-bootstrap the MSVC toolchain when cl.exe is not on PATH so this
 REM script works from any shell (bash, Explorer-launched cmd, CI) instead of

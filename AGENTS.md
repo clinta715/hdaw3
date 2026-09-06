@@ -526,6 +526,18 @@ over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
 - **Two launch modes:** Default (browser), Headless (Electron).
 - **Frontend build:** `cd frontend; npm run build`, then rebuild the C++ project.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
+- **Pre-build time sync (WSL/Windows clock drift):** before ANY build/compile
+  in this repo (`cmake --build`, `build-fast.bat`, `frontend\build.bat`, bare
+  `ninja`, `npm run build`), invoke `skill: "pre-build-time-sync"` — it snaps
+  the WSL clock to the Windows host (`sudo ntpdate -b time.windows.com`) so
+  ninja/MSBuild never misjudge file mtimes through drvfs/9p under WSL2 clock
+  drift (lesson 15 / the WSL-side-edit sync recipe). `build-fast.bat` and
+  `frontend\build.bat` call `scripts\time-sync.cmd` automatically, and CMake
+  adds a `hdaw_time_sync` ALL target covering bare `cmake --build`; direct
+  `ninja` / `npm run build` runs need the explicit `scripts/time-sync.sh`.
+  The hook is a fast no-op outside WSL and NEVER fails a build. See
+  `docs/plans/2026-09-05-time-sync-build-hook.md` and
+  `docs/skills/pre-build-time-sync/SKILL.md`.
 
 ### Shell: PowerShell only (no `&&` or `&`)
 

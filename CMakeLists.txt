@@ -529,3 +529,19 @@ add_custom_target(check_version ALL
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Verifying version numbers are in sync across all build systems"
 )
+
+# --- WSL time-sync hook (Windows/WSL clock drift) ---------------------------
+# WSL2 clocks drift from the Windows host; ninja/MSBuild then misjudge file
+# mtimes through drvfs/9p (stale-`.obj` / stale-bundle traps - AGENTS.md
+# lessons 15/21). Run scripts\time-sync.cmd before every default build via
+# cmake/RunTimeSync.cmake. The hook is a fast no-op outside WSL / within the
+# HDAW_TIME_SYNC_INTERVAL freshness window and NEVER fails a build. Disable
+# with -DHDAW_TIME_SYNC_HOOK=OFF.
+set(HDAW_TIME_SYNC_HOOK ON CACHE BOOL "Run WSL time-sync before builds (Windows/WSL clock-drift guard)")
+if(HDAW_TIME_SYNC_HOOK AND WIN32)
+    add_custom_target(hdaw_time_sync ALL
+        COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RunTimeSync.cmake"
+        COMMENT "WSL time sync (pre-build hook)"
+        VERBATIM
+    )
+endif()
