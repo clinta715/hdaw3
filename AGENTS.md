@@ -481,6 +481,15 @@ usually wiring a tool onto an existing command rather than new engine work.
 
 ## Generative composition, randomization & modulation
 
+**Render output convention (standing):** all composition renders — final
+track exports, verification windows, and the WAVs fed to `mix_report` /
+`analyze_tuning` — go to the repo-root `compositions/` directory
+(`D:\pdf\roo projects\hdaw3\compositions\`, gitignored via `/compositions/`).
+Do not write render output into `tools/`, the home dir, or other scratch
+locations; MRT2 one-shot *sound design* samples (the raw sound palette)
+stay in `tools/mrt2/sounds/`, but anything rendered from a project goes to
+`compositions/`.
+
 HDAW is a *generative* DAW, not just a recorder. Assisted creation is a core
 product pillar and should be reached for wherever it fits:
 

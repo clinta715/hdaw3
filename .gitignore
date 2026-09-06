@@ -82,6 +82,21 @@ Desktop.ini
 # Node.js
 node_modules/
 
+# Python virtualenv (MRT2 sound-design tooling; JAX CPU inference)
+.venv/
+
+# MRT2 model weights & resources (multi-GB binaries; MAGENTA_HOME)
+tools/mrt2/magenta-rt-v2/
+
+# MRT2 render/demo outputs + backups (renders belong in compositions/)
+tools/mrt2/auto-backups/
+tools/mrt2/*.wav
+tools/mrt2/*.hdaw
+
+# Local tool index (zvec-grep) + stray backup archive
+.zvec-grep/
+auto-backups.7z
+
 # Local test artifacts (export/render scratch output)
 test_output.wav
 test_song.hdaw

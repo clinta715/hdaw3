@@ -178,7 +178,7 @@ TRACK5_SECTIONS = [
 # parts are made louder IN their band, not the whole sound.
 BANDS = {
     "kick": (30, 120, 55),
-    "bass": (40, 300, 90),
+    "bass": (70, 300, 140),
     "hat": (4000, 20000, 9000),
     "snare": (300, 8000, 1400),
     "rim": (300, 8000, 1100),
@@ -221,21 +221,33 @@ CHAINS = {"kick": "Kick Punch", "bass": "Bass Glue", "hat": "Hat Air",
 EXTRA_FX = {
     "bass": [("saturator", {0: 18.0, 1: 2.0, 4: 6.0}),
              ("eq", {0: 400.0, 1: 2.0, 2: -3.0}),   # notch dip ~400Hz (mud)
-             ("compressor", {0: -24.0, 1: 8.0, 3: 80.0})],
+             ("compressor", {0: -30.0, 1: 10.0, 2: 3.0, 3: 40.0})],
     "arp":  [("eq", {0: 4500.0, 1: 0.8, 2: 4.0}), ("saturator", {0: 16.0, 1: 2.0, 4: 4.0})],
     "stab": [("eq", {0: 3200.0, 1: 0.8, 2: 3.0}), ("saturator", {0: 14.0, 1: 2.0, 4: 4.0}),
              ("delay", {3: 1.0, 4: 5.0, 1: 0.4, 2: 0.4}),   # dotted-1/16, fb 0.4
-             ("reverb", {2: 0.12})],                        # short plate, 12% wet
+             ("reverb", {2: 0.12}),                        # short plate, 12% wet
+             ("flanger", {0: 0.35, 1: 0.6, 2: 3.0, 3: 0.4, 4: 0.4})],
     "pad":  [("saturator", {0: 10.0, 4: 3.0}), ("phaser", {0: 0.2, 1: 0.5, 4: 0.5}),
-             ("reverb", {0: 0.75, 2: 0.45})],
+             ("reverb", {0: 0.75, 2: 0.45}),
+             ("delay", {3: 1.0, 4: 4.0, 1: 0.35, 2: 0.25})],
     "riser": [("saturator", {0: 4.0}), ("reverb", {2: 0.4}), ("delay", {3: 1.0, 4: 4.0, 1: 0.5, 2: 0.4})],
     "down":  [("saturator", {0: 4.0}), ("reverb", {2: 0.35}), ("delay", {3: 1.0, 4: 4.0, 1: 0.5, 2: 0.4})],
 }
 
 
 def fx_count(e, tid):
-    r = e.tool("read.getFxSlots", {"trackIndex": tid})
+    r = e.tool("list_fx", {"trackId": tid})
     return len(r) if isinstance(r, list) else 0
+
+
+def fx_slot_index(e, tid, fxtype):
+    r = e.tool("list_fx", {"trackId": tid})
+    if not isinstance(r, list):
+        return -1
+    for s in r:
+        if s.get("type") == fxtype:
+            return int(s.get("slot", -1))
+    return -1
 
 
 def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
@@ -245,7 +257,7 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
              "clap", "riser", "down"]
     perc_note = {"kick": 41, "hat": 44, "snare": 38, "rim": 37, "clap": 42}
     fx = {"kick": "sampler", "hat": "sampler", "snare": "sampler", "rim": "sampler",
-          "clap": "sampler", "bass": "growl_bass", "arp": "psyarp", "stab": "fm_synth",
+          "clap": "sampler", "bass": "psy_fm", "arp": "psyarp", "stab": "fm_synth",
           "pad": "sub_synth", "riser": "psy_fm", "down": "psy_fm"}
     tracks = {}
     extra_idx = {}
@@ -265,16 +277,23 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
         # Acid/303 + growl instrument tuning (aggressive psy character).
         if role == "arp":  # psy_arp: saw, resonant filter sweep, ping-pong delay, low octave
             for pi, v in {0: 0.0, 2: 12.0, 3: 1.0, 4: 2.0, 5: 2.0, 6: 900.0,
-                          7: 12.0, 8: 4.0, 9: 0.375, 10: 0.6, 11: 1.0, 12: 0.45,
-                          13: 2.0, 14: 0.02, 15: 0.1, 16: 1.0, 17: 0.25, 18: 0.4,
+                          7: 12.0, 8: 4.0, 9: 0.375, 10: 0.3, 11: 1.0, 12: 0.15,
+                          13: 2.0, 14: 0.02, 15: 0.03, 16: 1.0, 17: 0.25, 18: 0.4,
                           19: 0.45}.items():
                 e.tool("set_internal_fx_param",
                        {"trackId": tid, "slotIndex": 0, "paramIndex": pi, "value": v})
-        if role == "bass":  # growl_bass: hard clip, heavy drive, resonant filter
-            for pi, v in {0: 55.0, 2: 0.7, 4: 2.0, 5: 22.0, 6: 0.2, 8: 700.0,
-                          9: 6.0, 10: 0.7, 16: 0.7, 17: 1.0, 18: 2.0}.items():
+        if role == "bass":  # psy_fm growlBass preset + tightened envelopes
+            e.tool("psy_fm_load_preset",
+                   {"trackId": tid, "slotIndex": 0, "preset": "growlBass"})
+            for op in range(6):
                 e.tool("set_internal_fx_param",
-                       {"trackId": tid, "slotIndex": 0, "paramIndex": pi, "value": v})
+                       {"trackId": tid, "slotIndex": 0, "paramIndex": 8 + 4 * op, "value": 0.2})
+                e.tool("set_internal_fx_param",
+                       {"trackId": tid, "slotIndex": 0, "paramIndex": 9 + 4 * op, "value": 0.7})
+                e.tool("set_internal_fx_param",
+                       {"trackId": tid, "slotIndex": 0, "paramIndex": 10 + 4 * op, "value": 0.05})
+            e.tool("set_internal_fx_param",
+                   {"trackId": tid, "slotIndex": 0, "paramIndex": 31, "value": 0.55})
         # Filter + LFO wobble on the melodic synths (psytrance movement):
         # filter at slot 1 (after the instrument), LFO on its cutoff (200).
         if role in ("bass", "arp", "stab", "pad"):
@@ -287,6 +306,20 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
                                      "param": "rate", "value": 0.5})
             e.tool("set_lfo_param", {"trackId": tid, "lfoIndex": lfo,
                                      "param": "depth", "value": 0.5})
+        # Post-instrument chain tweaks (after instrument+filter, before EXTRA_FX,
+        # so the slot lookup sees the final chain layout).
+        if role == "bass":
+            csi = fx_slot_index(e, tid, "compressor")
+            if csi >= 0:
+                for pi, val in {0: -24.0, 1: 6.0, 2: 5.0, 3: 60.0}.items():
+                    e.tool("set_internal_fx_param",
+                           {"trackId": tid, "slotIndex": csi, "paramIndex": pi, "value": val})
+        if role == "arp":
+            dsi = fx_slot_index(e, tid, "delay")
+            if dsi >= 0:
+                for pi, val in {1: 0.25, 2: 0.12}.items():
+                    e.tool("set_internal_fx_param",
+                           {"trackId": tid, "slotIndex": dsi, "paramIndex": pi, "value": val})
         # Heavy extra FX (distortion/sat/delay/reverb/comp/eq) per role.
         for fxt, params in EXTRA_FX.get(role, []):
             si = fx_count(e, tid)
@@ -335,8 +368,22 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
         e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
                                  "param": "depth", "value": depth})
 
+    def gate_lfo(role, rate, depth, waveform=1):
+        li = e.tool("add_lfo", {"trackId": tracks[role]})
+        li = (li or {}).get("lfoIndex", 0)
+        e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
+                                 "param": "targetParamID", "value": 1})
+        e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
+                                 "param": "waveform", "value": waveform})
+        e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
+                                 "param": "bipolar", "value": 1})
+        e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
+                                 "param": "rate", "value": rate})
+        e.tool("set_lfo_param", {"trackId": tracks[role], "lfoIndex": li,
+                                 "param": "depth", "value": depth})
+
     effect_lfo("arp", 0, 6, 0.25, 0.4)      # psy_arp filter cutoff wobble (acid)
-    effect_lfo("arp", 0, 10, 0.25, 0.35)    # psy_arp delay feedback swell
+    effect_lfo("arp", 0, 10, 0.25, 0.15)    # psy_arp delay feedback swell
     effect_lfo("bass", 0, 8, 0.5, 0.3)      # growl_bass filter cutoff wobble
     if "reverb" in extra_idx.get("pad", {}):
         effect_lfo("pad", extra_idx["pad"]["reverb"], 0, 0.1, 0.35)    # size wash
@@ -344,11 +391,29 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
         effect_lfo("pad", extra_idx["pad"]["phaser"], 0, 0.15, 0.4)    # phaser rate
     effect_lfo("pad", 0, 2, 0.1, 0.5)       # pan sweep on the pad (target 2)
 
+    # Rhythmic volume gates on the leads (bipolar triangle swings gain by 1+-depth).
+    gate_lfo("arp", 4, 0.5)      # 16th-note gate
+    gate_lfo("stab", 2, 0.5)     # 8th-note gate
+    gate_lfo("pad", 2, 0.35)     # gentle 8th-note pump
+
+    # Extra movement LFOs (slot indices looked up after all FX are built).
+    effect_lfo("stab", fx_slot_index(e, tracks["stab"], "flanger"), 0, 0.2, 0.4)
+    effect_lfo("stab", fx_slot_index(e, tracks["stab"], "delay"), 1, 0.5, 0.3)
+    effect_lfo("arp", fx_slot_index(e, tracks["arp"], "chorus"), 0, 0.15, 0.4)
+    ali = e.tool("add_lfo", {"trackId": tracks["arp"]})
+    ali = (ali or {}).get("lfoIndex", 0)
+    e.tool("set_lfo_param", {"trackId": tracks["arp"], "lfoIndex": ali,
+                             "param": "targetParamID", "value": 200})
+    e.tool("set_lfo_param", {"trackId": tracks["arp"], "lfoIndex": ali,
+                             "param": "rate", "value": 0.125})
+    e.tool("set_lfo_param", {"trackId": tracks["arp"], "lfoIndex": ali,
+                             "param": "depth", "value": 0.4})
+
     # Gain staging: fm_synth arps run ~2x hotter than psy_fm/growl (verified by
     # the engines phase); balance so bass/pad/stab sit above the arp instead of
     # being masked by it.
-    vols = {"kick": 0.9, "bass": 0.95, "hat": 0.75, "snare": 0.85, "rim": 0.7,
-            "arp": 0.28, "stab": 0.75, "pad": 0.42, "clap": 0.85, "riser": 0.35,
+    vols = {"kick": 0.9, "bass": 1.0, "hat": 0.75, "snare": 0.85, "rim": 0.7,
+            "arp": 0.30, "stab": 0.75, "pad": 0.42, "clap": 0.85, "riser": 0.35,
             "down": 0.35}
     for role, v in vols.items():
         e.tool("set_track", {"trackId": tracks[role], "volume": v})
@@ -500,7 +565,7 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
     print("markov:", json.dumps(gen)[:500])
 
     # Trim the master bus so 11 summing tracks don't clip at full scale.
-    e.tool("set_master_gain", {"gain": 0.24})
+    e.tool("set_master_gain", {"gain": 0.10})
 
     out = os.path.join(BASE, "demo_libs", out_name)
     exp = e.export_and_wait({"outputPath": out, "format": "wav", "sampleRate": 48000,
@@ -508,6 +573,7 @@ def track5(e, ids, seed=4242, bpm=140, out_name="psy5min_demo.wav"):
                             timeout=600)
     print("export:", exp)
     print("wav:", out, os.path.exists(out))
+    return tracks
 
 
 def compose(e, ids, seed=1337, total_bars=64, out_name="markov_demo.wav"):
