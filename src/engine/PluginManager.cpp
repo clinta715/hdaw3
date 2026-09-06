@@ -646,7 +646,7 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
     if (exitCode == 0 && output.isNotEmpty())
     {
         // Parse JSON output
-        auto json = juce::JSON::parse(output);
+        auto json = parseScanOutput(output);
         if (auto* obj = json.getDynamicObject())
         {
             result.ok = obj->hasProperty("ok") && static_cast<bool>(obj->getProperty("ok"));
@@ -670,6 +670,25 @@ PluginManager::ScanResult PluginManager::scanPluginIsolated(const juce::String& 
     }
 
     return result;
+}
+
+juce::var PluginManager::parseScanOutput(const juce::String& output)
+{
+    auto json = juce::JSON::parse(output);
+    if (json.getDynamicObject() != nullptr)
+        return json;
+
+    // Some plugins print to stdout during construction (e.g. RAVE VST).
+    // Extract the JSON object from the first '{' to the last '}'.
+    const auto firstBrace = output.indexOfChar('{');
+    const auto lastBrace  = output.lastIndexOfChar('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace)
+    {
+        json = juce::JSON::parse(output.substring(firstBrace, lastBrace + 1));
+        if (json.getDynamicObject() != nullptr)
+            return json;
+    }
+    return juce::var();
 }
 
 std::unique_ptr<juce::AudioPluginInstance> PluginManager::createPluginInstance(

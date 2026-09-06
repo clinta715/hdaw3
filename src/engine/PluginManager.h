@@ -143,6 +143,11 @@ public:
     struct ScanResult { bool ok; bool isInstrument = false; int uid = 0; int numPrograms = 0; juce::StringArray programNames; juce::String name, manufacturer, category, format, file, id, error; };
     ScanResult scanPluginIsolated(const juce::String& pluginPath);
 
+    // Parses scanner child stdout, tolerating non-JSON noise a plugin may
+    // print during construction (e.g. RAVE VST prints to stdout). Returns a
+    // null var when no JSON object is found.
+    static juce::var parseScanOutput(const juce::String& output);
+
     // Test seams (not used in production paths)
     void setBlacklistFileForTesting(const juce::File& f) { blacklistFile = f; }
     void setScannerExePathForTesting(const juce::File& f) { scannerExePath = f; }

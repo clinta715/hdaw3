@@ -247,3 +247,41 @@ TEST_F(PluginManagerScan, ScanLoadFailureReported)
     EXPECT_TRUE(r.error.contains("Scanner exited with code"))
         << "unexpected error: " << r.error.toRawUTF8();
 }
+
+TEST_F(PluginManagerScan, ParseScanOutputCleanJson)
+{
+    // Keep the var alive: the DynamicObject is ref-counted by the var, and a
+    // raw pointer bound to a temporary var's getDynamicObject() dangles when
+    // the temporary is destroyed at the end of the statement.
+    auto json = HDAW::PluginManager::parseScanOutput("{\"ok\":true,\"name\":\"X\"}");
+    auto* obj = json.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ((bool)obj->getProperty("ok"), true);
+    EXPECT_EQ(obj->getProperty("name").toString(), "X");
+}
+
+TEST_F(PluginManagerScan, ParseScanOutputToleratesNoisePrefix)
+{
+    // RAVE VST prints construction noise to stdout before the scanner JSON.
+    auto json = HDAW::PluginManager::parseScanOutput(
+        "RAVE object created\n"
+        "[ ] Network - Received API response\n"
+        "[+] Network - Successfully parsed JSON, 10 models available online:\n"
+        "{\n  \"ok\": true,\n  \"name\": \"RAVE\"\n}\n");
+    auto* obj = json.getDynamicObject();
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ((bool)obj->getProperty("ok"), true);
+    EXPECT_EQ(obj->getProperty("name").toString(), "RAVE");
+}
+
+TEST_F(PluginManagerScan, ParseScanOutputGarbageOnlyIsNull)
+{
+    auto json = HDAW::PluginManager::parseScanOutput("RAVE object created\nnothing here\n");
+    EXPECT_EQ(json.getDynamicObject(), nullptr);
+}
+
+TEST_F(PluginManagerScan, ParseScanOutputEmptyIsNull)
+{
+    auto json = HDAW::PluginManager::parseScanOutput("");
+    EXPECT_EQ(json.getDynamicObject(), nullptr);
+}
