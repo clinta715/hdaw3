@@ -129,6 +129,39 @@ export default function AudioClipEditor() {
     return () => el.removeEventListener("wheel", handler);
   }, [setZoom]);
 
+  // Rules of hooks: this useCallback MUST stay above the early return below.
+  // It used to live after it, so deleting the selected clip while this editor
+  // was mounted dropped one hook from the render ("Rendered fewer hooks than
+  // expected" — React error #300) and crashed the whole bottom panel into the
+  // error boundary (reproduced by e2e/react-300-stress.spec.ts rapid loop).
+    const handleSearchMissing = useCallback(async () => {
+    if (clipId == null) return;
+    let searchDir = "";
+    if (window.hdaw) {
+      const result = await window.hdaw.showOpenDialog({
+        title: "Search for missing audio file",
+        properties: ["openDirectory"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return;
+      searchDir = result.filePaths[0];
+    } else {
+      searchDir = prompt("Search directory:", "") ?? "";
+      if (!searchDir) return;
+    }
+    try {
+      const found = await rpc.call("project.findMissingClipSourceFile", { clipId, searchDir }) as string;
+      if (found) {
+        useNotifyStore.getState().push({ level: "success", message: `Found: ${found}` });
+        setFileMissing(false);
+        await useProjectStore.getState().syncSnapshot(rpc);
+      } else {
+        useNotifyStore.getState().push({ level: "info", message: "File not found in selected directory" });
+      }
+    } catch (err) {
+      reportRpcError("project.findMissingClipSourceFile", err);
+    }
+  }, [clipId]);
+
   if (!isAudio || !clip) {
     return (
       <div className="audio-clip-editor">
@@ -221,34 +254,6 @@ export default function AudioClipEditor() {
 
   const sliceAtPlayhead = () => call("project.sliceClipAtPlayhead", { clipId });
   const sliceAtTransients = () => call("project.sliceClipAtTransients", { clipId });
-
-  const handleSearchMissing = useCallback(async () => {
-    if (clipId == null) return;
-    let searchDir = "";
-    if (window.hdaw) {
-      const result = await window.hdaw.showOpenDialog({
-        title: "Search for missing audio file",
-        properties: ["openDirectory"],
-      });
-      if (result.canceled || result.filePaths.length === 0) return;
-      searchDir = result.filePaths[0];
-    } else {
-      searchDir = prompt("Search directory:", "") ?? "";
-      if (!searchDir) return;
-    }
-    try {
-      const found = await rpc.call("project.findMissingClipSourceFile", { clipId, searchDir }) as string;
-      if (found) {
-        useNotifyStore.getState().push({ level: "success", message: `Found: ${found}` });
-        setFileMissing(false);
-        await useProjectStore.getState().syncSnapshot(rpc);
-      } else {
-        useNotifyStore.getState().push({ level: "info", message: "File not found in selected directory" });
-      }
-    } catch (err) {
-      reportRpcError("project.findMissingClipSourceFile", err);
-    }
-  }, [clipId]);
 
   const gainDb = gainToDb(gain);
 
