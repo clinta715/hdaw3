@@ -43,6 +43,23 @@ set "BUILD_DIR=%ROOT%\build"
 :: Pass Debug or Release as the first argument to override.
 set "CONFIG=%~1"
 if "%CONFIG%"=="" set "CONFIG=RelWithDebInfo"
+
+:: Output dir: VS multi-config trees put binaries under build\<CONFIG>\; flat
+:: single-config Ninja trees put them directly under build\ (no <CONFIG> subdir,
+:: CMakeCache.txt present) - detect and fall back to build\ itself.
+set "OUT_DIR=%BUILD_DIR%\%CONFIG%"
+if not exist "%BUILD_DIR%\%CONFIG%\" if exist "%BUILD_DIR%\CMakeCache.txt" set "OUT_DIR=%BUILD_DIR%"
+
+:: Native build args: "/m /v:minimal" are MSBuild/VS-generator flags; Ninja
+:: would parse them as target names ("ninja: error: unknown target '/m'") and
+:: already builds parallel by default. Detect the generator from CMakeCache.txt
+:: (missing cache -> keep the VS default; the FORCE_CLEAN logic below handles
+:: first-configure) and expand the variable empty for Ninja.
+set "NATIVE_BUILD_ARGS=-- /m /v:minimal"
+if not exist "%BUILD_DIR%\CMakeCache.txt" goto :gen_detect_done
+findstr /C:"CMAKE_GENERATOR:INTERNAL=Ninja" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
+if not errorlevel 1 set "NATIVE_BUILD_ARGS="
+:gen_detect_done
 :: ── WSL time-sync hook: snap the WSL clock to the Windows host before any
 ::    build (clock drift -> ninja/MSBuild misjudge mtimes through drvfs/9p ->
 ::    stale-`.obj`/stale-bundle traps - AGENTS.md lessons 15/21). Never fails
@@ -62,25 +79,25 @@ set "FORCE_CLEAN=0"
 :: CMakeCache.txt is the generator-independent marker that configure has run
 :: (VS 18 2026 emits an .slnx, not the legacy .sln, so don't key off .sln).
 if not exist "%BUILD_DIR%\CMakeCache.txt" set "FORCE_CLEAN=1"
-if not exist "%BUILD_DIR%\%CONFIG%\HDAW.exe" set "FORCE_CLEAN=1"
+if not exist "!OUT_DIR!\HDAW.exe" set "FORCE_CLEAN=1"
 
 if "!FORCE_CLEAN!"=="0" (
     rem PowerShell gives a locale-independent LastWriteTime comparison.
     rem Returns 1 (dist newer) or 0 (binary already current). The [int] cast
     rem must wrap the WHOLE boolean expression, not the DateTime operands.
-    for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath 'dist\index.html').LastWriteTime -gt (Get-Item -LiteralPath '%BUILD_DIR%\%CONFIG%\HDAW.exe').LastWriteTime)"') do set "DIST_NEWER=%%r"
+    for /f "delims=" %%r in ('powershell -NoProfile -Command "[int]((Get-Item -LiteralPath 'dist\index.html').LastWriteTime -gt (Get-Item -LiteralPath '!OUT_DIR!\HDAW.exe').LastWriteTime)"') do set "DIST_NEWER=%%r"
     if "!DIST_NEWER!"=="1" set "FORCE_CLEAN=1"
 )
 
 echo === [2/4] Building C++ engine (all targets, config: %CONFIG%) ===
 if "!FORCE_CLEAN!"=="1" goto :cpp_clean
-call cmake --build "%BUILD_DIR%" --config %CONFIG% -- /m /v:minimal
+call cmake --build "%BUILD_DIR%" --config %CONFIG% %NATIVE_BUILD_ARGS%
 if !errorlevel! neq 0 goto :fail_cpp
 goto :cpp_done
 
 :cpp_clean
 echo Forced clean rebuild ^(frontend dist newer than embedded SPA, or first build^)
-call cmake --build "%BUILD_DIR%" --config %CONFIG% --clean-first -- /m /v:minimal
+call cmake --build "%BUILD_DIR%" --config %CONFIG% --clean-first %NATIVE_BUILD_ARGS%
 if !errorlevel! neq 0 goto :fail_cpp
 
 :cpp_done
@@ -90,8 +107,8 @@ if !errorlevel! neq 0 goto :fail_cpp
 ::    but fails tests is not "done".
 echo === [3/4] Running engine tests ===
 set "TEST_RC=0"
-if not exist "%BUILD_DIR%\%CONFIG%\hdaw_tests.exe" goto :no_tests
-call "%BUILD_DIR%\%CONFIG%\hdaw_tests.exe" --gtest_brief=1
+if not exist "!OUT_DIR!\hdaw_tests.exe" goto :no_tests
+call "!OUT_DIR!\hdaw_tests.exe" --gtest_brief=1
 set "TEST_RC=!errorlevel!"
 if !TEST_RC! neq 0 goto :fail_tests
 goto :tests_done

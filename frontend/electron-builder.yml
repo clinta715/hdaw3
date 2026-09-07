@@ -12,7 +12,7 @@ files:
   - package.json
 
 extraResources:
-  - from: ../build/RelWithDebInfo/
+  - from: ../build/
     to: engine/
     filter:
       - "HDAW_headless.exe"
