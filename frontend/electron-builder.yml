@@ -19,6 +19,11 @@ extraResources:
       - "hdaw_plugin_scanner.exe"
       - "hdaw_plugin_host.exe"
       - "*.dll"
+  - from: ../tools/rave/
+    to: rave/
+    filter:
+      - "rave_transform.py"
+      - "README.md"
 
 fileAssociations:
   - ext: [hdaw, hdaw3]

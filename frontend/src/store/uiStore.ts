@@ -28,6 +28,7 @@ export const BOTTOM_TAB_IDS = [
   "psy-fm",
   "tempo",
   "presets",
+  "neural",
 ] as const;
 export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";

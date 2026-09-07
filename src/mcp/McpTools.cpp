@@ -109,6 +109,7 @@ void registerAllTools(McpServer& s) {
     registerCancelExportTool(s);
     registerEngineInfoTool(s);
     registerEngineRestartTool(s);
+    registerRaveTools(s, e);
 }
 
 } // namespace mcp

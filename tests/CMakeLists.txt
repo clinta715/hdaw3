@@ -29,6 +29,8 @@ add_executable(hdaw_tests
     unit/proxy/shm_test.cpp
     unit/proxy/crash_recovery_test.cpp
     unit/engine/audioengine_read_facade_test.cpp
+    unit/engine/rave_service_test.cpp
+    unit/engine/rave_settings_test.cpp
     unit/engine/track_fx_slot_debug_test.cpp
     unit/engine/track_fx_slot_show_editor_test.cpp
     unit/engine/isolated_scanner_test.cpp
@@ -143,6 +145,7 @@ add_executable(hdaw_tests
     unit/frontend/envelope_generation_rpc_test.cpp
     unit/frontend/loop_align_rpc_test.cpp
     unit/frontend/rhythm_generation_rpc_test.cpp
+    unit/frontend/rave_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp

@@ -1,0 +1,168 @@
+.neural-panel {
+  display: flex;
+  gap: var(--spacing-md, 12px);
+  padding: var(--spacing-sm, 8px);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.neural-panel__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs, 4px);
+  min-width: 260px;
+  max-width: 420px;
+}
+
+.neural-panel__import {
+  border-left: 1px solid var(--border);
+  padding-left: var(--spacing-sm, 8px);
+}
+
+.neural-panel__title {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--spacing-xs, 4px);
+}
+
+.neural-panel__field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+}
+
+.neural-panel__label {
+  min-width: 44px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+}
+
+.neural-panel__select,
+.neural-panel__input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.neural-panel__select {
+  flex: 1;
+  min-width: 0;
+}
+
+.neural-panel__input--path {
+  flex: 1;
+  min-width: 0;
+}
+
+.neural-panel__input--num {
+  width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.neural-panel__slider {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 4px;
+}
+
+.neural-panel__empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.neural-panel__actions {
+  display: flex;
+  gap: var(--spacing-xs, 4px);
+  margin-top: var(--spacing-xs, 4px);
+}
+
+.neural-panel__btn {
+  background: var(--bg-widget);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.neural-panel__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.neural-panel__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.neural-panel__btn--primary {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.neural-panel__status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.neural-panel__phase {
+  text-transform: capitalize;
+  font-variant-numeric: tabular-nums;
+}
+
+.neural-panel__status[data-phase="running"] .neural-panel__phase {
+  color: var(--accent-bright);
+}
+
+.neural-panel__status[data-phase="finished"] .neural-panel__phase {
+  color: var(--success);
+}
+
+.neural-panel__status[data-phase="failed"] .neural-panel__phase {
+  color: var(--danger);
+}
+
+.neural-panel__status[data-phase="cancelled"] .neural-panel__phase {
+  color: var(--warning);
+}
+
+.neural-panel__msg {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.neural-panel__output {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 2px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

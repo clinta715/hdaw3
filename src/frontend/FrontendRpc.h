@@ -42,6 +42,7 @@ namespace method {
     inline constexpr const char* Sampler    = "sampler";
     inline constexpr const char* Pool       = "pool";
     inline constexpr const char* PsyFm      = "psy_fm";
+    inline constexpr const char* Rave       = "rave";
 } // namespace method
 
 // Server-initiated push notifications (no client id, no response expected).
@@ -54,6 +55,7 @@ namespace notify {
     inline constexpr const char* LibraryScanProgress = "notify.libraryScanProgress";
     inline constexpr const char* LibraryScanComplete = "notify.libraryScanComplete";
     inline constexpr const char* ExportProgress = "notify.exportProgress";
+    inline constexpr const char* RaveProgress   = "notify.raveProgress";
     inline constexpr const char* LoadProgress   = "notify.loadProgress";
     inline constexpr const char* SessionState   = "notify.sessionStateChanged";
     inline constexpr const char* PluginCrashed  = "notify.pluginCrashed";

@@ -23,6 +23,7 @@
 #include "router/Router_Sampler.h"
 #include "router/Router_Pool.h"
 #include "router/Router_PsyFm.h"
+#include "router/Router_Rave.h"
 
 using namespace frontend::router_helpers;
 
@@ -88,6 +89,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::Sampler)     return dispatchSampler(engine, m, params);
     else if (ns == method::Pool)        return dispatchPool(engine.getReadModel(), engine.getProjectPool().getFormatManager(), m, params);
     else if (ns == method::PsyFm)       return dispatchPsyFm(engine, m, params);
+    else if (ns == method::Rave)        return dispatchRave(engine, m, params, server);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

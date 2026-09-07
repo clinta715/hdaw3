@@ -863,6 +863,20 @@ DispatchResult dispatchSettings(AudioEngine& engine, const QString& m, const QJs
         } };
     }
 
+    // RAVE #5: persisted RAVE config (model dirs, default model, python/script
+    // paths, timeout). Read/write QSettings rave/* via the RaveService helpers
+    // shared with the rave_get_config / rave_set_config MCP tools so both
+    // surfaces return the identical JSON shape.
+    if (m == "getRaveConfig") {
+        return { false, HDAW::RaveService::persistedConfigJson() };
+    }
+    if (m == "setRaveConfig") {
+        QString error;
+        if (!HDAW::RaveService::savePersistedConfig(o, &error))
+            return makeError(-32602, error.isEmpty() ? QStringLiteral("invalid RAVE config") : error);
+        return { false, QJsonValue::Null };
+    }
+
     return makeError(-32601, "unknown settings method: " + m);
 }
 

@@ -36,4 +36,13 @@ namespace SettingsKeys
     inline constexpr auto kKeyDefaultTempo       = "project/defaultTempo";
     inline constexpr auto kKeyDefaultTimeSigNum  = "project/defaultTimeSigNumerator";
     inline constexpr auto kKeyDefaultTimeSigDen  = "project/defaultTimeSigDenominator";
+
+    // RAVE (persisted sidecar configuration)
+    inline constexpr auto kKeyRaveModelDirs      = "rave/modelDirs";       // QStringList
+    inline constexpr auto kKeyRaveDefaultModel   = "rave/defaultModel";
+    inline constexpr auto kKeyRavePythonPath     = "rave/pythonPath";
+    inline constexpr auto kKeyRaveScriptPath     = "rave/scriptPath";
+    inline constexpr auto kKeyRaveTimeoutMs      = "rave/timeoutMs";       // int
+
+    inline constexpr int kDefaultRaveTimeoutMs = 600000;
 }

@@ -24,6 +24,7 @@ import Inspector from "./components/Inspector";
 import { ArrangerChainEditor } from "./components/ArrangerChainEditor";
 import TempoEditor from "./components/TempoEditor";
 import PresetBrowser from "./components/PresetBrowser";
+import NeuralPanel from "./components/NeuralPanel";
 import BottomTabs from "./components/BottomTabs";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
@@ -48,6 +49,7 @@ const SPsyFmEditor = withHookSentinel(PsyFmEditor, "PsyFmEditor");
 const SArrangerChainEditor = withHookSentinel(ArrangerChainEditor, "ArrangerChainEditor");
 const STempoEditor = withHookSentinel(TempoEditor, "TempoEditor");
 const SPresetBrowser = withHookSentinel(PresetBrowser, "PresetBrowser");
+const SNeuralPanel = withHookSentinel(NeuralPanel, "NeuralPanel");
 
 function App() {
   useKeyboardShortcuts();
@@ -228,6 +230,7 @@ function App() {
     { id: "psy-fm", label: "Psy FM", content: <SPsyFmEditor /> },
     { id: "tempo", label: "Tempo", content: <STempoEditor rpc={rpc} /> },
     { id: "presets", label: "Presets", content: <SPresetBrowser /> },
+    { id: "neural", label: "Neural", content: <SNeuralPanel /> },
   ], []);
 
   return (

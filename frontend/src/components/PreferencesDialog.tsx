@@ -82,6 +82,162 @@ function LibrarySettings() {
   );
 }
 
+interface RaveConfig {
+  modelDirs: string[];
+  defaultModel: string;
+  pythonPath: string;
+  scriptPath: string;
+  timeoutMs: number;
+}
+
+interface RaveModelEntry {
+  name: string;
+  path: string;
+}
+
+function raveFileName(p: string): string {
+  return p.split(/[\\/]/).pop() || p;
+}
+
+function RaveSettings() {
+  const [modelDirs, setModelDirs] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState("");
+  const [pythonPath, setPythonPath] = useState("");
+  const [scriptPath, setScriptPath] = useState("");
+  const [timeoutMs, setTimeoutMs] = useState(0);
+  const [newDir, setNewDir] = useState("");
+  const [models, setModels] = useState<RaveModelEntry[]>([]);
+
+  // Load current values from the engine; degrade silently on old engines
+  // without settings.getRaveConfig.
+  const loadConfig = useCallback(async () => {
+    try {
+      const cfg = (await rpc.call("settings.getRaveConfig", {})) as RaveConfig | null;
+      if (!cfg) return;
+      setModelDirs(cfg.modelDirs ?? []);
+      setDefaultModel(cfg.defaultModel ?? "");
+      setPythonPath(cfg.pythonPath ?? "");
+      setScriptPath(cfg.scriptPath ?? "");
+      setTimeoutMs(cfg.timeoutMs ?? 0);
+    } catch {
+      // silent degrade — section stays at its defaults
+    }
+  }, []);
+
+  const refreshModels = useCallback(async () => {
+    try {
+      const res = (await rpc.call("rave.listModels", {})) as { models?: RaveModelEntry[] } | null;
+      setModels(res?.models ?? []);
+    } catch {
+      setModels([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadConfig();
+    void refreshModels();
+  }, [loadConfig, refreshModels]);
+
+  const handleAddDir = () => {
+    const dir = newDir.trim();
+    if (!dir) return;
+    setModelDirs((prev) => (prev.includes(dir) ? prev : [...prev, dir]));
+    setNewDir("");
+  };
+
+  const handleRemoveDir = (dir: string) => {
+    setModelDirs((prev) => prev.filter((d) => d !== dir));
+  };
+
+  // Save -> RPC -> reload from the engine (never optimistic).
+  const handleSave = async () => {
+    try {
+      await rpc.call("settings.setRaveConfig", {
+        modelDirs,
+        defaultModel,
+        pythonPath: pythonPath.trim(),
+        scriptPath: scriptPath.trim(),
+        timeoutMs: Number(timeoutMs) || 0,
+      });
+    } catch {
+      // surfaced by the reload below staying at engine values
+    }
+    await loadConfig();
+  };
+
+  return (
+    <section className="pref-section">
+      <h3>RAVE</h3>
+      <div className="pref-libraries-list">
+        {modelDirs.map((d) => (
+          <div key={d} className="pref-library-row">
+            <span className="pref-library-path" title={d}>{d}</span>
+            <button className="pref-btn-danger" onClick={() => handleRemoveDir(d)}>
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="pref-library-add">
+        <input
+          type="text"
+          placeholder="Model directory path"
+          value={newDir}
+          onChange={(e) => setNewDir(e.target.value)}
+        />
+        <button onClick={handleAddDir}>Add</button>
+      </div>
+      <label>
+        Default Model
+        <select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}>
+          <option value="">(none)</option>
+          {models.map((m) => (
+            <option key={m.path} value={m.path}>{m.name}</option>
+          ))}
+          {defaultModel && !models.some((m) => m.path === defaultModel) && (
+            <option value={defaultModel}>{raveFileName(defaultModel)}</option>
+          )}
+        </select>
+      </label>
+      <label>
+        Python Path
+        <input
+          type="text"
+          value={pythonPath}
+          placeholder="(engine default)"
+          onChange={(e) => setPythonPath(e.target.value)}
+        />
+      </label>
+      <label>
+        Script Path
+        <input
+          type="text"
+          value={scriptPath}
+          placeholder="(engine default)"
+          onChange={(e) => setScriptPath(e.target.value)}
+        />
+      </label>
+      <label>
+        Timeout (ms)
+        <input
+          type="number"
+          min={0}
+          value={timeoutMs}
+          onChange={(e) => setTimeoutMs(Number(e.target.value))}
+        />
+      </label>
+      <div className="pref-rave-actions">
+        <button className="pref-btn" onClick={() => { void refreshModels(); }}>
+          Refresh Models
+        </button>
+        <button className="pref-btn pref-btn--primary" onClick={() => { void handleSave(); }}>
+          Save
+        </button>
+      </div>
+    </section>
+  );
+}
+
 interface Props {
   onClose: () => void;
 }
@@ -438,6 +594,7 @@ export default function PreferencesDialog({ onClose }: Props) {
             <p className="pref-note">WebSocket RPC endpoint this session is connected to. Ports are set via engine command-line flags.</p>
           </section>
           <LibrarySettings />
+          <RaveSettings />
         </div>
       </div>
     </div>

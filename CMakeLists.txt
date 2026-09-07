@@ -132,6 +132,8 @@ add_library(HDAW_lib STATIC
     src/engine/SessionManager.cpp
     src/engine/AudioEngineCommands_Modulation.cpp
     src/engine/AudioEngineCommands_Undo.cpp
+    src/engine/RaveService.cpp
+    src/engine/RaveJobManager.cpp
     src/engine/AudioRecorder.cpp
     src/engine/CLAPPluginEditor.h
     src/engine/CLAPPluginEditor.cpp
@@ -248,6 +250,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Settings.cpp
     src/mcp/McpTools_Engine.cpp
     src/mcp/McpTools_Tuning.cpp
+    src/mcp/McpTools_Rave.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
@@ -270,6 +273,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_Sampler.cpp
     src/frontend/router/Router_Pool.cpp
     src/frontend/router/Router_PsyFm.cpp
+    src/frontend/router/Router_Rave.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

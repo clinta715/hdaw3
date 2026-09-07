@@ -11,6 +11,8 @@
 #include "SessionManager.h"
 #include "AudioPreviewPlayer.h"
 #include "FileLibraryManager.h"
+#include "RaveJobManager.h"
+#include "RaveService.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
 #include "PluginServiceImpl.h"
@@ -54,6 +56,10 @@ public:
     HDAW::AudioPreviewPlayer& getPreviewPlayer() { return *previewPlayer; }
     HDAW::SessionManager& getSessionManager() { return sessionManager; }
     HDAW::FileLibraryManager& getFileLibraryManager() { return fileLibraryManager; }
+    HDAW::RaveService& getRaveService() { return raveService; }
+    const HDAW::RaveService& getRaveService() const { return raveService; }
+    HDAW::RaveJobManager& getRaveJobManager() { return raveJobManager; }
+    const HDAW::RaveJobManager& getRaveJobManager() const { return raveJobManager; }
 
     struct McpHttpConfig
     {
@@ -250,6 +256,8 @@ private:
     HDAW::StretchCache stretchCache;
     HDAW::SessionManager sessionManager;
     HDAW::FileLibraryManager fileLibraryManager;
+    HDAW::RaveService raveService;
+    HDAW::RaveJobManager raveJobManager;
     std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
 
     std::unique_ptr<mcp::McpServer> mcpHttpServer;

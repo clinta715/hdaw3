@@ -3,6 +3,7 @@ import { useProjectStore, nextTempId } from "../store/projectStore";
 import { useTransportStore } from "../store/transportStore";
 import { useMarkerStore } from "../store/markerStore";
 import { useUiStore } from "../store/uiStore";
+import { useNeuralStore } from "../store/neuralStore";
 import { rpc } from "../rpc";
 import type { ClipSnapshot } from "../rpc/types";
 import type { MarkerSnapshot } from "../store/markerStore";
@@ -272,6 +273,28 @@ export function TimelineContextMenu({
               }}>
                 Paste Region
               </button>
+              {!contextMenu.clip.isMidi && contextMenu.clip.sourceFile !== "" && (
+                <>
+                  <div className="ctx-separator" />
+                  <button onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const clip = contextMenu.clip!;
+                    // Handoff via store (not props): the Neural panel prefills
+                    // from this pending clip when the bottom tab activates.
+                    useNeuralStore.getState().setPendingClip({
+                      clipId: clip.clipId,
+                      name: clip.name,
+                      sourceFile: clip.sourceFile,
+                      trackIndex: clip.trackIndex,
+                      startBeat: clip.startBeat,
+                    });
+                    useUiStore.getState().selectBottomTab("neural");
+                    onClose();
+                  }}>
+                    Render with RAVE…
+                  </button>
+                </>
+              )}
             </>
           )}
           {contextMenu.type === "marker" && (

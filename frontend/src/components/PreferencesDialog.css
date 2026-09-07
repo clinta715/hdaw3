@@ -23,3 +23,8 @@
 .pref-library-add button:hover { background: var(--bg-elevated); }
 .pref-btn-danger { background: none; border: 1px solid var(--error); color: var(--error); padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; }
 .pref-btn-danger:hover { background: var(--error); color: var(--text-primary); }
+.pref-rave-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.pref-btn { background: var(--bg-widget); border: 1px solid var(--border); border-radius: 4px; padding: 6px 12px; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.pref-btn:hover { background: var(--bg-elevated); }
+.pref-btn--primary { background: var(--accent); border-color: var(--accent); }
+.pref-btn--primary:hover { background: var(--bg-elevated); }
