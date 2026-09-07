@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { startApp } from "./helpers";
+import * as fs from "fs";
+import { startApp, writeTestMidi } from "./helpers";
 
 // ImportDialog is opened from the File menu ("Import Audio..." / "Import
 // MIDI...") or the Ctrl+Shift+I / Ctrl+Shift+M shortcuts. The import *mode*
@@ -95,11 +96,19 @@ test.describe("Import dialog (user journeys)", () => {
   });
 
   test("Import MIDI with a path creates a clip and closes the dialog", async ({ page }) => {
-    await openImport(page, "midi");
-    const before = await page.locator(".tl-clip").count();
-    await page.locator(".id-input").fill("generated.mid");
-    await page.locator(".id-btn-import").click();
-    await expect(page.locator(".id-dialog")).toBeHidden({ timeout: 5000 });
-    await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
+    // project.importMidiFile resolves the path against the ENGINE's cwd, so a
+    // relative "generated.mid" never existed for it — write a real minimal MIDI
+    // file and pass its absolute path.
+    const midiPath = writeTestMidi();
+    try {
+      await openImport(page, "midi");
+      const before = await page.locator(".tl-clip").count();
+      await page.locator(".id-input").fill(midiPath);
+      await page.locator(".id-btn-import").click();
+      await expect(page.locator(".id-dialog")).toBeHidden({ timeout: 5000 });
+      await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
+    } finally {
+      fs.rmSync(midiPath, { force: true });
+    }
   });
 });

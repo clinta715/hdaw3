@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { startApp, rpcCall, addMidiClip } from "./helpers";
+import { test, expect, Page } from "@playwright/test";
+import { startApp, rpcCall, addMidiClip, clipLocator } from "./helpers";
 
 type NoteSnap = {
   noteId: number;
@@ -12,6 +12,40 @@ type NoteSnap = {
   noteGain: number;
 };
 
+// Create a note through the piano-roll UI (grid double-click), mirroring the
+// green piano-roll.spec idiom. The UI path is optimistic + reconciled: it
+// renders the note immediately, calls project.addNote, then re-fetches via
+// syncNotes — so the DOM's data-note-id converges on the real engine note id.
+// (The previous approach injected notes via a window.__projectStore dev hook
+// that no longer exists; the injection silently no-opped and .ng-note never
+// rendered. An RPC-only addNote can't just be awaited either: notesByClip is
+// fetched lazily per clip — the timeline MIDI thumbnail caches it as [] the
+// moment the clip renders — and a fullSync does not invalidate that cache, so
+// the piano roll would never re-fetch the engine-added note.)
+async function createNoteViaPianoRoll(page: Page, clipId: number): Promise<number> {
+  // Selecting the clip auto-switches the bottom panel to the piano roll;
+  // click the tab explicitly as well so the test doesn't depend on that.
+  await clipLocator(page, clipId).click();
+  await page.locator(".bt-tab", { hasText: "Piano Roll" }).click();
+  const grid = page.locator(".note-grid");
+  await expect(grid).toBeVisible({ timeout: 5000 });
+  await grid.dblclick({ position: { x: 60, y: 50 } });
+  await expect(page.locator(".ng-note").first()).toBeVisible({ timeout: 5000 });
+
+  // The addNote RPC commits the note engine-side; poll until it's readable and
+  // capture its real noteId.
+  let noteId = -1;
+  await expect(async () => {
+    const notes = await rpcCall<NoteSnap[]>(page, "read.getNotes", { clipId });
+    expect(notes.length).toBe(1);
+    noteId = notes[0].noteId;
+  }).toPass({ timeout: 5000 });
+
+  // Wait for the store/DOM to reconcile onto the engine id (syncNotes).
+  await expect(page.locator(`.ng-note[data-note-id="${noteId}"]`)).toBeVisible({ timeout: 10000 });
+  return noteId;
+}
+
 test.describe("Note Operators pane", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
@@ -19,33 +53,10 @@ test.describe("Note Operators pane", () => {
 
   test("NoteOperatorsPane appears when a note is selected", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "OpsTest" });
-
-    const noteId = await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    // Refresh notes in the store so NoteGrid renders the note
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    const noteId = await createNoteViaPianoRoll(page, clipId);
 
     // Click the note element to select it
     const noteEl = page.locator(`.ng-note[data-note-id="${noteId}"]`);
-    await expect(noteEl).toBeVisible({ timeout: 10000 });
     await noteEl.click();
 
     // The NoteOperatorsPane should appear
@@ -56,31 +67,9 @@ test.describe("Note Operators pane", () => {
 
   test("NoteOperatorsPane shows all operator and expression fields", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "FieldsTest" });
-
-    await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    await createNoteViaPianoRoll(page, clipId);
 
     const noteEl = page.locator(".ng-note").first();
-    await expect(noteEl).toBeVisible({ timeout: 10000 });
     await noteEl.click();
 
     await expect(page.locator(".nop-pane")).toBeVisible({ timeout: 5000 });
@@ -101,31 +90,9 @@ test.describe("Note Operators pane", () => {
 
   test("changing chance value calls setNoteChance RPC", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "ChanceTest" });
-
-    const noteId = await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    const noteId = await createNoteViaPianoRoll(page, clipId);
 
     const noteEl = page.locator(`.ng-note[data-note-id="${noteId}"]`);
-    await expect(noteEl).toBeVisible({ timeout: 10000 });
     await noteEl.click();
 
     await expect(page.locator(".nop-pane")).toBeVisible({ timeout: 5000 });
@@ -144,31 +111,9 @@ test.describe("Note Operators pane", () => {
 
   test("changing gain value calls setNoteGain RPC", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "GainTest" });
-
-    const noteId = await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    const noteId = await createNoteViaPianoRoll(page, clipId);
 
     const noteEl = page.locator(`.ng-note[data-note-id="${noteId}"]`);
-    await expect(noteEl).toBeVisible({ timeout: 10000 });
     await noteEl.click();
 
     await expect(page.locator(".nop-pane")).toBeVisible({ timeout: 5000 });
@@ -186,31 +131,9 @@ test.describe("Note Operators pane", () => {
 
   test("collapse toggle persists to localStorage", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "CollapseTest" });
-
-    await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    await createNoteViaPianoRoll(page, clipId);
 
     const noteEl = page.locator(".ng-note").first();
-    await expect(noteEl).toBeVisible({ timeout: 10000 });
     await noteEl.click();
 
     await expect(page.locator(".nop-pane")).toBeVisible({ timeout: 5000 });
@@ -230,28 +153,7 @@ test.describe("Note Operators pane", () => {
 
   test("pane hides when no notes selected", async ({ page }) => {
     const clipId = await addMidiClip(page, { name: "HideTest" });
-
-    await rpcCall<number>(page, "project.addNote", {
-      clipId,
-      pitch: 60,
-      startBeat: 0,
-      durationBeats: 1,
-      velocity: 100,
-    });
-
-    await page.evaluate(
-      ([cid]: [number]) => (window as any).rpc.call("read.getNotes", { clipId: cid }).then(
-        (notes: unknown) => {
-          const store = (window as any).__projectStore;
-          if (store) {
-            const m = new Map(store.getState().notesByClip);
-            m.set(cid, notes);
-            store.setState({ notesByClip: m });
-          }
-        },
-      ),
-      [clipId] as [number],
-    );
+    await createNoteViaPianoRoll(page, clipId);
 
     const noteEl = page.locator(".ng-note").first();
     await expect(noteEl).toBeVisible({ timeout: 10000 });

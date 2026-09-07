@@ -6,7 +6,8 @@ test.describe("Session View", () => {
     await startApp(page);
 
     // Switch to session view
-    const toggle = page.locator('button:has-text("Arr")');
+    // Exact-name match: :has-text("Arr") also hits the bottom tab "Arranger".
+    const toggle = page.getByRole("button", { name: "Arr", exact: true });
     await toggle.click();
 
     // Session view should be visible
@@ -18,7 +19,7 @@ test.describe("Session View", () => {
     await startApp(page);
 
     // Switch to session view
-    await page.locator('button:has-text("Arr")').click();
+    await page.getByRole("button", { name: "Arr", exact: true }).click();
     await expect(page.locator(".sv-root")).toBeVisible();
 
     // Click an empty slot to create a clip
@@ -33,7 +34,7 @@ test.describe("Session View", () => {
     await startApp(page);
 
     // Switch to session view
-    await page.locator('button:has-text("Arr")').click();
+    await page.getByRole("button", { name: "Arr", exact: true }).click();
 
     // Create a clip first
     await page.locator(".sv-slot").first().click();

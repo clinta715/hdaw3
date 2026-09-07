@@ -24,13 +24,31 @@ test.describe("MIDI FX chain (user journeys)", () => {
     await expect(page.locator(".mfx-slot")).toHaveCount(0);
   });
 
-  test("add dropdown lists all five MIDI FX types", async ({ page }) => {
+  test("add dropdown lists every MIDI FX type", async ({ page }) => {
+    // Source of truth: MIDI_FX_TYPES in frontend/src/components/MidiFxChain.tsx.
+    // Match options by their exact value (hasText "Velocity" would also match
+    // "Velocity Curve"), and cover the full current type list.
+    const expected: [value: string, label: string][] = [
+      ["arpeggiator", "Arpeggiator"],
+      ["velocity", "Velocity"],
+      ["chord", "Chord"],
+      ["scale", "Scale Quantize"],
+      ["notelength", "Note Length"],
+      ["transpose", "Transpose"],
+      ["keyfilter", "Key Filter"],
+      ["multinote", "Multi-Note"],
+      ["velocitycurve", "Velocity Curve"],
+      ["notechance", "Note Chance"],
+      ["mididelay", "MIDI Delay"],
+      ["humanize", "Humanize"],
+      ["strum", "Strum"],
+    ];
     const addSelect = page.locator(".mfx-add-select");
-    await expect(addSelect.locator("option", { hasText: "Arpeggiator" })).toHaveCount(1);
-    await expect(addSelect.locator("option", { hasText: "Velocity" })).toHaveCount(1);
-    await expect(addSelect.locator("option", { hasText: "Chord" })).toHaveCount(1);
-    await expect(addSelect.locator("option", { hasText: "Scale Quantize" })).toHaveCount(1);
-    await expect(addSelect.locator("option", { hasText: "Note Length" })).toHaveCount(1);
+    // 13 type options + the "+ Add MIDI FX…" placeholder (value="").
+    await expect(addSelect.locator("option")).toHaveCount(expected.length + 1);
+    for (const [value, label] of expected) {
+      await expect(addSelect.locator(`option[value="${value}"]`)).toHaveText(label);
+    }
   });
 
   test("adding a slot renders a slot card with the type label", async ({ page }) => {

@@ -56,8 +56,9 @@ test.describe("React error #300: delete-while-editor-open", () => {
     // Select the clip — this opens the ClipEditor and auto-switches to piano-roll
     await clipLocator(page, clipId).click();
 
-    // Wait for the editor to be visible
-    await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
+    // Wait for the editor: selecting a clip auto-switches the BOTTOM PANEL to
+    // the piano-roll tab (the old .clip-editor-container strip no longer exists).
+    await expect(page.locator(".bt-tab--active")).toHaveText("Piano Roll", { timeout: 5000 });
     await expect(page.locator(".piano-roll")).toBeVisible({ timeout: 5000 });
 
     // Delete while the editor is open — this is the crash window
@@ -98,8 +99,10 @@ test.describe("React error #300: delete-while-editor-open", () => {
 
       // Select — opens ClipEditor + auto-switches to audio-editor
       await clipLocator(page, clipId).click();
-      await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
-      await expect(page.locator(".audio-clip-editor")).toBeVisible({ timeout: 5000 });
+      // Bottom panel auto-switches to the audio-editor tab; .ace-header proves
+      // the clip actually loaded (the empty state also renders .audio-clip-editor).
+      await expect(page.locator(".bt-tab--active")).toHaveText("Audio Editor", { timeout: 5000 });
+      await expect(page.locator(".audio-clip-editor .ace-header")).toBeVisible({ timeout: 5000 });
 
       // Delete while audio editor is open
       await page.keyboard.press("Delete");
@@ -198,7 +201,7 @@ test.describe("React error #300: delete-while-editor-open", () => {
 
     // Select first (opens editor), then ctrl-select second
     await clipLocator(page, c1).click();
-    await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".piano-roll")).toBeVisible({ timeout: 5000 });
     await clipLocator(page, c2).click({ modifiers: ["Control"] });
 
     // Delete both at once
@@ -225,7 +228,7 @@ test.describe("React error #300: delete-while-editor-open", () => {
 
     // Select the clip to open editor
     await clipLocator(page, clipId).click();
-    await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".piano-roll")).toBeVisible({ timeout: 5000 });
 
     // Right-click to open context menu
     await clipLocator(page, clipId).click({ button: "right" });
@@ -260,7 +263,7 @@ test.describe("React error #300: delete-while-editor-open", () => {
 
     // Select → editor opens
     await clipLocator(page, clipId).click();
-    await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".piano-roll")).toBeVisible({ timeout: 5000 });
 
     // Delete
     await page.keyboard.press("Delete");
@@ -272,7 +275,7 @@ test.describe("React error #300: delete-while-editor-open", () => {
 
     // Re-select the restored clip (undo doesn't restore selection)
     await clipLocator(page, clipId).click();
-    await expect(page.locator(".clip-editor-container")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".piano-roll")).toBeVisible({ timeout: 5000 });
 
     // Delete again
     await page.keyboard.press("Delete");

@@ -9,7 +9,18 @@ import * as path from "path";
 // this so tests don't see each other's clips (the engine is a shared singleton).
 export async function startApp(page: Page) {
   await page.goto("/");
-  await page.locator(".startup-btn.primary").click();
+  const startupBtn = page.locator(".startup-btn.primary");
+  try {
+    await startupBtn.waitFor({ state: "visible", timeout: 10000 });
+  } catch {
+    // The app root only mounts after the initial WS connect + read.snapshot
+    // succeed (main.tsx init() renders nothing until then). A busy engine or a
+    // failed first sync leaves a blank page — recover with one reload instead
+    // of failing the test outright.
+    await page.reload();
+    await startupBtn.waitFor({ state: "visible", timeout: 12000 });
+  }
+  await startupBtn.click();
   await expect(page.locator(".tl-track-row").first()).toBeVisible({ timeout: 20000 });
 }
 
@@ -135,6 +146,30 @@ export function writeSineWav(
 
 export function tempWavPath(name: string): string {
   return path.join(os.tmpdir(), `hdaw-e2e-${Date.now()}-${name}.wav`);
+}
+
+// ── Generate a minimal valid MIDI file (format 0, one track, one note) ──────
+// Used by the import-dialog journey: project.importMidiFile needs a real file
+// on disk (the engine resolves the path from its own cwd, so tests must pass
+// an absolute path). Returns the path; caller is responsible for cleanup.
+export function writeTestMidi(name = "import"): string {
+  const trackData = Buffer.from([
+    0x00, 0x90, 60, 100,        // delta 0: note on, channel 0, C4, velocity 100
+    0x83, 0x60, 0x80, 60, 0x00, // delta 480 (VLQ 0x83 0x60): note off
+    0x00, 0xff, 0x2f, 0x00,     // end of track
+  ]);
+  const header = Buffer.alloc(14);
+  header.write("MThd", 0, "ascii");
+  header.writeUInt32BE(6, 4);
+  header.writeUInt16BE(0, 8);    // format 0
+  header.writeUInt16BE(1, 10);   // 1 track
+  header.writeUInt16BE(480, 12); // 480 ticks per quarter note
+  const trackHeader = Buffer.alloc(8);
+  trackHeader.write("MTrk", 0, "ascii");
+  trackHeader.writeUInt32BE(trackData.length, 4);
+  const midiPath = path.join(os.tmpdir(), `hdaw-e2e-${Date.now()}-${name}.mid`);
+  fs.writeFileSync(midiPath, Buffer.concat([header, trackHeader, trackData]));
+  return midiPath;
 }
 
 // ── Wait for snapshot sync after an RPC that mutates the project ─────────────

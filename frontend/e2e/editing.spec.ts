@@ -287,7 +287,13 @@ test.describe("Clip editing (user journeys)", () => {
       .toBe(0);
     const countBefore = 0;
 
-    const clipId = await addMidiClip(page, { trackIndex: 0, start: 0, duration: 2, name: "Copy" });
+    // Source clip at beat 4 (NOT 0): pasteClipboard pastes at the playhead
+    // (beat 0 in a fresh project), and the engine's moveClipWithOverlap
+    // overwrite rule removes an existing clip fully covered by the incoming
+    // one — pasting onto the source's own position replaces it (net 1 clip).
+    // Offsetting the source keeps the journey a true "paste creates a new
+    // clip" test with no overlap.
+    const clipId = await addMidiClip(page, { trackIndex: 0, start: 4, duration: 2, name: "Copy" });
     await expect.poll(() => page.locator(".tl-clip").count(), { timeout: 5000 }).toBe(countBefore + 1);
 
     await clipLocator(page, clipId).click();
@@ -301,6 +307,14 @@ test.describe("Clip editing (user journeys)", () => {
 
     await page.keyboard.press("Control+v");
     await expect.poll(() => page.locator(".tl-clip").count(), { timeout: 5000 }).toBe(countBefore + 2);
+
+    // The pasted clip lands at the playhead (beat 0); the source stays at 4.
+    await expect
+      .poll(async () => {
+        const snap = await rpcCall<{ clips: { trackIndex: number; startBeat: number }[] }>(page, "read.snapshot");
+        return snap.clips.filter((c) => c.trackIndex === 0).map((c) => c.startBeat).sort((a, b) => a - b);
+      }, { timeout: 5000 })
+      .toEqual([0, 4]);
   });
 
   test("dragging a clip to another track changes its trackIndex", async ({ page }) => {

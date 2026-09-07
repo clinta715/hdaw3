@@ -36,8 +36,10 @@ test.describe("Modulation panel (user journeys)", () => {
     const card = page.locator(".mod-lfo-card").first();
     await expect(card).toBeVisible({ timeout: 5000 });
     await expect(card.locator(".mod-lfo-name")).toContainText("LFO 1");
-    // Default waveform is Sine (index 0).
-    await expect(card.locator("select")).toHaveValue("0");
+    // Default waveform is Sine (index 0). The card has two selects (Target +
+    // Wave) — target the Wave select via its wrapping <label> (only the Wave
+    // label contains the text "Wave").
+    await expect(card.locator("label", { hasText: "Wave" }).locator("select")).toHaveValue("0");
   });
 
   test("adding multiple LFOs renders one card each", async ({ page }) => {
@@ -57,7 +59,9 @@ test.describe("Modulation panel (user journeys)", () => {
 
   test("changing waveform select updates optimistically", async ({ page }) => {
     await page.locator(".mod-add-btn").click();
-    const select = page.locator(".mod-lfo-card").first().locator("select");
+    // Two selects per card (Target + Wave) — address the Wave select via its
+    // wrapping <label>.
+    const select = page.locator(".mod-lfo-card").first().locator("label", { hasText: "Wave" }).locator("select");
     await expect(select).toBeVisible({ timeout: 5000 });
     await select.selectOption("2"); // Saw
     await expect(select).toHaveValue("2");
