@@ -199,3 +199,6 @@ tools/.ruff_cache/
 
 # RAVE VST models (master copies staged locally; plugin loads from %%APPDATA%%\ACIDS\RAVE)
 /rave/
+
+# Python bytecode caches (sidecar/tooling)
+__pycache__/
