@@ -25,7 +25,7 @@ export default defineConfig({
     {
       // Engine: WebSocket RPC (8766) + HTTP (8765, used as the readiness probe).
       // HDAW_NO_BROWSER stops it spawning the system browser during tests.
-      command: "cd .. && build\\Debug\\HDAW.exe",
+      command: "cd .. && build\\HDAW.exe",
       url: "http://127.0.0.1:8765",
       env: { HDAW_NO_BROWSER: "1" },
       reuseExistingServer: !process.env.CI,
