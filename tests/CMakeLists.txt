@@ -23,6 +23,7 @@ add_executable(hdaw_tests
     integration/mcp/mcp_functionality_test.cpp
     integration/mcp/mcp_coverage_test.cpp
     integration/mcp/engine_tools_test.cpp
+    integration/mcp/workflow_pack_test.cpp
     unit/proxy/common_test.cpp
     unit/proxy/pipe_test.cpp
     unit/proxy/shm_test.cpp

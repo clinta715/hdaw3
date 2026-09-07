@@ -12,12 +12,14 @@
 #include "../engine/Dx7SysexImport.h"
 #include "../engine/MidiFx.h"
 #include "../engine/MixReport.h"
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <algorithm>
 #include <optional>
 #include <vector>
+#include <juce_audio_formats/juce_audio_formats.h>
 
 namespace mcp {
 
@@ -189,6 +191,122 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             }
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(arr).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"validate_sample",
+        "Validate an audio file by opening it with the format manager and reporting basic header / stream properties. Read-only.",
+        objSchema({{"path", QJsonObject{{"type","string"}}}}, {"path"}),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const QString path = a.value("path").toString();
+            const juce::File file(path.toStdString());
+            if (!file.existsAsFile())
+                return McpToolResult::text("file not found: " + path, true);
+
+            auto& fmt = e->getProjectPool().getFormatManager();
+            std::unique_ptr<juce::AudioFormatReader> reader(fmt.createReaderFor(file));
+            if (!reader)
+                return McpToolResult::text("could not read audio file: " + path, true);
+
+            const double sampleRate = reader->sampleRate;
+            const double durationSeconds = sampleRate > 0.0
+                ? static_cast<double>(reader->lengthInSamples) / sampleRate
+                : 0.0;
+            QJsonObject out;
+            out["path"] = path;
+            out["exists"] = true;
+            out["readable"] = true;
+            out["sampleRate"] = sampleRate;
+            out["channels"] = static_cast<int>(reader->numChannels);
+            out["bitsPerSample"] = static_cast<int>(reader->bitsPerSample);
+            out["lengthInSamples"] = static_cast<qint64>(reader->lengthInSamples);
+            out["durationSeconds"] = durationSeconds;
+            out["format"] = jstr(file.getFileExtension().fromFirstOccurrenceOf(".", false, false).toLowerCase());
+            out["headerOk"] = true;
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"debug_audio",
+        "Read-only audio debug snapshot: transport, meters, track states, and live FX slots.",
+        objSchema({{"trackId", QJsonObject{{"type","integer"}}}}, {}),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto snap = e->getReadModel().snapshot();
+            const bool filterTrack = a.contains("trackId");
+            const int trackFilter = a.value("trackId").toInt(-1);
+            if (filterTrack && (trackFilter < 0 || trackFilter >= static_cast<int>(snap.tracks.size())))
+                return McpToolResult::text(QString("trackId %1 not found").arg(trackFilter), true);
+
+            auto meterToJson = [](const auto& m) {
+                return QJsonObject{
+                    {"left", m.leftLevel},
+                    {"right", m.rightLevel},
+                    {"rmsLeft", m.rmsLeftLevel},
+                    {"rmsRight", m.rmsRightLevel},
+                    {"lufsMomentary", m.lufsMomentary}
+                };
+            };
+
+            QJsonObject root;
+            root["transport"] = QJsonObject{
+                {"bpm", snap.transport.bpm},
+                {"isPlaying", snap.transport.isPlaying},
+                {"isLooping", snap.transport.isLooping},
+                {"isRecording", snap.transport.isRecording},
+                {"punchEnabled", snap.transport.punchEnabled},
+                {"loopStart", snap.transport.loopStart},
+                {"loopEnd", snap.transport.loopEnd},
+                {"currentTimeSeconds", snap.transport.currentTimeSeconds},
+                {"sampleRate", snap.transport.sampleRate},
+                {"timeSigNumerator", snap.transport.timeSigNumerator},
+                {"timeSigDenominator", snap.transport.timeSigDenominator}
+            };
+            root["masterMeter"] = meterToJson(e->getReadModel().getMasterMeter());
+            root["trackCount"] = static_cast<int>(snap.tracks.size());
+            root["clipCount"] = static_cast<int>(snap.clips.size());
+            root["scaleRoot"] = snap.scaleRoot;
+            root["scaleMode"] = snap.scaleMode;
+            root["masterGain"] = snap.masterGain;
+
+            QJsonArray tracks;
+            for (const auto& track : snap.tracks) {
+                if (filterTrack && track.index != trackFilter)
+                    continue;
+                QJsonArray fxSlots;
+                for (const auto& fx : e->getReadModel().getFxSlots(track.index)) {
+                    fxSlots.append(QJsonObject{
+                        {"slotIndex", fx.slotIndex},
+                        {"fxType", jstr(fx.fxType)},
+                        {"pluginId", jstr(fx.pluginId)},
+                        {"pluginName", jstr(fx.pluginName)},
+                        {"pluginFormat", jstr(fx.pluginFormat)},
+                        {"bypassed", fx.bypassed},
+                        {"paramCount", fx.paramCount}
+                    });
+                }
+                tracks.append(QJsonObject{
+                    {"index", track.index},
+                    {"name", jstr(track.name)},
+                    {"color", track.color},
+                    {"volume", track.volume},
+                    {"pan", track.pan},
+                    {"muted", track.muted},
+                    {"soloed", track.soloed},
+                    {"armed", track.armed},
+                    {"inputMonitor", track.inputMonitor},
+                    {"trackType", track.trackType},
+                    {"isCollapsed", track.isCollapsed},
+                    {"isHidden", track.isHidden},
+                    {"effectiveMuted", track.effectiveMuted},
+                    {"effectiveSoloed", track.effectiveSoloed},
+                    {"parentId", track.parentId},
+                    {"clipCount", track.clipCount},
+                    {"meter", meterToJson(e->getReadModel().getTrackMeter(track.index))},
+                    {"fxSlots", fxSlots}
+                });
+            }
+            root["tracks"] = tracks;
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"list_clip_takes",

@@ -15,6 +15,7 @@
 #include "../engine/MidiAnalyzer.h"
 #include "../engine/ProjectSerializer.h"
 #include "../engine/ProjectBackup.h"
+#include "../common/ReadModel.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -79,6 +80,147 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             };
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(o).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"snapshot_project", "Return a read-only JSON snapshot of the current project state.",
+        objSchema({}),
+        "project",
+        [e](const QJsonObject&) -> McpToolResult {
+            const auto snap = e->getReadModel().snapshot();
+            auto transportToJson = [](const TransportSnapshot& t) {
+                return QJsonObject{
+                    {"bpm", t.bpm},
+                    {"isPlaying", t.isPlaying},
+                    {"isLooping", t.isLooping},
+                    {"isRecording", t.isRecording},
+                    {"punchEnabled", t.punchEnabled},
+                    {"loopStart", t.loopStart},
+                    {"loopEnd", t.loopEnd},
+                    {"currentTimeSeconds", t.currentTimeSeconds},
+                    {"sampleRate", t.sampleRate},
+                    {"timeSigNumerator", t.timeSigNumerator},
+                    {"timeSigDenominator", t.timeSigDenominator}
+                };
+            };
+            QJsonObject root{
+                {"name", QString::fromStdString(snap.name)},
+                {"transport", transportToJson(snap.transport)},
+                {"scaleRoot", snap.scaleRoot},
+                {"scaleMode", snap.scaleMode},
+                {"masterGain", snap.masterGain},
+                {"launchedScene", snap.launchedScene},
+                {"sceneCount", snap.sceneCount},
+                {"createdWithApp", QString::fromStdString(snap.createdWithApp)},
+                {"savedWithApp", QString::fromStdString(snap.savedWithApp)},
+                {"formatVersion", snap.formatVersion},
+                {"trackCount", static_cast<int>(snap.tracks.size())},
+                {"clipCount", static_cast<int>(snap.clips.size())}
+            };
+
+            QJsonArray tracks;
+            for (const auto& t : snap.tracks) {
+                QJsonArray fxSlots;
+                for (const auto& fx : e->getReadModel().getFxSlots(t.index)) {
+                    fxSlots.append(QJsonObject{
+                        {"slotIndex", fx.slotIndex},
+                        {"fxType", QString::fromStdString(fx.fxType)},
+                        {"pluginId", QString::fromStdString(fx.pluginId)},
+                        {"pluginName", QString::fromStdString(fx.pluginName)},
+                        {"pluginFormat", QString::fromStdString(fx.pluginFormat)},
+                        {"bypassed", fx.bypassed},
+                        {"paramCount", fx.paramCount}
+                    });
+                }
+                tracks.append(QJsonObject{
+                    {"index", t.index},
+                    {"name", QString::fromStdString(t.name)},
+                    {"color", t.color},
+                    {"volume", t.volume},
+                    {"pan", t.pan},
+                    {"muted", t.muted},
+                    {"soloed", t.soloed},
+                    {"armed", t.armed},
+                    {"inputMonitor", t.inputMonitor},
+                    {"height", t.height},
+                    {"midiChannel", t.midiChannel},
+                    {"trackType", t.trackType},
+                    {"isCollapsed", t.isCollapsed},
+                    {"isHidden", t.isHidden},
+                    {"effectiveMuted", t.effectiveMuted},
+                    {"effectiveSoloed", t.effectiveSoloed},
+                    {"parentId", t.parentId},
+                    {"clipCount", t.clipCount},
+                    {"fxSlots", fxSlots},
+                    {"meter", QJsonObject{
+                        {"left", e->getReadModel().getTrackMeter(t.index).leftLevel},
+                        {"right", e->getReadModel().getTrackMeter(t.index).rightLevel},
+                        {"rmsLeft", e->getReadModel().getTrackMeter(t.index).rmsLeftLevel},
+                        {"rmsRight", e->getReadModel().getTrackMeter(t.index).rmsRightLevel},
+                        {"lufsMomentary", e->getReadModel().getTrackMeter(t.index).lufsMomentary}
+                    }}
+                });
+            }
+            root["tracks"] = tracks;
+
+            QJsonArray clips;
+            for (const auto& c : snap.clips) {
+                QJsonArray takeArr;
+                for (const auto& take : c.takes) {
+                    takeArr.append(QJsonObject{{"name", QString::fromStdString(take.name)},
+                                               {"sourceFile", QString::fromStdString(take.sourceFile)}});
+                }
+                QJsonArray envArr;
+                for (const auto& pt : c.gainEnvelope) {
+                    envArr.append(QJsonObject{{"time", pt.time}, {"gain", pt.gain}});
+                }
+                clips.append(QJsonObject{
+                    {"clipId", c.clipId},
+                    {"trackIndex", c.trackIndex},
+                    {"name", QString::fromStdString(c.name)},
+                    {"sourceFile", QString::fromStdString(c.sourceFile)},
+                    {"startBeat", c.startBeat},
+                    {"durationBeats", c.durationBeats},
+                    {"offset", c.offset},
+                    {"gain", c.gain},
+                    {"fadeIn", c.fadeIn},
+                    {"fadeOut", c.fadeOut},
+                    {"looping", c.looping},
+                    {"muted", c.muted},
+                    {"isMidi", c.isMidi},
+                    {"sourceBpm", c.sourceBpm},
+                    {"stretchMode", c.stretchMode},
+                    {"stretchRatio", c.stretchRatio},
+                    {"sourceDuration", c.sourceDuration},
+                    {"isGhost", c.isGhost},
+                    {"ghostSourceId", c.ghostSourceId},
+                    {"sceneIndex", c.sceneIndex},
+                    {"activeTake", c.activeTake},
+                    {"takeCount", c.takeCount},
+                    {"takes", takeArr},
+                    {"gainEnvelope", envArr}
+                });
+            }
+            root["clips"] = clips;
+
+            QJsonArray arrangerRegions;
+            for (const auto& region : e->getReadModel().getArrangerRegions()) {
+                arrangerRegions.append(QJsonObject{
+                    {"regionID", QString::fromStdString(region.regionID)},
+                    {"name", QString::fromStdString(region.name)},
+                    {"startTime", region.startTime},
+                    {"duration", region.duration},
+                    {"color", region.color}
+                });
+            }
+            root["arrangerRegions"] = arrangerRegions;
+
+            QJsonArray tempoPoints;
+            for (const auto& tp : e->getReadModel().getTempoPoints()) {
+                tempoPoints.append(QJsonObject{{"timeSeconds", tp.timeSeconds}, {"bpm", tp.bpm}});
+            }
+            root["tempoPoints"] = tempoPoints;
+
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"scan_plugins", "Scan for VST3/CLAP plugins (may take a minute).",
