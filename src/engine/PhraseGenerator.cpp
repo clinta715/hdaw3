@@ -1,4 +1,5 @@
 #include "PhraseGenerator.h"
+#include "engine/MotifStitcher.h"
 #include <random>
 #include <algorithm>
 #include <cmath>
@@ -119,6 +120,7 @@ const char* PhraseGenerator::styleName(Style s)
         case AdditiveRhythm:  return "Additive Rhythm";
         case MinimalistLoop:  return "Minimalist Loop";
         case Layered:         return "Layered";
+        case MotifStitch:     return "Motif Stitch";
         default:              return "Standard";
     }
 }
@@ -1342,6 +1344,39 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
     case Layered:
         break; // deferred to future iteration
 
+    case MotifStitch:
+    {
+        // Corpus motif-stitching melodic Markov (Phase 3): stitch a multi-bar
+        // line from learned transitions over corpus motif shapes, then re-voice
+        // each key-relative degree+octave into the phrase's scale via the
+        // in-scale `pitches` set. In-scale by construction (pitches indexing).
+        const int grid = std::clamp(params.motifStitch.grid, 8, 32);
+        const int bars = std::clamp(
+            static_cast<int>(std::lround(params.lengthBeats / 4.0)), 1, 64);
+        if (pitches.empty()) break;
+        int scaleLen = 7;
+        for (const auto& md : getScaleModes())
+            if (md.index == params.scaleMode) { scaleLen = static_cast<int>(md.intervals.size()); break; }
+        if (scaleLen <= 0) scaleLen = 7;
+        const int baseOct = params.lowNote / 12;
+        const auto line = HDAW::MotifStitcher::stitchMotifLine(bars, params.seed);
+        for (const auto& mn : line)
+        {
+            int idx = (mn.octave - baseOct) * scaleLen + mn.degree;
+            if (idx < 0) idx = 0;
+            if (idx >= static_cast<int>(pitches.size())) idx = static_cast<int>(pitches.size()) - 1;
+            GeneratedNote n;
+            n.startBeat = mn.startBeat;
+            n.noteNumber = pitches[idx];
+            n.velocity = randomInt(params.minVelocity, params.maxVelocity);
+            n.durationBeats = static_cast<double>(mn.durSteps) / static_cast<double>(grid);
+            if (n.startBeat + n.durationBeats > params.lengthBeats)
+                n.durationBeats = (std::max)(0.05, params.lengthBeats - n.startBeat);
+            result.push_back(n);
+        }
+        break;
+    }
+
     default: // Standard
     {
         double beatStep = params.lengthBeats / static_cast<double>(numNotes);
@@ -1488,6 +1523,11 @@ std::vector<PhraseGenerator::ParamField> PhraseGenerator::getStyleParamsSchema(S
             {"cellLength", "integer", 2, 16, 6, "Cell Length"},
             {"mutationRate", "number", 0.0, 1.0, 0.2, "Mutation Rate"},
             {"phaseOffset", "integer", 0, 15, 0, "Phase Offset"}
+        };
+    case MotifStitch:
+        return {
+            {"bars", "integer", 1, 64, 8, "Line Length (bars)"},
+            {"grid", "integer", 8, 32, 16, "Steps per Bar"}
         };
     default:
         return {};

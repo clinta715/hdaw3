@@ -75,6 +75,7 @@ public:
         AdditiveRhythm,
         MinimalistLoop,
         Layered,
+        MotifStitch, // corpus motif-stitching melodic Markov (Phase 3)
         NumStyles
     };
     static const char* styleName(Style s);
@@ -172,6 +173,11 @@ public:
         int phaseOffset = 0;
     };
 
+    struct MotifStitchParams {
+        int bars = 8;    // line length in bars
+        int grid = 16;   // steps per bar (16th grid)
+    };
+
     struct PhraseParams : BaseParams {
         Style style = Standard;
         double lengthBeats = 4.0;
@@ -192,6 +198,7 @@ public:
         PhaseShiftParams phaseShift;
         AdditiveRhythmParams additiveRhythm;
         MinimalistLoopParams minimalistLoop;
+        MotifStitchParams motifStitch;
     };
 
     struct ParamField {

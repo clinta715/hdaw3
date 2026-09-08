@@ -54,7 +54,8 @@ void registerGenerateTools(McpServer& s, AudioEngine* e)
         {"PhaseShift",      PhraseGenerator::PhaseShift},
         {"AdditiveRhythm",  PhraseGenerator::AdditiveRhythm},
         {"MinimalistLoop",  PhraseGenerator::MinimalistLoop},
-        {"Layered",         PhraseGenerator::Layered}
+        {"Layered",         PhraseGenerator::Layered},
+        {"MotifStitch",     PhraseGenerator::MotifStitch}
     };
 
     auto generateIntoClip = [e](int trackId, double start, double length,
@@ -79,7 +80,7 @@ void registerGenerateTools(McpServer& s, AudioEngine* e)
 s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
         objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
                   {"style",       QJsonObject{{"type","string"},
-                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion","TrapHiHat","DrillBass","Counterpoint","WalkingBass","SwingComping","MarkovMelody","EvolvingTexture","Aleatoric","ScalarRun","ChordToneSeq","CallResponse","PhaseShift","AdditiveRhythm","MinimalistLoop","Layered"}},
+                      {"enum", QJsonArray{"Standard","Arpeggio","BassLine","ChordStab","Pad","Lead","RandomWalk","Buildup","Euclidean","Percussion","TrapHiHat","DrillBass","Counterpoint","WalkingBass","SwingComping","MarkovMelody","EvolvingTexture","Aleatoric","ScalarRun","ChordToneSeq","CallResponse","PhaseShift","AdditiveRhythm","MinimalistLoop","Layered","MotifStitch"}},
                       {"description","Phrase style."}}},
                   {"styleParams", QJsonObject{{"type","object"},{"description","Style-specific parameters. See getStyleParamsSchema for per-style fields."}}},
                   {"length",      QJsonObject{{"type","number"}}},
@@ -180,6 +181,10 @@ s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the giv
                         p.minimalistLoop.cellLength = sp.value("cellLength").toInt(p.minimalistLoop.cellLength);
                         p.minimalistLoop.mutationRate = sp.value("mutationRate").toDouble(p.minimalistLoop.mutationRate);
                         p.minimalistLoop.phaseOffset = sp.value("phaseOffset").toInt(p.minimalistLoop.phaseOffset);
+                        break;
+                    case PhraseGenerator::MotifStitch:
+                        p.motifStitch.bars = sp.value("bars").toInt(p.motifStitch.bars);
+                        p.motifStitch.grid = sp.value("grid").toInt(p.motifStitch.grid);
                         break;
                     default:
                         break;

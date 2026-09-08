@@ -164,12 +164,38 @@ default-preserving.
 - Full set green: 62 tests across PsytranceMarkov(31), MelodyPatternBank(6),
   RhythmGenerationRpc(7), PsytranceMarkovRouter(3), Command(6), MCP(9).
 
-### Phase 3 (optional, only if the bank is rich enough) — Motif-stitching melodic Markov
+### 8.5.3 Phase 3 — Results (2026-09-08) ✅
 
-A genuinely new topology: learn transition probabilities **between** corpus
-melody fragments and stitch them into evolving lines (distinct from the
-scale-driven `MarkovMelody`). Layered on `MarkovMelody`/`PhraseGenerator`,
-not a fresh standalone component. **Deferred — revisit after Phase 2 evidence.**
+**Done.** The corpus-motif stitching melodic Markov is implemented and
+surfaced as the `PhraseGenerator::MotifStitch` style (layered on
+PhraseGenerator per the plan).
+
+- **`MotifStitcher.h`** (pure, header-only, deterministic): mines 1-bar motif
+  SHAPES from the `MelodyPatternBank` lead phrases, keys each by its
+  transposition-invariant degree-DELTA contour, learns a first-order Markov
+  transition table from the within-phrase (bar_i -> bar_{i+1}) shape pairs,
+  and stitches an evolving multi-bar line by seeded chain-walking. Key-
+  agnostic output (degree+octave); callers re-voice into their scale.
+- **`PhraseGenerator::MotifStitch` style**: re-voices each motif degree+
+  octave into the phrase's scale via the in-scale `buildScalePitches` set
+  (in-scale by construction). Enum + params (bars/grid) + schema + case.
+- **Parity**: RPC `generatePhrase` maps `styleName`; the frontend style
+  picker is data-driven (auto-lists "Motif Stitch"); MCP `generate_phrase`
+  gained `MotifStitch` in `kStyleMap` + schema enum + styleParams case.
+- **Tests** (`motif_stitcher_test.cpp` + MCP coverage): direct line is
+  multi-bar/non-empty; determinism (same seed -> same line); different seeds
+  differ; the style yields an in-scale multi-bar line; the line has real
+  contour (not a drone); MCP `GeneratePhraseMotifStitch` round-trips.
+- Full set green: 61 tests (MotifStitcher 3, PhraseGenerator 2, MCP 3,
+  PsytranceMarkov 31, Command 6, Router 3, MelodyPatternBank 6,
+  RhythmGenerationRpc 7). No regression to the Phase 1/2 default paths.
+
+### Phase 3 (optional) — status: DONE
+
+### Phase 4 (future, not in this plan) — wire the stitcher into the Markov
+arranger's melodic voice (an alternative to the verbatim `melodyCorpusPhraseProb`
+phrase), and/or expose motif-shape selection knobs. Deferred until the stitcher
+is auditioned in a real composition.
 
 ---
 

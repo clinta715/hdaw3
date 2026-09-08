@@ -1788,6 +1788,21 @@ TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusMelody) {
     EXPECT_TRUE(text(r).contains("clips")) << text(r).toStdString();
 }
 
+TEST_F(McpCoverageTest, GeneratePhraseMotifStitch) {
+    // Phase 3 parity: the MotifStitch style (corpus motif-stitching melodic
+    // Markov) is reachable through generate_phrase like any other style.
+    auto r = callText("add_track", {{"name", "MotifStitch"}});
+    auto obj = QJsonDocument::fromJson(r.toString().toUtf8()).object();
+    const int t = obj.value("trackId").toInt(-1);
+    ASSERT_GE(t, 0);
+    auto res = call("generate_phrase", {
+        {"trackId", t}, {"style", "MotifStitch"}, {"length", 32.0}, {"density", 8},
+        {"scaleRoot", 5}, {"scaleMode", 1}, {"seed", 42}
+    });
+    EXPECT_FALSE(isError(res)) << text(res).toStdString();
+    EXPECT_TRUE(text(res).contains("clipId")) << text(res).toStdString();
+}
+
 
 // ============================================================================
 // MODULATION (LFO) TOOLS - docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P1-1
