@@ -80,6 +80,35 @@ avoids the drum-kit trap where 1,159 candidates were mostly trivial).
   test over all bank phrases × all keys).
 - G1.3 Existing `RhythmPatternBank.*` tests unchanged and green.
 
+### 8.5.1 Phase 1 — Results (2026-09-08) ✅
+
+**Done.** `tools/extract_melody_bank.mjs` (reuses the SMF parser; detects
+scale+root with **tonic-support tie-breaking** so relative-major/minor
+ambiguity resolves to the real tonic; reduces each bar to a monophonic lead;
+converts notes to key-relative {step, degree, octave, dur}; dedupes across
+files; per-pack round-robin diversity + per-role caps) mined **87 curated
+phrases** (45 lead / 30 bass / 12 chord) from the Phase-0-selected packs,
+3,031 notes. Scale distribution is musically realistic (naturalMinor 29,
+phrygian 19, major 20, + dorian/locrian/harmonicMinor/blues).
+
+**`src/engine/MelodyPatternBank.h`** (header-only, additive — drum bank
+untouched): `MelodyNote`{step,degree,octave,durSteps}, `MelodicPhrase`{id,
+role,bars,grid,rootPc,scaleMode,bpm,source,noteOffset,nNotes}, a 12-mode
+scale table, and pure transpose helpers (`melodyNotePitch` — register-
+preserving NEAREST transposition, wraps delta to [-5,+6] so root-wraps never
+jump an octave; `melodyDegreeToPitch` — explicit octave; `melodyNoteInScale`).
+
+**Tests (all green):** `melody_pattern_bank_test.cpp` (6 tests) — G1.1
+enumeration (count = 87), G1.2 property test (all 87 phrases × all 12 roots
+stay in-scale + in-range, 0 violations), roles/contour sanity, source-key
+reconstruction, register preservation. Existing `RhythmPatternBank.*`
+unchanged and green (5/5).
+
+**Known limitation:** mode bias corrected for the dominant minor/phrygian
+packs via tonic support, but a relative-major (A-minor-as-C-major) reading is
+still possible for melodies where the tonic isn't emphasized — acceptable for
+a first bank (contours are exact; voicing re-fits to target harmony in Phase 2).
+
 ### Phase 2 — Transposition/voicing layer + Markov arranger wiring
 
 - New score-level voicing: fit a bank contour into a bar/chord — modes:
