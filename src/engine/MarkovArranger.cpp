@@ -208,7 +208,8 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
 
     // Style packs: the psytrance values are the structs' defaults — the seam
     // where future genre style packs (JSON) land.
-    const PercussionStyle percStyle;
+    PercussionStyle percStyle;
+    percStyle.corpusPhraseProb = p.percCorpusPhraseProb;
     const HarmonyStyle harmonyStyle;
     const TextureStyle textureStyle;
 

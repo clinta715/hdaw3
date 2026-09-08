@@ -106,4 +106,35 @@ describe("PhraseGeneratorDialog rhythm mode", () => {
       expect(args.dsl).toBe("E(3,8)");
     });
   });
+
+  it("sends a corpus phrase id when a corpus phrase is selected", async () => {
+    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    await flushRead();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "4" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Corpus Phrase" }), {
+      target: { value: "snare_s2_4bar" },
+    });
+    mockedCall.mockResolvedValue({ clipId: 7, noteCount: 7 });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => {
+      const call = mockedCall.mock.calls.find((c) => c[0] === "composition.generateRhythmPattern");
+      expect(call).toBeTruthy();
+      const args = call![1] as Record<string, unknown>;
+      expect(args.phrase).toBe("snare_s2_4bar");
+    });
+  });
+
+  it("sends an empty phrase when no corpus phrase is selected (off)", async () => {
+    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    await flushRead();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "4" } });
+    mockedCall.mockResolvedValue({ clipId: 7, noteCount: 6 });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => {
+      const call = mockedCall.mock.calls.find((c) => c[0] === "composition.generateRhythmPattern");
+      expect(call).toBeTruthy();
+      const args = call![1] as Record<string, unknown>;
+      expect(args.phrase).toBe("");
+    });
+  });
 });

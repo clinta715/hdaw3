@@ -31,6 +31,13 @@ struct PercTheme {
     std::array<uint8_t, 16> hat{};   // 0 = silent, else velocity
     std::array<uint8_t, 16> snare{}; // pitch 38 (acoustic snare)
     std::array<uint8_t, 16> rim{};   // pitch 37 (side stick)
+
+    // Optional corpus-bank multi-bar grids (hat/snare only). When non-empty,
+    // writeWindowNotes indexes bars[curBar % size()] for that voice instead of
+    // the 1-bar array above — real multi-bar accent phrasing (e.g. an 8-bar
+    // offbeat snare). Empty = use the 1-bar grid (existing behavior).
+    std::vector<std::array<uint8_t, 16>> hatPhrase;
+    std::vector<std::array<uint8_t, 16>> snarePhrase;
 };
 
 struct PercussionStyle {
@@ -53,6 +60,14 @@ struct PercussionStyle {
     double snareBackbeatProb = 0.5; // optional 2/4 backbeat accent
     int snareBackbeatVel = 90;
     int rimHitsLo = 1,   rimHitsHi = 4,   rimVelALo = 70,   rimVelAHi = 90,   rimVelBLo = 50,  rimVelBHi = 64;
+
+    // Probability a drawn hat/snare theme voice sources its grid from the
+    // corpus drum-phrase bank (RhythmPatternBank.h) instead of pure euclidean
+    // pulses. Corpus phrases are multi-bar accent phrases — when chosen, the
+    // voice follows bars[curBar % phraseBars] so phrasing is preserved.
+    // OPT-IN (default 0): 0 keeps the legacy euclidean-only draw stream
+    // byte-identical; >0 consumes extra rng draws and changes per-seed output.
+    double corpusPhraseProb = 0.0;
 
     int fillerVelocity = 100;       // canonical filler grids (outside every seeded range)
     int kickAccentVel = 127, kickNormalVel = 122;

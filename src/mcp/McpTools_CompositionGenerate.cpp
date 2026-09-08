@@ -289,7 +289,10 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
                   {"velocityB",   QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
                   {"dsl",         QJsonObject{{"type","string"}}},
                   {"dslPitch",    QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
-                  {"dslVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}}},
+                  {"dslVelocity", QJsonObject{{"type","integer"},{"minimum",1},{"maximum",127}}},
+                  {"phrase",      QJsonObject{{"type","string"},{"description","Corpus phrase id from the drum phrase bank (e.g. 'snare_s2_4bar'). Overrides the pulse/dsl params with the phrase's own rhythm."}}},
+                  {"phraseRole",  QJsonObject{{"type","string"},{"description","Corpus phrase role: hats/snare/clap/perc. Combined with phraseIndex selects the nth phrase of that role."}}},
+                  {"phraseIndex", QJsonObject{{"type","integer"},{"minimum",0},{"description","0-based index into the role's phrases (with phraseRole)."}}}},
                  {"trackId"}),
         "composition",
         [e, helper = generateIntoClip](const QJsonObject& a) -> McpToolResult {
@@ -307,6 +310,22 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
             p.dsl         = a.contains("dsl") ? a.value("dsl").toString().toStdString() : std::string();
             p.dslPitch    = a.contains("dslPitch") ? a.value("dslPitch").toInt() : 39;
             p.dslVelocity = a.contains("dslVelocity") ? a.value("dslVelocity").toInt() : 104;
+
+            const std::string phraseId   = a.value("phrase").toString().toStdString();
+            const std::string phraseRole = a.value("phraseRole").toString().toStdString();
+            if (!phraseId.empty() || !phraseRole.empty())
+            {
+                const bool ok = !phraseId.empty()
+                    ? RhythmPatternGenerator::applyPhrase(p, phraseId)
+                    : RhythmPatternGenerator::applyPhraseByRole(p, phraseRole,
+                                                                a.value("phraseIndex").toInt(0));
+                if (!ok)
+                    return McpToolResult::text(
+                        !phraseId.empty()
+                            ? "unknown phrase id: " + QString::fromStdString(phraseId)
+                            : "no corpus phrase for role: " + QString::fromStdString(phraseRole),
+                        true);
+            }
 
             std::vector<RhythmPatternGenerator::Note> notes;
             try { notes = RhythmPatternGenerator::generate(p); }
@@ -589,6 +608,8 @@ s.registerTool({"generate_psytrance_markov",
                       {"description","slow section-energy clock in bars (0 = off, else >= 8; default 32)"}}},
                   {"keyShiftDegrees", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11},
                       {"description","KeyChange size in scale degrees (0 = seeded +1/+2)"}}},
+                  {"percCorpusPhraseProb", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1},
+                      {"description","OPT-IN: probability a drawn hat/snare theme voice sources its grid from the corpus drum-phrase bank (multi-bar accent phrases) instead of pure euclidean pulses. 0 (default) = legacy euclidean-only themes; >0 changes per-seed output."}}},
                   {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
                   {"progressionB", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
                   {"sections", QJsonObject{{"type","array"},
@@ -622,6 +643,7 @@ s.registerTool({"generate_psytrance_markov",
             p.everyBars = a.contains("everyBars") ? a.value("everyBars").toInt(32) : 32;
             p.sectionCycleBars = a.contains("sectionCycleBars") ? a.value("sectionCycleBars").toInt(32) : 32;
             p.keyShiftDegrees = a.contains("keyShiftDegrees") ? a.value("keyShiftDegrees").toInt(0) : 0;
+            p.percCorpusPhraseProb = a.value("percCorpusPhraseProb").toDouble(0.0);
             if (a.contains("progressionA"))
                 for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
             if (a.contains("progressionB"))

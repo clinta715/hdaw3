@@ -1,5 +1,6 @@
 #include "engine/PercussionEngine.h"
 #include "engine/RhythmPatternGenerator.h"
+#include "engine/RhythmPatternBank.h"
 
 #include <algorithm>
 #include <cmath>
@@ -99,17 +100,79 @@ PercTheme PercussionEngine::drawTheme(std::mt19937& rng, const PercussionStyle& 
         }
         return grid;
     };
+    // Convert a corpus-bank phrase to per-bar 16-step velocity grids
+    // (loudest step wins, velocity mapped into [velLo, velHi]). Empty when the
+    // role has no bank phrases. Deterministic: phrase index drawn from rngInt.
+    auto drawPhraseGrids = [&](const char* bankRole, int velLo, int velHi)
+        -> std::vector<std::array<uint8_t, 16>>
+    {
+        const int n = (int) HDAW::rhythmPhrasesForRole(bankRole).size();
+        if (n == 0)
+            return {};
+        const HDAW::RhythmicPhrase* ph = HDAW::findRhythmicPhraseByRole(bankRole, rngInt(0, n - 1));
+        if (ph == nullptr || ph->bars < 1 || ph->bars > 8)
+            return {};
+        std::vector<std::array<uint8_t, 16>> bars;
+        bars.resize((size_t) ph->bars);
+        for (auto& b : bars)
+            b.fill(0);
+        RhythmPatternGenerator::Params p;
+        p.grid = ph->grid;
+        p.bars = ph->bars;
+        p.dsl  = ph->dsl;
+        p.pulseA = 0;
+        p.pulseB = 0;
+        for (const auto& nn : RhythmPatternGenerator::generate(p))
+        {
+            const int bar  = (int) (nn.startBeat / 4.0);
+            const int step = (int) std::lround((nn.startBeat - bar * 4.0) * 4.0);
+            if (bar < 0 || bar >= ph->bars || step < 0 || step > 15)
+                continue;
+            const int vel = velLo + (nn.velocity * (velHi - velLo)) / 127;
+            bars[(size_t) bar][(size_t) step] =
+                (uint8_t) std::max<int>(bars[(size_t) bar][(size_t) step], vel);
+        }
+        return bars;
+    };
+
+    // Draw one voice: a corpus phrase when the seeded draw says so and the
+    // bank has phrases for the role, else the euclidean 1-bar grid.
+    auto drawVoice = [&](const char* bankRole,
+                         const std::array<uint8_t, 16>& euclideanGrid,
+                         int velLo, int velHi,
+                         std::vector<std::array<uint8_t, 16>>& phraseOut,
+                         std::array<uint8_t, 16>& gridOut)
+    {
+        // Short-circuit so prob == 0 consumes ZERO rng -> legacy theme
+        // draw stream stays byte-identical (existing seed sweeps unaffected).
+        if (style.corpusPhraseProb > 0.0 && rng01() < style.corpusPhraseProb)
+        {
+            const auto g = drawPhraseGrids(bankRole, velLo, velHi);
+            if (!g.empty())
+            {
+                phraseOut = g;
+                return;
+            }
+        }
+        gridOut = euclideanGrid;
+    };
+
     PercTheme t;
     t.kickBroken = rng01() < style.kickBrokenProb;
-    t.hat   = drawVoiceGrid(style.hatHitsLo, style.hatHitsHi,
-                            style.hatVelALo, style.hatVelAHi, style.hatVelBLo, style.hatVelBHi);
-    t.snare = drawVoiceGrid(style.snareHitsLo, style.snareHitsHi,
-                            style.snareVelALo, style.snareVelAHi, style.snareVelBLo, style.snareVelBHi);
-    if (rng01() < style.snareBackbeatProb)   // optional 2/4 backbeat
+
+    const auto hatGrid = drawVoiceGrid(style.hatHitsLo, style.hatHitsHi,
+                                       style.hatVelALo, style.hatVelAHi, style.hatVelBLo, style.hatVelBHi);
+    drawVoice("hats", hatGrid, style.hatVelALo, style.hatVelAHi, t.hatPhrase, t.hat);
+
+    const auto snareGrid = drawVoiceGrid(style.snareHitsLo, style.snareHitsHi,
+                                         style.snareVelALo, style.snareVelAHi, style.snareVelBLo, style.snareVelBHi);
+    drawVoice("snare", snareGrid, style.snareVelALo, style.snareVelAHi, t.snarePhrase, t.snare);
+    if (t.snarePhrase.empty() && rng01() < style.snareBackbeatProb)   // optional 2/4 backbeat
     {
         t.snare[4]  = (uint8_t) style.snareBackbeatVel;
         t.snare[12] = (uint8_t) style.snareBackbeatVel;
     }
+
     t.rim = drawVoiceGrid(style.rimHitsLo, style.rimHitsHi,
                           style.rimVelALo, style.rimVelAHi, style.rimVelBLo, style.rimVelBHi);
     return t;
@@ -167,14 +230,23 @@ void PercussionEngine::writeWindowNotes(int bar, int windowBars,
         // snareFiller/rimFiller) so added layers are never silent.
         if (hat.track >= 0 || snare.track >= 0 || rim.track >= 0)
         {
-            const auto& snareGrid = gridOrFiller(theme.snare, snareFill);
+            // Corpus phrases are multi-bar: index by curBar % phraseBars so a
+            // 4/8-bar accent phrase plays across bars (not one bar repeated).
+            const bool hatHasPhrase   = !theme.hatPhrase.empty();
+            const bool snareHasPhrase = !theme.snarePhrase.empty();
+            const auto& hatGrid = hatHasPhrase
+                ? theme.hatPhrase[(size_t)(curBar % theme.hatPhrase.size())]
+                : theme.hat;
+            const auto& snareGrid = snareHasPhrase
+                ? theme.snarePhrase[(size_t)(curBar % theme.snarePhrase.size())]
+                : gridOrFiller(theme.snare, snareFill);
             const auto& rimGrid   = gridOrFiller(theme.rim,   rimFill);
             const double barBeat = curBar * 4.0;
             for (int st = 0; st < 16; ++st)
             {
                 const double stepBeat = barBeat + st * 0.25;
-                if (active.count("hat") && hat.track >= 0 && theme.hat[(size_t) st])
-                    hat.add(stepBeat, style.hatPitch, theme.hat[(size_t) st],
+                if (active.count("hat") && hat.track >= 0 && hatGrid[(size_t) st])
+                    hat.add(stepBeat, style.hatPitch, hatGrid[(size_t) st],
                             0.2, maxNotes);
                 if (active.count("snare") && snare.track >= 0 && snareGrid[(size_t) st])
                     snare.add(stepBeat, style.snarePitch, snareGrid[(size_t) st],

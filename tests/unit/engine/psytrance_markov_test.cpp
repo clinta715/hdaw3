@@ -5,6 +5,7 @@
 #include "engine/PsytranceGenerator.h"
 #include "engine/PhraseGenerator.h"
 #include "engine/AudioEngineCommands_Helpers.h"
+#include "engine/ProjectSerializer.h"
 #include "model/ProjectModel.h"
 #include "frontend/router/Router_Composition.h"
 
@@ -1555,4 +1556,189 @@ TEST(PsytranceMarkovRouter, SectionsScriptRoundTrip)
     auto res2 = frontend::dispatchComposition(engine, "generatePsytranceMarkov",
                                               QJsonValue(bad));
     EXPECT_TRUE(res2.isError);
+}
+
+// ── Positive-duration emission contract (2026-09 silent-notes fix):
+//    HarmonyEngine::gateFor() now defaults UNSEEDED roles to 1.0 (the old
+//    0.0 default made bass/arp/stab emission compute duration = base * 0.0,
+//    and zero-length notes are silent through any ADSR synth), gates are
+//    seeded once in initKey (fixed bass/arp/stab draw order), and pad
+//    pulses use a fixed 0.10/0.18 duration (never gate-multiplied). Gate:
+//    EVERY emitted clip is non-empty and carries only positive durations
+//    over fixed seeds and totalBars 16..32. ────────────────────────────────
+TEST(PsytranceMarkov, NotesHavePositiveDurations)
+{
+    for (int totalBars : { 16, 24, 32 })
+        for (uint64_t seed : { 42ull, 43ull, 44ull })
+        {
+            const auto s = HDAW::PsytranceMarkovGenerator::generate(
+                baseParams(seed, totalBars));
+            ASSERT_TRUE(s.error.empty()) << s.error;
+            ASSERT_FALSE(s.clips.empty())
+                << "totalBars " << totalBars << ", seed " << seed;
+
+            for (const auto& c : s.clips)
+            {
+                // "Emitted" = the generator wrote the clip: it must actually
+                // carry notes, and every note must be playable.
+                EXPECT_GT(c.notes.size(), 0u)
+                    << c.role << " clip emitted empty at totalBars "
+                    << totalBars << ", seed " << seed;
+                for (const auto& n : c.notes)
+                    EXPECT_GT(n.durationBeats, 0.0)
+                        << c.role << " note at beat " << n.startBeat
+                        << " has a zero/negative duration (silent through ADSR)";
+            }
+        }
+
+    // The gate roles themselves: across a wider FIXED seed sweep the union
+    // must exercise arp and bass emission at least once (per-seed activation
+    // is the Markov's business — the 2026-09 bug zeroed exactly these
+    // roles). Every clip seen here is re-checked for positive durations.
+    int runsWithArp = 0, runsWithBass = 0;
+    for (uint64_t seed = 42; seed <= 61; ++seed)
+    {
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(
+            baseParams(seed, 32));
+        ASSERT_TRUE(s.error.empty()) << s.error;
+        for (const auto& c : s.clips)
+        {
+            ASSERT_FALSE(c.notes.empty())
+                << c.role << " clip emitted empty, seed " << seed;
+            for (const auto& n : c.notes)
+                ASSERT_GT(n.durationBeats, 0.0)
+                    << c.role << " note at beat " << n.startBeat
+                    << " has a zero/negative duration, seed " << seed;
+            if (c.role == "arp") ++runsWithArp;
+            if (c.role == "bass") ++runsWithBass;
+        }
+    }
+    EXPECT_GT(runsWithArp, 0)
+        << "arp never emitted notes across seeds 42..61 (gate vacuous)";
+    EXPECT_GT(runsWithBass, 0)
+        << "bass never emitted notes across seeds 42..61 (gate vacuous)";
+}
+
+// ── Save/load fidelity (2026-09 silent-notes family, follow-up): a 64-bar,
+//    11-track markov arrangement is written for real via the command layer,
+//    snapshotted (per-clip note counts + every note durationBeats) from the
+//    project tree, ProjectSerializer::save'd, ProjectSerializer::load'ed into
+//    a FRESH ProjectModel, and the note counts + durations must be
+//    IDENTICAL pre/post. Guards the "param/note values are re-read verbatim
+//    on every rebuild/export" contract for generated payloads. ─────────────
+TEST(PsytranceMarkovCommand, SaveLoadPersistsAllNotes)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.setTempo(140.0);
+    engine.drainPendingRoutingRebuild();
+    for (int i = 0; i < 11; ++i) // full palette incl. snare/rim
+        ASSERT_GE(cmds.addTrack("SL" + std::to_string(i), -1, -1, 0), 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto p = baseParams(42, 64);
+    auto r = cmds.generatePsytranceMarkov(p);
+    ASSERT_TRUE(r.error.empty()) << r.error;
+    ASSERT_FALSE(r.clips.empty());
+    ASSERT_GE(r.totalBeats, 64.0 * 4.0);
+
+    // Snapshot (trackIndex, noteCount, durations-in-beats) per generated
+    // clip from the project tree (one clip per written role, child 0).
+    struct ClipSnap { int trackIndex; size_t noteCount; std::vector<double> durations; };
+    std::vector<ClipSnap> pre;
+    auto& m = engine.getProjectModel();
+    for (const auto& rc : r.clips)
+    {
+        auto track = m.getTrackListTree().getChild(rc.trackIndex);
+        auto clipList = track.getChildWithName(IDs::CLIP_LIST);
+        ASSERT_NE(clipList.getNumChildren(), 0) << rc.role << " clip missing";
+        auto notes = clipList.getChild(0).getChildWithName(IDs::MIDI_NOTE_LIST);
+        ClipSnap snap;
+        snap.trackIndex = rc.trackIndex;
+        snap.noteCount = (size_t) notes.getNumChildren();
+        ASSERT_EQ(snap.noteCount, (size_t) rc.noteCount) << rc.role;
+        ASSERT_GT(snap.noteCount, 0u) << rc.role << " clip written with no notes";
+        for (int n = 0; n < notes.getNumChildren(); ++n)
+            snap.durations.push_back(static_cast<double>(
+                notes.getChild(n).getProperty(IDs::durationBeats, 0.0)));
+        pre.push_back(std::move(snap));
+    }
+    size_t totalNotes = 0;
+    for (const auto& s : pre) totalNotes += s.noteCount;
+    ASSERT_GT(totalNotes, (size_t) 100) << "payload too thin to gate on";
+
+    // Save -> load into a FRESH model (markers_test pattern).
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                             .getChildFile("hdaw_markov_saveload_test.hdaw");
+    f.deleteFile();
+    ASSERT_TRUE(HDAW::ProjectSerializer::save(engine.getProjectModel(), f));
+    ASSERT_TRUE(f.existsAsFile());
+    ProjectModel loaded;
+    ASSERT_TRUE(HDAW::ProjectSerializer::load(loaded, f));
+    f.deleteFile();
+
+    // Identical note counts + durations pre/post, per clip.
+    const juce::ValueTree lt = loaded.getTrackListTree();
+    for (const auto& snap : pre)
+    {
+        auto notes = lt.getChild(snap.trackIndex)
+                         .getChildWithName(IDs::CLIP_LIST)
+                         .getChild(0)
+                         .getChildWithName(IDs::MIDI_NOTE_LIST);
+        ASSERT_EQ((size_t) notes.getNumChildren(), snap.noteCount)
+            << "track " << snap.trackIndex
+            << " note count changed across save/load";
+        for (size_t n = 0; n < snap.noteCount; ++n)
+            EXPECT_DOUBLE_EQ(
+                static_cast<double>(notes.getChild((int) n)
+                                        .getProperty(IDs::durationBeats, -1.0)),
+                snap.durations[n])
+                << "track " << snap.trackIndex << " note " << n
+                << " duration changed across save/load";
+    }
+}
+
+TEST(PsytranceMarkov, CorpusPhraseMultiBarPercussion)
+{
+    // With percCorpusPhraseProb=1 the drawn hat/snare theme voices source
+    // from the corpus drum-phrase bank. Corpus phrases are MULTI-BAR accent
+    // phrases, so an active hat/snare clip must show more than one distinct
+    // bar signature (real bar-to-bar phrasing), not a single 1-bar grid
+    // repeated. Aggregated over a fixed seed sweep -> deterministic gate.
+    bool sawMultiBarHat = false, sawMultiBarSnare = false;
+    for (uint64_t seed = 700; seed < 740; ++seed)
+    {
+        auto p = baseParams(seed, 96);
+        p.percCorpusPhraseProb = 1.0;
+        p.maxPercTracks = 4; // let kick+hat+clap+snare all sit at once
+        p.kick = 0; p.hat = 1; p.snare = 2; p.bass = 3; p.clap = 4;
+        const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+        if (!s.error.empty())
+            continue;
+        for (const auto& c : s.clips)
+        {
+            if (c.role != "hat" && c.role != "snare")
+                continue;
+            std::map<int, std::string> barSig; // bar -> sorted step list
+            for (const auto& n : c.notes)
+            {
+                const int bar = (int) (n.startBeat / 4.0);
+                const int st  = (int) std::lround((n.startBeat - bar * 4.0) * 4.0);
+                barSig[bar] += std::to_string(st) + ",";
+            }
+            std::set<std::string> distinct;
+            for (const auto& kv : barSig)
+                distinct.insert(kv.second);
+            if (distinct.size() > 1)
+            {
+                if (c.role == "hat") sawMultiBarHat = true;
+                else                 sawMultiBarSnare = true;
+            }
+        }
+    }
+    EXPECT_TRUE(sawMultiBarHat)
+        << "no multi-bar hat phrasing from corpus across seeds 700..739";
+    EXPECT_TRUE(sawMultiBarSnare)
+        << "no multi-bar snare phrasing from corpus across seeds 700..739";
 }

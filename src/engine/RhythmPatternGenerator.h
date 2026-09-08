@@ -54,4 +54,14 @@ public:
     // on one step resolve by priority. Output sorted by startBeat.
     // Throws std::invalid_argument on a malformed DSL string.
     static std::vector<Note> generate(const Params& params);
+
+    // ── Corpus phrase bank (RhythmPatternBank.h) ──
+    // Multi-bar accent phrases extracted from the drum MIDI corpus. A phrase
+    // drives the DSL voice alone (pulses disabled): applyPhrase fills grid,
+    // bars, dsl and dslPitch from the bank entry. Returns false if not found.
+    static bool applyPhrase(Params& params, const std::string& id);
+    static bool applyPhraseByRole(Params& params, const std::string& role, int index);
+    // Convenience: apply + generate in one call; empty if id/role not found.
+    static std::vector<Note> generatePhrase(const std::string& id);
+    static std::vector<Note> generatePhraseByRole(const std::string& role, int index);
 };

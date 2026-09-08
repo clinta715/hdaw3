@@ -85,3 +85,42 @@ TEST(RhythmGenerationRpc, MissingTrackIndexErrors)
     auto r = frontend::dispatch(engine, "composition.generateRhythmPattern", QJsonObject{});
     EXPECT_TRUE(r.isError);
 }
+
+TEST(RhythmGenerationRpc, CorpusPhraseCreatesClip)
+{
+    // snare_s2_4bar: 4-bar offbeat phrase with 7 hits (see bank test).
+    AudioEngine engine;
+    engine.initialize();
+    auto resp = rpc(engine, "composition.generateRhythmPattern",
+                    QJsonObject{ { "trackIndex", 0 }, { "phrase", "snare_s2_4bar" } });
+    ASSERT_TRUE(resp.isObject());
+    const int clipId = resp.toObject().value("clipId").toInt();
+    EXPECT_EQ(resp.toObject().value("noteCount").toInt(), 7);
+    ASSERT_GT(clipId, 0);
+
+    auto snap = rpc(engine, "read.snapshot").toObject();
+    auto clip = findClipJson(snap, clipId);
+    // phrase is 4 bars -> 4-bar clip
+    EXPECT_DOUBLE_EQ(clip.value("durationBeats").toDouble(), 16.0);
+}
+
+TEST(RhythmGenerationRpc, CorpusPhraseByRoleCreatesClip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto resp = rpc(engine, "composition.generateRhythmPattern",
+                    QJsonObject{ { "trackIndex", 0 }, { "phraseRole", "clap" }, { "phraseIndex", 0 } });
+    ASSERT_TRUE(resp.isObject());
+    // clap_c1_1bar has exactly one hit
+    EXPECT_EQ(resp.toObject().value("noteCount").toInt(), 1);
+}
+
+TEST(RhythmGenerationRpc, UnknownCorpusPhraseErrors)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto r = frontend::dispatch(engine, "composition.generateRhythmPattern",
+                                QJsonObject{ { "trackIndex", 0 }, { "phrase", "nope" } });
+    EXPECT_TRUE(r.isError);
+    EXPECT_TRUE(r.payload.toObject().value("message").toString().contains("unknown phrase"));
+}

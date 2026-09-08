@@ -8,6 +8,78 @@ import "./PhraseGeneratorDialog.css";
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
+// Corpus drum-phrase bank ids (mirrors src/engine/RhythmPatternBank.h). Empty
+// selection = off (euclidean pulses + DSL); selecting one sends the id as the
+// RPC "phrase" param, which overrides the pulse/dsl params with the phrase's
+// multi-bar rhythm. Grouped by role for the picker.
+const CORPUS_PHRASES: Array<{ id: string; role: string }> = [
+  { id: "hats_hh1_4bar",  role: "hats" },
+  { id: "hats_hh2_4bar",  role: "hats" },
+  { id: "hats_hh3_4bar",  role: "hats" },
+  { id: "hats_hh4_4bar",  role: "hats" },
+  { id: "hats_hh7_4bar",  role: "hats" },
+  { id: "hats_hh8_4bar",  role: "hats" },
+  { id: "hats_hh9_4bar",  role: "hats" },
+  { id: "hats_hh10_4bar", role: "hats" },
+  { id: "hats_hh11_4bar", role: "hats" },
+  { id: "hats_hh12_2bar", role: "hats" },
+  { id: "snare_s1_8bar",  role: "snare" },
+  { id: "snare_s2_4bar",  role: "snare" },
+  { id: "snare_s3_8bar",  role: "snare" },
+  { id: "snare_s4_8bar",  role: "snare" },
+  { id: "snare_s5_8bar",  role: "snare" },
+  { id: "perc_p1_4bar",   role: "perc" },
+  { id: "perc_p2_8bar",   role: "perc" },
+  { id: "perc_p3_2bar",   role: "perc" },
+  { id: "perc_p4_8bar",   role: "perc" },
+  { id: "perc_p6_4bar",   role: "perc" },
+  { id: "perc_p7_4bar",   role: "perc" },
+  { id: "perc_p10_1bar",  role: "perc" },
+  { id: "clap_c1_1bar",   role: "clap" },
+  // ── Mix Elite / Clark Audio / CLAP packs (see RhythmPatternBank.h) ──
+  { id: "kick_4bar_1",   role: "kick" },
+  { id: "kick_4bar_2",   role: "kick" },
+  { id: "kick_4bar_3",   role: "kick" },
+  { id: "kick_4bar_4",   role: "kick" },
+  { id: "kick_4bar_5",   role: "kick" },
+  { id: "kick_4bar_6",   role: "kick" },
+  { id: "kick_4bar_7",   role: "kick" },
+  { id: "kick_4bar_8",   role: "kick" },
+  { id: "snare_2bar_1",  role: "snare" },
+  { id: "snare_4bar_2",  role: "snare" },
+  { id: "snare_4bar_3",  role: "snare" },
+  { id: "snare_4bar_4",  role: "snare" },
+  { id: "snare_4bar_5",  role: "snare" },
+  { id: "snare_4bar_6",  role: "snare" },
+  { id: "snare_4bar_7",  role: "snare" },
+  { id: "snare_4bar_8",  role: "snare" },
+  { id: "clap_4bar_1",   role: "clap" },
+  { id: "clap_4bar_2",   role: "clap" },
+  { id: "clap_4bar_3",   role: "clap" },
+  { id: "clap_4bar_4",   role: "clap" },
+  { id: "clap_4bar_5",   role: "clap" },
+  { id: "hats_1bar_1",   role: "hats" },
+  { id: "hats_4bar_2",   role: "hats" },
+  { id: "hats_2bar_3",   role: "hats" },
+  { id: "hats_2bar_4",   role: "hats" },
+  { id: "hats_2bar_5",   role: "hats" },
+  { id: "hats_2bar_6",   role: "hats" },
+  { id: "hats_2bar_7",   role: "hats" },
+  { id: "hats_2bar_8",   role: "hats" },
+  { id: "hats_2bar_9",   role: "hats" },
+  { id: "hats_2bar_10",  role: "hats" },
+  // ── Full-kit grooves (Toontrack Rock + Psytrance, role-from-pitch) ──
+  { id: "kick_2bar_1",   role: "kick" },
+  { id: "kick_8bar_3",   role: "kick" },
+  { id: "kick_8bar_4",   role: "kick" },
+  { id: "kick_8bar_5",   role: "kick" },
+  { id: "kick_8bar_6",   role: "kick" },
+  { id: "snare_8bar_5",  role: "snare" },
+  { id: "snare_8bar_6",  role: "snare" },
+  { id: "ride_4bar_2",   role: "ride" },
+];
+const CORPUS_ROLES = ["kick", "snare", "clap", "hats", "perc", "ride"];
+
 interface Props {
   onClose: () => void;
 }
@@ -85,6 +157,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const [velocityB, setVelocityB] = useState(96);
   const [rhythmDsl, setRhythmDsl] = useState("");
   const [dslPitch, setDslPitch] = useState(39);
+  const [corpusPhrase, setCorpusPhrase] = useState(""); // "" = off, else a RhythmPatternBank id
 
   const [styleParams, setStyleParams] = useState<Record<string, unknown>>({});
   const [styleParamSchema, setStyleParamSchema] = useState<Array<{
@@ -255,6 +328,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           velocityB,
           dsl: rhythmDsl.trim(),
           dslPitch,
+          phrase: corpusPhrase,
         }) as RhythmPatternResult;
         setPreview(`Rhythm: ${result.noteCount} notes`);
         useProjectStore.setState({ isDirty: true });
@@ -610,6 +684,22 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
           {/* Rhythm page */}
           {mode === 4 && (
             <div className="pgd-page">
+              <div className="pgd-row">
+                <label className="pgd-label">Corpus Phrase</label>
+                <select className="pgd-select" aria-label="Corpus Phrase" value={corpusPhrase} onChange={(e) => setCorpusPhrase(e.target.value)}>
+                  <option value="">Off (euclidean + DSL)</option>
+                  {CORPUS_ROLES.map((role) => (
+                    <optgroup key={role} label={role}>
+                      {CORPUS_PHRASES.filter((p) => p.role === role).map((p) => (
+                        <option key={p.id} value={p.id}>{p.id}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              {corpusPhrase && (
+                <div className="pgd-row pgd-hint">Corpus phrase selected — overrides the pulse and DSL settings below.</div>
+              )}
               <div className="pgd-row">
                 <label className="pgd-label">Grid</label>
                 <select className="pgd-select" value={rhythmGrid} onChange={(e) => setRhythmGrid(Number(e.target.value))}>

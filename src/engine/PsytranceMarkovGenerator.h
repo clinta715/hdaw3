@@ -106,6 +106,11 @@ struct PsytranceMarkovParams {
     int everyBars = 32;    // periodic KeyChange boundary (0 = off, else >= 8)
     int keyShiftDegrees = 0; // KeyChange size in scale degrees (0 = seeded +1/+2)
     int sectionCycleBars = 32; // slow-tier section-energy clock (0 = off, else >= 8)
+    // Probability a drawn hat/snare theme voice sources its grid from the
+    // corpus drum-phrase bank (multi-bar accent phrases) instead of pure
+    // euclidean pulses. OPT-IN: 0 (default) keeps the legacy euclidean-only
+    // themes byte-identical; >0 changes per-seed output.
+    double percCorpusPhraseProb = 0.0;
     // Role → track index. -1 = unmapped → skipped
     int kick = -1, bass = -1, hat = -1, arp = -1, stab = -1, pad = -1,
         riser = -1, down = -1, clap = -1, snare = -1, rim = -1; // NoteLengthVariant may target bass/arp/stab/pad

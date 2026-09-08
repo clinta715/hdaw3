@@ -1,4 +1,5 @@
 #include "engine/RhythmPatternGenerator.h"
+#include "engine/RhythmPatternBank.h"
 #include "engine/Generative.h"
 #include <algorithm>
 #include <stdexcept>
@@ -43,4 +44,43 @@ std::vector<RhythmPatternGenerator::Note> RhythmPatternGenerator::generate(const
     std::sort(out.begin(), out.end(),
               [](const Note& a, const Note& b) { return a.startBeat < b.startBeat; });
     return out;
+}
+
+bool RhythmPatternGenerator::applyPhrase(Params& p, const std::string& id)
+{
+    const HDAW::RhythmicPhrase* ph = HDAW::findRhythmicPhrase(id.c_str());
+    if (ph == nullptr)
+        return false;
+    p.grid      = ph->grid;
+    p.bars      = ph->bars;
+    p.dsl       = ph->dsl;
+    p.dslPitch  = ph->pitch;
+    p.pulseA    = 0;
+    p.pulseB    = 0;
+    p.voices.clear();
+    return true;
+}
+
+bool RhythmPatternGenerator::applyPhraseByRole(Params& p, const std::string& role, int index)
+{
+    const HDAW::RhythmicPhrase* ph = HDAW::findRhythmicPhraseByRole(role.c_str(), index);
+    if (ph == nullptr)
+        return false;
+    return applyPhrase(p, ph->id);
+}
+
+std::vector<RhythmPatternGenerator::Note> RhythmPatternGenerator::generatePhrase(const std::string& id)
+{
+    Params p;
+    if (!applyPhrase(p, id))
+        return {};
+    return generate(p);
+}
+
+std::vector<RhythmPatternGenerator::Note> RhythmPatternGenerator::generatePhraseByRole(const std::string& role, int index)
+{
+    Params p;
+    if (!applyPhraseByRole(p, role, index))
+        return {};
+    return generate(p);
 }

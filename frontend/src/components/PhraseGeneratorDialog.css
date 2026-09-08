@@ -294,6 +294,11 @@
 
 .pgd-btn-apply:hover { opacity: 0.9; }
 
+.pgd-hint {
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  font-style: italic;
+}
 .pgd-error {
   color: var(--danger, #ef4444);
   font-size: 12px;

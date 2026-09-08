@@ -1712,6 +1712,58 @@ TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {
     EXPECT_TRUE(txt.contains("notes="));
 }
 
+TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhrase) {
+    // corpus phrase id drives the DSL voice alone (parity with the RPC).
+    auto r = call("generate_rhythm_pattern", {
+        {"trackId", 0}, {"phrase", "snare_s2_4bar"}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    QString txt = text(r);
+    EXPECT_TRUE(txt.contains("clipId="));
+    EXPECT_TRUE(txt.contains("notes=7")) << txt.toStdString();
+}
+
+TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhraseByRole) {
+    // role + index resolves a phrase without a literal id.
+    auto r = call("generate_rhythm_pattern", {
+        {"trackId", 0}, {"phraseRole", "clap"}, {"phraseIndex", 0}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("notes=1")) << text(r).toStdString();
+}
+
+TEST_F(McpCoverageTest, GenerateRhythmPatternUnknownPhraseErrors) {
+    auto r = call("generate_rhythm_pattern", {
+        {"trackId", 0}, {"phrase", "does_not_exist"}
+    });
+    EXPECT_TRUE(isError(r));
+    EXPECT_TRUE(text(r).contains("unknown phrase id"));
+}
+
+TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusPhrase) {
+    // percCorpusPhraseProb is OPT-IN (parity): 0 (default) keeps the legacy
+    // euclidean-only theme output; 1 sources hat/snare theme voices from the
+    // corpus drum-phrase bank. Verify the knob is accepted end-to-end.
+    auto addTrack = [this](const QString& name) {
+        auto r = callText("add_track", {{"name", name}});
+        auto obj = QJsonDocument::fromJson(r.toString().toUtf8()).object();
+        return obj.value("trackId").toInt(-1);
+    };
+    QJsonObject pt;
+    for (const char* role : { "kick", "bass", "hat", "snare", "clap" })
+    {
+        const int t = addTrack(QString("Psy%1").arg(role));
+        ASSERT_GE(t, 3) << "palette track " << role;
+        pt[role] = t;
+    }
+    auto r = call("generate_psytrance_markov", {
+        {"paletteTrackIds", pt},
+        {"totalBars", 32}, {"seed", 42}, {"percCorpusPhraseProb", 1.0}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("clips")) << text(r).toStdString();
+}
+
 
 // ============================================================================
 // MODULATION (LFO) TOOLS - docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P1-1
@@ -2848,6 +2900,201 @@ TEST_F(McpCoverageTest, ImportAudioFileTool) {
     auto bad = call("import_audio_file", {{"path", wavPath}, {"trackIndex", 99}});
     EXPECT_TRUE(isError(bad));
     EXPECT_TRUE(text(bad).contains("import failed"));
+
+    juce::File(wavPath.toStdString()).deleteFile();
+}
+
+TEST_F(McpCoverageTest, LibraryClusterMemberLimitTruncatesResponse) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // 4 dsp-sidecar entries (clustered) + 2 plain entries (no sidecar ->
+    // no text/dsp signal -> unassigned).
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark1.wav", "dark, low", "a dark low texture",
+                                    150.0, 0.75, 0.05));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "dark2.wav", "dark, low", "a dark low texture",
+                                    160.0, 0.73, 0.06));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright1.wav", "bright, high", "a bright high texture",
+                                    5200.0, 0.05, 0.70));
+    ASSERT_TRUE(writeWavWithSidecar(dir.path(), "bright2.wav", "bright, high", "a bright high texture",
+                                    5400.0, 0.04, 0.72));
+    for (const char* n : { "plain1.wav", "plain2.wav" }) {
+        juce::File wav(dir.path().toStdString() + "/" + n);
+        auto outStream = wav.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, 44100);
+        buffer.clear();
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100);
+        writer.reset();
+    }
+
+    auto addR = call("add_library", {{"name", "MemberLimitLib"}, {"path", dir.path()}, {"type", "audio"}});
+    ASSERT_FALSE(isError(addR)) << text(addR).toStdString();
+    QString libId = QJsonDocument::fromJson(text(addR).toUtf8()).object().value("id").toString();
+    ASSERT_FALSE(libId.isEmpty());
+    auto scanR = call("scan_library", {{"id", libId}});
+    EXPECT_FALSE(isError(scanR));
+    for (int i = 0; i < 100 && engine->getFileLibraryManager().isScanning(); ++i)
+        QThread::msleep(100);
+    ASSERT_FALSE(engine->getFileLibraryManager().isScanning());
+
+    QJsonArray ids{libId};
+
+    // memberLimit=1: members truncated; "size" and "unassignedCount" stay true.
+    auto cappedR = call("cluster_library", {{"libraryIds", ids}, {"k", 1}, {"memberLimit", 1}});
+    ASSERT_FALSE(isError(cappedR)) << text(cappedR).toStdString();
+    auto capped = QJsonDocument::fromJson(text(cappedR).toUtf8()).object();
+    auto cappedClusters = capped.value("clusters").toArray();
+    ASSERT_EQ(cappedClusters.size(), 1);
+    auto cappedCluster = cappedClusters[0].toObject();
+    EXPECT_EQ(cappedCluster.value("members").toArray().size(), 1)
+        << "members array truncated to memberLimit";
+    EXPECT_EQ(cappedCluster.value("size").toInt(), 4)
+        << "size must stay the TRUE member count even when truncated";
+    EXPECT_EQ(capped.value("unassigned").toArray().size(), 1)
+        << "unassigned truncated to memberLimit too";
+    EXPECT_EQ(capped.value("unassignedCount").toInt(), 2)
+        << "unassignedCount carries the true count";
+
+    // memberLimit=0 = no cap.
+    auto fullR = call("cluster_library", {{"libraryIds", ids}, {"k", 1}, {"memberLimit", 0}});
+    ASSERT_FALSE(isError(fullR)) << text(fullR).toStdString();
+    auto full = QJsonDocument::fromJson(text(fullR).toUtf8()).object();
+    auto fullClusters = full.value("clusters").toArray();
+    ASSERT_EQ(fullClusters.size(), 1);
+    EXPECT_EQ(fullClusters[0].toObject().value("members").toArray().size(), 4);
+    EXPECT_EQ(fullClusters[0].toObject().value("size").toInt(), 4);
+    EXPECT_EQ(full.value("unassigned").toArray().size(), 2);
+    EXPECT_FALSE(full.contains("unassignedCount"))
+        << "unassignedCount only appears when unassigned is truncated";
+
+    // Omitted memberLimit = default 20 -> no truncation for 4 members.
+    auto defR = call("cluster_library", {{"libraryIds", ids}, {"k", 1}});
+    ASSERT_FALSE(isError(defR)) << text(defR).toStdString();
+    auto def = QJsonDocument::fromJson(text(defR).toUtf8()).object();
+    ASSERT_EQ(def.value("clusters").toArray().size(), 1);
+    EXPECT_EQ(def.value("clusters").toArray()[0].toObject().value("members").toArray().size(), 4);
+
+    // Clean up: keep the appdata registry unpolluted.
+    auto removeR = call("remove_library", {{"id", libId}});
+    EXPECT_FALSE(isError(removeR)) << text(removeR).toStdString();
+}
+
+// ============================================================================
+// CONTRACT: rave_import_result payload / export_audio wait / analyze_tuning
+// ============================================================================
+
+namespace {
+
+// Find the first response line (object with an "id") in a multi-line buffer,
+// skipping interleaved notifications. Local mirror of parseResponse() in
+// mcp_server_test.cpp so this file's fixtures stay untouched.
+QJsonObject firstResponse(const QByteArray& buf) {
+    int start = 0;
+    while (start < buf.size()) {
+        int nl = buf.indexOf('\n', start);
+        QByteArray line = (nl >= 0) ? buf.mid(start, nl - start) : buf.mid(start);
+        start = (nl >= 0) ? nl + 1 : buf.size();
+        QByteArray trimmed = line.trimmed();
+        if (trimmed.isEmpty()) continue;
+        QJsonObject obj = QJsonDocument::fromJson(trimmed).object();
+        if (obj.contains("id")) return obj;
+    }
+    return {};
+}
+
+} // namespace
+
+// rave_import_result payload contract: without samplerTrackIndex/samplerSlotIndex
+// the response JSON must carry samplerRequested=false and samplerError="not
+// requested", and the WAV must still be imported as a clip.
+TEST_F(McpCoverageTest, RaveImportReportsSamplerNotRequested) {
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    // trackIndex 1 = the default project's "Synth" MIDI track.
+    auto r = call("rave_import_result", {{"outputPath", wavPath},
+                                         {"trackIndex", 1},
+                                         {"startBeats", 0.0}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    const auto payload = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    // toBool(true): a MISSING key must fail the expectation too.
+    EXPECT_FALSE(payload.value("samplerRequested").toBool(true))
+        << "no sampler args given -> samplerRequested must be false; got: ["
+        << text(r).toStdString() << "]";
+    EXPECT_EQ(payload.value("samplerError").toString().toStdString(), "not requested");
+
+    const int clipId = payload.value("clipId").toInt(-1);
+    ASSERT_GT(clipId, 0) << "import must mint a clip; got: [" << text(r).toStdString() << "]";
+    EXPECT_FALSE(findClip(clipId).isEmpty()) << "imported clip must appear in list_clips";
+
+    juce::File(wavPath.toStdString()).deleteFile();
+}
+
+// export_audio with wait=true blocks the tool handler until the render
+// finishes and returns "export complete: <path>" with the file on disk.
+TEST_F(McpCoverageTest, ExportAudioWaitBlocksUntilComplete) {
+    const QString path = QString::fromUtf8(juce::File::getSpecialLocation(
+                             juce::File::SpecialLocationType::tempDirectory)
+                             .getNonexistentChildFile("hdaw_mcp_export_wait", ".wav", false)
+                             .getFullPathName().toRawUTF8());
+
+    // wait=true blocks until the render is done, so the response can take
+    // seconds and progress notifications interleave — pump + poll for the
+    // response line (up to 30s, mirroring the export tests in
+    // mcp_server_test.cpp) instead of the 500ms call() helper.
+    QJsonObject args{{"outputPath", path}, {"format", "wav"},
+                     {"start", 0.0}, {"end", 2.0},
+                     {"sampleRate", 44100.0}, {"bitDepth", 16}, {"wait", true}};
+    QJsonObject req;
+    req["jsonrpc"] = "2.0";
+    req["id"] = nextId_++;
+    req["method"] = "tools/call";
+    req["params"] = QJsonObject{{"name", "export_audio"}, {"arguments", args}};
+    loopback->drainOutgoing();
+    loopback->pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+
+    QJsonObject resp;
+    QByteArray acc;
+    for (int i = 0; i < 120 && resp.isEmpty(); ++i) {  // 120 * 250ms = 30s
+        QByteArray out;
+        loopback->waitForOutgoing(250, &out);
+        acc += out;
+        resp = firstResponse(acc);
+        if (resp.isEmpty())
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    }
+    ASSERT_FALSE(resp.isEmpty()) << "no export_audio response within 30s";
+
+    auto r = resp.value("result").toObject();
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).startsWith("export complete:"))
+        << "got: [" << text(r).toStdString() << "]";
+    EXPECT_TRUE(juce::File(path.toStdString()).existsAsFile());
+
+    juce::File(path.toStdString()).deleteFile();
+}
+
+// analyze_tuning with an unknown role must report the check as skipped
+// (skipped=true) AND not passed (pass=false).
+TEST_F(McpCoverageTest, AnalyzeTuningUnknownRoleSkipped) {
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    auto r = call("analyze_tuning", {{"wavPath", wavPath}, {"role", "ambience"}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    const auto out = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    const auto check = out.value("check").toObject();
+    EXPECT_TRUE(check.value("skipped").toBool(false))
+        << "unknown role must be skipped; got: [" << text(r).toStdString() << "]";
+    EXPECT_FALSE(check.value("pass").toBool(true));
+    EXPECT_TRUE(check.value("error").toString().contains("unknown role"));
 
     juce::File(wavPath.toStdString()).deleteFile();
 }

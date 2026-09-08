@@ -562,6 +562,22 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         rp.dslPitch    = optInt(o, "dslPitch", 39, nullptr);
         rp.dslVelocity = optInt(o, "dslVelocity", 104, nullptr);
 
+        // Optional corpus phrase: either a specific phrase id or a role +
+        // index (0-based). A phrase drives the DSL voice alone (pulses off).
+        const std::string phraseId   = optString(o, "phrase", "");
+        const std::string phraseRole = optString(o, "phraseRole", "");
+        if (!phraseId.empty() || !phraseRole.empty())
+        {
+            const bool ok = !phraseId.empty()
+                ? RhythmPatternGenerator::applyPhrase(rp, phraseId)
+                : RhythmPatternGenerator::applyPhraseByRole(rp, phraseRole,
+                                                            optInt(o, "phraseIndex", 0, nullptr));
+            if (!ok)
+                return makeError(-32602, !phraseId.empty()
+                    ? QString("unknown phrase id: ") + QString::fromStdString(phraseId)
+                    : QString("no corpus phrase for role: ") + QString::fromStdString(phraseRole));
+        }
+
         double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
 
         std::vector<RhythmPatternGenerator::Note> notes;
@@ -822,6 +838,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.everyBars = optInt(o, "everyBars", 32, nullptr);
         p.sectionCycleBars = optInt(o, "sectionCycleBars", 32, nullptr);
         p.keyShiftDegrees = optInt(o, "keyShiftDegrees", 0, nullptr);
+        p.percCorpusPhraseProb = optDouble(o, "percCorpusPhraseProb", 0.0, nullptr);
         if (o.contains("progressionA") && o.value("progressionA").isArray())
             for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
         if (o.contains("progressionB") && o.value("progressionB").isArray())

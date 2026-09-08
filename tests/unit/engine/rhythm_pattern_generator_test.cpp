@@ -1,7 +1,40 @@
 #include <gtest/gtest.h>
+#include <string>
+#include <vector>
+
 #include "engine/RhythmPatternGenerator.h"
+#include "engine/RhythmPatternBank.h"
 
 using Note = RhythmPatternGenerator::Note;
+
+namespace {
+
+int countXs(const std::string& dsl)
+{
+    int c = 0;
+    for (const char ch : dsl)
+        if (ch == 'x')
+            ++c;
+    return c;
+}
+
+// A DSL 'x' at string index i maps to startBeat = i * (4.0 / grid).
+void expectMatchesDsl(const std::string& dsl, int grid, const std::vector<Note>& notes)
+{
+    const double beatsPerStep = 4.0 / static_cast<double>(grid);
+    ASSERT_EQ(notes.size(), static_cast<size_t>(countXs(dsl)));
+    size_t n = 0;
+    for (size_t i = 0; i < dsl.size(); ++i)
+    {
+        if (dsl[i] != 'x')
+            continue;
+        ASSERT_LT(n, notes.size());
+        EXPECT_DOUBLE_EQ(notes[n].startBeat, static_cast<double>(i) * beatsPerStep);
+        ++n;
+    }
+}
+
+} // namespace
 
 TEST(RhythmPolyrhythm, DefaultFourOverThree)
 {
@@ -107,4 +140,68 @@ TEST(RhythmValidation, MalformedDslThrows)
     EXPECT_THROW(RhythmPatternGenerator::generate(p), std::invalid_argument);
     p.dsl = "z";     // bad token
     EXPECT_THROW(RhythmPatternGenerator::generate(p), std::invalid_argument);
+}
+
+// ── Corpus phrase bank (RhythmPatternBank.h) ──
+
+TEST(RhythmPatternBank, KnownPhraseProducesExpectedHits)
+{
+    const HDAW::RhythmicPhrase* ph = HDAW::findRhythmicPhrase("snare_s2_4bar");
+    ASSERT_NE(ph, nullptr);
+    EXPECT_EQ(ph->role, std::string("snare"));
+    EXPECT_EQ(ph->bars, 4);
+    EXPECT_EQ(ph->grid, 16);
+
+    const auto notes = RhythmPatternGenerator::generatePhrase("snare_s2_4bar");
+    expectMatchesDsl(ph->dsl, ph->grid, notes);
+    // phrase drives the DSL voice alone -> all notes at the phrase pitch
+    for (const auto& n : notes)
+        EXPECT_EQ(n.pitch, ph->pitch);
+}
+
+TEST(RhythmPatternBank, TwoBarHatPhraseIsMultiBar)
+{
+    const auto notes = RhythmPatternGenerator::generatePhrase("hats_hh12_2bar");
+    ASSERT_FALSE(notes.empty());
+    bool pastBar1 = false;
+    for (const auto& n : notes)
+        if (n.startBeat >= 4.0)
+            pastBar1 = true;
+    EXPECT_TRUE(pastBar1);
+}
+
+TEST(RhythmPatternBank, UnknownIdReturnsEmpty)
+{
+    EXPECT_TRUE(RhythmPatternGenerator::generatePhrase("does_not_exist").empty());
+}
+
+TEST(RhythmPatternBank, ApplyPhraseByRole)
+{
+    RhythmPatternGenerator::Params p;
+    // "snare" has 5 phrases; index 0 must resolve.
+    EXPECT_TRUE(RhythmPatternGenerator::applyPhraseByRole(p, "snare", 0));
+    EXPECT_FALSE(p.dsl.empty());
+    EXPECT_GT(p.bars, 0);
+    EXPECT_EQ(p.pulseA, 0);
+    EXPECT_EQ(p.pulseB, 0);
+
+    // roles with no phrases resolve to false (bank has no tom phrases).
+    EXPECT_FALSE(RhythmPatternGenerator::applyPhraseByRole(p, "tom", 0));
+
+    // out-of-range index -> false.
+    EXPECT_FALSE(RhythmPatternGenerator::applyPhraseByRole(p, "snare", 999));
+}
+
+TEST(RhythmPatternBank, BankEnumeratesAllPhrases)
+{
+    EXPECT_EQ(HDAW::rhythmPhraseCount(), 62);
+    for (int i = 0; i < HDAW::rhythmPhraseCount(); ++i)
+    {
+        const HDAW::RhythmicPhrase* ph = &HDAW::rhythmPhrases()[i];
+        EXPECT_NE(HDAW::findRhythmicPhrase(ph->id), nullptr) << ph->id;
+        const auto notes = RhythmPatternGenerator::generatePhrase(ph->id);
+        EXPECT_EQ(notes.size(), static_cast<size_t>(countXs(ph->dsl))) << ph->id;
+        for (const auto& n : notes)
+            EXPECT_LT(n.startBeat, static_cast<double>(ph->bars) * 4.0);
+    }
 }

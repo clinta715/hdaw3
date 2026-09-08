@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.27.0
+**Current version**: 0.30.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.27.0)
+## What works today (v0.30.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -351,6 +351,35 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.30.0 — Corpus-derived drum phrase bank
+
+**Drum phrases mined from a real MIDI corpus.** A standalone analysis
+pipeline (`tools/analyze_drum_midis.mjs` SMF parser → `extract_phrase_bank.mjs`
+multi-bar phrase extraction → `curate_bank.mjs`) parsed 700+ drum MIDI loops
+(`E:\midi\[1] Drum MIDIs`, Mix Elite, Clark Audio, CLAP, Toontrack Rock, Trap,
+Psytrance kits), deduped multi-bar accent phrases across files, and curated
+them into a factory bank:
+- **`src/engine/RhythmPatternBank.h`** — 62 multi-bar (1/2/4/8-bar) drum
+  phrases across kick/snare/clap/hats/perc/ride, each a `{id, role, bars,
+  grid, dsl, pitch, bpm, source}` DSL string. Header-only, so adding phrases
+  needs no rebuild.
+- **`RhythmPatternGenerator`** — additive `generatePhrase(id)` /
+  `generatePhraseByRole(role, idx)` / `applyPhrase(...)` factories drive a
+  corpus phrase as the DSL voice (pulses off). Pure/score-level; no
+  `processBlock`/DSP/audio-thread impact.
+- **Full parity:** RPC `composition.generateRhythmPattern` gains
+  `phrase`/`phraseRole`/`phraseIndex`; MCP `generate_rhythm_pattern` mirrors
+  them; `PhraseGeneratorDialog` Rhythm mode gains a Corpus Phrase picker.
+- **Markov percussion:** `PercussionEngine` hat/snare theme voices can source
+  from the bank (opt-in `percCorpusPhraseProb` on
+  `generate_psytrance_markov`, default 0 so the legacy euclidean-only theme
+  stream stays byte-identical — RPC + MCP + tests). Multi-bar phrases play
+  via `bars[curBar % phraseBars]` so real accent phrasing survives across bars.
+- **Tests:** `RhythmPatternBank.*`, `RhythmGenerationRpc.CorpusPhrase*`,
+  `McpCoverageTest.GenerateRhythmPattern*`, and
+  `PsytranceMarkov.CorpusPhraseMultiBarPercussion` — all green (bank count
+  assertion = 62).
 
 ### v0.27.0 — FX chain presets + standalone saturator FX
 
