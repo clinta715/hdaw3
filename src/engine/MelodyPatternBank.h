@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 
 // ── Corpus-derived melodic phrase bank ──
 // Key-relative melodic contours mined from the E:\\midi corpus (Phase 1 of
@@ -3221,6 +3222,18 @@ inline int melodyDegreeToPitch(const MelodicPhrase& p, int targetRootPc, int deg
     return (pitch >= 0 && pitch <= 127) ? pitch : -1;
 }
 
+// Map a degree to an absolute pitch using a SPECIFIC scale mode + root.
+// Unlike melodyDegreeToPitch (which uses the phrase's own scale), this lets
+// a caller re-voice a phrase's contour through the TARGET scale so every note
+// lands in the target key. Returns -1 if degree is out of the scale's range.
+inline int melodyDegreeToPitchInScale(int scaleMode, int targetRootPc, int degree, int octave)
+{
+    const MelodyScale& s = melodyScales()[scaleMode];
+    if (degree < 0 || degree >= s.n) return -1;
+    const int pitch = 12 * octave + targetRootPc + s.intervals[degree];
+    return (pitch >= 0 && pitch <= 127) ? pitch : -1;
+}
+
 // Transpose a single stored note into a target key, preserving register by
 // choosing the NEAREST transposition direction (delta wrapped to [-5,+6]
 // semitones). This is the high-level "play phrase in key K" call: it keeps
@@ -3252,6 +3265,28 @@ inline bool melodyNoteInScale(int pitch, int targetRootPc, int scaleMode)
     for (int i = 0; i < s.n; ++i)
         if ((((targetRootPc + s.intervals[i]) % 12) + 12) % 12 == pc) return true;
     return false;
+}
+
+// Number of phrases with a given role (lead / bass / chord / ...).
+inline int melodyRoleCount(const char* role)
+{
+    int n = 0;
+    for (int i = 0; i < melodyPhraseCount(); ++i)
+        if (melodyPhrases()[i].role == std::string(role)) ++n;
+    return n;
+}
+
+// The (index)-th phrase with the given role, or nullptr if index out of range.
+inline const MelodicPhrase* melodyRolePhrase(const char* role, int index)
+{
+    int seen = 0;
+    for (int i = 0; i < melodyPhraseCount(); ++i)
+        if (melodyPhrases()[i].role == std::string(role))
+        {
+            if (seen == index) return &melodyPhrases()[i];
+            ++seen;
+        }
+    return nullptr;
 }
 
 } // namespace HDAW

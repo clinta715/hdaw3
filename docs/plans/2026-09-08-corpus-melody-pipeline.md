@@ -132,6 +132,38 @@ a first bank (contours are exact; voicing re-fits to target harmony in Phase 2).
 - G2.3 RPC + MCP parity: `generatePsytranceMarkov` and the MCP tool accept the
   new params; frontend picker optionally surfaces a melody source.
 
+### 8.5.2 Phase 2 — Results (2026-09-08) ✅
+
+**Done.** Corpus melodic voice wired into the Markov arranger, opt-in and
+default-preserving.
+
+- **Params** (`PsytranceMarkovParams`): `melodyCorpusPhraseProb` (double,
+  default 0), `melodyTransposeMode` (0=diatonic,1=rootRelative,2=chordTone),
+  `melodyContourMutation` (0..1). RPC `generatePsytranceMarkov` + MCP
+  `generate_psytrance_markov` both accept them (G2.3).
+- **`MelodyVoicer.h`** (pure score-level): `voiceMelodyPhrase` re-voices a
+  bank phrase into a target key. Diatonic maps the degree contour through the
+  **TARGET** scale (in-scale by construction); RootRelative preserves exact
+  source intervals via nearest root-delta; contour mutation jitters degrees
+  (+-1, stays in-scale).
+- **`MarkovArranger`** injection: after `harmony.writeWindowNotes`, if
+  `melodyCorpusPhraseProb > 0` and arp is active, a seeded draw replaces the
+  arp's window notes with a corpus `lead` phrase voiced into the current key
+  (multi-bar via `bars`, window-capped). Guarded by prob>0 so the default
+  path consumes NO draws.
+- **G2.1** ✅ `CorpusMelodyDefaultPreservesOutput`: golden locked (seed 42 /
+  baseParams = 16 steps, 924 notes, 5 clips) — byte-identical default.
+- **G2.2** ✅ `CorpusMelodyInScaleWhenEnabled`: with prob 0.9 + diatonic,
+  every melodic (non-percussion) note is in-scale vs the constant key.
+- **Bug caught by G2.2:** the first diatonic voicing used the phrase's OWN
+  scale intervals, so a "major" phrase voiced into F-minor was out of the
+  target scale. Fixed with `melodyDegreeToPitchInScale` (re-map through the
+  TARGET scale).
+- **G2.3** ✅ RPC round-trip (`CorpusMelodyParamsRoundTrip`) + MCP coverage
+  (`GeneratePsytranceMarkovCorpusMelody`).
+- Full set green: 62 tests across PsytranceMarkov(31), MelodyPatternBank(6),
+  RhythmGenerationRpc(7), PsytranceMarkovRouter(3), Command(6), MCP(9).
+
 ### Phase 3 (optional, only if the bank is rich enough) — Motif-stitching melodic Markov
 
 A genuinely new topology: learn transition probabilities **between** corpus

@@ -839,6 +839,9 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         p.sectionCycleBars = optInt(o, "sectionCycleBars", 32, nullptr);
         p.keyShiftDegrees = optInt(o, "keyShiftDegrees", 0, nullptr);
         p.percCorpusPhraseProb = optDouble(o, "percCorpusPhraseProb", 0.0, nullptr);
+        p.melodyCorpusPhraseProb = optDouble(o, "melodyCorpusPhraseProb", 0.0, nullptr);
+        p.melodyTransposeMode = optInt(o, "melodyTransposeMode", 0, nullptr);
+        p.melodyContourMutation = optDouble(o, "melodyContourMutation", 0.0, nullptr);
         if (o.contains("progressionA") && o.value("progressionA").isArray())
             for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
         if (o.contains("progressionB") && o.value("progressionB").isArray())

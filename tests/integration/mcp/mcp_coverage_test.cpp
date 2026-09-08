@@ -1764,6 +1764,30 @@ TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusPhrase) {
     EXPECT_TRUE(text(r).contains("clips")) << text(r).toStdString();
 }
 
+TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusMelody) {
+    // melodyCorpusPhraseProb is OPT-IN (parity): sources the arp lead from the
+    // corpus MelodyPatternBank, voiced into the current key (diatonic).
+    auto addTrack = [this](const QString& name) {
+        auto r = callText("add_track", {{"name", name}});
+        auto obj = QJsonDocument::fromJson(r.toString().toUtf8()).object();
+        return obj.value("trackId").toInt(-1);
+    };
+    QJsonObject pt;
+    for (const char* role : { "kick", "bass", "hat", "snare", "clap", "arp" })
+    {
+        const int t = addTrack(QString("PsyM%1").arg(role));
+        ASSERT_GE(t, 3) << "palette track " << role;
+        pt[role] = t;
+    }
+    auto r = call("generate_psytrance_markov", {
+        {"paletteTrackIds", pt},
+        {"totalBars", 32}, {"seed", 42},
+        {"melodyCorpusPhraseProb", 1.0}, {"melodyTransposeMode", 0}
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("clips")) << text(r).toStdString();
+}
+
 
 // ============================================================================
 // MODULATION (LFO) TOOLS - docs/plans/2026-08-29-jungle-dnb-feature-gaps.md P1-1

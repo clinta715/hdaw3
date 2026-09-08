@@ -111,6 +111,19 @@ struct PsytranceMarkovParams {
     // euclidean pulses. OPT-IN: 0 (default) keeps the legacy euclidean-only
     // themes byte-identical; >0 changes per-seed output.
     double percCorpusPhraseProb = 0.0;
+    // Corpus MELODIC voice (arp role): probability a window's arp lead is
+    // sourced from the key-relative MelodyPatternBank (transposed into the
+    // current key) instead of the harmony chord-tone arp. OPT-IN: 0 (default)
+    // keeps the legacy chord-tone arp byte-identical; >0 changes per-seed output.
+    double melodyCorpusPhraseProb = 0.0;
+    // Melody voicing mode for the corpus arp: 0 = diatonic (re-map to target
+    // scale, in-scale by construction), 1 = root-relative (pure semitone
+    // shift, preserves exact source intervals), 2 = chord-tone (diatonic for
+    // now; chord-tone snap is a Phase-2 refinement). Default 0.
+    int melodyTransposeMode = 0;
+    // 0..1 probability each corpus-melody note's degree is jittered by +/-1
+    // (diatonic, stays in-scale). Default 0 = play the phrase verbatim.
+    double melodyContourMutation = 0.0;
     // Role → track index. -1 = unmapped → skipped
     int kick = -1, bass = -1, hat = -1, arp = -1, stab = -1, pad = -1,
         riser = -1, down = -1, clap = -1, snare = -1, rim = -1; // NoteLengthVariant may target bass/arp/stab/pad

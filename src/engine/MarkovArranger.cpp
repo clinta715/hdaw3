@@ -4,6 +4,8 @@
 #include "engine/MarkovRoles.h"
 #include "engine/PercussionEngine.h"
 #include "engine/TextureEngine.h"
+#include "engine/MelodyPatternBank.h"
+#include "engine/MelodyVoicer.h"
 
 #include <algorithm>
 #include <cmath>
@@ -829,6 +831,39 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
                               kick, hat, snare, rim, clap, kMaxNotesPerClip);
         harmony.writeWindowNotes(bar, windowBars, active, harmonyStyle,
                                  bass, arp, stab, pad, totalBars, kMaxNotesPerClip);
+
+        // Corpus melodic voice (opt-in): when melodyCorpusPhraseProb > 0 and
+        // the arp lead is active this window, a seeded draw may replace the
+        // arp's window notes with a key-relative MelodyPatternBank phrase
+        // voiced into the current key. Guarded by prob>0 so the DEFAULT path
+        // consumes no draws and stays byte-identical.
+        if (p.melodyCorpusPhraseProb > 0.0 && active.count("arp"))
+        {
+            if (markovRng01(rng) < p.melodyCorpusPhraseProb)
+            {
+                const int leadCount = melodyRoleCount("lead");
+                if (leadCount > 0)
+                {
+                    const int phIdx = markovRngInt(rng, 0, leadCount - 1);
+                    const MelodicPhrase* ph = melodyRolePhrase("lead", phIdx);
+                    const double wStart = bar * 4.0;
+                    const double wEnd = wStart + windowBars * 4.0;
+                    arp.clip.notes.erase(
+                        std::remove_if(arp.clip.notes.begin(), arp.clip.notes.end(),
+                                       [&](const PsytranceNote& n) {
+                                           return n.startBeat >= wStart && n.startBeat < wEnd;
+                                       }),
+                        arp.clip.notes.end());
+                    const auto mode = static_cast<MelodyTransposeMode>(p.melodyTransposeMode);
+                    const auto vn = voiceMelodyPhrase(*ph, harmony.currentKeyRoot(), p.scaleMode,
+                                                      mode, harmonyStyle.arpVelocity, windowBars,
+                                                      p.melodyContourMutation, rng);
+                    for (const auto& v : vn)
+                        arp.add(wStart + v.startBeat, v.pitch, v.velocity, v.durationBeats,
+                                kMaxNotesPerClip);
+                }
+            }
+        }
 
         // FX accents (FxHit windows + KeyChange transition FX) — pitched from
         // the CURRENT key.

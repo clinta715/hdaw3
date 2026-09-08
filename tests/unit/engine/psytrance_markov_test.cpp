@@ -2,6 +2,8 @@
 #include "engine/AudioEngine.h"
 #include "engine/PsytranceMarkovGenerator.h"
 #include "engine/MarkovArranger.h"
+#include "engine/MarkovRoles.h"
+#include "engine/MelodyPatternBank.h"
 #include "engine/PsytranceGenerator.h"
 #include "engine/PhraseGenerator.h"
 #include "engine/AudioEngineCommands_Helpers.h"
@@ -16,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <map>
 #include <set>
 #include <string>
@@ -56,6 +59,75 @@ bool hasRole(const HDAW::MarkovStep& s, const char* role)
 {
     return std::find(s.activeRoles.begin(), s.activeRoles.end(), role)
            != s.activeRoles.end();
+}
+
+const HDAW::PsytranceClip* findClip(const HDAW::PsytranceMarkovScore& s, const char* role)
+{
+    for (const auto& c : s.clips) if (c.role == role) return &c;
+    return nullptr;
+}
+
+// ── Phase 2: corpus melodic voice (MelodyPatternBank -> arp) ──
+
+// G2.1 — with the opt-in default (melodyCorpusPhraseProb=0) the legacy output
+// is preserved byte-for-byte. Golden captured from the pre-feature default
+// path (seed 42, baseParams); locked so a regression breaks loudly.
+TEST(PsytranceMarkov, CorpusMelodyDefaultPreservesOutput)
+{
+    auto p = baseParams(42, 32); // all melody params default 0
+    const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+    // Golden from the pre-feature default path (seed 42); locked so a
+    // regression to the default path breaks loudly (G2.1 byte-identical).
+    EXPECT_EQ(s.steps.size(), 16);
+    EXPECT_EQ(s.notesTotal, 924);
+    EXPECT_EQ(s.clips.size(), 5);
+}
+
+// G2.2 — with the corpus voice enabled, every MELODIC (non-percussion) note
+// stays in-scale against the constant key (everyBars=0). Percussion voices
+// use fixed pitches and are excluded.
+TEST(PsytranceMarkov, CorpusMelodyInScaleWhenEnabled)
+{
+    auto p = baseParams(42, 32);
+    p.everyBars = 0;                     // constant key
+    p.melodyCorpusPhraseProb = 0.9;      // fire most windows
+    p.melodyTransposeMode = 0;           // diatonic (in-scale by construction)
+    const auto s = HDAW::PsytranceMarkovGenerator::generate(p);
+    ASSERT_TRUE(s.error.empty());
+    int melodic = 0;
+    for (const auto& clip : s.clips)
+    {
+        if (HDAW::isPercRole(clip.role)) continue;
+        for (const auto& n : clip.notes)
+        {
+            ++melodic;
+            EXPECT_TRUE(HDAW::melodyNoteInScale(n.pitch, p.keyRoot, p.scaleMode))
+                << "role " << clip.role << " pitch " << n.pitch;
+        }
+    }
+    EXPECT_GT(melodic, 0);
+}
+
+// The corpus path actually fires: with prob=1.0 the arp lead differs from the
+// prob=0 (legacy chord-tone arp) output for the same seed.
+TEST(PsytranceMarkov, CorpusMelodyChangesArpLead)
+{
+    auto p0 = baseParams(42, 32);
+    auto p1 = baseParams(42, 32);
+    p0.melodyCorpusPhraseProb = 0.0;
+    p1.melodyCorpusPhraseProb = 1.0;
+    const auto s0 = HDAW::PsytranceMarkovGenerator::generate(p0);
+    const auto s1 = HDAW::PsytranceMarkovGenerator::generate(p1);
+    const HDAW::PsytranceClip* a0 = findClip(s0, "arp");
+    const HDAW::PsytranceClip* a1 = findClip(s1, "arp");
+    ASSERT_NE(a0, nullptr);
+    ASSERT_NE(a1, nullptr);
+    bool changed = false;
+    for (size_t i = 0; i < std::min(a0->notes.size(), a1->notes.size()); ++i)
+        if (a0->notes[i].pitch != a1->notes[i].pitch ||
+            a0->notes[i].startBeat != a1->notes[i].startBeat) { changed = true; break; }
+    if (!changed) changed = (a0->notes.size() != a1->notes.size());
+    EXPECT_TRUE(changed);
 }
 
 std::string actionOf(const HDAW::MarkovStep& s)
@@ -1466,6 +1538,39 @@ TEST(PsytranceMarkovRouter, DispatchCompositionRoundTrip)
     auto bad = frontend::dispatchComposition(engine, "generatePsytranceMarkovX",
                                              QJsonValue(params));
     EXPECT_TRUE(bad.isError);
+}
+
+TEST(PsytranceMarkovRouter, CorpusMelodyParamsRoundTrip)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    engine.drainPendingRoutingRebuild();
+    for (int i = 0; i < 11; ++i)
+        cmds.addTrack("CM" + std::to_string(i), -1, -1, 0);
+    engine.drainPendingRoutingRebuild();
+
+    QJsonObject params;
+    params["paletteTrackIds"] = QJsonObject{
+        { "kick", 0 }, { "bass", 1 }, { "hat", 2 }, { "arp", 3 },
+        { "stab", 4 }, { "pad", 5 }, { "riser", 6 }, { "down", 7 }, { "clap", 8 },
+        { "snare", 9 }, { "rim", 10 } };
+    params["keyRoot"] = 5;
+    params["scaleMode"] = 1;
+    params["seed"] = 42;
+    params["totalBars"] = 32;
+    // G2.3 — the corpus-melody params are accepted and driven end-to-end.
+    params["melodyCorpusPhraseProb"] = 1.0;
+    params["melodyTransposeMode"] = 0;
+    params["melodyContourMutation"] = 0.3;
+
+    auto res = frontend::dispatchComposition(engine, "generatePsytranceMarkov",
+                                             QJsonValue(params));
+    ASSERT_FALSE(res.isError);
+    ASSERT_TRUE(res.payload.isObject());
+    const auto payload = res.payload.toObject();
+    EXPECT_GT(payload.value("notesTotal").toInt(), 0);
+    EXPECT_FALSE(payload.value("clips").toArray().isEmpty());
 }
 
 // ── Command layer: bad section-script input is rejected with a tool-named

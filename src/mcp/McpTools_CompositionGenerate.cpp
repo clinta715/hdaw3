@@ -608,6 +608,12 @@ s.registerTool({"generate_psytrance_markov",
                       {"description","slow section-energy clock in bars (0 = off, else >= 8; default 32)"}}},
                   {"keyShiftDegrees", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11},
                       {"description","KeyChange size in scale degrees (0 = seeded +1/+2)"}}},
+                  {"melodyCorpusPhraseProb", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1},
+                       {"description","Opt-in: probability a window's arp lead is sourced from the corpus MelodyPatternBank, transposed into the current key (default 0 = legacy chord-tone arp)."}}},
+                  {"melodyTransposeMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",2},
+                       {"description","Corpus-melody voicing: 0=diatonic (in-scale), 1=root-relative (exact source intervals), 2=chord-tone. Default 0."}}},
+                  {"melodyContourMutation", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1},
+                       {"description","Per-note probability of a diatonic +/-1 degree jitter on the corpus melody (default 0 = verbatim)."}}},
                   {"percCorpusPhraseProb", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1},
                       {"description","OPT-IN: probability a drawn hat/snare theme voice sources its grid from the corpus drum-phrase bank (multi-bar accent phrases) instead of pure euclidean pulses. 0 (default) = legacy euclidean-only themes; >0 changes per-seed output."}}},
                   {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
@@ -644,6 +650,9 @@ s.registerTool({"generate_psytrance_markov",
             p.sectionCycleBars = a.contains("sectionCycleBars") ? a.value("sectionCycleBars").toInt(32) : 32;
             p.keyShiftDegrees = a.contains("keyShiftDegrees") ? a.value("keyShiftDegrees").toInt(0) : 0;
             p.percCorpusPhraseProb = a.value("percCorpusPhraseProb").toDouble(0.0);
+            p.melodyCorpusPhraseProb = a.value("melodyCorpusPhraseProb").toDouble(0.0);
+            p.melodyTransposeMode = a.value("melodyTransposeMode").toInt(0);
+            p.melodyContourMutation = a.value("melodyContourMutation").toDouble(0.0);
             if (a.contains("progressionA"))
                 for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
             if (a.contains("progressionB"))
