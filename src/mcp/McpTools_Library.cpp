@@ -287,7 +287,11 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
         "a rendered-probe dsp vector (the sweep writes it); entries without one fall "
         "to text-only clustering / unassigned. Omit libraryIds to cluster ALL audio "
         "or patch libraries. k omitted (0) = auto (silhouette). method: hybrid "
-        "(default) | text | dsp. saveAs names the result as a cluster preset "
+        "(default) | text | dsp. memberLimit (optional integer, default 20): "
+        "caps each cluster's members array (and unassigned) to the first N "
+        "entries while \"size\" keeps the TRUE member count; when unassigned is "
+        "truncated the response also carries \"unassignedCount\" (true count). "
+        "memberLimit 0 = no cap. saveAs names the result as a cluster preset "
         "(response gains presetId); clusterId narrows the SAVED preset to one "
         "cluster (c1..cK) — unassigned is omitted — without changing the returned "
         "clusters.",
@@ -296,6 +300,7 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
                    {"k", QJsonObject{{"type","integer"}}},
                    {"method", QJsonObject{{"type","string"},
                     {"enum", QJsonArray{"hybrid","text","dsp"}}}},
+                   {"memberLimit", QJsonObject{{"type","integer"}, {"minimum", 0}}},
                    {"saveAs", QJsonObject{{"type","string"}}},
                    {"clusterId", QJsonObject{{"type","string"}}}}),
         "library",
@@ -313,13 +318,21 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
             if (error.isNotEmpty())
                 return McpToolResult::text(QString::fromUtf8(error.toRawUTF8()), true);
 
+            // memberLimit: optional response-size cap (default 20, 0 = no cap).
+            // Truncates the members/unassigned ARRAYS only — "size" (and
+            // "unassignedCount" when truncated) keep the true counts.
+            const int memberLimit = a.value("memberLimit").toInt(20);
+
             QJsonObject root;
             root["method"] = jstr(outcome.method);
             root["k"] = outcome.k;
             QJsonArray clustersArr;
             for (const auto& c : outcome.clusters) {
                 QJsonArray members;
+                int emitted = 0;
                 for (const auto& m : c.members) {
+                    if (memberLimit > 0 && emitted >= memberLimit) break;
+                    ++emitted;
                     members.append(QJsonObject{
                         {"name", jstr(m.name)},
                         {"path", jstr(m.path)},
@@ -337,9 +350,15 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e)
             }
             root["clusters"] = clustersArr;
             QJsonArray unassigned;
-            for (const auto& u : outcome.unassigned)
+            int unassignedEmitted = 0;
+            for (const auto& u : outcome.unassigned) {
+                if (memberLimit > 0 && unassignedEmitted >= memberLimit) break;
+                ++unassignedEmitted;
                 unassigned.append(QJsonObject{{"name", jstr(u.name)}, {"path", jstr(u.path)}});
+            }
             root["unassigned"] = unassigned;
+            if (memberLimit > 0 && (int)outcome.unassigned.size() > unassignedEmitted)
+                root["unassignedCount"] = (int)outcome.unassigned.size();
             if (outcome.note.isNotEmpty()) root["note"] = jstr(outcome.note);
             if (presetId.isNotEmpty()) root["presetId"] = jstr(presetId);
             return McpToolResult::text(QString::fromUtf8(

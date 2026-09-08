@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """RAVE sidecar transform script (HDAW RAVE #1).
 
-CLI contract (must match HDAW::RaveService::transformFile exactly):
-    script.py --input X --model Y --output Z --temperature T --seed S
+CLI contract (must match HDAW::RaveService exactly):
+    transform (default): script.py --input X --model Y --output Z --temperature T --seed S
+    probe:             script.py --mode probe --model Y
 
 Modes:
   1. REAL model inference -- torch is importable AND --model loads as a
@@ -22,6 +23,7 @@ Exit contract (mirrors the C++ side):
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import random
@@ -186,6 +188,100 @@ def fallback_transform(samples: list[float], temperature: float, seed: int) -> l
 # Real model path (torch, optional)
 # ---------------------------------------------------------------------------
 
+def _shape_of(value) -> list[int] | None:
+    if hasattr(value, "shape"):
+        return [int(x) for x in list(value.shape)]
+    return None
+
+
+def _public_methods(module) -> list[str]:
+    names: set[str] = set()
+    for name in dir(module):
+        if not name.startswith("_"):
+            names.add(name)
+    try:
+        for method in module._c._method_names():  # type: ignore[attr-defined]
+            if not str(method).startswith("_"):
+                names.add(str(method))
+    except Exception:
+        pass
+    return sorted(names)
+
+
+def _sample_rate_from_module(module):
+    for name in ("sample_rate", "sampleRate", "sr", "sampling_rate"):
+        try:
+            value = getattr(module, name)
+            if callable(value):
+                value = value()
+            if hasattr(value, "item"):
+                value = value.item()
+            if isinstance(value, (int, float)) and value > 0:
+                return int(value)
+        except Exception:
+            continue
+    return None
+
+
+def probe_model(model_path: str) -> dict:
+    payload = {
+        "ok": False,
+        "methods": [],
+        "sampleRate": None,
+        "latentDim": None,
+        "latentFrames": None,
+        "encodeShape": None,
+        "decodeShape": None,
+        "error": "",
+    }
+    try:
+        import torch  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        payload["error"] = f"torch not importable: {type(exc).__name__}: {exc}"
+        return payload
+
+    try:
+        module = torch.jit.load(model_path, map_location="cpu")
+        module.eval()
+        payload["methods"] = _public_methods(module)
+        payload["sampleRate"] = _sample_rate_from_module(module)
+        with torch.no_grad():
+            x = torch.zeros(1, 1, 44100, dtype=torch.float32)
+            if hasattr(module, "encode"):
+                z = module.encode(x)
+                if isinstance(z, (tuple, list)):
+                    z = z[0]
+                encode_shape = _shape_of(z)
+                payload["encodeShape"] = encode_shape
+                if encode_shape and len(encode_shape) >= 3:
+                    payload["latentDim"] = int(encode_shape[1])
+                    payload["latentFrames"] = int(encode_shape[2])
+                if hasattr(module, "decode"):
+                    y = module.decode(z)
+                    if isinstance(y, (tuple, list)):
+                        y = y[0]
+                    payload["decodeShape"] = _shape_of(y)
+            elif hasattr(module, "forward"):
+                y = module(x)
+                if isinstance(y, (tuple, list)):
+                    y = y[0]
+                payload["decodeShape"] = _shape_of(y)
+        payload["ok"] = True
+        payload["error"] = ""
+    except Exception as exc:  # noqa: BLE001
+        payload["error"] = f"{type(exc).__name__}: {exc}"
+    return payload
+
+
+def print_probe_json(payload: dict) -> int:
+    print(json.dumps(payload, separators=(",", ":")))
+    if not payload.get("ok"):
+        err = str(payload.get("error") or "probe failed")
+        print(f"rave_transform probe: {err}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def try_real_inference(model_path: str, samples: list[float], rate: int,
                         temperature: float, seed: int) -> list[float] | None:
     """Attempt genuine TorchScript RAVE inference.
@@ -287,6 +383,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="HDAW RAVE sidecar: render input audio through a RAVE model "
         "(torch) or a deterministic DSP stand-in (stdlib only)."
     )
+    p.add_argument("--mode", choices=("transform", "probe"), default="transform",
+                   help="operation mode: transform writes --output WAV; probe prints JSON metadata only")
     p.add_argument("--input", default=None, help="input WAV file")
     p.add_argument("--model", default=None, help="RAVE model file (.ts/.pt/.pth/.rave/.onnx)")
     p.add_argument("--output", default=None, help="output WAV file to write")
@@ -309,6 +407,31 @@ def main(argv: list[str] | None = None) -> int:
             fail("--make-test-tone requires --output <tone.wav>")
         make_test_tone(args.output)
         return 0
+
+    if args.mode == "probe":
+        if not args.model:
+            return print_probe_json({
+                "ok": False, "methods": [], "sampleRate": None,
+                "latentDim": None, "latentFrames": None,
+                "encodeShape": None, "decodeShape": None,
+                "error": "--model is required",
+            })
+        if not os.path.isfile(args.model):
+            return print_probe_json({
+                "ok": False, "methods": [], "sampleRate": None,
+                "latentDim": None, "latentFrames": None,
+                "encodeShape": None, "decodeShape": None,
+                "error": f"model file not found: {args.model}",
+            })
+        ext = os.path.splitext(args.model)[1].lower()
+        if ext not in SUPPORTED_MODEL_EXTS:
+            return print_probe_json({
+                "ok": False, "methods": [], "sampleRate": None,
+                "latentDim": None, "latentFrames": None,
+                "encodeShape": None, "decodeShape": None,
+                "error": f"unsupported RAVE model extension '{ext}' (expected one of {', '.join(SUPPORTED_MODEL_EXTS)})",
+            })
+        return print_probe_json(probe_model(args.model))
 
     for name in ("input", "model", "output"):
         if not getattr(args, name):

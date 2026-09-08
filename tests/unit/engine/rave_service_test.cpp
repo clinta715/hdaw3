@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -161,4 +162,55 @@ TEST(RaveService, TransformFailsWhenSidecarExitsZeroWithoutOutput)
     EXPECT_FALSE(result.ok);
     EXPECT_FALSE(juce::File(req.outputPath).existsAsFile());
     EXPECT_TRUE(result.error.contains("did not create output"));
+}
+
+TEST(RaveService, ProbeValidatesModelBeforeSidecar)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    HDAW::RaveProbeRequest req;
+    req.modelPath = dir.filePath("missing.rave").toStdString();
+    req.scriptPath = dir.filePath("missing_script.py").toStdString();
+
+    const HDAW::RaveService service;
+    const auto result = service.probeModel(req);
+    EXPECT_FALSE(result.ok);
+    EXPECT_TRUE(result.error.contains("model file not found"));
+}
+
+TEST(RaveService, ProbeParsesJsonFromSidecar)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto model = writeEmptyFile(dir, "model.rave");
+    const auto script = writeEmptyFile(dir, "dummy_sidecar.py");
+
+#ifdef Q_OS_WIN
+    const QString runner = dir.filePath("rave_probe.bat");
+    QFile runnerFile(runner);
+    ASSERT_TRUE(runnerFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    runnerFile.write("@echo off\r\necho {^\"ok^\":true,^\"methods^\":[^\"encode^\",^\"decode^\"],^\"sampleRate^\":null,^\"latentDim^\":16,^\"latentFrames^\":22,^\"encodeShape^\":[1,16,22],^\"decodeShape^\":[1,2,45056],^\"error^\":^\"^\"}\r\nexit /b 0\r\n");
+    runnerFile.close();
+#else
+    const QString runner = dir.filePath("rave_probe.sh");
+    QFile runnerFile(runner);
+    ASSERT_TRUE(runnerFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    runnerFile.write("#!/bin/sh\necho '{\"ok\":true,\"methods\":[\"encode\",\"decode\"],\"sampleRate\":null,\"latentDim\":16,\"latentFrames\":22,\"encodeShape\":[1,16,22],\"decodeShape\":[1,2,45056],\"error\":\"\"}'\nexit 0\n");
+    runnerFile.close();
+    ASSERT_TRUE(QFile::setPermissions(runner, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+#endif
+
+    HDAW::RaveProbeRequest req;
+    req.modelPath = model.toStdString();
+    req.pythonPath = runner.toStdString();
+    req.scriptPath = script.toStdString();
+
+    const HDAW::RaveService service;
+    const auto result = service.probeModel(req);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_TRUE(result.payload.value("ok").toBool(false));
+    EXPECT_EQ(result.payload.value("latentDim").toInt(), 16);
+    EXPECT_EQ(result.payload.value("latentFrames").toInt(), 22);
+    EXPECT_EQ(result.payload.value("methods").toArray().size(), 2);
 }

@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.30.0
+**Current version**: 0.31.0
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.30.0)
+## What works today (v0.31.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -137,6 +137,12 @@ pass `Debug` for breakpoint debugging.
 - **Missing source file indicator**: clips with missing .wav files
   show a red "FILE MISSING" label in the timeline and a clear error
   message in the audio editor.
+- **Offline RAVE neural rendering and training**: the Neural panel, RPC,
+  and MCP can list/probe RAVE models, run offline audio transforms, import
+  rendered WAVs, and launch cancellable offline model-training jobs. Training
+  uses a repo-local Python/acids-rave sidecar and writes models under
+  `rave/models/`; it never touches realtime playback, export, DSP, or
+  plugin-hosting paths.
 - **MIDI file import** (`.mid`, `.midi`): File → Import MIDI
   (Ctrl+Shift+M) or drag-drop a MIDI file onto the timeline.
   Parses tempo, note pitches, velocities, and durations from all
@@ -351,6 +357,25 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.31.0 — Offline RAVE training pipeline
+
+- **Offline RAVE model training**: new Python sidecar `tools/rave/rave_train.py`
+  plus `tools/rave/run_acids_rave_training.py` adapter for the real
+  `acids-rave` CLI. Training runs out-of-process, validates datasets
+  fail-fast, exports exact model files to `rave/models/`, and never touches
+  realtime audio callbacks or graph/render/plugin paths.
+- **Async job surface**: JSON-RPC `rave.startTraining`,
+  `rave.trainingJobStatus`, `rave.cancelTrainingJob` and MCP tools
+  `rave_start_training`, `rave_training_job_status`,
+  `rave_cancel_training_job`. Workers are cancellable and bounded by the
+  existing RAVE timeout.
+- **Neural panel training UI**: docked in the existing bottom-panel Neural
+  view with dataset/output/name/steps/batch/sample-rate controls, status poll,
+  cancellation, and `notify.raveTrainingProgress` handling.
+- **Psytrance training asset**: staged a local ignored dataset at
+  `rave/datasets/psytrance_synths/` from `E:\samples` and trained/probed
+  `rave/models/psytrance_synths.ts` (local model binary is ignored).
 
 ### v0.30.0 — Corpus-derived drum phrase bank
 

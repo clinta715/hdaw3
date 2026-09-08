@@ -48,6 +48,18 @@ async function renderPanel(modelsResult: unknown = MODELS, raveConfig: unknown =
         ? Promise.reject(new Error("unknown method"))
         : Promise.resolve(raveConfig);
     }
+    if (method === "rave.probeModel") {
+      return Promise.resolve({
+        ok: true,
+        methods: ["encode", "decode"],
+        sampleRate: null,
+        latentDim: 16,
+        latentFrames: 22,
+        encodeShape: [1, 16, 22],
+        decodeShape: [1, 2, 45056],
+        error: "",
+      });
+    }
     return Promise.resolve(undefined);
   });
   const utils = render(<NeuralPanel />);
@@ -58,6 +70,12 @@ async function renderPanel(modelsResult: unknown = MODELS, raveConfig: unknown =
 function fireProgress(params: Record<string, unknown>) {
   act(() => {
     notifHandlers["notify.raveProgress"]?.("notify.raveProgress", params);
+  });
+}
+
+function fireTrainingProgress(params: Record<string, unknown>) {
+  act(() => {
+    notifHandlers["notify.raveTrainingProgress"]?.("notify.raveTrainingProgress", params);
   });
 }
 
@@ -95,6 +113,16 @@ describe("NeuralPanel", () => {
     expect(options).toContain("Model B");
     // First model auto-selected.
     expect(select.value).toBe("C:/rave/models/a.onnx");
+  });
+
+
+  it("(a2) probes the selected model and displays offline metadata", async () => {
+    await renderPanel();
+    expect(mockedCall).toHaveBeenCalledWith("rave.probeModel", { modelPath: "C:/rave/models/a.onnx" });
+    expect(screen.getByText("Probe OK")).toBeTruthy();
+    expect(screen.getByText("Methods: encode / decode")).toBeTruthy();
+    expect(screen.getByText(/Latent: 16 × 22/)).toBeTruthy();
+    expect(screen.getByText(/SR: unknown/)).toBeTruthy();
   });
 
   it("(b) shows a friendly empty state when no models are found", async () => {
@@ -259,10 +287,80 @@ describe("NeuralPanel", () => {
     expect(select.value).toBe("C:/rave/models/a.onnx");
   });
 
-  it("subscribes to notify.raveProgress and unsubscribes on unmount", async () => {
+  it("(i) Start Training calls rave.startTraining with training payload and shows running state", async () => {
+    await renderPanel();
+    fireEvent.change(screen.getByPlaceholderText(/dataset folder/i), { target: { value: "C:/data/rave" } });
+    fireEvent.change(screen.getByDisplayValue("rave/models/trained_model.ts"), { target: { value: "C:/rave/out.ts" } });
+    mockedCall.mockImplementation((method: string) => {
+      if (method === "rave.startTraining") return Promise.resolve({ jobId: 77 });
+      return Promise.resolve(undefined);
+    });
+    fireEvent.click(getButton("Start Training"));
+    await flush();
+    expect(mockedCall).toHaveBeenCalledWith("rave.startTraining", {
+      datasetPath: "C:/data/rave",
+      outputModelPath: "C:/rave/out.ts",
+      name: "trained_model",
+      epochs: 10,
+      batchSize: 8,
+      sampleRate: 44100,
+    });
+    expect(getButton("Training…")).toBeTruthy();
+    expect(getButton("Cancel Training")).toBeTruthy();
+  });
+
+  it("(j) training progress updates status and ignores unrelated ids", async () => {
+    await renderPanel();
+    fireEvent.change(screen.getByPlaceholderText(/dataset folder/i), { target: { value: "C:/data/rave" } });
+    mockedCall.mockImplementation((method: string) => {
+      if (method === "rave.startTraining") return Promise.resolve({ jobId: 77 });
+      return Promise.resolve(undefined);
+    });
+    fireEvent.click(getButton("Start Training"));
+    await flush();
+    fireTrainingProgress({ jobId: 99, state: "finished", message: "other" });
+    expect(screen.queryByText("other")).toBeNull();
+    fireTrainingProgress({ jobId: 77, state: "finished", message: "done" });
+    expect(screen.getByText("finished")).toBeTruthy();
+    expect(screen.getByText("done")).toBeTruthy();
+  });
+
+  it("(k) Cancel Training calls rave.cancelTrainingJob with the running training job id", async () => {
+    await renderPanel();
+    fireEvent.change(screen.getByPlaceholderText(/dataset folder/i), { target: { value: "C:/data/rave" } });
+    mockedCall.mockImplementation((method: string) => {
+      if (method === "rave.startTraining") return Promise.resolve({ jobId: 77 });
+      return Promise.resolve(undefined);
+    });
+    fireEvent.click(getButton("Start Training"));
+    await flush();
+    fireEvent.click(getButton("Cancel Training"));
+    await flush();
+    expect(mockedCall).toHaveBeenCalledWith("rave.cancelTrainingJob", { jobId: 77 });
+  });
+
+  it("(l) Status polls rave.trainingJobStatus and updates training message", async () => {
+    await renderPanel();
+    fireEvent.change(screen.getByPlaceholderText(/dataset folder/i), { target: { value: "C:/data/rave" } });
+    mockedCall.mockImplementation((method: string) => {
+      if (method === "rave.startTraining") return Promise.resolve({ jobId: 77 });
+      if (method === "rave.trainingJobStatus") return Promise.resolve({ state: "running", message: "epoch 1" });
+      return Promise.resolve(undefined);
+    });
+    fireEvent.click(getButton("Start Training"));
+    await flush();
+    fireEvent.click(getButton("Status"));
+    await flush();
+    expect(mockedCall).toHaveBeenCalledWith("rave.trainingJobStatus", { jobId: 77 });
+    expect(screen.getByText("epoch 1")).toBeTruthy();
+  });
+
+  it("subscribes to RAVE notifications and unsubscribes on unmount", async () => {
     const { unmount } = await renderPanel();
     expect(mockedOnNotification).toHaveBeenCalledWith("notify.raveProgress", expect.any(Function));
+    expect(mockedOnNotification).toHaveBeenCalledWith("notify.raveTrainingProgress", expect.any(Function));
     unmount();
     expect(notifHandlers["notify.raveProgress"]).toBeUndefined();
+    expect(notifHandlers["notify.raveTrainingProgress"]).toBeUndefined();
   });
 });

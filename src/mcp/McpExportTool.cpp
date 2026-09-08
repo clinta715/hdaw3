@@ -27,7 +27,7 @@ void registerExportTool(McpServer& s) {
     if (!e) return;
 
     s.registerTool({"export_audio",
-        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cancellation is explicit via the cancel_export tool, which aborts an in-progress render and deletes the partial file. Optional queue=true waits up to 120s for a prior export to finish instead of immediately rejecting (CAS-guarded; still fails if timeout or cancelled).",
+        "Render the project to an audio file (wav/aiff/flac) asynchronously. The handler returns immediately with \"export started: <path>\"; the render runs on the ExportManager's internal worker thread. Progress is reported via notifications/progress (0.0..1.0); completion via notifications/exportComplete {success, message, outputPath}. Cancellation is explicit via the cancel_export tool, which aborts an in-progress render and deletes the partial file. Optional queue=true waits up to 120s for a prior export to finish instead of immediately rejecting (CAS-guarded; still fails if timeout or cancelled). Optional wait=true blocks until THIS render finishes (bounded by waitTimeoutMs, default 600000, clamped to 1000..1800000) and returns \"export complete: <path>\" on success or a timeout error if the render has not finished within the budget.",
         objSchema({{"outputPath", QJsonObject{{"type","string"}}},
                   {"format",     QJsonObject{{"type","string"},{"enum", QJsonArray{"wav","aiff","flac"}}}},
                   {"start",      QJsonObject{{"type","number"}}},
@@ -36,7 +36,9 @@ void registerExportTool(McpServer& s) {
                   {"bitDepth",   QJsonObject{{"type","integer"},{"enum", QJsonArray{16,24,32}}}},
                   {"trackIds",   QJsonObject{{"type","array"},{"items",QJsonObject{{"type","integer"}}}}},
                   {"dryRun",     QJsonObject{{"type","boolean"}}},
-                  {"queue",      QJsonObject{{"type","boolean"}}}},
+                  {"queue",      QJsonObject{{"type","boolean"}}},
+                  {"wait",         QJsonObject{{"type","boolean"}}},
+                  {"waitTimeoutMs", QJsonObject{{"type","integer"},{"default",600000},{"minimum",1000},{"maximum",1800000}}}},
                  {"outputPath"}),
         "export",
         [e, &s](const QJsonObject& a) -> McpToolResult {
@@ -126,6 +128,18 @@ void registerExportTool(McpServer& s) {
                 QJsonObject params{{"progress", 0.0},{"message","starting render"}};
                 McpNotification n{"notifications/progress", params};
                 s.notifyFromBackground(serializeNotification(n));
+            }
+
+            // Optional synchronous wait: block until THIS render finishes
+            // (bounded), mirroring the queue path's waitForIdle usage.
+            if (a.value("wait").toBool(false))
+            {
+                int waitMs = a.value("waitTimeoutMs").toInt(600000);
+                waitMs = std::max(1000, std::min(waitMs, 1800000));
+                if (em.waitForIdle(waitMs))
+                    return McpToolResult::text(QString("export complete: %1").arg(path));
+                return McpToolResult::text(
+                    QString("export wait timeout after %1ms; render may still be running (poll notifications/exportComplete or the file)").arg(waitMs), true);
             }
 
             return McpToolResult::text(QString("export started: %1 (format=%2, rate=%3, bits=%4, duration=%5s)")

@@ -31,7 +31,8 @@ public:
 
     // Key-change direction: ONE seeded choice at generation start — draws
     // 1..2 ONLY when keyShiftDegrees == 0 (an explicit shift consumes no
-    // draw).
+    // draw). Also seeds the bass/arp/stab gate map (one draw each, fixed
+    // order) so emission never reads an unseeded gate as zero duration.
     void initKey(int keyRoot, int scaleMode, std::mt19937& rng, int keyShiftDegrees);
     void keyChange();        // shiftKey
     int currentKeyRoot() const;

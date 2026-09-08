@@ -293,12 +293,12 @@ void AudioEngineCommands::setFxSlotBypassed(int trackIndex, int slotIndex, bool 
         proc->rebuildTrackFX(trackIndex);
 }
 
-void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
-                                         float value)
+float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
+                                          int paramIndex, float value)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto slot = findFxSlot(trackIndex, slotIndex);
-    if (!slot.isValid()) return;
+    if (!slot.isValid()) return value;
 
     // Write-side clamp: internal FX param values land in the ValueTree and
     // are re-read verbatim on every rebuild/export (loadParamsFromTree), so
@@ -320,6 +320,7 @@ void AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex, int para
 
     juce::String propName = "param_" + juce::String(paramIndex);
     slot.setProperty(juce::Identifier(propName), static_cast<double>(value), &um);
+    return value;
 }
 
 void AudioEngineCommands::setFmPatch(int trackIndex, int slotIndex,

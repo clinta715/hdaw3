@@ -35,6 +35,14 @@ void HarmonyEngine::initKey(int keyRoot, int scaleMode, std::mt19937& rng, int k
     scale = scaleMode;
     keyDir = keyShiftDegrees > 0 ? keyShiftDegrees : markovRngInt(rng, 1, 2);
     curKeyRoot = keyRoot;
+    // Seed the gate map: ONE deterministic draw per gateable role so a
+    // window that never sees a NoteLengthVariant still emits full-length
+    // notes (gateFor's unseeded default is 1.0). Draw order is fixed:
+    // bass, arp, stab ("pad" is deliberately unseeded — it always pulses).
+    // Same seed -> identical score per run; per-seed continuity across
+    // versions is NOT contractual (composition guide §4B).
+    for (const char* role : { "bass", "arp", "stab" })
+        gate[role] = kGateSet[markovRngInt(rng, 0, 2)];
 }
 
 void HarmonyEngine::keyChange()
@@ -82,10 +90,15 @@ void HarmonyEngine::applyNoteLengthVariant(std::mt19937& rng, const std::string&
 
 double HarmonyEngine::gateFor(const std::string& role) const
 {
-    // operator[]-equivalent read (the original map default-inserted 0.0 for
-    // unseeded roles — "pad" is deliberately unseeded, so its gate reads 0).
+    // Read-only map lookup. Unseeded roles default to 1.0 (full length) —
+    // the old 0.0 default made emission compute duration = base * 0.0 for
+    // any role whose gate was never seeded by a NoteLengthVariant draw, and
+    // zero-duration notes are silent through any ADSR synth (2026-09
+    // session: psyarp/psy_fm solo renders were pure silence). bass/arp/stab
+    // are seeded once in initKey; "pad" stays unseeded (it always pulses
+    // and no longer multiplies its pulse duration by the gate).
     auto it = gate.find(role);
-    return it != gate.end() ? it->second : 0.0;
+    return it != gate.end() ? it->second : 1.0;
 }
 
 int HarmonyEngine::degreeForBar(int bar) const
@@ -176,17 +189,16 @@ void HarmonyEngine::writeWindowNotes(int bar, int windowBars,
                     pad.add(startBeat, fifth,   vel - 8,  dur, maxNotes);
                     pad.add(startBeat, seventh, vel - 12, dur, maxNotes);
                 };
-                const double padGate = gateFor("pad"); // unseeded → 0 (always gated pulse)
-                if (padGate < 1.0)
-                {
-                    const bool useSixteenth = totalBars <= 128;
-                    const double step = useSixteenth ? 0.25 : 0.5;
-                    const double dur = useSixteenth ? 0.10 * padGate : 0.18 * padGate;
-                    for (double off = 0.0; off < 4.0; off += step)
-                        addPadChord(beatAbs + off, off == 0.0 ? style.padAccentVel : style.padGhostVel, dur);
-                }
-                else
-                    addPadChord(beatAbs, style.padVelocity, 4.0);
+                // "pad" is never a NoteLengthVariant target, so there is no
+                // seeded pad gate — the gated-pulse design IS the pulse:
+                // pads always step on the subdivision grid, and the pulse
+                // duration is NOT gate-multiplied (0.10/0.18) so the pulses
+                // are audible through ADSR synths.
+                const bool useSixteenth = totalBars <= 128;
+                const double step = useSixteenth ? 0.25 : 0.5;
+                const double dur = useSixteenth ? 0.10 : 0.18;
+                for (double off = 0.0; off < 4.0; off += step)
+                    addPadChord(beatAbs + off, off == 0.0 ? style.padAccentVel : style.padGhostVel, dur);
             }
         }
     }

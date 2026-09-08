@@ -3,8 +3,10 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QTemporaryDir>
+#include <QDir>
 #include <QFile>
 #include <QThread>
+#include <QDir>
 
 #include "engine/AudioEngine.h"
 #include "engine/AudioEngineCommands.h"
@@ -69,6 +71,43 @@ TEST(RaveRpc, ListModelsDispatchesThroughRaveNamespace)
     ASSERT_EQ(models.size(), 1);
     EXPECT_EQ(models.at(0).toObject().value("name").toString(), "model");
     EXPECT_EQ(models.at(0).toObject().value("extension").toString(), ".rave");
+}
+
+TEST(RaveRpc, ProbeModelDispatchesThroughRaveNamespace)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString model = dir.filePath("model.rave");
+    writeFile(model);
+    const QString script = dir.filePath("dummy_sidecar.py");
+    writeFile(script);
+
+#ifdef Q_OS_WIN
+    const QString runner = dir.filePath("rave_probe_rpc.bat");
+    QFile runnerFile(runner);
+    ASSERT_TRUE(runnerFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    runnerFile.write("@echo off\r\necho {^\"ok^\":true,^\"methods^\":[^\"encode^\",^\"decode^\"],^\"sampleRate^\":44100,^\"latentDim^\":16,^\"latentFrames^\":22,^\"encodeShape^\":[1,16,22],^\"decodeShape^\":[1,2,45056],^\"error^\":^\"^\"}\r\nexit /b 0\r\n");
+    runnerFile.close();
+#else
+    const QString runner = dir.filePath("rave_probe_rpc.sh");
+    QFile runnerFile(runner);
+    ASSERT_TRUE(runnerFile.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    runnerFile.write("#!/bin/sh\necho '{\"ok\":true,\"methods\":[\"encode\",\"decode\"],\"sampleRate\":44100,\"latentDim\":16,\"latentFrames\":22,\"encodeShape\":[1,16,22],\"decodeShape\":[1,2,45056],\"error\":\"\"}'\nexit 0\n");
+    runnerFile.close();
+    ASSERT_TRUE(QFile::setPermissions(runner, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+#endif
+
+    AudioEngine engine;
+    auto r = frontend::dispatch(engine, "rave.probeModel",
+                                QJsonObject{{"modelPath", model},
+                                            {"pythonPath", runner},
+                                            {"scriptPath", script}});
+
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+    const auto o = r.payload.toObject();
+    EXPECT_TRUE(o.value("ok").toBool(false));
+    EXPECT_EQ(o.value("latentDim").toInt(), 16);
+    EXPECT_EQ(o.value("sampleRate").toInt(), 44100);
 }
 
 
@@ -226,5 +265,126 @@ TEST(RaveRpc, CancelRunningJobReachesCancelled)
 
     QString state;
     pollRaveJob(engine, jobId, state);
+    EXPECT_EQ(state.toStdString(), "cancelled");
+}
+
+namespace {
+QJsonObject pollRaveTrainingJob(AudioEngine& engine, double jobId, QString& stateOut)
+{
+    QJsonObject last;
+    stateOut.clear();
+    for (int i = 0; i < 100; ++i)
+    {
+        auto r = frontend::dispatch(engine, "rave.trainingJobStatus", QJsonObject{{"jobId", jobId}});
+        if (r.isError)
+            return {};
+        last = r.payload.toObject();
+        stateOut = last.value("state").toString();
+        if (stateOut == "finished" || stateOut == "failed" || stateOut == "cancelled")
+            return last;
+        QThread::msleep(50);
+    }
+    return last;
+}
+} // namespace
+
+TEST(RaveRpc, StartTrainingFailFastMissingDatasetReachesTerminalFailed)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString script = dir.filePath("train_sidecar.py");
+    writeFile(script);
+
+    AudioEngine engine;
+    auto r = frontend::dispatch(engine, "rave.startTraining",
+                                QJsonObject{{"datasetPath", dir.filePath("missing_dataset")},
+                                            {"outputModelPath", dir.filePath("out.ts")},
+                                            {"scriptPath", script}});
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+    const double jobId = r.payload.toObject().value("jobId").toDouble(0);
+    ASSERT_GT(jobId, 0);
+
+    QString state;
+    const QJsonObject status = pollRaveTrainingJob(engine, jobId, state);
+    ASSERT_EQ(state.toStdString(), "failed");
+    EXPECT_TRUE(status.value("message").toString().contains("dataset directory not found"));
+    EXPECT_FALSE(status.value("result").toObject().value("ok").toBool(true));
+}
+
+TEST(RaveRpc, StartTrainingRejectsInvalidNumericParams)
+{
+    AudioEngine engine;
+    auto r = frontend::dispatch(engine, "rave.startTraining",
+                                QJsonObject{{"datasetPath", "dataset"},
+                                            {"outputModelPath", "out.ts"},
+                                            {"epochs", 0},
+                                            {"batchSize", 8},
+                                            {"sampleRate", 44100}});
+    ASSERT_TRUE(r.isError);
+    EXPECT_TRUE(r.payload.toObject().value("message").toString().contains("must be > 0"));
+}
+
+TEST(RaveRpc, TrainingUnknownStatusAndCancelReturnNotFound)
+{
+    AudioEngine engine;
+    auto s = frontend::dispatch(engine, "rave.trainingJobStatus", QJsonObject{{"jobId", 987654321.0}});
+    ASSERT_TRUE(s.isError);
+    EXPECT_TRUE(s.payload.toObject().value("message").toString().contains("not found"));
+
+    auto c = frontend::dispatch(engine, "rave.cancelTrainingJob", QJsonObject{{"jobId", 987654321.0}});
+    ASSERT_TRUE(c.isError);
+    EXPECT_TRUE(c.payload.toObject().value("message").toString().contains("not found"));
+}
+
+TEST(RaveRpc, CancelRunningTrainingJobReachesCancelled)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString dataset = dir.filePath("dataset");
+    ASSERT_TRUE(QDir().mkpath(dataset));
+    writeFile(dataset + "/one.wav");
+    const QString output = dir.filePath("trained.ts");
+
+    QString pythonPath;
+    QString script;
+#ifdef Q_OS_WIN
+    script = dir.filePath("sleep_train.bat");
+    {
+        QFile f(script);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("@echo off\r\nping 127.0.0.1 -n 30 >nul\r\nexit /b 0\r\n");
+    }
+    pythonPath = "cmd.exe";
+#else
+    script = dir.filePath("sleep_train.sh");
+    {
+        QFile f(script);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("#!/bin/sh\nsleep 25\n");
+        f.close();
+        QFile::setPermissions(script, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    }
+    pythonPath = "sh";
+#endif
+
+    AudioEngine engine;
+    auto r = frontend::dispatch(engine, "rave.startTraining",
+                                QJsonObject{{"datasetPath", dataset},
+                                            {"outputModelPath", output},
+                                            {"name", "test_model"},
+                                            {"epochs", 1},
+                                            {"batchSize", 1},
+                                            {"sampleRate", 44100},
+                                            {"pythonPath", pythonPath},
+                                            {"scriptPath", script}});
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+    const double jobId = r.payload.toObject().value("jobId").toDouble(0);
+    ASSERT_GT(jobId, 0);
+
+    auto c = frontend::dispatch(engine, "rave.cancelTrainingJob", QJsonObject{{"jobId", jobId}});
+    ASSERT_FALSE(c.isError) << c.payload.toObject().value("message").toString().toStdString();
+
+    QString state;
+    pollRaveTrainingJob(engine, jobId, state);
     EXPECT_EQ(state.toStdString(), "cancelled");
 }

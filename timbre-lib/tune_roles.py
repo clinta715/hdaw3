@@ -192,6 +192,7 @@ def check_role(role: str, descriptors: dict) -> dict:
         return {
             "role": role,
             "pass": False,
+            "skipped": True,
             "error": f"unknown role '{role}'; known: {sorted(ROLE_TARGETS.keys())}",
             "actual_centroid": descriptors.get("centroid"),
             "actual_mel_low": descriptors.get("mel_low"),

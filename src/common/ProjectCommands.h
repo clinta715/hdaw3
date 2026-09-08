@@ -193,8 +193,12 @@ public:
                                     const std::string& paramName, double value) = 0;
     virtual void removeFxSlot(int trackIndex, int slotIndex) = 0;
     virtual void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) = 0;
-    virtual void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
-                                float value) = 0;
+    // Returns the value actually written — the def-clamped value (the
+    // lesson-23 write-side guard) so callers can REPORT a clamp instead of
+    // a silent one. Passthrough cases (invalid slot, plugin/none type,
+    // out-of-range index) return the input value unchanged.
+    virtual float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
+                                 float value) = 0;
     // Load a raw DX7 patch (base64 of the 156-byte VCED layout) into an
     // "fm_synth" FX slot. Writes the patch to the slot's ValueTree (fmPatchData)
     // so tree-copy renders (export/gain-stage/audition) and save/load hear it,

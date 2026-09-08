@@ -1589,3 +1589,96 @@ TEST_F(FileLibraryTest, RefreshRecomputesEqualDeterministically) {
     EXPECT_FALSE(mgr.refreshClusterPreset("cp_00000000", ignPreset, ignOutcome, error));
     EXPECT_FALSE(error.isEmpty());
 }
+
+// ── fix-set A: library dedupe (registry + search + cluster) ─────────────────
+
+TEST_F(FileLibraryTest, AddLibrarySamePathSameTypeIsIdempotent) {
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id1 = mgr.addLibrary("Dup A", "C:/some/path", "midi");
+    ASSERT_FALSE(id1.isEmpty());
+
+    // Same directory, different slashes + drive-letter case -> same library.
+    auto id2 = mgr.addLibrary("Dup B", "c:\\some\\path", "midi");
+    EXPECT_EQ(id2, id1) << "duplicate path+type must return the existing id";
+    EXPECT_EQ(mgr.getLibraryIds().size(), 1) << "no duplicate library registered";
+
+    // A different type at the same path is still a separate library.
+    auto id3 = mgr.addLibrary("Dup A", "c:/some/path", "audio");
+    EXPECT_NE(id3, id1);
+    EXPECT_EQ(mgr.getLibraryIds().size(), 2);
+
+    // A different path is a separate library.
+    auto id4 = mgr.addLibrary("Other", "C:/other/path", "midi");
+    EXPECT_NE(id4, id1);
+    EXPECT_EQ(mgr.getLibraryIds().size(), 3);
+}
+
+TEST_F(FileLibraryTest, SearchDedupesDuplicatePathEntries) {
+    auto midiDir = tempDir.getChildFile("dedupe_midi");
+    midiDir.createDirectory();
+    for (const auto* nm : { "alpha.mid", "beta.mid" }) {
+        juce::MidiMessageSequence seq;
+        seq.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)80).withTimeStamp(0.0));
+        seq.addEvent(juce::MidiMessage::noteOff(1, 60).withTimeStamp(0.5));
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote(480);
+        file.addTrack(seq);
+        juce::FileOutputStream stream(midiDir.getChildFile(nm));
+        file.writeTo(stream);
+        stream.flush();
+    }
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id1 = mgr.addLibrary("DupSearch1", midiDir.getFullPathName(), "midi");
+    // A second library whose RAW path normalizes differently (a trailing "/.")
+    // but resolves to the SAME directory -> the same files indexed twice.
+    auto id2 = mgr.addLibrary("DupSearch2", midiDir.getFullPathName() + "/.", "midi");
+    ASSERT_FALSE(id1.isEmpty());
+    ASSERT_FALSE(id2.isEmpty());
+    EXPECT_NE(id1, id2) << "test setup: registration must NOT dedupe these raw paths";
+    mgr.scanLibrary(id1);
+    mgr.scanLibrary(id2);
+    waitForScan(mgr);
+
+    auto results = mgr.search("");
+    ASSERT_EQ(results.size(), 2u) << "duplicate libraries must not duplicate entries";
+    juce::StringArray paths;
+    for (const auto& r : results) {
+        EXPECT_FALSE(paths.contains(r.path)) << "duplicate entry path: " << r.path;
+        paths.add(r.path);
+    }
+}
+
+TEST_F(FileLibraryTest, ClusterLibraryDedupesDuplicatePathEntries) {
+    auto audioDir = tempDir.getChildFile("cluster_dedupe");
+    seedClusterFixture(audioDir);
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id1 = mgr.addLibrary("DupCluster1", audioDir.getFullPathName(), "audio");
+    auto id2 = mgr.addLibrary("DupCluster2", audioDir.getFullPathName() + "/.", "audio");
+    ASSERT_FALSE(id1.isEmpty());
+    ASSERT_FALSE(id2.isEmpty());
+    EXPECT_NE(id1, id2) << "test setup: registration must NOT dedupe these raw paths";
+    mgr.scanLibrary(id1);
+    mgr.scanLibrary(id2);
+    waitForScan(mgr);
+
+    juce::String error;
+    // Empty scope = ALL audio libraries, including both duplicates.
+    auto outcome = mgr.clusterLibrary({}, 2, "hybrid", error);
+    ASSERT_TRUE(error.isEmpty()) << error.toStdString();
+    ASSERT_FALSE(outcome.clusters.empty());
+
+    juce::StringArray paths;
+    int total = 0;
+    for (const auto& c : outcome.clusters)
+        for (const auto& m : c.members) {
+            ++total;
+            EXPECT_FALSE(paths.contains(m.path)) << "duplicate member path: " << m.path;
+            paths.add(m.path);
+        }
+    for (const auto& u : outcome.unassigned) {
+        ++total;
+        EXPECT_FALSE(paths.contains(u.path)) << "duplicate unassigned path: " << u.path;
+        paths.add(u.path);
+    }
+    EXPECT_EQ(total, 4) << "exactly the 4 fixture entries, no duplicates";
+}

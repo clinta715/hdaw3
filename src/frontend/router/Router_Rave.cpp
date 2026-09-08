@@ -5,6 +5,7 @@
 
 #include "../../engine/AudioEngine.h"
 #include "../../engine/RaveService.h"
+#include "../../engine/RaveTrainingJobManager.h"
 #include "../../model/ProjectModel.h"
 
 #include <QJsonArray>
@@ -43,6 +44,31 @@ QJsonObject transformToJson(const HDAW::RaveTransformResult& r)
     };
 }
 
+QJsonObject trainingResultToJson(const HDAW::RaveTrainingResult& r)
+{
+    return QJsonObject{
+        { "ok", r.ok },
+        { "outputModelPath", QString::fromUtf8(r.outputModelPath.toRawUTF8()) },
+        { "error", QString::fromUtf8(r.error.toRawUTF8()) },
+        { "stdoutText", QString::fromUtf8(r.stdoutText.toRawUTF8()) },
+        { "stderrText", QString::fromUtf8(r.stderrText.toRawUTF8()) },
+        { "exitCode", r.exitCode },
+    };
+}
+
+QJsonObject probeToJson(const HDAW::RaveProbeResult& r)
+{
+    QJsonObject o = r.payload;
+    if (!o.contains("ok"))
+        o.insert("ok", r.ok);
+    if (!o.contains("error"))
+        o.insert("error", QString::fromUtf8(r.error.toRawUTF8()));
+    o.insert("exitCode", r.exitCode);
+    if (!r.stderrText.isEmpty())
+        o.insert("stderrText", QString::fromUtf8(r.stderrText.toRawUTF8()));
+    return o;
+}
+
 // Outcome of the opt-in "render output -> project" step shared by
 // importResult and transformClip. samplerOk is false with a samplerError
 // message when the sampler send was requested but the slot is missing or is
@@ -51,6 +77,7 @@ struct RaveImportOutcome
 {
     int clipId = -1; // -1 when the clip import was skipped (noImport:true)
     bool samplerOk = false;
+    bool samplerRequested = false;
     QString samplerError;
 };
 
@@ -98,7 +125,16 @@ std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
     const int samplerTrack = optInt<int>(o, "samplerTrackIndex", -1, nullptr);
     const int samplerSlot = optInt<int>(o, "samplerSlotIndex", -1, nullptr);
     const int samplerRoot = optInt<int>(o, "samplerRootNote", 60, nullptr);
-    if (samplerTrack >= 0 && samplerSlot >= 0)
+    outcome.samplerRequested = (samplerTrack >= 0 && samplerSlot >= 0);
+    if (!outcome.samplerRequested)
+    {
+        outcome.samplerError = "not requested";
+    }
+    else if (!juce::File(outputPath.toStdString()).existsAsFile())
+    {
+        outcome.samplerError = "output file missing";
+    }
+    else
     {
         // NOTE: named fxSlots, not slots — Qt defines `slots` as a macro.
         const auto fxSlots = engine.getReadModel().getFxSlots(samplerTrack);
@@ -187,11 +223,53 @@ bool parseSidecarRequest(const QJsonObject& o, HDAW::RaveTransformRequest& req, 
     return true;
 }
 
+QJsonObject trainingJobStatusToJson(const HDAW::RaveTrainingJobStatus& s)
+{
+    QJsonObject o{
+        { "jobId", static_cast<double>(s.jobId) },
+        { "state", s.state },
+        { "message", s.message },
+    };
+    if (s.hasResult)
+        o.insert("result", trainingResultToJson(s.result));
+    else
+        o.insert("result", QJsonValue::Null);
+    return o;
+}
+
+bool parseTrainingRequest(const QJsonObject& o, HDAW::RaveTrainingRequest& req, DispatchResult* err)
+{
+    std::string datasetPath, outputModelPath;
+    if (!requireString(o, "datasetPath", datasetPath, nullptr) ||
+        !requireString(o, "outputModelPath", outputModelPath, nullptr))
+    {
+        if (err)
+            *err = makeError(-32602, "datasetPath and outputModelPath required");
+        return false;
+    }
+    req.datasetPath = datasetPath;
+    req.outputModelPath = outputModelPath;
+    req.name = o.value("name").toString().toStdString();
+    req.pythonPath = o.value("pythonPath").toString().toStdString();
+    req.scriptPath = o.value("scriptPath").toString().toStdString();
+    req.epochs = optInt(o, "epochs", 10, nullptr);
+    req.batchSize = optInt(o, "batchSize", 8, nullptr);
+    req.sampleRate = optInt(o, "sampleRate", 44100, nullptr);
+    if (req.epochs <= 0 || req.batchSize <= 0 || req.sampleRate <= 0)
+    {
+        if (err)
+            *err = makeError(-32602, "epochs, batchSize, and sampleRate must be > 0");
+        return false;
+    }
+    return true;
+}
+
 QJsonObject importOutcomeToJson(const RaveImportOutcome& outcome)
 {
     return QJsonObject{
         { "clipId", outcome.clipId },
         { "samplerOk", outcome.samplerOk },
+        { "samplerRequested", outcome.samplerRequested },
         { "samplerError", outcome.samplerError },
     };
 }
@@ -214,6 +292,23 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
         for (const auto& model : engine.getRaveService().listModels(dir))
             arr.append(modelToJson(model));
         return { false, QJsonObject{ { "models", arr } } };
+    }
+
+    if (m == "probeModel")
+    {
+        std::string modelPath;
+        if (!requireString(o, "modelPath", modelPath, nullptr))
+            return makeError(-32602, "modelPath required");
+
+        HDAW::RaveProbeRequest req;
+        req.modelPath = modelPath;
+        req.pythonPath = o.value("pythonPath").toString().toStdString();
+        req.scriptPath = o.value("scriptPath").toString().toStdString();
+
+        const auto result = engine.getRaveService().probeModel(req);
+        if (!result.ok)
+            return makeError(-32603, QString::fromUtf8(result.error.toRawUTF8()));
+        return { false, probeToJson(result) };
     }
 
     if (m == "transformFile")
@@ -299,6 +394,7 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
             { "transform", transformToJson(result) },
             { "clipId", outcome->clipId },
             { "samplerOk", outcome->samplerOk },
+            { "samplerRequested", outcome->samplerRequested },
             { "samplerError", outcome->samplerError },
         };
         return { false, payload };
@@ -330,6 +426,56 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
 
         const int64_t jobId = engine.getRaveJobManager().startJob(req, std::move(notify));
         return { false, QJsonObject{ { "jobId", static_cast<double>(jobId) } } };
+    }
+
+    if (m == "startTraining")
+    {
+        HDAW::RaveTrainingRequest req;
+        DispatchResult parseErr;
+        if (!parseTrainingRequest(o, req, &parseErr))
+            return parseErr;
+
+        HDAW::RaveTrainingJobManager::NotifyFn notify;
+        if (server != nullptr)
+        {
+            QPointer<FrontendServer> guard(server);
+            notify = [guard](int64_t jobId, const QString& state, const QString& message) {
+                if (guard.isNull())
+                    return;
+                guard->broadcastNotificationFromAnyThread(
+                    notify::RaveTrainingProgress,
+                    QJsonObject{ { "jobId", static_cast<double>(jobId) },
+                                 { "state", state },
+                                 { "message", message } });
+            };
+        }
+
+        const int64_t jobId = engine.getRaveTrainingJobManager().startJob(req, std::move(notify));
+        return { false, QJsonObject{ { "jobId", static_cast<double>(jobId) } } };
+    }
+
+    if (m == "trainingJobStatus")
+    {
+        int64_t jobId = 0;
+        if (!requireInt(o, "jobId", jobId, nullptr) || jobId <= 0)
+            return makeError(-32602, "jobId required");
+        HDAW::RaveTrainingJobStatus status;
+        if (!engine.getRaveTrainingJobManager().jobStatus(jobId, status))
+            return makeError(-32602, "rave training job not found: " + QString::number(jobId));
+        return { false, trainingJobStatusToJson(status) };
+    }
+
+    if (m == "cancelTrainingJob")
+    {
+        int64_t jobId = 0;
+        if (!requireInt(o, "jobId", jobId, nullptr) || jobId <= 0)
+            return makeError(-32602, "jobId required");
+        HDAW::RaveTrainingJobStatus status;
+        if (!engine.getRaveTrainingJobManager().cancelJob(jobId, status))
+            return makeError(-32602, "rave training job not found: " + QString::number(jobId));
+        return { false, QJsonObject{ { "jobId", static_cast<double>(status.jobId) },
+                                     { "state", status.state },
+                                     { "message", status.message } } };
     }
 
     if (m == "jobStatus")

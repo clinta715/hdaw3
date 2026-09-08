@@ -57,7 +57,7 @@ python rave_transform.py --input X.wav --model M.ts --output Z.wav --temperature
 
 ### RPC surface (`src/frontend/router/Router_Rave.cpp`, namespace `rave`)
 - `rave.listModels {directory?}` → `{models:[{name,path,extension,sizeBytes}]}`
-  (default dirs: QSettings `rave/modelDirs` + `<cwd>/rave/` + `%APPDATA%/ACIDS/RAVE`)
+  (default dirs: QSettings `rave/modelDirs` + `<cwd>/rave/` + `<cwd>/rave/models/` + legacy `%APPDATA%/ACIDS/RAVE`)
 - `rave.transformFile` / `rave.transformClip` — SYNC (dev/agent use; 30 s
   RpcClient timeout makes them unsuitable for real renders from the UI)
 - `rave.startTransform {inputPath, modelPath, outputPath, pythonPath?, scriptPath?, temperature?, seed?}` → `{jobId}`
@@ -168,7 +168,7 @@ Persist named latent trajectories or morph curves as JSON in the FileLibrary/pat
    stdout (`FALLBACK-DSP:` prefix) so renders are attributable.
 5. **Renders go to `compositions/`** (gitignored); fixtures stay in
    `tools/rave/fixtures/`; model binaries NEVER committed (`/rave/` and
-   `*.wav`/`*.gguf` ignored; `vintage.ts` lives in `%APPDATA%/ACIDS/RAVE`).
+   `*.wav`/`*.gguf` ignored; `vintage.ts` is staged repo-locally under `rave/models/`).
 6. **MCP parity in the same change** as any RPC addition.
 7. **hdaw-guard:** plan with success gates → graph query → dispatch
    implementation to subagents → verify with evidence. QSettings/cwd/env are
@@ -213,7 +213,7 @@ cd frontend; npx playwright test e2e/neural-panel.spec.ts --reporter=line
 
 # direct sidecar (real model)
 python tools/rave/rave_transform.py --input tools/rave/fixtures/test_tone.wav `
-  --model "$env:APPDATA\ACIDS\RAVE\vintage.ts" --output compositions/probe.wav --temperature 1.0 --seed 0
+  --model ".\rave\models\vintage.ts" --output compositions/probe.wav --temperature 1.0 --seed 0
 
 # packaged-layout probe: launch frontend\release\win-unpacked\resources\engine\HDAW_headless.exe
 # with cwd OUTSIDE the repo (proves the <exe_dir>/../rave fallback), then drive ws://127.0.0.1:8766.

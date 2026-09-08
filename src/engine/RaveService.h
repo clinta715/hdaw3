@@ -39,10 +39,50 @@ struct RaveTransformResult
     int exitCode = -1;
 };
 
+struct RaveProbeRequest
+{
+    juce::String modelPath;
+    juce::String pythonPath;
+    juce::String scriptPath;
+};
+
+struct RaveProbeResult
+{
+    bool ok = false;
+    QJsonObject payload;
+    juce::String error;
+    juce::String stdoutText;
+    juce::String stderrText;
+    int exitCode = -1;
+};
+
+struct RaveTrainingRequest
+{
+    juce::String datasetPath;
+    juce::String outputModelPath;
+    juce::String name;
+    juce::String pythonPath;
+    juce::String scriptPath;
+    int epochs = 10;
+    int batchSize = 8;
+    int sampleRate = 44100;
+};
+
+struct RaveTrainingResult
+{
+    bool ok = false;
+    juce::String outputModelPath;
+    juce::String error;
+    juce::String stdoutText;
+    juce::String stderrText;
+    int exitCode = -1;
+};
+
 class RaveService
 {
 public:
     std::vector<RaveModelInfo> listModels(const juce::File& directory = {}) const;
+    RaveProbeResult probeModel(const RaveProbeRequest& request) const;
     RaveTransformResult transformFile(const RaveTransformRequest& request) const;
 
     // RAVE #5 persisted-config resolution. Order:
@@ -58,6 +98,7 @@ public:
     // (every HDAW entry point sets them); when unset the QSettings layer is
     // skipped and resolution falls through to env/defaults (legacy behavior).
     static juce::String resolveScriptPath(const juce::String& explicitValue);
+    static juce::String resolveTrainScriptPath(const juce::String& explicitValue);
     static juce::String resolvePythonPath(const juce::String& explicitValue);
     static int resolveTimeoutMs();
 

@@ -142,6 +142,19 @@ static QString suggestFor(const QString& role, const Descriptors& desc, const Ro
     return parts.join("; ");
 }
 
+// Defensive: older sidecars may omit "skipped" on unknown-role check failures
+static QString ensureSidecarSkippedFlag(const QString& json)
+{
+    QJsonObject obj = QJsonDocument::fromJson(json.toUtf8()).object();
+    QJsonObject chk = obj.value("check").toObject();
+    if (!chk.contains("skipped") && chk.value("error").toString().contains("unknown role")) {
+        chk.insert("skipped", true);
+        obj.insert("check", chk);
+        return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    }
+    return json;
+}
+
 static QJsonObject checkRole(const QString& roleIn, const Descriptors& d)
 {
     QString role = normalizeRole(roleIn);
@@ -150,6 +163,7 @@ static QJsonObject checkRole(const QString& roleIn, const Descriptors& d)
     out["role"] = role;
     if (!targets.contains(role)) {
         out["pass"] = false;
+        out["skipped"] = true;
         out["error"] = QString("unknown role '%1'; known: kick,bass,arp,lead,hat,pad").arg(role);
         out["actual_centroid"] = d.centroid;
         out["actual_mel_low"] = d.melLow;
@@ -195,7 +209,8 @@ void registerTuningTools(McpServer& s, AudioEngine* e)
         "compares to per-role targets, and returns pass/fail + deterministic suggestions "
         "(rootNote +/-12, filter cutoff, OctaveRange). "
         "Use to verify psytrance tuning: kick <120Hz, bass 60-250Hz, arp/lead 400-3000Hz, hat >6kHz. "
-        "Offline analysis+suggestion only; re-render via export then re-analyze (loop up to 3 times).",
+        "Offline analysis+suggestion only; re-render via export then re-analyze (loop up to 3 times). "
+        "unknown role values return skipped:true and are not evaluated.",
         objSchema({
             {"wavPath", QJsonObject{{"type","string"}}},
             {"role", QJsonObject{{"type","string"}}}
@@ -242,7 +257,7 @@ void registerTuningTools(McpServer& s, AudioEngine* e)
                     QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
                     if (out.contains("centroid") && out.contains("{")) {
                         // valid JSON from python
-                        return McpToolResult::text(out);
+                        return McpToolResult::text(ensureSidecarSkippedFlag(out));
                     }
                 }
                 // Try wsl wrapper on Windows: wsl <venv python> <wsl script> <wsl wav>
@@ -267,7 +282,7 @@ void registerTuningTools(McpServer& s, AudioEngine* e)
                     proc.start("wsl", args);
                     if (proc.waitForStarted(3000) && proc.waitForFinished(20000) && proc.exitCode()==0) {
                         QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-                        if (out.contains("centroid") && out.contains("{")) return McpToolResult::text(out);
+                        if (out.contains("centroid") && out.contains("{")) return McpToolResult::text(ensureSidecarSkippedFlag(out));
                     }
                 }
             }

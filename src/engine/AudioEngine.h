@@ -12,6 +12,7 @@
 #include "AudioPreviewPlayer.h"
 #include "FileLibraryManager.h"
 #include "RaveJobManager.h"
+#include "RaveTrainingJobManager.h"
 #include "RaveService.h"
 #include "AudioEngineCommands.h"
 #include "ReadModelImpl.h"
@@ -60,6 +61,8 @@ public:
     const HDAW::RaveService& getRaveService() const { return raveService; }
     HDAW::RaveJobManager& getRaveJobManager() { return raveJobManager; }
     const HDAW::RaveJobManager& getRaveJobManager() const { return raveJobManager; }
+    HDAW::RaveTrainingJobManager& getRaveTrainingJobManager() { return raveTrainingJobManager; }
+    const HDAW::RaveTrainingJobManager& getRaveTrainingJobManager() const { return raveTrainingJobManager; }
 
     struct McpHttpConfig
     {
@@ -258,6 +261,7 @@ private:
     HDAW::FileLibraryManager fileLibraryManager;
     HDAW::RaveService raveService;
     HDAW::RaveJobManager raveJobManager;
+    HDAW::RaveTrainingJobManager raveTrainingJobManager;
     std::unique_ptr<HDAW::AudioPreviewPlayer> previewPlayer;
 
     std::unique_ptr<mcp::McpServer> mcpHttpServer;

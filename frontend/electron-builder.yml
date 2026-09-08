@@ -23,6 +23,8 @@ extraResources:
     to: rave/
     filter:
       - "rave_transform.py"
+      - "rave_train.py"
+      - "run_acids_rave_training.py"
       - "README.md"
 
 fileAssociations:

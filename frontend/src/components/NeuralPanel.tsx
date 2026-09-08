@@ -13,6 +13,23 @@ interface RaveModel {
   sizeBytes?: number;
 }
 
+interface RaveProbeMetadata {
+  ok?: boolean;
+  methods?: string[];
+  sampleRate?: number | null;
+  latentDim?: number | null;
+  latentFrames?: number | null;
+  encodeShape?: number[] | null;
+  decodeShape?: number[] | null;
+  error?: string;
+}
+
+type ProbeState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "success"; data: RaveProbeMetadata }
+  | { phase: "error"; error: string };
+
 // Job lifecycle strings emitted by the engine's RaveJobManager on
 // notify.raveProgress: "running" | "finished" | "failed" | "cancelled".
 type JobPhase = "idle" | "running" | "finished" | "failed" | "cancelled";
@@ -37,6 +54,7 @@ export default function NeuralPanel() {
   const [outputPath, setOutputPath] = useState(() => defaultOutputPath(null));
   const [temperature, setTemperature] = useState(1.0);
   const [seed, setSeed] = useState(0);
+  const [probeState, setProbeState] = useState<ProbeState>({ phase: "idle" });
 
   const [phase, setPhase] = useState<JobPhase>("idle");
   const [jobMessage, setJobMessage] = useState("");
@@ -51,6 +69,16 @@ export default function NeuralPanel() {
   const [alignToGrid, setAlignToGrid] = useState(false);
   const [samplerTrack, setSamplerTrack] = useState(-1);
   const [samplerSlot, setSamplerSlot] = useState(-1);
+
+  const [datasetPath, setDatasetPath] = useState("");
+  const [trainingOutputPath, setTrainingOutputPath] = useState("rave/models/trained_model.ts");
+  const [trainingName, setTrainingName] = useState("trained_model");
+  const [trainingEpochs, setTrainingEpochs] = useState(10);
+  const [trainingBatchSize, setTrainingBatchSize] = useState(8);
+  const [trainingSampleRate, setTrainingSampleRate] = useState(44100);
+  const [trainingPhase, setTrainingPhase] = useState<JobPhase>("idle");
+  const [trainingMessage, setTrainingMessage] = useState("");
+  const trainingJobIdRef = useRef<number | null>(null);
 
   // Prefill input/output paths from the pending-clip handoff.
   useEffect(() => {
@@ -105,6 +133,35 @@ export default function NeuralPanel() {
     return () => { cancelled = true; };
   }, []);
 
+  // Probe the selected model for offline metadata only. This intentionally
+  // does not enable latent-edit controls yet; it degrades quietly on older
+  // engines that do not expose rave.probeModel.
+  useEffect(() => {
+    if (!modelPath) {
+      setProbeState({ phase: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setProbeState({ phase: "loading" });
+    const run = async () => {
+      try {
+        const data = (await rpc.call("rave.probeModel", { modelPath })) as RaveProbeMetadata | null;
+        if (cancelled) return;
+        if (data?.ok) {
+          setProbeState({ phase: "success", data });
+        } else {
+          setProbeState({ phase: "error", error: data?.error || "RAVE probe failed" });
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setProbeState({ phase: "error", error: message || "RAVE probe unavailable" });
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [modelPath]);
+
   // Subscribe to job progress once; unsubscribe on unmount.
   useEffect(() => {
     const off = rpc.onNotification("notify.raveProgress", (_method, params) => {
@@ -131,6 +188,30 @@ export default function NeuralPanel() {
         setPhase("cancelled");
       } else {
         setPhase("running");
+      }
+    });
+    return off;
+  }, []);
+
+  useEffect(() => {
+    const off = rpc.onNotification("notify.raveTrainingProgress", (_method, params) => {
+      const p = (params ?? {}) as { jobId?: number; state?: string; message?: string };
+      if (p.jobId == null || trainingJobIdRef.current == null || p.jobId !== trainingJobIdRef.current) return;
+      const st = String(p.state ?? "");
+      setTrainingMessage(p.message ?? "");
+      if (st === "finished") {
+        setTrainingPhase("finished");
+        useNotifyStore.getState().push({ level: "success", message: "RAVE training finished" });
+      } else if (st === "failed") {
+        setTrainingPhase("failed");
+        useNotifyStore.getState().push({
+          level: "error",
+          message: `RAVE training failed: ${p.message ?? "unknown error"}`,
+        });
+      } else if (st === "cancelled") {
+        setTrainingPhase("cancelled");
+      } else {
+        setTrainingPhase("running");
       }
     });
     return off;
@@ -175,6 +256,58 @@ export default function NeuralPanel() {
     }
   }, []);
 
+  const startTraining = useCallback(async () => {
+    if (!datasetPath || !trainingOutputPath) return;
+    trainingJobIdRef.current = null;
+    setTrainingPhase("running");
+    setTrainingMessage("Starting…");
+    try {
+      const res = await rpc.call("rave.startTraining", {
+        datasetPath,
+        outputModelPath: trainingOutputPath,
+        name: trainingName,
+        epochs: trainingEpochs,
+        batchSize: trainingBatchSize,
+        sampleRate: trainingSampleRate,
+      });
+      const jobId = (res as { jobId?: number } | null)?.jobId ?? null;
+      trainingJobIdRef.current = jobId;
+      if (jobId != null) setTrainingMessage(`Training job #${jobId}`);
+      if (jobId == null) {
+        setTrainingPhase("failed");
+        setTrainingMessage("Engine returned no training jobId");
+      }
+    } catch (err) {
+      setTrainingPhase("failed");
+      reportRpcError("rave.startTraining", err);
+    }
+  }, [datasetPath, trainingOutputPath, trainingName, trainingEpochs, trainingBatchSize, trainingSampleRate]);
+
+  const refreshTrainingStatus = useCallback(async () => {
+    const jobId = trainingJobIdRef.current;
+    if (jobId == null) return;
+    try {
+      const status = (await rpc.call("rave.trainingJobStatus", { jobId })) as { state?: string; message?: string } | null;
+      const st = String(status?.state ?? "");
+      setTrainingMessage(status?.message ?? "");
+      if (st === "running" || st === "finished" || st === "failed" || st === "cancelled") {
+        setTrainingPhase(st);
+      }
+    } catch (err) {
+      reportRpcError("rave.trainingJobStatus", err);
+    }
+  }, []);
+
+  const cancelTrainingJob = useCallback(async () => {
+    const jobId = trainingJobIdRef.current;
+    if (jobId == null) return;
+    try {
+      await rpc.call("rave.cancelTrainingJob", { jobId });
+    } catch (err) {
+      reportRpcError("rave.cancelTrainingJob", err);
+    }
+  }, []);
+
   const importResult = useCallback(async () => {
     if (!outputPath) return;
     const params: Record<string, unknown> = {
@@ -199,6 +332,7 @@ export default function NeuralPanel() {
   }, [outputPath, importTrack, importStartBeats, alignToGrid, samplerTrack, samplerSlot]);
 
   const canStart = phase !== "running" && !!modelPath && !!inputPath && !!outputPath;
+  const canStartTraining = trainingPhase !== "running" && !!datasetPath && !!trainingOutputPath;
   const modelsLoaded = models !== null;
 
   return (
@@ -226,6 +360,23 @@ export default function NeuralPanel() {
             </select>
           )}
         </div>
+
+        {modelPath && (
+          <div className="neural-panel__probe" aria-label="RAVE model probe">
+            {probeState.phase === "loading" && <span className="neural-panel__empty">Probing model…</span>}
+            {probeState.phase === "success" && (
+              <>
+                <span className="neural-panel__badge">Probe OK</span>
+                <span>Methods: {(probeState.data.methods ?? []).filter((m) => m === "encode" || m === "decode").join(" / ") || "—"}</span>
+                <span>Latent: {probeState.data.latentDim ?? "?"} × {probeState.data.latentFrames ?? "?"}</span>
+                <span>SR: {probeState.data.sampleRate ?? "unknown"}</span>
+              </>
+            )}
+            {probeState.phase === "error" && (
+              <span className="neural-panel__probe-error">Probe unavailable: {probeState.error}</span>
+            )}
+          </div>
+        )}
 
         <div className="neural-panel__field">
           <label className="neural-panel__label">Input</label>
@@ -299,6 +450,96 @@ export default function NeuralPanel() {
           <div className="neural-panel__status" data-phase={phase}>
             <span className="neural-panel__phase">{phase}</span>
             {jobMessage && <span className="neural-panel__msg">{jobMessage}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="neural-panel__col neural-panel__training" aria-label="RAVE training">
+        <div className="neural-panel__title">Train Model</div>
+
+        <div className="neural-panel__field">
+          <label className="neural-panel__label">Dataset</label>
+          <input
+            className="neural-panel__input neural-panel__input--path"
+            type="text"
+            value={datasetPath}
+            placeholder="Dataset folder containing .wav files"
+            onChange={(e) => setDatasetPath(e.target.value)}
+          />
+        </div>
+
+        <div className="neural-panel__field">
+          <label className="neural-panel__label">Model Out</label>
+          <input
+            className="neural-panel__input neural-panel__input--path"
+            type="text"
+            value={trainingOutputPath}
+            onChange={(e) => setTrainingOutputPath(e.target.value)}
+          />
+        </div>
+
+        <div className="neural-panel__field">
+          <label className="neural-panel__label">Name</label>
+          <input
+            className="neural-panel__input neural-panel__input--path"
+            type="text"
+            value={trainingName}
+            onChange={(e) => setTrainingName(e.target.value)}
+          />
+        </div>
+
+        <div className="neural-panel__field">
+          <label className="neural-panel__label">Epochs</label>
+          <input
+            className="neural-panel__input neural-panel__input--num"
+            type="number"
+            min={1}
+            value={trainingEpochs}
+            onChange={(e) => setTrainingEpochs(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          />
+          <label className="neural-panel__label">Batch</label>
+          <input
+            className="neural-panel__input neural-panel__input--num"
+            type="number"
+            min={1}
+            value={trainingBatchSize}
+            onChange={(e) => setTrainingBatchSize(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          />
+        </div>
+
+        <div className="neural-panel__field">
+          <label className="neural-panel__label">SR</label>
+          <input
+            className="neural-panel__input neural-panel__input--num"
+            type="number"
+            min={1}
+            value={trainingSampleRate}
+            onChange={(e) => setTrainingSampleRate(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          />
+        </div>
+
+        <div className="neural-panel__actions">
+          <button
+            className="neural-panel__btn neural-panel__btn--primary"
+            onClick={startTraining}
+            disabled={!canStartTraining}
+          >
+            {trainingPhase === "running" ? "Training…" : "Start Training"}
+          </button>
+          <button className="neural-panel__btn" onClick={refreshTrainingStatus} disabled={trainingJobIdRef.current == null}>
+            Status
+          </button>
+          {trainingPhase === "running" && (
+            <button className="neural-panel__btn" onClick={cancelTrainingJob}>
+              Cancel Training
+            </button>
+          )}
+        </div>
+
+        {trainingPhase !== "idle" && (
+          <div className="neural-panel__status" data-phase={trainingPhase}>
+            <span className="neural-panel__phase">{trainingPhase}</span>
+            {trainingMessage && <span className="neural-panel__msg">{trainingMessage}</span>}
           </div>
         )}
       </div>

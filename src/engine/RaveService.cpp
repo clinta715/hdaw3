@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonParseError>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSettings>
@@ -80,7 +82,12 @@ std::vector<juce::File> RaveService::defaultModelDirectories()
 
     auto repoRave = juce::File::getCurrentWorkingDirectory().getChildFile("rave");
     if (repoRave.isDirectory())
+    {
         addDir(repoRave);
+        auto repoRaveModels = repoRave.getChildFile("models");
+        if (repoRaveModels.isDirectory())
+            addDir(repoRaveModels);
+    }
 
     auto appData = envString("APPDATA");
     if (appData.isNotEmpty())
@@ -165,6 +172,32 @@ juce::String RaveService::resolveScriptPath(const juce::String& explicitValue)
     const auto packagedCandidate = exeDir.getParentDirectory()
                                        .getChildFile("rave")
                                        .getChildFile("rave_transform.py");
+    if (packagedCandidate.existsAsFile())
+        return packagedCandidate.getFullPathName();
+
+    return {};
+}
+
+juce::String RaveService::resolveTrainScriptPath(const juce::String& explicitValue)
+{
+    if (explicitValue.isNotEmpty())
+        return explicitValue;
+    const auto fromEnv = envString("HDAW_RAVE_TRAIN_SCRIPT");
+    if (fromEnv.isNotEmpty())
+        return fromEnv;
+
+    const auto devCandidate = juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile("tools")
+                                  .getChildFile("rave")
+                                  .getChildFile("rave_train.py");
+    if (devCandidate.existsAsFile())
+        return devCandidate.getFullPathName();
+
+    const auto exeDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                            .getParentDirectory();
+    const auto packagedCandidate = exeDir.getParentDirectory()
+                                       .getChildFile("rave")
+                                       .getChildFile("rave_train.py");
     if (packagedCandidate.existsAsFile())
         return packagedCandidate.getFullPathName();
 
@@ -266,6 +299,100 @@ bool RaveService::savePersistedConfig(const QJsonObject& patch, QString* errorOu
     if (patch.contains("timeoutMs"))
         s.setValue(SettingsKeys::kKeyRaveTimeoutMs, patch.value("timeoutMs").toInt());
     return true;
+}
+
+RaveProbeResult RaveService::probeModel(const RaveProbeRequest& request) const
+{
+    RaveProbeResult result;
+
+    const juce::File model(request.modelPath);
+    if (request.modelPath.isEmpty() || !model.existsAsFile())
+    {
+        result.error = "model file not found: " + request.modelPath;
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    if (!isSupportedModelExtension(model.getFileExtension()))
+    {
+        result.error = "unsupported RAVE model extension: " + model.getFileExtension();
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    const auto scriptPath = resolveScriptPath(request.scriptPath);
+    if (scriptPath.isEmpty())
+    {
+        result.error = "RAVE transform script not configured (set scriptPath or HDAW_RAVE_SCRIPT)";
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    const juce::File script(scriptPath);
+    if (!script.existsAsFile())
+    {
+        result.error = "RAVE transform script not found: " + scriptPath;
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    const auto pythonPath = resolvePythonPath(request.pythonPath);
+
+    QProcess process;
+    process.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+
+    QStringList args;
+    args << QString::fromUtf8(scriptPath.toRawUTF8())
+         << QStringLiteral("--mode") << QStringLiteral("probe")
+         << QStringLiteral("--model") << QString::fromUtf8(model.getFullPathName().toRawUTF8());
+
+    process.start(QString::fromUtf8(pythonPath.toRawUTF8()), args);
+    if (!process.waitForStarted(5000))
+    {
+        result.error = "failed to start RAVE sidecar: " + juce::String(process.errorString().toUtf8().constData());
+        result.stderrText = juce::String(process.readAllStandardError().constData());
+        result.stdoutText = juce::String(process.readAllStandardOutput().constData());
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    if (!process.waitForFinished(resolveTimeoutMs()))
+    {
+        process.kill();
+        process.waitForFinished(5000);
+        result.exitCode = process.exitCode();
+        result.error = "RAVE sidecar timed out";
+        result.stderrText = juce::String(process.readAllStandardError().constData());
+        result.stdoutText = juce::String(process.readAllStandardOutput().constData());
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    result.exitCode = process.exitCode();
+    result.stderrText = juce::String(process.readAllStandardError().constData());
+    result.stdoutText = juce::String(process.readAllStandardOutput().constData());
+
+    QJsonParseError parseError;
+    const auto doc = QJsonDocument::fromJson(QString::fromUtf8(result.stdoutText.toRawUTF8()).toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject())
+    {
+        result.error = "RAVE probe returned invalid JSON: " + juce::String(parseError.errorString().toUtf8().constData());
+        result.payload = QJsonObject{{"ok", false}, {"error", QString::fromUtf8(result.error.toRawUTF8())}};
+        return result;
+    }
+
+    result.payload = doc.object();
+    result.ok = process.exitStatus() == QProcess::NormalExit
+        && result.exitCode == 0
+        && result.payload.value("ok").toBool(false);
+    if (!result.ok)
+    {
+        const auto payloadError = result.payload.value("error").toString();
+        result.error = payloadError.isEmpty()
+            ? ("RAVE probe failed with exit code " + juce::String(result.exitCode))
+            : juce::String(payloadError.toUtf8().constData());
+    }
+    return result;
 }
 
 RaveTransformResult RaveService::transformFile(const RaveTransformRequest& request) const

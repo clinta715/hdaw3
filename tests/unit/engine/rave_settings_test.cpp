@@ -246,7 +246,40 @@ TEST_F(RaveSettings, NonPositiveTimeoutRejected)
     EXPECT_NE(getResp.payload.toObject().value("timeoutMs").toInt(), -5);
 }
 
-// (b) listModels picks up QSettings model dirs ---------------------------------
+// (b) listModels picks up QSettings model dirs and repo-local staging -----------
+
+TEST_F(RaveSettings, ListModelsPicksUpRepoLocalModelsSubdir)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    const juce::File root(dir.path().toStdString());
+    const auto modelsDir = root.getChildFile("rave").getChildFile("models");
+    ASSERT_TRUE(modelsDir.createDirectory());
+    writeFile(QString::fromStdString(modelsDir.getChildFile("repo_vintage.ts").getFullPathName().toStdString()));
+
+    {
+        QSettings s;
+        s.remove(SettingsKeys::kKeyRaveModelDirs);
+        s.sync();
+    }
+
+    const CwdGuard cwd(root);
+    const HDAW::RaveService service;
+    const auto models = service.listModels(); // no explicit directory
+
+    bool found = false;
+    for (const auto& model : models)
+    {
+        if (model.name == "repo_vintage")
+        {
+            found = true;
+            EXPECT_TRUE(juce::File(model.path).existsAsFile());
+            EXPECT_TRUE(juce::File(model.path).getParentDirectory().getFileName() == "models");
+        }
+    }
+    EXPECT_TRUE(found);
+}
 
 TEST_F(RaveSettings, ListModelsPicksUpSettingsModelDirs)
 {

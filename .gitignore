@@ -197,8 +197,14 @@ timbre-lib/demo_libs/
 repro_out/
 tools/.ruff_cache/
 
-# RAVE VST models (master copies staged locally; plugin loads from %%APPDATA%%\ACIDS\RAVE)
+# RAVE model/dataset staging (repo-local, ignored; scanned via ./rave and ./rave/models)
 /rave/
+
+# Repo-local RAVE training virtualenv
+/.venv-rave/
+
+# Local migrated home/AppData artifacts (not part of source/package inputs)
+/local-artifacts/
 
 # Python bytecode caches (sidecar/tooling)
 __pycache__/

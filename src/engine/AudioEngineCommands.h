@@ -179,8 +179,8 @@ public:
                             const std::string& paramName, double value) override;
     void removeFxSlot(int trackIndex, int slotIndex) override;
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
-    void setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
-                        float value) override;
+    float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
+                         float value) override;
     void setFmPatch(int trackIndex, int slotIndex,
                     const std::string& patchBase64) override;
 

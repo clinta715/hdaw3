@@ -2,10 +2,12 @@
 #include "McpServer.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/RaveService.h"
+#include "../engine/RaveTrainingJobManager.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 
 namespace mcp {
 namespace {
@@ -17,6 +19,18 @@ QJsonObject modelToJson(const HDAW::RaveModelInfo& model)
         { "path", jstr(model.path) },
         { "extension", jstr(model.extension) },
         { "sizeBytes", static_cast<qint64>(model.sizeBytes) },
+    };
+}
+
+QJsonObject trainingResultToJson(const HDAW::RaveTrainingResult& r)
+{
+    return QJsonObject{
+        { "ok", r.ok },
+        { "outputModelPath", jstr(r.outputModelPath) },
+        { "error", jstr(r.error) },
+        { "stdoutText", jstr(r.stdoutText) },
+        { "stderrText", jstr(r.stderrText) },
+        { "exitCode", r.exitCode },
     };
 }
 
@@ -32,10 +46,36 @@ QJsonObject transformToJson(const HDAW::RaveTransformResult& r)
     };
 }
 
+QJsonObject probeToJson(const HDAW::RaveProbeResult& r)
+{
+    QJsonObject o = r.payload;
+    if (!o.contains("ok"))
+        o.insert("ok", r.ok);
+    if (!o.contains("error"))
+        o.insert("error", jstr(r.error));
+    o.insert("exitCode", r.exitCode);
+    if (!r.stderrText.isEmpty())
+        o.insert("stderrText", jstr(r.stderrText));
+    return o;
+}
+
 } // namespace
 
 void registerRaveTools(McpServer& s, AudioEngine* e)
 {
+    auto trainingJobStatusToJson = [](const HDAW::RaveTrainingJobStatus& s) {
+        QJsonObject o{
+            {"jobId", static_cast<double>(s.jobId)},
+            {"state", s.state},
+            {"message", s.message},
+        };
+        if (s.hasResult)
+            o.insert("result", trainingResultToJson(s.result));
+        else
+            o.insert("result", QJsonValue::Null);
+        return o;
+    };
+
     // RAVE #5: persisted config (QSettings rave/*), shared with the
     // settings.getRaveConfig / settings.setRaveConfig RPC via the
     // HDAW::RaveService helpers so both surfaces return the identical shape:
@@ -82,6 +122,22 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                 QJsonObject{{"models", models}}).toJson(QJsonDocument::Compact)));
         }});
 
+    s.registerTool({"rave_probe_model",
+        "Probe an offline RAVE model through the Python sidecar and return compact JSON metadata. Does not require input/output WAV and does not mutate the project.",
+        objSchema({{"modelPath", QJsonObject{{"type", "string"}}},
+                   {"pythonPath", QJsonObject{{"type", "string"}}},
+                   {"scriptPath", QJsonObject{{"type", "string"}}}},
+                  {"modelPath"}),
+        "rave",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::RaveProbeRequest req;
+            req.modelPath = a.value("modelPath").toString().toStdString();
+            req.pythonPath = a.value("pythonPath").toString().toStdString();
+            req.scriptPath = a.value("scriptPath").toString().toStdString();
+            auto result = e->getRaveService().probeModel(req);
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(probeToJson(result)).toJson(QJsonDocument::Compact)), !result.ok);
+        }});
+
     s.registerTool({"rave_transform_file",
         "Run an offline RAVE file transform through an external Python sidecar. Does not mutate the project.",
         objSchema({{"inputPath", QJsonObject{{"type", "string"}}},
@@ -120,6 +176,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
         QString message;
         int clipId = -1;
         bool samplerOk = false;
+        bool samplerRequested = false;
         QString samplerError;
     };
     auto applyRaveOutput = [e](const QJsonObject& a, const QString& outputPath) -> RaveImportOutcome {
@@ -152,7 +209,16 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
         const int samplerTrack = a.value("samplerTrackIndex").toInt(-1);
         const int samplerSlot = a.value("samplerSlotIndex").toInt(-1);
         const int samplerRoot = a.value("samplerRootNote").toInt(60);
-        if (samplerTrack >= 0 && samplerSlot >= 0)
+        out.samplerRequested = (samplerTrack >= 0 && samplerSlot >= 0);
+        if (!out.samplerRequested)
+        {
+            out.samplerError = "not requested";
+        }
+        else if (!juce::File(outputPath.toStdString()).existsAsFile())
+        {
+            out.samplerError = "output file missing";
+        }
+        else
         {
             // NOTE: named fxSlots, not slots — Qt defines `slots` as a macro.
             const auto fxSlots = e->getReadModel().getFxSlots(samplerTrack);
@@ -194,6 +260,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
             QJsonObject payload{
                 {"clipId", out.clipId},
                 {"samplerOk", out.samplerOk},
+                {"samplerRequested", out.samplerRequested},
                 {"samplerError", out.samplerError},
             };
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
@@ -255,6 +322,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                 {"transform", transformToJson(result)},
                 {"clipId", out.clipId},
                 {"samplerOk", out.samplerOk},
+                {"samplerRequested", out.samplerRequested},
                 {"samplerError", out.samplerError},
             };
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
@@ -272,6 +340,76 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
             o.insert("result", QJsonValue::Null);
         return o;
     };
+
+    s.registerTool({"rave_start_training",
+        "Start an offline, cancellable RAVE model-training job. The worker only launches a Python sidecar; it never touches the realtime audio graph. Dataset must be a directory containing .wav files; outputModelPath is the model file to create. Poll with rave_training_job_status; cancel with rave_cancel_training_job.",
+        objSchema({{"datasetPath", QJsonObject{{"type", "string"}}},
+                   {"outputModelPath", QJsonObject{{"type", "string"}}},
+                   {"name", QJsonObject{{"type", "string"}}},
+                   {"epochs", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
+                   {"batchSize", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
+                   {"sampleRate", QJsonObject{{"type", "integer"}, {"minimum", 1}}},
+                   {"pythonPath", QJsonObject{{"type", "string"}}},
+                   {"scriptPath", QJsonObject{{"type", "string"}}}},
+                  {"datasetPath", "outputModelPath"}),
+        "rave",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::RaveTrainingRequest req;
+            req.datasetPath = a.value("datasetPath").toString().toStdString();
+            req.outputModelPath = a.value("outputModelPath").toString().toStdString();
+            req.name = a.value("name").toString().toStdString();
+            req.pythonPath = a.value("pythonPath").toString().toStdString();
+            req.scriptPath = a.value("scriptPath").toString().toStdString();
+            req.epochs = a.value("epochs").toInt(10);
+            req.batchSize = a.value("batchSize").toInt(8);
+            req.sampleRate = a.value("sampleRate").toInt(44100);
+            if (req.datasetPath.isEmpty() || req.outputModelPath.isEmpty())
+                return McpToolResult::text("datasetPath and outputModelPath required", true);
+            if (req.epochs <= 0 || req.batchSize <= 0 || req.sampleRate <= 0)
+                return McpToolResult::text("epochs, batchSize, and sampleRate must be > 0", true);
+
+            const int64_t jobId = e->getRaveTrainingJobManager().startJob(req, {});
+            QJsonObject payload{
+                {"jobId", static_cast<double>(jobId)},
+                {"hint", "poll rave_training_job_status until terminal; cancel with rave_cancel_training_job"},
+            };
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"rave_training_job_status",
+        "Poll an async offline RAVE training job. Returns {jobId,state,message,result}; terminal states are finished/failed/cancelled.",
+        objSchema({{"jobId", QJsonObject{{"type", "integer"}}}},
+                  {"jobId"}),
+        "rave",
+        [e, trainingJobStatusToJson](const QJsonObject& a) -> McpToolResult {
+            const int64_t jobId = a.value("jobId").toVariant().toLongLong();
+            if (jobId <= 0)
+                return McpToolResult::text("jobId required", true);
+            HDAW::RaveTrainingJobStatus s;
+            if (!e->getRaveTrainingJobManager().jobStatus(jobId, s))
+                return McpToolResult::text("rave training job not found: " + QString::number(jobId), true);
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(trainingJobStatusToJson(s)).toJson(QJsonDocument::Compact)));
+        }});
+
+    s.registerTool({"rave_cancel_training_job",
+        "Cancel a running async offline RAVE training job (kills the sidecar process). Unknown ids are an error.",
+        objSchema({{"jobId", QJsonObject{{"type", "integer"}}}},
+                  {"jobId"}),
+        "rave",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const int64_t jobId = a.value("jobId").toVariant().toLongLong();
+            if (jobId <= 0)
+                return McpToolResult::text("jobId required", true);
+            HDAW::RaveTrainingJobStatus s;
+            if (!e->getRaveTrainingJobManager().cancelJob(jobId, s))
+                return McpToolResult::text("rave training job not found: " + QString::number(jobId), true);
+            QJsonObject payload{
+                {"jobId", static_cast<double>(s.jobId)},
+                {"state", s.state},
+                {"message", s.message},
+            };
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+        }});
 
     s.registerTool({"rave_start_transform",
         "Start an async offline RAVE file transform through the external Python sidecar and return a job id immediately (never blocks). Takes ONLY sidecar params (input/model/output paths, interpreter, script, sampling controls) — no import options and no beats are involved. Poll rave_job_status until state is finished/failed/cancelled; abort with rave_cancel_job. The worker never touches the project; on terminal success (state finished) call the sync rave_import_result on the message thread to import the rendered WAV as a clip.",

@@ -284,8 +284,18 @@ void registerNoteTools(McpServer& s, AudioEngine* e)
                       {"items", QJsonObject{{"type","integer"}}}}}}, {"clipId"}),
         "note",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = -1; auto c = findClip(e, a.value("clipId").toInt(), &ti);
-            if (!c.isValid()) return McpToolResult::text("clip not found", true);
+            // CONTRACT: list_notes and get_clip (McpTools_Read.cpp) must
+            // agree for EVERY clip — both resolve the clip from the project
+            // ValueTree directly (findClip == get_clip's inline loop: first
+            // child with a matching clipID across getTrackListTree /
+            // CLIP_LIST) and both read the children of MIDI_NOTE_LIST
+            // verbatim: no duration filter, no dedup, no ReadModel cache.
+            // If you change one note-extraction path, change the other in
+            // the same commit.
+            const int cid = a.value("clipId").toInt();
+            int ti = -1; auto c = findClip(e, cid, &ti);
+            if (!c.isValid())
+                return McpToolResult::text(QString("clipId %1 not found").arg(cid), true);
             if (c.getProperty(IDs::clipType).toString() != juce::String("midi"))
                 return McpToolResult::text("clip is not MIDI", true);
             auto nl = c.getChildWithName(IDs::MIDI_NOTE_LIST);

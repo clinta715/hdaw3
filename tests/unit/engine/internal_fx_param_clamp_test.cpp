@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include "engine/AudioEngine.h"
+#include "engine/AudioEngineCommands.h"
 #include "engine/TrackFXSlot.h"
 #include "model/ProjectModel.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -213,4 +215,48 @@ TEST (InternalFxParamClamp, AutomationPathClamps)
     float peak = 0.0f;
     EXPECT_TRUE (renderSineAndCheckFinite (delay, peak));
     EXPECT_LE (peak, 10.0f);
+}
+
+// Command-layer entry point (lesson-23 write-side clamp, v0.25.1):
+// AudioEngineCommands::setFxSlotParam clamps to the slot type's param defs
+// BEFORE the param_N property write (the tree is re-read verbatim on every
+// rebuild/export, so an unclamped write would poison saves) and RETURNS the
+// value actually written; passthrough cases (invalid slot / out-of-range
+// param index) return the input value unchanged.
+TEST (InternalFxParamClamp, SetFxSlotParamClampsAndReports)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    engine.drainPendingRoutingRebuild();
+
+    // Internal EQ slot on track 0. EQ defs (TrackFXSlot::getParamDefsForType):
+    // 0=Frequency Hz [20, 20000], 1=Q [0.1, 10], 2=Gain dB [-24, 24].
+    cmds.addFxSlot (0, "eq", 0, "");
+    engine.drainPendingRoutingRebuild();
+
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild (0).getChildWithName (IDs::FX_CHAIN).getChild (0);
+    ASSERT_TRUE (slotTree.isValid());
+    EXPECT_EQ (slotTree.getProperty (IDs::fxType, "").toString(), juce::String ("eq"));
+
+    // (a) Beyond the Gain def max: the RETURNED float is the clamped bound
+    // and the stored param_2 property equals it.
+    const float writtenHi = cmds.setFxSlotParam (0, 0, 2, 900.0f);
+    EXPECT_FLOAT_EQ (writtenHi, 24.0f);
+    EXPECT_DOUBLE_EQ (static_cast<double> (
+        slotTree.getProperty (juce::Identifier ("param_2"), -1.0)), 24.0);
+
+    // Below the Gain def min: -900 -> -24, same contract.
+    const float writtenLo = cmds.setFxSlotParam (0, 0, 2, -900.0f);
+    EXPECT_FLOAT_EQ (writtenLo, -24.0f);
+    EXPECT_DOUBLE_EQ (static_cast<double> (
+        slotTree.getProperty (juce::Identifier ("param_2"), -1.0)), -24.0);
+
+    // (b) Passthrough: an invalid slot index (and an invalid track index)
+    // return the input value unchanged ...
+    EXPECT_FLOAT_EQ (cmds.setFxSlotParam (0, 7, 2, 123.0f), 123.0f);
+    EXPECT_FLOAT_EQ (cmds.setFxSlotParam (-1, 0, 2, -55.0f), -55.0f);
+    // ... and a param index beyond the EQ defs passes through unchanged too.
+    EXPECT_FLOAT_EQ (cmds.setFxSlotParam (0, 0, 99, -77.0f), -77.0f);
 }

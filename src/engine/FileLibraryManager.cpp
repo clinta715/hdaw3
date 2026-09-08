@@ -9,8 +9,21 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <set>
 
 namespace HDAW {
+
+// Normalized dedupe key for library entries: backslashes -> forward slashes,
+// lowercase, and collapse "/./" segments so ".../dir/alpha.mid" and
+// ".../dir/./alpha.mid" (two libraries registered with path variants of the
+// same directory) dedupe to the same entry. Same base normalization as the
+// addLibrary() duplicate-path check, plus "/./" collapsing.
+static juce::String normalizedEntryKey(const juce::String& p) {
+    juce::String s = p.replaceCharacter('\\', '/').toLowerCase();
+    while (s.contains("/./")) s = s.replace("/./", "/");
+    while (s.endsWith("/.")) s = s.substring(0, s.length() - 2);
+    return s;
+}
 
 FileLibraryManager::FileLibraryManager() {
     auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
@@ -100,6 +113,26 @@ juce::String FileLibraryManager::addLibrary(const juce::String& name,
     // an empty id rather than silently persisted.
     if (type != "midi" && type != "audio" && type != "patch")
         return {};
+
+    // Normalize the candidate path for duplicate detection: backslashes ->
+    // forward slashes + lowercase. This catches "C:/a" vs "c:\a" (the same
+    // directory spelled differently). Deliberately NO further canonicalization
+    // (e.g. "dir/." stays distinct from "dir") — raw-path variants register as
+    // separate libraries and entry-level dedupe in search()/clusterLibrary()
+    // handles the resulting duplicate indexed files.
+    auto normalizePath = [](const juce::String& p) {
+        return p.replaceCharacter('\\', '/').toLowerCase();
+    };
+    const juce::String normalizedCandidate = normalizePath(path);
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (const auto& lib : libraries) {
+            if (lib.type == type && normalizePath(lib.path) == normalizedCandidate)
+                return lib.id; // idempotent: same path+type -> existing id, no re-add
+        }
+    }
+
     juce::String id = juce::Uuid().toString().removeCharacters("-{}").substring(0, 12);
     LibraryInfo info;
     info.id = id;
@@ -1179,6 +1212,21 @@ std::vector<LibraryEntry> FileLibraryManager::search(const juce::String& query,
         }
     }
 
+    // Dedupe by entry path (keep first occurrence) — duplicate libraries
+    // whose raw paths normalize differently (e.g. a trailing "/.") can index
+    // the same file twice; the entry must surface once. Applied BEFORE the
+    // sort/pagination so offset/limit page over the deduped set.
+    {
+        std::set<juce::String> seenPaths;
+        std::vector<LibraryEntry> deduped;
+        deduped.reserve(results.size());
+        for (auto& entry : results) {
+            if (seenPaths.insert(normalizedEntryKey(entry.path)).second)
+                deduped.push_back(std::move(entry));
+        }
+        results.swap(deduped);
+    }
+
     // Phase 4 — OUTSIDE the lock: sort by name (case-insensitive) + paginate.
     std::sort(results.begin(), results.end(),
         [](const LibraryEntry& a, const LibraryEntry& b) {
@@ -1331,6 +1379,20 @@ ClusterOutcome FileLibraryManager::clusterLibrary(const juce::StringArray& libra
 
     std::vector<LibraryEntry> entries;
     if (!collectClusterEntries(libraryIds, entries, error)) return {};
+
+    // Dedupe by entry path (keep first occurrence) — duplicate libraries whose
+    // raw paths normalize differently (e.g. a trailing "/.") index the same
+    // files twice; each entry must appear in at most one cluster.
+    {
+        std::set<juce::String> seenPaths;
+        std::vector<LibraryEntry> deduped;
+        deduped.reserve(entries.size());
+        for (auto& entry : entries) {
+            if (seenPaths.insert(normalizedEntryKey(entry.path)).second)
+                deduped.push_back(std::move(entry));
+        }
+        entries.swap(deduped);
+    }
 
     auto outcome = cluster(toClusterItems(entries), k, methodEnum);
     if (outcome.clusters.empty()) {

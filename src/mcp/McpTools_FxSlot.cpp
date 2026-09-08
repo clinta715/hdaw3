@@ -296,7 +296,17 @@ s.registerTool({"set_internal_fx_param",
             if (pi < 0 || pi >= static_cast<int>(defs.size()))
                 return McpToolResult::text("param index out of range", true);
             float v = static_cast<float>(a.value("value").toDouble());
-            e->getProjectCommands().setFxSlotParam(ti, si, pi, v);
+            // setFxSlotParam clamps to the def range (lesson-23 guard,
+            // unchanged) and returns the value actually written — surface a
+            // clamp in the response so out-of-range writes are visible
+            // instead of a bare "ok" (session 2026-09: ClipType=24, valid
+            // 0-3, was silently clamped with no feedback).
+            const float written = e->getProjectCommands().setFxSlotParam(ti, si, pi, v);
+            if (written != v)
+                return McpToolResult::text(QString("ok (paramIndex %1 clamped: %2 -> %3)")
+                    .arg(pi)
+                    .arg(QString::number(static_cast<double>(v), 'g', 6))
+                    .arg(QString::number(static_cast<double>(written), 'g', 6)));
             return McpToolResult::text("ok");
         }});
 

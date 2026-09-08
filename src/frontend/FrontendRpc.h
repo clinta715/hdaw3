@@ -56,6 +56,7 @@ namespace notify {
     inline constexpr const char* LibraryScanComplete = "notify.libraryScanComplete";
     inline constexpr const char* ExportProgress = "notify.exportProgress";
     inline constexpr const char* RaveProgress   = "notify.raveProgress";
+    inline constexpr const char* RaveTrainingProgress = "notify.raveTrainingProgress";
     inline constexpr const char* LoadProgress   = "notify.loadProgress";
     inline constexpr const char* SessionState   = "notify.sessionStateChanged";
     inline constexpr const char* PluginCrashed  = "notify.pluginCrashed";
