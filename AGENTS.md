@@ -15,7 +15,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.27.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.30.0** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -505,7 +505,16 @@ product pillar and should be reached for wherever it fits:
   (polyrhythm) plus a rhythm-DSL voice (`E(k,n[,rot])`, groups).
   Exposed over RPC as `composition.generateRhythmPattern` (and MCP
   `generate_rhythm_pattern`), surfaced in the UI by the "Rhythm" mode in
-  `PhraseGeneratorDialog`.
+  `PhraseGeneratorDialog`. A **corpus-derived drum phrase bank**
+  (`src/engine/RhythmPatternBank.h`, 62 multi-bar phrases across
+  kick/snare/clap/hats/perc/ride) feeds `generatePhrase(id)` /
+  `applyPhrase(...)` factories (RPC `phrase`/`phraseRole`/`phraseIndex`;
+  MCP mirrors). Markov percussion (`PercussionEngine` hat/snare theme voices)
+  can source from the bank via opt-in `percCorpusPhraseProb` on
+  `generate_psytrance_markov` (default 0). The bank is grown by the reusable
+  `tools/` corpus pipeline (`extract_phrase_bank.mjs` single-instrument,
+  `extract_kit_phrases.mjs` role-from-pitch full-kit, `curate_bank.mjs` →
+  C++ rows).
 - **Randomization / humanization** — note timing, velocity, and pitch
   humanize in the piano roll (`NoteGrid`) and clip editor (`ClipEditor`).
 - **Modulation** — a per-track LFO system (`ModulationManager` /
@@ -651,8 +660,8 @@ for a fix marker) before trusting the package.
 
 Version numbers are stored in **two places** and must be kept in sync manually:
 
-- `CMakeLists.txt` → `project(HDAW VERSION 0.25.0 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.25.0"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.30.0 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.30.0"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 
