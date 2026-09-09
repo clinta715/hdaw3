@@ -60,9 +60,39 @@ inline int markovRngInt(std::mt19937& rng, int lo, int hi) // inclusive
     return d(rng);
 }
 
+// Snap a MIDI pitch to the nearest note in the given scale.
+// scaleIntervals is the set of pitch classes (0..11) that belong to the scale.
+// Returns the original pitch if already in-scale, or the nearest in-scale pitch.
+// Ties go upward (sharp-side). Pure, no heap allocation.
+inline int snapToScale(int pitch, int rootPc, const int* intervals, int numIntervals)
+{
+    if (pitch < 0 || pitch > 127 || numIntervals <= 0) return pitch;
+    const int pc = ((pitch - rootPc) % 12 + 12) % 12;
+    for (int i = 0; i < numIntervals; ++i)
+        if (intervals[i] == pc) return pitch; // already in scale
+    // Find nearest: try +1, -1, +2, -2, ... up to ±6 semitones
+    for (int d = 1; d <= 6; ++d)
+    {
+        const int up = (pc + d) % 12;
+        const int down = ((pc - d) % 12 + 12) % 12;
+        for (int i = 0; i < numIntervals; ++i)
+        {
+            if (intervals[i] == up)   return pitch + d;
+            if (intervals[i] == down) return pitch - d;
+        }
+    }
+    return pitch; // shouldn't happen for standard 7-note scales
+}
+
+// Natural minor intervals (Aeolian) — the default psytrance scale.
+inline const int* minorIntervals() { static const int v[] = {0,2,3,5,7,8,10}; return v; }
+inline constexpr int kMinorIntervalCount = 7;
+
 // Per-role note accumulator: one clip's notes plus its palette track index.
 struct RoleCtx {
     int track = -1;
+    int scaleRoot = 0;     // scale root pitch class (0=A, 1=Bb, ... 11=G#)
+    int scaleMode = 1;     // 1=natural minor (default)
     PsytranceClip clip;
     void add(double startBeat, int pitch, int velocity, double durationBeats, int maxNotes)
     {
@@ -70,6 +100,16 @@ struct RoleCtx {
         if (pitch < 0 || pitch > 127) return;
         if (velocity < 1) velocity = 1;
         if (velocity > 127) velocity = 127;
+        // Snap pitched notes (non-percussion) to scale — percussion roles
+        // use fixed MIDI pitches (kick=36, snare=38, etc.) and must not be
+        // altered. The key-filter gate prevents the "473 off-key notes" bug
+        // (2026-09-08 session: Markov generators produced F#/G#/A# in A minor).
+        if (!isPercRole(clip.role))
+        {
+            // Default to natural minor if no custom intervals are provided.
+            // For the standard 7-note minor scale, snapToScale is O(7).
+            pitch = snapToScale(pitch, scaleRoot, minorIntervals(), kMinorIntervalCount);
+        }
         clip.notes.push_back({ startBeat, pitch, velocity, durationBeats });
     }
 };

@@ -15,6 +15,7 @@ add_executable(hdaw_tests
     unit/mcp/json_rpc_test.cpp
     unit/mcp/schema_test.cpp
     unit/mcp/tool_registry_test.cpp
+    unit/mcp/preset_file_parser_test.cpp
     unit/mcp/dry_run_test.cpp
     unit/mcp/note_id_test.cpp
     unit/mcp/transport_stdio_test.cpp
@@ -58,6 +59,7 @@ add_executable(hdaw_tests
     unit/engine/dx7_sysex_import_test.cpp
     unit/engine/virus_sysex_import_test.cpp
     unit/engine/slice_detector_test.cpp
+    unit/engine/corpus_arranger_test.cpp
     unit/engine/sampler_fxslot_test.cpp
     unit/engine/sampler_key_range_test.cpp
     unit/engine/realtime_safety_test.cpp
@@ -69,6 +71,8 @@ add_executable(hdaw_tests
     unit/engine/streaming_pool_test.cpp
     unit/engine/clip_streaming_e2e_test.cpp
     unit/engine/track_mixer_state_test.cpp
+    unit/engine/master_bus_fx_test.cpp
+    unit/engine/track_fx_delay_test.cpp
     unit/engine/fm_patch_persistence_test.cpp
     unit/engine/fm_patch_offline_export_test.cpp
     unit/engine/transport_manager_test.cpp
@@ -116,6 +120,7 @@ add_executable(hdaw_tests
     unit/engine/automation_pid_routing_test.cpp
     unit/engine/export_volume_bypass_test.cpp
     unit/engine/export_bake_timeout_test.cpp
+    unit/engine/offline_audio_clip_export_test.cpp
     unit/engine/psytrance_composition_stress_test.cpp
     unit/engine/psytrance_generator_test.cpp
     unit/engine/psytrance_markov_test.cpp

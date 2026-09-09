@@ -50,7 +50,7 @@ modulation matrix in the FX-slot tree so it survives `rebuildRoutingGraph()`.
 - [x] G6: All existing PsyFm tests pass (25) + new tests pass; full Debug
       build succeeds; binary freshness verified (Gate 15 — .obj timestamp).
 - [x] G7: Docs updated (handoff Bug 1 → FIXED, pitfalls entry), and
-      codebase-memory index refreshed (structural change: new header, new
+      graphify index refreshed (structural change: new header, new
       commands, new tree properties).
 
 ## Dependency Map
@@ -116,4 +116,4 @@ modulation matrix in the FX-slot tree so it survives `rebuildRoutingGraph()`.
    render+swap stress (G3); upsert semantics (G5).
 10. Build (`cmake --build build --config Debug`), run `PsyFm*` + adjacent
     suites, verify binary freshness, update handoff/pitfalls, refresh
-    codebase-memory index.
+    graphify index.

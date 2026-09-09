@@ -95,6 +95,10 @@ void RoutingManager::rebuildFromValueTree()
     // Gate 1/10 restore: a fresh MasterBusProcessor starts at unity; re-apply
     // the persisted gain so rebuilds (clip edits, load, export) keep it.
     masterBus->setGain(projectModel.getMasterGain());
+    // Gate 1/10 restore (master FX): re-apply the MASTER_FX chain (slot
+    // types, params, bypass) from the tree so rebuilds keep the limiter/EQ
+    // state exactly like the track mixer state (lesson 10).
+    masterBus->applyFromTree(projectModel.getTree().getChildWithName(IDs::MASTER_FX));
 
     // Master-bus → audio-output connections are established by
     // reconnectMasterToOutput(), which must run after graph.prepareToPlay()

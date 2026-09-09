@@ -10,6 +10,7 @@
 #include "../engine/Track.h"
 #include "../engine/PhraseGenerator.h"
 #include "../engine/PsytranceMarkovGenerator.h"
+#include "../engine/CorpusArranger.h"
 #include "../engine/ArrangementGenerator.h"
 #include "engine/RhythmPatternGenerator.h"
 #include "../engine/PatternLibrary.h"
@@ -590,6 +591,75 @@ s.registerTool({"generate_psytrance",
                             {"totalBeats", r.totalBeats},
                             {"notesTotal", r.notesTotal},
                             {"notesSkipped", r.notesSkipped}}).toJson(QJsonDocument::Compact)));
+        }});
+
+s.registerTool({"generate_arrangement_corpus",
+        "Compose an arrangement sampled from the measured full-song corpus (n=533 trance/psy tracks; see compositions/psytrance_corpus_fulltracks.tsv). CORPUS-SAMPLED, not Markov: one seeded draw per choice-axis (length mode, kick intro, const-bass, late novelty layer, breakdown) from the measured distributions, then a deterministic section plan (intro/build/drop/minibreak/build2/dropB/outro). Pitched notes come from the same harmony engine as the Markov generator; drums/fx are pattern writers. Keeps-alongside (does not replace) generate_psytrance_markov. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index (kick,bass,hat,snare,clap,rim,arp,stab,pad,riser,down,lead); unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, plan:{bars,sections:[{name,barStart,bars,density}],flags:{lengthMode,introMode,constBass,lateNovelty,breakdown,noveltyRole}}} — compact, no note payloads. Optional axis overrides: bars, lengthMode (short|mid|extended), introMode (fourOnFloor|shortIntro|midIntro|longIntro), constBass, lateNovelty, breakdown (bool), noveltyRole (lead|chord|arp2|fx), keyRoot, scaleMode, progressionA/B.",
+        objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},{"description","role name -> track index"},
+                      {"additionalProperties", QJsonObject{{"type","integer"}}}}},
+                  {"seed", QJsonObject{{"type","integer"},{"minimum",0}}},
+                  {"bars", QJsonObject{{"type","integer"},{"minimum",24},{"maximum",256}}},
+                  {"lengthMode", QJsonObject{{"type","string"},{"enum", QJsonArray{"short","mid","extended"}}}},
+                  {"introMode", QJsonObject{{"type","string"},{"enum", QJsonArray{"fourOnFloor","shortIntro","midIntro","longIntro"}}}},
+                  {"constBass", QJsonObject{{"type","boolean"}}},
+                  {"lateNovelty", QJsonObject{{"type","boolean"}}},
+                  {"breakdown", QJsonObject{{"type","boolean"}}},
+                  {"noveltyRole", QJsonObject{{"type","string"},{"enum", QJsonArray{"lead","chord","arp2","fx"}}}},
+                  {"keyRoot", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
+                  {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",12}}},
+                  {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
+                  {"progressionB", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}} },
+                 {"paletteTrackIds"}),
+        "composition",
+        [e](const QJsonObject& a) -> McpToolResult {
+            HDAW::CorpusParams p;
+            p.keyRoot = a.value("keyRoot").toInt(0);
+            p.scaleMode = a.value("scaleMode").toInt(1);
+            p.seed = a.value("seed").toInt(0);
+            p.totalBars = a.value("bars").toInt(0);
+            if (p.totalBars > 0) p.opts.bars = p.totalBars;  // response plan must match written bars
+            const QString lm = a.value("lengthMode").toString();
+            p.opts.lengthMode = lm == "short" ? 0 : lm == "extended" ? 2 : lm == "mid" ? 1 : -1;
+            const QString im = a.value("introMode").toString();
+            p.opts.introMode = im == "fourOnFloor" ? 0 : im == "shortIntro" ? 1 : im == "midIntro" ? 2 : im == "longIntro" ? 3 : -1;
+            if (a.contains("constBass")) p.opts.constBass = a.value("constBass").toBool() ? 1 : 0;
+            if (a.contains("lateNovelty")) p.opts.lateNovelty = a.value("lateNovelty").toBool() ? 1 : 0;
+            if (a.contains("breakdown")) p.opts.breakdown = a.value("breakdown").toBool() ? 1 : 0;
+            p.opts.noveltyRole = a.value("noveltyRole").toString().toStdString();
+            if (a.value("progressionA").isArray())
+                for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+            if (a.value("progressionB").isArray())
+                for (const auto& v : a.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+            const auto pal = a.value("paletteTrackIds").toObject();
+            auto set = [&](const char* role, int& out) { if (pal.contains(role)) out = pal.value(role).toInt(-1); };
+            set("kick", p.kick); set("bass", p.bass); set("hat", p.hat); set("snare", p.snare); set("clap", p.clap);
+            set("rim", p.rim); set("arp", p.arp); set("stab", p.stab); set("pad", p.pad);
+            set("riser", p.riser); set("down", p.down); set("lead", p.lead);
+
+            auto r = e->getProjectCommands().generateArrangementCorpus(p);
+            if (!r.error.empty())
+                return McpToolResult::text(QString::fromStdString(r.error), true);
+            QJsonObject flags{{"lengthMode", QString::fromStdString(p.opts.lengthMode >= 0 ? (p.opts.lengthMode == 0 ? "short" : p.opts.lengthMode == 1 ? "mid" : "extended") : "auto")}};
+            HDAW::CorpusOptions opt = p.opts;
+            opt.seed = p.seed;   // response plan must match the written arrangement
+            const HDAW::CorpusPlan plan = HDAW::CorpusArranger::samplePlan(opt);
+            QJsonArray secs;
+            for (const auto& s : plan.sections)
+            {
+                QJsonArray roles;
+                for (const auto& r : s.roles) roles.append(QString::fromStdString(r));
+                secs.append(QJsonObject{{"name", QString::fromStdString(s.name)}, {"barStart", s.barStart}, {"bars", s.bars}, {"roles", roles}});
+            }
+            QJsonArray clips;
+            for (const auto& rc : r.clips)
+                clips.append(QJsonObject{{"role", QString::fromStdString(rc.role)}, {"trackId", rc.trackIndex}, {"clipId", rc.clipId}, {"noteCount", rc.noteCount}});
+            QJsonArray skipped;
+            for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                {"clips", clips}, {"skipped", skipped},
+                {"totalBeats", r.totalBeats}, {"notesTotal", r.notesTotal}, {"notesSkipped", r.notesSkipped},
+                {"plan", QJsonObject{{"bars", plan.totalBars}, {"sections", secs}}} })
+                .toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"generate_psytrance_markov",

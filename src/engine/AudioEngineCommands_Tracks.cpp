@@ -1,6 +1,7 @@
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "../model/ProjectModel.h"
+#include "../common/MasterFxDefs.h"
 #include <charconv>
 #include <sstream>
 
@@ -65,6 +66,34 @@ void AudioEngineCommands::setMasterGain(float gain)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     engine_.getProjectModel().getTree().setProperty(IDs::masterGain, static_cast<double>(gain), &um);
+}
+
+float AudioEngineCommands::setMasterFxParam(int slotIndex, int paramIndex, float value)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto masterFx = engine_.getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+    if (! masterFx.isValid()) return value;
+    if (slotIndex < 0 || slotIndex >= masterFx.getNumChildren()) return value;
+    auto slot = masterFx.getChild(slotIndex);
+    const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
+    // Gate 9 parity with set_internal_fx_param: an out-of-range index must
+    // be a no-op, never a stray param_N property write.
+    const auto& defs = HDAW::masterFxParamDefs(fxType);
+    if (paramIndex < 0 || paramIndex >= static_cast<int>(defs.size())) return value;
+    // Write-side clamp (lesson 23): the tree is re-read verbatim on every
+    // rebuild/export, so out-of-range writes must never reach it.
+    value = HDAW::clampMasterFxParam(fxType, paramIndex, value);
+    slot.setProperty("param_" + juce::String(paramIndex), static_cast<double>(value), &um);
+    return value;
+}
+
+void AudioEngineCommands::setMasterFxBypassed(int slotIndex, bool bypassed)
+{
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto masterFx = engine_.getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+    if (! masterFx.isValid()) return;
+    if (slotIndex < 0 || slotIndex >= masterFx.getNumChildren()) return;
+    masterFx.getChild(slotIndex).setProperty("bypassed", bypassed, &um);
 }
 
 void AudioEngineCommands::setTrackPan(int trackIndex, float pan)

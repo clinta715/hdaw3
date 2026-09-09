@@ -135,7 +135,7 @@ the caller's intent explicit. RPC/MCP set bits from key presence
 (`o.contains` / `a.contains`); engine unit tests set bits directly; existing
 callers that never set `role` are unaffected (mask ignored when `role` empty).
 
-## Blast radius (verified via grep + codebase-memory graph)
+## Blast radius (verified via grep + graphify graph)
 
 Additive-only struct change; behavior changes **only** when `role` non-empty.
 

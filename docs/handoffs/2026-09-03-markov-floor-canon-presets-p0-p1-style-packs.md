@@ -88,7 +88,7 @@ Follows: 2026-09-02-markov-pads-vague-structure-timbre-keybpm.md (markov generat
   39/39 · `ChainLibrary.*` + FxChain suites 10/10 + 17/17.
 - `build-fast.bat all` clean; all binaries fresh 2026-09-03 12:54.
 - **NOT done**: full ~13-min suite (run before commit); version bump;
-  knowledge-graph refresh (codebase-memory MCP not attached this session;
+  knowledge-graph refresh (graphify not attached this session;
   no new files/RPC methods, low urgency).
 - **Packaged Electron app.asar is stale** (pre-dates floor canon) —
   `frontend\build.bat` or `build-fast package` before testing in Electron.

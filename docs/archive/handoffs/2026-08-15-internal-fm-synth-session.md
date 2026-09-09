@@ -23,7 +23,7 @@ lessons.
   (6-operator, 32 algorithms)` — 32 files, +4224 lines.
 - **Knowledge graph NOT refreshed** — new files (`FmSynthEngine`,
   `src/engine/msfa/`, `fm_synth_test.cpp`) are invisible to
-  `codebase-memory`. Run `index_repository` before any graph-dependent
+  `graphify`. Run `graphify . --update` before any graph-dependent
   work.
 
 ## 2. What was delivered
@@ -141,9 +141,9 @@ WebSocket message.
 
 ## 6. Graph refresh (first action next session)
 
-Run `index_repository` to pick up the new files:
+Run `graphify . --update` to pick up the new files:
 ```
-codebase-memory: index_repository(repo_path="D:\pdf\roo projects\hdaw3", mode="fast")
+graphify: graphify . --update(repo_path="D:\pdf\roo projects\hdaw3", mode="fast")
 ```
 
 This is needed before any graph-dependent work (blast-radius queries,

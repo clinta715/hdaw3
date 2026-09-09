@@ -257,6 +257,6 @@ async, later instances are instant.
 - Learnings: AGENTS.md lessons 1–22, `docs/realtime-safety.md`
 
 Per hdaw-guard: every code change gets a plan with success gates first,
-dependency analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`, refreshed this session, 9983 nodes), pitfall-gate
+dependency analysis via the knowledge graph (`graphify`
+refreshed this session, 9983 nodes), pitfall-gate
 scan, and subagent dispatch with verification.

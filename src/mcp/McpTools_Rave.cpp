@@ -1,6 +1,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "../engine/AudioEngine.h"
+#include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/RaveService.h"
 #include "../engine/RaveTrainingJobManager.h"
 
@@ -167,6 +168,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
     // (unless noImport) and/or send it to a sampler slot (only when both
     // samplerTrackIndex and samplerSlotIndex are >= 0). startBeats is in
     // BEATS; ProjectCommands::importAudioFile converts to seconds internally.
+    // sourceOffsetBeats is public BEATS; setClipOffset expects seconds.
     // Returns { ok, code, message, clipId, samplerOk, samplerError }: ok=false
     // means a fatal import failure; sampler-slot problems are non-fatal and
     // reported via samplerOk/samplerError.
@@ -178,6 +180,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
         bool samplerOk = false;
         bool samplerRequested = false;
         QString samplerError;
+        double sourceOffsetSeconds = 0.0;
     };
     auto applyRaveOutput = [e](const QJsonObject& a, const QString& outputPath) -> RaveImportOutcome {
         RaveImportOutcome out;
@@ -188,6 +191,14 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
             const double startBeats = a.value("startBeats").toDouble(0.0);
             const bool alignToGrid = a.contains("alignToGrid")
                 ? a.value("alignToGrid").toBool(true) : true;
+
+            double sourceOffsetBeats = 0.0;
+            if (a.contains("sourceOffsetBeats") && a.value("sourceOffsetBeats").isDouble())
+                sourceOffsetBeats = a.value("sourceOffsetBeats").toDouble(0.0);
+            else if (a.value("timelineAligned").toBool(false))
+                sourceOffsetBeats = startBeats;
+            out.sourceOffsetSeconds = HDAW::beatsToSeconds(
+                sourceOffsetBeats, e->getTransportManager().getBPM());
 
             if (!juce::File(outputPath.toStdString()).existsAsFile())
             {
@@ -204,6 +215,8 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                 return out;
             }
             out.clipId = res.clipId;
+            if (out.sourceOffsetSeconds != 0.0)
+                e->getProjectCommands().setClipOffset(out.clipId, out.sourceOffsetSeconds);
         }
 
         const int samplerTrack = a.value("samplerTrackIndex").toInt(-1);
@@ -239,10 +252,12 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
     };
 
     s.registerTool({"rave_import_result",
-        "Import an already-rendered RAVE output WAV into the project as a clip (startBeats is in beats) and/or send it to a sampler slot. Both mutations are opt-in: skip the clip import with noImport:true, and the sampler send only happens when samplerTrackIndex and samplerSlotIndex are both >= 0. With no import target the call only validates outputPath.",
+        "Import an already-rendered RAVE output WAV into the project as a clip (startBeats is in beats) and/or send it to a sampler slot. Optional sourceOffsetBeats sets the audio source offset; timelineAligned:true uses startBeats as the source offset for full-timeline rendered stems unless sourceOffsetBeats is explicit. Both mutations are opt-in: skip the clip import with noImport:true, and the sampler send only happens when samplerTrackIndex and samplerSlotIndex are both >= 0. With no import target the call only validates outputPath.",
         objSchema({{"outputPath", QJsonObject{{"type", "string"}}},
                    {"trackIndex", QJsonObject{{"type", "integer"}}},
                    {"startBeats", QJsonObject{{"type", "number"}}},
+                   {"sourceOffsetBeats", QJsonObject{{"type", "number"}}},
+                   {"timelineAligned", QJsonObject{{"type", "boolean"}}},
                    {"alignToGrid", QJsonObject{{"type", "boolean"}}},
                    {"noImport", QJsonObject{{"type", "boolean"}}},
                    {"samplerTrackIndex", QJsonObject{{"type", "integer"}}},
@@ -262,12 +277,13 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                 {"samplerOk", out.samplerOk},
                 {"samplerRequested", out.samplerRequested},
                 {"samplerError", out.samplerError},
+                {"sourceOffsetSeconds", out.sourceOffsetSeconds},
             };
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         }});
 
     s.registerTool({"rave_transform_clip",
-        "Transform a project audio clip's source file through the offline RAVE sidecar, then opt-in import the rendered WAV as a clip (startBeats is in beats) and/or send it to a sampler slot. Rejects unknown clip ids, MIDI clips, and clips with no audio source file before running the sidecar. On sidecar failure nothing is imported.",
+        "Transform a project audio clip's source file through the offline RAVE sidecar, then opt-in import the rendered WAV as a clip (startBeats is in beats) and/or send it to a sampler slot. Optional sourceOffsetBeats sets the audio source offset; timelineAligned:true uses startBeats as the source offset for full-timeline rendered stems unless sourceOffsetBeats is explicit. Rejects unknown clip ids, MIDI clips, and clips with no audio source file before running the sidecar. On sidecar failure nothing is imported.",
         objSchema({{"clipId", QJsonObject{{"type", "integer"}}},
                    {"modelPath", QJsonObject{{"type", "string"}}},
                    {"outputPath", QJsonObject{{"type", "string"}}},
@@ -277,6 +293,8 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                    {"seed", QJsonObject{{"type", "integer"}}},
                    {"trackIndex", QJsonObject{{"type", "integer"}}},
                    {"startBeats", QJsonObject{{"type", "number"}}},
+                   {"sourceOffsetBeats", QJsonObject{{"type", "number"}}},
+                   {"timelineAligned", QJsonObject{{"type", "boolean"}}},
                    {"alignToGrid", QJsonObject{{"type", "boolean"}}},
                    {"noImport", QJsonObject{{"type", "boolean"}}},
                    {"samplerTrackIndex", QJsonObject{{"type", "integer"}}},
@@ -324,6 +342,7 @@ void registerRaveTools(McpServer& s, AudioEngine* e)
                 {"samplerOk", out.samplerOk},
                 {"samplerRequested", out.samplerRequested},
                 {"samplerError", out.samplerError},
+                {"sourceOffsetSeconds", out.sourceOffsetSeconds},
             };
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
         }});

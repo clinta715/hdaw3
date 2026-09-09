@@ -103,7 +103,10 @@ TEST(AutomationPidRouting, AudioLaneDrivesLiveFilterCutoff)
     cmds.addFxSlot(0, "filter");          // slot 0 — wide open, transparent
     cmds.addFxSlot(0, "filter");          // slot 1 — the automated filter
     cmds.setFxSlotParam(0, 0, 1, 0.0f);   // slot 0 Mode = lowpass
-    cmds.setFxSlotParam(0, 0, 0, 1.0f);   // slot 0 Cutoff max (~20 kHz)
+    // REAL-unit contract (lesson 23 / handoff B5-B8): setFxSlotParam values
+    // are in the param def's real range, not normalized 0..1 — 1.0 would clamp
+    // to the 20 Hz minimum and kill the sweep contrast below.
+    cmds.setFxSlotParam(0, 0, 0, 20000.0f); // slot 0 Cutoff max (~20 kHz)
     cmds.setFxSlotParam(0, 1, 1, 0.0f);   // slot 1 Mode = lowpass
     cmds.addMidiFxSlot(0, "arpeggiator", 0);
 

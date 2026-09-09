@@ -106,7 +106,7 @@ Recorded points (seconds) are unaffected by the write-path change and are
   frontend build success.
 - [x] **G9** — Version bumped in BOTH `CMakeLists.txt` and
   `frontend/package.json` to 0.16.0; `docs/plans/2026-08-10-envelope-generation-tools.md`
-  checklist checked; knowledge graph refreshed (`index_repository` fast mode)
+  checklist checked; knowledge graph refreshed (`graphify . --update` fast mode)
   after structural changes. **DONE 2026-08-10** — 7011 nodes, 18732 edges.
 
 ## Dependency Map

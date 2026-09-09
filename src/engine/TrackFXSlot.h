@@ -281,6 +281,7 @@ public:
                 {21, "Filter Sustain",  0.70f,  0.0f,    1.0f },
                 {22, "Filter Release",  0.30f,  0.001f,  5.0f },
                 {23, "Pitch Bend Range",2.0f,   0.0f,   12.0f },
+                {24, "Polyphony",      0.0f,   0.0f,    1.0f },
             };
         return {};
     }
@@ -612,9 +613,10 @@ public:
             }
             case ActiveType::Filter:
             {
-                filter = std::make_unique<juce::dsp::StateVariableTPTFilter<float>>();
-                filter->prepare(spec);
+                // Push stored params through the same apply path commands use
+                // (saturator precedent) so prepare reflects the tree values.
                 applyFilterParamsFromValues();
+                filter.reset();
                 break;
             }
             case ActiveType::Saturator:
@@ -818,6 +820,7 @@ public:
                 if (internalParamValues.size() > 21) subSynth->setFilterSustain(internalParamValues[21]);
                 if (internalParamValues.size() > 22) subSynth->setFilterReleaseSeconds(internalParamValues[22]);
                 if (internalParamValues.size() > 23) subSynth->setPitchBendRange(internalParamValues[23]);
+                if (internalParamValues.size() > 24) subSynth->setPolyphony(internalParamValues[24] >= 0.5f);
                 break;
             }
             case ActiveType::None:
@@ -993,7 +996,17 @@ public:
             }
             case ActiveType::EQ:          if (eq)     eq->process(context);      break;
             case ActiveType::Compressor:  if (comp)   comp->process(context);    break;
-            case ActiveType::Filter:      if (filter) filter->process(context);  break;
+            case ActiveType::Filter:
+            {
+                {
+                    auto& outBlock = context.getOutputBlock();
+                    for (size_t ch = 0; ch < outBlock.getNumChannels(); ++ch)
+                        for (size_t s = 0; s < outBlock.getNumSamples(); ++s)
+                            outBlock.setSample(ch, s,
+                                filter.processSample(static_cast<int>(ch), outBlock.getSample(ch, s)));
+                }
+                break;
+            }
             case ActiveType::Saturator:
             {
                 if (over_ == nullptr) break;
@@ -1051,7 +1064,7 @@ public:
         if (comp)      comp->reset();
         if (chorusDsp) chorusDsp->reset();
         if (phaserDsp) phaserDsp->reset();
-        if (filter)    filter->reset();
+        filter.reset();
         if (fmSynth)   fmSynth->prepare(sampleRate_, 0);
         if (growlBass) growlBass->prepare(sampleRate_, 0);
         if (psyArp)    psyArp->prepare(sampleRate_, 0);
@@ -1392,7 +1405,47 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
-    std::unique_ptr<juce::dsp::StateVariableTPTFilter<float>> filter;
+    // Manual TPT state-variable filter — replaces juce::dsp::StateVariableTPTFilter
+    // which silently passed through in ProcessContextReplacing mode (the inherited
+    // block-level process() never applied the coefficients). This is pure math:
+    // per-sample TPT SVF with explicit coefficient update on every param change.
+    struct ManualSVF {
+        float ic1eqL = 0, ic2eqL = 0;  // left integrator states
+        float ic1eqR = 0, ic2eqR = 0;  // right integrator states
+        float g = 0, k = 1, Dinv = 1;
+        float sampleRate = 44100;
+        float cutoff = 1000;
+        float resonance = 0.7;
+        int type = 0; // 0=LP, 1=HP, 2=BP
+        // Correct TPT (trapezoidal) SVF, verified numerically against the
+        // analytic loop solve (2026-09-09): the previous hand-rolled variant
+        // omitted the damping term in v3, mis-derived v2 (spurious ic1
+        // feed-in, missing the a2*v3 term) and returned k*v2 for HP — the
+        // filter never actually swept its cutoff (AutomationPidRouting
+        // regression). Loop: hp = x - k*bp - lp, trap: y = g*u + s,
+        // s' = 2y - s, solved instantaneously:
+        //   bp = (g*x + ic1 - g*ic2) / D,  D = 1 + g*k + g^2,  lp = g*bp + ic2.
+        void updateCoefficients() {
+            g = std::tan(3.14159265f * std::min(cutoff, sampleRate * 0.49f) / sampleRate);
+            k = 2.0f / std::max(0.1f, resonance);
+            Dinv = 1.0f / (1.0f + g * k + g * g);
+        }
+        float processSample(int ch, float input) {
+            const float ic1 = (ch == 0) ? ic1eqL : ic1eqR;
+            const float ic2 = (ch == 0) ? ic2eqL : ic2eqR;
+            const float bp = (g * input + ic1 - g * ic2) * Dinv;
+            const float lp = g * bp + ic2;
+            if (ch == 0) { ic1eqL = 2.0f * bp - ic1; ic2eqL = 2.0f * lp - ic2; }
+            else         { ic1eqR = 2.0f * bp - ic1; ic2eqR = 2.0f * lp - ic2; }
+            switch (type) {
+                case 1: return input - k * bp - lp; // highpass
+                case 2: return bp;                   // bandpass
+                default: return lp;                  // lowpass
+            }
+        }
+        void reset() { ic1eqL = 0; ic2eqL = 0; ic1eqR = 0; ic2eqR = 0; }
+    };
+    ManualSVF filter;
     std::unique_ptr<SamplerEngine> sampler;
     std::unique_ptr<SubtractiveSynthEngine> subSynth;
     std::unique_ptr<FmSynthEngine> fmSynth;
@@ -1600,7 +1653,6 @@ private:
             }
             case ActiveType::Filter:
             {
-                if (!filter) return;
                 // Mode is an int enum (0=lowpass, 1=highpass, 2=bandpass).
                 // Round fractional automation/command values and store the
                 // rounded result so reads report what the DSP actually runs.
@@ -1835,6 +1887,7 @@ private:
                     case 21: subSynth->setFilterSustain(value); break;
                     case 22: subSynth->setFilterReleaseSeconds(value); break;
                     case 23: subSynth->setPitchBendRange(value); break;
+                    case 24: subSynth->setPolyphony(value >= 0.5f); break;
                     default: return;
                 }
                 break;
@@ -1850,19 +1903,17 @@ private:
     // never trips the assert at low sample rates.
     void applyFilterParamsFromValues()
     {
-        if (!filter) return;
-        const float cutoff = (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f;
+        filter.cutoff = (internalParamValues.size() > 0) ? internalParamValues[0] : 1000.0f;
         const float mode   = (internalParamValues.size() > 1) ? internalParamValues[1] : 0.0f;
         const float res    = (internalParamValues.size() > 2) ? internalParamValues[2] : 0.7f;
         const int m = juce::jlimit(0, 2, juce::roundToInt(mode));
         const float sr = static_cast<float>(sampleRate_);
         const float maxCut = std::max(1.0f, sr * 0.49f);
-        const float freq = juce::jlimit(1.0f, maxCut, cutoff);
-        filter->setType(m == 0 ? juce::dsp::StateVariableTPTFilterType::lowpass
-                      : m == 1 ? juce::dsp::StateVariableTPTFilterType::highpass
-                               : juce::dsp::StateVariableTPTFilterType::bandpass);
-        filter->setCutoffFrequency(freq);
-        filter->setResonance(res);
+        filter.cutoff = juce::jlimit(1.0f, maxCut, filter.cutoff);
+        filter.type = m;
+        filter.resonance = res;
+        filter.sampleRate = sr;
+        filter.updateCoefficients();
     }
 
     // Push the stored saturator params into both channel engines. Type (1)

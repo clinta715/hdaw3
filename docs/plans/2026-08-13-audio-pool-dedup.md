@@ -1059,7 +1059,7 @@ Expected: PASS — long files (> 8 s) still stream via per-clip readers; the poo
 - [ ] **Step 5: Version bump + graph refresh**
 
 - Bump patch in `CMakeLists.txt` (`project(HDAW VERSION 0.22.1 ...)`) and `frontend/package.json` (`"version": "0.22.1"` — kept in sync, AGENTS.md).
-- Refresh the knowledge graph: `codebase-memory` `index_repository` (project `D-pdf-roo-projects-hdaw3`, mode `fast`) so `DecodedSoundPool`/`DecodedSound` nodes are known.
+- Refresh the knowledge graph: `graphify . --update` so `DecodedSoundPool`/`DecodedSound` nodes are known.
 
 - [ ] **Step 6: Commit**
 
@@ -1076,7 +1076,7 @@ git commit -m "chore: bump to 0.22.1 (audio pool dedup)"
 - [ ] G2: clip + sampler both load via the pool; `rebuildRoutingGraph()` reacquires without re-decoding (decode-count stays 1) — asserted on the LIVE processors (`getAudioClipSources()`) and the live sampler slot (`getSamplerSoundForTest`).
 - [ ] G3: no audio-thread calls into the pool — grep confirms `acquire` only in message-thread paths; audio thread reads raw pooled pointers (Gate 3).
 - [ ] G4: full `build/Debug/hdaw_tests.exe` passes — no new failures beyond the 5 known pre-existing CrashRecovery/PluginIsolation cases; sampler/clip/streaming/export suites green.
-- [ ] G5: version bumped to 0.22.1 in both `CMakeLists.txt` and `frontend/package.json`; knowledge graph refreshed (`index_repository`).
+- [ ] G5: version bumped to 0.22.1 in both `CMakeLists.txt` and `frontend/package.json`; knowledge graph refreshed (`graphify . --update`).
 
 ## Dependency Map
 

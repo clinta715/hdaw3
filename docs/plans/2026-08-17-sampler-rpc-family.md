@@ -133,5 +133,5 @@ frontend editor so those calls actually work.
 - All gates A–I pass with evidence.
 - Diff scanned (no anti-patterns, deps confirmed, no silent breakage).
 - MCP parity: new tools registered + tested.
-- Knowledge graph refreshed (`index_repository` fast) after the new
+- Knowledge graph refreshed (`graphify . --update` fast) after the new
   RPC namespace/files.

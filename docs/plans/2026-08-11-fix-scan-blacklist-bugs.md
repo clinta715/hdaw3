@@ -27,7 +27,7 @@ pe-image exclusion in both scanner and engine. No regression on the verified
 
 ## Dependency Map
 
-- **Blast radius** (codebase-memory graph, verified source): `PluginManager.cpp`
+- **Blast radius** (graphify graph, verified source): `PluginManager.cpp`
   is a leaf utility — consumers: `AudioEngine` (owns), `PluginServiceImpl`
   (`src/engine/PluginServiceImpl.cpp`), `Router_Plugin.cpp`
   (`plugin.scanAll/getPlugins/blacklistPlugin`), `FrontendServer` auto-rescan

@@ -5,9 +5,11 @@
 
 #include "../../engine/AudioEngine.h"
 #include "../../engine/ExportManager.h"
+#include "../../model/ProjectModel.h"
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -77,6 +79,31 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
         if (outFile.existsAsFile()) outFile.deleteFile();
 
         juce::ValueTree projectCopy = engine.getProjectModel().getTree().createCopy();
+
+        // Optional track filter (mirrors the MCP export_audio tool): render
+        // only the requested track indices. Applied to the offline copy only
+        // (mute + zero volume on the rest, solo cleared) so the live project
+        // and routing graph are untouched.
+        const QJsonArray trackIds = o.value("trackIds").toArray();
+        if (!trackIds.isEmpty())
+        {
+            auto trackList = projectCopy.getChildWithName(IDs::TRACK_LIST);
+            if (trackList.isValid())
+            {
+                for (int i = 0; i < trackList.getNumChildren(); ++i)
+                {
+                    bool keep = false;
+                    for (const auto& v : trackIds)
+                        if (v.toInt(-1) == i) { keep = true; break; }
+                    auto tr = trackList.getChild(i);
+                    tr.setProperty(IDs::isSoloed, false, nullptr);
+                    tr.setProperty(IDs::isMuted, !keep, nullptr);
+                    if (!keep)
+                        tr.setProperty(IDs::volume, 0.0, nullptr);
+                }
+            }
+        }
+
         auto& formatManager = engine.getProjectPool().getFormatManager();
         auto* pluginManager = &engine.getPluginManager();
 

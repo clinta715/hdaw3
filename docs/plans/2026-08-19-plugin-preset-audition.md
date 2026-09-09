@@ -257,4 +257,4 @@ per-program audio differences.
 2. **Task B (RPC + MCP + tests):** files 4, 5, 8, 9. Success gates G4, G5.
 3. **Verification (orchestrator):** full `hdaw_tests.exe` (G6), diff scan (G8),
    runtime G7 on a fresh binary, process cleanup, knowledge-graph refresh
-   (`codebase-memory` `index_repository` — new RPC method + new file).
+   (`graphify . --update` — new RPC method + new file).

@@ -19,7 +19,7 @@ prior agenda lives in `docs/handoffs/2026-08-19-composer-remaining-items.md`.
   passed, not skipped.
 - Fresh `build/Debug/HDAW.exe` built; binary string-probe confirms
   `auditionPlugin` / `audition_plugin` / new error strings present.
-- Knowledge graph refreshed (`codebase-memory`, 9788 nodes).
+- Knowledge graph refreshed (`graphify`, 9788 nodes).
 - No stale HDAW/plugin-host processes left running; `projects/` kept out of
   commits (untracked).
 
@@ -255,8 +255,7 @@ composer already accepts beats at the RPC boundary and converts internally.
 7. Beats-vs-seconds ergonomics (#6) — low priority.
 
 Per hdaw-guard: every code change gets a plan with success gates first, dependency
-analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`), pitfall-gate scan, and subagent dispatch with
+analysis via the knowledge graph (`graphify`), pitfall-gate scan, and subagent dispatch with
 verification. MCP parity for every new user-facing capability. Tests for every
 change (engine → gtest, UI → Vitest/Playwright). Real-plugin tests are
 env-guarded and never assert per-program audio deltas for VST3.

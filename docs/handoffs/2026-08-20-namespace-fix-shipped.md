@@ -70,6 +70,5 @@ Proxy namespace is now auto-unique per instance (lesson 20 guard complete).
 - Lessons: AGENTS.md lessons 1–20 (lesson 20 updated with permanent guard), `docs/realtime-safety.md`
 
 Per hdaw-guard: every code change gets a plan with success gates first,
-dependency analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`), pitfall-gate scan, and subagent
+dependency analysis via the knowledge graph (`graphify`), pitfall-gate scan, and subagent
 dispatch with verification.

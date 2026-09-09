@@ -145,6 +145,5 @@ New from this session: `role` defaults on `addInstrumentPart` are stable
 - Learnings: AGENTS.md lessons 1–22, `docs/realtime-safety.md`
 
 Per hdaw-guard: every code change gets a plan with success gates first,
-dependency analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`, 9983 nodes), pitfall-gate scan, and subagent
+dependency analysis via the knowledge graph (`graphify`, 9983 nodes), pitfall-gate scan, and subagent
 dispatch with verification.

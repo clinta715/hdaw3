@@ -166,8 +166,8 @@ staging). Do not `git add -A`.
 - **A5 (after A4 green):** full suite → release compile-out
   `cmake --build build --config Release --target HDAW` → version bump to
   **0.22.0** in `CMakeLists.txt:2` and `frontend/package.json:3` →
-  `codebase-memory` refresh (`index_repository`, project
-  `D-pdf-roo-projects-hdaw3`) since new files/RPC/methods were added.
+  `graphify` refresh (`graphify . --update`, project
+  ) since new files/RPC/methods were added.
 
 ## 7. Key reference points
 
@@ -264,7 +264,7 @@ version **0.22.0** committed `5fa81f8` — see §10.
   committed `5fa81f8` (`chore: bump to 0.22.0 (clip disk streaming)`).
 - Release compile-out: `cmake --build build --config Release --target HDAW`
   clean; `build/Release/HDAW.exe` fresh. Frontend `npm run build` clean.
-- Knowledge graph refreshed: `index_repository` (full) → 7291 nodes / 19311
+- Knowledge graph refreshed: `graphify . --update` (full) → 7291 nodes / 19311
   edges.
 - **Subsystem A is complete.** Remaining known debt: `RoutingManager.{h,cpp}`
   still carries the uncommitted lesson-18 `prebuildTracks`/`buildTrackProcessor`/

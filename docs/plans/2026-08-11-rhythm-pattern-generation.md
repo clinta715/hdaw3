@@ -21,7 +21,7 @@
 - [ ] G7: Full engine test suite (`build/Debug/hdaw_tests.exe`, no filter) passes â€” no regression anywhere.
 - [ ] G8: MCP parity â€” `generate_rhythm_pattern` registered (visible in `list_tools`), `enableSnare` accepted by `generate_arrangement`; the feature is reachable from every surface a human can use.
 - [ ] G9: No new raw hex in frontend CSS (Gate 8 scan) â€” new UI reuses `pgd-*` classes only.
-- [ ] G10: Knowledge graph refreshed (`codebase-memory index_repository` mode `fast`, project `D-pdf-roo-projects-hdaw3`) so the graph knows `RhythmPatternGenerator` and the new RPC method.
+- [ ] G10: Knowledge graph refreshed (`graphify . --update`) so the graph knows `RhythmPatternGenerator` and the new RPC method.
 
 ## Dependency Map
 
@@ -1153,7 +1153,7 @@ Run: `Select-String -Path "frontend\src\**\*.css" -Pattern "#[0-9a-fA-F]{3,8}"` 
 
 - [ ] **Step 6: Refresh the knowledge graph**
 
-Run the codebase-memory MCP `index_repository` (repo_path `D:\pdf\roo projects\hdaw3`, mode `fast`) so the graph indexes `RhythmPatternGenerator` and the new RPC method. If `graphify` CLI is configured, also run `graphify . --update`.
+Run the graphify `graphify . --update` (repo_path `D:\pdf\roo projects\hdaw3`, mode `fast`) so the graph indexes `RhythmPatternGenerator` and the new RPC method. If `graphify` CLI is configured, also run `graphify . --update`.
 
 - [ ] **Step 7: Optional full pipeline** (only if the packaged Electron app must carry the feature now)
 
@@ -1183,10 +1183,10 @@ git commit -m "docs: rhythm pattern generation feature notes"
 Implemented on main. Commits: `61988ce` (Task 1 engine), `3a08d06` (Task 2 snare+genre), `a3c5369` (Task 3 RPC), `24f60cb` (Task 4 MCP), `f9cff20` (Task 5 UI), `e66d5e5` (Task 6 docs), `4db729a` (E2E option-count fix).
 
 Approved deviations from the plan text (each fixes a defect in the plan's reference code):
-- **Task 2 genre tests** — the step-0 fotf metric is style-invariant (all four kick archetypes anchor step 0, `ArrangementGenerator.cpp:131-151`), so the test tied at every probed seed; replaced with the {4,12} backbeat metric (house 9 vs 5 at seed 42). The hats test had a pointer-into-destroyed-temporary UB (`findPart(generateArrangement(...))`); arrangements now stored in locals. Seed 42 kept.
-- **Task 3** — `optString` is 3-arg (`RouterHelpers.h:97`), not 4-arg; snapshot clip duration field is `durationBeats` (`FrontendRpc.h:107`), not `duration`.
-- **Task 4** — MCP integration test uses the file's real fixtures (`parseOne`/`textOf`); the raw string needed the `)rp"` delimiter because `E(3,8)` contains `)"`. No `generate_arrangement` tools/call anchor existed, so none added.
-- **Task 5** — Vitest mock must resolve the four metadata RPC methods to `[]` (bare `{}` crashes the Scale select); snapshot setState uses a typed minimal `ProjectSnapshot`; mode-4 result cast uses the new `RhythmPatternResult` type. `aria-label="Mode"` added to the Mode select.
-- **Final review** — E2E `phrase-generator.spec.ts` mode-select count 4 ? 5 with a "Rhythm" option assertion (the new option broke the pre-existing regression wall).
+- **Task 2 genre tests** ï¿½ the step-0 fotf metric is style-invariant (all four kick archetypes anchor step 0, `ArrangementGenerator.cpp:131-151`), so the test tied at every probed seed; replaced with the {4,12} backbeat metric (house 9 vs 5 at seed 42). The hats test had a pointer-into-destroyed-temporary UB (`findPart(generateArrangement(...))`); arrangements now stored in locals. Seed 42 kept.
+- **Task 3** ï¿½ `optString` is 3-arg (`RouterHelpers.h:97`), not 4-arg; snapshot clip duration field is `durationBeats` (`FrontendRpc.h:107`), not `duration`.
+- **Task 4** ï¿½ MCP integration test uses the file's real fixtures (`parseOne`/`textOf`); the raw string needed the `)rp"` delimiter because `E(3,8)` contains `)"`. No `generate_arrangement` tools/call anchor existed, so none added.
+- **Task 5** ï¿½ Vitest mock must resolve the four metadata RPC methods to `[]` (bare `{}` crashes the Scale select); snapshot setState uses a typed minimal `ProjectSnapshot`; mode-4 result cast uses the new `RhythmPatternResult` type. `aria-label="Mode"` added to the Mode select.
+- **Final review** ï¿½ E2E `phrase-generator.spec.ts` mode-select count 4 ? 5 with a "Rhythm" option assertion (the new option broke the pre-existing regression wall).
 
 Verification: engine 735/741 (the 6 failures are the documented pre-existing CLAP-export/crash-recovery environment issues, proven via stash-rebuild), frontend 320/320, Phrase E2E 16/16, `npm run build` and full C++ build green. All 13 cross-layer params verified identical across engine/RPC/MCP/UI. Remaining manual step for a packaged release: `frontend\build.bat`.

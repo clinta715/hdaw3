@@ -208,3 +208,5 @@ tools/.ruff_cache/
 
 # Python bytecode caches (sidecar/tooling)
 __pycache__/
+.pi-web/
+

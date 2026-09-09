@@ -86,6 +86,31 @@ void registerExportTool(McpServer& s) {
             }
 
             juce::ValueTree projectCopy = e->getProjectModel().getTree().createCopy();
+
+            // Optional track filter: render only the requested track indices.
+            // Applied to the offline copy (mute + zero volume on the rest, solo
+            // cleared) so a selected track always plays regardless of project
+            // solo state and excluded tracks never contribute.
+            const QJsonArray trackIds = a.value("trackIds").toArray();
+            if (!trackIds.isEmpty())
+            {
+                auto trackList = projectCopy.getChildWithName(IDs::TRACK_LIST);
+                if (trackList.isValid())
+                {
+                    for (int i = 0; i < trackList.getNumChildren(); ++i)
+                    {
+                        bool keep = false;
+                        for (const auto& v : trackIds)
+                            if (v.toInt(-1) == i) { keep = true; break; }
+                        auto tr = trackList.getChild(i);
+                        tr.setProperty(IDs::isSoloed, false, nullptr);
+                        tr.setProperty(IDs::isMuted, !keep, nullptr);
+                        if (!keep)
+                            tr.setProperty(IDs::volume, 0.0, nullptr);
+                    }
+                }
+            }
+
             auto& formatManager = e->getProjectPool().getFormatManager();
             auto* pluginManager = &e->getPluginManager();
 

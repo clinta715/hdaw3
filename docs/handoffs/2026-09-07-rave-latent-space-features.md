@@ -1,7 +1,7 @@
 # Handoff: RAVE Latent-Space Features (morph / generate / probe)
 
 **Date:** 2026-09-07
-**Status:** 🟢 READY FOR IMPLEMENTATION — foundation (RAVE #1–#5) committed, verified in every delivery mode; latent-space work is the next increment
+**Status:** ⛔ DEPRECATED — RAVE is deprecated as of v0.32.0 (real-model mix results were overdriven/incoherent; native synths won). Do NOT implement this roadmap; kept as historical context for the committed foundation (RAVE #1–#5).
 **Branch:** `feat/fx-presets-saturator`
 **Commits (foundation, all green):**
 - `ac6c645` feat(rave): offline RAVE integration — sidecar, async jobs, RPC/MCP, Neural UI, settings

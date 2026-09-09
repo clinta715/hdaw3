@@ -7,6 +7,7 @@
 #include "../../engine/RhythmPatternGenerator.h"
 #include "../../engine/PsytranceGenerator.h"
 #include "../../engine/PsytranceMarkovGenerator.h"
+#include "../../engine/CorpusArranger.h"
 #include "../../common/ProjectCommands.h"
 #include "../../common/AudioGraphCommands.h"
 #include "../../engine/PatternLibrary.h"
@@ -818,6 +819,76 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "totalBeats", r.totalBeats },
             { "notesTotal", r.notesTotal },
             { "notesSkipped", r.notesSkipped }
+        };
+        if (!r.error.empty())
+            res["error"] = QString::fromStdString(r.error);
+        return { false, res };
+    }
+
+    if (m == "generateArrangementCorpus") {
+        HDAW::CorpusParams p;
+        p.keyRoot = optInt(o, "keyRoot", 0, nullptr);
+        p.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        p.seed = optInt(o, "seed", 0, nullptr);
+        p.totalBars = optInt(o, "totalBars", 0, nullptr);
+        if (o.contains("progressionA") && o.value("progressionA").isArray())
+            for (const auto& v : o.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
+        if (o.contains("progressionB") && o.value("progressionB").isArray())
+            for (const auto& v : o.value("progressionB").toArray()) p.progressionB.push_back(v.toInt());
+        if (o.contains("paletteTrackIds") && o.value("paletteTrackIds").isObject())
+        {
+            const auto obj = o.value("paletteTrackIds").toObject();
+            auto set = [&](const QString& role, int& out) { if (obj.contains(role)) out = obj.value(role).toInt(-1); };
+            set("kick", p.kick); set("bass", p.bass); set("hat", p.hat); set("snare", p.snare);
+            set("clap", p.clap); set("rim", p.rim); set("arp", p.arp); set("stab", p.stab);
+            set("pad", p.pad); set("riser", p.riser); set("down", p.down); set("lead", p.lead);
+        }
+        const QString lm = optString(o, "lengthMode", "").c_str();
+        p.opts.lengthMode = lm == "short" ? 0 : lm == "extended" ? 2 : lm == "mid" ? 1 : -1;
+        const QString im = optString(o, "introMode", "").c_str();
+        p.opts.introMode = im == "fourOnFloor" ? 0 : im == "shortIntro" ? 1 : im == "midIntro" ? 2 : im == "longIntro" ? 3 : -1;
+        p.opts.bars = optInt(o, "bars", 0, nullptr);
+        if (o.contains("constBass")) p.opts.constBass = o.value("constBass").toBool() ? 1 : 0;
+        if (o.contains("lateNovelty")) p.opts.lateNovelty = o.value("lateNovelty").toBool() ? 1 : 0;
+        if (o.contains("breakdown")) p.opts.breakdown = o.value("breakdown").toBool() ? 1 : 0;
+        p.opts.noveltyRole = optString(o, "noveltyRole", "");
+        auto r = c.generateArrangementCorpus(p);
+        QJsonArray clips;
+        for (const auto& rc : r.clips)
+            clips.append(QJsonObject{
+                { "role", QString::fromStdString(rc.role) },
+                { "trackId", rc.trackIndex },
+                { "clipId", rc.clipId },
+                { "noteCount", rc.noteCount } });
+        QJsonArray skipped;
+        for (const auto& s : r.skippedRoles) skipped.append(QString::fromStdString(s));
+        HDAW::CorpusOptions opt = p.opts;
+        opt.seed = p.seed;   // response plan must match the written arrangement
+        const HDAW::CorpusPlan plan = HDAW::CorpusArranger::samplePlan(opt);
+        QJsonArray secs;
+        for (const auto& s : plan.sections)
+        {
+            QJsonArray roles;
+            for (const auto& r : s.roles) roles.append(QString::fromStdString(r));
+            secs.append(QJsonObject{{"name", QString::fromStdString(s.name)},
+                                    {"barStart", s.barStart},
+                                    {"bars", s.bars},
+                                    {"density", s.density},
+                                    {"roles", roles}});
+        }
+        QJsonObject flags{{"lengthMode", QString::fromStdString(plan.lengthMode)},
+                          {"introMode", QString::fromStdString(plan.introMode)},
+                          {"constBass", plan.constBass},
+                          {"lateNovelty", plan.lateNovelty},
+                          {"breakdown", plan.breakdown},
+                          {"noveltyRole", QString::fromStdString(plan.noveltyRole)}};
+        QJsonObject res{
+            { "clips", clips },
+            { "skipped", skipped },
+            { "totalBeats", r.totalBeats },
+            { "notesTotal", r.notesTotal },
+            { "notesSkipped", r.notesSkipped },
+            { "plan", QJsonObject{{"bars", plan.totalBars}, {"sections", secs}, {"flags", flags}} }
         };
         if (!r.error.empty())
             res["error"] = QString::fromStdString(r.error);

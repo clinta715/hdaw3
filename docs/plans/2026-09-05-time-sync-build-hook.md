@@ -44,7 +44,7 @@ AGENTS.md lessons 15/21 plus the WSL-side-edit sync recipe).
 - God nodes: none. Community boundaries crossed: build/docs only — no engine,
   RPC, ReadModel, audio graph, or SPSC paths involved.
 - Knowledge graph: no code-graph impact (no C++/TS/RPC surface changes); a
-  fast codebase-memory reindex is run at the end for completeness.
+  fast graphify reindex is run at the end for completeness.
 
 ## Pitfall Gates Triggered
 - Gate 4 (Build/Packaging Stale Binaries): directly related — the hook exists
@@ -70,7 +70,7 @@ AGENTS.md lessons 15/21 plus the WSL-side-edit sync recipe).
    rule (with the `skill: "pre-build-time-sync"` invocation line).
 5. (subagent) Run G1–G4 self-checks and report evidence with output.
 6. (orchestrator) Re-run every gate independently, incl. G5 (scratch Ninja +
-   VS-generator builds); audit the diff (G7); fast-reindex codebase-memory;
+   VS-generator builds); audit the diff (G7); fast-reindex graphify;
    install the global agent skill at ~/.prime/agent/skills/pre-build-time-sync/;
    report.
 

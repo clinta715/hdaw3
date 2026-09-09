@@ -291,8 +291,8 @@ consistent with how rhythm/phrase generation already works.
   no audio-thread allocation, denormals handled, gain staging unity.
 - [ ] G10: Version bumped in **both** `CMakeLists.txt` and `frontend/package.json`
   (kept in sync); changelog entry added.
-- [ ] G11: Knowledge graph refreshed (`codebase-memory index_repository` mode
-  `fast`, project `D-pdf-roo-projects-hdaw3`) so the graph knows the new
+- [ ] G11: Knowledge graph refreshed (`graphify . --update` mode
+  `fast`, project ) so the graph knows the new
   classes/RPC methods.
 
 ## Dependency Map

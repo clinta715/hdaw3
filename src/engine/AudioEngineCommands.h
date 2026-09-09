@@ -26,6 +26,8 @@ public:
     void setTrackColor(int trackIndex, int color) override;
     void setTrackVolume(int trackIndex, float volume) override;
     void setMasterGain(float gain) override;
+    float setMasterFxParam(int slotIndex, int paramIndex, float value) override;
+    void setMasterFxBypassed(int slotIndex, bool bypassed) override;
     void setTrackPan(int trackIndex, float pan) override;
     void setTrackMuted(int trackIndex, bool muted) override;
     void setTrackSoloed(int trackIndex, bool soloed) override;
@@ -88,6 +90,7 @@ public:
     InstrumentPartResult addInstrumentPart(const InstrumentPartParams& params) override;
     PsytranceResult generatePsytrance(const HDAW::PsytranceParams& params) override;
     PsytranceMarkovResult generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& params) override;
+    PsytranceMarkovResult generateArrangementCorpus(const HDAW::CorpusParams& params) override;
     GainStageResult autoGainToTarget(int trackIndex, float targetRms,
                                      double windowSeconds, bool verify,
                                      bool allowGlobalScale) override;

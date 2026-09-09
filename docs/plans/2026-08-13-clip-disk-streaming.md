@@ -1028,7 +1028,7 @@ Manual check: a project with a 60 s clip must NOT allocate `60 s × 44.1k × 4 B
 - [ ] **Step 5: Version bump + graph refresh**
 
 - Bump `CMakeLists.txt` + `frontend/package.json` in sync (e.g. 0.21.0 → 0.22.0 — feature).
-- Refresh knowledge graph: `codebase-memory` `index_repository` (project `D-pdf-roo-projects-hdaw3`, mode `full` — new file + new methods).
+- Refresh knowledge graph: `graphify . --update` — new file + new methods).
 
 - [ ] **Step 6: Commit**
 
@@ -1047,7 +1047,7 @@ git commit -m "chore: bump to 0.22.0 (clip disk streaming)"
 - [ ] G4: Latency unchanged (report 0; no path-length change).
 - [ ] G5: Quality unchanged (sample-exact within 4/32768 tolerance vs preloaded playback).
 - [ ] G6: Memory ceiling: long clips stream (double buffer ≈ 2 s/side) instead of whole-file preload — asserted by `LongFileNotWholeFileResident`. `prepareToPlay` must NOT fill `preloadedData` for a streaming clip (the double-read is a gate failure).
-- [ ] G7: Version bumped in both files; knowledge graph refreshed (`index_repository` full).
+- [ ] G7: Version bumped in both files; knowledge graph refreshed (`graphify . --update` full).
 - [ ] G8: No new anti-patterns (no audio-thread I/O/alloc, no `DBG`, no N-call loops).
 
 ## Dependency Map

@@ -608,7 +608,7 @@ Expected: PASS, all suites.
 - [ ] **Step 4: Version bump + graph refresh**
 
 - Bump version in `CMakeLists.txt` (`project(HDAW VERSION ...)`) and `frontend/package.json` (kept in sync — AGENTS.md). This is a debug-instrumentation feature; bump patch (e.g. 0.21.0 → 0.21.1).
-- Refresh the knowledge graph: `codebase-memory` `index_repository` (project `D-pdf-roo-projects-hdaw3`, mode `fast`) so the new `BufferCheck`/`RealtimeGuard` nodes are known.
+- Refresh the knowledge graph: `graphify . --update` so the new `BufferCheck`/`RealtimeGuard` nodes are known.
 
 - [ ] **Step 5: Commit**
 
@@ -625,7 +625,7 @@ git commit -m "chore(rt): bump to 0.21.1 (realtime-safety instrumentation)"
 - [ ] G2: Full `build/Debug/hdaw_tests.exe` passes — the instrumentation produces **zero false positives** on the existing 250+ healthy tests.
 - [ ] G3: Release build (`cmake --build build --config Release --target HDAW`) succeeds with the checks compiled out (`#if JUCE_DEBUG`).
 - [ ] G4: The audio thread never allocates/locks/logs in the new code — only atomics; logging is message-thread (Gate 3 + lesson 17).
-- [ ] G5: Version bumped in both `CMakeLists.txt` and `frontend/package.json`; knowledge graph refreshed (`index_repository`).
+- [ ] G5: Version bumped in both `CMakeLists.txt` and `frontend/package.json`; knowledge graph refreshed (`graphify . --update`).
 - [ ] G6: No new anti-patterns (no `DBG`, no per-block allocation, no audio-thread I/O).
 
 ## Dependency Map

@@ -326,7 +326,7 @@ Run: `git commit -m "feat: FX chain preset bar in FXChain panel"`
 **Files:**
 - Modify: `FEATURES.md:50`, `feature_parity.md:70`, `roadmap.md:68` (❌→✅ + tool names)
 - Modify: `docs/psytrance-composition-guide.md` (chain-preset recipe section)
-- Run: codebase-memory `index_repository` (mode `fast`, repo_path `D:\pdf\roo projects\hdaw3`)
+- Run: `graphify . --update` (mode `fast`, repo_path `D:\pdf\roo projects\hdaw3`)
 
 - [ ] **Step 1:** Flip the three backlog markers and document the four MCP tools + four RPC routes with one Jordan cave-dub example (save "Dusty Skank" chain: sampler → filter + LFO → delay).
 - [ ] **Step 2:** Full suite gate — `cmd /c build-fast.bat all`, `.\build\hdaw_tests.exe` (zero failures), `npm test` green.

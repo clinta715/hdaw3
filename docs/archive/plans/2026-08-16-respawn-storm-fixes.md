@@ -31,7 +31,7 @@ respawn plugin paths, (D) logging flag reasons — with regression/unit tests an
       `graphLock` and OUTSIDE the pump-park; `HDAW_LOG` not `DBG`; any new test `.cpp`
       added to `tests/CMakeLists.txt`; no RPC/frontend changes.
 
-## Dependency Map (verified via grep + trace_path + reads)
+## Dependency Map (verified via grep + graphify + reads)
 
 - **Fix A** — `MainAudioProcessor::rebuildRoutingGraph` (`src/engine/MainAudioProcessor.cpp:585`).
   - Blast radius: HIGH — `rebuildRoutingGraph` is a hub (~45 refs). Upstream callers:

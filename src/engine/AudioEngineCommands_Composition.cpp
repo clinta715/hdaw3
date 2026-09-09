@@ -8,6 +8,7 @@
 #include "RhythmPatternGenerator.h"
 #include "PsytranceGenerator.h"
 #include "PsytranceMarkovGenerator.h"
+#include "CorpusArranger.h"
 #include "../model/ProjectModel.h"
 #include "../common/DebugLog.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -1533,6 +1534,76 @@ ProjectCommands::PsytranceResult AudioEngineCommands::generatePsytrance(const HD
     }
 
     endTransaction();
+    return result;
+}
+
+ProjectCommands::PsytranceMarkovResult
+AudioEngineCommands::generateArrangementCorpus(const HDAW::CorpusParams& params)
+{
+    ProjectCommands::PsytranceMarkovResult result;
+    const auto score = HDAW::CorpusArranger::generate(params);
+    if (!score.error.empty())
+    {
+        result.error = "generate_arrangement_corpus: " + score.error;
+        return result;
+    }
+    auto& model = engine_.getProjectModel();
+    const int trackCount = model.getTrackListTree().getNumChildren();
+    for (const auto& clip : score.clips)
+        if (clip.trackIndex < 0 || clip.trackIndex >= trackCount)
+        {
+            result.error = "generate_arrangement_corpus: role '" + clip.role
+                         + "' track index out of range";
+            return result;
+        }
+    result.totalBeats = score.totalBeats;
+    result.notesTotal = score.notesTotal;
+    result.skippedRoles = score.skipped;
+    auto& um = model.getUndoManager();
+    um.beginNewTransaction(); // one undo unit; per-note writes below are not undo-tracked
+    constexpr int kMaxNotesPerClip = 8192;
+    for (const auto& clip : score.clips)
+    {
+        ProjectCommands::PsytranceMarkovResult::Clip out;
+        out.role = clip.role;
+        out.trackIndex = clip.trackIndex;
+        const double bpm = engine_.getTransportManager().getBPM();
+        // Chunked clips carry a timeline anchor (clip.startBeats); place the
+        // clip there with the remainder of the arrangement as its span.
+        auto c = model.createMidiClipEmpty("Corp" + clip.role,
+                                           HDAW::beatsToSeconds(clip.startBeats, bpm),
+                                           std::max(0.5, HDAW::beatsToSeconds(score.totalBeats - clip.startBeats, bpm)));
+        c.setProperty(IDs::color, static_cast<int>(ProjectModel::trackColorForIndex(clip.trackIndex)), nullptr);
+        auto noteList = c.getChildWithName(IDs::MIDI_NOTE_LIST);
+        if (!noteList.isValid())
+        {
+            noteList = juce::ValueTree(IDs::MIDI_NOTE_LIST);
+            c.addChild(noteList, -1, nullptr);
+        }
+        int written = 0;
+        for (const auto& n : clip.notes)
+        {
+            if (n.startBeat >= score.totalBeats) { ++result.notesSkipped; continue; }
+            if (written >= kMaxNotesPerClip)     { ++result.notesSkipped; continue; }
+            // Battle-tested note-write pattern (matches add_notes): raw note
+            // tree appended WITHOUT undo bookkeeping — avoids dropping notes
+            // when bulk-writing the large melodic clips (arp/pad) in one pass.
+            auto note = model.createMidiNote(n.pitch,
+                                             static_cast<float>(n.velocity) / 127.0f,
+                                             n.startBeat, n.durationBeats);
+            noteList.addChild(note, -1, nullptr);
+            ++written;
+        }
+        out.noteCount = written;
+        out.clipId = static_cast<int>(c.getProperty(IDs::clipID));
+        if (out.clipId < 0) out.clipId = -1;
+        // Attach the minted clip to its palette track (same contract as the
+        // Markov command) — without this the tree stays empty even though
+        // the score was fully generated.
+        model.getTrackListTree().getChild(clip.trackIndex)
+            .getChildWithName(IDs::CLIP_LIST).addChild(c, -1, nullptr);
+        result.clips.push_back(std::move(out));
+    }
     return result;
 }
 

@@ -36,10 +36,10 @@ numeric `dsp` feature vector from `<file>.timbre.json`.
       environment failures (RealtimeSafety x4 Debug-only, DiagnosticClapExportMatrix,
       AutoGain.TooLoud, GlobalScale.NonClipping, PluginManagerInProcessVst3).
 
-## Dependency Map (verified via codebase-memory + grep, 2026-08-25)
+## Dependency Map (verified via graphify + grep, 2026-08-25)
 
 - Blast radius: `FileLibraryManager` (src/engine) -> `McpTools_Library.cpp`
-  (MCP tools) and `Router_Library.cpp` (Qt RPC router). Graph trace_path
+  (MCP tools) and `Router_Library.cpp` (Qt RPC router). Graph graphify query/path
   (inbound, search): Router_Library. New pure module `LibraryClusterer` has
   NO callers until wired; both surfaces are additive registrations.
 - Upstream: MCP client calls (opencode/agents), frontend `libraryStore.ts`

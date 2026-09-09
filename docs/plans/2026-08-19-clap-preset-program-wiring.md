@@ -61,7 +61,7 @@ NO new RPC/MCP surface is needed — parity is automatic.
 - [ ] Gate 8: env-guarded run (`HDAW_REAL_PLUGIN_TESTS=1`) of
       `ClapProgram.*` + `Audition.*` + `ClapPresetProbe.*` green.
 
-## Dependency Map (verified via grep/read + codebase-memory)
+## Dependency Map (verified via grep/read + graphify)
 
 - Blast radius: `CLAPPluginInstance` program stubs (only consumer: the JUCE
   program API surface above — all verified to route through it); child

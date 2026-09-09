@@ -71,11 +71,11 @@ first; then `AGENTS.md` (lessons) and the drain-seam plan referenced in §2.
 
 ## 3. Immediate remaining items (prioritized)
 
-1. **Knowledge graph refresh (first action):** the `codebase-memory` MCP
-   server was not running this session, so `index_repository` could not run.
+1. **Knowledge graph refresh (first action):** the `graphify`
+   server was not running this session, so `graphify . --update` could not run.
    `AudioEngine::drainPendingRoutingRebuild` is NOT yet indexed. Start the
-   session, confirm the MCP connects, run `index_repository` (project
-   `D-pdf-roo-projects-hdaw3`, mode `fast`).
+   session, confirm the MCP connects, run `graphify . --update` (project
+   , mode `fast`).
 2. **Streaming handle sharing:** two clips of the same LONG (> 8 s) file
    still open one reader + double-buffer each (the audio pool covers
    resident decodes only). Context:

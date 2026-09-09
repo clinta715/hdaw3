@@ -136,8 +136,8 @@ MANDATORY first steps:
   CSS theme tokens only (no raw hex, Gate 8); Vitest + one Playwright test
   driving the automation-panel generate flow (poll read.getAutomationPoints).
 - Finalize (G8, G9): version bump 0.16.0 in BOTH CMakeLists.txt and
-  frontend/package.json; full suites; plan checklist; codebase-memory
-  index_repository fast refresh (structural changes).
+  frontend/package.json; full suites; plan checklist; graphify
+  graphify . --update fast refresh (structural changes).
 
 ## Verification commands (Windows PowerShell)
 - cmake --build build --config Debug

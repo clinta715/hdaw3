@@ -93,8 +93,8 @@ ever misbehaves again: `git reset`, `git checkout HEAD -- <files>`, verify
    (`docs/plans/2026-08-13-internal-sampler-*`) describe the follow-up that
    the sampler work this session built toward.
 3. Optional cleanup: gitignore `*.hdaw3` test projects + `compositions/`;
-   re-index codebase-memory (`index_repository`, project
-   `D-pdf-roo-projects-hdaw3`) if you add structural code.
+   re-index graphify (`graphify . --update`, project
+   ) if you add structural code.
 
 ## 6. Environment
 

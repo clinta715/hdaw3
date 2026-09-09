@@ -25,7 +25,7 @@
 - [x] **G2:** integration test `McpServer.ExportAudioStreamsLongClipWithoutDropouts` in `tests/integration/mcp/mcp_server_test.cpp` — **PASS** (commit `2a2cefe`): 12 s clip (source > 8 s → streams) exports 0→12 s via `export_audio`; every 100 ms slice RMS > 0.1. Suite evidence: `McpServer.Export*` 7/7 PASS (29.3 s), incl. the CLAP export tests.
 - [x] **G3:** build succeeds; both filtered suites PASS; new test names confirmed in the built binary via `--gtest_list_tests` after each build (lesson 15).
 - [x] **G4:** this plan doc committed with gate results recorded.
-- [x] **G5:** knowledge graph refreshed (`codebase-memory` `index_repository`, mode `fast`).
+- [x] **G5:** knowledge graph refreshed (`graphify . --update`, mode `fast`).
 
 ## Dependency Map (verified by reading code 2026-08-14)
 
@@ -344,4 +344,4 @@ git add docs/plans/2026-08-13-export-non-realtime-streaming.md
 git commit -m "docs: Subsystem D plan + gate results (export non-realtime streaming)"
 ```
 
-- [ ] **Step 3:** Refresh the knowledge graph: `codebase-memory` `index_repository` (repo_path `D:\pdf\roo projects\hdaw3`, mode `fast`).
+- [ ] **Step 3:** Refresh the knowledge graph: `graphify . --update` (repo_path `D:\pdf\roo projects\hdaw3`, mode `fast`).

@@ -49,12 +49,12 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
         "project",
         [e](const QJsonObject& a) {
             auto path = a.value("filePath").toString();
-            juce::File f(juce::String(path.toUtf8().constData()));
-            bool ok = HDAW::ProjectSerializer::load(e->getProjectModel(), f);
-            if (ok) {
-                auto* proc = e->getMainProcessor();
-                if (proc) proc->rebuildRoutingGraph();
-            }
+            // Route through the command layer (same as the RPC loadProject):
+            // direct ProjectSerializer::load skipped migrations (trackType,
+            // MASTER_FX) and load-progress broadcast — the MCP tool silently
+            // diverged from the RPC path (2026-09-08 master FX session).
+            const bool ok = e->getProjectCommands().loadProject(
+                juce::String(path.toUtf8().constData()).toStdString());
             return McpToolResult::text(ok ? "loaded" : "load failed", !ok);
         }});
 

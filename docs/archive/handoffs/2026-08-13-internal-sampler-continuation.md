@@ -43,7 +43,7 @@ restore-after-rebuild, RPC (`sampler.setSample`, `setFxSlotParam`), MCP parity
 ## What's left
 
 ### 1. Knowledge graph refresh
-Run `codebase-memory index_repository` (mode `fast`, project `D-pdf-roo-projects-hdaw3`)
+Run `graphify . --update`
 to pick up the new files and RPC methods. This is required by the completion contract
 (AGENTS.md §Completion Contract item 8).
 

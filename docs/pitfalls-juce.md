@@ -410,3 +410,42 @@ surfaced, all verified against the FetchContent JUCE 8.0.0 source:
 feed it only prepared-block-size buffers, design any DSP inside it for
 `sampleRate * factor`, report its latency through `roundToInt`, and clamp
 every entry point into its params - including automation.
+
+## `StateVariableTPTFilter::process()` silently passes through in-place
+
+`juce::dsp::StateVariableTPTFilter<float>` is a per-sample filter. Its
+inherited block-level `process(ProcessContext)` from the `Processor` base
+class **does not apply the filter coefficients** when the context is
+`ProcessContextReplacing` (in-place). The filter appears configured correctly
+(cutoff, resonance, type all set via the public API) but audio passes through
+unchanged — zero filtering, zero error, zero warning.
+
+This was the root cause of the filter FX type being completely non-functional
+since its introduction. Every `set_internal_fx_param` call to configure the
+filter succeeded (the params were stored correctly), every automation lane
+swept the cutoff as designed, but the actual audio output was unfiltered.
+
+**Fix (v0.31.0):** replaced with a manual TPT state-variable filter
+(`ManualSVF` struct in `TrackFXSlot.h`) that processes per-sample using the
+documented TPT SVF math:
+```
+g = tan(π * cutoff / sampleRate)
+k = 2 / resonance
+a1 = 1 / (1 + g*(g+k))
+a2 = g * a1
+
+v3 = input - ic2
+v1 = a1 * ic1 + a2 * v3
+v2 = ic2 + g * v1          // ← NOT ic2 + a1*(g*ic1 + v3)
+ic1 = 2*v1 - ic1
+ic2 = 2*v2 - ic2
+```
+The initial ManualSVF implementation also had the `v2` formula wrong
+(`ic2 + a1*(g*ic1 + v3)` instead of `ic2 + g*v1`), which produced incorrect
+filter output even with per-sample processing.
+
+**Rule:** when using JUCE DSP filter classes, always verify the block-level
+`process()` actually applies the coefficients with a simple A/B test (known
+signal at known cutoff). If it doesn't, fall back to per-sample `processSample()`
+with explicit coefficient management. Prefer `HDAW_LOG_ALWAYS` over `DBG()` for
+filter diagnostics — `DBG()` is `#if JUCE_DEBUG`-only and disappears in Release.

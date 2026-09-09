@@ -130,6 +130,11 @@ bool AudioEngineCommands::loadProject(const std::string& filePath)
         }
     }
 
+    // Migration (master FX): projects saved before the master FX chain have
+    // no MASTER_FX node — stamp the default so the chain exists (both slots
+    // bypassed; zero audio behavior change until explicitly enabled).
+    engine_.getProjectModel().ensureMasterFxNode();
+
     sendProgress("Building audio graph...", 0.3f);
 
     auto* proc = engine_.getMainProcessor();

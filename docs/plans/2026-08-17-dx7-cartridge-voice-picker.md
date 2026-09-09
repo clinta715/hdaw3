@@ -26,7 +26,7 @@ the cartridge's voices by name and re-imports the selected `voiceIndex`.
 - [x] Gate H: Gate 8 audit — new CSS mirrors `.fx-preset-*` conventions (`var(--token, fallback)` only, no bare hex).
 
 ## Dependency Map
-- **Blast radius (verified via codebase-memory):** `parseCartridgeSysex` has exactly two callers: `src/mcp/McpTools_Audio.cpp` and `src/frontend/router/Router_Audio.cpp`. Both import handlers are the only places that shape the import response. The only UI consumer of the import response is `FXChain.tsx`.
+- **Blast radius (verified via graphify):** `parseCartridgeSysex` has exactly two callers: `src/mcp/McpTools_Audio.cpp` and `src/frontend/router/Router_Audio.cpp`. Both import handlers are the only places that shape the import response. The only UI consumer of the import response is `FXChain.tsx`.
 - **Upstream:** `audio.fm_synthImportSysex` is called from `frontend/src/components/FXChain.tsx` (drop handler) and the E2E spec. MCP tool `fm_synth_import_sysex` is called by external MCP clients.
 - **Downstream:** `FmSynthEngine::loadPatch` (message thread — verified, no audio-thread change). Parser returns trimmed names already.
 - **God nodes:** none (both handlers are leaves; loadPatch unchanged).
@@ -95,4 +95,4 @@ The frontend shows the picker only when `Array.isArray(resp.voices) && resp.tota
 - Diff scanned for anti-patterns; dependency map confirmed (no silent breakage).
 - MCP parity preserved (import tool returns voices).
 - Knowledge graph refreshed after structural change (new RPC response shape is
-  data-only — `index_repository` fast after merge).
+  data-only — `graphify . --update` fast after merge).

@@ -29,6 +29,71 @@ QJsonObject parseOne(const QByteArray& buf) {
     return QJsonDocument::fromJson(line).object();
 }
 
+// Free helpers for export-filter tests (keep these plain functions — lambdas
+// over fixture members are the exact thing MSVC parses awkwardly here).
+QString tmpWavPath(const char* tag)
+{
+    return QString::fromUtf8(juce::File::getSpecialLocation(
+        juce::File::SpecialLocationType::tempDirectory)
+        .getNonexistentChildFile(tag, ".wav", false).getFullPathName().toRawUTF8());
+}
+
+
+double rmsOfWav(const QString& path)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(
+        fm.createReaderFor(juce::File(path.toStdString())));
+    if (reader == nullptr) return -1.0;
+    double sumSq = 0.0;
+    juce::int64 count = 0;
+    juce::AudioBuffer<float> buf(static_cast<int>(reader->numChannels), 4096);
+    juce::int64 pos = 0;
+    while (pos < reader->lengthInSamples)
+    {
+        int want = static_cast<int>(std::min<juce::int64>(4096, reader->lengthInSamples - pos));
+        buf.clear();
+        reader->read(&buf, 0, want, pos, true, true);
+        for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+            for (int i = 0; i < want; ++i)
+                sumSq += static_cast<double>(buf.getSample(ch, i)) * buf.getSample(ch, i);
+        count += static_cast<juce::int64>(want) * buf.getNumChannels();
+        pos += want;
+    }
+    return count > 0 ? std::sqrt(sumSq / static_cast<double>(count)) : 0.0;
+}
+
+// Sum of |a - b| over every aligned sample of two mono-capable WAVs. Exactly
+// 0.0 for identical content; large for genuinely different signals even when
+// their peak/RMS coincide. Returns -1 on any read failure.
+double wavDiffSum(const QString& pa, const QString& pb)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> ra(fm.createReaderFor(juce::File(pa.toStdString())));
+    std::unique_ptr<juce::AudioFormatReader> rb(fm.createReaderFor(juce::File(pb.toStdString())));
+    if (ra == nullptr || rb == nullptr) return -1.0;
+    const juce::int64 n = std::min(ra->lengthInSamples, rb->lengthInSamples);
+    double sum = 0.0;
+    juce::AudioBuffer<float> ba(2, 4096), bb(2, 4096);
+    juce::int64 pos = 0;
+    while (pos < n)
+    {
+        int want = static_cast<int>(std::min<juce::int64>(4096, n - pos));
+        ba.clear(); bb.clear();
+        ra->read(&ba, 0, want, pos, true, true);
+        rb->read(&bb, 0, want, pos, true, true);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < want; ++i)
+                sum += std::fabs(static_cast<double>(ba.getSample(ch, i))
+                                 - static_cast<double>(bb.getSample(ch, i)));
+        pos += want;
+    }
+    return sum;
+}
+
+
 // Writes a 4-bar 120 BPM 4-on-floor percussion loop (8 s total, 16 kicks at
 // 0.5 s intervals) to a temporary mono WAV and returns its path. Caller deletes.
 QString makePercussionLoopWav() {
@@ -3048,6 +3113,38 @@ QJsonObject firstResponse(const QByteArray& buf) {
 
 } // namespace
 
+QString exportWait(mcp::TransportLoopback& lb, int& idRef, const QString& path,
+                   const QJsonArray& ids)
+{
+    QJsonObject args{{"outputPath", path}, {"format", "wav"},
+                     {"start", 0.0}, {"end", 1.5},
+                     {"sampleRate", 44100.0}, {"bitDepth", 16}, {"wait", true}};
+    if (!ids.isEmpty()) args["trackIds"] = ids;
+    QJsonObject req;
+    req["jsonrpc"] = "2.0"; req["id"] = idRef++;
+    req["method"] = "tools/call";
+    req["params"] = QJsonObject{{"name", "export_audio"}, {"arguments", args}};
+    lb.drainOutgoing();
+    lb.pumpIncoming(QJsonDocument(req).toJson(QJsonDocument::Compact));
+    QJsonObject resp;
+    QByteArray acc;
+    for (int i = 0; i < 120 && resp.isEmpty(); ++i)
+    {
+        QByteArray out;
+        lb.waitForOutgoing(250, &out);
+        acc += out;
+        resp = firstResponse(acc);
+        if (resp.isEmpty())
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    }
+    if (resp.isEmpty()) return {};
+    auto rr = resp.value("result").toObject();
+    if (rr.value("isError").toBool(false)) return {};
+    auto content = rr.value("content").toArray();
+    if (content.isEmpty()) return {};
+    return content[0].toObject().value("text").toString();
+}
+
 // rave_import_result payload contract: without samplerTrackIndex/samplerSlotIndex
 // the response JSON must carry samplerRequested=false and samplerError="not
 // requested", and the WAV must still be imported as a clip.
@@ -3071,6 +3168,48 @@ TEST_F(McpCoverageTest, RaveImportReportsSamplerNotRequested) {
     const int clipId = payload.value("clipId").toInt(-1);
     ASSERT_GT(clipId, 0) << "import must mint a clip; got: [" << text(r).toStdString() << "]";
     EXPECT_FALSE(findClip(clipId).isEmpty()) << "imported clip must appear in list_clips";
+
+    juce::File(wavPath.toStdString()).deleteFile();
+}
+
+TEST_F(McpCoverageTest, RaveImportTimelineAlignedAndExplicitSourceOffset) {
+    const QString wavPath = makePercussionLoopWav();
+    ASSERT_FALSE(wavPath.isEmpty());
+
+    auto r = call("rave_import_result", {{"outputPath", wavPath},
+                                         {"trackIndex", 0},
+                                         {"startBeats", 128.0},
+                                         {"timelineAligned", true},
+                                         {"alignToGrid", false}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto payload = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    int clipId = payload.value("clipId").toInt(-1);
+    ASSERT_GT(clipId, 0);
+    const double expectedTimeline = 128.0 * 60.0 / engine->getTransportManager().getBPM();
+    EXPECT_NEAR(payload.value("sourceOffsetSeconds").toDouble(-1.0), expectedTimeline, 1.0e-9);
+
+    juce::ValueTree clip;
+    auto trackList = engine->getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren() && !clip.isValid(); ++t) {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        for (int c = 0; c < clipList.getNumChildren(); ++c) {
+            auto cand = clipList.getChild(c);
+            if (static_cast<int>(cand.getProperty(IDs::clipID, 0)) == clipId) { clip = cand; break; }
+        }
+    }
+    ASSERT_TRUE(clip.isValid());
+    EXPECT_NEAR(static_cast<double>(clip.getProperty(IDs::offset, 0.0)), expectedTimeline, 1.0e-9);
+
+    auto r2 = call("rave_import_result", {{"outputPath", wavPath},
+                                          {"trackIndex", 0},
+                                          {"startBeats", 128.0},
+                                          {"timelineAligned", true},
+                                          {"sourceOffsetBeats", 4.0},
+                                          {"alignToGrid", false}});
+    ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto payload2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    const double expectedExplicit = 4.0 * 60.0 / engine->getTransportManager().getBPM();
+    EXPECT_NEAR(payload2.value("sourceOffsetSeconds").toDouble(-1.0), expectedExplicit, 1.0e-9);
 
     juce::File(wavPath.toStdString()).deleteFile();
 }
@@ -3119,6 +3258,75 @@ TEST_F(McpCoverageTest, ExportAudioWaitBlocksUntilComplete) {
     juce::File(path.toStdString()).deleteFile();
 }
 
+// The export_audio trackIds filter must actually restrict the render to the
+// selected tracks. Regression: trackIds used to be schema-only and every
+// 'stem' export rendered the FULL mix (identical peaks across different
+// trackIds), which also made RAVE 'stems' full-mix smears. With the fix,
+// selected tracks play and unselected/unknown tracks render silence.
+TEST_F(McpCoverageTest, ExportAudioTrackIdsFiltersTracks) {
+    auto r1 = call("add_track_with_fx", {{"name", "T1"}, {"fxType", "fm_synth"}});
+    ASSERT_FALSE(isError(r1)) << text(r1).toStdString();
+    auto r2 = call("add_track_with_fx", {{"name", "T2"}, {"fxType", "fm_synth"}});
+    ASSERT_FALSE(isError(r2)) << text(r2).toStdString();
+    const int t1 = trackCount() - 2;
+    const int t2 = trackCount() - 1;
+
+    int c1 = addMidiClip(t1, 0.0, 8.0, "T1clip");
+    int c2 = addMidiClip(t2, 0.0, 8.0, "T2clip");
+    ASSERT_GT(c1, 0);
+    ASSERT_GT(c2, 0);
+    addNote(c1, 45, 0.0, 0.2, 90);
+    addNote(c1, 47, 0.25, 0.2, 90);
+    addNote(c1, 50, 0.5, 0.2, 90);
+    for (int i = 0; i < 16; ++i)
+        addNote(c2, 72 + (i % 8), i * 0.0625, 0.1, 127);
+
+    const QString pf = tmpWavPath("hdaw_export_full");
+    const QString pT1 = tmpWavPath("hdaw_export_t1");
+    const QString pT2 = tmpWavPath("hdaw_export_t2");
+    const QString p0 = tmpWavPath("hdaw_export_empty");
+    const QString pBad = tmpWavPath("hdaw_export_bad");
+
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pf, {}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pT1, QJsonArray{t1}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pT2, QJsonArray{t2}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, p0, QJsonArray{0}).startsWith("export complete:"));
+    EXPECT_TRUE(exportWait(*loopback, nextId_, pBad, QJsonArray{999}).startsWith("export complete:"));
+
+    const double peakFull = rmsOfWav(pf);
+    const double peakT1 = rmsOfWav(pT1);
+    const double peakT2 = rmsOfWav(pT2);
+    const double peakEmpty = rmsOfWav(p0);
+    const double peakBad = rmsOfWav(pBad);
+    ::testing::Test::RecordProperty("peakFull", std::to_string(peakFull));
+    ::testing::Test::RecordProperty("peakT1", std::to_string(peakT1));
+    ::testing::Test::RecordProperty("peakT2", std::to_string(peakT2));
+    ::testing::Test::RecordProperty("peakEmpty", std::to_string(peakEmpty));
+    ::testing::Test::RecordProperty("peakBad", std::to_string(peakBad));
+
+    EXPECT_GT(peakFull, 0.002);
+    EXPECT_GT(peakT1, 0.0008);
+    EXPECT_GT(peakT2, 0.0008);
+    // The two stems must NOT be identical (pre-fix they were the same full-mix
+    // render). Their peak/RMS happen to coincide (FM level is register
+    // independent here), so discriminate at the SAMPLE level: identical files
+    // give exactly 0.0, different signals give a large summed difference over
+    // ~66k samples (e.g. a full-scale 1-sample difference at 3% density
+    // already exceeds 1000).
+    const double stemDiff = wavDiffSum(pT1, pT2);
+    EXPECT_GT(stemDiff, 0.1) << "T1/T2 stems appear sample-identical (sum|diff|="
+                             << stemDiff << ")" ;
+
+    // Unselected and unknown tracks must render silence (full-mix leak = bug).
+    EXPECT_LT(peakEmpty, 0.0005) << "empty-track stem leaked the full mix";
+    EXPECT_LT(peakBad, 0.0005) << "unknown trackIds leaked the full mix";
+
+    juce::File(pf.toStdString()).deleteFile();
+    juce::File(pT1.toStdString()).deleteFile();
+    juce::File(pT2.toStdString()).deleteFile();
+    juce::File(p0.toStdString()).deleteFile();
+    juce::File(pBad.toStdString()).deleteFile();
+}
 // analyze_tuning with an unknown role must report the check as skipped
 // (skipped=true) AND not passed (pass=false).
 TEST_F(McpCoverageTest, AnalyzeTuningUnknownRoleSkipped) {
@@ -3136,6 +3344,52 @@ TEST_F(McpCoverageTest, AnalyzeTuningUnknownRoleSkipped) {
     EXPECT_TRUE(check.value("error").toString().contains("unknown role"));
 
     juce::File(wavPath.toStdString()).deleteFile();
+}
+
+// Master bus FX chain (2026-09-08 master-bus FX plan): tool registration,
+// param write with lesson-23 clamp, bypass toggle, readback, and rebuild
+// survival on the LIVE master bus processor (Gate 1/10, MCP surface).
+TEST_F(McpCoverageTest, MasterFxToolsRoundTrip) {
+    QStringList toolNames;
+    for (const auto& t : toolList())
+        toolNames << t.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("set_master_fx_param"));
+    EXPECT_TRUE(toolNames.contains("set_master_fx_bypassed"));
+    EXPECT_TRUE(toolNames.contains("get_master_fx_params"));
+
+    // Default stamp: slot 0 = eq, slot 1 = limiter, both bypassed.
+    auto read = call("get_master_fx_params");
+    ASSERT_FALSE(isError(read)) << text(read).toStdString();
+    auto readObj = QJsonDocument::fromJson(text(read).toUtf8()).object();
+    // NOTE: not named "slots" — Qt defines `slots` as an empty macro
+    // (qobjectdefs.h) and the name expands to nothing under MSVC.
+    auto fxSlotArr = readObj.value("slots").toArray();
+    ASSERT_EQ(fxSlotArr.size(), 2);
+    EXPECT_EQ(fxSlotArr.at(0).toObject().value("fxType").toString(), "eq");
+    EXPECT_EQ(fxSlotArr.at(1).toObject().value("fxType").toString(), "limiter");
+    EXPECT_TRUE(fxSlotArr.at(0).toObject().value("bypassed").toBool());
+
+    // Out-of-range param index on the eq slot (3 params) is an error.
+    auto badIdx = call("set_master_fx_param", {{"slotIndex", 0}, {"paramIndex", 7}, {"value", 1.0}});
+    EXPECT_TRUE(isError(badIdx)) << text(badIdx).toStdString();
+
+    // In-range write lands; out-of-range value clamps (lesson 23).
+    auto write = call("set_master_fx_param", {{"slotIndex", 1}, {"paramIndex", 0}, {"value", -6.0}});
+    ASSERT_FALSE(isError(write)) << text(write).toStdString();
+    auto clamp = call("set_master_fx_param", {{"slotIndex", 1}, {"paramIndex", 0}, {"value", 5.0}});
+    ASSERT_FALSE(isError(clamp)) << text(clamp).toStdString();
+    EXPECT_TRUE(text(clamp).contains("clamped")) << text(clamp).toStdString();
+
+    // Enable the limiter; readback reflects the clamped threshold (0 dB).
+    auto enable = call("set_master_fx_bypassed", {{"slotIndex", 1}, {"bypassed", false}});
+    ASSERT_FALSE(isError(enable)) << text(enable).toStdString();
+
+    read = call("get_master_fx_params");
+    readObj = QJsonDocument::fromJson(text(read).toUtf8()).object();
+    fxSlotArr = readObj.value("slots").toArray();
+    EXPECT_FALSE(fxSlotArr.at(1).toObject().value("bypassed").toBool());
+    EXPECT_DOUBLE_EQ(fxSlotArr.at(1).toObject().value("params").toArray().at(0)
+                         .toObject().value("value").toDouble(), 0.0);
 }
 
 } // namespace

@@ -7,6 +7,7 @@
 #include "../engine/AutomationPreset.h"
 #include "../engine/PsytranceGenerator.h"
 #include "../engine/PsytranceMarkovGenerator.h"
+#include "../engine/CorpusArranger.h"
 
 namespace HDAW { struct ArrangementParams; struct ChainPreset; }
 
@@ -25,6 +26,12 @@ public:
     // Master-bus gain (linear, clamped >= 0). Undoable root-tree write; the
     // live processor follows via the AudioEngine listener, rebuilds restore it.
     virtual void setMasterGain(float gain) = 0;
+    // Master FX chain (MASTER_FX root node, FX_SLOT children): undoable
+    // tree writes; the live MasterBusProcessor follows via the AudioEngine
+    // listener and rebuilds restore from the tree (Gate 1). Values are
+    // clamped to the slot type's param defs on write (lesson 23).
+    virtual float setMasterFxParam(int slotIndex, int paramIndex, float value) = 0;
+    virtual void setMasterFxBypassed(int slotIndex, bool bypassed) = 0;
     virtual void setTrackPan(int trackIndex, float pan) = 0;
     virtual void setTrackMuted(int trackIndex, bool muted) = 0;
     virtual void setTrackSoloed(int trackIndex, bool soloed) = 0;
@@ -538,6 +545,7 @@ public:
 
     virtual PsytranceMarkovResult
     generatePsytranceMarkov(const HDAW::PsytranceMarkovParams& params) = 0;
+    virtual PsytranceMarkovResult generateArrangementCorpus(const HDAW::CorpusParams& params) = 0;
 
     // ── Plugin preset audition ──
     // Solo-renders a plugin (on a temp probe track when trackIndex < 0, or an

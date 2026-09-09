@@ -65,7 +65,8 @@ struct PsytranceNote {
 struct PsytranceClip {
     std::string role;                 // "kick", "bass", "hat", "arp", "stab", "pad", "clap", "riser", "down"
     int trackIndex = -1;
-    std::vector<PsytranceNote> notes; // ascending by startBeat
+    double startBeats = 0.0;          // clip timeline anchor in beats (0 = whole-arrangement clip at beat 0)
+    std::vector<PsytranceNote> notes; // ascending by startBeat; clip-local when the clip starts at startBeats
 };
 
 struct PsytranceScore {

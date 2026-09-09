@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "source": "compositions/psytrance_corpus_fulltracks.tsv (n=533)",
+    "axisSource": "measured percentiles; intro quantiles mapped to ABSOLUTE bars (p10/p25≈0, p50≈0.037→2-4, p75≈0.19→8-16, p90=0.5→cap 16-24)"
+  },
+  "length": {
+    "modes": [
+      {
+        "name": "short",
+        "p": 0.5,
+        "min": 28,
+        "max": 48
+      },
+      {
+        "name": "mid",
+        "p": 0.25,
+        "min": 48,
+        "max": 114
+      },
+      {
+        "name": "extended",
+        "p": 0.25,
+        "min": 114,
+        "max": 159
+      }
+    ]
+  },
+  "kick": {
+    "introModes": [
+      {
+        "name": "fourOnFloor",
+        "p": 0.3,
+        "bars": 0
+      },
+      {
+        "name": "shortIntro",
+        "p": 0.3,
+        "bars": 2
+      },
+      {
+        "name": "midIntro",
+        "p": 0.25,
+        "bars": 8
+      },
+      {
+        "name": "longIntro",
+        "p": 0.15,
+        "bars": 16
+      }
+    ],
+    "present": 0.51
+  },
+  "constBass": 0.37,
+  "lateNovelty": 0.2,
+  "breakdown": 0.05,
+  "symmetric": 0.6,
+  "noveltyPool": [
+    "lead",
+    "chord",
+    "arp2",
+    "fx"
+  ],
+  "caps": {
+    "introMaxBars": 8,
+    "breakdownLen": [
+      3,
+      8
+    ],
+    "dropLen": [
+      16,
+      32
+    ]
+  }
+}

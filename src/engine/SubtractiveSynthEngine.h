@@ -38,8 +38,17 @@ public:
     void setFilterSustain(float value) noexcept;
     void setFilterReleaseSeconds(float value) noexcept;
     void setPitchBendRange(float value) noexcept;
+    // Polyphony mode (param 24). Mono is the default and bit-identical to the
+    // pre-polyphony engine; poly allocates up to kMaxPolyVoices voices with
+    // per-voice filters. Switching modes clears sound (no orphan voices).
+    void setPolyphony(bool value) noexcept;
 
     int activeNoteCount() const noexcept;
+
+    // Debug accessors for poly-voice state (tests only; not realtime API).
+    int   polyVoiceNoteForTest(int index) const noexcept { return polyVoices_[(size_t) index].note; }
+    float polyVoiceEnvForTest(int index) const noexcept { return polyVoices_[(size_t) index].envelope; }
+    bool  polyVoiceReleasingForTest(int index) const noexcept { return polyVoices_[(size_t) index].releasing; }
 
     float currentFrequencyForTest() const noexcept;
     float targetFrequencyForTest() const noexcept;
@@ -78,12 +87,34 @@ private:
     };
 
     static constexpr int kMaxHeldNotes = 16;
+    static constexpr int kMaxPolyVoices = 8;
     static constexpr float kUnisonDetuneCents = 7.0f;
 
     double sampleRate_ = 44100.0;
     Voice voice_;
     std::array<int, kMaxHeldNotes> heldNotes_{};
     int heldNoteCount_ = 0;
+
+    // ── Polyphony bank (param 24) ──
+    // Separate from the mono path so existing mono behavior is bit-identical:
+    // voice_[0] semantics stay exactly as shipped. Each poly voice owns its
+    // filter pair (the cutoff/filter-env depend on the voice's own envelope).
+    std::array<Voice, kMaxPolyVoices> polyVoices_{};
+    std::atomic<bool> poly_ { false };
+
+    // Per-sample voice DSP shared by both modes (oscillators → drive →
+    // per-voice filter env cutoff → filters → pitch/glide → envelopes →
+    // env*velocity). outputLevel is applied OUTSIDE (once per output sample).
+    float renderVoiceSampleCore(Voice& v,
+                                juce::dsp::StateVariableTPTFilter<float>& filter,
+                                juce::dsp::StateVariableTPTFilter<float>& filterHp,
+                                float& lastResonance) noexcept;
+    void polyNoteOn(int note, int velocity) noexcept;
+    void polyNoteOff(int note) noexcept;
+    void resetPolyVoice(int index, int note, int velocity) noexcept;
+    int  allocPolyVoice() noexcept;
+    void advancePitch(Voice& v) noexcept;
+    void advanceEnvelope(Voice& v) noexcept;
 
     std::atomic<int> osc1Wave_ { 0 };
     std::atomic<float> osc1Level_ { 0.6f };
@@ -115,6 +146,12 @@ private:
     bool sustainPedal_ = false;
     float lastFilterResonance_ = -1.0f;
 
+    // Poly bank filters + per-voice resonance caches (SVF stores its own
+    // cutoff per instance; only the resonance is cached off the param read).
+    std::array<juce::dsp::StateVariableTPTFilter<float>, kMaxPolyVoices> polyFilter_ {};
+    std::array<juce::dsp::StateVariableTPTFilter<float>, kMaxPolyVoices> polyFilterHp_ {};
+    std::array<float, kMaxPolyVoices> lastPolyResonance_ {};
+
     static int clampWave(int value) noexcept;
     static int clampSubOctave(int value) noexcept;
     static int clampFilterType(int value) noexcept;
@@ -128,8 +165,7 @@ private:
     void noteOff(int note) noexcept;
     void allNotesOff() noexcept;
     void releaseCurrentVoice() noexcept;
-    void advancePitch() noexcept;
-    float renderVoiceSample() noexcept;
-    void advanceEnvelope() noexcept;
+    float renderVoiceSample() noexcept;   // mono: core(voice_) * outputLevel
+    float renderOutputSample() noexcept;  // mode-aware: mono voice or poly sum
     void updateHeldNote(int note, bool pressed) noexcept;
 };

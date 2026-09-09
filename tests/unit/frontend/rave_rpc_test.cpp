@@ -151,6 +151,48 @@ TEST(RaveRpc, ImportResultImportsWavAsClip)
     EXPECT_EQ(clip.getProperty(IDs::sourceFile).toString().toStdString(), wav.toStdString());
 }
 
+TEST(RaveRpc, ImportResultTimelineAlignedSetsSourceOffset)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wav = writeSineWavFixture(dir.filePath("rave_timeline_aligned.wav"));
+    ASSERT_FALSE(wav.isEmpty());
+
+    AudioEngine engine;
+    engine.initialize();
+    auto r = frontend::dispatch(engine, "rave.importResult",
+                                QJsonObject{{"outputPath", wav},
+                                            {"trackIndex", 0},
+                                            {"startBeats", 128.0},
+                                            {"timelineAligned", true},
+                                            {"alignToGrid", false}});
+
+    ASSERT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+    const auto payload = r.payload.toObject();
+    const int clipId = payload.value("clipId").toInt(-1);
+    ASSERT_GT(clipId, 0);
+
+    juce::ValueTree clip;
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    for (int t = 0; t < trackList.getNumChildren() && !clip.isValid(); ++t)
+    {
+        auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+        for (int c = 0; c < clipList.getNumChildren(); ++c)
+        {
+            auto cand = clipList.getChild(c);
+            if (static_cast<int>(cand.getProperty(IDs::clipID, 0)) == clipId)
+            {
+                clip = cand;
+                break;
+            }
+        }
+    }
+    ASSERT_TRUE(clip.isValid());
+    const double expected = 128.0 * 60.0 / engine.getTransportManager().getBPM();
+    EXPECT_NEAR(static_cast<double>(clip.getProperty(IDs::offset, 0.0)), expected, 1.0e-9);
+    EXPECT_NEAR(payload.value("sourceOffsetSeconds").toDouble(-1.0), expected, 1.0e-9);
+}
+
 TEST(RaveRpc, TransformClipUnknownClipIdReturnsError)
 {
     AudioEngine engine;

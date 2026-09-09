@@ -3,6 +3,7 @@
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
+#include "../common/MasterFxDefs.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/EnvelopeGenerator.h"
@@ -163,6 +164,22 @@ s.registerTool({"set_fx_bypass", "Bypass or unbypass an FX slot.",
             return McpToolResult::text("ok");
         }});
 
+s.registerTool({"toggle_plugin_editor", "Open or close the plugin editor window for an FX slot (toggles). Use with windows-mcp/cua-driver to drive the plugin's own UI.",
+        objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            auto fxSlots = e->getReadModel().getFxSlots(ti);
+            if (si < 0 || si >= (int)fxSlots.size())
+                return McpToolResult::text("slot not found", true);
+            if (fxSlots[si].fxType != "plugin")
+                return McpToolResult::text("slot is not a plugin", true);
+            e->getAudioGraphCommands().toggleFXEditor(ti, si);
+            return McpToolResult::text("ok");
+        }});
+
 s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
         objSchema({{"trackIndex", QJsonObject{{"type","integer"}}},
                   {"slotIndex",  QJsonObject{{"type","integer"}}}}, {"trackIndex","slotIndex"}),
@@ -271,6 +288,91 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
                 e->getProjectCommands().setFxSlotParam(ti, si, pi, realValue);
             }
             return McpToolResult::text("ok");
+        }});
+
+s.registerTool({"set_master_fx_param",
+        "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix — e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB, param1=Release ms). A slot only processes when bypassed=false.",
+        objSchema({{"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"paramIndex",QJsonObject{{"type","integer"}}},
+                  {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","paramIndex","value"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int si = a.value("slotIndex").toInt();
+            int pi = a.value("paramIndex").toInt();
+            float v = static_cast<float>(a.value("value").toDouble());
+            // Validate against the defs BEFORE writing (Gate 9 parity with
+            // set_internal_fx_param: out-of-range index = error, not a stray
+            // param_N property).
+            auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+            if (! masterFx.isValid())
+                return McpToolResult::text("no MASTER_FX node", true);
+            if (si < 0 || si >= masterFx.getNumChildren())
+                return McpToolResult::text("slot not found", true);
+            const juce::String fxType = masterFx.getChild(si).getProperty(IDs::fxType, "").toString();
+            const auto& defs = HDAW::masterFxParamDefs(fxType);
+            if (pi < 0 || pi >= static_cast<int>(defs.size()))
+                return McpToolResult::text("param index out of range", true);
+            const float written = e->getProjectCommands().setMasterFxParam(si, pi, v);
+            if (written != v)
+                return McpToolResult::text(QString("ok (paramIndex %1 clamped: %2 -> %3)")
+                    .arg(pi)
+                    .arg(QString::number(static_cast<double>(v), 'g', 6))
+                    .arg(QString::number(static_cast<double>(written), 'g', 6)));
+            return McpToolResult::text("ok");
+        }});
+
+s.registerTool({"set_master_fx_bypassed",
+        "Enable/disable a MASTER-bus FX slot (bypassed=false = processing). Default master slots: 0=eq, 1=limiter, both bypassed by default. Enable the limiter for loudness-without-clipping.",
+        objSchema({{"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"bypassed",  QJsonObject{{"type","boolean"}}}}, {"slotIndex","bypassed"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int si = a.value("slotIndex").toInt();
+            auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+            if (! masterFx.isValid())
+                return McpToolResult::text("no MASTER_FX node", true);
+            if (si < 0 || si >= masterFx.getNumChildren())
+                return McpToolResult::text("slot not found", true);
+            e->getProjectCommands().setMasterFxBypassed(si, a.value("bypassed").toBool());
+            return McpToolResult::text("ok");
+        }});
+
+s.registerTool({"get_master_fx_params",
+        "Read the MASTER-bus FX chain: {slots:[{slotIndex,fxType,bypassed,params:[{index,name,value,defaultValue,minValue,maxValue}]}]}. Reads the project ValueTree (source of truth).",
+        objSchema({}, {}),
+        "fx",
+        [e](const QJsonObject&) -> McpToolResult {
+            auto masterFx = e->getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+            if (! masterFx.isValid())
+                return McpToolResult::text("no MASTER_FX node", true);
+            QJsonArray slotsArr;
+            for (int i = 0; i < masterFx.getNumChildren(); ++i)
+            {
+                auto slot = masterFx.getChild(i);
+                const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
+                const auto& defs = HDAW::masterFxParamDefs(fxType);
+                QJsonArray paramsArr;
+                for (int p = 0; p < static_cast<int>(defs.size()); ++p)
+                {
+                    QJsonObject po;
+                    po["index"] = p;
+                    po["name"] = defs[(size_t) p].name;
+                    po["value"] = static_cast<double>(slot.getProperty("param_" + juce::String(p), (double) defs[(size_t) p].def));
+                    po["defaultValue"] = static_cast<double>(defs[(size_t) p].def);
+                    po["minValue"] = static_cast<double>(defs[(size_t) p].min);
+                    po["maxValue"] = static_cast<double>(defs[(size_t) p].max);
+                    paramsArr.append(po);
+                }
+                QJsonObject so;
+                so["slotIndex"] = i;
+                so["fxType"] = QString::fromStdString(fxType.toStdString());
+                so["bypassed"] = static_cast<bool>(slot.getProperty("bypassed", true));
+                so["params"] = paramsArr;
+                slotsArr.append(so);
+            }
+            QJsonObject root; root["slots"] = slotsArr;
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"set_internal_fx_param",

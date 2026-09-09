@@ -147,7 +147,7 @@ state without a render.
 
 ## Dependency Map
 
-- **Blast radius (from codebase-memory + grep; graph gaps noted):**
+- **Blast radius (from graphify + grep; graph gaps noted):**
   - `TrackFXSlot::process` (W2): graph shows 0 callers — the edges are hidden
     by the `slot->process(...)` indirect call; grep confirms the single caller
     `Track::processBlock` (`src/engine/Track.cpp:536`). Audio-thread hot path.
@@ -292,7 +292,7 @@ behavior), 7 (no windows), 14/16 (no proxy/plugin lifecycle changes).
    affected suites + mcp) — gate evidence.
 2. Grep the diff: no duplicated interval math, no raw hex, no `DBG`, no new
    rebuild per-clip loops, outputs compact (B6).
-3. Refresh the knowledge graph (`index_repository` fast) since W1 adds new
+3. Refresh the knowledge graph (`graphify . --update` fast) since W1 adds new
    files/classes/RPC methods (completion contract §8).
 4. Update `docs/psytrance-composition-guide.md` §4 with the
    `generate_psytrance` one-call alternative (guide fidelity) and note the

@@ -16,11 +16,11 @@ search_library / get_library_entry (MCP) and the Qt router responses — so
 - [ ] G3: mcp_coverage_test passes, incl. new assertions that search_library + get_library_entry results carry tags/description when present (MCP parity, Gate 2 full path: RPC -> FileLibraryManager -> JSON response).
 - [ ] G4: Full hdaw_tests.exe suite passes (no regressions).
 
-## Dependency Map (verified via codebase-memory graph + grep)
+## Dependency Map (verified via graphify graph + grep)
 - Blast radius: FileLibraryManager (src/engine) -> McpTools_Library.cpp (MCP tools
   list_libraries/search_library/get_library_entry) and Router_Library.cpp
   (Qt frontend RPC path "search"/"getEntry"). Upstream callers of
-  FileLibraryManager::search: Router_Library (verified trace_path). Frontend TS
+  FileLibraryManager::search: Router_Library (verified graphify query/path). Frontend TS
   libraryStore.ts consumes RPC results — additive JSON fields are backward-compatible.
 - Downstream consumers of LibraryEntry JSON: McpTools_Library.cpp serializer,
   Router_Library.cpp serializer, registry persistence (libraries/<id>.json +

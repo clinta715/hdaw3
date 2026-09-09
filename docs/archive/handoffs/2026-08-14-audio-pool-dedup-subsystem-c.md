@@ -26,8 +26,8 @@ work.
   The 5 CrashRecovery/PluginIsolation proxy tests fail ONLY when a stale
   `HDAW_headless_mcp.exe`/`HDAW.exe`/`hdaw_plugin_host.exe` tree is alive
   (lesson 20) — check before blaming code.
-- Knowledge graph refreshed after C (`codebase-memory`, project
-  `D-pdf-roo-projects-hdaw3`, 7354 nodes).
+- Knowledge graph refreshed after C (`graphify`, project
+  7354 nodes).
 
 ## 2. What Subsystem C delivered (commits, in order)
 
@@ -119,7 +119,7 @@ delete). If a stash op misbehaves: `git reset`, `git checkout HEAD --
 3. **Subsystem E — sampler loop crossfade** (independent) or follow-up #1
    (the `rebuildTrackFX` park fix — small, high-value, test-de-flaking).
 4. Optional cleanup: gitignore `*.hdaw3` test projects + `compositions/`;
-   re-index codebase-memory if structural code lands.
+   re-index graphify if structural code lands.
 
 ## 7. Environment
 

@@ -1,4 +1,5 @@
 #include "ProjectModel.h"
+#include "../common/MasterFxDefs.h"
 #include "../engine/PluginManager.h"
 #include "common/Version.h"
 #include <atomic>
@@ -88,6 +89,30 @@ int ProjectModel::getScaleMode() const
 float ProjectModel::getMasterGain() const
 {
     return static_cast<float>(projectTree.getProperty(IDs::masterGain, 1.0));
+}
+
+void ProjectModel::ensureMasterFxNode()
+{
+    // Backward-compat migration: projects saved before the master FX chain
+    // carry no MASTER_FX node. Stamp the default (eq + limiter, both
+    // bypassed) so master FX commands/tools always find the node. nullptr:
+    // a structural migration stamp is not an undoable action. Idempotent.
+    if (projectTree.getChildWithName(IDs::MASTER_FX).isValid()) return;
+    juce::ValueTree masterFx(IDs::MASTER_FX);
+    int slot = 0;
+    for (const char* type : { "eq", "limiter" })
+    {
+        juce::ValueTree slotTree("FX_SLOT");
+        slotTree.setProperty(IDs::fxType, juce::String(type), nullptr);
+        slotTree.setProperty("slotIndex", slot, nullptr);
+        slotTree.setProperty("bypassed", true, nullptr);
+        const auto& defs = HDAW::masterFxParamDefs(juce::String(type));
+        for (int p = 0; p < (int) defs.size(); ++p)
+            slotTree.setProperty("param_" + juce::String(p), (double) defs[(size_t) p].def, nullptr);
+        masterFx.addChild(slotTree, slot, nullptr);
+        ++slot;
+    }
+    projectTree.addChild(masterFx, 0, nullptr);
 }
 
 void ProjectModel::setScaleRoot(int root)
@@ -293,6 +318,11 @@ void ProjectModel::createDefaultProject()
     // restored on routing-graph rebuild. nullptr: the default stamp is not an
     // undoable action, so the first setMasterGain undo restores exactly 1.0.
     projectTree.setProperty(IDs::masterGain, 1.0, nullptr);
+
+    // Master FX chain: eq + limiter slots, both bypassed by default so the
+    // default project is bit-identical to a pre-FX master until the user
+    // (or MCP) enables them.
+    ensureMasterFxNode();
 
     // Stamp project-file metadata on first creation. createdWithApp / formatVersion
     // / createdAt are provenance — never overwritten on load or save-if-present.

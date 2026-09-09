@@ -32,12 +32,12 @@ time, so a single shared window would thrash/starve. This is the HISE model
       test binary is the fresh one (Gate 4 stale-binary check).
 - [ ] G5: Version 0.22.4 → 0.23.0 synced in `CMakeLists.txt`,
       `frontend/package.json`, AND `frontend/src/version.ts` (hand-sync).
-- [ ] G6: Knowledge graph refreshed (`index_repository`, mode fast) after the
+- [ ] G6: Knowledge graph refreshed (`graphify . --update`, mode fast) after the
       change (new file + new methods).
 - [ ] G7: Anti-pattern scan clean (no audio-thread lock/alloc/I/O in
       `readNextBlock`, no `DBG`, no per-clip N-call loops introduced).
 
-## Dependency Map (verified via codebase-memory + read)
+## Dependency Map (verified via graphify + read)
 
 - Blast radius: `StreamingClipSource.h` (reader ownership → handle),
   `ClipSourceProcessor.h` (ctor param + streaming branch),
@@ -166,7 +166,7 @@ keep runtime down, and non-realtime for determinism).
    rebuild-reacquire tests (drain seam, no sleeps) + version bump.
    Gates: full `hdaw_tests.exe` passes; grep-verify version triple.
 3. Orchestrator: anti-pattern scan of the full diff, final verification,
-   graph refresh (index_repository fast), commit(s).
+   graph refresh (graphify . --update fast), commit(s).
 
 ## Version
 

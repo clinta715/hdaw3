@@ -136,4 +136,4 @@ Blast radius: the audio routing graph only. No ReadModel, frontend, or RPC-shape
 - No new RPC/MCP surface → no parity additions; behavior proven through existing tools.
 - No frontend change → no `npm test`/E2E required.
 - Docs to update: this plan (gates ticked), the Task 1 handoff, and a new handoff `docs/handoffs/2026-08-15-incremental-routing-task2-complete.md` after each task.
-- Knowledge graph refresh after structural additions (`codebase-memory` `index_repository` for the new RPC-independent methods + test files).
+- Knowledge graph refresh after structural additions (`graphify . --update` for the new RPC-independent methods + test files).

@@ -275,7 +275,7 @@ Run: `git commit -m "feat: saturator reachability (MCP/RPC/UI) + quality gates"`
 
 **Files:**
 - Modify: `feature_parity.md:68` (saturation ❌→✅), `roadmap.md:66`, `docs/psytrance-composition-guide.md` (§5 drive recipe: growl ClipType/Drive → saturator → compressor chain order), `docs/pitfalls-juce.md` (oversampling-first-precedent note if any gotcha found)
-- Run: codebase-memory `index_repository` (mode `fast`)
+- Run: `graphify . --update` (mode `fast`)
 
 - [ ] **Step 1:** Parity flips + a "driving clean synths" recipe with the exact chain order used in Step 4 listening (e.g. psy_fm feedback → saturator SoftTanh 18 dB → compressor 4:1).
 - [ ] **Step 2:** Full gates — `cmd /c build-fast.bat all`, `.\build\hdaw_tests.exe` zero failures, `npm test` green.

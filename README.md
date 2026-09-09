@@ -137,12 +137,13 @@ pass `Debug` for breakpoint debugging.
 - **Missing source file indicator**: clips with missing .wav files
   show a red "FILE MISSING" label in the timeline and a clear error
   message in the audio editor.
-- **Offline RAVE neural rendering and training**: the Neural panel, RPC,
-  and MCP can list/probe RAVE models, run offline audio transforms, import
-  rendered WAVs, and launch cancellable offline model-training jobs. Training
-  uses a repo-local Python/acids-rave sidecar and writes models under
-  `rave/models/`; it never touches realtime playback, export, DSP, or
-  plugin-hosting paths.
+- **Offline RAVE neural rendering and training** *(deprecated since v0.32.0 —
+  see changelog; kept functional for backwards compatibility, not recommended
+  for new work)*: the Neural panel, RPC, and MCP can list/probe RAVE models, run
+  offline audio transforms, import rendered WAVs, and launch cancellable
+  offline model-training jobs. Training uses a repo-local Python/acids-rave
+  sidecar and writes models under `rave/models/`; it never touches realtime
+  playback, export, DSP, or plugin-hosting paths.
 - **MIDI file import** (`.mid`, `.midi`): File → Import MIDI
   (Ctrl+Shift+M) or drag-drop a MIDI file onto the timeline.
   Parses tempo, note pitches, velocities, and durations from all
@@ -343,7 +344,7 @@ src/
     Theme.h                      — dark theme tokens
   mcp/                           — MCP server
     McpServer.{h,cpp}            — core server, tool dispatch
-    McpTools.{h,cpp}             — tool registrations (36 tools)
+    McpTools.{h,cpp}             — tool registration core (see McpTools_*.cpp)
     McpTransport.{h}             — transport interface
     McpTransportStdio.{h,cpp}    — stdio transport
     McpTransportHttp.{h,cpp}     — HTTP transport (configurable host)
@@ -357,6 +358,41 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.32.0 — Export stem filter, RAVE import offset contract, RAVE deprecated
+
+- **`export_audio` `trackIds` stem filter actually filters now.** The field
+  was schema-only: every "stem" export rendered the FULL mix (identical peaks
+  across different `trackIds`), which also smeared RAVE "stems". Regression:
+  `McpCoverageTest.ExportAudioTrackIdsFiltersTracks` (selected tracks play,
+  unselected/unknown tracks render silence).
+- **RAVE import source-offset contract fix** (RAVE deprecated, but the fix
+  corrects every existing project that used it): `rave_import_result` /
+  `rave_transform_clip` / `rave.importResult` accept `sourceOffsetBeats`
+  (explicit offset in beats) and `timelineAligned:true` (uses `startBeats` as
+  the offset — the correct setting for full-timeline rendered stems; explicit
+  `sourceOffsetBeats` wins). The offset is converted beats→seconds and applied
+  through the existing `setClipOffset` path, so it restores correctly through
+  rebuilds. Response carries `sourceOffsetSeconds`. Previously every import
+  wrote offset 0, so a stem placed at beat 128 played its near-silent source
+  segment [0, 43s] instead of [53s, 97s] — the "RAVE layers are quiet" bug.
+- **Offline audio-clip export fixes**: mono audio sources no longer zero the
+  entire export, and stereo clip level survives project reload/engine restart
+  (`OfflineAudioClipExport.*` gtest suite).
+- **Master-bus FX chain**: EQ/compressor/limiter slots on the master bus with
+  `set_master_fx_param` / `set_master_fx_bypassed` (`MasterFxDefs.h`,
+  `master_bus_fx_test.cpp`). Note: the master limiter is NOT transparent
+  (~-10 dB RMS); prefer fader/headroom staging.
+- **sub_synth polyphony / subtractive engine rework**, **corpus arranger**
+  (`generate_arrangement_corpus`), **plugin preset file loader**
+  (`load_plugin_preset_file`: .SerumPreset / .fxp / .syx via
+  `PresetFileParser`), and a **track FX delay slot** — each with its own
+  gtest suite.
+- **RAVE is deprecated.** Real-model results were overdriven/incoherent in
+  mixes, the offline level behavior was fragile, and native synth tracks
+  consistently outperformed it. The RAVE RPC/MCP/Neural-UI surface keeps
+  working unchanged for compatibility; do not build new composition workflows
+  on it (docs/handoffs/2026-09-09-rave-virus-engine-bugs.md, Resolution).
 
 ### v0.31.0 — Offline RAVE training pipeline
 

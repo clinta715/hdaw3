@@ -2,6 +2,7 @@
 
 #include "engine/HarmonyEngine.h"
 #include "engine/MarkovRoles.h"
+#include "engine/PhraseGenerator.h"
 #include "engine/PercussionEngine.h"
 #include "engine/TextureEngine.h"
 #include "engine/MelodyPatternBank.h"
@@ -227,8 +228,9 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     const double density = std::clamp(p.density, 0.0, 1.0);
 
     // ── Role contexts ──
-    auto makeRole = [](const char* role, int track) {
-        RoleCtx rc; rc.track = track; rc.clip.role = role; rc.clip.trackIndex = track; return rc;
+    auto makeRole = [&p](const char* role, int track) {
+        RoleCtx rc; rc.track = track; rc.clip.role = role; rc.clip.trackIndex = track;
+        rc.scaleRoot = p.keyRoot; rc.scaleMode = p.scaleMode; return rc;
     };
     RoleCtx kick  = makeRole("kick",  p.kick);
     RoleCtx bass  = makeRole("bass",  p.bass);
@@ -902,6 +904,21 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
                          &clap, &riser, &down })
     {
         if (rc->track < 0 || rc->clip.notes.empty()) { markSkipped(rc->clip.role); continue; }
+        // Key-discipline final pass: RoleCtx::add snapped each note against
+        // the INITIAL keyRoot, but periodic KeyChange moves the step key —
+        // re-snap every pitched note to its own 8-beat window's key so the
+        // score matches the steps' keyRoot contract (KeyDiscipline tests).
+        if (! isPercRole(rc->clip.role))
+        {
+            const auto scalePcs = PhraseGenerator::buildScalePitches(0, p.scaleMode, 0, 11);
+            for (auto& n : rc->clip.notes)
+            {
+                int stepIdx = (n.startBeat >= 0.0) ? (int) (n.startBeat / 8.0) : 0;
+                stepIdx = std::min(stepIdx, (int) score.steps.size() - 1);
+                const int key = score.steps[(size_t) std::max(0, stepIdx)].keyRoot;
+                n.pitch = snapToScale(n.pitch, key, scalePcs.data(), (int) scalePcs.size());
+            }
+        }
         std::sort(rc->clip.notes.begin(), rc->clip.notes.end(),
                   [](const PsytranceNote& x, const PsytranceNote& y) { return x.startBeat < y.startBeat; });
         score.notesTotal += (int) rc->clip.notes.size();

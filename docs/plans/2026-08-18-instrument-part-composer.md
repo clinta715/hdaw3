@@ -160,7 +160,7 @@ Closed-form loop (the handoff's mechanical step, automated):
 - Part templates (Q6), `compose.verify` companion (Q7), typed track presets (Q8),
   `pluginFormat` in the snapshot (agenda #4).
 
-## Dependency Map (from trace_path + grep, verified)
+## Dependency Map (from graphify query/path + grep, verified)
 
 - **Blast radius:** `ProjectCommands.h` (interface, +2 virtuals — every
   implementer compiles: `AudioEngineCommands` only, per grep), new
@@ -269,4 +269,4 @@ Closed-form loop (the handoff's mechanical step, automated):
    the now-existing engine commands. Success gates G3, G4.
 3. **Verification (orchestrator):** full `hdaw_tests.exe` (G5), diff scan (G7),
    runtime G6 on a fresh binary, process cleanup, knowledge-graph refresh
-   (`codebase-memory` `index_repository` — new RPC methods + new files).
+   (`graphify . --update` — new RPC methods + new files).

@@ -383,3 +383,102 @@ TEST(SubtractiveSynthEngine, SustainPedalReleaseAtZeroEnvelopeDeactivatesVoice)
         renderPeak(engine, empty, 256);
     EXPECT_EQ(engine.activeNoteCount(), 0);
 }
+
+// ── Polyphony (param 24, 2026-09-08) ───────────────────────────────────────
+// Mono is the default; these tests enable poly and verify the poly bank.
+
+TEST(SubtractiveSynthEngine, PolyTwoNotesSoundSimultaneously)
+{
+    SubtractiveSynthEngine engine;
+    engine.prepare(44100.0, 512);
+    engine.setPolyphony(true);
+
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 67, 0.9f), 1);
+
+    EXPECT_GT(renderRms(engine, midi, 256), 0.0f);
+    EXPECT_EQ(engine.activeNoteCount(), 2);
+}
+
+TEST(SubtractiveSynthEngine, PolyNoteOffReleasesOnlyItsVoice)
+{
+    SubtractiveSynthEngine engine;
+    engine.prepare(44100.0, 512);
+    engine.setPolyphony(true);
+
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 67, 0.9f), 1);
+    renderRms(engine, midi, 128);
+    EXPECT_EQ(engine.activeNoteCount(), 2);
+
+    midi.clear();
+    midi.addEvent(juce::MidiMessage::noteOff(1, 60), 0);
+    renderRms(engine, midi, 64);
+
+    // Render until voice 60's release envelope fully dies (release length is
+    // a param — don't hardcode a sample window; break-early is robust).
+    juce::MidiBuffer silent;
+    for (int i = 0; i < 64 && engine.activeNoteCount() == 2; ++i)
+        renderRms(engine, silent, 512);
+
+    // Voice 60 is gone; voice 67 keeps sounding until IT is released.
+    EXPECT_EQ(engine.activeNoteCount(), 1);
+
+    midi.clear();
+    midi.addEvent(juce::MidiMessage::noteOff(1, 67), 0);
+    renderRms(engine, midi, 64);
+    for (int i = 0; i < 64 && engine.activeNoteCount() > 0; ++i)
+        renderRms(engine, silent, 512);
+    EXPECT_EQ(engine.activeNoteCount(), 0);
+}
+
+TEST(SubtractiveSynthEngine, PolyVoiceStealingCapsAtEight)
+{
+    SubtractiveSynthEngine engine;
+    engine.prepare(44100.0, 512);
+    engine.setPolyphony(true);
+
+    juce::MidiBuffer midi;
+    for (int note = 48; note < 48 + 12; ++note)  // 12 notes > 8 voices
+        midi.addEvent(juce::MidiMessage::noteOn(1, note, 0.8f), 0);
+
+    renderRms(engine, midi, 256);
+    EXPECT_EQ(engine.activeNoteCount(), 8);      // kMaxPolyVoices
+}
+
+TEST(SubtractiveSynthEngine, MonoDefaultStaysMonoWhenPolyNotesOverlap)
+{
+    SubtractiveSynthEngine engine;
+    engine.prepare(44100.0, 512);
+    // Polyphony NOT enabled — overlapping note-ons must behave exactly like
+    // the pre-polyphony engine (one voice, retrigger/note-memory).
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+    midi.addEvent(juce::MidiMessage::noteOn(1, 67, 0.9f), 1);
+
+    renderRms(engine, midi, 64);
+    EXPECT_EQ(engine.activeNoteCount(), 1);
+}
+
+TEST(SubtractiveSynthEngine, ModeSwitchClearsSound)
+{
+    SubtractiveSynthEngine engine;
+    engine.prepare(44100.0, 512);
+    engine.setPolyphony(true);
+
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+    renderRms(engine, midi, 64);
+    EXPECT_EQ(engine.activeNoteCount(), 1);
+
+    engine.setPolyphony(false);  // switch must not orphan the poly voice
+    EXPECT_EQ(engine.activeNoteCount(), 0);
+
+    // And the engine still renders in mono after the switch.
+    juce::MidiBuffer on;
+    on.addEvent(juce::MidiMessage::noteOn(1, 55, 0.9f), 0);
+    EXPECT_GT(renderRms(engine, on, 64), 0.0f);
+    EXPECT_EQ(engine.activeNoteCount(), 1);
+}

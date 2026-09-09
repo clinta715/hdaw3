@@ -1002,6 +1002,19 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
                     if (auto* mb = rm->getMasterBus())
                         mb->setGain(g);
         }
+        else if (treeWhosePropertyHasChanged.hasType(IDs::MASTER_FX))
+        {
+            // Master FX chain: property or child-structure change on the
+            // MASTER_FX node. Property changes (param_N/bypassed on a child
+            // slot, or slot add/remove) re-apply the whole chain onto the
+            // live atomics — lock-free, no rebuild, no stateLock (lesson 13
+            // contrast: these are plain member sets on juce dsp objects, the
+            // same benign pattern TrackFXSlot uses under Track::stateLock).
+            if (mainProcessor != nullptr)
+                if (auto* rm = mainProcessor->getRoutingManager())
+                    if (auto* mb = rm->getMasterBus())
+                        mb->applyFromTree(treeWhosePropertyHasChanged);
+        }
     }
     else if (treeWhosePropertyHasChanged.hasType(IDs::TEMPO_POINT))
     {
@@ -1247,6 +1260,15 @@ void AudioEngine::valueTreePropertyChanged(juce::ValueTree& treeWhosePropertyHas
 
         // Find track index and slot index by walking the tree
         auto fxChain = treeWhosePropertyHasChanged.getParent();
+        if (fxChain.isValid() && fxChain.hasType(IDs::MASTER_FX))
+        {
+            // Master FX slot: re-apply the whole MASTER_FX chain onto the
+            // live atomics (lock-free — no stateLock, no rebuild).
+            if (auto* rm = mainProcessor->getRoutingManager())
+                if (auto* mb = rm->getMasterBus())
+                    mb->applyFromTree(fxChain);
+            return;
+        }
         if (!fxChain.isValid() || !fxChain.hasType(IDs::FX_CHAIN))
             return;
         auto trackTree = fxChain.getParent();
@@ -1336,6 +1358,10 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
     {
         if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
         {
+            static int dbgNoteAddCount = 0;
+            if (++dbgNoteAddCount % 50 == 1)
+                HDAW_LOG("NoteAddDebug", "n=" + juce::String(dbgNoteAddCount)
+                    + " listChildren=" + juce::String(parentTree.getNumChildren()));
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {
@@ -1431,12 +1457,29 @@ void AudioEngine::valueTreeChildAdded(juce::ValueTree& parentTree, juce::ValueTr
         }
         triggerAsyncUpdate(); // coalesced — see handleAsyncUpdate()
     }
+    // Master FX slot added: re-apply the chain onto the live atomics
+    // (lock-free; no rebuild needed — slot count is fixed at kMaxSlots and
+    // extra children are ignored).
+    if (parentTree.hasType(IDs::MASTER_FX) && mainProcessor != nullptr)
+    {
+        if (auto* rm = mainProcessor->getRoutingManager())
+            if (auto* mb = rm->getMasterBus())
+                mb->applyFromTree(parentTree);
+    }
 }
 
 void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::ValueTree& childWhichHasBeenRemoved, int indexFromWhichItWasRemoved)
 {
     if (parentTree.hasType(IDs::TEMPO_POINT_LIST) || parentTree.hasType(IDs::PROJECT))
         rebuildTempoMap();
+
+    // Master FX slot removed: re-apply the chain onto the live atomics.
+    if (parentTree.hasType(IDs::MASTER_FX) && mainProcessor != nullptr)
+    {
+        if (auto* rm = mainProcessor->getRoutingManager())
+            if (auto* mb = rm->getMasterBus())
+                mb->applyFromTree(parentTree);
+    }
 
     // Rebuild arranger chain data when arranger structure changes
     if (parentTree.hasType(IDs::ARRANGER_LIST) || parentTree.hasType(IDs::ARRANGER_CHAIN_LIST)
@@ -1456,6 +1499,10 @@ void AudioEngine::valueTreeChildRemoved(juce::ValueTree& parentTree, juce::Value
     {
         if (parentTree.hasType(IDs::MIDI_NOTE_LIST))
         {
+            static int dbgNoteRemoveCount = 0;
+            HDAW_LOG("NoteRemoveDebug", "n=" + juce::String(++dbgNoteRemoveCount)
+                + " remaining=" + juce::String(parentTree.getNumChildren())
+                + " noteId=" + juce::String(static_cast<int>(childWhichHasBeenRemoved.getProperty(IDs::noteID, -1))));
             auto clipTree = parentTree.getParent();
             if (clipTree.isValid() && clipTree.hasType(IDs::CLIP))
             {

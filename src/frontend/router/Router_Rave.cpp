@@ -4,6 +4,7 @@
 #include "../FrontendServer.h"
 
 #include "../../engine/AudioEngine.h"
+#include "../../engine/AudioEngineCommands_Helpers.h"
 #include "../../engine/RaveService.h"
 #include "../../engine/RaveTrainingJobManager.h"
 #include "../../model/ProjectModel.h"
@@ -79,12 +80,13 @@ struct RaveImportOutcome
     bool samplerOk = false;
     bool samplerRequested = false;
     QString samplerError;
+    double sourceOffsetSeconds = 0.0;
 };
 
 // Applies the opt-in import + sampler step for an already-rendered RAVE
 // output WAV. Param units: startBeats is in BEATS and is passed straight to
-// ProjectCommands::importAudioFile, which converts to seconds internally —
-// never convert here (beats-vs-seconds convention).
+// ProjectCommands::importAudioFile, which converts to seconds internally.
+// sourceOffsetBeats is also public BEATS, but setClipOffset expects seconds.
 // Returns nullopt on fatal import failure with *errCode/*errText set
 // (missing file -> -32602, failed import -> -32603).
 std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
@@ -101,6 +103,14 @@ std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
         const int trackIndex = optInt<int>(o, "trackIndex", -1, nullptr);
         const double startBeats = optDouble(o, "startBeats", 0.0, nullptr);
         const bool alignToGrid = optBool(o, "alignToGrid", true, nullptr);
+
+        double sourceOffsetBeats = 0.0;
+        if (o.contains("sourceOffsetBeats") && o.value("sourceOffsetBeats").isDouble())
+            sourceOffsetBeats = o.value("sourceOffsetBeats").toDouble(0.0);
+        else if (optBool(o, "timelineAligned", false, nullptr))
+            sourceOffsetBeats = startBeats;
+        outcome.sourceOffsetSeconds = HDAW::beatsToSeconds(
+            sourceOffsetBeats, engine.getTransportManager().getBPM());
 
         if (!juce::File(outputPath.toStdString()).existsAsFile())
         {
@@ -120,6 +130,8 @@ std::optional<RaveImportOutcome> applyRaveOutput(AudioEngine& engine,
             return std::nullopt;
         }
         outcome.clipId = res.clipId;
+        if (outcome.sourceOffsetSeconds != 0.0)
+            engine.getProjectCommands().setClipOffset(outcome.clipId, outcome.sourceOffsetSeconds);
     }
 
     const int samplerTrack = optInt<int>(o, "samplerTrackIndex", -1, nullptr);
@@ -271,6 +283,7 @@ QJsonObject importOutcomeToJson(const RaveImportOutcome& outcome)
         { "samplerOk", outcome.samplerOk },
         { "samplerRequested", outcome.samplerRequested },
         { "samplerError", outcome.samplerError },
+        { "sourceOffsetSeconds", outcome.sourceOffsetSeconds },
     };
 }
 
@@ -396,6 +409,7 @@ DispatchResult dispatchRave(AudioEngine& engine, const QString& m, const QJsonVa
             { "samplerOk", outcome->samplerOk },
             { "samplerRequested", outcome->samplerRequested },
             { "samplerError", outcome->samplerError },
+            { "sourceOffsetSeconds", outcome->sourceOffsetSeconds },
         };
         return { false, payload };
     }

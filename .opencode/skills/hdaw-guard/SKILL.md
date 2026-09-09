@@ -21,8 +21,8 @@ If the work involves writing or editing code, you must dispatch it to a subagent
 ## Pre-Flight Checklist (mandatory before every change)
 
 1. **PLAN** — Write a plan with explicit success-gating criteria (see §Planning).
-2. **GRAPH QUERY** — Consult the knowledge graph to map the blast radius. Prefer the `codebase-memory` MCP (`search_graph`, `trace_path`, `query_graph`); `graphify-out/graph.json` is the offline snapshot complement (see §Graph-Based Analysis). Do not assume relationships — verify them.
-3. **DEPENDENCIES** — Identify all upstream callers and downstream consumers of the code you will touch. Use `trace_path`, `search_graph`, graphify traversal, grep. Do not assume.
+2. **GRAPH QUERY** — Consult the knowledge graph (graphify) to map the blast radius — `graphify query` (BFS), `graphify path`, `graphify explain` (see §Graph-Based Analysis). Do not assume relationships — verify them.
+3. **DEPENDENCIES** — Identify all upstream callers and downstream consumers of the code you will touch. Use graphify traversal (`graphify query` / `graphify path`) and grep. Do not assume.
 4. **PITFALL SCAN** — Check your change against the 16 Recurring Pitfalls (§Pitfall Gates). If any gate triggers, address it in the plan.
 5. **ANTI-PATTERN SCAN** — Check your change against the Anti-Pattern Alerts (§Anti-Patterns). If any alert fires, stop and redesign.
 6. **VERIFY** — After implementation, run the success gates from the plan. Evidence before claims.
@@ -78,7 +78,7 @@ session plans, analyzes, and verifies — subagents write code.
 
 ### What stays in the orchestrator
 
-- Reading files for analysis (graph queries, grep, trace_path)
+- Reading files for analysis (graph queries, grep)
 - Writing the plan
 - Dispatching and reviewing subagents
 - Running final verification (build, tests) if the subagent's evidence is insufficient
@@ -107,7 +107,7 @@ Every task gets a plan BEFORE code. The plan must contain:
 - [ ] Gate 3: <e.g. "no new raw hex in CSS">
 - ...
 
-## Dependency Map (from graphify + trace_path)
+## Dependency Map (from graphify)
 - Blast radius: <graphify query result summary — communities touched>
 - Upstream: <who calls/reads this?>
 - Downstream: <who consumes the output?>
@@ -316,29 +316,25 @@ If you observe any of these in code you are writing or reviewing, STOP and flag:
 
 ## §Graph-Based Analysis (knowledge graphs)
 
-Two knowledge graphs are available; use them as the FIRST tools for understanding
-blast radius, tracing paths, and verifying assumptions:
+One knowledge graph is available — graphify. Use it as the FIRST tool for
+understanding blast radius, tracing paths, and verifying assumptions:
 
-1. **`codebase-memory` MCP (preferred)** — live server-side index, available in
-   every session, faster than grep for structural questions: `search_graph`
-   (discover), `trace_path` (callers/callees, data flow), `query_graph` (Cypher,
-   incl. complexity/hot-path properties), `get_code_snippet`, `get_architecture`.
-   Project name: `D-pdf-roo-projects-hdaw3`. Refresh with `index_repository`
-   after structural changes. See AGENTS.md → "Codebase Memory MCP".
-2. **`graphify-out/graph.json` (offline snapshot complement)** — persistent
-   across sessions; query it, don't rebuild it. Its `GRAPH_REPORT.md` carries
-   pre-computed God Nodes / community analysis. Note it can lag the codebase —
-   check its date before trusting edges added recently.
+- **`graphify-out/graph.json`** — persistent across sessions; query it, don't
+  rebuild it. Available as pi tools `graphify_query` / `graphify_path` /
+  `graphify_explain`. Its `GRAPH_REPORT.md` carries pre-computed God Nodes /
+  community analysis. Kept current by the `post-commit` hook + `--watch`
+  watcher. Note it can lag the codebase — check its build date before trusting
+  edges added recently.
 
 ### When to use which traversal
 
 | Question shape | Tool | Mode |
 |---|---|---|
-| "What does X touch / affect?" | `trace_path` (MCP) or `graphify query "What calls X and what does X call?"` | callers/callees, BFS |
-| "How does state flow from A to B?" | `trace_path` mode `data_flow` (MCP) or `graphify query ... --dfs` | DFS (specific path) |
-| "Are A and B connected?" | `query_graph` Cypher path or `graphify path "A" "B"` | Shortest path |
-| "What is X and what does it do?" | `get_code_snippet` (MCP) or `graphify explain "X"` | Node explanation |
-| "What are the risky hub nodes?" | `get_architecture` (MCP) or `graphify-out/GRAPH_REPORT.md` → God Nodes | Pre-computed |
+| "What does X touch / affect?" | `graphify query "What calls X and what does X call?"` | BFS |
+| "How does state flow from A to B?" | `graphify query "trace the path from A to B" --dfs` | DFS (specific path) |
+| "Are A and B connected?" | `graphify path "A" "B"` | Shortest path |
+| "What is X and what does it do?" | `graphify explain "X"` | Node explanation |
+| "What are the risky hub nodes?" | `graphify-out/GRAPH_REPORT.md` → God Nodes | Pre-computed |
 
 ### Mandatory graph queries before code changes
 
@@ -373,7 +369,7 @@ blast radius, tracing paths, and verifying assumptions:
   exist. Verify with grep/read before assuming.
 - **Never assume the graph is complete.** It is a snapshot. If code was added
   since the last build, the graph may be stale. Cross-check critical paths with
-  `trace_path` or grep.
+  `graphify query`/`graphify path` or grep.
 - **Mark uncertainty.** If a relationship is unclear, say AMBIGUOUS and
   investigate — do not proceed on a guess.
 - **Cite source_location.** When referencing a graph finding in the plan, note
@@ -395,9 +391,9 @@ verification pass so the completion contract checks against current topology.
 
 Before modifying ANY function, class, property, or RPC method:
 
-1. **Graph first:** Run a blast-radius query on the target (`trace_path` both directions, or `graphify query` BFS). Read the blast radius.
-2. **Upstream:** Who calls this? Confirm with `trace_path` (direction: inbound) or grep.
-3. **Downstream:** What consumes the output? Confirm with `trace_path` (direction: outbound).
+1. **Graph first:** Run a blast-radius query on the target (`graphify query` BFS). Read the blast radius.
+2. **Upstream:** Who calls this? Confirm with `graphify query` (inbound) or grep.
+3. **Downstream:** What consumes the output? Confirm with `graphify query` (outbound).
 4. **Path integrity:** For new wiring, run `graphify path "source" "sink"` — if no path exists, the feature is unimplemented (Gate 2).
 5. **Projections:** Does this affect ReadModel? Audio graph? Frontend snapshot? All three?
 6. **SPSC bridge:** Does state cross the message-thread → audio-thread boundary? If yes, Gate 1 + Gate 3 apply.
@@ -433,5 +429,5 @@ Work is complete ONLY when:
 5. If C++ changed: `cmake --build build --config Debug` succeeds.
 6. If frontend changed: `cd frontend && npm run build` succeeds.
 7. If new RPC/command: MCP tool exists (parity rule).
-8. If structural change (new files/classes/RPC methods): knowledge graph refreshed (`codebase-memory` `index_repository`, and/or `graphify . --update`) so it stays current.
-9. Graph path integrity re-verified for any new wiring (`trace_path` / `graphify path "source" "sink"` shows a complete chain).
+8. If structural change (new files/classes/RPC methods): knowledge graph refreshed (`graphify . --update`) so it stays current.
+9. Graph path integrity re-verified for any new wiring (`graphify path "source" "sink"` shows a complete chain).

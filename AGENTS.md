@@ -15,7 +15,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.31.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.32.0** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -45,63 +45,51 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
 | [`docs/archive/superpowers/`](docs/archive/superpowers/) | Historical plans/specs (Jun–Aug 2026). Completed work — context only, not live specs. Current plans live in `docs/plans/` |
 
-## Codebase Memory MCP (knowledge graph)
+## Knowledge Graph (graphify)
 
-The `codebase-memory` MCP server (github.com/DeusData/codebase-memory-mcp)
-indexes this repository into a persistent knowledge graph (functions,
-classes, files, routes, calls). It is the live MCP complement to the
-`graphify-out/graph.json` snapshot — use either for blast-radius analysis,
-dependency tracing, and code discovery; the MCP server is available in every
-session and answers faster than grep for structural questions.
+`graphify` indexes this repository into a persistent knowledge graph (functions,
+classes, files, calls, docs) in `graphify-out/` — `graph.json` (queryable),
+`graph.html` (interactive), and `GRAPH_REPORT.md` (God Nodes / community hubs).
+Use it as the FIRST tool for blast-radius analysis, dependency tracing, and code
+discovery — it answers structural questions faster than grep.
 
-**Indexed project name:** `D-pdf-roo-projects-hdaw3` (root
-`D:\pdf\roo projects\hdaw3`). The index lives server-side — there is no
-checked-in `.codebase-memory/` directory.
+**Available as pi tools:** `graphify_query` (BFS natural-language traversal),
+`graphify_path` (shortest path between two nodes), `graphify_explain` (node
+explanation), `graphify_build` / `graphify_update` (rebuild), plus the
+`/graphify` skill / CLI. Kept current automatically: a `post-commit` hook
+rebuilds after each commit and a `--watch` background process (auto-started by
+the `.pi/extensions/graphify-watch.ts` pi extension) rebuilds on file changes.
 
 ### Workflow
 
-1. **Check the index is current** — `index_status` (project
-   `D-pdf-roo-projects-hdaw3`). If code changed significantly since the last
-   index (new files, new RPC methods, new classes), refresh it with
-   `index_repository` (repo_path, mode `fast` for a quick refresh, `full` to
-   also get similarity/semantic edges).
-2. **Discover code** — `search_graph` with a natural-language `query` (BM25,
-   camelCase-aware); use `name_pattern` for regex identifier matches or
-   `semantic_query` for vocabulary-bridging ("publish" → "send"). Prefer it
-   over grep for finding definitions, implementations, or relationships.
-3. **Map callers/callees** — `trace_path` (mode `calls`, direction
-   `inbound`/`outbound`) for dependency analysis and impact mapping. Prefer
-   it over grep for "who calls X".
-4. **Read a definition** — `search_graph` first to get the exact
-   `qualified_name`, then `get_code_snippet` (add `include_neighbors` for
-   surrounding context). Never guess a name.
-5. **Graph-wide analysis** — `query_graph` for Cypher. Functions carry
-   complexity/hot-path properties (`transitive_loop_depth`,
-   `linear_scan_in_loop`, `alloc_in_loop`) — e.g. the hidden-O(n²) hunter:
-
-   ```cypher
-   MATCH (f:Function) WHERE f.transitive_loop_depth >= 3 OR f.linear_scan_in_loop >= 1
-   RETURN f.qualified_name, f.transitive_loop_depth, f.linear_scan_in_loop
-   ORDER BY f.transitive_loop_depth DESC
-   ```
-
-6. **Architecture at a glance** — `get_architecture` (Leiden clusters =
-   de-facto modules, often cutting across folder layout), `get_graph_schema`,
-   `detect_changes` (diff since a ref/date).
+1. **Check freshness** — `GRAPH_REPORT.md` records the build date + commit
+   (`Built from commit: <hash>`); compare to `git rev-parse HEAD`. If stale,
+   refresh with `graphify update .` (incremental, AST-only, no LLM cost).
+2. **Discover code / blast radius** — `graphify query "What depends on X and
+   what does X depend on?"` (BFS, natural language). Use it over grep for "who
+   calls X", "what does X touch", "trace the data flow".
+3. **Map a specific path** — `graphify path "A" "B"` for a caller/callee chain
+   or dependency path between two nodes.
+4. **Read a definition** — `graphify explain "X"` for a plain-language
+   explanation of a node and its neighbors; cross-check the `source_location`
+   with a read before assuming.
+5. **Architecture at a glance** — `GRAPH_REPORT.md` lists God Nodes
+   (high-degree hubs) and community hubs (de-facto modules). A node spanning
+   multiple communities is an architectural seam — verify its interface contract.
 
 ### Rules
 
-- **Read-only by default.** `search_graph`, `search_code`, `trace_path`,
-  `query_graph`, `get_code_snippet`, `get_architecture`, `detect_changes`
-  never modify the repo. `index_repository` writes the server-side index —
-  only re-index when the graph is stale relative to your task.
+- **Query, don't rebuild.** `graphify_query` / `graphify_path` /
+  `graphify_explain` never modify the repo; only `graphify_update` /
+  `graphify_build` write `graphify-out/` (and only when the graph is stale).
 - **Never invent an edge.** If the graph shows no connection, verify with
-  grep/read before assuming (same honesty rule as graphify).
-- **The graph is a snapshot.** Code added since the last index is missing —
+  grep/read before assuming.
+- **The graph is a snapshot.** Code added since the last build is missing —
   cross-check critical paths with grep/read.
-- **Refresh after structural changes.** After adding new files, RPC methods,
-  or classes, run `index_repository` so the completion contract (per
-  hdaw-guard §Completion Contract) checks against current topology.
+- **Refresh after structural changes.** After adding new files, RPC methods, or
+  classes, run `graphify update .` so the completion contract (per
+  hdaw-guard §Completion Contract) checks against current topology. The
+  `post-commit` hook + `--watch` keep it current automatically.
 
 ## Lessons learned
 
@@ -440,6 +428,19 @@ These cost real debugging time — read before touching the relevant area:
     (no 0.6s clips existed; 301s clips died at 0.6s too). See
     `docs/pitfalls-juce.md`, `docs/handoffs/2026-09-17-export-silence-investigation.md`.
 
+24. **Audition/session states persist through autosave — verify the SAVED
+project state before blaming the engine for a broken render.** Stem-audition
+mute/solo/fader states (and imported-clip source offsets) are written into the
+`.hdaw` by autosave; a later "broken" render was actually a project whose
+musical source tracks were all muted while one saturated layer was audible —
+RMS pinned at the masterGain ceiling, then digital silence, looking exactly
+like an overdriven blast + static + silence. Before diagnosing export
+silence/distortion, read the persisted track mute/volume/FX-bypass state and
+each clip's `offset`/`sourceDuration` from the project file. Related: RAVE
+imports must set `timelineAligned:true` (or `sourceOffsetBeats`) for
+full-timeline rendered stems — offset 0 plays the stem's silent first segment.
+See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what
@@ -660,8 +661,8 @@ for a fix marker) before trusting the package.
 
 Version numbers are stored in **two places** and must be kept in sync manually:
 
-- `CMakeLists.txt` → `project(HDAW VERSION 0.31.0 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.31.0"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.32.0 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.32.0"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 

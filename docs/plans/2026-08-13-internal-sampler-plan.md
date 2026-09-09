@@ -52,7 +52,7 @@
 - [ ] G8: `cd frontend && npm run test:e2e -- --grep sampler` passes (load → mode → audition → markers).
 - [ ] G9: `audio-dsp-review` + `audio-numerics-review` skills clean on the voice engine (no audio-thread alloc/lock, denormals handled, unity gain staging).
 - [ ] G10: Version bumped in **both** `CMakeLists.txt` and `frontend/package.json`; changelog entry.
-- [ ] G11: `codebase-memory index_repository` (mode `fast`, project `D-pdf-roo-projects-hdaw3`) refreshed.
+- [ ] G11: `graphify . --update` refreshed.
 
 ## Dependency Map
 
@@ -1190,7 +1190,7 @@ TEST(SamplerFxSlot, RebuildRestoresSampleAndParams)
 - [ ] **Step 1:** Bump `CMakeLists.txt` `project(HDAW VERSION ...)` and `frontend/package.json` `"version"` in sync; add a changelog entry to `README.md` (sampler instrument: Classic/One-Shot/Slicing, mono/legato, MCP parity).
 - [ ] **Step 2:** Run the `audio-dsp-review` and `audio-numerics-review` skills on `SamplerEngine.cpp`/`SamplerVoice.h`. Fix any findings (denormals guards already via `ScopedNoDenormals`; confirm zero allocation in `render`; confirm unity gain staging).
 - [ ] **Step 3:** `cmake --build build --config Debug` (verify test binary timestamp newer — lesson 15). Run **full** `build\Debug\hdaw_tests.exe` (no filter) — G4. Run `cd frontend && npm test && npm run build`.
-- [ ] **Step 4:** `codebase-memory index_repository` mode `fast`, project `D-pdf-roo-projects-hdaw3` (G11).
+- [ ] **Step 4:** `graphify . --update` (G11).
 - [ ] **Step 5: Commit** — `git commit -m "feat(sampler): v0.21.0 internal sampler instrument + MCP/UI parity"` (do not push unless asked).
 
 ---

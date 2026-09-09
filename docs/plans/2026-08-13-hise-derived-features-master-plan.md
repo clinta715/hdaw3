@@ -169,7 +169,7 @@ Each dedicated plan is produced with `writing-plans` (task-by-task, TDD, per-tas
 - **Projections affected:** none new — clips/tracks unchanged entity types (delta/fullSync behavior unchanged).
 - **SPSC paths:** streaming buffer swap = new message→audio atomic handoff (same shape as `activeBuffer`); instrumentation = audio→message flag drain (new, one-way, atomic).
 - **God nodes in scope:** `RoutingManager`, `ClipSourceProcessor` (both high-degree). Treat as elevated-risk in each dedicated plan.
-- **Path integrity:** each dedicated plan must trace the full chain (load → buffer → swap → audio read → observable playback) with `trace_path` before dispatch.
+- **Path integrity:** each dedicated plan must trace the full chain (load → buffer → swap → audio read → observable playback) with `graphify query/path` before dispatch.
 
 ## Pitfall Gates Triggered (all subsystems)
 

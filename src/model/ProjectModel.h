@@ -223,6 +223,9 @@ namespace IDs {
 
     // Master bus (root property; restored on routing-graph rebuild)
     DECLARE_ID(masterGain)
+    // Master FX chain (root child node; children are FX_SLOT nodes with
+    // fxType in {eq, compressor, limiter}, param_0..N, bypassed, slotIndex).
+    DECLARE_ID(MASTER_FX)
 
     // Modulation
     DECLARE_ID(MODULATION_LIST)
@@ -279,6 +282,13 @@ public:
 
     // Master-bus gain (linear, >= 0). Root property; defaults to 1.0.
     float getMasterGain() const;
+
+    // Backward-compat migration: projects saved before the master FX chain
+    // have no MASTER_FX node — stamp the default (eq + limiter, both
+    // bypassed) so master FX commands/tools always find the node. Idempotent:
+    // no-op when the node already exists. Called from loadProject and
+    // createDefaultProject.
+    void ensureMasterFxNode();
 
     juce::UndoManager& getUndoManager() { return undoManager; }
     bool isDirty() const { return dirty; }

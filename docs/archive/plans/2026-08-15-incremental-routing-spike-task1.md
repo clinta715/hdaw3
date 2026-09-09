@@ -49,7 +49,7 @@ order.
       Task 2+, and any pitfalls found.
 - [x] **G7 — `cmake --build build --config Debug` succeeds.**
 
-## Dependency Map (verified via codebase-memory + reads)
+## Dependency Map (verified via graphify + reads)
 
 - **Blast radius:** `RoutingManager` (rebuild + clip construction), the audio
   graph. NOT the command layer (no migration in this spike), NOT the SPSC

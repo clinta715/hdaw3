@@ -42,8 +42,8 @@ ratio** — no change to `StretchRenderer`, `ClipSourceProcessor`, playback, or 
 - [ ] G6: Frontend — `cd frontend; npm test` passes (AudioClipEditor + ImportDialog
       updated); `npm run build` (tsc) succeeds.
 - [ ] G7: No new anti-patterns (diff scan) and no pitfall-gate violations.
-- [ ] G8: Knowledge graph refreshed (`codebase-memory index_repository` fast) after
-      new files + new RPC methods (per AGENTS.md → Codebase Memory MCP).
+- [ ] G8: Knowledge graph refreshed (`graphify . --update` fast) after
+      new files + new RPC methods (per AGENTS.md → Knowledge Graph (graphify)).
 
 ## Dependency Map
 

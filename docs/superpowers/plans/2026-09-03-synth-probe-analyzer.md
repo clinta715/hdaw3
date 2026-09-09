@@ -55,7 +55,7 @@ JSON report with priority-ranked recommendations.
   analyzer must NOT invoke the library-index workflow and must NOT write
   `.timbre.json` sidecars. It reuses `timbre.py` (stage 1) and optionally
   `clap_stage.py` / `llm_stage.py`.
-- Knowledge graph: codebase-memory index covers C++ repo; Python scripts are
+- Knowledge graph: graphify index covers C++ repo; Python scripts are
   outside its indexed scope. Grep confirms no external Python references to the
   new modules (`role_targets`, `analyze_probe`).
 

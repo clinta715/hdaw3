@@ -38,3 +38,21 @@ TEST(ToolRegistry, HandlerExceptionBecomesToolError) {
         QJsonObject{{"name","boom"},{"arguments",QJsonObject{}}});
     EXPECT_TRUE(r.toObject().value("isError").toBool());
 }
+
+#include "mcp/McpTools_Private.h"
+
+TEST(ToolRegistry, FxPresetFileToolMentionsSerumPreset) {
+    McpServer s;
+    registerFxPresetTools(s, nullptr);
+    ASSERT_TRUE(s.tools().contains("load_plugin_preset_file"));
+    const auto def = s.tools().value("load_plugin_preset_file");
+    EXPECT_TRUE(def.description.contains(".SerumPreset"));
+    EXPECT_TRUE(def.inputSchema.value("properties").toObject().contains("filePath"));
+}
+TEST(ToolRegistry, TogglePluginEditorToolMentionsEditor) {
+    McpServer s;
+    registerFxSlotTools(s, nullptr);
+    ASSERT_TRUE(s.tools().contains("toggle_plugin_editor"));
+    const auto def = s.tools().value("toggle_plugin_editor");
+    EXPECT_TRUE(def.description.contains("editor"));
+}

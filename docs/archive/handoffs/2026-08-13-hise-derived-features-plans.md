@@ -122,7 +122,7 @@ For the streaming plan (Subsystem A):
 - Version bump on completion: `CMakeLists.txt` AND `frontend/package.json` in
   sync (0.21.0 → 0.22.0).
 - Refresh the knowledge graph after structural changes:
-  `codebase-memory` → `index_repository` (project `D-pdf-roo-projects-hdaw3`,
+  `graphify` → `graphify . --update`
   mode `full` when new files/RPC methods were added).
 - Commit per task with `git add <explicit paths>` only — do NOT sweep the
   dirty tree. Note: recent work is on feature branches (e.g. the sampler's

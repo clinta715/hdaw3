@@ -2,6 +2,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+#include "PresetFileParser.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -16,15 +17,12 @@
 #include <QJsonDocument>
 #include <algorithm>
 #include <optional>
+#include <limits>
 
 namespace mcp {
 
 void registerFxPresetTools(McpServer& s, AudioEngine* e)
 {
-
-            auto readBE32 = [](const uint8_t* p) -> uint32_t {
-                return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-            };
 
 s.registerTool({"list_plugin_presets",
         "List all preset/program names of a plugin FX slot. Uses the preset cache when available (populated during plugin scanning); falls back to querying the live plugin instance.",
@@ -127,7 +125,7 @@ s.registerTool({"load_plugin_preset",
 
 s.registerTool({"load_plugin_preset_file",
         "Load a preset file into a plugin FX slot via setStateInformation. "
-        "Supports .fxp (standard VST2 FPCh, Serum 2 layout) and .syx (DX7 SysEx) files.",
+        "Supports .SerumPreset (Serum 2 XferJson), .fxp (standard VST2 FPCh, Serum 2 layout), and .syx (DX7 SysEx) files.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"filePath",  QJsonObject{{"type","string"}}}},
@@ -165,68 +163,21 @@ s.registerTool({"load_plugin_preset_file",
             if (!fxpFile.loadFileAsData(raw))
                 return McpToolResult::text("failed to read file", true);
 
-            auto* bytes = static_cast<const uint8_t*>(raw.getData());
+            auto parsed = parsePresetFile(raw);
+            if (!parsed.ok())
+                return McpToolResult::text(QString::fromStdString(parsed.error.toStdString()), true);
 
-            // SysEx file (DX7 format: starts with F0 43)
-            if (bytes[0] == 0xF0 && bytes[1] == 0x43) {
-                slot->getPluginInstance()->setStateInformation(raw.getData(), static_cast<int>(raw.getSize()));
+            if (parsed.size > static_cast<size_t>(std::numeric_limits<int>::max()))
+                return McpToolResult::text("preset payload too large", true);
 
-                auto& model = e->getProjectModel();
-                auto& um = model.getUndoManager();
-                auto slotTree = model.getTrackListTree().getChild(ti)
-                    .getChildWithName(IDs::FX_CHAIN).getChild(si);
-                if (slotTree.isValid()) {
-                    slotTree.setProperty(IDs::pluginState, raw.toBase64Encoding(), &um);
-                }
-                return McpToolResult::text("ok");
-            }
-
-            // FXP file (starts with CcnK)
-            if (raw.getSize() < 60)
-                return McpToolResult::text("file too small for FXP header", true);
-
-            uint32_t chunkMagic = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-            uint32_t fxMagic    = (bytes[8] << 24) | (bytes[9] << 16) | (bytes[10] << 8) | bytes[11];
-
-            if (chunkMagic != 0x43636e4b)
-                return McpToolResult::text("not a valid FXP or SysEx file", true);
-            if (fxMagic != 0x46504368)
-                return McpToolResult::text("not a chunk-based FXP (bad FPCh magic)", true);
-
-            const uint8_t* chunkData = nullptr;
-            size_t chunkSize = 0;
-
-            auto readBE32 = [](const uint8_t* p) -> uint32_t {
-                return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-            };
-
-            if (raw.getSize() >= 60) {
-                uint32_t cs2 = readBE32(bytes + 56);
-                if (cs2 > 0 && 60 + cs2 == raw.getSize()) {
-                    chunkData = bytes + 60;
-                    chunkSize = cs2;
-                }
-            }
-
-            if (!chunkData && raw.getSize() >= 56) {
-                uint32_t cs1 = readBE32(bytes + 52);
-                if (cs1 > 0 && 56 + cs1 == raw.getSize()) {
-                    chunkData = bytes + 56;
-                    chunkSize = cs1;
-                }
-            }
-
-            if (!chunkData || chunkSize == 0)
-                return McpToolResult::text("could not locate chunk data in FXP file", true);
-
-            slot->getPluginInstance()->setStateInformation(chunkData, static_cast<int>(chunkSize));
+            slot->getPluginInstance()->setStateInformation(parsed.data, static_cast<int>(parsed.size));
 
             auto& model = e->getProjectModel();
             auto& um = model.getUndoManager();
             auto slotTree = model.getTrackListTree().getChild(ti)
                 .getChildWithName(IDs::FX_CHAIN).getChild(si);
             if (slotTree.isValid()) {
-                juce::MemoryBlock stateBlock(chunkData, chunkSize);
+                juce::MemoryBlock stateBlock(parsed.data, parsed.size);
                 slotTree.setProperty(IDs::pluginState, stateBlock.toBase64Encoding(), &um);
             }
 

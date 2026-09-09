@@ -58,7 +58,7 @@ When committing the plan doc (§3), optionally note this in the plan file.
    then `git commit -m "docs: Subsystem D plan + gate results (export non-realtime streaming)"`.
    (Gate checkboxes were marked PASS after the test commits; the file is
    otherwise final.)
-2. **Refresh the knowledge graph:** `codebase-memory` MCP `index_repository`
+2. **Refresh the knowledge graph:** `graphify` `graphify . --update`
    (repo_path `D:\pdf\roo projects\hdaw3`, mode `fast`) — D plan G5; the
    graph predates this session's 4 commits.
 3. Optionally commit this handoff doc too.

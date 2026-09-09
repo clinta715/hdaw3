@@ -3231,16 +3231,16 @@ git commit -m "fix: address build/test issues from pattern library integration"
 
 ## Task 14: Knowledge Graph Refresh
 
-- [ ] **Step 1: Refresh the codebase-memory index**
+- [ ] **Step 1: Refresh the graphify graph**
 
 ```
-codebase-memory index_repository (repo_path: "D:\pdf\roo projects\hdaw3", mode: "fast")
+graphify . --update
 ```
 
 - [ ] **Step 2: Verify new files are indexed**
 
 ```
-codebase-memory search_graph (query: "PatternLibrary")
+graphify query "PatternLibrary"
 ```
 
 Expected: Returns `PatternLibrary` class and its methods

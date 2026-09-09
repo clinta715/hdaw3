@@ -20,8 +20,7 @@ wiring** first — it is the only path to real per-program audio.
 
 - Full engine suite **946 tests: 943 passed, 3 env-guarded real-plugin skips
   (TyrellN6), 0 failures**. Frontend build + **351 Vitest** green.
-- Knowledge graph refreshed (`codebase-memory` project
-  `D-pdf-roo-projects-hdaw3`, 9825 nodes).
+- Knowledge graph refreshed (`graphify`, 9825 nodes).
 - `projects/` kept untracked; no new files left out of commits.
 - Plans (with success gates + measured evidence):
   `docs/plans/2026-08-19-pluginformat-snapshot-field.md`,
@@ -219,8 +218,7 @@ Mostly solved by `wholeSong` placement. Remaining: a `paintToProjectEnd` helper
 4. **Beats-vs-seconds ergonomics** (agenda #4) — low priority.
 
 Per hdaw-guard: every code change gets a plan with success gates first,
-dependency analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`), pitfall-gate scan, and subagent dispatch with
+dependency analysis via the knowledge graph (`graphify`), pitfall-gate scan, and subagent dispatch with
 verification. MCP parity for every new user-facing capability. Tests for every
 change. Real-plugin tests env-guarded; never assert per-program audio for VST3
 (item #1 may change that for CLAP synths — measure first).

@@ -17,7 +17,7 @@ PRIORITY ORDER. Each item below is actionable on its own; pick up #1 first.
   → track "Runtime Lead" with `fm_synth` slot, 2 clips, 8 notes, fader 0.1111,
   verified `measuredRms` = 0.05 exactly; undo #1 removes the fader, undo #2 removes
   the whole part (composite = two undo units by design).
-- Knowledge graph refreshed (`codebase-memory` index, 9711 nodes).
+- Knowledge graph refreshed (`graphify` index, 9711 nodes).
 - Working tree clean except untracked `projects/` (kept out of commits).
 
 ### What the composer does today
@@ -220,7 +220,6 @@ composer already accepts beats at the RPC boundary and converts internally.
 7. Lesson-20 namespace guard — standing debt, high test-suite value.
 
 Per hdaw-guard: every code change gets a plan with success gates first, dependency
-analysis via the knowledge graph (`codebase-memory` project
-`D-pdf-roo-projects-hdaw3`), pitfall-gate scan, and subagent dispatch with
+analysis via the knowledge graph (`graphify`), pitfall-gate scan, and subagent dispatch with
 verification. MCP parity for every new user-facing capability. Tests for every
 change (engine → gtest, UI → Vitest/Playwright).

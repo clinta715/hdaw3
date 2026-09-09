@@ -79,7 +79,7 @@ and is NOT regenerated in place — the survey writes its own report to a new pa
 - **Reference:** `timbre-lib/analyze_probe.py` (CLI/report pattern, stable-JSON
   gate), `src/engine/Dx7SysexImport.{h,cpp}` + `McpTools_FmSynth.cpp`
   (`fm_synth_import_sysex`) as the eventual slice-2 shape.
-- **Knowledge graph:** Python scripts are outside codebase-memory's indexed
+- **Knowledge graph:** Python scripts are outside the graphify-indexed
   scope; no graph refresh needed.
 
 ---
