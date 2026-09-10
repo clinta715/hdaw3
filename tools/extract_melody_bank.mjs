@@ -192,7 +192,7 @@ if (isMain) {
   // from the first pack scanned).
   const byRole = new Map();
   for (const p of list) { if (!byRole.has(p.role)) byRole.set(p.role, []); byRole.get(p.role).push(p); }
-  const caps = { lead: 45, arp: 30, bass: 30, chord: 12, pluck: 15, pad: 10 };
+  const caps = { lead: 60, arp: 35, bass: 30, chord: 20, pluck: 20, pad: 10 };
   const sel = [];
   for (const [role, arr] of byRole) {
     const cap = caps[role] ?? 20;
