@@ -915,6 +915,12 @@ bool isSamplerDoubleKey(const juce::String& k)
     return k == "sampleStart" || k == "sampleEnd" || k == "loopStart"
         || k == "loopEnd" || k == "sliceGrid" || k == "sliceSensitivity";
 }
+
+bool isPreservedInstrumentFxType(const juce::String& type)
+{
+    return type == "sampler" || type == "sub_synth" || type == "psy_fm"
+        || type == "fm_synth" || type == "growl_bass" || type == "psyarp";
+}
 } // namespace
 
 bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& preset,
@@ -976,15 +982,24 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
         fxChain = juce::ValueTree(IDs::FX_CHAIN);
         trackTree.addChild(fxChain, -1, &um);
     }
-    while (fxChain.getNumChildren() > 0)
-        fxChain.removeChild(0, &um);
+    int preservedInstrumentCount = 0;
+    for (int i = fxChain.getNumChildren() - 1; i >= 0; --i)
+    {
+        auto slot = fxChain.getChild(i);
+        const juce::String fxType = slot.getProperty(IDs::fxType, "").toString();
+        if (isPreservedInstrumentFxType(fxType))
+            ++preservedInstrumentCount;
+        else
+            fxChain.removeChild(i, &um);
+    }
 
     // 3b. Add each slot via the no-rebuild worker, then restore its state with
     // direct tree writes under &um (same properties the per-op setters write,
-    // but without their per-call rebuildTrackFX). Params go through
-    // setFxSlotParam for the write-side clamp (lesson 23); it performs no
-    // rebuild itself.
-    int slotIndex = 0;
+    // but without their per-call rebuildTrackFX). Preserved instrument slots
+    // remain first and untouched; preset FX slots append after them. Params go
+    // through setFxSlotParam for the write-side clamp (lesson 23); it performs
+    // no rebuild itself.
+    int slotIndex = preservedInstrumentCount;
     for (const auto& s : preset.slots)
     {
         const std::string typeStr = s.fxType.toStdString();

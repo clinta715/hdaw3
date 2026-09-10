@@ -141,7 +141,79 @@ HDAW::ChainPreset makeTwoSlotPreset()
     return p;
 }
 
+juce::ValueTree treeFxChain(AudioEngine& engine, int trackIndex)
+{
+    auto trackList = engine.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return {};
+    return trackList.getChild(trackIndex).getChildWithName(IDs::FX_CHAIN);
+}
+
+juce::String treeFxTypeAt(AudioEngine& engine, int trackIndex, int slotIndex)
+{
+    auto fxChain = treeFxChain(engine, trackIndex);
+    if (!fxChain.isValid() || slotIndex < 0 || slotIndex >= fxChain.getNumChildren())
+        return {};
+    return fxChain.getChild(slotIndex).getProperty(IDs::fxType, "").toString();
+}
+
 } // namespace
+
+// Regression: applying an FX-chain preset must not wipe instrument slots.
+// Preserved instruments stay first with their tree state untouched; preset FX
+// slots are replaced after them on every apply.
+TEST(FxChainPreset, ApplyPreservesInstrumentSlotsAndAppendsPresetFx)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& commands = engine.getAudioEngineCommands();
+
+    commands.addFxSlot(0, "psy_fm", 0, std::string());
+    commands.setFxSlotParam(0, 0, 0, 2.5f);
+    ASSERT_TRUE(commands.setFxSlotPsyFmPreset(0, 0, "acidLead"));
+
+    auto beforeChain = treeFxChain(engine, 0);
+    ASSERT_TRUE(beforeChain.isValid());
+    ASSERT_EQ(beforeChain.getNumChildren(), 1);
+    const auto psyFmBefore = beforeChain.getChild(0);
+    ASSERT_EQ(psyFmBefore.getProperty(IDs::fxType, "").toString().toStdString(), "psy_fm");
+    const double preservedParam0 = static_cast<double>(psyFmBefore.getProperty(juce::Identifier("param_0")));
+    const juce::String preservedMatrix = psyFmBefore.getProperty(juce::Identifier("psyFmMatrix"), "").toString();
+
+    auto preset = makeTwoSlotPreset();
+    juce::String error;
+    ASSERT_TRUE(commands.applyFxChain(0, preset, &error)) << error.toStdString();
+
+    auto fxChain = treeFxChain(engine, 0);
+    ASSERT_TRUE(fxChain.isValid());
+    ASSERT_EQ(fxChain.getNumChildren(), 3);
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 0).toStdString(), "psy_fm");
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 1).toStdString(), "compressor");
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 2).toStdString(), "filter");
+    EXPECT_DOUBLE_EQ(static_cast<double>(fxChain.getChild(0).getProperty(juce::Identifier("param_0"))), preservedParam0);
+    EXPECT_EQ(fxChain.getChild(0).getProperty(juce::Identifier("psyFmMatrix"), "").toString().toStdString(),
+              preservedMatrix.toStdString());
+
+    engine.drainPendingRoutingRebuild();
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    ASSERT_EQ(track->getFXChain().size(), 3u);
+    EXPECT_EQ(track->getFXChain()[0]->getType().toStdString(), "psy_fm");
+
+    ASSERT_TRUE(commands.applyFxChain(0, preset, &error)) << error.toStdString();
+    fxChain = treeFxChain(engine, 0);
+    ASSERT_TRUE(fxChain.isValid());
+    ASSERT_EQ(fxChain.getNumChildren(), 3);
+    int psyFmCount = 0;
+    for (int i = 0; i < fxChain.getNumChildren(); ++i)
+        if (fxChain.getChild(i).getProperty(IDs::fxType, "").toString() == "psy_fm")
+            ++psyFmCount;
+    EXPECT_EQ(psyFmCount, 1);
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 0).toStdString(), "psy_fm");
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 1).toStdString(), "compressor");
+    EXPECT_EQ(treeFxTypeAt(engine, 0, 2).toStdString(), "filter");
+    EXPECT_DOUBLE_EQ(static_cast<double>(fxChain.getChild(0).getProperty(juce::Identifier("param_0"))), preservedParam0);
+}
 
 // Spec gap 1: sampler slot round-trips sampleFile/mode/rootNote identically.
 TEST(FxChainPreset, SamplerRoundTripPreservesFileModeAndRoot)
