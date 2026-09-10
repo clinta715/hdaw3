@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "HDAW Psy Song Brief",
+  "description": "Immutable inter-agent contract for a psy-song session. The orchestrator pins it before any role runs; roles read it, never rewrite it. Runtime copies live under compositions/<song>/brief.json (gitignored).",
+  "type": "object",
+  "required": ["songName", "bpm", "keyRoot", "scaleMode", "style", "seed", "totalBars", "sections", "paletteTrackMap", "targets"],
+  "properties": {
+    "songName": { "type": "string" },
+    "bpm": { "type": "number", "minimum": 60, "maximum": 200 },
+    "keyRoot": { "type": "integer", "minimum": 0, "maximum": 11 },
+    "scaleMode": { "type": "integer", "minimum": 0, "maximum": 12 },
+    "style": { "type": "string", "description": "style id passed to generators, e.g. psytrance / full-on / dark" },
+    "seed": { "type": "integer", "description": "master seed for all deterministic generators" },
+    "totalBars": { "type": "integer", "minimum": 16, "maximum": 512 },
+    "sections": {
+      "type": "array",
+      "items": { "type": "object", "required": ["name", "type", "bars"],
+        "properties": { "name": {"type":"string"}, "type": {"enum":["intro","build","peak","breakdown","outro"]}, "bars": {"type":"integer"} } }
+    },
+    "paletteTrackMap": {
+      "type": "object",
+      "description": "role -> track index. Written by the Sound Selector, read by the Arranger. Unmapped roles are skipped by generators and reported.",
+      "additionalProperties": { "type": "integer" }
+    },
+    "palette": { "type": "array", "items": { "type": "object", "required": ["role", "trackIndex"], "properties": {
+      "role": {"type":"string"}, "trackIndex": {"type":"integer"}, "instrument": {"type":"string"},
+      "preset": {"type":"string"}, "libraryEntryIds": {"type":"array","items":{"type":"string"}},
+      "auditionEvidence": {"type":"string"} } } },
+    "patterns": { "type": "array", "items": { "type": "object", "properties": {
+      "patternId": {"type":"string"}, "role": {"type":"string"}, "bpm": {"type":"number"},
+      "key": {"type":"string"}, "bars": {"type":"integer"}, "source": {"type":"string"} } } },
+    "targets": { "type": "object", "properties": {
+      "masterRms": { "type": "number", "description": "target linear RMS, e.g. 0.21" },
+      "ceilingHitPctMax": { "type": "number", "description": "max fraction of samples at the masterGain ceiling, e.g. 5.0" },
+      "kickProminenceMin": { "type": "number" } } },
+    "artifacts": { "type": "object", "properties": {
+      "renders": { "type": "array", "items": { "type": "object", "properties": {
+        "path": {"type":"string"}, "gateResults": {"type":"object"} } } } } }
+  }
+}

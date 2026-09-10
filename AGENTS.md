@@ -42,6 +42,7 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/adr-automation-model.md`](docs/adr-automation-model.md) | ADR: track-based automation as the primary model (clip-based/relative deferred), beats-vs-seconds implication |
 | [`docs/bitwig-reference.md`](docs/bitwig-reference.md) | Bitwig Studio UI/architecture design reference with HDAW-side takeaways |
 | [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Psytrance composition via MCP: style canon, sample pipeline, score grammar, FX/LFO/automation recipes, **FM synthesis (PsyFm engine, presets, modulation targets 300–308)**, slicing/timestretch tools, mix + verification, contract traps — distilled from the 2026-08-26/27 composition sessions and 2026-09-01 FM integration (recipes: `psytrance_composition_stress_test.cpp`) |
+| [`docs/skills/psy-song-session/`](docs/skills/psy-song-session/SKILL.md) | Agentic song-writing pipeline: five scoped role playbooks (Curator, Pattern Researcher, Sound Selector, Arranger, Mix Verifier) + Song Brief schema + orchestrator dispatch rules |
 | [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
 | [`docs/archive/superpowers/`](docs/archive/superpowers/) | Historical plans/specs (Jun–Aug 2026). Completed work — context only, not live specs. Current plans live in `docs/plans/` |
 
