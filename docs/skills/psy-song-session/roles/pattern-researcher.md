@@ -31,6 +31,13 @@ arrangement/track/FX/automation mutation, `export_audio`.
 - [ ] No project mutations (no note/clip tools in your surface).
 - [ ] Pattern report handed to the orchestrator for the Arranger.
 
+## import_pattern JSON contract (learned from the validator)
+`{ "version": 1, "name": "...", "style": "...", "role": "...", "notes": [{pitch, startBeat, durationBeats, velocity}] }`
+— version/name/style/notes are required; notes are pattern-local beats. Pattern
+library starts EMPTY (no factory patterns). place_patterns consumes
+analyze_midi_file `patterns[]` verbatim (per-placement octave/velocityScale/reverse
+transforms — no key transpose; conform material at the source).
+
 ## Discipline
 - `delete_pattern` only on user-created patterns you created THIS session.
 - Analyze first, import second — a pattern that can't be described isn't stocked.

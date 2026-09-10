@@ -40,6 +40,15 @@ them, bounce back to the orchestrator for an Arranger pass.
    owning role (Arranger: structure; Sound Selector: timbre; Curator: bad source).
 8. **Persist**: only after a PASS verdict — `save_project` to the variant file.
 
+## Surface gotchas (smoke-run feedback)
+- `export_audio` fires and returns immediately (never pass `wait` through the bridge).
+- `analyze_tuning` takes `wavPath` + optional `role` (NOT filePath/bpm) and returns
+  per-role pass/fail with concrete suggestions (rootNote ±12, cutoff, OctaveRange).
+- `auto_gain_to_target` takes `trackId` + `targetRms`; with `allowGlobalScale` it
+  lowers masterGain into headroom when faders clamp.
+- `verify_part` takes `trackIndex` and reports a plain-text summary
+  (solo/mix rms+peak, nonClipping, audible, bandsPresent).
+
 ## Gates
 - [ ] Mute-state pre-check evidence recorded.
 - [ ] Async render verified (duration + nonzero RMS).

@@ -43,6 +43,13 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 8. **Record the palette**: for each role — trackIndex, instrument, preset name,
    audition evidence — into the brief's `palette` section and `paletteTrackMap`.
 
+## Surface gotchas (smoke-run feedback)
+- `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track
+  (`fxType:'filter'`) then `add_fx {fxType:'sub_synth'}` + `remove_fx` the carrier.
+- `audition_plugin` on an existing slot renders the track's OWN clips: the probe
+  clip must already contain notes, or you get audible=0 silence. It returns a
+  plain-text summary `ok=1 ... rms=.. peak=.. audible=..`, not JSON.
+
 ## Gates (all must hold)
 - [ ] Every role in the brief has an unmuted track with a working instrument.
 - [ ] Every instrument passed `audition_plugin`/`audition_patch` (audible=true).
