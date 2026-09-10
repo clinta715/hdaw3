@@ -282,6 +282,11 @@ public:
                 {22, "Filter Release",  0.30f,  0.001f,  5.0f },
                 {23, "Pitch Bend Range",2.0f,   0.0f,   12.0f },
                 {24, "Polyphony",      0.0f,   0.0f,    1.0f },
+                // Virus-emulation upgrades (both DEFAULT-OFF, bit-identical):
+                // 25 = osc2 -> osc1 FM amount 0..1 (0 = off); 26 = filter
+                // slope 0 = 12 dB (default) / 1 = 24 dB lowpass cascade.
+                {25, "Osc2 FM",          0.0f,   0.0f,    1.0f },
+                {26, "Filter Slope",     0.0f,   0.0f,    1.0f },
             };
         return {};
     }
@@ -821,6 +826,8 @@ public:
                 if (internalParamValues.size() > 22) subSynth->setFilterReleaseSeconds(internalParamValues[22]);
                 if (internalParamValues.size() > 23) subSynth->setPitchBendRange(internalParamValues[23]);
                 if (internalParamValues.size() > 24) subSynth->setPolyphony(internalParamValues[24] >= 0.5f);
+                if (internalParamValues.size() > 25) subSynth->setOsc2FmAmount(internalParamValues[25]);
+                if (internalParamValues.size() > 26) subSynth->setFilterSlope24(internalParamValues[26] >= 0.5f);
                 break;
             }
             case ActiveType::None:
@@ -1334,6 +1341,7 @@ public:
     SamplerEngine* samplerEngineForTest() { return sampler.get(); }
 
     FmSynthEngine* fmSynthEngine() { return fmSynth.get(); }
+    SubtractiveSynthEngine* subSynthEngineForTest() { return subSynth.get(); }
     PsyFmEngine* psyFmEngine() { return psyFm.get(); }
 
     // ── PsyFm matrix/sweep state (tree-persisted, rebuild-safe) ──
@@ -1888,6 +1896,8 @@ private:
                     case 22: subSynth->setFilterReleaseSeconds(value); break;
                     case 23: subSynth->setPitchBendRange(value); break;
                     case 24: subSynth->setPolyphony(value >= 0.5f); break;
+                    case 25: subSynth->setOsc2FmAmount(value); break;
+                    case 26: subSynth->setFilterSlope24(value >= 0.5f); break;
                     default: return;
                 }
                 break;

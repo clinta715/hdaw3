@@ -25,16 +25,20 @@ void SubtractiveSynthEngine::prepare(double sampleRate, int maxBlockSize)
     spec.numChannels = 1;
     filter_.prepare(spec);
     filterHp_.prepare(spec);
+    filterLp2_.prepare(spec);
     filter_.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
     filterHp_.setType(juce::dsp::StateVariableTPTFilterType::highpass);
+    filterLp2_.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
 
     for (int i = 0; i < kMaxPolyVoices; ++i)
     {
         polyVoices_[(size_t) i] = {};
         polyFilter_[(size_t) i].prepare(spec);
         polyFilterHp_[(size_t) i].prepare(spec);
+        polyFilterLp2_[(size_t) i].prepare(spec);
         polyFilter_[(size_t) i].setType(juce::dsp::StateVariableTPTFilterType::lowpass);
         polyFilterHp_[(size_t) i].setType(juce::dsp::StateVariableTPTFilterType::highpass);
+        polyFilterLp2_[(size_t) i].setType(juce::dsp::StateVariableTPTFilterType::lowpass);
         lastPolyResonance_[(size_t) i] = -1.0f;
     }
 }
@@ -63,6 +67,8 @@ void SubtractiveSynthEngine::setFilterDecaySeconds(float value) noexcept { filte
 void SubtractiveSynthEngine::setFilterSustain(float value) noexcept { filterEnvSustain_.store(clampUnit(value), std::memory_order_relaxed); }
 void SubtractiveSynthEngine::setFilterReleaseSeconds(float value) noexcept { filterEnvRelease_.store(clampPositive(value, 0.001f), std::memory_order_relaxed); }
 void SubtractiveSynthEngine::setPitchBendRange(float value) noexcept { pitchBendRange_.store(std::clamp(value, 0.0f, 12.0f), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setOsc2FmAmount(float value) noexcept { osc2FmAmount_.store(clampUnit(value), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setFilterSlope24(bool value) noexcept { filterSlope24_.store(value, std::memory_order_relaxed); }
 
 int SubtractiveSynthEngine::activeNoteCount() const noexcept
 {
@@ -151,6 +157,7 @@ void SubtractiveSynthEngine::resetVoice(int note, int velocity) noexcept
     voice_.glideSamplesRemaining = 0;
     filter_.reset();
     filterHp_.reset();
+    filterLp2_.reset();
 }
 
 void SubtractiveSynthEngine::retargetVoice(int note, int velocity, bool resetEnvelope) noexcept
@@ -180,6 +187,7 @@ void SubtractiveSynthEngine::retargetVoice(int note, int velocity, bool resetEnv
         voice_.subPhase.fill(0.0f);
         filter_.reset();
         filterHp_.reset();
+        filterLp2_.reset();
         return;
     }
 
@@ -263,6 +271,7 @@ void SubtractiveSynthEngine::resetPolyVoice(int index, int note, int velocity) n
     v.glideSamplesRemaining = 0;
     polyFilter_[(size_t) index].reset();
     polyFilterHp_[(size_t) index].reset();
+    polyFilterLp2_[(size_t) index].reset();
     lastPolyResonance_[(size_t) index] = -1.0f;
 }
 
@@ -302,11 +311,13 @@ void SubtractiveSynthEngine::setPolyphony(bool value) noexcept
     heldNoteCount_ = 0;
     filter_.reset();
     filterHp_.reset();
+    filterLp2_.reset();
     for (int i = 0; i < kMaxPolyVoices; ++i)
     {
         polyVoices_[(size_t) i] = {};
         polyFilter_[(size_t) i].reset();
         polyFilterHp_[(size_t) i].reset();
+        polyFilterLp2_[(size_t) i].reset();
         lastPolyResonance_[(size_t) i] = -1.0f;
     }
 }
@@ -327,12 +338,14 @@ void SubtractiveSynthEngine::allNotesOff() noexcept
     sustainPedal_ = false;
     filter_.reset();
     filterHp_.reset();
+    filterLp2_.reset();
 
     for (int i = 0; i < kMaxPolyVoices; ++i)
     {
         polyVoices_[(size_t) i] = {};
         polyFilter_[(size_t) i].reset();
         polyFilterHp_[(size_t) i].reset();
+        polyFilterLp2_[(size_t) i].reset();
         lastPolyResonance_[(size_t) i] = -1.0f;
     }
 }
@@ -479,7 +492,7 @@ void SubtractiveSynthEngine::advanceEnvelope(Voice& v) noexcept
 
 float SubtractiveSynthEngine::renderVoiceSample() noexcept
 {
-    const float sample = renderVoiceSampleCore(voice_, filter_, filterHp_, lastFilterResonance_);
+    const float sample = renderVoiceSampleCore(voice_, filter_, filterHp_, filterLp2_, lastFilterResonance_);
     return sample * outputLevel_.load(std::memory_order_relaxed);
 }
 
@@ -487,6 +500,7 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     Voice& v,
     juce::dsp::StateVariableTPTFilter<float>& filter,
     juce::dsp::StateVariableTPTFilter<float>& filterHp,
+    juce::dsp::StateVariableTPTFilter<float>& filterLp2,
     float& lastResonance) noexcept
 {
     const float baseHz = v.currentHz * v.bendRatio;
@@ -496,6 +510,11 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
 
     const Waveform osc1Wave = static_cast<Waveform>(clampWave(osc1Wave_.load(std::memory_order_relaxed)));
     const Waveform osc2Wave = static_cast<Waveform>(clampWave(osc2Wave_.load(std::memory_order_relaxed)));
+    // Upgrade 1 (param 25): osc2 -> osc1 FM depth in phase cycles. Loaded
+    // once per sample (relaxed atomic, same idiom as the levels below).
+    const float fmDepth = osc2FmAmount_.load(std::memory_order_relaxed) * kFmPhaseDepth;
+    // Upgrade 2 (param 26): 24 dB lowpass cascade. Default false = 12 dB.
+    const bool slope24 = filterSlope24_.load(std::memory_order_relaxed);
 
     float sample = 0.0f;
     for (int unison = 0; unison < 2; ++unison)
@@ -505,8 +524,14 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
         const float voiceOsc2Hz = voiceHz * osc2Ratio;
         const float voiceSubHz = voiceHz * subHzRatio;
 
-        const float osc1 = phaseToSample(osc1Wave, v.osc1Phase[static_cast<size_t>(unison)]);
         const float osc2 = phaseToSample(osc2Wave, v.osc2Phase[static_cast<size_t>(unison)]);
+        // FM phase-modulates osc1 by the CURRENT osc2 output (pre-advance,
+        // matching the oscillator phase-advance style below). The fmDepth > 0
+        // branch keeps the FM=0 path bit-identical (no extra FP op).
+        const float osc1Phase = (fmDepth > 0.0f)
+            ? v.osc1Phase[static_cast<size_t>(unison)] + fmDepth * osc2
+            : v.osc1Phase[static_cast<size_t>(unison)];
+        const float osc1 = phaseToSample(osc1Wave, osc1Phase);
         const float sub = phaseToSample(Waveform::Square, v.subPhase[static_cast<size_t>(unison)]);
 
         v.osc1Phase[static_cast<size_t>(unison)] += voiceHz / static_cast<float>(sampleRate_);
@@ -546,6 +571,7 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
         lastResonance = resonance;
         filter.setResonance(resonance);
         filterHp.setResonance(resonance);
+        filterLp2.setResonance(resonance);
     }
 
     filter.setType(filterType == 1 ? juce::dsp::StateVariableTPTFilterType::highpass
@@ -554,10 +580,18 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     filterHp.setType(juce::dsp::StateVariableTPTFilterType::highpass);
     filter.setCutoffFrequency(envCut);
     filterHp.setCutoffFrequency(envCut);
+    filterLp2.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
+    filterLp2.setCutoffFrequency(envCut);
 
     const float filtered = filter.processSample(0, sample);
     const float filteredHp = filterHp.processSample(0, sample);
-    sample = (filterType == 3) ? (filtered + filteredHp) : filtered;
+    // 24 dB = second LP stage cascaded on the lowpass output (lowpass mode
+    // only; HP/BP/notch keep the 12 dB path bit-for-bit). Default 12 dB
+    // takes the exact pre-upgrade expression.
+    if (slope24 && filterType == 0)
+        sample = filterLp2.processSample(0, filtered);
+    else
+        sample = (filterType == 3) ? (filtered + filteredHp) : filtered;
 
     advancePitch(v);
     advanceEnvelope(v);
@@ -683,7 +717,7 @@ float SubtractiveSynthEngine::renderOutputSample() noexcept
         if (! v.active)
             continue;
         sum += renderVoiceSampleCore(v, polyFilter_[(size_t) i], polyFilterHp_[(size_t) i],
-                                     lastPolyResonance_[(size_t) i]);
+                                     polyFilterLp2_[(size_t) i], lastPolyResonance_[(size_t) i]);
     }
     return sum * 0.5f * outputLevel_.load(std::memory_order_relaxed);
 }

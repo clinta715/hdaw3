@@ -449,8 +449,9 @@ s.registerTool({"sub_synth_import_sysex",
         "Import an Access Virus SysEx patch into a sub_synth FX slot. Supports B/C "
         "single dumps (267 bytes) and TI banks (128 x 524-byte blocks). For banks, "
         "loads voiceIndex (default 0). Maps the Virus patch onto the sub_synth "
-        "params 0-22 in real units (cutoff/envelopes/levels/waves/...); Virus "
-        "features with no sub_synth equivalent (FM, ring mod, LFOs, keytrack, FX, "
+        "params 0-22 plus Osc2 FM (param 25) in real units "
+        "(cutoff/envelopes/levels/waves/...); Virus "
+        "features with no sub_synth equivalent (ring mod, LFOs, keytrack, FX, "
         "mod matrix, noise) are reported in 'unmapped' — never silently dropped. "
         "On a bad file/slot/checksum the slot is left unchanged.",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},

@@ -482,3 +482,113 @@ TEST(SubtractiveSynthEngine, ModeSwitchClearsSound)
     EXPECT_GT(renderRms(engine, on, 64), 0.0f);
     EXPECT_EQ(engine.activeNoteCount(), 1);
 }
+
+// ── Virus-emulation upgrades 1+2 (params 25/26) ────────────────────────────
+// Both are DEFAULT-OFF and must leave the default render bit-identical.
+
+namespace {
+
+juce::AudioBuffer<float> renderNoteBuffer(SubtractiveSynthEngine& engine, int note,
+                                           int numSamples)
+{
+    juce::AudioBuffer<float> buffer(1, numSamples);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, note, 0.9f), 0);
+    engine.render(buffer, midi);
+    return buffer;
+}
+
+float maxAbsDiff(const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+{
+    const int n = std::min(a.getNumSamples(), b.getNumSamples());
+    float peak = 0.0f;
+    for (int i = 0; i < n; ++i)
+        peak = std::max(peak, std::abs(a.getSample(0, i) - b.getSample(0, i)));
+    return peak;
+}
+
+// DFT magnitude at one probe frequency over [start, start+count) — N is
+// chosen so the probe lands on an exact bin (no windowing needed).
+float probeMagnitude(const juce::AudioBuffer<float>& buffer, int start, int count,
+                     float probeHz, double sampleRate)
+{
+    double re = 0.0, im = 0.0;
+    for (int i = 0; i < count; ++i)
+    {
+        const double phase = 2.0 * juce::MathConstants<double>::pi * probeHz
+            * static_cast<double>(i) / sampleRate;
+        const float s = buffer.getSample(0, start + i);
+        re += s * std::cos(phase);
+        im += s * std::sin(phase);
+    }
+    return static_cast<float>(std::sqrt(re * re + im * im) / count);
+}
+
+} // namespace
+
+TEST(SubtractiveSynthEngine, DefaultUpgradesOffIsBitIdentical)
+{
+    // A default engine vs one with the upgrades EXPLICITLY set to their
+    // defaults must render bit-for-bit identical audio.
+    SubtractiveSynthEngine ref;
+    ref.prepare(44100.0, 512);
+    SubtractiveSynthEngine dut;
+    dut.prepare(44100.0, 512);
+    dut.setOsc2FmAmount(0.0f);
+    dut.setFilterSlope24(false);
+
+    auto a = renderNoteBuffer(ref, 60, 4096);
+    auto b = renderNoteBuffer(dut, 60, 4096);
+    for (int i = 0; i < a.getNumSamples(); ++i)
+        EXPECT_EQ(a.getSample(0, i), b.getSample(0, i)) << "sample " << i;
+}
+
+TEST(SubtractiveSynthEngine, Osc2FmAmountChangesOsc1Output)
+{
+    SubtractiveSynthEngine off;
+    off.prepare(44100.0, 512);
+    SubtractiveSynthEngine on;
+    on.prepare(44100.0, 512);
+    on.setOsc2FmAmount(0.5f);
+
+    auto a = renderNoteBuffer(off, 60, 4096);
+    auto b = renderNoteBuffer(on, 60, 4096);
+    // FM=0.5 deviates osc1 phase by up to +/-0.5 cycles — the renders must
+    // differ well above numerical noise (audible hard-FM character).
+    EXPECT_GT(maxAbsDiff(a, b), 0.01f);
+}
+
+TEST(SubtractiveSynthEngine, FilterSlope24Attenuates2kHzMoreThan12dB)
+{
+    // Saw note (rich harmonics) through a static 500 Hz lowpass; compare the
+    // 2 kHz probe energy in 12 dB vs 24 dB mode over the sustain tail.
+    constexpr double kRate = 44100.0;
+    constexpr int kTotal = 88200;   // 2 s
+    constexpr int kTail = 44100;    // last 1 s (steady sustain)
+    auto render = [&](bool slope24) {
+        SubtractiveSynthEngine e;
+        e.prepare(kRate, 512);
+        e.setOsc1Wave(1);           // saw
+        e.setOsc1Level(0.8f);
+        e.setOsc2Level(0.0f);
+        e.setSubLevel(0.0f);
+        e.setCutoffHz(500.0f);
+        e.setResonance(0.15f);
+        e.setFilterEnvAmount(0.0f); // static cutoff (no env sweep)
+        e.setAttackSeconds(0.005f);
+        e.setDecaySeconds(0.1f);
+        e.setSustain(1.0f);
+        e.setFilterSlope24(slope24);
+        return renderNoteBuffer(e, 69, kTotal);
+    };
+
+    auto lp12 = render(false);
+    auto lp24 = render(true);
+    const float mag12 = probeMagnitude(lp12, kTotal - kTail, kTail, 2000.0f, kRate);
+    const float mag24 = probeMagnitude(lp24, kTotal - kTail, kTail, 2000.0f, kRate);
+    EXPECT_GT(mag12, 1e-6f) << "probe must see signal in 12 dB mode";
+    // 2 kHz is 2 octaves above the 500 Hz cutoff: ~24 dB down at 12 dB/oct
+    // vs ~48 dB at 24 dB/oct, i.e. amplitude ratio ~0.06. Assert < 0.5.
+    EXPECT_LT(mag24, 0.5f * mag12);
+}

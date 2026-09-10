@@ -422,7 +422,7 @@ AudioEngineCommands::VirusLoadResult AudioEngineCommands::loadVirusPatch(
     // so this loop cannot fail — the slot only changes here.
     beginTransaction("Load Virus patch");
     int mappedCount = 0;
-    for (int i = 0; i < 24; ++i)
+    for (int i = 0; i < static_cast<int>(patch->mapped.size()); ++i)
     {
         if (patch->mapped[static_cast<size_t>(i)].has_value())
         {

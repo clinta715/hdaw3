@@ -38,6 +38,14 @@ public:
     void setFilterSustain(float value) noexcept;
     void setFilterReleaseSeconds(float value) noexcept;
     void setPitchBendRange(float value) noexcept;
+    // Virus-emulation upgrade 1 (param 25): osc2 -> osc1 FM amount, 0..1,
+    // default 0 (off, bit-identical). Phase-modulates osc1 by the current
+    // osc2 output; FM=1.0 deviates osc1 phase by +/-kFmPhaseDepth cycles.
+    void setOsc2FmAmount(float value) noexcept;
+    // Virus-emulation upgrade 2 (param 26): 24 dB lowpass slope, default
+    // false (12 dB, bit-identical). Applies to lowpass mode only; other
+    // filter types keep the 12 dB path.
+    void setFilterSlope24(bool value) noexcept;
     // Polyphony mode (param 24). Mono is the default and bit-identical to the
     // pre-polyphony engine; poly allocates up to kMaxPolyVoices voices with
     // per-voice filters. Switching modes clears sound (no orphan voices).
@@ -57,6 +65,8 @@ public:
     int filterTypeForTest() const noexcept;
     float filterEnvForTest() const noexcept;
     float pitchBendRatioForTest() const noexcept;
+    float osc2FmAmountForTest() const noexcept { return osc2FmAmount_.load(std::memory_order_relaxed); }
+    bool filterSlope24ForTest() const noexcept { return filterSlope24_.load(std::memory_order_relaxed); }
 
 private:
     enum class Waveform
@@ -88,6 +98,9 @@ private:
 
     static constexpr int kMaxHeldNotes = 16;
     static constexpr int kMaxPolyVoices = 8;
+    // Osc1 phase deviation (cycles) per unit osc2 output at FM=1.0.
+    // +/-1 cycle is full hard-FM character (Virus-style harshness).
+    static constexpr float kFmPhaseDepth = 1.0f;
     static constexpr float kUnisonDetuneCents = 7.0f;
 
     double sampleRate_ = 44100.0;
@@ -108,6 +121,7 @@ private:
     float renderVoiceSampleCore(Voice& v,
                                 juce::dsp::StateVariableTPTFilter<float>& filter,
                                 juce::dsp::StateVariableTPTFilter<float>& filterHp,
+                                juce::dsp::StateVariableTPTFilter<float>& filterLp2,
                                 float& lastResonance) noexcept;
     void polyNoteOn(int note, int velocity) noexcept;
     void polyNoteOff(int note) noexcept;
@@ -140,9 +154,14 @@ private:
     std::atomic<float> filterEnvSustain_ { 0.70f };
     std::atomic<float> filterEnvRelease_ { 0.30f };
     std::atomic<float> pitchBendRange_ { 2.0f };
+    std::atomic<float> osc2FmAmount_ { 0.0f };
+    std::atomic<bool> filterSlope24_ { false };
 
     juce::dsp::StateVariableTPTFilter<float> filter_;
     juce::dsp::StateVariableTPTFilter<float> filterHp_;
+    // Second LP stage for the 24 dB slope option (param 26). Preallocated in
+    // prepare(); unused (state still reset) in the default 12 dB path.
+    juce::dsp::StateVariableTPTFilter<float> filterLp2_;
     bool sustainPedal_ = false;
     float lastFilterResonance_ = -1.0f;
 
@@ -150,6 +169,7 @@ private:
     // cutoff per instance; only the resonance is cached off the param read).
     std::array<juce::dsp::StateVariableTPTFilter<float>, kMaxPolyVoices> polyFilter_ {};
     std::array<juce::dsp::StateVariableTPTFilter<float>, kMaxPolyVoices> polyFilterHp_ {};
+    std::array<juce::dsp::StateVariableTPTFilter<float>, kMaxPolyVoices> polyFilterLp2_ {};
     std::array<float, kMaxPolyVoices> lastPolyResonance_ {};
 
     static int clampWave(int value) noexcept;

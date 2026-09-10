@@ -149,7 +149,9 @@ float virusPortamento(uint8_t x)
 // ── sub_synth param -> Virus source offset + converter ─────────────────────
 // Offsets are page-A positions inside the 256-byte page A+B payload (same as
 // virus_patch.py PARAM_OFFSETS). Params 0..22 map; 23 (Pitch Bend Range) is
-// reserved and left unmapped.
+// reserved and left unmapped. Param 25 (Osc2 FM) maps A27 osc2_fm_amount
+// 0..127 -> 0..1. Params 24 (Polyphony) and 26 (Filter Slope) are local
+// HDAW options with no Virus source byte and stay unmapped.
 struct SubSynthSource {
     int paramIndex;
     size_t offset;
@@ -180,12 +182,12 @@ const SubSynthSource kSubSynthSources[] = {
     { 20, 55, virusEnvTimeSeconds }, // filter_env_decay  (A55)
     { 21, 56, virusNorm },           // filter_env_sustain (A56)
     { 22, 58, virusEnvTimeSeconds }, // filter_env_release (A58)
+    { 25, 27, virusNorm },           // osc2_fm_amount (A27) 0..127 -> 0..1
 };
 
 // Virus features with no sub_synth equivalent. Reported verbatim per patch —
 // never silently dropped (mirrors virus_patch.py UNMAPPED_FEATURES).
 const char* const kUnmappedFeatures[] = {
-    "osc2_fm_amount",
     "ring_mod",
     "lfo1",
     "lfo2",

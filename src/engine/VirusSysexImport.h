@@ -8,7 +8,8 @@
 namespace HDAW {
 
 // A decoded Access Virus patch mapped onto the HDAW `sub_synth` internal FX
-// (params 0..23, TrackFXSlot::getParamDefsForType("sub_synth")). `mapped`
+// (params 0..22 + 25/Osc2 FM; 23 reserved, 24/Polyphony + 26/Filter Slope have
+// no Virus source — TrackFXSlot::getParamDefsForType("sub_synth")). `mapped`
 // holds REAL-UNIT values (cutoff in Hz, env times in seconds, waves/filter
 // type as 0..3 ints, ...) matching the param def ranges; only indices present
 // in `mapped` are written by the loader. `unmapped` lists Virus features the
@@ -18,7 +19,7 @@ struct VirusPatch {
     std::string name;                  // trimmed ASCII (may be empty; may carry a leading '~')
     bool isValid = false;
     int bank = 0, program = 0;         // from the sysex header when available
-    std::array<std::optional<float>, 24> mapped;
+    std::array<std::optional<float>, 27> mapped;
     std::vector<std::string> unmapped;
 };
 
@@ -40,7 +41,7 @@ std::optional<VirusPatch> parseBcSingle(const uint8_t* data, size_t size);
 std::vector<VirusPatch> parseTiBank(const uint8_t* data, size_t size);
 
 // Map a page A+B payload (256 bytes for a B/C single, the first 256 bytes of
-// a TI block payload) onto the sub_synth params 0..23 in real units, plus the
+// a TI block payload) onto the sub_synth params 0..22 + 25 (Osc2 FM) in real units, plus the
 // fixed unmapped-feature list. `page` offsets mirror virus_patch.py's
 // PARAM_OFFSETS (page A unless noted); `name` is stored verbatim. Offsets are
 // bounds-checked against `len` (never read out of range).

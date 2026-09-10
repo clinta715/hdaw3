@@ -63,21 +63,20 @@ TEST(VirusSysexImport, ParseBcSingleFixture)
     for (const auto& v : patch->mapped)
         if (v.has_value())
             ++mappedCount;
-    EXPECT_EQ(mappedCount, 23);          // params 0..22; 23 (Pitch Bend) reserved
+    EXPECT_EQ(mappedCount, 24);          // params 0..22 + 25 (Osc2 FM); 23 (Pitch Bend) reserved
 
-    ASSERT_EQ(patch->unmapped.size(), 12u);
-    EXPECT_EQ(patch->unmapped[0], "osc2_fm_amount");
-    EXPECT_EQ(patch->unmapped[1], "ring_mod");
-    EXPECT_EQ(patch->unmapped[2], "lfo1");
-    EXPECT_EQ(patch->unmapped[3], "lfo2");
-    EXPECT_EQ(patch->unmapped[4], "keytrack");
-    EXPECT_EQ(patch->unmapped[5], "filter_slope_24db");
-    EXPECT_EQ(patch->unmapped[6], "osc_sync");
-    EXPECT_EQ(patch->unmapped[7], "fx_chorus");
-    EXPECT_EQ(patch->unmapped[8], "fx_delay");
-    EXPECT_EQ(patch->unmapped[9], "fx_reverb");
-    EXPECT_EQ(patch->unmapped[10], "mod_matrix");
-    EXPECT_EQ(patch->unmapped[11], "noise_level");
+    ASSERT_EQ(patch->unmapped.size(), 11u);
+    EXPECT_EQ(patch->unmapped[0], "ring_mod");
+    EXPECT_EQ(patch->unmapped[1], "lfo1");
+    EXPECT_EQ(patch->unmapped[2], "lfo2");
+    EXPECT_EQ(patch->unmapped[3], "keytrack");
+    EXPECT_EQ(patch->unmapped[4], "filter_slope_24db");
+    EXPECT_EQ(patch->unmapped[5], "osc_sync");
+    EXPECT_EQ(patch->unmapped[6], "fx_chorus");
+    EXPECT_EQ(patch->unmapped[7], "fx_delay");
+    EXPECT_EQ(patch->unmapped[8], "fx_reverb");
+    EXPECT_EQ(patch->unmapped[9], "mod_matrix");
+    EXPECT_EQ(patch->unmapped[10], "noise_level");
 }
 
 TEST(VirusSysexImport, ParseTiBankSlice)
@@ -190,6 +189,7 @@ TEST(VirusSysexImport, MappingMatchesPythonDecoder)
         { 20, 0.764626f   },  // filter_env_decay  raw 99 -> 0.001*pow(5000, 99/127)
         { 21, 0.0f        },  // filter_env_sustain raw 0 -> 0/127
         { 22, 5.0f        },  // filter_env_release raw 127 -> 0.001*pow(5000, 1)
+        { 25, 0.330709f   },  // osc2_fm_amount raw 42 -> 42/127
     };
 
     for (const auto& e : kExpected)
@@ -201,7 +201,11 @@ TEST(VirusSysexImport, MappingMatchesPythonDecoder)
     }
 
     // Param 23 (Pitch Bend Range) is reserved — never written by the loader.
+    // Params 24 (Polyphony) and 26 (Filter Slope) are local HDAW options with
+    // no Virus source byte — also never written.
     EXPECT_FALSE(patch->mapped[23].has_value());
+    EXPECT_FALSE(patch->mapped[24].has_value());
+    EXPECT_FALSE(patch->mapped[26].has_value());
 }
 
 // Gate 9: a bad file must fail cleanly at the parser boundary (covered above);
@@ -219,5 +223,5 @@ TEST(VirusSysexImport, ParseDoesNotReadOutOfRange)
         if (v.has_value())
             anyMapped = true;
     EXPECT_FALSE(anyMapped);  // no source offset < 4 exists
-    EXPECT_EQ(patch.unmapped.size(), 12u);
+    EXPECT_EQ(patch.unmapped.size(), 11u);
 }

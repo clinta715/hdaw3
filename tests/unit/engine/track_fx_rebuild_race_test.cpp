@@ -395,8 +395,8 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
     EXPECT_EQ(r.name, "~WELCOME");
     EXPECT_EQ(r.bank, 1);
     EXPECT_EQ(r.program, 0);
-    EXPECT_EQ(r.mappedCount, 23);
-    ASSERT_EQ(r.unmapped.size(), 12u);
+    EXPECT_EQ(r.mappedCount, 24);
+    ASSERT_EQ(r.unmapped.size(), 11u);
 
     // The ValueTree carries the patch (params are the source of truth).
     auto fxChainTree = engine.getProjectModel().getTrackListTree()
@@ -421,7 +421,7 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
     EXPECT_EQ(chain[0]->getType(), "sub_synth");
 
     const auto values = chain[0]->getInternalParamValues();
-    ASSERT_GE(values.size(), 24u);
+    ASSERT_GE(values.size(), 27u);
     EXPECT_FLOAT_EQ(values[0], 1.0f);           // osc1 wave -> Saw
     EXPECT_NEAR(values[1], 0.503937f, 1e-3f);   // osc1 level 64/127
     EXPECT_NEAR(values[4], 98.4375f, 1e-3f);    // osc2 detune +98.4 cents
@@ -434,6 +434,8 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
     EXPECT_NEAR(values[19], 0.213826f, 1e-3f);  // filter attack
     EXPECT_FLOAT_EQ(values[22], 5.0f);          // filter release max
     EXPECT_FLOAT_EQ(values[23], 2.0f);          // reserved param stays default
+    EXPECT_NEAR(values[25], 0.330709f, 1e-3f);  // osc2 FM amount raw 42/127
+    EXPECT_FLOAT_EQ(values[26], 0.0f);          // filter slope stays 12 dB default
 
     // ReadModel agrees (same ValueTree props the frontend renders).
     auto params = engine.getReadModel().getInternalFxParams(0, 0);
@@ -445,6 +447,54 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
             foundCutoff = true;
         }
     EXPECT_TRUE(foundCutoff);
+}
+
+// Path integrity for the Virus-emulation upgrades (params 25/26): mutate via
+// setFxSlotParam (ValueTree), rebuildFXChain(), then assert the LIVE DSP engine
+// — slot values alone would not prove the restored slot sounds right. Gate 10.
+TEST(TrackFxRebuildRace, SubSynthVirusUpgradesSurviveRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, "sub_synth", 0, "");
+
+    cmds.setFxSlotParam(0, 0, 25, 0.5f);
+    cmds.setFxSlotParam(0, 0, 26, 1.0f);
+
+    auto fxChainTree = engine.getProjectModel().getTrackListTree()
+        .getChild(0)
+        .getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChainTree.isValid());
+
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    track->rebuildFXChain(fxChainTree);
+
+    track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto& chain = track->getFXChain();
+    ASSERT_FALSE(chain.empty());
+    ASSERT_NE(chain[0], nullptr);
+    EXPECT_EQ(chain[0]->getType(), "sub_synth");
+
+    // Param defs carry the new params (the list_fx_params surface reads these).
+    const auto defs = chain[0]->getInternalParamDefs();
+    ASSERT_GE(defs.size(), 27u);
+    EXPECT_EQ(defs[25].name, "Osc2 FM");
+    EXPECT_EQ(defs[26].name, "Filter Slope");
+
+    const auto values = chain[0]->getInternalParamValues();
+    ASSERT_GE(values.size(), 27u);
+    EXPECT_FLOAT_EQ(values[25], 0.5f);
+    EXPECT_FLOAT_EQ(values[26], 1.0f);
+
+    // LIVE processor state — the Gate-10 assertion.
+    auto* sub = chain[0]->subSynthEngineForTest();
+    ASSERT_NE(sub, nullptr);
+    EXPECT_FLOAT_EQ(sub->osc2FmAmountForTest(), 0.5f);
+    EXPECT_TRUE(sub->filterSlope24ForTest());
 }
 
 // Gate 6: the patch must persist through a save/load round-trip — saveProject
