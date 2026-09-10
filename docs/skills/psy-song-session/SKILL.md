@@ -30,23 +30,29 @@ All runtime artifacts (brief, renders, reports) live under `compositions/<song>/
 (gitignored). Deterministic generators take the brief's seed; verification uses
 the brief's targets, not vibes.
 
-## Dispatch
-Subagents run WITHOUT user extensions by default — their fabric session would
-have no `extensions.*` captures and every HDAW call fails with "Unknown Fabric
-action". The transport fix (verified 2026-09-09): every dispatch MUST pass
-`extensions: true` AND an explicit `tools` allowlist containing the core tools
-plus the role's HDAW adapter tool names:
+## Dispatch — shared-engine contract (CRITICAL)
+The engine is a PER-SESSION SINGLETON: mcp-launch.bat kills any running engine
+on launch ("one engine per session"). If a role subagent boots its own stdio
+hdaw server, it KILLS the orchestrator's engine and everything unsaved is lost.
+The working architecture (verified 2026-09-09/10):
 
-```
-agents.run({ prompt, model, extensions: true, timeoutMs: ..., tools: [
-  "read", "bash", "powershell", "write", "edit", "grep", "find", "ls",
-  "hdaw_list_servers", "hdaw_list_commands", "hdaw_describe_commands",
-  "hdaw_invoke_command",
-  ...<the role's HDAW command names from its playbook>
-] })
-```
-The `tools` allowlist doubles as the hard surface-area enforcement (Phase 1):
-a subagent cannot call tools outside its list.
+1. **Orchestrator owns the engine** through its stdio `hdaw` session.
+2. **The engine must serve MCP over HTTP** (one-time: registry
+   HKCU\Software\HDAW\HDAW\mcp httpEnabled=true, or launch once with
+   `--mcp-http`). Endpoint: `POST http://127.0.0.1:18765/mcp` (JSON-RPC;
+   full tool registry).
+3. **Role subagents NEVER list the stdio `hdaw_*` tools.** A subagent whose
+   adapter launches the stdio server kills the shared engine mid-phase
+   (observed twice). Role calls go through the adapter's `mcp` proxy:
+
+   `await mcp({ server: 'hdaw-http', tool: 'get_project_summary', args: {} });`
+
+   Dispatch with `extensions: true` and `tools: [<core>, "mcp"]` — subagents
+   run without user extensions by default; without this they have no `mcp`
+   proxy at all ("Unknown Fabric action").
+4. **Checkpoint saves**: the Arranger saves immediately after generation
+   (an engine death between phases must never lose the arrangement). The
+   Verifier re-loads the checkpoint when it finds a respawned engine.
 
 Each dispatch prompt contains:
 1. The FULL role playbook text (read the role file — do not paraphrase the gates).
