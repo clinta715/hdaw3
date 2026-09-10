@@ -31,10 +31,28 @@ All runtime artifacts (brief, renders, reports) live under `compositions/<song>/
 the brief's targets, not vibes.
 
 ## Dispatch
-For each phase, dispatch a subagent (`agents.run`) whose prompt contains:
+Subagents run WITHOUT user extensions by default — their fabric session would
+have no `extensions.*` captures and every HDAW call fails with "Unknown Fabric
+action". The transport fix (verified 2026-09-09): every dispatch MUST pass
+`extensions: true` AND an explicit `tools` allowlist containing the core tools
+plus the role's HDAW adapter tool names:
+
+```
+agents.run({ prompt, model, extensions: true, timeoutMs: ..., tools: [
+  "read", "bash", "powershell", "write", "edit", "grep", "find", "ls",
+  "hdaw_list_servers", "hdaw_list_commands", "hdaw_describe_commands",
+  "hdaw_invoke_command",
+  ...<the role's HDAW command names from its playbook>
+] })
+```
+The `tools` allowlist doubles as the hard surface-area enforcement (Phase 1):
+a subagent cannot call tools outside its list.
+
+Each dispatch prompt contains:
 1. The FULL role playbook text (read the role file — do not paraphrase the gates).
 2. The current brief (inline JSON) + its path.
-3. The exact tool-call surface the role is allowed (`hdaw_*` MCP command names).
+3. The exact tool-call surface the role is allowed (`hdaw_*` MCP command names) —
+   the same names passed in `tools`.
 4. The handoff format expected back.
 Subagents read `docs/psytrance-composition-guide.md` for recipes when needed.
 
