@@ -52,5 +52,6 @@ void registerLibraryDomain(McpServer& s, AudioEngine* e);
 void registerSettingsDomain(McpServer& s, AudioEngine* e);
 void registerTuningTools(McpServer& s, AudioEngine* e);
 void registerRaveTools(McpServer& s, AudioEngine* e);
+void registerJobTools(McpServer& s);
 
 } // namespace mcp

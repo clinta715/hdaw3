@@ -2,6 +2,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+#include "McpJobs.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -16,12 +17,69 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <stdexcept>
 #include <algorithm>
 #include <optional>
 #include <vector>
 #include <juce_audio_formats/juce_audio_formats.h>
 
 namespace mcp {
+
+static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, const QJsonArray& sectionsArg, bool hasSections)
+{
+    const juce::File file(filePath.toStdString());
+    if (!file.existsAsFile())
+        throw std::runtime_error(("file not found: " + filePath).toStdString());
+
+    if (bpm < 0.0)
+        throw std::runtime_error("bpm must be >= 0");
+
+    std::vector<HDAW::SectionWindow> windows;
+    if (hasSections) {
+        for (const auto& v : sectionsArg) {
+            const auto o = v.toObject();
+            const double st = o.value("start").toDouble();
+            const double en = o.value("end").toDouble();
+            const QString name = o.value("name").toString();
+            if (!(en > st))
+                throw std::runtime_error(("section '" + name + "' has end <= start").toStdString());
+            windows.push_back(HDAW::SectionWindow{
+                name.toStdString(), st, en});
+        }
+    }
+
+    HDAW::MixReport rep;
+    juce::String err;
+    if (!HDAW::MixReportAnalyzer::analyze(file, windows, bpm, rep, err))
+        throw std::runtime_error(jstr(err).toStdString());
+
+    QJsonObject root{
+        {"duration", rep.duration},
+        {"sampleRate", rep.sampleRate},
+        {"peak", rep.peak},
+        {"rms", rep.rms},
+        {"bands", QJsonArray{rep.bands[0], rep.bands[1], rep.bands[2], rep.bands[3]}},
+        {"bandLabels", QJsonArray{"sub","bass","body","high"}},
+        {"kickProminence", rep.kickProminence}
+    };
+    if (rep.hasPumpDepth)
+        root["pumpDepth"] = rep.pumpDepth;
+
+    QJsonArray sections;
+    for (const auto& s : rep.sections) {
+        sections.append(QJsonObject{
+            {"name", jstr(s.name)},
+            {"start", s.start},
+            {"end", s.end},
+            {"rms", s.rms},
+            {"peak", s.peak},
+            {"bandEnergy", QJsonArray{s.bandEnergy[0], s.bandEnergy[1],
+                                      s.bandEnergy[2], s.bandEnergy[3]}}
+        });
+    }
+    root["sections"] = sections;
+    return root;
+}
 
 void registerAudioReadTools(McpServer& s, AudioEngine* e)
 {
@@ -365,10 +423,12 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "(beat = 60/bpm seconds), averaged over sections with >= 8 beats; omitted "
         "when bpm <= 0 or no section qualifies. If sections is omitted, a single "
         "'whole' window [0, duration) is analyzed. bandEnergy is mean power per FFT "
-        "window (linear amplitude^2, not dB).",
+        "window (linear amplitude^2, not dB). Optional wait=false returns immediately "
+        "with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result.",
         objSchema({
             {"filePath", QJsonObject{{"type","string"}}},
             {"bpm",      QJsonObject{{"type","number"}}},
+            {"wait",     QJsonObject{{"type","boolean"}}},
             {"sections", QJsonObject{
                 {"type","array"},
                 {"items", QJsonObject{
@@ -381,61 +441,25 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         }, {"filePath"}),
         "audio",
         [](const QJsonObject& a) -> McpToolResult {
-            const juce::File file(a.value("filePath").toString().toStdString());
-            if (!file.existsAsFile())
-                return McpToolResult::text("file not found: " + a.value("filePath").toString(), true);
-
+            const QString filePath = a.value("filePath").toString();
             const double bpm = a.value("bpm").toDouble(0.0);
-            if (bpm < 0.0)
-                return McpToolResult::text("bpm must be >= 0", true);
-
-            std::vector<HDAW::SectionWindow> windows;
-            if (a.contains("sections")) {
-                for (const auto& v : a.value("sections").toArray()) {
-                    const auto o = v.toObject();
-                    const double st = o.value("start").toDouble();
-                    const double en = o.value("end").toDouble();
-                    const QString name = o.value("name").toString();
-                    if (!(en > st))
-                        return McpToolResult::text(
-                            "section '" + name + "' has end <= start", true);
-                    windows.push_back(HDAW::SectionWindow{
-                        name.toStdString(), st, en});
-                }
-            }
-
-            HDAW::MixReport rep;
-            juce::String err;
-            if (!HDAW::MixReportAnalyzer::analyze(file, windows, bpm, rep, err))
-                return McpToolResult::text(jstr(err), true);
-
-            QJsonObject root{
-                {"duration", rep.duration},
-                {"sampleRate", rep.sampleRate},
-                {"peak", rep.peak},
-                {"rms", rep.rms},
-                {"bands", QJsonArray{rep.bands[0], rep.bands[1], rep.bands[2], rep.bands[3]}},
-                {"bandLabels", QJsonArray{"sub","bass","body","high"}},
-                {"kickProminence", rep.kickProminence}
-            };
-            if (rep.hasPumpDepth)
-                root["pumpDepth"] = rep.pumpDepth;
-
-            QJsonArray sections;
-            for (const auto& s : rep.sections) {
-                sections.append(QJsonObject{
-                    {"name", jstr(s.name)},
-                    {"start", s.start},
-                    {"end", s.end},
-                    {"rms", s.rms},
-                    {"peak", s.peak},
-                    {"bandEnergy", QJsonArray{s.bandEnergy[0], s.bandEnergy[1],
-                                              s.bandEnergy[2], s.bandEnergy[3]}}
+            const bool hasSections = a.contains("sections");
+            const QJsonArray sectionsArg = a.value("sections").toArray();
+            const bool wait = a.value("wait").toBool(true);
+            if (!wait) {
+                const int id = McpJobs::instance().submit("mix_report", [filePath, bpm, sectionsArg, hasSections]() {
+                    return runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
                 });
+                QJsonObject payload{{"jobId", id}, {"state", "running"}, {"pollWith", "poll_job"}};
+                return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
             }
-            root["sections"] = sections;
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            try {
+                const QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            } catch (const std::exception& ex) {
+                return McpToolResult::text(QString::fromUtf8(ex.what()), true);
+            }
         }});
 }
 

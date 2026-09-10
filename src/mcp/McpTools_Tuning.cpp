@@ -1,6 +1,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+#include "McpJobs.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/ProjectPool.h"
 #include <QJsonArray>
@@ -10,10 +11,12 @@
 #include <QFileInfo>
 #include <QCoreApplication>
 #include <QDir>
+#include <stdexcept>
 #include <cmath>
 #include <algorithm>
 #include <vector>
 #include <numeric>
+#include <juce_audio_formats/juce_audio_formats.h>
 
 namespace mcp {
 
@@ -201,8 +204,156 @@ static QJsonObject checkRole(const QString& roleIn, const Descriptors& d)
     return out;
 }
 
+static QString analyzeTuningText(const QString& wavPath, const QString& role)
+{
+    if (wavPath.isEmpty())
+        throw std::runtime_error("wavPath is required");
+    juce::File file(wavPath.toStdString());
+    // also try with forward slashes / WSL conversion fallback
+    if (!file.existsAsFile()) {
+        // try as-is with Qt
+        QFileInfo fi(wavPath);
+        if (!fi.exists())
+            throw std::runtime_error(QString("wav not found: %1").arg(wavPath).toStdString());
+        file = juce::File(fi.absoluteFilePath().toStdString());
+    }
+
+    // Try python subprocess first (timbre-lib/tune_roles.py) for highest fidelity
+    // Locate script: <appDir>/timbre-lib/tune_roles.py or cwd/timbre-lib/tune_roles.py or D:\pdf\roo projects\hdaw3\timbre-lib\tune_roles.py
+    QStringList candidateScripts;
+    candidateScripts << QCoreApplication::applicationDirPath() + "/timbre-lib/tune_roles.py";
+    candidateScripts << QDir::current().filePath("timbre-lib/tune_roles.py");
+    candidateScripts << "D:/pdf/roo projects/hdaw3/timbre-lib/tune_roles.py";
+    candidateScripts << "timbre-lib/tune_roles.py";
+    QString scriptPath;
+    for (auto &c : candidateScripts) { QFileInfo fi(c); if (fi.exists()) { scriptPath = fi.absoluteFilePath(); break; } }
+    if (!scriptPath.isEmpty()) {
+        // Try python executables
+        QStringList pyCands = {"python", "python3", "py"};
+        // Also try wsl python if script is in WSL path (best fidelity)
+        // We'll attempt native python first; if that fails fallback to C++ below
+        for (auto &py : pyCands) {
+            QProcess proc;
+            QStringList args;
+            args << scriptPath << file.getFullPathName().toStdString().c_str();
+            if (!role.isEmpty()) args << "--role" << role;
+            proc.start(py, args);
+            if (!proc.waitForStarted(2000)) continue;
+            if (!proc.waitForFinished(15000)) { proc.kill(); continue; }
+            if (proc.exitCode() != 0) continue;
+            QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+            if (out.contains("centroid") && out.contains("{")) {
+                // valid JSON from python
+                return ensureSidecarSkippedFlag(out);
+            }
+        }
+        // Try wsl wrapper on Windows: wsl <venv python> <wsl script> <wsl wav>
+        {
+            QProcess proc;
+            // Convert wavPath to wsl: D:\x -> /mnt/d/x
+            QString wslWav = wavPath;
+            wslWav.replace("\\", "/");
+            if (wslWav.size() >= 2 && wslWav[1] == ':') {
+                QChar drive = wslWav[0].toLower();
+                wslWav = QString("/mnt/%1%2").arg(drive).arg(wslWav.mid(2));
+            }
+            QString wslScript = scriptPath;
+            wslScript.replace("\\", "/");
+            if (wslScript.size() >= 2 && wslScript[1] == ':') {
+                QChar drive = wslScript[0].toLower();
+                wslScript = QString("/mnt/%1%2").arg(drive).arg(wslScript.mid(2));
+            }
+            QStringList args;
+            args << "/home/hapbt/.prime/agent/kernel-venv/bin/python" << wslScript << wslWav;
+            if (!role.isEmpty()) args << "--role" << role;
+            proc.start("wsl", args);
+            if (proc.waitForStarted(3000) && proc.waitForFinished(20000) && proc.exitCode()==0) {
+                QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+                if (out.contains("centroid") && out.contains("{")) return ensureSidecarSkippedFlag(out);
+            }
+        }
+    }
+
+    // Fallback: pure C++ analysis (no python dependency, no engine state)
+    juce::AudioFormatManager fmtMgr;
+    fmtMgr.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
+    if (!reader) throw std::runtime_error("cannot open audio file");
+    int64_t total = reader->lengthInSamples;
+    if (total <= 0) throw std::runtime_error("empty audio");
+    double sr = reader->sampleRate;
+    int chans = (int)reader->numChannels;
+    // Read up to ~30s max to bound analysis time; full mix 207s would be heavy but okay with 15s cap
+    // Use full file if < 30s, otherwise first 30s (centroid stable)
+    int64_t toRead = std::min<int64_t>(total, int64_t(sr * 30));
+    juce::AudioBuffer<float> buf(chans, (int)toRead);
+    reader->read(&buf, 0, (int)toRead, 0, true, true);
+    std::vector<float> mono(toRead);
+    for (int i = 0; i < toRead; ++i) {
+        double sum = 0;
+        for (int ch = 0; ch < chans; ++ch) sum += buf.getSample(ch, i);
+        mono[i] = float(sum / chans);
+    }
+    Descriptors desc = computeDescriptors(mono, sr);
+
+    QJsonObject out;
+    out["wav"] = wavPath;
+    QJsonObject dobj;
+    dobj["centroid"] = std::round(desc.centroid * 10) / 10;
+    dobj["bandwidth"] = std::round(desc.bandwidth * 10) / 10;
+    dobj["rolloff85"] = std::round(desc.rolloff85 * 10) / 10;
+    dobj["rolloff95"] = std::round(desc.rolloff95 * 10) / 10;
+    dobj["mel_low"] = std::round(desc.melLow * 10000) / 10000;
+    dobj["mel_mid"] = std::round(desc.melMid * 10000) / 10000;
+    dobj["mel_high"] = std::round(desc.melHigh * 10000) / 10000;
+    dobj["rms"] = std::round(desc.rms * 100000) / 100000;
+    dobj["peak"] = std::round(desc.peak * 100000) / 100000;
+    dobj["duration_s"] = std::round(desc.duration * 1000) / 1000;
+    dobj["sampleRate"] = sr;
+    out["descriptors"] = dobj;
+
+    // summary string like timbre.py summarize (simple)
+    QString summary;
+    if (desc.centroid < 500) summary = "dark";
+    else if (desc.centroid < 2000) summary = "warm/mid";
+    else if (desc.centroid < 5000) summary = "bright";
+    else summary = "very bright/edgy";
+    if (desc.melHigh > 0.12) summary += ", airy top";
+    out["summary"] = summary;
+
+    if (!role.isEmpty()) {
+        auto chk = checkRole(role, desc);
+        out["check"] = chk;
+        out["pass"] = chk.value("pass");
+        out["suggestion"] = chk.value("suggestion");
+    } else {
+        // if no role, include per-role checks for all
+        QJsonObject checks;
+        auto targets = roleTargets();
+        for (auto it = targets.begin(); it != targets.end(); ++it) {
+            checks[it.key()] = checkRole(it.key(), desc);
+        }
+        out["checks"] = checks;
+    }
+    // loop note
+    out["loop"] = QJsonObject{{"note", "offline loop: analysis + suggestion only; re-render via export then re-analyze until pass or max 3"}};
+
+    return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Indented));
+}
+
+static QJsonObject analyzeTuningObject(const QString& wavPath, const QString& role)
+{
+    const auto text = analyzeTuningText(wavPath, role);
+    QJsonParseError err{};
+    const auto doc = QJsonDocument::fromJson(text.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        throw std::runtime_error("analysis did not produce a JSON object");
+    return doc.object();
+}
+
 void registerTuningTools(McpServer& s, AudioEngine* e)
 {
+    (void)e;
     s.registerTool({"analyze_tuning",
         "Analyze a rendered WAV file's spectral tuning per role (kick/bass/arp/lead/hat/pad). "
         "Computes centroid, rolloff85, mel_low/mid/high via timbre-lib style descriptors, "
@@ -210,147 +361,30 @@ void registerTuningTools(McpServer& s, AudioEngine* e)
         "(rootNote +/-12, filter cutoff, OctaveRange). "
         "Use to verify psytrance tuning: kick <120Hz, bass 60-250Hz, arp/lead 400-3000Hz, hat >6kHz. "
         "Offline analysis+suggestion only; re-render via export then re-analyze (loop up to 3 times). "
-        "unknown role values return skipped:true and are not evaluated.",
+        "unknown role values return skipped:true and are not evaluated. "
+        "Optional wait=false returns immediately with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result.",
         objSchema({
             {"wavPath", QJsonObject{{"type","string"}}},
-            {"role", QJsonObject{{"type","string"}}}
+            {"role", QJsonObject{{"type","string"}}},
+            {"wait", QJsonObject{{"type","boolean"}}}
         }, {"wavPath"}),
         "audio",
-        [e](const QJsonObject& a) -> McpToolResult {
-            QString wavPath = a.value("wavPath").toString();
-            QString role = a.value("role").toString();
-            if (wavPath.isEmpty())
-                return McpToolResult::text("wavPath is required", true);
-            juce::File file(wavPath.toStdString());
-            // also try with forward slashes / WSL conversion fallback
-            if (!file.existsAsFile()) {
-                // try as-is with Qt
-                QFileInfo fi(wavPath);
-                if (!fi.exists())
-                    return McpToolResult::text(QString("wav not found: %1").arg(wavPath), true);
-                file = juce::File(fi.absoluteFilePath().toStdString());
+        [](const QJsonObject& a) -> McpToolResult {
+            const QString wavPath = a.value("wavPath").toString();
+            const QString role = a.value("role").toString();
+            const bool wait = a.value("wait").toBool(true);
+            if (!wait) {
+                const int id = McpJobs::instance().submit("analyze_tuning", [wavPath, role]() {
+                    return analyzeTuningObject(wavPath, role);
+                });
+                QJsonObject payload{{"jobId", id}, {"state", "running"}, {"pollWith", "poll_job"}};
+                return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
             }
-
-            // Try python subprocess first (timbre-lib/tune_roles.py) for highest fidelity
-            // Locate script: <appDir>/timbre-lib/tune_roles.py or cwd/timbre-lib/tune_roles.py or D:\pdf\roo projects\hdaw3\timbre-lib\tune_roles.py
-            QStringList candidateScripts;
-            candidateScripts << QCoreApplication::applicationDirPath() + "/timbre-lib/tune_roles.py";
-            candidateScripts << QDir::current().filePath("timbre-lib/tune_roles.py");
-            candidateScripts << "D:/pdf/roo projects/hdaw3/timbre-lib/tune_roles.py";
-            candidateScripts << "timbre-lib/tune_roles.py";
-            QString scriptPath;
-            for (auto &c : candidateScripts) { QFileInfo fi(c); if (fi.exists()) { scriptPath = fi.absoluteFilePath(); break; } }
-            if (!scriptPath.isEmpty()) {
-                // Try python executables
-                QStringList pyCands = {"python", "python3", "py"};
-                // Also try wsl python if script is in WSL path (best fidelity)
-                // We'll attempt native python first; if that fails fallback to C++ below
-                for (auto &py : pyCands) {
-                    QProcess proc;
-                    QStringList args;
-                    args << scriptPath << file.getFullPathName().toStdString().c_str();
-                    if (!role.isEmpty()) args << "--role" << role;
-                    proc.start(py, args);
-                    if (!proc.waitForStarted(2000)) continue;
-                    if (!proc.waitForFinished(15000)) { proc.kill(); continue; }
-                    if (proc.exitCode() != 0) continue;
-                    QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-                    if (out.contains("centroid") && out.contains("{")) {
-                        // valid JSON from python
-                        return McpToolResult::text(ensureSidecarSkippedFlag(out));
-                    }
-                }
-                // Try wsl wrapper on Windows: wsl <venv python> <wsl script> <wsl wav>
-                {
-                    QProcess proc;
-                    // Convert wavPath to wsl: D:\x -> /mnt/d/x
-                    QString wslWav = wavPath;
-                    wslWav.replace("\\", "/");
-                    if (wslWav.size() >= 2 && wslWav[1] == ':') {
-                        QChar drive = wslWav[0].toLower();
-                        wslWav = QString("/mnt/%1%2").arg(drive).arg(wslWav.mid(2));
-                    }
-                    QString wslScript = scriptPath;
-                    wslScript.replace("\\", "/");
-                    if (wslScript.size() >= 2 && wslScript[1] == ':') {
-                        QChar drive = wslScript[0].toLower();
-                        wslScript = QString("/mnt/%1%2").arg(drive).arg(wslScript.mid(2));
-                    }
-                    QStringList args;
-                    args << "/home/hapbt/.prime/agent/kernel-venv/bin/python" << wslScript << wslWav;
-                    if (!role.isEmpty()) args << "--role" << role;
-                    proc.start("wsl", args);
-                    if (proc.waitForStarted(3000) && proc.waitForFinished(20000) && proc.exitCode()==0) {
-                        QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-                        if (out.contains("centroid") && out.contains("{")) return McpToolResult::text(ensureSidecarSkippedFlag(out));
-                    }
-                }
+            try {
+                return McpToolResult::text(analyzeTuningText(wavPath, role));
+            } catch (const std::exception& ex) {
+                return McpToolResult::text(QString::fromUtf8(ex.what()), true);
             }
-
-            // Fallback: pure C++ analysis (no python dependency)
-            auto& fmtMgr = e->getProjectPool().getFormatManager();
-            std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
-            if (!reader) return McpToolResult::text("cannot open audio file", true);
-            int64_t total = reader->lengthInSamples;
-            if (total <= 0) return McpToolResult::text("empty audio", true);
-            double sr = reader->sampleRate;
-            int chans = (int)reader->numChannels;
-            // Read up to ~30s max to bound analysis time; full mix 207s would be heavy but okay with 15s cap
-            // Use full file if < 30s, otherwise first 30s (centroid stable)
-            int64_t toRead = std::min<int64_t>(total, int64_t(sr * 30));
-            juce::AudioBuffer<float> buf(chans, (int)toRead);
-            reader->read(&buf, 0, (int)toRead, 0, true, true);
-            std::vector<float> mono(toRead);
-            for (int i = 0; i < toRead; ++i) {
-                double sum = 0;
-                for (int ch = 0; ch < chans; ++ch) sum += buf.getSample(ch, i);
-                mono[i] = float(sum / chans);
-            }
-            Descriptors desc = computeDescriptors(mono, sr);
-
-            QJsonObject out;
-            out["wav"] = wavPath;
-            QJsonObject dobj;
-            dobj["centroid"] = std::round(desc.centroid * 10) / 10;
-            dobj["bandwidth"] = std::round(desc.bandwidth * 10) / 10;
-            dobj["rolloff85"] = std::round(desc.rolloff85 * 10) / 10;
-            dobj["rolloff95"] = std::round(desc.rolloff95 * 10) / 10;
-            dobj["mel_low"] = std::round(desc.melLow * 10000) / 10000;
-            dobj["mel_mid"] = std::round(desc.melMid * 10000) / 10000;
-            dobj["mel_high"] = std::round(desc.melHigh * 10000) / 10000;
-            dobj["rms"] = std::round(desc.rms * 100000) / 100000;
-            dobj["peak"] = std::round(desc.peak * 100000) / 100000;
-            dobj["duration_s"] = std::round(desc.duration * 1000) / 1000;
-            dobj["sampleRate"] = sr;
-            out["descriptors"] = dobj;
-
-            // summary string like timbre.py summarize (simple)
-            QString summary;
-            if (desc.centroid < 500) summary = "dark";
-            else if (desc.centroid < 2000) summary = "warm/mid";
-            else if (desc.centroid < 5000) summary = "bright";
-            else summary = "very bright/edgy";
-            if (desc.melHigh > 0.12) summary += ", airy top";
-            out["summary"] = summary;
-
-            if (!role.isEmpty()) {
-                auto chk = checkRole(role, desc);
-                out["check"] = chk;
-                out["pass"] = chk.value("pass");
-                out["suggestion"] = chk.value("suggestion");
-            } else {
-                // if no role, include per-role checks for all
-                QJsonObject checks;
-                auto targets = roleTargets();
-                for (auto it = targets.begin(); it != targets.end(); ++it) {
-                    checks[it.key()] = checkRole(it.key(), desc);
-                }
-                out["checks"] = checks;
-            }
-            // loop note
-            out["loop"] = QJsonObject{{"note", "offline loop: analysis + suggestion only; re-render via export then re-analyze until pass or max 3"}};
-
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Indented)));
         }});
 }
 

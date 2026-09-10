@@ -13,6 +13,7 @@ add_executable(scan_hang_helper
 add_executable(hdaw_tests
     test_main.cpp
     unit/mcp/json_rpc_test.cpp
+    unit/mcp/mcp_jobs_test.cpp
     unit/mcp/schema_test.cpp
     unit/mcp/tool_registry_test.cpp
     unit/mcp/preset_file_parser_test.cpp

@@ -110,6 +110,7 @@ void registerAllTools(McpServer& s) {
     registerEngineInfoTool(s);
     registerEngineRestartTool(s);
     registerRaveTools(s, e);
+    registerJobTools(s);
 }
 
 } // namespace mcp

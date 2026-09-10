@@ -41,6 +41,16 @@ them, bounce back to the orchestrator for an Arranger pass.
 8. **Persist**: only after a PASS verdict — `save_project` to the variant file.
 
 ## Surface gotchas (smoke-run feedback)
+- **Long analysis calls MUST be async (Bug 4 fix)**: the bridge kills the engine
+  on any call >10 s. For files over ~60 s use `analyze_tuning`/`mix_report` with
+  `wait:false` → returns `{jobId}` in <100 ms, then poll
+  `poll_job {jobId}` until `state:"finished"` and read `result`. Default
+  `wait:true` is the old sync contract (only for short files).
+- `analyze_tuning` on a FULL MIX measures the whole file's centroid against each
+  role's target — NOT per-instrument. For a per-role register gate, export a
+  single-role stem (`export_audio {trackIds:[<id>]}`, async + poll) and analyze
+  the stem file.
+- `export_audio` fires and returns immediately (never pass `wait` through the bridge).
 - `export_audio` fires and returns immediately (never pass `wait` through the bridge).
 - `analyze_tuning` takes `wavPath` + optional `role` (NOT filePath/bpm) and returns
   per-role pass/fail with concrete suggestions (rootNote ±12, cutoff, OctaveRange).

@@ -217,6 +217,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
     src/mcp/McpServer.cpp
+    src/mcp/McpJobs.cpp
     src/mcp/McpExportTool.cpp
     src/mcp/McpTools.cpp
     src/mcp/McpTools_Project.cpp
@@ -512,6 +513,17 @@ target_link_libraries(hdaw_plugin_scanner PRIVATE
 # dumpbin /DEPENDENTS: no Qt6*.dll in its import table). Do not call
 # hdaw_deploy_qt() here: windeployqt fails the build on a non-Qt executable
 # ("does not seem to be a Qt executable"), and there are no Qt DLLs to deploy.
+
+# --- Engine-link PDB escape hatch (LNK1201) ---
+# The multi-GB engine PDBs intermittently fail the link with LNK1201 ("error
+# writing to program database") once debug info volume grows past a threshold,
+# even with free disk and no locks. Set HDAW_LINK_NO_PDB=1 in the environment
+# to link the engine executables with /DEBUG:NONE (no PDB; debugging switches
+# to the tests binary, which keeps its PDB). Reversible and default-off.
+if(DEFINED ENV{HDAW_LINK_NO_PDB})
+    set_property(TARGET HDAW HDAW_headless APPEND PROPERTY LINK_FLAGS "/DEBUG:NONE")
+    message(STATUS "HDAW_LINK_NO_PDB: linking engine executables without PDBs")
+endif()
 
 # --- Tests (MCP pilot) ---
 option(HDAW_BUILD_TESTS "Build HDAW unit/integration tests" ON)
