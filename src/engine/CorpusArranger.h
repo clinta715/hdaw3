@@ -54,6 +54,7 @@ struct CorpusParams {
     CorpusOptions opts;
     int kick = -1, bass = -1, hat = -1, snare = -1, clap = -1, rim = -1;
     int arp = -1, stab = -1, pad = -1, riser = -1, down = -1, lead = -1;
+    double melodyCorpusPhraseProb = 0.35; // probability a melodic 4-bar window uses MelodyPatternBank
 };
 
 class CorpusArranger {

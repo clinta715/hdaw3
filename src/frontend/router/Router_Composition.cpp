@@ -852,6 +852,7 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (o.contains("lateNovelty")) p.opts.lateNovelty = o.value("lateNovelty").toBool() ? 1 : 0;
         if (o.contains("breakdown")) p.opts.breakdown = o.value("breakdown").toBool() ? 1 : 0;
         p.opts.noveltyRole = optString(o, "noveltyRole", "");
+        p.melodyCorpusPhraseProb = optDouble(o, "melodyCorpusPhraseProb", 0.35, nullptr);
         auto r = c.generateArrangementCorpus(p);
         QJsonArray clips;
         for (const auto& rc : r.clips)

@@ -1,4 +1,5 @@
 #include "engine/CorpusArranger.h"
+#include "engine/MelodyVoicer.h"
 #include <algorithm>
 #include <random>
 
@@ -157,17 +158,40 @@ PsytranceMarkovScore CorpusArranger::generate(const CorpusParams& par)
         for (int bar = 0; bar + 4 <= plan.totalBars; bar += 4)
         {
             std::set<std::string> active;
+            std::set<std::string> activeMelodicRoles;
             for (const auto& s : plan.sections)
                 if (bar >= s.barStart && bar < s.barStart + s.bars)
                     for (const auto& r : s.roles)
                     {
                         if (r == "bass") active.insert("bass");
-                        else if (r == "arp" || r == "arp2" || r == "lead") active.insert("arp");
+                        else if (r == "arp" || r == "arp2") { active.insert("arp"); activeMelodicRoles.insert("arp"); }
+                        else if (r == "lead") { active.insert("arp"); activeMelodicRoles.insert("lead"); }
                         else if (r == "stab" || r == "stabs" || r == "chord") active.insert("stab");
                         else if (r == "pad") active.insert("pad");
                     }
             if (!swapped && plan.lateNovelty && bar >= half) { harm.toggleSwapPattern(); swapped = true; }
             harm.writeWindowNotes(bar, 4, active, style, bass, arp, stab, pad, plan.totalBars, kMaxNotes);
+
+            if (par.melodyCorpusPhraseProb > 0.0 && !activeMelodicRoles.empty() && arp.track >= 0)
+            {
+                const std::string phraseRole = activeMelodicRoles.count("lead") ? "lead" : "arp";
+                const int phraseCount = melodyRoleCount(phraseRole.c_str());
+                if (phraseCount > 0 && unit01(hrng) < par.melodyCorpusPhraseProb)
+                {
+                    const MelodicPhrase* ph = melodyRolePhrase(phraseRole.c_str(), rInt(hrng, 0, phraseCount - 1));
+                    const double wStart = bar * 4.0;
+                    const double wEnd = wStart + 16.0;
+                    arp.clip.notes.erase(
+                        std::remove_if(arp.clip.notes.begin(), arp.clip.notes.end(),
+                                       [&](const PsytranceNote& n) { return n.startBeat >= wStart && n.startBeat < wEnd; }),
+                        arp.clip.notes.end());
+                    const auto voiced = voiceMelodyPhrase(*ph, harm.currentKeyRoot(), par.scaleMode,
+                                                          MelodyTransposeMode::Diatonic,
+                                                          style.arpVelocity, 4, 0.0, hrng);
+                    for (const auto& v : voiced)
+                        arp.add(wStart + v.startBeat, v.pitch, v.velocity, v.durationBeats, kMaxNotes);
+                }
+            }
         }
         for (auto* c : { &bass, &arp, &stab, &pad })
             if (c->track >= 0 && !c->clip.notes.empty()) ctx.emplace(c->clip.role, std::move(*c));

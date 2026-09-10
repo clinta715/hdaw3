@@ -594,7 +594,7 @@ s.registerTool({"generate_psytrance",
         }});
 
 s.registerTool({"generate_arrangement_corpus",
-        "Compose an arrangement sampled from the measured full-song corpus (n=533 trance/psy tracks; see compositions/psytrance_corpus_fulltracks.tsv). CORPUS-SAMPLED, not Markov: one seeded draw per choice-axis (length mode, kick intro, const-bass, late novelty layer, breakdown) from the measured distributions, then a deterministic section plan (intro/build/drop/minibreak/build2/dropB/outro). Pitched notes come from the same harmony engine as the Markov generator; drums/fx are pattern writers. Keeps-alongside (does not replace) generate_psytrance_markov. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index (kick,bass,hat,snare,clap,rim,arp,stab,pad,riser,down,lead); unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, plan:{bars,sections:[{name,barStart,bars,density}],flags:{lengthMode,introMode,constBass,lateNovelty,breakdown,noveltyRole}}} — compact, no note payloads. Optional axis overrides: bars, lengthMode (short|mid|extended), introMode (fourOnFloor|shortIntro|midIntro|longIntro), constBass, lateNovelty, breakdown (bool), noveltyRole (lead|chord|arp2|fx), keyRoot, scaleMode, progressionA/B.",
+        "Compose an arrangement sampled from the measured full-song corpus (n=533 trance/psy tracks; see compositions/psytrance_corpus_fulltracks.tsv). CORPUS-SAMPLED, not Markov: one seeded draw per choice-axis (length mode, kick intro, const-bass, late novelty layer, breakdown) from the measured distributions, then a deterministic section plan (intro/build/drop/minibreak/build2/dropB/outro). Pitched notes come from the same harmony engine as the Markov generator; drums/fx are pattern writers. Keeps-alongside (does not replace) generate_psytrance_markov. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index (kick,bass,hat,snare,clap,rim,arp,stab,pad,riser,down,lead); unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, plan:{bars,sections:[{name,barStart,bars,density}],flags:{lengthMode,introMode,constBass,lateNovelty,breakdown,noveltyRole}}} — compact, no note payloads. Optional axis overrides: bars, lengthMode (short|mid|extended), introMode (fourOnFloor|shortIntro|midIntro|longIntro), constBass, lateNovelty, breakdown (bool), noveltyRole (lead|chord|arp2|fx), keyRoot, scaleMode, melodyCorpusPhraseProb (default 0.35), progressionA/B.",
         objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},{"description","role name -> track index"},
                       {"additionalProperties", QJsonObject{{"type","integer"}}}}},
                   {"seed", QJsonObject{{"type","integer"},{"minimum",0}}},
@@ -607,6 +607,8 @@ s.registerTool({"generate_arrangement_corpus",
                   {"noveltyRole", QJsonObject{{"type","string"},{"enum", QJsonArray{"lead","chord","arp2","fx"}}}},
                   {"keyRoot", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",11}}},
                   {"scaleMode", QJsonObject{{"type","integer"},{"minimum",0},{"maximum",12}}},
+                  {"melodyCorpusPhraseProb", QJsonObject{{"type","number"},{"minimum",0},{"maximum",1},
+                      {"description","Probability a melodic 4-bar arp/lead window is sourced from MelodyPatternBank and re-voiced into the current key (default 0.35)."}}},
                   {"progressionA", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}},
                   {"progressionB", QJsonObject{{"type","array"},{"items", QJsonObject{{"type","integer"}}}}} },
                  {"paletteTrackIds"}),
@@ -626,6 +628,7 @@ s.registerTool({"generate_arrangement_corpus",
             if (a.contains("lateNovelty")) p.opts.lateNovelty = a.value("lateNovelty").toBool() ? 1 : 0;
             if (a.contains("breakdown")) p.opts.breakdown = a.value("breakdown").toBool() ? 1 : 0;
             p.opts.noveltyRole = a.value("noveltyRole").toString().toStdString();
+            p.melodyCorpusPhraseProb = a.value("melodyCorpusPhraseProb").toDouble(0.35);
             if (a.value("progressionA").isArray())
                 for (const auto& v : a.value("progressionA").toArray()) p.progressionA.push_back(v.toInt());
             if (a.value("progressionB").isArray())
