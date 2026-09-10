@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "engine/CorpusArranger.h"
+#include "engine/MelodyPatternBank.h"
 #include "engine/AudioEngine.h"
 #include "model/ProjectModel.h"
 #include "frontend/FrontendRouter.h"
@@ -34,6 +35,16 @@ bool roleInSection(const HDAW::CorpusPlan& p, const char* sec, const char* role)
                 if (r == role)
                     return true;
     return false;
+}
+
+std::set<int> pitchesForRole(const HDAW::PsytranceMarkovScore& score, const char* role)
+{
+    std::set<int> out;
+    for (const auto& clip : score.clips)
+        if (clip.role == role)
+            for (const auto& n : clip.notes)
+                out.insert(n.pitch);
+    return out;
 }
 
 } // namespace
@@ -118,6 +129,45 @@ TEST(CorpusArranger, GenerateScoreWritesMappedRoles)
     for (size_t i = 0; i < s1.clips.size(); ++i)
         EXPECT_EQ(s1.clips[i].notes.size(), s2.clips[i].notes.size())
             << "clip " << i << " role " << s1.clips[i].role;
+}
+
+TEST(CorpusArranger, CorpusMelodyProbOneIsSeededAndInScale)
+{
+    HDAW::CorpusParams a;
+    a.seed = 101; a.totalBars = 48; a.keyRoot = 5; a.scaleMode = 1;
+    a.opts.bars = 48; a.opts.lengthMode = 0; a.opts.introMode = 0;
+    a.opts.constBass = 1; a.opts.lateNovelty = 1; a.opts.breakdown = 0;
+    a.opts.noveltyRole = "lead";
+    a.kick = 0; a.bass = 1; a.hat = 2; a.arp = 3; a.stab = 4; a.pad = 5;
+    a.snare = 6; a.clap = 7; a.lead = 8;
+    a.melodyCorpusPhraseProb = 1.0;
+
+    auto b = a;
+    b.seed = 102;
+
+    const auto s1 = HDAW::CorpusArranger::generate(a);
+    const auto s2 = HDAW::CorpusArranger::generate(b);
+    ASSERT_TRUE(s1.error.empty()) << s1.error;
+    ASSERT_TRUE(s2.error.empty()) << s2.error;
+
+    const auto p1 = pitchesForRole(s1, "arp");
+    const auto p2 = pitchesForRole(s2, "arp");
+    ASSERT_GT(p1.size(), 3u);
+    ASSERT_GT(p2.size(), 3u);
+    EXPECT_NE(p1, p2) << "prob=1 corpus melody should select seed-dependent phrase contours";
+
+    for (const auto& score : {s1, s2})
+        for (const auto& clip : score.clips)
+            if (clip.role == "arp")
+                for (const auto& n : clip.notes)
+                    EXPECT_TRUE(HDAW::melodyNoteInScale(n.pitch, a.keyRoot, a.scaleMode))
+                        << "role " << clip.role << " pitch " << n.pitch;
+}
+
+TEST(CorpusArranger, MelodyCorpusPhraseProbDefaultsToThirtyFivePercent)
+{
+    HDAW::CorpusParams p;
+    EXPECT_DOUBLE_EQ(p.melodyCorpusPhraseProb, 0.35);
 }
 
 TEST(CorpusArranger, RpcRoundTripDeterministic)

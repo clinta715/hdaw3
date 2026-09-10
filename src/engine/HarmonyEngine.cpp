@@ -126,12 +126,33 @@ void HarmonyEngine::writeWindowNotes(int bar, int windowBars,
         {
             const double beatAbs = curBar * 4.0 + b;
 
-            // BASS — offbeat 8th, gate-multiplied (NoteLengthVariant)
+            // BASS — legacy offbeat 8th, or dubb-style 16th ostinati.
             if (active.count("bass") && bass.track >= 0)
             {
                 const int oct = swapFlag ? 3 : 2; // SwapPattern lifts the octave
-                bass.add(beatAbs + 0.5, degPitch(curKeyRoot, deg, oct), style.bassVelocity,
-                         0.4 * gateFor("bass"), maxNotes);
+                if (style.bassPattern == 0)
+                {
+                    // Legacy path: keep progression-root emission bit-identical when bassPattern=0.
+                    bass.add(beatAbs + 0.5, degPitch(curKeyRoot, deg, oct), style.bassVelocity,
+                             0.4 * gateFor("bass"), maxNotes);
+                }
+                else
+                {
+                    constexpr double kDubbGate = 0.4 * 0.5; // locked to STACCATO gate.
+                    const int ghostVelocity = std::max(40, style.bassVelocity - 45);
+                    for (int s = 0; s < 4; ++s)
+                    {
+                        const bool barDownbeat = (b == 0 && s == 0);
+                        if (style.bassPattern == 2 && barDownbeat)
+                            continue;
+                        const bool beatAccent = (s == 0);
+                        const int noteOct = (style.bassPattern == 3 && ((curBar * 16 + b * 4 + s) % 2 == 1))
+                                            ? oct - 1 : oct;
+                        bass.add(beatAbs + s * 0.25, degPitch(curKeyRoot, deg, noteOct),
+                                 beatAccent ? style.bassVelocity : ghostVelocity,
+                                 kDubbGate, maxNotes);
+                    }
+                }
             }
             // ARP — 16th chord-tone pattern (ArpVariant: direction/rotation/lift)
             if (active.count("arp") && arp.track >= 0)

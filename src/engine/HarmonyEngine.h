@@ -20,6 +20,9 @@ namespace HDAW {
 struct HarmonyStyle {
     int bassVelocity = 112, arpVelocity = 85, stabVelocity = 96;
     int padVelocity = 84, padAccentVel = 102, padGhostVel = 66;
+    // 0=legacy progression-root offbeat, 1=DUBB 16th-root ostinato,
+    // 2=OFFBEAT-DUBB (drop bar downbeat), 3=OCTAVE-DUBB (root/octave-down).
+    int bassPattern = 0;
     // Gate set stays { 0.5, 0.75, 1.0 } (staccato .. full, NoteLengthVariant
     // multipliers); bass octaves 2/3 (SwapPattern lifts the octave).
 };

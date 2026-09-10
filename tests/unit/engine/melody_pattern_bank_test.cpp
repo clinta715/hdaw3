@@ -11,8 +11,8 @@ namespace {
 TEST(MelodyPatternBank, EnumeratesAllPhrases)
 {
     const int count = HDAW::melodyPhraseCount();
-    EXPECT_EQ(count, 87); // starting curated bank (Phase 1)
-    EXPECT_GE(count, 50);
+    EXPECT_EQ(count, 166); // grown curated bank (Phase 1 corpus expansion)
+    EXPECT_GE(count, 150);
 
     int total = 0;
     for (int i = 0; i < count; ++i)

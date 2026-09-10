@@ -20,6 +20,7 @@
 #include "engine/MelodyPatternBank.h"
 #include "engine/Generative.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -69,7 +70,9 @@ private:
 
     static const Model& model();
     static const Shape* pickShape(const Model& m, SplitMix64& rng,
-                                  const std::vector<Transition>& opts);
+                                  const std::vector<Transition>& opts,
+                                  const std::string& avoidSig = std::string());
+    static bool isDegenerateMotif(const std::vector<MotifNote>& notes);
     static std::string sigOf(const std::vector<MotifNote>& notes);
 };
 
@@ -87,6 +90,32 @@ inline std::string MotifStitcher::sigOf(const std::vector<MotifNote>& notes)
         prev = notes[i].degree;
     }
     return s;
+}
+
+inline bool MotifStitcher::isDegenerateMotif(const std::vector<MotifNote>& notes)
+{
+    if (notes.empty()) return true;
+
+    bool hasDifferentDegree = false;
+    bool allZeroDeltaContour = true;
+    const int firstDegree = notes.front().degree;
+    int prevDegree = 0;
+    for (size_t i = 0; i < notes.size(); ++i)
+    {
+        if (notes[i].degree != firstDegree)
+            hasDifferentDegree = true;
+
+        const int delta = (i == 0) ? notes[i].degree : notes[i].degree - prevDegree;
+        if (delta != 0)
+            allZeroDeltaContour = false;
+        prevDegree = notes[i].degree;
+    }
+
+    // A bar containing fewer than two scale degrees is not a melodic motif;
+    // neither is a flat all-zero delta contour. Keep these corpus artifacts out
+    // of both the shape weights and transition table so seeded walks cannot
+    // collapse into a drone after bank growth.
+    return !hasDifferentDegree || allZeroDeltaContour;
 }
 
 inline const MotifStitcher::Model& MotifStitcher::model()
@@ -117,7 +146,7 @@ inline const MotifStitcher::Model& MotifStitcher::model()
             std::vector<int> shapeIdx(ph.bars, -1);
             for (int b = 0; b < ph.bars; ++b)
             {
-                if (bars[b].empty()) continue;
+                if (isDegenerateMotif(bars[b])) continue;
                 const std::string sig = sigOf(bars[b]);
                 auto it = idx.find(sig);
                 if (it == idx.end())
@@ -151,14 +180,24 @@ inline const MotifStitcher::Model& MotifStitcher::model()
 }
 
 inline const MotifStitcher::Shape* MotifStitcher::pickShape(
-    const Model& m, SplitMix64& rng, const std::vector<Transition>& opts)
+    const Model& m, SplitMix64& rng, const std::vector<Transition>& opts,
+    const std::string& avoidSig)
 {
+    bool hasAlternative = false;
+    if (!avoidSig.empty())
+        for (const auto& t : opts)
+            if (t.to != avoidSig) { hasAlternative = true; break; }
+
     int total = 0;
-    for (const auto& t : opts) total += t.count;
+    for (const auto& t : opts)
+        if (!hasAlternative || t.to != avoidSig)
+            total += t.count;
     if (total <= 0) return nullptr;
+
     double r = rng.nextFloat() * total;
     for (const auto& t : opts)
     {
+        if (hasAlternative && t.to == avoidSig) continue;
         r -= t.count;
         if (r < 0)
             for (const auto& s : m.shapes) if (s.sig == t.to) return &s;
@@ -189,36 +228,82 @@ inline std::vector<MotifLineNote> MotifStitcher::stitchMotifLine(int bars, uint6
     }
     if (!cur) return out;
 
+    std::vector<int> seenDegrees;
+    auto hasSeenDegree = [&seenDegrees](int degree) {
+        return std::find(seenDegrees.begin(), seenDegrees.end(), degree) != seenDegrees.end();
+    };
+    auto rememberDegree = [&seenDegrees, &hasSeenDegree](int degree) {
+        if (!hasSeenDegree(degree)) seenDegrees.push_back(degree);
+    };
+    auto shapeBySig = [&m](const std::string& sig) -> const Shape* {
+        for (const auto& s : m.shapes) if (s.sig == sig) return &s;
+        return nullptr;
+    };
+    auto shapeAddsNewDegree = [&hasSeenDegree](const Shape& shape) {
+        for (const auto& mn : shape.notes)
+            if (!hasSeenDegree(mn.degree)) return true;
+        return false;
+    };
+
     for (int bar = 0; bar < bars; ++bar)
     {
         // emit the current shape's representative motif, key-agnostic.
         // 4 beats per bar; a 16th step = 4.0/grid beats within the bar.
+        // Emit in a neutral octave. The stitcher's contract is contour-first;
+        // preserving low-register corpus octaves can clamp multiple degrees to
+        // the caller's lowNote and collapse a valid motif into one pitch.
         for (const auto& mn : cur->notes)
         {
             MotifLineNote n;
             n.startBeat = bar * 4.0 + mn.stepInBar * (4.0 / (double) grid);
             n.degree = mn.degree;
-            n.octave = mn.octave;
+            n.octave = 4;
             n.durSteps = mn.durSteps;
             out.push_back(n);
+            rememberDegree(n.degree);
         }
         // transition to the next shape (fallback: any shape weighted by count)
-        const auto it = m.trans.find(cur->sig);
+        const std::string prevSig = cur->sig;
+        const auto it = m.trans.find(prevSig);
         if (it != m.trans.end() && !it->second.empty())
-            cur = pickShape(m, rng, it->second);
+        {
+            const std::vector<Transition>* opts = &it->second;
+            std::vector<Transition> contourOpts;
+            if (seenDegrees.size() < 3)
+            {
+                for (const auto& t : it->second)
+                    if (const Shape* s = shapeBySig(t.to); s != nullptr && shapeAddsNewDegree(*s))
+                        contourOpts.push_back(t);
+
+                // If the learned edge set from this shape cannot add contour,
+                // make a deterministic corpus jump to any non-degenerate motif
+                // that can. This preserves Markov transitions when they are
+                // musically useful, but prevents short self/near-self basins
+                // from producing drone-like seeded lines.
+                if (contourOpts.empty())
+                    for (const auto& s : m.shapes)
+                        if (s.sig != prevSig && shapeAddsNewDegree(s))
+                            contourOpts.push_back({ s.sig, s.count });
+
+                if (!contourOpts.empty())
+                    opts = &contourOpts;
+            }
+            cur = pickShape(m, rng, *opts, prevSig);
+        }
+        else
+        {
+            cur = nullptr; // no outgoing edge: do not implicitly self-repeat forever
+        }
         if (!cur)
         {
-            const Shape* next = nullptr;
-            if (totalShapes > 0)
-            {
-                double r = rng.nextFloat() * totalShapes;
+            std::vector<Transition> fallbackOpts;
+            for (const auto& s : m.shapes)
+                if (s.sig != prevSig && (seenDegrees.size() >= 3 || shapeAddsNewDegree(s)))
+                    fallbackOpts.push_back({ s.sig, s.count });
+            if (fallbackOpts.empty())
                 for (const auto& s : m.shapes)
-                {
-                    r -= s.count;
-                    if (r < 0) { next = &s; break; }
-                }
-            }
-            cur = next;
+                    fallbackOpts.push_back({ s.sig, s.count });
+            cur = pickShape(m, rng, fallbackOpts, prevSig);
         }
         if (!cur) break;
     }

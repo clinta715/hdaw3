@@ -9,6 +9,11 @@ namespace {
 uint32_t hashUI(uint64_t v) { return static_cast<uint32_t>(v) ^ static_cast<uint32_t>(v >> 32); }
 double unit01(std::mt19937& rng) { return static_cast<double>(rng() & 0xFFFFFF) / 16777216.0; }
 int rInt(std::mt19937& rng, int lo, int hi) { return lo + static_cast<int>(unit01(rng) * (hi - lo + 1)); }
+int drawBassPattern(std::mt19937& rng)
+{
+    const int roll = rInt(rng, 0, 9); // fixed style draw order: bassPattern before key/gate draws.
+    return roll < 4 ? 0 : (roll < 7 ? 1 : (roll < 9 ? 2 : 3));
+}
 const char* kIntroNames[4] = { "fourOnFloor", "shortIntro", "midIntro", "longIntro" };
 const char* kLenNames[3] = { "short", "mid", "extended" };
 constexpr int kMaxNotes = 8192;
@@ -146,13 +151,14 @@ PsytranceMarkovScore CorpusArranger::generate(const CorpusParams& par)
         HarmonyEngine harm;
         harm.setProgressions(par.progressionA, par.progressionB);
         std::mt19937 hrng(hashUI(static_cast<uint64_t>(par.seed) ^ 0x5EEDu));
+        HarmonyStyle style;
+        style.bassPattern = drawBassPattern(hrng);
         harm.initKey(par.keyRoot, par.scaleMode, hrng, 0);
         RoleCtx bass, arp, stab, pad;
         bass.track = par.bass; bass.clip.role = "bass";
         arp.track = par.arp; arp.clip.role = "arp";
         stab.track = par.stab; stab.clip.role = "stab";
         pad.track = par.pad; pad.clip.role = "pad";
-        HarmonyStyle style;
         const int half = plan.totalBars * 2 / 5;
         bool swapped = false;
         for (int bar = 0; bar + 4 <= plan.totalBars; bar += 4)

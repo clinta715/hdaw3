@@ -213,7 +213,7 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     // where future genre style packs (JSON) land.
     PercussionStyle percStyle;
     percStyle.corpusPhraseProb = p.percCorpusPhraseProb;
-    const HarmonyStyle harmonyStyle;
+    HarmonyStyle harmonyStyle;
     const TextureStyle textureStyle;
 
     PercussionEngine perc;
@@ -225,6 +225,9 @@ PsytranceMarkovScore MarkovArranger::run(const PsytranceMarkovParams& paramsIn)
     std::mt19937 rng(seedSeq);
     auto rng01 = [&rng]() { return markovRng01(rng); };
     auto rngInt = [&rng](int lo, int hi) { return markovRngInt(rng, lo, hi); }; // inclusive
+    // Fixed style draw order: bassPattern first, then HarmonyEngine::initKey key/gate draws.
+    const int bassPatternRoll = rngInt(0, 9);
+    harmonyStyle.bassPattern = bassPatternRoll < 4 ? 0 : (bassPatternRoll < 7 ? 1 : (bassPatternRoll < 9 ? 2 : 3));
     const double density = std::clamp(p.density, 0.0, 1.0);
 
     // ── Role contexts ──

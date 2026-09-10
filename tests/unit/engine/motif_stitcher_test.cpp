@@ -97,3 +97,25 @@ TEST(PhraseGenerator, MotifStitchLineHasContour)
     for (const auto& n : notes) pitches.insert(n.noteNumber);
     EXPECT_GE((int) pitches.size(), 3);
 }
+
+TEST(PhraseGenerator, MotifStitchLineHasContourForSeedSweep)
+{
+    for (uint64_t seed = 0; seed < 20; ++seed)
+    {
+        SCOPED_TRACE(seed);
+        const auto p = stitchParams(seed);
+        const auto notes = PhraseGenerator::generatePhrase(p);
+        ASSERT_FALSE(notes.empty());
+
+        std::set<int> pitches;
+        double maxBeat = 0.0;
+        for (const auto& n : notes)
+        {
+            pitches.insert(n.noteNumber);
+            maxBeat = std::max(maxBeat, n.startBeat);
+        }
+
+        EXPECT_GE((int) pitches.size(), 3); // not a drone
+        EXPECT_GE(maxBeat, 4.0);            // spans at least two bars
+    }
+}
