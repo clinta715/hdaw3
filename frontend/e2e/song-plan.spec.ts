@@ -62,4 +62,29 @@ test.describe("Song plan and cells (user journeys)", () => {
     }).toPass({ timeout: 10000 });
     await expect(page.getByTestId("plan-msg")).toContainText("Rerolled");
   });
+
+  test("energy arc renders bars from a real render + analysis", async ({ page }) => {
+    await rpcCall(page, "composition.setSongPlan", {
+      bpm: 140, keyRoot: 5, scaleMode: 7, style: "full-on", seed: 3, totalBars: 8,
+      sections: [
+        { name: "a", kind: "intro", bars: 4 },
+        { name: "b", kind: "mainA", bars: 4 },
+      ],
+    });
+    await rpcCall(page, "composition.setCellRecipe", {
+      section: "b", role: "kick", trackId: 1, source: "rhythm",
+      params: { pulseA: 8, pulseB: 0 }, seed: 5, locked: false,
+    });
+    await rpcCall(page, "composition.fillCells", { mode: "all" });
+
+    await page.locator("header.transport-bar [title^='Compose']").click();
+    await page.locator(".pgd-mode-select").selectOption("6");
+    await expect(page.getByTestId("song-plan-panel")).toBeVisible();
+
+    await page.getByTestId("check-energy").click();
+    // Full offline render + FFT analysis on the headless engine: allow generous time.
+    await expect(page.getByTestId("energy-row-0")).toBeVisible({ timeout: 90000 });
+    await expect(page.getByTestId("energy-row-1")).toBeVisible();
+    await expect(page.getByTestId("energy-arc")).toBeVisible();
+  });
 });

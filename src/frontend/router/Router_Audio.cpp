@@ -3,6 +3,8 @@
 
 #include "../../engine/AudioEngine.h"
 #include "../../engine/Dx7SysexImport.h"
+#include "../../engine/MixReport.h"
+#include "../../common/ProjectCommands.h"
 #include "../../common/SettingsKeys.h"
 
 #include <QJsonArray>
@@ -21,6 +23,62 @@ namespace frontend {
 DispatchResult dispatchAudio(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     auto& dm = engine.getDeviceManager();
     const auto o = paramsObject(params);
+
+    if (m == "mixReport") {
+        // Offline mix analysis of a rendered file — same contract as the MCP
+        // mix_report tool (HDAW::MixReportAnalyzer, windows in SECONDS).
+        // fromPlan derives the section windows from the song plan (beats ->
+        // seconds via bpm; bpm 0 falls back to the plan bpm).
+        std::string filePath;
+        if (!requireString(o, "filePath", filePath, nullptr))
+            return makeError(-32602, "filePath required");
+        double bpm = o.value("bpm").toDouble(0.0);
+        std::vector<HDAW::SectionWindow> windows;
+        if (o.value("fromPlan").toBool(false)) {
+            const auto plan = engine.getProjectCommands().getSongPlan();
+            if (plan.sections.empty())
+                return makeError(-32602, "no song plan set (fromPlan)");
+            if (bpm <= 0.0) bpm = plan.bpm;
+            const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
+            for (const auto& s : plan.sections)
+                windows.push_back(HDAW::SectionWindow{ s.name, s.startBeat * spb, s.endBeat * spb });
+        } else {
+            const auto secs = o.value("sections");
+            if (secs.isArray()) {
+                for (const auto& v : secs.toArray()) {
+                    const auto so = v.toObject();
+                    windows.push_back(HDAW::SectionWindow{ so.value("name").toString().toStdString(),
+                                                          so.value("start").toDouble(),
+                                                          so.value("end").toDouble() });
+                }
+            }
+        }
+        if (bpm < 0.0)
+            return makeError(-32602, "bpm must be >= 0");
+        HDAW::MixReport rep;
+        juce::String err;
+        if (!HDAW::MixReportAnalyzer::analyze(juce::File(juce::String(filePath.c_str())),
+                                              windows, bpm, rep, err))
+            return makeError(-32603, QString::fromUtf8(err.toRawUTF8()));
+        // Same JSON shape as the MCP mix_report tool.
+        QJsonObject root{ { "duration", rep.duration }, { "sampleRate", rep.sampleRate },
+                          { "peak", rep.peak }, { "rms", rep.rms },
+                          { "bands", QJsonArray{ rep.bands[0], rep.bands[1],
+                                                 rep.bands[2], rep.bands[3] } },
+                          { "bandLabels", QJsonArray{ "sub", "bass", "body", "high" } },
+                          { "kickProminence", rep.kickProminence } };
+        if (rep.hasPumpDepth)
+            root["pumpDepth"] = rep.pumpDepth;
+        QJsonArray sections;
+        for (const auto& s : rep.sections)
+            sections.append(QJsonObject{ { "name", QString::fromUtf8(s.name.toRawUTF8()) },
+                                         { "start", s.start }, { "end", s.end },
+                                         { "rms", s.rms }, { "peak", s.peak },
+                                         { "bandEnergy", QJsonArray{ s.bandEnergy[0], s.bandEnergy[1],
+                                                                    s.bandEnergy[2], s.bandEnergy[3] } } });
+        root["sections"] = sections;
+        return { false, root };
+    }
 
     if (m == "getDeviceTypes") {
         QJsonArray arr;

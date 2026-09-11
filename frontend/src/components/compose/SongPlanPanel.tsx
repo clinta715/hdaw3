@@ -14,6 +14,9 @@ const SECTION_KINDS = ["intro","build","mainA","mini","mainB","breakdown","final
 const SOURCES = ["phrase","rhythm","break","pattern","harvest"] as const;
 
 interface SectionDraft { name: string; kind: string; bars: number; }
+interface EnergySection { name: string; rms: number; peak: number; }
+interface EnergyReport { sections: EnergySection[]; peak: number; rms: number;
+                        kickProminence: number; pumpDepth?: number; }
 interface CellRow {
   section: string; role: string; trackId: number; source: string;
   paramsJson: string; seed: number; locked: boolean; lastClipId: number; lastSeed: number;
@@ -39,6 +42,7 @@ export default function SongPlanPanel() {
   const [templateName, setTemplateName] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [energy, setEnergy] = useState<EnergyReport | null>(null);
   // Picker catalogs (ComposeTab metadata RPCs) so cell params JSON can be
   // built by choosing instead of typing.
   const [styles, setStyles] = useState<string[]>([]);
@@ -204,6 +208,31 @@ export default function SongPlanPanel() {
     } catch (e) { reportRpcError("composition.removeCellRecipe", e); }
   };
 
+  // Energy arc: render whole project to a temp WAV (progress notifications
+  // flow on the existing export channel), analyze it against the plan windows.
+  const checkEnergy = async () => {
+    setBusy(true);
+    setMsg("Rendering + analyzing…");
+    try {
+      const r = await rpc.call("export.temporaryRender", {}) as { outputPath?: string };
+      const path = r?.outputPath ?? "";
+      if (!path) throw new Error("temporary render produced no path");
+      const rep = await rpc.call("audio.mixReport", { filePath: path, fromPlan: true }) as EnergyReport;
+      const sections = Array.isArray(rep?.sections) ? rep.sections : [];
+      setEnergy({ sections, peak: rep?.peak ?? 0, rms: rep?.rms ?? 0,
+                  kickProminence: rep?.kickProminence ?? 0, pumpDepth: rep?.pumpDepth });
+      const f = (n: number) => n.toFixed(3);
+      setMsg("Peak " + f(rep?.peak ?? 0) + " · kick prominence " + f(rep?.kickProminence ?? 0)
+             + (typeof rep?.pumpDepth === "number" ? " · pump " + f(rep.pumpDepth) : ""));
+    } catch (e) {
+      setEnergy(null);
+      setMsg("Energy check failed.");
+      reportRpcError("energy check", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const provenance = async (cell: CellRow) => {
     if (cell.lastClipId < 0) { setMsg("Cell has no generated clip yet."); return; }
     try {
@@ -353,6 +382,30 @@ export default function SongPlanPanel() {
             <button className="pgd-btn" title="Fill unfilled cells"
                     disabled={busy} onClick={() => void fill("unfilled")}>Fill Unfilled</button>
           </div>
+        </div>
+      )}
+
+      <div className="pgd-row">
+        <button className="pgd-btn" data-testid="check-energy" title="Check energy"
+                disabled={busy || !hasPlan} onClick={() => void checkEnergy()}>
+          {busy ? "Working..." : "Check energy"}
+        </button>
+        <span className="pgd-label">render + analyze against plan sections</span>
+      </div>
+      {energy && (
+        <div data-testid="energy-arc">
+          {(() => {
+            const max = Math.max(...energy.sections.map((s) => s.rms), 1e-9);
+            return energy.sections.map((s, i) => (
+              <div className="pgd-row" key={i} data-testid={"energy-row-" + i}>
+                <span className="pgd-value" style={{ minWidth: 70 }}>{s.name}</span>
+                <div data-testid={"energy-bar-" + i}
+                     style={{ height: 10, width: Math.max(2, Math.round(100 * s.rms / max)) + "%",
+                              background: s.peak > 0.99 ? "var(--vu-red)" : "var(--vu-green)" }} />
+                <span className="pgd-value">{s.rms.toFixed(3)}</span>
+              </div>
+            ));
+          })()}
         </div>
       )}
 

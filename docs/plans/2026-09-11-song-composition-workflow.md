@@ -11,8 +11,11 @@ section + tab list updated. Deferred by design: full JSON-envelope conversion of
 FULLY DONE — all composition tools (generate_phrase/chord/progression/
 rhythm now return the unified {clipId, noteCount, seedUsed?} JSON envelope;
 coverage/server assertions updated in the same change; parseClipId already
-handled JSON). Inline energy-arc visualization (render-loop plumbing) remains
-deferred. DONE (follow-up session): Song Plan panel style/pattern pickers
+handled JSON). DONE (follow-up 2): energy arc shipped — export.temporaryRender +
+audio.mixReport {fromPlan} RPCs (both reuse existing pipelines: dispatch-
+forwarded export, engine MixReportAnalyzer) + panel "Check energy" with one
+RMS bar per section (peak >= 0.99 -> red) and peak/kick/pump readouts. No
+deferrals remain in Phases A-D. DONE (follow-up session): Song Plan panel style/pattern pickers
 (source-aware, patch the params JSON; pattern list from composition.listPatterns).
 Phase A: Compose tab shipped (modal retired, auto-close gone; 67/67 vitest, 15/15 e2e).
 Phase B: SONG_PLAN + section-typed regions + templates + brief apply/export shipped (MCP + RPC; 7/7 focused, brief-apply = full-replacement semantics).

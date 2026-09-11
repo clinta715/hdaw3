@@ -31,6 +31,22 @@ DispatchResult dispatchExport(AudioEngine& engine, const QString& m,
                               const QJsonValue& params, FrontendServer* server) {
     const auto o = paramsObject(params);
 
+    if (m == "temporaryRender") {
+        // Convenience route for the Compose tab energy arc: render the whole
+        // project into the system temp dir and hand the path back (the caller
+        // then feeds it to audio.mixReport { fromPlan: true }). Deliberately
+        // forwards to the audio handler — one pipeline, progress
+        // notifications and cancel semantics included.
+        QJsonObject fwd = o;
+        const juce::File outFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                       .getChildFile(juce::String("hdaw_energy_")
+                                                     + juce::String(juce::Time::currentTimeMillis())
+                                                     + ".wav");
+        fwd["outputPath"] = QString::fromUtf8(outFile.getFullPathName().toRawUTF8());
+        fwd["format"] = "wav";
+        return dispatchExport(engine, "audio", fwd, server);
+    }
+
     if (m == "audio") {
         std::string pathStr;
         if (!requireString(o, "outputPath", pathStr, nullptr))

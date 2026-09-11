@@ -99,6 +99,32 @@ describe("SongPlanPanel", () => {
         params: JSON.stringify({ style: "Lead" }) })));
   });
 
+  it("check energy renders one bar per plan section", async () => {
+    mockedCall.mockImplementation(async (method: string) => {
+      if (method === "composition.getSongPlan") return {
+        hasPlan: true, bpm: 140, keyRoot: 5, scaleMode: 7, style: "full-on", seed: 1,
+        sections: [{ name: "intro", kind: "intro", startBeat: 0, endBeat: 32 },
+                   { name: "main", kind: "mainA", startBeat: 32, endBeat: 96 }],
+      };
+      if (method === "composition.getCells") return { cells: [] };
+      if (method === "composition.listSectionTemplates") return { templates: [] };
+      if (method === "export.temporaryRender") return { outputPath: "C:/temp/hdaw_energy_1.wav" };
+      if (method === "audio.mixReport") return {
+        sections: [{ name: "intro", rms: 0.1, peak: 0.5 }, { name: "main", rms: 0.2, peak: 0.9 }],
+        peak: 0.9, rms: 0.15, kickProminence: 0.6,
+      };
+      return {};
+    });
+    render(<SongPlanPanel />);
+    await flushRead();
+    fireEvent.click(screen.getByTestId("check-energy"));
+    await waitFor(() => expect(screen.getByTestId("energy-arc")).toBeInTheDocument());
+    expect(mockedCall).toHaveBeenCalledWith("audio.mixReport",
+      { filePath: "C:/temp/hdaw_energy_1.wav", fromPlan: true });
+    expect(screen.getByTestId("energy-bar-1")).toHaveStyle({ width: "100%" });
+    expect(screen.getByTestId("energy-bar-0")).toHaveStyle({ width: "50%" });
+  });
+
   it("shows cells and sends fill + reroll", async () => {
     mockedCall.mockImplementation(async (method: string) => {
       if (method === "composition.getSongPlan") return {

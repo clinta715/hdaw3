@@ -293,7 +293,11 @@ Sources: `phrase` (all generate_phrase styles + styleParams), `rhythm`
 `harvest` (raw note arrays). Lock a cell to freeze content you like;
 `get_clip_provenance` reports tool/source/seed of any filled clip. The
 whole-table UI is Compose tab ▸ Song Plan; RPC mirrors every tool
-(`composition.*`) so the frontend and agents share one state.
+(`composition.*`) so the frontend and agents share one state. The panel's
+**Check energy** button closes the loop in the UI: `export.temporaryRender`
+(whole-project WAV into the temp dir, progress on the normal export channel)
+→ `audio.mixReport { fromPlan: true }` → one RMS bar per plan section (red
+when a section peaks ≥ 0.99), with peak / kick-prominence / pump readouts.
 
 ### Sketch tools: `generate_psytrance` (one call, whole song)
 
