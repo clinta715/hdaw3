@@ -500,14 +500,15 @@ product pillar and should be reached for wherever it fits:
   RandomWalk, Buildup), single-chord and chord-progression generation, scale
   modes, chord types/voicings/inversions. Exposed over RPC as
   `composition.generatePhrase/generateChord/generateProgression` (and matching
-  MCP tools), surfaced in the UI by `PhraseGeneratorDialog` (TransportBar 🎵 /
-  Ctrl+Shift+G).
+  MCP tools), surfaced in the UI by the **Compose tab** (TransportBar 🎵 /
+  Ctrl+Shift+G; a docked bottom-panel tab — the old `PhraseGeneratorDialog`
+  modal was retired into it, no more auto-close-on-generate).
 - **Rhythm / drum patterns** come from `RhythmPatternGenerator`
   (`src/engine/RhythmPatternGenerator.h`): two euclidean pulses
   (polyrhythm) plus a rhythm-DSL voice (`E(k,n[,rot])`, groups).
   Exposed over RPC as `composition.generateRhythmPattern` (and MCP
-  `generate_rhythm_pattern`), surfaced in the UI by the "Rhythm" mode in
-  `PhraseGeneratorDialog`. A **corpus-derived drum phrase bank**
+  `generate_rhythm_pattern`), surfaced in the UI by the "Rhythm" mode of the
+  Compose tab. A **corpus-derived drum phrase bank**
   (`src/engine/RhythmPatternBank.h`, 62 multi-bar phrases across
   kick/snare/clap/hats/perc/ride) feeds `generatePhrase(id)` /
   `applyPhrase(...)` factories (RPC `phrase`/`phraseRole`/`phraseIndex`;
@@ -521,7 +522,21 @@ product pillar and should be reached for wherever it fits:
   humanize in the piano roll (`NoteGrid`) and clip editor (`ClipEditor`).
 - **Modulation** — a per-track LFO system (`ModulationManager` /
   `LFOModulationSource`, track `MODULATION_LIST` ValueTree, `rebuildModulation`)
-  that modulates parameters in the audio engine.
+  that modulates parameters in the audio engine. The sub_synth's internal LFO
+  additionally ships six factory **mod presets** applied atomically
+  (`apply_sub_synth_mod_preset` MCP / `project.applySubSynthModPreset` RPC /
+  FX Chain Mod button).
+- **Song plan + cells** (plan/cell workflow —
+  `docs/plans/2026-09-11-song-composition-workflow.md`) — deterministic
+  structure, seeded content: a root `SONG_PLAN` ValueTree node + section-typed
+  arranger regions pin the skeleton (section kinds = `PsytranceSectionKind`,
+  4/4); cell recipes (phrase/rhythm/break/pattern/harvest) fill per-section
+  windows in ONE undo unit with clip **provenance** (`genTool/genSource/
+  genSeed/genParams`). Surfaces: MCP `set_song_plan`/`apply_song_brief`/
+  `set_cell`/`fill_cells`/`reroll`, matching `composition.*` RPC, and the
+  Compose tab ▸ **Song Plan** panel; `mix_report` accepts `fromPlan: true`;
+  section templates persist under `AppData/HDAW/section-templates`. Variation
+  comes from re-seeded content, never from structure drift.
 
 **Guideline: when adding a feature, ask whether the generative/random/modulation
 toolkit applies.** New note or parameter editing should offer humanize/randomize;
@@ -715,8 +730,9 @@ to the core workflow.
 | Status bar | `status` (bottom, 24px) | Hints, readouts | Always present |
 
 The **bottom panel is HDAW's Ableton Detail View / Bitwig device-mixer panel**:
-Mixer, Piano Roll, Automation, FX Chain, MIDI FX, Audio Editor, Modulation, and
-Step Seq are all *tabs in the same stable frame*. Adding a new editor or
+Mixer, Piano Roll, Automation, FX Chain, MIDI FX, Audio Editor, Modulation,
+Step Seq, and Compose (phrase/chord/progression/arrangement/rhythm/analyze +
+Song Plan) are all *tabs in the same stable frame*. Adding a new editor or
 inspector = adding a tab here, not a new window.
 
 **Showing/hiding a region must not reflow the rest of the layout

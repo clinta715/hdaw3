@@ -20,6 +20,12 @@ Each role has its own playbook with a strict tool surface:
 Role files resolve against this skill's directory (parent of SKILL.md).
 
 ## The Song Brief (the contract)
+The brief is now ENGINE STATE: the Arranger applies it with `apply_song_brief`
+as its first step (sections materialize as typed arranger regions), and the
+plan/cell workflow (`set_cell` / `fill_cells` / `reroll` — composition guide §4)
+is its PREFERRED arrangement path: structure stays pinned, content re-rolls by
+seed, and `mix_report {fromPlan: true}` verifies the energy arc without
+re-typing section windows. `export_song_brief` reads the plan back.
 Pin `compositions/<song>/brief.json` (schema: `brief.schema.json`, this directory)
 BEFORE dispatching anything: bpm, keyRoot, scaleMode, style, seed, totalBars,
 sections, targets (masterRms, ceilingHitPctMax), and later — role-written —

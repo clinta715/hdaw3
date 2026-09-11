@@ -198,6 +198,13 @@ The key tools and their shapes, distilled from the composition sessions:
 | `psy_fm_get_analysis` | `{trackId, slotIndex}` | `{activeVoices, opEgLevels}` | Live audio-thread data (lock-free atomics). |
 | `psy_fm_set_mod_route` | `{trackId, slotIndex, source, dest, depth}` | `"ok"` | source ∈ {ratioSweepLFO, feedbackLFO, modWheel, velocity, barClock}; dest ∈ {op1Ratio..op6Ratio, op6Feedback}. |
 | `psy_fm_clear_mod_matrix` | `{trackId, slotIndex}` | `"ok"` | Removes all modulation routes. |
+| `apply_sub_synth_mod_preset` | `{trackId, slotIndex, presetId}` | `"ok: preset '…' applied (params 27-32)"` | sub_synth LFO factory presets; atomic + undoable, patch params 0–26 untouched. presetId ∈ {off, slow_filter_drift, vibrato, tremolo, fm_motion, animated_sweep}. |
+| `set_song_plan` | `{bpm, keyRoot, scaleMode, style, seed, totalBars, sections[{name,kind,bars}]}` | resolved plan JSON | Deterministic skeleton; syncs section-typed arranger regions in ONE undo unit; 4/4, totalBars must equal the bars sum; kinds: intro/build/mainA/mini/mainB/breakdown/finale/other. |
+| `get_song_plan` | `{}` | `{hasPlan, sections[…startBeat/endBeat]}` | Read the plan back — every other tool references sections by NAME. |
+| `apply_song_brief` / `export_song_brief` | `{brief}` / `{}` | plan echo / verbatim brief JSON | psy-song-session Brief ⇄ plan (peak→mainA, outro→finale, drop→mainB). |
+| `set_cell` / `get_cells` / `remove_cell` | `{section, role, trackId, source, params, seed, locked}` etc. | ok / cells JSON | Content recipes on the section×role matrix. source ∈ phrase/rhythm/break/pattern/harvest; seed 0 = derived from plan seed. |
+| `fill_cells` | `{mode: all\|unfilled}` | `{filled, skippedLocked, failed, cells[{clipId, noteCount, seedUsed}]}` | ONE undo transaction; clips span exactly their section window; re-fill reuses the cell's clip; locked cells skipped. |
+| `reroll` / `get_clip_provenance` | `{section?, role?}` / `{clipId}` | batch JSON / `{found, tool, source, seed}` | Variation = lastSeed+1, deterministic; provenance answers "where did this clip come from". |
 | `slice_clip_at_playhead` | `{clipId}` | `"sliced clip N at playhead"` | Works for audio and MIDI clips. |
 | `slice_clip_at_times` | `{clipId, times[beats]}` | `"sliced clip N at M positions"` | Times are timeline-absolute beats. |
 | `slice_clip_at_transients` | `{clipId}` | `"sliced clip N at transients"` | Audio clips only. |
@@ -246,10 +253,54 @@ to 512–544 (v3/v4/v5 long-form). Render duration =
 `ExportManager::calculateProjectDuration(...)` exactly — never a fixed
 window, or you get dead-tail silence in the render.
 
-### One-call alternative: `generate_psytrance`
+### Plan/cell workflow (recommended): deterministic skeleton, seeded content
+
+The composition model this guide's sessions converged on: **structure stays
+pinned** (sections, lengths, key, style), while **content inside each section
+window is probabilistic** (any generator source, seeded, re-rollable). The
+song plan is engine state now — humans edit it in the Compose tab ▸ Song Plan,
+agents over MCP:
+
+```python
+# 1. Pin the skeleton (also creates/updates section-typed arranger regions)
+await mcp_call("set_song_plan", { "bpm": 140, "keyRoot": 5, "scaleMode": 7,
+    "style": "full-on", "seed": 777, "totalBars": 48, "sections": [
+    {"name": "intro", "kind": "intro", "bars": 8},
+    {"name": "main",  "kind": "mainA", "bars": 16},
+    {"name": "break", "kind": "breakdown", "bars": 8},
+    {"name": "drop",  "kind": "finale", "bars": 16}]})
+#  or start from a session brief: apply_song_brief {brief: <SongBrief JSON>}
+
+# 2. Assign content recipes on the section×role matrix (palette map = brief's)
+await mcp_call("set_cell", {"section": "main", "role": "bass", "trackId": 1,
+    "source": "phrase", "params": {"style": "BassLine"}})          # seed omitted = derived from plan seed
+await mcp_call("set_cell", {"section": "main", "role": "hat", "trackId": 2,
+    "source": "rhythm", "params": {"pulseA": 16, "pulseB": 0}})
+await mcp_call("set_cell", {"section": "drop", "role": "arp", "trackId": 3,
+    "source": "pattern", "params": {"patternId": "factory/melodic/acid-run"}})
+await mcp_call("set_cell", {"section": "break", "role": "hits", "trackId": 4,
+    "source": "harvest", "params": {"notes": [...]}})               # analyze_midi_file output
+
+# 3. Fill (ONE undo unit), then verify + iterate by seed — never by rewriting structure
+await mcp_call("fill_cells", {"mode": "all"})
+# export_audio → mix_report {filePath, fromPlan: true}   (windows come from the plan)
+await mcp_call("reroll", {"section": "drop"})   # same cell, seed+1 — structure untouched
+```
+
+Sources: `phrase` (all generate_phrase styles + styleParams), `rhythm`
+(euclidean/DSL/bank), `break` (needs `set_sampler_mode slice` +
+`detect_sampler_slices` first), `pattern` (PatternLibrary preset),
+`harvest` (raw note arrays). Lock a cell to freeze content you like;
+`get_clip_provenance` reports tool/source/seed of any filled clip. The
+whole-table UI is Compose tab ▸ Song Plan; RPC mirrors every tool
+(`composition.*`) so the frontend and agents share one state.
+
+### Sketch tools: `generate_psytrance` (one call, whole song)
 
 Instead of hand-computing 2,600+ notes via the per-role templates below,
-use the `generate_psytrance` MCP tool (one call writes the complete score):
+use the `generate_psytrance` MCP tool (one call writes the complete score).
+Sketch-grade: its section plan evolves probabilistically — for a pinned,
+re-rollable structure use the plan/cell workflow above:
 
 ```python
 result = await mcp_call("generate_psytrance", {
@@ -838,6 +889,29 @@ the second filter pass (principle 2).
 **Root notes for arp:** use `scaleNote(degree, octave)` from the project
 scale (F harmonic minor mode=7, root=5). Degrees 0–6 map to
 {F,G,Ab,Bb,C,Db,E}. Feed the resulting MIDI pitches into the psyarp clip.
+
+### sub_synth — modulation-matrix factory presets
+
+```
+add_fx { trackId, fxType: "sub_synth" }
+apply_sub_synth_mod_preset { trackId, slotIndex, presetId: "<id>" }
+```
+
+One atomic, undoable call rewrites ONLY the internal LFO params (27–32:
+wave/rate/cutoff/pitch/amp/FM amounts) — the loaded patch, oscillators,
+filter, and envelopes (params 0–26) are untouched. Use it to give a staged
+sub_synth voice its long-form movement (principle 7) without hand-writing
+six `set_internal_fx_param` calls; the track-level ModulationManager LFOs
+(§5b) remain the tool for cross-track/FX routing.
+
+| presetId | Character | Psytrance use |
+| ------ | ----------- | ------------- |
+| `off` | Static, pure | Reference/audit; dry sub layer |
+| `slow_filter_drift` | 0.12 Hz cutoff drift ±12 st | Rolling bass evolution (principle 7) |
+| `vibrato` | 5.5 Hz, 18 cents | Lead/stab expression |
+| `tremolo` | 6 Hz amplitude | Offbeat pluck pulse, percussive beds |
+| `fm_motion` | 2 Hz triangle → osc2→osc1 FM | Growl texture, alien timbre motion |
+| `animated_sweep` | 0.25 Hz cutoff+pitch+amp+FM | Build/riser beds, section transitions |
 
 ### Combining the instruments
 

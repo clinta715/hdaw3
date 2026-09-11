@@ -10,7 +10,7 @@ or arrangement structure.
 `set_internal_fx_param`, `list_fx_params`, `list_fx_chains`, `load_fx_chain`,
 `load_plugin_preset`, `load_plugin_preset_file`, `list_plugin_presets`,
 `search_plugin_presets`, `fm_synth_load_preset`, `fm_synth_import_sysex`,
-`sub_synth_import_sysex`, `psy_fm_load_preset`, `sampler_set_sample`,
+`sub_synth_import_sysex`, `apply_sub_synth_mod_preset`, `psy_fm_load_preset`, `sampler_set_sample`,
 `set_sampler_param`, `sampler_get_state`, `audition_plugin`, `audition_patch`,
 `search_library`, `get_library_entry`, `list_tracks`, `get_project_summary`,
 `set_track`, `list_plugins`, `scan_plugins`
@@ -28,6 +28,12 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 3. **Load sounds**: presets via `load_plugin_preset`/`load_plugin_preset_file`
    (.SerumPreset/.fxp/.syx) or psytrance Virus banks via `sub_synth_import_sysex` —
    always confirm the returned patch NAME. Internal presets via `psy_fm_load_preset`.
+   **Stage the mod matrix**: on sub_synth slots, `apply_sub_synth_mod_preset`
+   {trackId, slotIndex, presetId} moves the internal LFO (params 27–32) in ONE
+   atomic, undoable call — the loaded patch (params 0–26) is untouched. Role
+   defaults: rolling bass `slow_filter_drift`, lead expression `vibrato`,
+   offbeat stab `tremolo`, growl texture `fm_motion`, build/riser beds
+   `animated_sweep`, static/reference `off`.
 4. **Configure in REAL units**: `set_internal_fx_param` writes real def ranges
    (cutoff is Hz, drive is dB) — lesson 23: one out-of-range value can poison a
    saved project. Verify with `list_fx_params` (reads back REAL units).
@@ -46,6 +52,9 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
 ## Surface gotchas (smoke-run feedback)
 - `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track
   (`fxType:'filter'`) then `add_fx {fxType:'sub_synth'}` + `remove_fx` the carrier.
+- `apply_sub_synth_mod_preset` is all-or-nothing: a bad presetId or a
+  non-sub_synth slot writes NOTHING. Never emulate it with six
+  `set_internal_fx_param` calls — that is six round-trips and no atomic undo.
 - `audition_plugin` on an existing slot renders the track's OWN clips: the probe
   clip must already contain notes, or you get audible=0 silence. It returns a
   plain-text summary `ok=1 ... rms=.. peak=.. audible=..`, not JSON.

@@ -7,6 +7,11 @@ you hold the engine. Your standard is the psytrance composition guide
 (`docs/psytrance-composition-guide.md`) and the session lessons baked in below.
 
 ## Surface area
+Plan/cell tools (preferred path — deterministic skeleton + seeded content):
+`set_song_plan`, `get_song_plan`, `apply_song_brief`, `export_song_brief`,
+`set_cell`, `get_cells`, `fill_cells`, `reroll`, `remove_cell`,
+`get_clip_provenance`, `save_section_template`, `load_section_template`.
+Legacy/one-shot writers below remain for sketch work:
 `get_project_summary`, `list_tracks`, `list_clips`, `get_clip`, `list_notes`,
 `generate_arrangement_corpus`, `generate_psytrance_markov`, `generate_psytrance`,
 `generate_arrangement`, `add_instrument_part`, `place_patterns`, `generate_chord`,
