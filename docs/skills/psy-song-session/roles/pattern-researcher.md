@@ -22,7 +22,10 @@ arrangement/track/FX/automation mutation, `export_audio`.
 3. **Stock the library**: reusable patterns via `import_pattern` (JSON) or
    `save_pattern` (generation params). Only you and the Arranger use
    `list_patterns` — include a compact descriptor per pattern:
-   `{patternId, role, bpm, key, bars, noteCount, source}`.
+   `{patternId, role, bpm, key, bars, noteCount, source}`. The Arranger consumes
+   stock two ways: bound as `set_cell {source:"pattern"}` recipes on the
+   section×role matrix (patternId in cell params) or tiled via `place_patterns`
+   — the descriptor is what lets cells bind correctly.
 4. **Synthetic stock** (when the brief asks): `generate_rhythm_pattern` for
    euclidean/DSL drum material, saved under an explicit name prefix.
 
@@ -36,7 +39,9 @@ arrangement/track/FX/automation mutation, `export_audio`.
 — version/name/style/notes are required; notes are pattern-local beats. Pattern
 library starts EMPTY (no factory patterns). place_patterns consumes
 analyze_midi_file `patterns[]` verbatim (per-placement octave/velocityScale/reverse
-transforms — no key transpose; conform material at the source).
+transforms — no key transpose; conform material at the source). The same
+`patterns[]` note shape is what `harvest` cell sources take (cell
+`params.notes`), so raw analyzed material reaches the matrix unmodified.
 
 ## Discipline
 - `delete_pattern` only on user-created patterns you created THIS session.

@@ -24,8 +24,10 @@ them, bounce back to the orchestrator for an Arranger pass.
    kills long-blocking calls) — then poll file size and `engine_info` `exporting`
    until done. Verify the WAV actually has audio (duration + nonzero peaks) before
    consuming it — file size lies.
-3. **Measure**: `mix_report` per brief section (bpm from the brief) — overall and
-   per-section RMS/peak, band energies, kickProminence, pumpDepth.
+3. **Measure**: `mix_report` with `fromPlan: true` when a song plan is set —
+   the windows derive from engine state (bpm falls back to the plan's), so brief
+   sections are never retyped; pass explicit sections only for planless projects.
+   Overall and per-section RMS/peak, band energies, kickProminence, pumpDepth.
 4. **Ceiling check**: peak pinned EXACTLY at masterGain in every section = a hard
    clamp pre-master; report the fraction of samples at the ceiling against the
    brief's `targets.ceilingHitPctMax`.

@@ -36,12 +36,19 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    verify mute/fader/FX state and clip `offset`/`sourceDuration` sanity. A render
    that later pins at the ceiling then goes silent is a muted-source artifact, not
    an engine bug; fix the state, don't diagnose ghosts.
-2. **Section skeleton**: write the brief's sections as arranger regions
-   (`add_arranger_region`) so every later mutation has a named address.
-3. **Generate, then fix**: `generate_arrangement_corpus` / `generate_psytrance_markov`
-   with the brief's seed produce the skeleton in ONE call each (one undo unit).
-   Never N per-role calls in loops — batch RPC rules: one batched call lands in
-   one delta, one rebuild, one undo unit.
+2. **Pin the structure (skeleton)**: `apply_song_brief {brief}` — the plan
+   becomes engine state and sections materialize as typed arranger regions, each
+   a named address for every later mutation; `get_song_plan` reads the resolved
+   beat windows back. Never hand-retype section windows.
+3. **Fill with cells, then fix**: bind content recipes to (section, role) cells —
+   `set_cell` per role from the brief's palette map and the Pattern Researcher's
+   stock (`phrase`/`rhythm`/`pattern`/`harvest`/`break` sources; omit seed for
+   plan-derived variation) — then ONE `fill_cells {mode:"all"}` (one undo unit;
+   each clip spans its section window exactly and carries provenance). Iterate:
+   `reroll` weak cells, `lock` keepers, re-`fill_cells`. Never N per-role generate
+   calls in a loop — the batch rule is exactly what fill_cells exists for. The
+   sketch generators (`generate_psytrance*`, `generate_arrangement*`) remain for
+   throwaway sketches only — structure coming from them is not pinned.
 4. **Fill layer windows completely**: generators under-fill tail windows
    (hats/snare/arp stopping early is the known artifact) — tile each track's own
    last-4-bars pattern to its window end; the pad's chained window clips are the model.
@@ -58,7 +65,9 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
    nonClipping, bandsPresent). Failing parts get reworked before handoff.
 
 ## Handoff
-Full arrangement + `verify_part` evidence per part. The Mix Verifier renders;
+Full arrangement + `verify_part` evidence per part + the cell map
+(`get_cells`: section/role/source/seed per filled clip, so every part's
+variation is attributable and repeatable). The Mix Verifier renders;
 you do not export.
 
 ## Gates
@@ -67,3 +76,4 @@ you do not export.
 - [ ] Batched mutations only; every structural change = one undo unit.
 - [ ] Filtered melodic parts carry the stacked basis.
 - [ ] `verify_part` evidence per part; nonClipping=true, audible=true.
+- [ ] Cell map reported (`get_cells`) — filled/locked/rerolled state per section×role.

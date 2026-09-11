@@ -13,6 +13,7 @@ notes, clips, or instruments.
 `swap_fx_snapshot`, `add_automation_lane`, `set_automation_points`,
 `automation_preset`, `set_automation_enabled`, `list_automation_lanes`,
 `remove_automation_lane`, `psy_fm_set_mod_route`, `psy_fm_get_analysis`,
+`apply_sub_synth_mod_preset`,
 `set_fader_authoritative`, `verify_part`, `list_tracks`, `list_clips`,
 `get_project_summary`, `list_automation_lanes`
 
@@ -27,6 +28,12 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
   build section, breakdown openClose with a clear mid-point.
 - Target the instrument's OWN band (lead/arp 400 Hz–3 kHz; pump bass; sweep
   riser) — the mix-lesson: gain and movement live in bands, not faders.
+- **Instrument LFO before lanes**: on sub_synth slots, `apply_sub_synth_mod_preset
+  {trackId, slotIndex, presetId}` sets internal-LFO character atomically per
+  section (one undo unit; patch params untouched) — slow_filter_drift for rolling
+  mains, animated_sweep for builds/risers, vibrato for lead expression, `off` to
+  clear. Use automation lanes for movement ACROSS section boundaries; never stack
+  a lane that fights the preset's own LFO.
 - After enabling a lane: `verify_part` A/B (solo rms before vs after must move)
   proves the automation is actually driving the DSP.
 
