@@ -462,6 +462,8 @@ TEST(TrackFxRebuildRace, SubSynthVirusUpgradesSurviveRebuild)
 
     cmds.setFxSlotParam(0, 0, 25, 0.5f);
     cmds.setFxSlotParam(0, 0, 26, 1.0f);
+    cmds.setFxSlotParam(0, 0, 29, 12.0f);
+    cmds.setFxSlotParam(0, 0, 32, 0.25f);
 
     auto fxChainTree = engine.getProjectModel().getTrackListTree()
         .getChild(0)
@@ -481,20 +483,26 @@ TEST(TrackFxRebuildRace, SubSynthVirusUpgradesSurviveRebuild)
 
     // Param defs carry the new params (the list_fx_params surface reads these).
     const auto defs = chain[0]->getInternalParamDefs();
-    ASSERT_GE(defs.size(), 27u);
+    ASSERT_GE(defs.size(), 33u);
     EXPECT_EQ(defs[25].name, "Osc2 FM");
     EXPECT_EQ(defs[26].name, "Filter Slope");
+    EXPECT_EQ(defs[29].name, "LFO Cutoff Amt");
+    EXPECT_EQ(defs[32].name, "LFO FM Amt");
 
     const auto values = chain[0]->getInternalParamValues();
-    ASSERT_GE(values.size(), 27u);
+    ASSERT_GE(values.size(), 33u);
     EXPECT_FLOAT_EQ(values[25], 0.5f);
     EXPECT_FLOAT_EQ(values[26], 1.0f);
+    EXPECT_FLOAT_EQ(values[29], 12.0f);
+    EXPECT_FLOAT_EQ(values[32], 0.25f);
 
     // LIVE processor state — the Gate-10 assertion.
     auto* sub = chain[0]->subSynthEngineForTest();
     ASSERT_NE(sub, nullptr);
     EXPECT_FLOAT_EQ(sub->osc2FmAmountForTest(), 0.5f);
     EXPECT_TRUE(sub->filterSlope24ForTest());
+    EXPECT_FLOAT_EQ(sub->modLfoCutoffAmountForTest(), 12.0f);
+    EXPECT_FLOAT_EQ(sub->modLfoFmAmountForTest(), 0.25f);
 }
 
 // Gate 6: the patch must persist through a save/load round-trip — saveProject

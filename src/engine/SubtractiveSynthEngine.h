@@ -46,6 +46,14 @@ public:
     // false (12 dB, bit-identical). Applies to lowpass mode only; other
     // filter types keep the 12 dB path.
     void setFilterSlope24(bool value) noexcept;
+    // Internal Virus-style modulation LFO/mod matrix (params 27..32). All
+    // destination amounts default to zero so the shipped sound is unchanged.
+    void setModLfoWave(int value) noexcept;
+    void setModLfoRateHz(float value) noexcept;
+    void setModLfoCutoffAmount(float semitones) noexcept;
+    void setModLfoPitchAmountCents(float cents) noexcept;
+    void setModLfoAmpAmount(float value) noexcept;
+    void setModLfoFmAmount(float value) noexcept;
     // Polyphony mode (param 24). Mono is the default and bit-identical to the
     // pre-polyphony engine; poly allocates up to kMaxPolyVoices voices with
     // per-voice filters. Switching modes clears sound (no orphan voices).
@@ -67,6 +75,9 @@ public:
     float pitchBendRatioForTest() const noexcept;
     float osc2FmAmountForTest() const noexcept { return osc2FmAmount_.load(std::memory_order_relaxed); }
     bool filterSlope24ForTest() const noexcept { return filterSlope24_.load(std::memory_order_relaxed); }
+    float modLfoPhaseForTest() const noexcept { return modLfoPhase_; }
+    float modLfoCutoffAmountForTest() const noexcept { return modLfoCutoffAmount_.load(std::memory_order_relaxed); }
+    float modLfoFmAmountForTest() const noexcept { return modLfoFmAmount_.load(std::memory_order_relaxed); }
 
 private:
     enum class Waveform
@@ -122,7 +133,8 @@ private:
                                 juce::dsp::StateVariableTPTFilter<float>& filter,
                                 juce::dsp::StateVariableTPTFilter<float>& filterHp,
                                 juce::dsp::StateVariableTPTFilter<float>& filterLp2,
-                                float& lastResonance) noexcept;
+                                float& lastResonance,
+                                float modLfo) noexcept;
     void polyNoteOn(int note, int velocity) noexcept;
     void polyNoteOff(int note) noexcept;
     void resetPolyVoice(int index, int note, int velocity) noexcept;
@@ -156,6 +168,13 @@ private:
     std::atomic<float> pitchBendRange_ { 2.0f };
     std::atomic<float> osc2FmAmount_ { 0.0f };
     std::atomic<bool> filterSlope24_ { false };
+    std::atomic<int> modLfoWave_ { 0 };
+    std::atomic<float> modLfoRateHz_ { 0.5f };
+    std::atomic<float> modLfoCutoffAmount_ { 0.0f };
+    std::atomic<float> modLfoPitchAmountCents_ { 0.0f };
+    std::atomic<float> modLfoAmpAmount_ { 0.0f };
+    std::atomic<float> modLfoFmAmount_ { 0.0f };
+    float modLfoPhase_ = 0.0f;
 
     juce::dsp::StateVariableTPTFilter<float> filter_;
     juce::dsp::StateVariableTPTFilter<float> filterHp_;
@@ -185,7 +204,8 @@ private:
     void noteOff(int note) noexcept;
     void allNotesOff() noexcept;
     void releaseCurrentVoice() noexcept;
-    float renderVoiceSample() noexcept;   // mono: core(voice_) * outputLevel
+    float renderVoiceSample(float modLfo) noexcept;   // mono: core(voice_) * outputLevel
     float renderOutputSample() noexcept;  // mode-aware: mono voice or poly sum
+    float nextModLfoSample() noexcept;
     void updateHeldNote(int note, bool pressed) noexcept;
 };

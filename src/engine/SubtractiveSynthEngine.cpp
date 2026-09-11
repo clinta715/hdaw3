@@ -18,6 +18,7 @@ void SubtractiveSynthEngine::prepare(double sampleRate, int maxBlockSize)
     heldNoteCount_ = 0;
     sustainPedal_ = false;
     lastFilterResonance_ = -1.0f;
+    modLfoPhase_ = 0.0f;
 
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate_;
@@ -69,6 +70,12 @@ void SubtractiveSynthEngine::setFilterReleaseSeconds(float value) noexcept { fil
 void SubtractiveSynthEngine::setPitchBendRange(float value) noexcept { pitchBendRange_.store(std::clamp(value, 0.0f, 12.0f), std::memory_order_relaxed); }
 void SubtractiveSynthEngine::setOsc2FmAmount(float value) noexcept { osc2FmAmount_.store(clampUnit(value), std::memory_order_relaxed); }
 void SubtractiveSynthEngine::setFilterSlope24(bool value) noexcept { filterSlope24_.store(value, std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoWave(int value) noexcept { modLfoWave_.store(clampWave(value), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoRateHz(float value) noexcept { modLfoRateHz_.store(std::clamp(value, 0.01f, 40.0f), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoCutoffAmount(float semitones) noexcept { modLfoCutoffAmount_.store(std::clamp(semitones, -48.0f, 48.0f), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoPitchAmountCents(float cents) noexcept { modLfoPitchAmountCents_.store(std::clamp(cents, -1200.0f, 1200.0f), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoAmpAmount(float value) noexcept { modLfoAmpAmount_.store(std::clamp(value, -1.0f, 1.0f), std::memory_order_relaxed); }
+void SubtractiveSynthEngine::setModLfoFmAmount(float value) noexcept { modLfoFmAmount_.store(std::clamp(value, -1.0f, 1.0f), std::memory_order_relaxed); }
 
 int SubtractiveSynthEngine::activeNoteCount() const noexcept
 {
@@ -490,9 +497,9 @@ void SubtractiveSynthEngine::advanceEnvelope(Voice& v) noexcept
     }
 }
 
-float SubtractiveSynthEngine::renderVoiceSample() noexcept
+float SubtractiveSynthEngine::renderVoiceSample(float modLfo) noexcept
 {
-    const float sample = renderVoiceSampleCore(voice_, filter_, filterHp_, filterLp2_, lastFilterResonance_);
+    const float sample = renderVoiceSampleCore(voice_, filter_, filterHp_, filterLp2_, lastFilterResonance_, modLfo);
     return sample * outputLevel_.load(std::memory_order_relaxed);
 }
 
@@ -501,9 +508,13 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     juce::dsp::StateVariableTPTFilter<float>& filter,
     juce::dsp::StateVariableTPTFilter<float>& filterHp,
     juce::dsp::StateVariableTPTFilter<float>& filterLp2,
-    float& lastResonance) noexcept
+    float& lastResonance,
+    float modLfo) noexcept
 {
-    const float baseHz = v.currentHz * v.bendRatio;
+    float baseHz = v.currentHz * v.bendRatio;
+    const float pitchModCents = modLfoPitchAmountCents_.load(std::memory_order_relaxed);
+    if (pitchModCents != 0.0f)
+        baseHz *= std::exp2((pitchModCents * modLfo) / 1200.0f);
     const float detuneRatio = std::pow(2.0f, kUnisonDetuneCents / 1200.0f);
     const float osc2Ratio = std::pow(2.0f, osc2DetuneCents_.load(std::memory_order_relaxed) / 1200.0f);
     const float subHzRatio = std::pow(2.0f, static_cast<float>(subOctave_.load(std::memory_order_relaxed)));
@@ -512,7 +523,11 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     const Waveform osc2Wave = static_cast<Waveform>(clampWave(osc2Wave_.load(std::memory_order_relaxed)));
     // Upgrade 1 (param 25): osc2 -> osc1 FM depth in phase cycles. Loaded
     // once per sample (relaxed atomic, same idiom as the levels below).
-    const float fmDepth = osc2FmAmount_.load(std::memory_order_relaxed) * kFmPhaseDepth;
+    float fmAmount = osc2FmAmount_.load(std::memory_order_relaxed);
+    const float fmModAmount = modLfoFmAmount_.load(std::memory_order_relaxed);
+    if (fmModAmount != 0.0f)
+        fmAmount = std::clamp(fmAmount + fmModAmount * modLfo, 0.0f, 1.0f);
+    const float fmDepth = fmAmount * kFmPhaseDepth;
     // Upgrade 2 (param 26): 24 dB lowpass cascade. Default false = 12 dB.
     const bool slope24 = filterSlope24_.load(std::memory_order_relaxed);
 
@@ -556,7 +571,10 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     if (drive > 0.0f)
         sample = std::tanh(sample * (1.0f + 6.0f * drive));
 
-    const float cutoffHz = cutoffHz_.load(std::memory_order_relaxed);
+    float cutoffHz = cutoffHz_.load(std::memory_order_relaxed);
+    const float cutoffModSemitones = modLfoCutoffAmount_.load(std::memory_order_relaxed);
+    if (cutoffModSemitones != 0.0f)
+        cutoffHz *= std::exp2((cutoffModSemitones * modLfo) / 12.0f);
     const float resonance = std::max(resonance_.load(std::memory_order_relaxed), 0.1f);
     const int filterType = clampFilterType(filterType_.load(std::memory_order_relaxed));
 
@@ -596,6 +614,10 @@ float SubtractiveSynthEngine::renderVoiceSampleCore(
     advancePitch(v);
     advanceEnvelope(v);
     sample *= v.envelope * v.velocity / 127.0f;
+
+    const float ampMod = modLfoAmpAmount_.load(std::memory_order_relaxed);
+    if (ampMod != 0.0f)
+        sample *= std::clamp(1.0f + ampMod * modLfo, 0.0f, 2.0f);
 
     return sample;
 }
@@ -707,8 +729,10 @@ void SubtractiveSynthEngine::render(juce::AudioBuffer<float>& buffer, juce::Midi
 // mono level; N simultaneous voices sum like a real poly synth).
 float SubtractiveSynthEngine::renderOutputSample() noexcept
 {
+    const float modLfo = nextModLfoSample();
+
     if (! poly_.load(std::memory_order_relaxed))
-        return voice_.active ? renderVoiceSample() : 0.0f;
+        return voice_.active ? renderVoiceSample(modLfo) : 0.0f;
 
     float sum = 0.0f;
     for (int i = 0; i < kMaxPolyVoices; ++i)
@@ -717,7 +741,17 @@ float SubtractiveSynthEngine::renderOutputSample() noexcept
         if (! v.active)
             continue;
         sum += renderVoiceSampleCore(v, polyFilter_[(size_t) i], polyFilterHp_[(size_t) i],
-                                     polyFilterLp2_[(size_t) i], lastPolyResonance_[(size_t) i]);
+                                     polyFilterLp2_[(size_t) i], lastPolyResonance_[(size_t) i], modLfo);
     }
     return sum * 0.5f * outputLevel_.load(std::memory_order_relaxed);
+}
+
+float SubtractiveSynthEngine::nextModLfoSample() noexcept
+{
+    const Waveform wave = static_cast<Waveform>(clampWave(modLfoWave_.load(std::memory_order_relaxed)));
+    const float sample = phaseToSample(wave, modLfoPhase_);
+    modLfoPhase_ += modLfoRateHz_.load(std::memory_order_relaxed) / static_cast<float>(sampleRate_);
+    if (modLfoPhase_ >= 1.0f)
+        modLfoPhase_ -= std::floor(modLfoPhase_);
+    return sample;
 }

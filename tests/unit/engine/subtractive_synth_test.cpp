@@ -592,3 +592,53 @@ TEST(SubtractiveSynthEngine, FilterSlope24Attenuates2kHzMoreThan12dB)
     // vs ~48 dB at 24 dB/oct, i.e. amplitude ratio ~0.06. Assert < 0.5.
     EXPECT_LT(mag24, 0.5f * mag12);
 }
+
+
+TEST(SubtractiveSynthEngine, InternalLfoDefaultsAreBitIdentical)
+{
+    SubtractiveSynthEngine ref;
+    ref.prepare(44100.0, 512);
+    SubtractiveSynthEngine dut;
+    dut.prepare(44100.0, 512);
+    dut.setModLfoWave(0);
+    dut.setModLfoRateHz(0.5f);
+    dut.setModLfoCutoffAmount(0.0f);
+    dut.setModLfoPitchAmountCents(0.0f);
+    dut.setModLfoAmpAmount(0.0f);
+    dut.setModLfoFmAmount(0.0f);
+
+    auto a = renderNoteBuffer(ref, 60, 4096);
+    auto b = renderNoteBuffer(dut, 60, 4096);
+    for (int i = 0; i < a.getNumSamples(); ++i)
+        EXPECT_EQ(a.getSample(0, i), b.getSample(0, i)) << "sample " << i;
+}
+
+TEST(SubtractiveSynthEngine, InternalLfoCutoffModulationChangesOutput)
+{
+    SubtractiveSynthEngine off;
+    off.prepare(44100.0, 512);
+    SubtractiveSynthEngine on;
+    on.prepare(44100.0, 512);
+    on.setOsc1Wave(1);
+    on.setModLfoRateHz(5.0f);
+    on.setModLfoCutoffAmount(24.0f);
+
+    auto a = renderNoteBuffer(off, 60, 8192);
+    auto b = renderNoteBuffer(on, 60, 8192);
+    EXPECT_GT(maxAbsDiff(a, b), 0.001f);
+    EXPECT_GT(on.modLfoPhaseForTest(), 0.0f);
+}
+
+TEST(SubtractiveSynthEngine, InternalLfoFmModulationChangesOutput)
+{
+    SubtractiveSynthEngine off;
+    off.prepare(44100.0, 512);
+    SubtractiveSynthEngine on;
+    on.prepare(44100.0, 512);
+    on.setModLfoRateHz(8.0f);
+    on.setModLfoFmAmount(0.7f);
+
+    auto a = renderNoteBuffer(off, 60, 8192);
+    auto b = renderNoteBuffer(on, 60, 8192);
+    EXPECT_GT(maxAbsDiff(a, b), 0.001f);
+}

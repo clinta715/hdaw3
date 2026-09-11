@@ -287,6 +287,14 @@ public:
                 // slope 0 = 12 dB (default) / 1 = 24 dB lowpass cascade.
                 {25, "Osc2 FM",          0.0f,   0.0f,    1.0f },
                 {26, "Filter Slope",     0.0f,   0.0f,    1.0f },
+                // Internal SubSynth modulation LFO (one per slot). Destination
+                // amounts are the mod matrix: zero = disconnected/default.
+                {27, "LFO Wave",         0.0f,   0.0f,    3.0f },
+                {28, "LFO Rate",         0.5f,   0.01f,  40.0f },
+                {29, "LFO Cutoff Amt",   0.0f, -48.0f,   48.0f },
+                {30, "LFO Pitch Amt",    0.0f, -1200.0f, 1200.0f },
+                {31, "LFO Amp Amt",      0.0f,  -1.0f,    1.0f },
+                {32, "LFO FM Amt",       0.0f,  -1.0f,    1.0f },
             };
         return {};
     }
@@ -828,6 +836,12 @@ public:
                 if (internalParamValues.size() > 24) subSynth->setPolyphony(internalParamValues[24] >= 0.5f);
                 if (internalParamValues.size() > 25) subSynth->setOsc2FmAmount(internalParamValues[25]);
                 if (internalParamValues.size() > 26) subSynth->setFilterSlope24(internalParamValues[26] >= 0.5f);
+                if (internalParamValues.size() > 27) subSynth->setModLfoWave(juce::roundToInt(internalParamValues[27]));
+                if (internalParamValues.size() > 28) subSynth->setModLfoRateHz(internalParamValues[28]);
+                if (internalParamValues.size() > 29) subSynth->setModLfoCutoffAmount(internalParamValues[29]);
+                if (internalParamValues.size() > 30) subSynth->setModLfoPitchAmountCents(internalParamValues[30]);
+                if (internalParamValues.size() > 31) subSynth->setModLfoAmpAmount(internalParamValues[31]);
+                if (internalParamValues.size() > 32) subSynth->setModLfoFmAmount(internalParamValues[32]);
                 break;
             }
             case ActiveType::None:
@@ -1898,6 +1912,12 @@ private:
                     case 24: subSynth->setPolyphony(value >= 0.5f); break;
                     case 25: subSynth->setOsc2FmAmount(value); break;
                     case 26: subSynth->setFilterSlope24(value >= 0.5f); break;
+                    case 27: subSynth->setModLfoWave(juce::roundToInt(value)); break;
+                    case 28: subSynth->setModLfoRateHz(value); break;
+                    case 29: subSynth->setModLfoCutoffAmount(value); break;
+                    case 30: subSynth->setModLfoPitchAmountCents(value); break;
+                    case 31: subSynth->setModLfoAmpAmount(value); break;
+                    case 32: subSynth->setModLfoFmAmount(value); break;
                     default: return;
                 }
                 break;
