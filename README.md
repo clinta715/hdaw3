@@ -359,6 +359,36 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 
 ## Changelog
 
+### v0.33.0 — SubSynth modulation matrix + presets, plan/cell composition workflow, corpus melody bank, async MCP jobs
+
+- **Song plan + cells (plan/cell composition workflow).** Deterministic
+  skeleton, seeded content: a root `SONG_PLAN` ValueTree + section-typed
+  arranger regions (`set/get_song_plan`, kinds = `PsytranceSectionKind`),
+  Song Brief apply/export as engine state, and a role×section cell matrix
+  (phrase/rhythm/break/pattern/harvest sources) that fills exact section
+  windows in one undo unit with clip provenance
+  (`set_cell/fill_cells/reroll/remove_cell/get_clip_provenance`, MCP +
+  `composition.*` RPC). Section templates persist under
+  `AppData/HDAW/section-templates`. `generate_chopped_break` gained its
+  missing RPC route; `mix_report` accepts `fromPlan`.
+- **Compose tab replaces the generator modal.** Docked bottom-panel tab
+  (no more auto-close-on-generate) with a Song Plan panel: plan editor,
+  templates, cell matrix with style/pattern pickers, and **Check energy** —
+  `export.temporaryRender` + `audio.mixReport` render one RMS bar per plan
+  section (live e2e through the real offline pipeline).
+- **SubSynth modulation matrix + factory presets.** Internal LFO
+  (wave/rate + cutoff/pitch/amp/FM amounts, params 27–32) with osc2→osc1 FM
+  and 24 dB slope upgrades; six matrix-only factory presets applied
+  atomically (`apply_sub_synth_mod_preset` / FX Chain Mod button) —
+  `TrackFxRebuildRace.SubSynthModPreset*` covers live-processor restore.
+- **Corpus melody bank 87→166 phrases** (+12.5k scanned MIDI),
+  `CorpusArranger` melody wiring (`melodyCorpusPhraseProb`), HarmonyEngine
+  ostinato/dubb bass seeded style draws, MotifStitcher filters.
+- **Async MCP job pattern** — `McpJobs` + `poll_job`; `analyze_tuning`/`mix_report`
+  accept `wait:false`. `applyFxChain` now preserves instrument FX slots.
+- All composition MCP tools on the unified `{clipId, noteCount, seedUsed}`
+  JSON envelope. Full gtest suite 0 failed (1531/18-skip), 894 vitest.
+
 ### v0.32.0 — Export stem filter, RAVE import offset contract, RAVE deprecated
 
 - **`export_audio` `trackIds` stem filter actually filters now.** The field
