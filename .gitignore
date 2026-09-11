@@ -210,3 +210,10 @@ tools/.ruff_cache/
 __pycache__/
 .pi-web/
 
+# Pi/Fabric local runtime state (project-local extensions/skills may be tracked)
+.pi/fabric/
+.pi/webui-logs/
+
+# QMD ledger runtime files (config may be tracked)
+ledger/
+
