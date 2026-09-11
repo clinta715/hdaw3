@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act, waitFor } from "@testing-library/react";
-import PhraseGeneratorDialog from "./PhraseGeneratorDialog";
-import { rpc } from "../rpc";
-import { useProjectStore } from "../store/projectStore";
-import type { ProjectSnapshot } from "../rpc/types";
+import ComposeTab from "./ComposeTab";
+import { rpc } from "../../rpc";
+import { useProjectStore } from "../../store/projectStore";
+import type { ProjectSnapshot } from "../../rpc/types";
 
-vi.mock("../rpc", () => ({ rpc: { call: vi.fn() } }));
+vi.mock("../../rpc", () => ({ rpc: { call: vi.fn() } }));
 
 const mockedCall = rpc.call as unknown as ReturnType<typeof vi.fn>;
 
@@ -55,7 +55,14 @@ const MINIMAL_SNAPSHOT: ProjectSnapshot = {
   scaleMode: 0,
 };
 
-describe("PhraseGeneratorDialog rhythm mode", () => {
+describe("ComposeTab rhythm mode", () => {
+  it("shows the Song Plan panel and hides the generator footer in mode 6", async () => {
+    render(<ComposeTab />);
+    await flushRead();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "6" } });
+    expect(screen.getByTestId("song-plan-panel")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     mockedCall.mockReset();
     mockedCall.mockImplementation(async (method: string) => {
@@ -82,13 +89,13 @@ describe("PhraseGeneratorDialog rhythm mode", () => {
   });
 
   it("shows the Rhythm mode option and its controls", async () => {
-    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    render(<ComposeTab />);
     await flushRead();
     expect(screen.getByRole("option", { name: "Rhythm" })).toBeInTheDocument();
   });
 
   it("sends a single generateRhythmPattern call with pulse params when generating", async () => {
-    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    render(<ComposeTab />);
     await flushRead();
     fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "4" } });
     fireEvent.change(screen.getByPlaceholderText('E.g. "E(3,8,1) [x-]x2"'), {
@@ -108,7 +115,7 @@ describe("PhraseGeneratorDialog rhythm mode", () => {
   });
 
   it("sends a corpus phrase id when a corpus phrase is selected", async () => {
-    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    render(<ComposeTab />);
     await flushRead();
     fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "4" } });
     fireEvent.change(screen.getByRole("combobox", { name: "Corpus Phrase" }), {
@@ -125,7 +132,7 @@ describe("PhraseGeneratorDialog rhythm mode", () => {
   });
 
   it("sends an empty phrase when no corpus phrase is selected (off)", async () => {
-    render(<PhraseGeneratorDialog onClose={vi.fn()} />);
+    render(<ComposeTab />);
     await flushRead();
     fireEvent.change(screen.getByRole("combobox", { name: "Mode" }), { target: { value: "4" } });
     mockedCall.mockResolvedValue({ clipId: 7, noteCount: 6 });

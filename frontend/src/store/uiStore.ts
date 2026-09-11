@@ -13,6 +13,7 @@ const SNAP_TO_EVENTS_KEY = "hdaw_snapToEvents";
 
 export const BOTTOM_TAB_IDS = [
   "mixer",
+  "compose",
   "piano-roll",
   "automation",
   "fx",
@@ -34,7 +35,7 @@ export type BottomTabId = (typeof BOTTOM_TAB_IDS)[number];
 export const DEFAULT_BOTTOM_TAB = "mixer";
 export const DEFAULT_VIEW_MODE = "arrange" as const;
 
-export const TAB_DEFAULT_HEIGHTS: Partial<Record<BottomTabId, number>> = { "piano-roll": 300 };
+export const TAB_DEFAULT_HEIGHTS: Partial<Record<BottomTabId, number>> = { "piano-roll": 300, "compose": 380 };
 
 function loadBottomPanelHeight(): number {
   try {
@@ -139,7 +140,6 @@ interface UiState {
   snapDivision: number;
   snapGridOffset: boolean;
   snapToEvents: boolean;
-  showPhraseGenerator: boolean;
   bottomPanelHeight: number;
   bottomPanelHeights: Record<string, number>;
   viewMode: "arrange" | "session";
@@ -158,7 +158,6 @@ interface UiState {
   setSnapDivision: (division: number) => void;
   setSnapGridOffset: (enabled: boolean) => void;
   setSnapToEvents: (enabled: boolean) => void;
-  setShowPhraseGenerator: (show: boolean) => void;
   setBottomPanelHeight: (h: number) => void;
   setBottomPanelHeightForTab: (tab: string, h: number) => void;
   effectiveBottomPanelHeight: (tab: string) => number;
@@ -178,7 +177,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   snapDivision: loadSnapDivision(),
   snapGridOffset: loadSnapGridOffset(),
   snapToEvents: loadSnapToEvents(),
-  showPhraseGenerator: false,
   bottomPanelHeight: loadBottomPanelHeight(),
   bottomPanelHeights: loadBottomPanelHeights(),
   viewMode: loadViewMode(),
@@ -250,7 +248,6 @@ export const useUiStore = create<UiState>((set, get) => ({
     try { localStorage.setItem(SNAP_TO_EVENTS_KEY, String(enabled)); } catch {}
     set({ snapToEvents: enabled });
   },
-  setShowPhraseGenerator: (show) => set({ showPhraseGenerator: show }),
   setBottomPanelHeight: (h) => {
     try {
       localStorage.setItem(BOTTOM_PANEL_H_KEY, String(h));

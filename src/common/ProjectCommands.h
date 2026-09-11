@@ -206,6 +206,14 @@ public:
     // out-of-range index) return the input value unchanged.
     virtual float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                                  float value) = 0;
+    // Apply a named factory preset to a sub_synth slot's modulation params
+    // (27..32: LFO wave/rate/cutoff/pitch/amp/FM amounts) in ONE undoable,
+    // clamped batch. All other params are untouched. Returns false (with
+    // `error` set) when the slot is missing, is not a sub_synth, or the
+    // preset id is unknown — nothing is written in that case.
+    virtual bool applySubSynthModPreset(int trackIndex, int slotIndex,
+                                        const std::string& presetId,
+                                        std::string* error = nullptr) = 0;
     // Load a raw DX7 patch (base64 of the 156-byte VCED layout) into an
     // "fm_synth" FX slot. Writes the patch to the slot's ValueTree (fmPatchData)
     // so tree-copy renders (export/gain-stage/audition) and save/load hear it,
@@ -216,6 +224,116 @@ public:
     virtual void reorderFxSlots(int trackIndex, int fromSlot, int toSlot) = 0;
     // Restart a crashed isolated plugin FX slot via the crash-recovery manager.
     virtual void respawnFxSlot(int trackIndex, int slotIndex) = 0;
+
+    // ── Song plan (deterministic skeleton + brief interchange) ──
+    // The plan is the arrangement-level contract: sections (name + kind +
+    // length in bars) plus key/tempo/style/seed metadata. setSongPlan syncs
+    // section-typed arranger regions (regionName == section name) and stores
+    // the plan under the root SONG_PLAN node; undoable as ONE unit. Sections
+    // are 4/4: startBeat = cumulative bars * 4.
+    struct SongPlanSection {
+        std::string name;
+        std::string kind;        // PsytranceSectionKind name (case-insensitive)
+        int bars = 8;
+        double startBeat = 0.0;
+        double endBeat = 0.0;
+    };
+    struct SongPlanData {
+        double bpm = 120.0;
+        int keyRoot = 0;
+        int scaleMode = 1;
+        std::string style;
+        uint64_t seed = 0;
+        int totalBars = 0;
+        std::vector<SongPlanSection> sections;  // empty => no plan set
+    };
+    struct SongPlanResult {
+        bool ok = false;
+        std::string error;
+        SongPlanData plan;                       // resolved echo
+        int regionsCreated = 0;
+        int regionsUpdated = 0;
+        std::vector<std::string> warnings;       // e.g. untouched extra regions
+    };
+    virtual SongPlanResult setSongPlan(const SongPlanData& plan) = 0;
+    virtual SongPlanData getSongPlan() const = 0;
+    // Section templates: JSON files under AppData/HDAW/section-templates.
+    // save writes the CURRENT plan under the given name; load returns the
+    // stored plan WITHOUT applying it.
+    virtual bool saveSectionTemplate(const std::string& name, std::string* error = nullptr) = 0;
+    virtual SongPlanData loadSectionTemplate(const std::string& name, std::string* error = nullptr) = 0;
+    virtual std::vector<std::string> listSectionTemplates() const = 0;
+    // Brief interchange: briefJson is the psy-song-session Song Brief
+    // (bpm/keyRoot/scaleMode/style/seed/totalBars/sections[{name,type,bars}]).
+    // Brief type aliases (peak/outro/drop) map onto canonical kinds; the raw
+    // brief is stored so export round-trips verbatim when the plan was
+    // brief-applied, else a brief-shaped document is synthesized.
+    virtual SongPlanResult applySongBrief(const std::string& briefJson) = 0;
+    virtual std::string exportSongBrief(std::string* error = nullptr) const = 0;
+
+    // ── Cells: role×section content recipes (plan/cell workflow) ──
+    // A cell binds one generator source to one plan section. fillCells
+    // executes recipes in ONE undo transaction, writing a MIDI clip that
+    // spans exactly the section window, plus provenance properties on the
+    // clip. sourceKind ∈ phrase | rhythm | break | pattern | harvest.
+    // paramsJson is source-specific ("{}"/empty = defaults):
+    //   phrase:  {style, lengthBeats?, density?, noteDuration?, scaleRoot?,
+    //             scaleMode?, lowNote?, highNote?, minVelocity?, maxVelocity?,
+    //             styleParams?: {ratchetChance?, restProbability?,
+    //                            responseVariation?, swingPercent?,
+    //                            rhythmGrid?, stateCount?}}
+    //   rhythm:  {grid?, bars?, pulseA?, pulseB?, rotationA?, rotationB?,
+    //             pitchA?, pitchB?, velocityA?, velocityB?, dsl?, dslPitch?,
+    //             dslVelocity?}
+    //   break:   {slotIndex?, style?, grid?, dropFirst?, ghostFills?,
+    //             velocityMin?, velocityMax?}  (needs a sliced sampler clip)
+    //   pattern: {patternId}  (PatternLibrary preset -> phrase generation)
+    //   harvest: {notes:[{pitch, velocity, startBeat, durationBeats}]}
+    // seed 0 => derived deterministically from plan seed + section + role.
+    struct CellRecipe {
+        std::string section;
+        std::string role;
+        int trackId = -1;
+        std::string sourceKind;
+        std::string paramsJson;
+        uint64_t seed = 0;
+        bool locked = false;
+        int lastClipId = -1;   // reused on re-fill (content replaced)
+        uint64_t lastSeed = 0;
+    };
+    struct CellFillResult {
+        bool ok = false;
+        std::string error;
+        std::string section;
+        std::string role;
+        int trackId = -1;
+        int clipId = -1;
+        int noteCount = 0;
+        uint64_t seedUsed = 0;
+    };
+    struct CellFillBatchResult {
+        bool ok = false;                // false only on batch-level failure
+        std::string error;
+        int filled = 0;
+        int skippedLocked = 0;
+        int failed = 0;
+        std::vector<CellFillResult> cells;
+    };
+    // Upsert by (section, role). Validates against the plan (Gate 9):
+    // section exists, trackId >= 0, known sourceKind, params parse.
+    virtual bool setCellRecipe(const CellRecipe& recipe, std::string* error = nullptr) = 0;
+    virtual std::vector<CellRecipe> getCells() const = 0;
+    virtual bool removeCellRecipe(const std::string& section,
+                                  const std::string& role) = 0;
+    // mode: "all" (every unlocked cell) | "unfilled" (never-filled, unlocked)
+    virtual CellFillBatchResult fillCells(const std::string& mode) = 0;
+    // Bump seed to lastSeed+1 (or derived+1) on matching unlocked cells,
+    // persist it, and re-fill. Empty section/role = match all.
+    virtual CellFillBatchResult rerollCells(const std::string& section,
+                                            const std::string& role) = 0;
+    // JSON: {found, clipId, tool, source, seed, params}. found=false when
+    // the clip carries no provenance; empty string when the clip is missing.
+    virtual std::string getClipProvenance(int clipId) const = 0;
     // FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2). exportFxChain
     // snapshots a track's chain into an HDAW::ChainPreset. Captures live plugin
     // state into the tree (nullptr undo, like ProjectSerializer) before reading;

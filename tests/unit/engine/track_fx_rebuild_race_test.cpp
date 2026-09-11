@@ -505,6 +505,81 @@ TEST(TrackFxRebuildRace, SubSynthVirusUpgradesSurviveRebuild)
     EXPECT_FLOAT_EQ(sub->modLfoFmAmountForTest(), 0.25f);
 }
 
+// Matrix-only factory presets: one undo unit rewrites ONLY params 27..32,
+// the LIVE processor hears them, and the values survive a full FX-chain
+// rebuild (Gate 1/6/10 — ReadModel-only assertions are not sufficient).
+TEST(TrackFxRebuildRace, SubSynthModPresetAppliesAtomicallyAndSurvivesRebuild)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    auto& cmds = engine.getProjectCommands();
+    cmds.addFxSlot(0, "sub_synth", 0, "");
+
+    auto slotTree = [&]() {
+        return engine.getProjectModel().getTrackListTree()
+            .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(0);
+    };
+
+    // Baseline writes in params 0..26 that the preset must not touch.
+    cmds.setFxSlotParam(0, 0, 0, 2.0f);
+    cmds.setFxSlotParam(0, 0, 7, 1200.0f);
+    cmds.setFxSlotParam(0, 0, 15, 1.0f);
+    cmds.setFxSlotParam(0, 0, 16, 0.25f);
+
+    // Gate 9: unknown id / missing slot / wrong type are errors, no mutation.
+    std::string err;
+    EXPECT_FALSE(cmds.applySubSynthModPreset(0, 0, "nope", &err));
+    EXPECT_FALSE(err.empty());
+    EXPECT_FALSE(cmds.applySubSynthModPreset(0, 99, "vibrato", &err));
+    cmds.addFxSlot(0, "eq", 1, "");
+    EXPECT_FALSE(cmds.applySubSynthModPreset(0, 1, "vibrato", &err));
+    EXPECT_FALSE(slotTree().hasProperty(juce::Identifier("param_27")));
+
+    EXPECT_TRUE(cmds.applySubSynthModPreset(0, 0, "animated_sweep", &err));
+
+    // Tree contract: exactly the six mod params changed, 0..26 untouched.
+    auto tree = slotTree();
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_0"))), 2.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_7"))), 1200.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_15"))), 1.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_16"))), 0.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_27"))), 3.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_28"))), 0.25);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_29"))), 24.0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_30"))), 7.0);
+    // 0.15/0.2 round-trip through float — assert with a float-scale epsilon.
+    EXPECT_NEAR(static_cast<double>(tree.getProperty(juce::Identifier("param_31"))), 0.15, 1e-6);
+    EXPECT_NEAR(static_cast<double>(tree.getProperty(juce::Identifier("param_32"))), 0.2, 1e-6);
+
+    // One undo reverts the whole preset (single transaction).
+    engine.getProjectModel().getUndoManager().undo();
+    tree = slotTree();
+    EXPECT_FALSE(tree.hasProperty(juce::Identifier("param_27")));
+    EXPECT_DOUBLE_EQ(static_cast<double>(tree.getProperty(juce::Identifier("param_0"))), 2.0);
+
+    // Re-apply and prove the LIVE processor carries the values...
+    EXPECT_TRUE(cmds.applySubSynthModPreset(0, 0, "animated_sweep", &err));
+    auto* track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    auto* sub = track->getFXChain().at(0)->subSynthEngineForTest();
+    ASSERT_NE(sub, nullptr);
+    EXPECT_FLOAT_EQ(sub->modLfoCutoffAmountForTest(), 24.0f);
+    EXPECT_FLOAT_EQ(sub->modLfoFmAmountForTest(), 0.2f);
+
+    // ...and that a full rebuild restores the same LIVE state from the tree.
+    auto fxChainTree = engine.getProjectModel().getTrackListTree()
+        .getChild(0).getChildWithName(IDs::FX_CHAIN);
+    ASSERT_TRUE(fxChainTree.isValid());
+    track->rebuildFXChain(fxChainTree);
+    track = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(track, nullptr);
+    sub = track->getFXChain().at(0)->subSynthEngineForTest();
+    ASSERT_NE(sub, nullptr);
+    EXPECT_FLOAT_EQ(sub->modLfoCutoffAmountForTest(), 24.0f);
+    EXPECT_FLOAT_EQ(sub->modLfoFmAmountForTest(), 0.2f);
+}
+
 // Gate 6: the patch must persist through a save/load round-trip — saveProject
 // writes the param_N props, loadProject restores them, and the rebuilt live
 // processor plays the patch (not just the ReadModel).

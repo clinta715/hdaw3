@@ -60,6 +60,10 @@ const FM_SYNTH_SLOT: FxSlotSnapshot[] = [
   { slotIndex: 0, fxType: "fm_synth", pluginId: "", pluginName: "FM Synth", pluginFormat: "", bypassed: false, paramCount: 5 },
 ];
 
+const SUB_SYNTH_SLOT: FxSlotSnapshot[] = [
+  { slotIndex: 0, fxType: "sub_synth", pluginId: "", pluginName: "Sub Synth", pluginFormat: "", bypassed: false, paramCount: 33 },
+];
+
 describe("FXChain", () => {
   beforeEach(() => {
     mockedCall.mockReset();
@@ -152,6 +156,49 @@ describe("FXChain", () => {
 
       expect(screen.getAllByText("Presets").length).toBe(1);
       expect(screen.getAllByText(/A\/B/).length).toBe(1);
+    });
+  });
+
+  describe("sub_synth modulation presets", () => {
+    it("hides the Mod presets control for non-sub_synth slots", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      mockedCall.mockResolvedValue(TWO_SLOTS);
+      render(<FXChain />);
+      await flushRead();
+      expect(screen.queryByTitle("SubSynth modulation presets")).not.toBeInTheDocument();
+    });
+
+    it("shows all six modulation presets for a sub_synth slot", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      mockedCall.mockResolvedValue(SUB_SYNTH_SLOT);
+      const user = userEvent.setup();
+      render(<FXChain />);
+      await flushRead();
+
+      await user.click(screen.getByTitle("SubSynth modulation presets"));
+
+      for (const label of ["Off", "Slow Filter Drift", "Vibrato", "Tremolo", "FM Motion", "Animated Sweep"]) {
+        expect(screen.getByText(label)).toBeInTheDocument();
+      }
+    });
+
+    it("applies a modulation preset with exactly one RPC", async () => {
+      useUiStore.setState({ selectedTrackIndex: 0 });
+      mockedCall.mockResolvedValue(SUB_SYNTH_SLOT);
+      const user = userEvent.setup();
+      render(<FXChain />);
+      await flushRead();
+
+      await user.click(screen.getByTitle("SubSynth modulation presets"));
+      await user.click(screen.getByText("Vibrato"));
+
+      await waitFor(() => expect(mockedCall).toHaveBeenCalledWith("project.applySubSynthModPreset", {
+        trackIndex: 0,
+        slotIndex: 0,
+        presetId: "vibrato",
+      }));
+      expect(mockedCall.mock.calls.filter(([m]) => m === "project.applySubSynthModPreset")).toHaveLength(1);
+      expect(mockedCall.mock.calls.filter(([m]) => m === "project.setFxSlotParam")).toHaveLength(0);
     });
   });
 

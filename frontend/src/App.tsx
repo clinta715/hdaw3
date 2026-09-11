@@ -26,6 +26,7 @@ import TempoEditor from "./components/TempoEditor";
 import PresetBrowser from "./components/PresetBrowser";
 import NeuralPanel from "./components/NeuralPanel";
 import BottomTabs from "./components/BottomTabs";
+import ComposeTab from "./components/compose/ComposeTab";
 import StatusBar from "./components/StatusBar";
 import FileBrowser from "./components/FileBrowser";
 import Toaster from "./components/Toaster";
@@ -38,6 +39,7 @@ const SAudioClipEditor = withHookSentinel(AudioClipEditor, "AudioClipEditor");
 const SPianoRoll = withHookSentinel(PianoRoll, "PianoRoll");
 const SMixer = withHookSentinel(Mixer, "Mixer");
 const SBottomTabs = withHookSentinel(BottomTabs, "BottomTabs");
+const SComposeTab = withHookSentinel(ComposeTab, "ComposeTab");
 const SStepSequencer = withHookSentinel(StepSequencer, "StepSequencer");
 const SAutomationPanel = withHookSentinel(AutomationPanel, "AutomationPanel");
 const SFXChain = withHookSentinel(FXChain, "FXChain");
@@ -215,6 +217,7 @@ function App() {
 
   const bottomTabs = useMemo(() => [
     { id: "mixer", label: "Mixer", content: <SMixer /> },
+    { id: "compose", label: "Compose", content: <SComposeTab /> },
     { id: "piano-roll", label: "Piano Roll", content: <SPianoRoll /> },
     { id: "automation", label: "Automation", content: <SAutomationPanel rpc={rpc} /> },
     { id: "fx", label: "FX Chain", content: <SFXChain /> },

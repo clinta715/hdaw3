@@ -1771,10 +1771,10 @@ TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {
     });
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
 
-    // Verify the clip was created with the right duration
+    // Verify the clip was created with the right duration (JSON envelope)
     QString txt = text(r);
-    EXPECT_TRUE(txt.contains("clipId="));
-    EXPECT_TRUE(txt.contains("notes="));
+    EXPECT_TRUE(txt.contains("\"clipId\""));
+    EXPECT_TRUE(txt.contains("\"noteCount\""));
 }
 
 TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhrase) {
@@ -1784,8 +1784,8 @@ TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhrase) {
     });
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
     QString txt = text(r);
-    EXPECT_TRUE(txt.contains("clipId="));
-    EXPECT_TRUE(txt.contains("notes=7")) << txt.toStdString();
+    EXPECT_TRUE(txt.contains("\"clipId\""));
+    EXPECT_TRUE(txt.contains("\"noteCount\":7")) << txt.toStdString();
 }
 
 TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhraseByRole) {
@@ -1794,7 +1794,7 @@ TEST_F(McpCoverageTest, GenerateRhythmPatternCorpusPhraseByRole) {
         {"trackId", 0}, {"phraseRole", "clap"}, {"phraseIndex", 0}
     });
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
-    EXPECT_TRUE(text(r).contains("notes=1")) << text(r).toStdString();
+    EXPECT_TRUE(text(r).contains("\"noteCount\":1")) << text(r).toStdString();
 }
 
 TEST_F(McpCoverageTest, GenerateRhythmPatternUnknownPhraseErrors) {

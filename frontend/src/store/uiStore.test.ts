@@ -48,7 +48,6 @@ describe("uiStore", () => {
       snapDivision: 1,
       snapGridOffset: false,
       snapToEvents: false,
-      showPhraseGenerator: false,
       bottomPanelHeights: {},
       viewMode: "arrange",
       statusHint: null,

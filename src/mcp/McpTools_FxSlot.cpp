@@ -412,6 +412,26 @@ s.registerTool({"set_internal_fx_param",
             return McpToolResult::text("ok");
         }});
 
+s.registerTool({"apply_sub_synth_mod_preset",
+        "Apply a named factory preset to a sub_synth slot's internal modulation LFO (params 27-32) in ONE atomic, undoable step — the mod matrix moves together and every other synth param is untouched. presetId one of: off, slow_filter_drift, vibrato, tremolo, fm_motion, animated_sweep.",
+        objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+                  {"slotIndex", QJsonObject{{"type","integer"}}},
+                  {"presetId",  QJsonObject{{"type","string"},
+                      {"enum", QJsonArray{"off","slow_filter_drift","vibrato","tremolo","fm_motion","animated_sweep"}}}}},
+                   {"trackId","slotIndex","presetId"}),
+        "fx",
+        [e](const QJsonObject& a) -> McpToolResult {
+            int ti = a.value("trackId").toInt();
+            int si = a.value("slotIndex").toInt();
+            const std::string presetId = a.value("presetId").toString().toStdString();
+            std::string err;
+            if (!e->getProjectCommands().applySubSynthModPreset(ti, si, presetId, &err))
+                return McpToolResult::text(QString::fromStdString(
+                    err.empty() ? "apply_sub_synth_mod_preset failed" : err), true);
+            return McpToolResult::text(QString("ok: preset '%1' applied (params 27-32)")
+                .arg(QString::fromStdString(presetId)));
+        }});
+
 s.registerTool({"get_internal_fx_param",
         "Read back the CURRENT value of an internal (non-plugin) FX slot's parameters in REAL units — the verification complement to set_internal_fx_param. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Returns {params:[{index,name,value,defaultValue,minValue,maxValue}]}; untouched params report their default value. Reads the project ValueTree (source of truth — no render, no DSP access, read-only).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},

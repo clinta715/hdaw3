@@ -127,6 +127,7 @@ add_library(HDAW_lib STATIC
     src/engine/AudioEngineCommands_Composition.cpp
     src/engine/AudioEngineCommands_Markers.cpp
     src/engine/AudioEngineCommands_Arranger.cpp
+    src/engine/AudioEngineCommands_Song.cpp
     src/engine/AudioEngineCommands_Tracks.cpp
     src/engine/AudioEngineCommands_Session.cpp
     src/engine/SessionManager.cpp
@@ -232,6 +233,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_CompositionInstrument.cpp
     src/mcp/McpTools_CompositionPattern.cpp
     src/mcp/McpTools_Arranger.cpp
+    src/mcp/McpTools_SongPlan.cpp
     src/mcp/McpTools_ProjectSaveLoad.cpp
     src/mcp/McpTools_Transport.cpp
     src/mcp/McpTools_Audio.cpp

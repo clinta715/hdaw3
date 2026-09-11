@@ -63,7 +63,8 @@ export function useKeyboardShortcuts() {
       // UI — Ctrl+Shift+G: phrase generator
       if (ctrl && shift && e.code === "KeyG") {
         e.preventDefault();
-        useUiStore.getState().setShowPhraseGenerator(true);
+        const ui = useUiStore.getState();
+        ui.selectBottomTab(ui.activeBottomTab === "compose" ? "mixer" : "compose");
       }
 
       // Edit — Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo.

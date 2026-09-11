@@ -60,7 +60,8 @@ void registerGenerateTools(McpServer& s, AudioEngine* e)
     };
 
     auto generateIntoClip = [e](int trackId, double start, double length,
-                                const std::vector<PhraseGenerator::GeneratedNote>& notes) -> McpToolResult {
+                                const std::vector<PhraseGenerator::GeneratedNote>& notes,
+                                uint64_t seed = 0) -> McpToolResult {
         auto& m = e->getProjectModel(); auto& um = m.getUndoManager();
         auto tl = m.getTrackListTree();
         if (trackId < 0 || trackId >= tl.getNumChildren())
@@ -75,7 +76,11 @@ void registerGenerateTools(McpServer& s, AudioEngine* e)
             nl.addChild(m.createMidiNote(gn.noteNumber, static_cast<float>(gn.velocity) / 127.0f, gn.startBeat, gn.durationBeats), -1, nullptr);
         int cid = static_cast<int>(c.getProperty(IDs::clipID));
         tl.getChild(trackId).getChildWithName(IDs::CLIP_LIST).addChild(c, -1, &um);
-        return McpToolResult::text(QString("clipId=%1 notes=%2").arg(cid).arg((int) notes.size()));
+        // Unified composition envelope (Phase D deferral): mirrors the RPC
+        // {clipId, noteCount} shape and echoes the seed when one was used.
+        QJsonObject out{ { "clipId", cid }, { "noteCount", static_cast<int>(notes.size()) } };
+        if (seed) out["seedUsed"] = (double) (long long) seed;
+        return McpToolResult::text(QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact)));
     };
 
 s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the given track.",
@@ -196,7 +201,7 @@ s.registerTool({"generate_phrase", "Generate a phrase into a new clip on the giv
                 return McpToolResult::text("phrase generator produced 0 notes — check scale/range settings", true);
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0),
-                          a.value("length").toDouble(), notes);
+                          a.value("length").toDouble(), notes, p.seed);
         }});
 
 s.registerTool({"generate_chord", "Generate a chord (or arpeggio) into a new clip.",
@@ -236,7 +241,7 @@ s.registerTool({"generate_chord", "Generate a chord (or arpeggio) into a new cli
             auto notes = PhraseGenerator::generateChord(a.value("rootPitch").toInt(), p);
             return helper(a.value("trackId").toInt(),
                           a.value("start").toDouble(0.0),
-                          a.value("length").toDouble(), notes);
+                          a.value("length").toDouble(), notes, p.seed);
         }});
 
 s.registerTool({"generate_progression", "Generate a chord progression into a new clip.",
@@ -277,7 +282,7 @@ s.registerTool({"generate_progression", "Generate a chord progression into a new
             int patIdx = std::clamp(p.patternIndex, 0, (int)pats.size() - 1);
             double total = p.beatsPerChord * pats[patIdx].chords.size();
             return helper(a.value("trackId").toInt(),
-                          a.value("start").toDouble(0.0), total, notes);
+                          a.value("start").toDouble(0.0), total, notes, p.seed);
         }});
 
 s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pattern into a new MIDI clip: two euclidean pulses (polyrhythm, e.g. 4-over-3) plus an optional rhythm-DSL voice ('x' '-' '[..]xN' 'E(k,n[,rot])'). Pure function of its params (no seed).",
@@ -529,6 +534,9 @@ s.registerTool({"generate_rhythm_pattern", "Generate a drum/percussion rhythm pa
         }});
 
 s.registerTool({"generate_psytrance",
+        "SKETCH TOOL: whole-song generation whose section plan evolves probabilistically. "
+        "For a DETERMINISTIC pinned structure use the plan/cell workflow instead: "
+        "apply_song_brief or set_song_plan, then set_cell + fill_cells (+ reroll for variation).\n        "
         "Compose the FULL psytrance score (guide §4 grammar) onto existing palette tracks in ONE call: key-disciplined notes for kick (4-on-floor), offbeat rolling bass, offbeat hats + 16th rolls, chord-tone arp with +12 glints, beat-2 stabs, whole-arrangement pads, breakdown melody, and the riser/downlifter schedule into the drops. Writes one clip per mapped role at beat 0 spanning the arrangement (note starts are clip-local = absolute beats); one undo unit. NOTES ONLY — load samples and add FX/LFO/automation as separate steps. sections = [{name, start, end}] in beats, names in {intro, build, mainA, mini, mainB, breakdown, finale} (case/space/dash-insensitive; unknown = full-stack like mainA). paletteTrackIds maps roles {kick,bass,hat,arp,stab,pad,clap,riser,down} → trackId; unmapped roles are reported in 'skipped' (clap defaults to the hat track). Deterministic for a given seed (density gates the extra 16th rolls / extra stabs). Returns {clips:[{role,trackId,clipId,noteCount}], skipped, totalBeats, notesTotal, notesSkipped} — compact, no note payload.",
         objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},
                       {"description","role name -> track index (kick,bass,hat,arp,stab,pad,clap,riser,down)"},
@@ -590,10 +598,13 @@ s.registerTool({"generate_psytrance",
                             {"skipped", skipped},
                             {"totalBeats", r.totalBeats},
                             {"notesTotal", r.notesTotal},
-                            {"notesSkipped", r.notesSkipped}}).toJson(QJsonDocument::Compact)));
+                            {"notesSkipped", r.notesSkipped},
+                            {"seedUsed", (double) (long long) p.seed}}).toJson(QJsonDocument::Compact)));
         }});
 
 s.registerTool({"generate_arrangement_corpus",
+        "SKETCH TOOL: corpus-sampled arrangement (structure itself is sampled). For a pinned "
+        "deterministic structure use apply_song_brief/set_song_plan + set_cell/fill_cells.\n        "
         "Compose an arrangement sampled from the measured full-song corpus (n=533 trance/psy tracks; see compositions/psytrance_corpus_fulltracks.tsv). CORPUS-SAMPLED, not Markov: one seeded draw per choice-axis (length mode, kick intro, const-bass, late novelty layer, breakdown) from the measured distributions, then a deterministic section plan (intro/build/drop/minibreak/build2/dropB/outro). Pitched notes come from the same harmony engine as the Markov generator; drums/fx are pattern writers. Keeps-alongside (does not replace) generate_psytrance_markov. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index (kick,bass,hat,snare,clap,rim,arp,stab,pad,riser,down,lead); unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, plan:{bars,sections:[{name,barStart,bars,density}],flags:{lengthMode,introMode,constBass,lateNovelty,breakdown,noveltyRole}}} — compact, no note payloads. Optional axis overrides: bars, lengthMode (short|mid|extended), introMode (fourOnFloor|shortIntro|midIntro|longIntro), constBass, lateNovelty, breakdown (bool), noveltyRole (lead|chord|arp2|fx), keyRoot, scaleMode, melodyCorpusPhraseProb (default 0.35), progressionA/B.",
         objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},{"description","role name -> track index"},
                       {"additionalProperties", QJsonObject{{"type","integer"}}}}},
@@ -666,6 +677,9 @@ s.registerTool({"generate_arrangement_corpus",
         }});
 
 s.registerTool({"generate_psytrance_markov",
+        "Markov evolution engine. Without explicit 'sections' the ARRANGEMENT drifts "
+        "(sketch tool). With explicit sections + fixed key/progressions it is usable as a "
+        "per-window content source; for full plan/cell control use set_song_plan + set_cell.\n        "
         "Compose a psytrance arrangement INCREMENTALLY (guide §4B): a pool of role layers (kick,bass,hat,snare,rim,arp,stab,pad,clap) grows and changes 2 bars at a time under a seeded Markov chain. Actions: Keep, AddLayer, RemoveLayer, SwapPattern, FxHit, Breakbeat (toggles the CURRENT theme's kick broken flag), FilterSweep (filterCutoff automation point), RhythmVariant (rotates the percussive THEME one step — ALL voices + kick flag move together; targetRole \"theme\"), ArpVariant, NoteLengthVariant (bass/arp/stab/pad gate-length changes), periodic KeyChange (everyBars, whole scale degrees). Global active-layer count stays within [minTracks,maxTracks] (maxTracks <= 9); percussive roles {kick,hat,clap,snare,rim} stay within [minPercTracks,maxPercTracks] (maxPercTracks <= 5). A slow section-energy tier (sparse/build/peak/breakdown; sectionCycleBars is the base of a seeded jittered schedule, so build-ups/breakdowns drift in time yet always arrive — a state never outstays the base cycle and section changes are always audible) biases the fast weights, and a staleness ramp pushes swap/remove when nothing structural happened recently. Age-biased replacement: layers running longest are replaced first; bass and kick hold >= 8 bars; melodic add/remove only on 4-bar boundaries. Floor canon: bass and kick are only removed during breakdown sections (the tension device) and are preferentially re-added at the drop (transition into build); with the section tier off (sectionCycleBars=0) they are never removed. Three-group element ontology: CORE (arp/stab/pad/bass — persistent tonal identity, varied by synth tweaks), PERC (kick/hat/clap — themed pattern sets) and FX (riser/down — composed texture); kick+bass are the protected floor subset of CORE. Volume fade-in/out automation is written to REAL volume lanes for non-floor layers (core 4 bars in, perc 2 bars in, 2 bars out; floor roles enter/leave hard-edged — no fades). Percussive THEMES: the groove is one coordinated set of 16-step velocity grids for hat/snare/rim plus a kick broken flag — snare (pitch 38) leans ghost/soft with an optional 2/4 backbeat accent, rim (37) stays sparse, hats (44) run denser; clap (42) stays the canonical theme-independent 2/4 backbeat. Theme 0 is the canonical opener (offbeat-8th hats, silent snare/rim, straight kick); the theme SET (2-3 themes) is derived once at generation start by seeding the euclidean RhythmPatternGenerator from the master seed. A theme must hold >= 32 bars before RhythmVariant rotates to the next (themeAge resets on rotation only); Breakbeat needs >= 32 bars since the last kick-pattern event (Breakbeat OR rotation). automationsSkipped reports volume-fade entries that could not be written (unmapped role, out-of-range track, or Volume-lane conflict); a disabled (fader-authoritative) Volume lane is re-enabled so generated fades play. filterCutoff points remain advisory — apply them via set_automation_points. Deterministic for a given seed. Writes one clip per produced role at beat 0 spanning totalBars*4 beats (one undo unit). paletteTrackIds maps roles -> track index; unmapped roles are reported in 'skipped'. Returns {clips, skipped, totalBeats, notesTotal, notesSkipped, stepsCount, stepsLast, automationsCount, automationsSkipped} — steps summarized (count + last entries) to keep output compact. Optional explicit sections script: an array of {type, bars, minTracks?, maxTracks?, minPercTracks?, maxPercTracks?} (type sparse|build|peak|breakdown, aliases intro/outro->sparse, drop/climax->peak; bars even 2..256) that overrides the seeded section schedule — each section resolves its own layer bounds from the spec overrides or the per-type budget, and the active count is gently biased toward the section's target layer count.",
         objSchema({{"paletteTrackIds", QJsonObject{{"type","object"},
                       {"description","role name -> track index (kick,bass,hat,snare,rim,arp,stab,pad,clap,riser,down)"},

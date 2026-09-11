@@ -184,6 +184,32 @@ public:
     void setFxSlotBypassed(int trackIndex, int slotIndex, bool bypassed) override;
     float setFxSlotParam(int trackIndex, int slotIndex, int paramIndex,
                          float value) override;
+    /// Matrix-only factory presets for the sub_synth modulation LFO (params
+    /// 27..32), applied as one undo transaction through the clamped
+    /// setFxSlotParam path. Returns false + `error` on invalid slot/type/id.
+    bool applySubSynthModPreset(int trackIndex, int slotIndex,
+                                const std::string& presetId,
+                                std::string* error = nullptr) override;
+    // ── Song plan (see ProjectCommands.h for the data contract) ──
+    SongPlanResult setSongPlan(const SongPlanData& plan) override;
+    SongPlanData getSongPlan() const override;
+    bool saveSectionTemplate(const std::string& name, std::string* error = nullptr) override;
+    SongPlanData loadSectionTemplate(const std::string& name, std::string* error = nullptr) override;
+    std::vector<std::string> listSectionTemplates() const override;
+    SongPlanResult applySongBrief(const std::string& briefJson) override;
+    std::string exportSongBrief(std::string* error = nullptr) const override;
+    // ── Cells (Phase C) — see ProjectCommands.h for the contract ──
+    bool setCellRecipe(const CellRecipe& recipe, std::string* error = nullptr) override;
+    std::vector<CellRecipe> getCells() const override;
+    bool removeCellRecipe(const std::string& section, const std::string& role) override;
+    CellFillBatchResult fillCells(const std::string& mode) override;
+    CellFillBatchResult rerollCells(const std::string& section,
+                                    const std::string& role) override;
+    std::string getClipProvenance(int clipId) const override;
+    // Shared per-cell execution for fillCells/rerollCells. Callers own the
+    // undo transaction; the clip node is created/reused and bookkeeping +
+    // provenance are written here.
+    CellFillResult fillOneCell(const CellRecipe& cell, const SongPlanData& plan);
     void setFmPatch(int trackIndex, int slotIndex,
                     const std::string& patchBase64) override;
 

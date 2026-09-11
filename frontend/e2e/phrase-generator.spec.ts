@@ -1,39 +1,41 @@
 import { test, expect } from "@playwright/test";
 import { startApp } from "./helpers";
 
-// PhraseGeneratorDialog opens from the TransportBar 🎵 button. Generation
-// creates a MIDI clip on the target track and auto-closes the dialog ~400 ms
-// after a successful generate. Metadata (scales/chords/patterns/styles) is
-// fetched from the composition.* RPCs on mount.
-test.describe("Phrase Generator dialog (user journeys)", () => {
+// The Compose tab opens from the TransportBar 🎵 button (docked in the bottom
+// panel — no modal). Generation creates a MIDI clip on the target track and
+// the tab STAYS OPEN after a successful generate. Metadata
+// (scales/chords/patterns/styles) is fetched from the composition.* RPCs on mount.
+test.describe("Compose tab (user journeys)", () => {
   test.beforeEach(async ({ page }) => {
     await startApp(page);
   });
 
   async function openDialog(page: import("@playwright/test").Page) {
-    await page.locator("header.transport-bar [title^='Phrase Generator']").click();
-    await expect(page.locator(".pgd-dialog")).toBeVisible({ timeout: 5000 });
+    await page.locator("header.transport-bar [title^='Compose']").click();
+    await expect(page.locator(".bottom-tabs .bt-tab--active")).toHaveText(/Compose/);
+    await expect(page.locator(".compose-tab .pgd-dialog")).toBeVisible({ timeout: 5000 });
   }
 
   test("opens from the transport bar button", async ({ page }) => {
     await openDialog(page);
-    await expect(page.locator(".pgd-header h3")).toContainText("Phrase Generator");
+    await expect(page.locator(".pgd-header h3")).toContainText("Compose");
   });
 
-  test("mode selector defaults to Phrase with six options", async ({ page }) => {
+  test("mode selector defaults to Phrase with seven options", async ({ page }) => {
     await openDialog(page);
     const mode = page.locator(".pgd-mode-select");
     await expect(mode).toHaveValue("0");
-    // Source of truth: PhraseGeneratorDialog.tsx mode <select> (Rhythm and
-    // Analyze MIDI were added after this spec was written).
+    // Source of truth: compose/ComposeTab.tsx mode <select> (Rhythm, Analyze
+    // MIDI and Song Plan were added after this spec was first written).
     const options = mode.locator("option");
-    await expect(options).toHaveCount(6);
+    await expect(options).toHaveCount(7);
     await expect(options.nth(0)).toHaveText("Phrase");
     await expect(options.nth(1)).toHaveText("Single Chord");
     await expect(options.nth(2)).toHaveText("Chord Progression");
     await expect(options.nth(3)).toHaveText("Arrangement");
     await expect(options.nth(4)).toHaveText("Rhythm");
     await expect(options.nth(5)).toHaveText("Analyze MIDI");
+    await expect(options.nth(6)).toHaveText("Song Plan");
   });
 
   test("phrase page shows style, length and density controls", async ({ page }) => {
@@ -110,27 +112,25 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await expect(row.locator(".pgd-value")).toHaveText("110");
   });
 
-  test("cancel closes the dialog without creating a clip", async ({ page }) => {
-    await openDialog(page);
-    const before = await page.locator(".tl-clip").count();
-    await page.locator(".pgd-btn-cancel").click();
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 5000 });
-    expect(await page.locator(".tl-clip").count()).toBe(before);
-  });
-
-  test("close (×) button closes the dialog", async ({ page }) => {
-    await openDialog(page);
-    await page.locator(".pgd-close").click();
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 5000 });
-  });
-
-  test("generate (phrase mode) creates a clip and closes the dialog", async ({ page }) => {
+  test("generate (phrase mode) creates a clip and stays open", async ({ page }) => {
     await openDialog(page);
     const before = await page.locator(".tl-clip").count();
     await page.locator(".pgd-btn-generate").click();
-    // Dialog auto-closes ~400 ms after a successful generate.
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
+    // The tab STAYS OPEN after a successful generate (no auto-close).
+    await expect(page.locator(".pgd-preview")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".compose-tab")).toBeVisible();
     await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
+  });
+
+  test("cancel clears the preview without closing the tab", async ({ page }) => {
+    await openDialog(page);
+    const before = await page.locator(".tl-clip").count();
+    await page.locator(".pgd-btn-generate").click();
+    await expect(page.locator(".pgd-preview")).toBeVisible({ timeout: 10000 });
+    await page.locator(".pgd-btn-cancel").click();
+    await expect(page.locator(".pgd-preview")).toHaveCount(0);
+    await expect(page.locator(".compose-tab")).toBeVisible();
+    expect(await page.locator(".tl-clip").count()).toBe(before + 1);
   });
 
   test("generate (single chord mode) creates a clip", async ({ page }) => {
@@ -138,7 +138,7 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await page.locator(".pgd-mode-select").selectOption("1");
     const before = await page.locator(".tl-clip").count();
     await page.locator(".pgd-btn-generate").click();
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
+    await expect(page.locator(".compose-tab")).toBeVisible();
     await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
   });
 
@@ -147,7 +147,7 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     await page.locator(".pgd-mode-select").selectOption("2");
     const before = await page.locator(".tl-clip").count();
     await page.locator(".pgd-btn-generate").click();
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
+    await expect(page.locator(".compose-tab")).toBeVisible();
     await expect(page.locator(".tl-clip")).toHaveCount(before + 1, { timeout: 10000 });
   });
 
@@ -171,7 +171,6 @@ test.describe("Phrase Generator dialog (user journeys)", () => {
     const tracksBefore = await page.locator(".th-row").count();
     const clipsBefore = await page.locator(".tl-clip").count();
     await page.locator(".pgd-btn-generate").click();
-    await expect(page.locator(".pgd-dialog")).toBeHidden({ timeout: 10000 });
     // Default enables kick, closed+open hat, clap, bass -> 5 new tracks, each with a clip.
     await expect(page.locator(".th-row")).toHaveCount(tracksBefore + 5, { timeout: 10000 });
     await expect(page.locator(".tl-clip")).toHaveCount(clipsBefore + 5, { timeout: 10000 });

@@ -323,6 +323,52 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     return value;
 }
 
+bool AudioEngineCommands::applySubSynthModPreset(int trackIndex, int slotIndex,
+                                                 const std::string& presetId,
+                                                 std::string* error)
+{
+    auto fail = [error](const juce::String& msg) {
+        if (error) *error = msg.toStdString();
+        return false;
+    };
+
+    // Gate 9: validate everything BEFORE any write.
+    auto slot = findFxSlot(trackIndex, slotIndex);
+    if (!slot.isValid())
+        return fail("slot not found");
+    if (slot.getProperty(IDs::fxType, "").toString() != "sub_synth")
+        return fail("slot is not a sub_synth");
+
+    // [LFO Wave, LFO Rate Hz, LFO Cutoff Amt (st), LFO Pitch Amt (cents),
+    //  LFO Amp Amt, LFO FM Amt] — real units within the sub_synth param defs
+    // (TrackFXSlot::getParamDefsForType); setFxSlotParam clamps on write.
+    // Wave enum: 0=sine, 1=saw, 2=square, 3=triangle.
+    static const struct { const char* id; float v[6]; } kPresets[] = {
+        { "off",               { 0.0f, 0.5f,  0.0f,  0.0f, 0.0f,  0.0f } },
+        { "slow_filter_drift", { 0.0f, 0.12f, 12.0f, 0.0f, 0.0f,  0.0f } },
+        { "vibrato",           { 0.0f, 5.5f,  0.0f, 18.0f, 0.0f,  0.0f } },
+        { "tremolo",           { 0.0f, 6.0f,  0.0f,  0.0f, 0.55f, 0.0f } },
+        { "fm_motion",         { 3.0f, 2.0f,  0.0f,  0.0f, 0.0f,  0.45f } },
+        { "animated_sweep",    { 3.0f, 0.25f, 24.0f,  7.0f, 0.15f, 0.2f } },
+    };
+    const float* values = nullptr;
+    for (const auto& p : kPresets)
+        if (presetId == p.id) { values = p.v; break; }
+    if (!values)
+        return fail("unknown preset id '" + juce::String(presetId)
+                    + "' (allowed: off, slow_filter_drift, vibrato, tremolo,"
+                    " fm_motion, animated_sweep)");
+
+    // One undo unit for the whole preset (loadVirusPatch precedent): every
+    // setFxSlotParam write between begin/end coalesces into a single undo
+    // step and keeps the clamped, listener-driven DSP path.
+    beginTransaction("Apply SubSynth mod preset");
+    for (int i = 0; i < 6; ++i)
+        setFxSlotParam(trackIndex, slotIndex, 27 + i, values[i]);
+    endTransaction();
+    return true;
+}
+
 void AudioEngineCommands::setFmPatch(int trackIndex, int slotIndex,
                                      const std::string& patchBase64)
 {

@@ -357,6 +357,16 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
     if (m == "removeFxSlot")        { int i, s; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)) return makeError(-32602, "trackIndex and slotIndex required"); c.removeFxSlot(i, s); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotBypassed")   { int i, s; bool b; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireBool(o, "bypassed", b, nullptr)) return makeError(-32602, "trackIndex, slotIndex, bypassed required"); c.setFxSlotBypassed(i, s, b); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotParam")      { int i, s, p; float v; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr) || !requireInt(o, "paramIndex", p, nullptr) || !requireFloat(o, "value", v, nullptr)) return makeError(-32602, "trackIndex, slotIndex, paramIndex, value required"); c.setFxSlotParam(i, s, p, v); return { false, QJsonValue::Null }; }
+    if (m == "applySubSynthModPreset") {
+        int i, s; std::string presetId;
+        if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "slotIndex", s, nullptr)
+            || !requireString(o, "presetId", presetId, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, presetId required");
+        std::string err;
+        if (!c.applySubSynthModPreset(i, s, presetId, &err))
+            return makeError(-32602, QString::fromStdString(err.empty() ? "applySubSynthModPreset failed" : err));
+        return { false, QJsonObject{{"ok", true}, {"presetId", QString::fromStdString(presetId)}} };
+    }
     if (m == "reorderFxSlots")      { int i, f, t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "fromSlot", f, nullptr) || !requireInt(o, "toSlot", t, nullptr)) return makeError(-32602, "trackIndex, fromSlot, toSlot required"); c.reorderFxSlots(i, f, t); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotPlugin") {
         int i, s; std::string fxType, pluginID, fmt, path;

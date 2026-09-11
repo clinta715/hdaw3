@@ -423,11 +423,14 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "(beat = 60/bpm seconds), averaged over sections with >= 8 beats; omitted "
         "when bpm <= 0 or no section qualifies. If sections is omitted, a single "
         "'whole' window [0, duration) is analyzed. bandEnergy is mean power per FFT "
-        "window (linear amplitude^2, not dB). Optional wait=false returns immediately "
+        "window (linear amplitude^2, not dB). Pass fromPlan=true to derive the windows from "
+        "the current song plan (section beats converted to seconds via bpm; bpm 0 falls back "
+        "to the plan bpm) — callers never do beat math. Optional wait=false returns immediately "
         "with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result.",
         objSchema({
             {"filePath", QJsonObject{{"type","string"}}},
             {"bpm",      QJsonObject{{"type","number"}}},
+            {"fromPlan", QJsonObject{{"type","boolean"}}},
             {"wait",     QJsonObject{{"type","boolean"}}},
             {"sections", QJsonObject{
                 {"type","array"},
@@ -440,11 +443,27 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                     {"required", QJsonArray{"name","start","end"}}}}}}
         }, {"filePath"}),
         "audio",
-        [](const QJsonObject& a) -> McpToolResult {
+        [e](const QJsonObject& a) -> McpToolResult {
             const QString filePath = a.value("filePath").toString();
-            const double bpm = a.value("bpm").toDouble(0.0);
-            const bool hasSections = a.contains("sections");
-            const QJsonArray sectionsArg = a.value("sections").toArray();
+            double bpm = a.value("bpm").toDouble(0.0);
+            bool hasSections = a.contains("sections");
+            QJsonArray sectionsArg = a.value("sections").toArray();
+            if (a.value("fromPlan").toBool(false))
+            {
+                if (!e)
+                    return McpToolResult::text("mix_report: engine unavailable", true);
+                const auto plan = e->getProjectCommands().getSongPlan();
+                if (plan.sections.empty())
+                    return McpToolResult::text("mix_report: no song plan set (fromPlan)", true);
+                if (bpm <= 0.0) bpm = plan.bpm;
+                const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
+                sectionsArg = QJsonArray();
+                for (const auto& s : plan.sections)
+                    sectionsArg.append(QJsonObject{{"name", QString::fromStdString(s.name)},
+                                                   {"start", s.startBeat * spb},
+                                                   {"end", s.endBeat * spb}});
+                hasSections = true;
+            }
             const bool wait = a.value("wait").toBool(true);
             if (!wait) {
                 const int id = McpJobs::instance().submit("mix_report", [filePath, bpm, sectionsArg, hasSections]() {

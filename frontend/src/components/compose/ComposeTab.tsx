@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { rpc } from "../rpc";
-import { useProjectStore } from "../store/projectStore";
-import { useUiStore } from "../store/uiStore";
-import type { ScaleModeInfo, ChordTypeInfo, ProgressionPatternInfo, StyleInfo, RhythmPatternResult } from "../rpc/types";
-import PresetBrowser from "./PresetBrowser";
-import "./PhraseGeneratorDialog.css";
+import { rpc } from "../../rpc";
+import { useProjectStore } from "../../store/projectStore";
+import { useUiStore } from "../../store/uiStore";
+import type { ScaleModeInfo, ChordTypeInfo, ProgressionPatternInfo, StyleInfo, RhythmPatternResult } from "../../rpc/types";
+import PresetBrowser from "../PresetBrowser";
+import SongPlanPanel from "./SongPlanPanel";
+import "./ComposeTab.css";
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
@@ -80,11 +81,7 @@ const CORPUS_PHRASES: Array<{ id: string; role: string }> = [
 ];
 const CORPUS_ROLES = ["kick", "snare", "clap", "hats", "perc", "ride"];
 
-interface Props {
-  onClose: () => void;
-}
-
-export default function PhraseGeneratorDialog({ onClose }: Props) {
+export default function ComposeTab() {
   const snapshot = useProjectStore((s) => s.snapshot);
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
 
@@ -310,7 +307,6 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
         }) as { trackIndices: number[]; clipIds: number[]; noteCount: number; seed: number };
         setPreview(`Arrangement: ${arr.noteCount} notes across ${arr.clipIds.length} clips`);
         useProjectStore.setState({ isDirty: true });
-        setTimeout(() => onClose(), 400);
         return;
       } else if (mode === 4) {
         const result = await rpc.call("composition.generateRhythmPattern", {
@@ -332,7 +328,6 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
         }) as RhythmPatternResult;
         setPreview(`Rhythm: ${result.noteCount} notes`);
         useProjectStore.setState({ isDirty: true });
-        setTimeout(() => onClose(), 400);
         return;
       }
 
@@ -340,7 +335,6 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
         setPreview(`Generated ${result.noteCount} notes`);
         // New clip is reconciled by the debounced notify.treeChanged push.
         useProjectStore.setState({ isDirty: true });
-        setTimeout(() => onClose(), 400);
       }
     } catch (err) {
       setPreview("Error: " + String(err));
@@ -386,11 +380,10 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
   const trackCount = snapshot?.tracks.length ?? 0;
 
   return (
-    <div className="pgd-overlay" onClick={onClose}>
-      <div className="pgd-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className="compose-tab">
+      <div className="pgd-dialog">
         <div className="pgd-header">
-          <h3>Phrase Generator</h3>
-          <button className="pgd-close" onClick={onClose}>×</button>
+          <h3>Compose</h3>
         </div>
 
         <div className="pgd-container">
@@ -406,6 +399,7 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               <option value={3}>Arrangement</option>
               <option value={4}>Rhythm</option>
               <option value={5}>Analyze MIDI</option>
+              <option value={6}>Song Plan</option>
             </select>
           </div>
 
@@ -833,19 +827,22 @@ export default function PhraseGeneratorDialog({ onClose }: Props) {
               })()}
             </div>
           )}
+            {mode === 6 && <SongPlanPanel />}
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer (hidden in Song Plan mode — the panel carries its own actions) */}
+        {mode !== 6 && (
         <div className="pgd-footer">
           {preview && <span className="pgd-preview">{preview}</span>}
           <div className="pgd-footer-btns">
-            <button className="pgd-btn pgd-btn-cancel" onClick={onClose}>Cancel</button>
+            <button className="pgd-btn pgd-btn-cancel" onClick={() => setPreview("")}>Cancel</button>
             <button className="pgd-btn pgd-btn-generate" onClick={handleGenerate} disabled={generating}>
               {generating ? "Generating..." : "Generate"}
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

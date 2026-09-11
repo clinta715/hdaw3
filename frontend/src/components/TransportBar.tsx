@@ -9,7 +9,6 @@ import { reportRpcError } from "../store/notifyStore";
 import FileMenu from "./FileMenu";
 import PluginManagerDialog from "./PluginManagerDialog";
 import PreferencesDialog from "./PreferencesDialog";
-import PhraseGeneratorDialog from "./PhraseGeneratorDialog";
 import { FolderIcon, KnobIcon, NoteIcon, SlidersIcon } from "./Icons";
 import type { ScaleModeInfo } from "../rpc/types";
 import "./TransportBar.css";
@@ -43,8 +42,8 @@ export default function TransportBar() {
   const [showPrefs, setShowPrefs] = useState(false);
   const [ccRecArmed, setCcRecArmed] = useState(false);
   const [midiRecArmed, setMidiRecArmed] = useState(false);
-  const showPhraseGenerator = useUiStore((s) => s.showPhraseGenerator);
-  const setShowPhraseGenerator = useUiStore((s) => s.setShowPhraseGenerator);
+  const activeBottomTab = useUiStore((s) => s.activeBottomTab);
+  const selectBottomTab = useUiStore((s) => s.selectBottomTab);
   const browserVisible = useBrowserStore((s) => s.visible);
   const toggleBrowser = useBrowserStore((s) => s.toggleVisible);
   const viewMode = useUiStore((s) => s.viewMode);
@@ -423,12 +422,11 @@ export default function TransportBar() {
       {/* Window tools — pinned to the far right, monochrome icons */}
       <div className="tb-group tb-group--tools">
         <button className="tb-icon-btn" onClick={() => setShowPluginManager(true)} title="Plugin Manager"><KnobIcon /></button>
-        <button className="tb-icon-btn" onClick={() => setShowPhraseGenerator(true)} title="Phrase Generator (Ctrl+Shift+G)"><NoteIcon /></button>
+        <button className="tb-icon-btn" onClick={() => selectBottomTab(activeBottomTab === "compose" ? "mixer" : "compose")} title="Compose (Ctrl+Shift+G)"><NoteIcon /></button>
         <button className="tb-icon-btn" onClick={() => setShowPrefs(true)} title="Preferences"><SlidersIcon /></button>
       </div>
       {showPluginManager && <PluginManagerDialog onClose={() => setShowPluginManager(false)} />}
       {showPrefs && <PreferencesDialog onClose={() => setShowPrefs(false)} />}
-      {showPhraseGenerator && <PhraseGeneratorDialog onClose={() => setShowPhraseGenerator(false)} />}
     </div>
   );
 }

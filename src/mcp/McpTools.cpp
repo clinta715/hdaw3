@@ -103,6 +103,7 @@ void registerAllTools(McpServer& s) {
     registerAudioDomain(s, e);
     registerSessionDomain(s, e);
     registerLibraryDomain(s, e);
+    registerSongPlanTools(s, e);
     registerSettingsDomain(s, e);
     registerTuningTools(s, e);
     registerExportTool(s);

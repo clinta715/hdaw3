@@ -76,6 +76,18 @@ const INTERNAL_FX = [
   { label: "Sub Synth", fxType: "sub_synth" },
 ];
 
+// Factory presets for the SubSynth internal modulation LFO (engine params
+// 27..32). Values mirror the backend command in real units (wave enum
+// 0=sine, 1=saw, 2=square, 3=triangle).
+const SUB_SYNTH_MOD_PRESETS: { id: string; label: string; values: [number, number, number, number, number, number] }[] = [
+  { id: "off", label: "Off", values: [0, 0.5, 0, 0, 0, 0] },
+  { id: "slow_filter_drift", label: "Slow Filter Drift", values: [0, 0.12, 12, 0, 0, 0] },
+  { id: "vibrato", label: "Vibrato", values: [0, 5.5, 0, 18, 0, 0] },
+  { id: "tremolo", label: "Tremolo", values: [0, 6, 0, 0, 0.55, 0] },
+  { id: "fm_motion", label: "FM Motion", values: [3, 2, 0, 0, 0, 0.45] },
+  { id: "animated_sweep", label: "Animated Sweep", values: [3, 0.25, 24, 7, 0.15, 0.2] },
+];
+
 export default function FXChain() {
   const selectedTrackIndex = useUiStore((s) => s.selectedTrackIndex);
   const crashedFxSlots = useUiStore((s) => s.crashedFxSlots);
@@ -94,6 +106,7 @@ export default function FXChain() {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [cartridgeInfo, setCartridgeInfo] = useState<Map<number, CartridgeInfo>>(new Map());
   const [voiceMenuSlot, setVoiceMenuSlot] = useState<number | null>(null);
+  const [modMenuSlot, setModMenuSlot] = useState<number | null>(null);
   const [chainPresets, setChainPresets] = useState<FxChainPreset[]>([]);
   const [selectedChainPresetId, setSelectedChainPresetId] = useState("");
   const [chainPresetName, setChainPresetName] = useState("");
@@ -544,6 +557,31 @@ export default function FXChain() {
 
   const handleDragEnd = useCallback(() => setDragSlot(null), []);
 
+  const applyModPreset = useCallback(async (slot: FxSlotSnapshot, presetId: string) => {
+    if (selectedTrackIndex == null) return;
+    const trackIndex = selectedTrackIndex;
+    const slotIndex = slot.slotIndex;
+    setModMenuSlot(null);
+    try {
+      const resp = await rpc.call("project.applySubSynthModPreset", { trackIndex, slotIndex, presetId });
+      if (!resp || (resp as { ok?: boolean }).ok !== true) return;
+      if (trackIndex !== selectedTrackIndexRef.current) return; // stale track switch
+      const preset = SUB_SYNTH_MOD_PRESETS.find((p) => p.id === presetId);
+      if (!preset) return;
+      // Patch the loaded param panel in place (params 27..32) — no extra RPC.
+      setInternalSlotParams((prev) => {
+        const arr = prev.get(slotIndex);
+        if (!arr) return prev;
+        const next = new Map(prev);
+        next.set(slotIndex, arr.map((p) =>
+          p.paramIndex >= 27 && p.paramIndex <= 32
+            ? { ...p, value: preset.values[p.paramIndex - 27] }
+            : p));
+        return next;
+      });
+    } catch (e) { console.error("applySubSynthModPreset failed", e); }
+  }, [selectedTrackIndex]);
+
   const loadPresets = useCallback(async (slot: FxSlotSnapshot) => {
     if (selectedTrackIndex == null || !slot.pluginId) return;
     try {
@@ -789,6 +827,16 @@ export default function FXChain() {
                 <span className="fx-btn-label">Voice</span>
               </button>
             )}
+            {slot.fxType === "sub_synth" && (
+              <button
+                className={`fx-btn fx-params-btn${modMenuSlot === slot.slotIndex ? " active" : ""}`}
+                onClick={() => setModMenuSlot(v => (v === slot.slotIndex ? null : slot.slotIndex))}
+                title="SubSynth modulation presets"
+              >
+                <span className="fx-btn-icon">M</span>
+                <span className="fx-btn-label">Mod</span>
+              </button>
+            )}
             {slot.pluginId && (
               <button
                 className={`fx-btn fx-ab-btn${abSlots.has(slot.slotIndex) ? " active" : ""}`}
@@ -825,6 +873,16 @@ export default function FXChain() {
                   <span className="fx-voice-dot" />
                   <span className="fx-voice-name">{v.name || `Voice ${v.index + 1}`}</span>
                   <span className="fx-voice-algo">Alg {v.algorithm + 1}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {slot.fxType === "sub_synth" && modMenuSlot === slot.slotIndex && (
+            <div className="fx-preset-list">
+              {SUB_SYNTH_MOD_PRESETS.map((p) => (
+                <div key={p.id} className="fx-preset-item" onClick={() => applyModPreset(slot, p.id)}>
+                  <span className="fx-preset-dot" />
+                  <span className="fx-preset-name">{p.label}</span>
                 </div>
               ))}
             </div>

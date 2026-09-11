@@ -91,7 +91,6 @@ describe("useTimelineDrag", () => {
       snapDivision: 1,
       snapGridOffset: false,
       snapToEvents: false,
-      showPhraseGenerator: false,
     });
   });
 

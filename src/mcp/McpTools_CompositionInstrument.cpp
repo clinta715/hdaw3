@@ -26,7 +26,7 @@ namespace mcp {
 void registerInstrumentTools(McpServer& s, AudioEngine* e)
 {
 
-s.registerTool({"generate_arrangement", "Generate a multi-track arrangement (kick, hats, clap, bass) into new clips, one track per part. Deterministic for a given seed (0 = random). style: 0=Techno 1=House 2=DnB.",
+s.registerTool({"generate_arrangement", "SKETCH TOOL: deterministic per-seed but the SECTION PLAN is auto-generated. For a pinned deterministic structure use apply_song_brief/set_song_plan + set_cell/fill_cells. Generate a multi-track arrangement (kick, hats, clap, bass) into new clips, one track per part. Deterministic for a given seed (0 = random). style: 0=Techno 1=House 2=DnB.",
         objSchema({{"bars",            QJsonObject{{"type","integer"},{"minimum",1}}},
                   {"style",           QJsonObject{{"type","integer"},{"minimum",0}}},
                   {"complexity",      QJsonObject{{"type","number"},{"minimum",0},{"maximum",1}}},

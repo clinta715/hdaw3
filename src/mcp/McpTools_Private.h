@@ -29,6 +29,7 @@ void registerPatternTools(McpServer& s, AudioEngine* e);
 
 void registerCompositionTools(McpServer& s, AudioEngine* e);
 void registerArrangerTools(McpServer& s, AudioEngine* e);
+void registerSongPlanTools(McpServer& s, AudioEngine* e);
 void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e);
 
 void registerAudioReadTools(McpServer& s, AudioEngine* e);

@@ -1102,9 +1102,7 @@ TEST_F(GuiFuncTest, GenerateChordAndArpeggio) {
     });
     EXPECT_FALSE(isError(chord));
 
-    QString chordText = text(chord);
-    int chordClipId = chordText.mid(chordText.indexOf('=') + 1,
-                                    chordText.indexOf(' ') - chordText.indexOf('=') - 1).toInt();
+    int chordClipId = parseClipId(text(chord));
     auto notes = getNotes(chordClipId);
     EXPECT_GE(notes.size(), 3);
 
@@ -1114,9 +1112,7 @@ TEST_F(GuiFuncTest, GenerateChordAndArpeggio) {
     });
     EXPECT_FALSE(isError(arp));
 
-    QString arpText = text(arp);
-    int arpClipId = arpText.mid(arpText.indexOf('=') + 1,
-                                arpText.indexOf(' ') - arpText.indexOf('=') - 1).toInt();
+    int arpClipId = parseClipId(text(arp));
     auto arpNotes = getNotes(arpClipId);
     EXPECT_GE(arpNotes.size(), 3);
 }
@@ -1127,9 +1123,7 @@ TEST_F(GuiFuncTest, GenerateProgression) {
     });
     EXPECT_FALSE(isError(prog));
 
-    QString progText = text(prog);
-    int progClipId = progText.mid(progText.indexOf('=') + 1,
-                                  progText.indexOf(' ') - progText.indexOf('=') - 1).toInt();
+    int progClipId = parseClipId(text(prog));
     auto notes = getNotes(progClipId);
     EXPECT_GT(notes.size(), 0);
 }

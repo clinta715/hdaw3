@@ -14,6 +14,7 @@
 #include "../../engine/MidiAnalyzer.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -26,6 +27,59 @@ using namespace frontend::router_helpers;
 
 namespace frontend {
 
+namespace {
+
+static QString cellParamsString(const QJsonValue& v)
+{
+    if (v.isString()) return v.toString();
+    if (v.isObject()) return QString::fromUtf8(QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact));
+    return QString();
+}
+
+static QJsonObject cellRecipeJson(const ProjectCommands::CellRecipe& r)
+{
+    QJsonObject o{ { "section", QString::fromStdString(r.section) },
+                   { "role", QString::fromStdString(r.role) },
+                   { "trackId", r.trackId },
+                   { "source", QString::fromStdString(r.sourceKind) },
+                   { "seed", (double) (long long) r.seed },
+                   { "locked", r.locked },
+                   { "lastClipId", r.lastClipId },
+                   { "lastSeed", (double) (long long) r.lastSeed } };
+    if (!r.paramsJson.empty())
+    {
+        auto d = QJsonDocument::fromJson(QString::fromStdString(r.paramsJson).toUtf8());
+        if (d.isObject()) o["params"] = d.object();
+    }
+    return o;
+}
+
+static QJsonObject cellFillJson(const ProjectCommands::CellFillResult& r)
+{
+    QJsonObject o{ { "ok", r.ok },
+                   { "section", QString::fromStdString(r.section) },
+                   { "role", QString::fromStdString(r.role) },
+                   { "trackId", r.trackId },
+                   { "clipId", r.clipId },
+                   { "noteCount", r.noteCount },
+                   { "seedUsed", (double) (long long) r.seedUsed } };
+    if (!r.error.empty()) o["error"] = QString::fromStdString(r.error);
+    return o;
+}
+
+static QJsonObject cellBatchJson(const ProjectCommands::CellFillBatchResult& b)
+{
+    QJsonArray cells;
+    for (const auto& c : b.cells) cells.append(cellFillJson(c));
+    QJsonObject o{ { "ok", b.ok }, { "filled", b.filled },
+                   { "skippedLocked", b.skippedLocked }, { "failed", b.failed },
+                   { "cells", cells } };
+    if (!b.error.empty()) o["error"] = QString::fromStdString(b.error);
+    return o;
+}
+
+} // namespace
+
 DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const QJsonValue& params) {
     const auto o = paramsObject(params);
     auto& c = engine.getProjectCommands();
@@ -35,6 +89,180 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
     static HDAW::PatternLibrary patternLib(
         juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
             .getChildFile("HDAW").getChildFile("patterns"));
+
+    // --- Song plan (deterministic skeleton + brief interchange) ---
+
+    if (m == "setSongPlan") {
+        ProjectCommands::SongPlanData plan;
+        plan.bpm = optDouble(o, "bpm", 120.0, nullptr);
+        plan.keyRoot = optInt(o, "keyRoot", 0, nullptr);
+        plan.scaleMode = optInt(o, "scaleMode", 1, nullptr);
+        plan.style = optString(o, "style", "");
+        plan.seed = (uint64_t) (long long) optDouble(o, "seed", 0.0, nullptr);
+        plan.totalBars = optInt(o, "totalBars", 0, nullptr);
+        const auto secs = o.value("sections");
+        if (!secs.isArray()) return makeError(-32602, "sections array required");
+        for (const auto& sv : secs.toArray()) {
+            const auto so = sv.toObject();
+            auto& s = plan.sections.emplace_back();
+            s.name = so.value("name").toString().toStdString();
+            s.kind = so.value("kind").toString().toStdString();
+            s.bars = so.value("bars").toInt(8);
+        }
+        auto r = c.setSongPlan(plan);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        QJsonArray sections;
+        for (const auto& s : r.plan.sections)
+            sections.append(QJsonObject{ { "name", QString::fromStdString(s.name) }, { "kind", QString::fromStdString(s.kind) },
+                                          { "bars", s.bars }, { "startBeat", s.startBeat }, { "endBeat", s.endBeat } });
+        QJsonArray warnings;
+        for (const auto& w : r.warnings) warnings.append(QString::fromStdString(w));
+        return { false, QJsonObject{ { "ok", true }, { "bpm", r.plan.bpm }, { "keyRoot", r.plan.keyRoot },
+                                     { "scaleMode", r.plan.scaleMode }, { "style", QString::fromStdString(r.plan.style) },
+                                     { "seed", (double) (long long) r.plan.seed }, { "totalBars", r.plan.totalBars },
+                                     { "regionsCreated", r.regionsCreated }, { "regionsUpdated", r.regionsUpdated },
+                                     { "warnings", warnings }, { "sections", sections } } };
+    }
+    if (m == "getSongPlan") {
+        auto plan = c.getSongPlan();
+        if (plan.sections.empty())
+            return { false, QJsonObject{ { "ok", true }, { "hasPlan", false } } };
+        QJsonArray sections;
+        for (const auto& s : plan.sections)
+            sections.append(QJsonObject{ { "name", QString::fromStdString(s.name) }, { "kind", QString::fromStdString(s.kind) },
+                                          { "bars", s.bars }, { "startBeat", s.startBeat }, { "endBeat", s.endBeat } });
+        return { false, QJsonObject{ { "ok", true }, { "hasPlan", true }, { "bpm", plan.bpm }, { "keyRoot", plan.keyRoot },
+                                     { "scaleMode", plan.scaleMode }, { "style", QString::fromStdString(plan.style) },
+                                     { "seed", (double) (long long) plan.seed }, { "totalBars", plan.totalBars },
+                                     { "sections", sections } } };
+    }
+    if (m == "saveSectionTemplate") {
+        std::string name;
+        if (!requireString(o, "name", name, nullptr)) return makeError(-32602, "name required");
+        std::string err;
+        if (!c.saveSectionTemplate(name, &err))
+            return makeError(-32602, QString::fromStdString(err.empty() ? "save failed" : err));
+        return { false, QJsonObject{ { "ok", true }, { "name", QString::fromStdString(name) } } };
+    }
+    if (m == "loadSectionTemplate") {
+        std::string name;
+        if (!requireString(o, "name", name, nullptr)) return makeError(-32602, "name required");
+        std::string err;
+        auto plan = c.loadSectionTemplate(name, &err);
+        if (plan.sections.empty()) return makeError(-32602, QString::fromStdString(err.empty() ? "load failed" : err));
+        QJsonArray sections;
+        for (const auto& s : plan.sections)
+            sections.append(QJsonObject{ { "name", QString::fromStdString(s.name) }, { "kind", QString::fromStdString(s.kind) },
+                                          { "bars", s.bars }, { "startBeat", s.startBeat }, { "endBeat", s.endBeat } });
+        return { false, QJsonObject{ { "ok", true }, { "name", QString::fromStdString(name) }, { "bpm", plan.bpm },
+                                     { "keyRoot", plan.keyRoot }, { "scaleMode", plan.scaleMode },
+                                     { "style", QString::fromStdString(plan.style) }, { "seed", (double) (long long) plan.seed },
+                                     { "totalBars", plan.totalBars }, { "sections", sections } } };
+    }
+    if (m == "listSectionTemplates") {
+        QJsonArray arr;
+        for (const auto& n : c.listSectionTemplates()) arr.append(QString::fromStdString(n));
+        return { false, QJsonObject{ { "templates", arr } } };
+    }
+    if (m == "applySongBrief") {
+        const QJsonValue bv = o.value("brief");
+        QString briefStr;
+        if (bv.isString()) briefStr = bv.toString();
+        else if (bv.isObject()) briefStr = QString::fromUtf8(QJsonDocument(bv.toObject()).toJson(QJsonDocument::Compact));
+        else return makeError(-32602, "brief (object or JSON string) required");
+        auto r = c.applySongBrief(briefStr.toStdString());
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        QJsonArray sections;
+        for (const auto& s : r.plan.sections)
+            sections.append(QJsonObject{ { "name", QString::fromStdString(s.name) }, { "kind", QString::fromStdString(s.kind) },
+                                          { "bars", s.bars }, { "startBeat", s.startBeat }, { "endBeat", s.endBeat } });
+        return { false, QJsonObject{ { "ok", true }, { "briefApplied", true }, { "bpm", r.plan.bpm },
+                                     { "totalBars", r.plan.totalBars }, { "regionsCreated", r.regionsCreated },
+                                     { "regionsUpdated", r.regionsUpdated }, { "sections", sections } } };
+    }
+    if (m == "exportSongBrief") {
+        std::string err;
+        auto brief = c.exportSongBrief(&err);
+        if (brief.empty()) return makeError(-32602, QString::fromStdString(err.empty() ? "export failed" : err));
+        auto doc = QJsonDocument::fromJson(QString::fromStdString(brief).toUtf8());
+        if (doc.isObject()) return { false, doc.object() };
+        return { false, QString::fromStdString(brief) };
+    }
+
+    // --- Cells (role x section recipes) + provenance + break parity ---
+
+    if (m == "setCellRecipe") {
+        int trackId; std::string section, role, source;
+        if (!requireInt(o, "trackId", trackId, nullptr)) return makeError(-32602, "trackId required");
+        if (!requireString(o, "section", section, nullptr)) return makeError(-32602, "section required");
+        if (!requireString(o, "role", role, nullptr)) return makeError(-32602, "role required");
+        if (!requireString(o, "source", source, nullptr)) return makeError(-32602, "source required");
+        ProjectCommands::CellRecipe rec;
+        rec.section = section; rec.role = role; rec.trackId = trackId; rec.sourceKind = source;
+        rec.paramsJson = cellParamsString(o.value("params")).toStdString();
+        rec.seed = (uint64_t) (long long) optDouble(o, "seed", 0.0, nullptr);
+        rec.locked = o.value("locked").toBool(false);
+        std::string err;
+        if (!c.setCellRecipe(rec, &err))
+            return makeError(-32602, QString::fromStdString(err));
+        return { false, QJsonObject{ { "ok", true } } };
+    }
+    if (m == "getCells") {
+        QJsonArray arr;
+        for (const auto& r : c.getCells()) arr.append(cellRecipeJson(r));
+        return { false, QJsonObject{ { "cells", arr } } };
+    }
+    if (m == "removeCellRecipe") {
+        std::string section, role;
+        if (!requireString(o, "section", section, nullptr)) return makeError(-32602, "section required");
+        if (!requireString(o, "role", role, nullptr)) return makeError(-32602, "role required");
+        return { false, QJsonObject{ { "ok", c.removeCellRecipe(section, role) } } };
+    }
+    if (m == "fillCells") {
+        auto b = c.fillCells(o.value("mode").toString("all").toStdString());
+        if (!b.ok && !b.error.empty()) return makeError(-32602, QString::fromStdString(b.error));
+        return { false, cellBatchJson(b) };
+    }
+    if (m == "rerollCells") {
+        auto b = c.rerollCells(o.value("section").toString().toStdString(),
+                               o.value("role").toString().toStdString());
+        if (!b.ok && !b.error.empty()) return makeError(-32602, QString::fromStdString(b.error));
+        return { false, cellBatchJson(b) };
+    }
+    if (m == "getClipProvenance") {
+        int clipId;
+        if (!requireInt(o, "clipId", clipId, nullptr)) return makeError(-32602, "clipId required");
+        auto js = c.getClipProvenance(clipId);
+        if (js.empty()) return makeError(-32602, "clip not found");
+        auto doc = QJsonDocument::fromJson(QString::fromStdString(js).toUtf8());
+        return { false, doc.object() };
+    }
+    if (m == "generateChoppedBreak") {
+        int trackId, clipId;
+        if (!requireInt(o, "trackId", trackId, nullptr)) return makeError(-32602, "trackId required");
+        if (!requireInt(o, "clipId", clipId, nullptr)) return makeError(-32602, "clipId required");
+        AudioEngineCommands::BreakPatternParams bp;
+        bp.trackIndex = trackId;
+        bp.clipId = clipId;
+        bp.slotIndex = optInt(o, "slotIndex", 0, nullptr);
+        BreakPatternGenerator::Style style;
+        if (!BreakPatternGenerator::styleFromName(o.value("style").toString("amen").toStdString(), style))
+            return makeError(-32602, "unknown break style");
+        bp.style = style;
+        bp.bars = optInt(o, "bars", 8, nullptr);
+        bp.grid = optInt(o, "grid", 4, nullptr);
+        bp.dropFirst = o.value("dropFirst").toBool(false);
+        bp.ghostFills = o.value("ghostFills").toInt(style == BreakPatternGenerator::Style::JungleEdit ? 1 : 0);
+        bp.velocityMin = optInt(o, "velocityMin", 60, nullptr);
+        bp.velocityMax = optInt(o, "velocityMax", 100, nullptr);
+        bp.seed = o.contains("seed")
+            ? (uint64_t) (long long) o.value("seed").toVariant().toULongLong() : 12345;
+        auto r = engine.getAudioEngineCommands().generateChoppedBreak(bp);
+        if (!r.ok) return makeError(-32602, QString::fromStdString(r.error));
+        return { false, QJsonObject{ { "ok", true }, { "added", r.added },
+                                     { "firstPitch", r.firstPitch }, { "lastPitch", r.lastPitch },
+                                     { "sliceCount", r.sliceCount }, { "baseNote", r.baseNote } } };
+    }
 
     // --- Read-only queries (PhraseGenerator is a static utility) ---
 

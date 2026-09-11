@@ -489,6 +489,224 @@ TEST(McpServer, AddFilterFxAndSetParams) {
     s.setTransport(nullptr);
 }
 
+// Matrix-only SubSynth modulation factory presets over MCP: apply writes the
+// LFO params (27..32) in REAL units to the tree + read model; unknown preset
+// ids and non-sub_synth slots are errors with no mutation (Gate 9).
+TEST(McpServer, ApplySubSynthModPreset) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"sub_synth"})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    r = callTool(2, "apply_sub_synth_mod_preset", R"({"trackId":0,"slotIndex":0,"presetId":"vibrato"})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Read model + tree agree in REAL units (rate 5.5 Hz, pitch 18 cents).
+    auto snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    ASSERT_GE(snaps.size(), 33u);
+    EXPECT_NEAR(snaps[28].value, 5.5f, 0.01f);
+    EXPECT_NEAR(snaps[29].value, 0.0f, 0.01f);
+    EXPECT_NEAR(snaps[30].value, 18.0f, 0.01f);
+    EXPECT_NEAR(snaps[31].value, 0.0f, 0.01f);
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_30"))), 18.0);
+
+    // Gate 9: unknown preset id is an error, not a silent no-op.
+    r = callTool(3, "apply_sub_synth_mod_preset", R"({"trackId":0,"slotIndex":0,"presetId":"bogus"})");
+    EXPECT_TRUE(isError(r));
+
+    // Wrong slot type: eq at slot 1 must be rejected.
+    r = callTool(4, "add_fx", R"({"trackId":0,"fxType":"eq"})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(5, "apply_sub_synth_mod_preset", R"({"trackId":0,"slotIndex":1,"presetId":"vibrato"})");
+    EXPECT_TRUE(isError(r));
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+// Song plan over MCP (Phase B keystone, docs/plans/2026-09-11): set_song_plan
+// syncs section-typed arranger regions, get_song_plan echoes resolved beats,
+// apply_song_brief + export_song_brief round-trips verbatim, section
+// templates save/list/load, and Gate 9 validation errors carry no mutation.
+TEST(McpServer, ApplySongPlan) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    auto r = callTool(1, "set_song_plan",
+        R"({"bpm":140,"keyRoot":5,"scaleMode":7,"style":"full-on","seed":777,"totalBars":32,"sections":[{"name":"intro","kind":"intro","bars":8},{"name":"build","kind":"build","bars":8},{"name":"drop","kind":"mainA","bars":16}]})");
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Regions synced: three section-typed children under ARRANGER_LIST.
+    auto regionTree = engine.getProjectModel().getTree().getChildWithName(IDs::ARRANGER_LIST);
+    ASSERT_TRUE(regionTree.isValid());
+    ASSERT_EQ(regionTree.getNumChildren(), 3);
+    EXPECT_EQ(regionTree.getChild(2).getProperty(IDs::sectionKind).toString(), "mainA");
+
+    r = callTool(2, "get_song_plan", "{}");
+    EXPECT_FALSE(isError(r));
+    auto planObj = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(planObj.value("hasPlan").toBool());
+    EXPECT_NEAR(planObj.value("bpm").toDouble(), 140.0, 1e-9);
+    ASSERT_EQ(planObj.value("sections").toArray().size(), 3);
+    EXPECT_NEAR(planObj.value("sections").toArray().at(2).toObject().value("startBeat").toDouble(), 64.0, 1e-9);
+
+    // Brief apply + verbatim export (brief type aliases map to kinds).
+    const char* brief =
+        R"({"bpm":138,"keyRoot":0,"scaleMode":1,"style":"dark","seed":9,"totalBars":48,"sections":[{"name":"a","type":"intro","bars":8},{"name":"b","type":"peak","bars":16},{"name":"c","type":"breakdown","bars":8},{"name":"d","type":"outro","bars":16}]})";
+    const QString briefArgs = QString(R"({"brief":%1})").arg(brief);
+    r = callTool(3, "apply_song_brief", briefArgs.toUtf8().constData());
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    r = callTool(4, "export_song_brief", "{}");
+    EXPECT_FALSE(isError(r));
+    auto exported = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    ASSERT_EQ(exported.value("sections").toArray().size(), 4);
+    EXPECT_EQ(exported.value("sections").toArray().at(1).toObject().value("type").toString(), "peak");
+
+    // Section templates: save CURRENT (brief-mapped) plan, list, load.
+    r = callTool(5, "save_section_template", R"({"name":"mcp-plan-v1"})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(6, "list_section_templates", "{}");
+    EXPECT_TRUE(text(r).contains("mcp-plan-v1"));
+    r = callTool(7, "load_section_template", R"({"name":"mcp-plan-v1"})");
+    EXPECT_FALSE(isError(r));
+    auto tmpl = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    ASSERT_EQ(tmpl.value("sections").toArray().size(), 4);
+
+    // Brief apply is FULL-REPLACEMENT: intro matched/updated, build+drop
+    // removed (out-of-plan), a/b/c/d created → 4 section-typed regions.
+    EXPECT_EQ(regionTree.getNumChildren(), 4);
+
+    // Gate 9: bad kind is an error with NO mutation.
+    r = callTool(8, "set_song_plan",
+        R"({"totalBars":8,"sections":[{"name":"x","kind":"wub","bars":8}]})");
+    EXPECT_TRUE(isError(r));
+    EXPECT_EQ(regionTree.getNumChildren(), 4);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+// Cells over MCP (Phase C): plan -> set_cell -> fill_cells -> provenance ->
+// reroll seed bump; Gate 9 validation via tool errors.
+TEST(McpServer, ApplySongCells) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const QString& args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    auto r = callTool(1, "set_song_plan",
+        R"({"bpm":140,"keyRoot":5,"scaleMode":7,"style":"full-on","seed":42,"totalBars":24,"sections":[{"name":"intro","kind":"intro","bars":8},{"name":"build","kind":"build","bars":8},{"name":"main","kind":"mainA","bars":8}]})");
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    // Gate 9: unknown sourceKind is a tool error.
+    r = callTool(2, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"wub"})");
+    EXPECT_TRUE(isError(r));
+
+    r = callTool(3, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"phrase","params":{"style":"BassLine"}})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    r = callTool(4, "set_cell", R"({"section":"build","role":"hat","trackId":1,"source":"rhythm","params":{"pulseA":8,"pulseB":0,"pitchA":42,"pitchB":42}})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    r = callTool(5, "fill_cells", R"({"mode":"all"})");
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto fill = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(fill.value("filled").toInt(), 2);
+    ASSERT_EQ(fill.value("cells").toArray().size(), 2);
+    const int clip0 = fill.value("cells").toArray().at(0).toObject().value("clipId").toInt();
+    EXPECT_GT(clip0, 0);
+    EXPECT_GT(fill.value("cells").toArray().at(0).toObject().value("noteCount").toInt(), 0);
+    EXPECT_GT(fill.value("cells").toArray().at(0).toObject().value("seedUsed").toDouble(), 0.0);
+
+    r = callTool(6, "get_clip_provenance", QString(R"({"clipId":%1})").arg(clip0));
+    auto prov = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(prov.value("found").toBool());
+    EXPECT_EQ(prov.value("source").toString(), "phrase");
+
+    const double seed0 = fill.value("cells").toArray().at(1).toObject().value("seedUsed").toDouble();
+    r = callTool(7, "reroll", R"({"role":"hat"})");
+    auto reroll = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(reroll.value("filled").toInt(), 1);
+    EXPECT_EQ(reroll.value("cells").toArray().at(0).toObject().value("seedUsed").toDouble(), seed0 + 1);
+
+    r = callTool(8, "get_cells", "{}");
+    EXPECT_EQ(QJsonDocument::fromJson(text(r).toUtf8()).object().value("cells").toArray().size(), 2);
+    r = callTool(9, "remove_cell", R"({"section":"intro","role":"bass"})");
+    EXPECT_FALSE(isError(r));
+    r = callTool(10, "remove_cell", R"({"section":"intro","role":"bass"})");
+    EXPECT_TRUE(isError(r)); // already gone
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 // P1-3 (plan 2026-08-29, G1): the internal delay exposes 5 params incl.
 // SyncToTempo (3) + Division (4); set_internal_fx_param writes them as
 // real-value tree properties (round-trip-safe), and list_fx_params reflects
@@ -933,7 +1151,7 @@ TEST(McpServer, GenerateRhythmPattern) {
     auto r = parseOne(out);
     EXPECT_FALSE(r.value("error").isObject());
     EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
-    EXPECT_TRUE(textOf(r).contains("notes=6")) << "got: [" << textOf(r).toStdString() << "]";
+    EXPECT_TRUE(textOf(r).contains("\"noteCount\":6")) << "got: [" << textOf(r).toStdString() << "]";
 
     // Pulses disabled; pure DSL voice: E(3,8) = 3 euclidean hits.
     tp.drainOutgoing();
@@ -943,7 +1161,7 @@ TEST(McpServer, GenerateRhythmPattern) {
     auto r2 = parseOne(out);
     EXPECT_FALSE(r2.value("error").isObject());
     EXPECT_FALSE(r2.value("result").toObject().value("isError").toBool(true));
-    EXPECT_TRUE(textOf(r2).contains("notes=3")) << "got: [" << textOf(r2).toStdString() << "]";
+    EXPECT_TRUE(textOf(r2).contains("\"noteCount\":3")) << "got: [" << textOf(r2).toStdString() << "]";
 
     s.stop();
     s.setTransport(nullptr);

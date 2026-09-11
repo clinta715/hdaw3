@@ -31,13 +31,6 @@ vi.mock("./PreferencesDialog", () => ({
     </div>
   ),
 }));
-vi.mock("./PhraseGeneratorDialog", () => ({
-  default: ({ onClose }: { onClose: () => void }) => (
-    <div data-testid="phrase-gen">
-      <button onClick={onClose}>close</button>
-    </div>
-  ),
-}));
 vi.mock("./Icons", () => ({
   FolderIcon: () => <span>📁</span>,
   KnobIcon: () => <span>🎛</span>,
@@ -95,7 +88,6 @@ beforeEach(() => {
     snapDivision: 1,
     snapGridOffset: false,
     snapToEvents: false,
-    showPhraseGenerator: false,
     viewMode: "arrange",
     statusHint: null,
   } as any);
@@ -459,10 +451,10 @@ describe("TransportBar", () => {
       expect(screen.getByTestId("prefs-dialog")).toBeInTheDocument();
     });
 
-    it("opens Phrase Generator dialog", () => {
+    it("opens the Compose tab", () => {
       render(<TransportBar />);
-      fireEvent.click(screen.getByTitle("Phrase Generator (Ctrl+Shift+G)"));
-      expect(screen.getByTestId("phrase-gen")).toBeInTheDocument();
+      fireEvent.click(screen.getByTitle("Compose (Ctrl+Shift+G)"));
+      expect(useUiStore.getState().activeBottomTab).toBe("compose");
     });
   });
 
