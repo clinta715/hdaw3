@@ -2,6 +2,29 @@
 #include "engine/ReadModelImpl.h"
 #include "model/ProjectModel.h"
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed a minimal TRACK node with the same
+// shape AudioEngineCommands::createTrackValueTree() builds, and return it.
+static juce::ValueTree addSeedTrack(ProjectModel& model, const char* name)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    model.getTrackListTree().addChild(track, -1, nullptr);
+    return track;
+}
+
 TEST(ReadModel, EmptyProjectSnapshot)
 {
     ProjectModel model;
@@ -16,8 +39,10 @@ TEST(ReadModel, TrackQuery)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed the track this test queries (lesson 9).
+    addSeedTrack(model, "Track 1");
     ReadModelImpl readModel(model);
-    EXPECT_GT(readModel.getTrackCount(), 0);
+    ASSERT_GT(readModel.getTrackCount(), 0);
     auto track = readModel.getTrack(0);
     EXPECT_EQ(track.index, 0);
 }
@@ -26,15 +51,20 @@ TEST(ReadModel, DefaultProjectTrackCount)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // New contract: a fresh default project owns NO tracks — tests and
+    // sessions seed exactly the tracks they need.
     ReadModelImpl readModel(model);
-    EXPECT_EQ(readModel.getTrackCount(), 3);
+    EXPECT_EQ(readModel.getTrackCount(), 0);
 }
 
 TEST(ReadModel, TrackProperties)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed the track this test reads (lesson 9).
+    addSeedTrack(model, "Track 1");
     ReadModelImpl readModel(model);
+    ASSERT_GT(readModel.getTrackCount(), 0);
     auto track = readModel.getTrack(0);
     EXPECT_EQ(track.name, "Track 1");
     EXPECT_DOUBLE_EQ(track.volume, 1.0);
@@ -47,8 +77,15 @@ TEST(ReadModel, Track2Properties)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed two tracks and put the asserted properties on
+    // track 1 ourselves (lesson 9).
+    addSeedTrack(model, "Track 1");
+    auto synth = addSeedTrack(model, "Synth");
+    synth.setProperty(IDs::volume, 0.85, nullptr);
     ReadModelImpl readModel(model);
+    ASSERT_EQ(readModel.getTrackCount(), 2);
     auto track = readModel.getTrack(1);
+    ASSERT_EQ(track.index, 1);
     EXPECT_EQ(track.name, "Synth");
     EXPECT_DOUBLE_EQ(track.volume, 0.85);
     EXPECT_EQ(track.midiChannel, 1);
@@ -58,8 +95,9 @@ TEST(ReadModel, ClipSnapshot)
 {
     ProjectModel model;
     model.createDefaultProject();
-    // The default project now ships empty; add a MIDI clip to verify the
-    // snapshot reflects clip fields.
+    // The default project now ships empty; seed track 0 and a MIDI clip to
+    // verify the snapshot reflects clip fields.
+    addSeedTrack(model, "Track 1");
     auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     model.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
@@ -84,7 +122,9 @@ TEST(ReadModel, GetClipById)
 {
     ProjectModel model;
     model.createDefaultProject();
-    // The default project now ships empty; add a clip and look it up by id.
+    // The default project now ships empty; seed track 0 and a clip, then look
+    // it up by id.
+    addSeedTrack(model, "Track 1");
     auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     model.getTrackListTree().getChild(0)
         .getChildWithName(IDs::CLIP_LIST)
@@ -102,7 +142,9 @@ TEST(ReadModel, GetNotesForMidiClip)
 {
     ProjectModel model;
     model.createDefaultProject();
-    // The default project now ships empty; add a MIDI clip + note ourselves.
+    // The default project now ships empty; seed track 0, a MIDI clip and a
+    // note ourselves.
+    addSeedTrack(model, "Track 1");
     auto clip = model.createMidiClipEmpty("TestClip", 0.0, 4.0);
     clip.getChildWithName(IDs::MIDI_NOTE_LIST)
         .addChild(model.createMidiNote(60, 0.8f, 0.0, 1.0), -1, nullptr);
@@ -160,7 +202,11 @@ TEST(ReadModel, ClipCountPerTrack)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed the two tracks this test reads (lesson 9).
+    addSeedTrack(model, "Track 1");
+    addSeedTrack(model, "Track 2");
     ReadModelImpl readModel(model);
+    ASSERT_EQ(readModel.getTrackCount(), 2);
     auto t0 = readModel.getTrack(0);
     EXPECT_EQ(t0.clipCount, 0);
 

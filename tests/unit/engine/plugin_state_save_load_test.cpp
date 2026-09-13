@@ -112,8 +112,12 @@ TEST(PluginStateSaveLoad, ProjectRoundTripPreservesPluginState)
     model.createDefaultProject();
 
     auto trackList = model.getTrackListTree();
-    ASSERT_GT(trackList.getNumChildren(), 0);
-    auto track = trackList.getChild(0);
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, "Plugin State Track", nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    trackList.addChild(track, -1, nullptr);
+    ASSERT_EQ(trackList.getNumChildren(), 1);
+    track = trackList.getChild(0);
 
     auto fxChain = track.getChildWithName(IDs::FX_CHAIN);
     if (!fxChain.isValid())
@@ -147,7 +151,7 @@ TEST(PluginStateSaveLoad, ProjectRoundTripPreservesPluginState)
     ASSERT_TRUE(HDAW::ProjectSerializer::load(loaded, saveFile));
 
     auto loadedTrackList = loaded.getTrackListTree();
-    ASSERT_GT(loadedTrackList.getNumChildren(), 0);
+    ASSERT_EQ(loadedTrackList.getNumChildren(), 1);
     auto loadedTrack = loadedTrackList.getChild(0);
     auto loadedChain = loadedTrack.getChildWithName(IDs::FX_CHAIN);
     ASSERT_TRUE(loadedChain.isValid());

@@ -58,6 +58,29 @@ juce::File writeSineWav(int lengthSamples, double sr)
     return f;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. The incremental-routing suites
+// address track 0 only, so the harness seeds exactly that one track, with
+// the same shape AudioEngineCommands::createTrackValueTree() builds.
+juce::ValueTree makeSeedTrack(const char* name)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    return track;
+}
+
 // Standalone-graph harness mirroring ExportManager's render pipeline
 // (ExportManager.cpp:158-291). The graph is NOT connected to any audio
 // device; processBlock is driven manually block-by-block with an explicit
@@ -106,12 +129,15 @@ struct RenderHarness
         waitForBake();
     }
 
-    // Populates the harness against the given track-0 clip layout (all other
-    // project state comes from the default project: 3 tracks, master bus).
+    // Populates the harness against the given track-0 clip layout. The
+    // default project ships an empty TRACK_LIST (zero-track contract), so the
+    // harness seeds exactly the one track these suites address (track 0).
     void init(juce::ValueTree track0Clips)
     {
         model.createDefaultProject();
         auto trackList = model.getTrackListTree();
+        if (trackList.getNumChildren() == 0)
+            trackList.addChild(makeSeedTrack("Track 0"), 0, nullptr);
         auto track0 = trackList.getChild(0);
         auto clipList = track0.getChildWithName(IDs::CLIP_LIST);
         clipList.removeAllChildren(nullptr);
@@ -171,7 +197,10 @@ struct RenderHarness
         }
         graph.setNonRealtime(true);
         routing->setClipSourcesNonRealtime(true);
-        EXPECT_TRUE(waitForBake()) << "render graph bake timed out";
+        // ASSERT (not EXPECT): a failed bake means the clip-source map is
+        // incomplete and every later .at() deref in the tests would throw —
+        // stop the test here instead (crash-prone-prerequisite rule).
+        ASSERT_TRUE(waitForBake()) << "render graph bake timed out";
     }
 
     // Incremental mutation on a live prepared graph — parks the pump (same

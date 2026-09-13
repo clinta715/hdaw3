@@ -10,6 +10,19 @@
 #include "engine/AudioEngine.h"
 
 namespace {
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. Seed exactly the track(s) the
+// test addresses and drain the coalesced routing rebuild so lane/track reads
+// are deterministic (lessons 9/10/12; no sleeps).
+int seedTrack(AudioEngine& engine, int count = 1)
+{
+    int idx = -1;
+    for (int i = 0; i < count; ++i)
+        idx = engine.getProjectCommands().addTrack("Track " + std::to_string(i));
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+
 // Find a lane snapshot by name; returns nullptr if absent.
 const AutomationLaneSnapshot* findLane(const std::vector<AutomationLaneSnapshot>& lanes,
                                        const std::string& name)
@@ -29,6 +42,7 @@ TEST(Automation, AddLaneWithParamIDPersistsBinding)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     // 100 + slotIndex(0)*100 + paramIndex(5) == 105 — a plugin FX param.
     cmds.addAutomationLane(0, "S0 Cutoff", 105);
@@ -47,6 +61,7 @@ TEST(Automation, DuplicateParamIDIsRejected)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "S0 Gain", 100);
     cmds.addAutomationLane(0, "S0 Other", 100); // same paramID, different name
@@ -62,6 +77,7 @@ TEST(Automation, DuplicateNameIsRejected)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "CustomLane", 200);
     cmds.addAutomationLane(0, "CustomLane", 201); // same name, different paramID
@@ -87,6 +103,7 @@ TEST(Automation, OmittedParamIDCreatesUnboundLane)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "LegacyLane");
 
@@ -104,6 +121,7 @@ TEST(Automation, MultipleUnboundLanesAllowed)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "UnboundA");
     cmds.addAutomationLane(0, "UnboundB");
@@ -122,10 +140,12 @@ TEST(Automation, SetFaderAuthoritativeDisablesVolumeLanes)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
-    // The default project ships a "Volume" (paramID 1) lane on every track
-    // starting DISABLED, and addAutomationLane is a no-op on a duplicate name,
-    // so enable it explicitly; add a distinct non-volume lane too.
+    // Every seeded track ships a "Volume" (paramID 1) lane starting DISABLED
+    // (createTrackAutomationList), and addAutomationLane is a no-op on a
+    // duplicate name, so enable it explicitly; add a distinct non-volume lane
+    // too.
     cmds.setAutomationEnabled(0, "Volume", true);
     cmds.addAutomationLane(0, "S0 Cutoff", 105);
     cmds.addAutomationPoint(0, "Volume", 0.0, 0.5);
@@ -173,12 +193,15 @@ TEST(Automation, SetFaderAuthoritativeProjectWide)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Two tracks so the project-wide (-1) path is proven across multiple
+    // tracks, as it was when the default project shipped three.
+    ASSERT_GE(seedTrack(engine, 2), 0);
 
     const int numTracks = engine.getProjectModel().getTrackListTree().getNumChildren();
     ASSERT_GE(numTracks, 1);
 
     // Enable every track's Volume lane first so the disable is observable
-    // (default project lanes start disabled).
+    // (lanes start disabled).
     for (int t = 0; t < numTracks; ++t)
         cmds.setAutomationEnabled(t, "Volume", true);
 
@@ -204,6 +227,9 @@ TEST(Automation, SetFaderAuthoritativeOutOfRangeIsNoOp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Seed the track whose lanes the before/after comparison reads, so the
+    // no-op proof is over a real lane set, not two empty vectors.
+    ASSERT_GE(seedTrack(engine), 0);
 
     auto before = engine.getReadModel().getAutomationLanes(0);
 

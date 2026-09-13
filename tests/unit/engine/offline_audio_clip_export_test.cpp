@@ -64,12 +64,39 @@ juce::File writeSineWav(const juce::String& name, int channels, double seconds,
     return f;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed one TRACK node with the same shape
+// AudioEngineCommands::createTrackValueTree() builds (lesson 9).
+juce::ValueTree addSeedTrack(ProjectModel& model)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String("Track 0"), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    model.getTrackListTree().addChild(track, -1, nullptr);
+    return track;
+}
+
 juce::ValueTree makeProjectWithAudioClip(const juce::File& source, double durationSeconds)
 {
     ProjectModel model;
     auto clip = model.createAudioClip("offline-audio", 0.0, durationSeconds,
                                       source.getFullPathName());
+    addSeedTrack(model);
     auto tracks = model.getTrackListTree();
+    // EXPECT (not ASSERT — non-void helper): the seeded track above makes
+    // these deterministically valid, and the clipList writes below depend on
+    // them.
     EXPECT_TRUE(tracks.isValid());
     EXPECT_GT(tracks.getNumChildren(), 0);
     auto clipList = tracks.getChild(0).getChildWithName(IDs::CLIP_LIST);

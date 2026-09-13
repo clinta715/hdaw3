@@ -12,6 +12,11 @@ TEST(NoteID, AllocatesUniqueIDs) {
 TEST(NoteID, CreateMidiNoteAssignsID) {
     ProjectModel m;
     m.createDefaultProject();
+    // Default projects are empty — create the track under test.
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, "T", nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    m.getTrackListTree().addChild(track, -1, nullptr);
     // The default project now ships empty; add a MIDI clip with a note so the
     // walk below has something to find.
     auto clip = m.createMidiClipEmpty("T", 0.0, 1.0);
@@ -39,6 +44,11 @@ TEST(NoteID, CreateMidiNoteAssignsID) {
 TEST(NoteID, ScanAndSyncAssignsMissing) {
     ProjectModel m;
     m.createDefaultProject();
+    // Default projects are empty — create the track under test.
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, "T", nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    m.getTrackListTree().addChild(track, -1, nullptr);
     // The default project now ships empty; add a MIDI clip with one note to
     // track 0, then strip its noteID and verify scanAndSync restores it.
     auto clip = m.createMidiClipEmpty("T", 0.0, 1.0);

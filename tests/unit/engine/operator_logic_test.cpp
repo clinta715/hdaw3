@@ -362,6 +362,7 @@ TEST(OperatorRpc, SetNoteChance)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "ChanceClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -386,6 +387,7 @@ TEST(OperatorRpc, SetNoteRepeatCount)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RepeatClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -410,6 +412,7 @@ TEST(OperatorRpc, SetNoteRepeatRate)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RepeatRateClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -434,6 +437,7 @@ TEST(OperatorRpc, SetNoteRepeatCurve)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RepeatCurveClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -458,6 +462,7 @@ TEST(OperatorRpc, SetNoteOccurrence)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "OccurrenceClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -482,6 +487,7 @@ TEST(OperatorRpc, SetNoteRecurrence)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RecurrenceClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -506,6 +512,7 @@ TEST(OperatorRpc, SetClipSeed)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "SeedClip");
     ASSERT_GT(clipId, 0);
 
@@ -545,6 +552,7 @@ TEST(OperatorRpc, SetNotesOperatorBatch)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "BatchClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -957,6 +965,7 @@ TEST(ExpressionRpc, SetNoteGainRpc)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNoteGain(noteId, 0.5f);
@@ -970,6 +979,7 @@ TEST(ExpressionRpc, SetNotePanRpc)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNotePan(noteId, -1.0f);
@@ -983,6 +993,7 @@ TEST(ExpressionRpc, SetNotePitchOffsetRpc)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNotePitchOffset(noteId, 7.0f);
@@ -996,6 +1007,7 @@ TEST(ExpressionRpc, SetNoteTimbreRpc)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNoteTimbre(noteId, 0.8f);
@@ -1009,6 +1021,7 @@ TEST(ExpressionRpc, SetNotePressureRpc)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNotePressure(noteId, 0.75f);
@@ -1022,6 +1035,7 @@ TEST(ExpressionRpc, SetNotesExpressionBatch)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "test");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     cmds.setNotesExpression(noteId, 0.5f, -1.0f, 7.0f, 0.8f, 0.5f);

@@ -290,10 +290,6 @@ TEST(McpServer, FxAddRemoveBypass) {
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
     tp.start(&s); s.setTransport(&tp); s.start();
 
-    auto* tr0 = engine.getMainProcessor()->getTrack(0);
-    ASSERT_NE(tr0, nullptr);
-    EXPECT_EQ(tr0->getNumFXSlots(), 0);
-
     auto callTool = [&](int id, const char* name, const char* args) {
         tp.drainOutgoing();
         QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
@@ -310,11 +306,19 @@ TEST(McpServer, FxAddRemoveBypass) {
                 .value("text").toString();
     };
 
+    // New projects are empty (zero tracks) — create the track under test.
+    auto seed = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(seed.value("error").isObject());
+    ASSERT_FALSE(seed.value("result").toObject().value("isError").toBool(true));
+
     // add_fx: eq at position 0
     auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"eq","position":0})");
     EXPECT_FALSE(r.value("error").isObject());
     EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
     EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
+
+    auto* tr0 = engine.getMainProcessor()->getTrack(0);
+    ASSERT_NE(tr0, nullptr);
     ASSERT_EQ(tr0->getNumFXSlots(), 1);
     EXPECT_EQ(tr0->getFXChain().at(0)->getType().toStdString(), std::string("eq"));
 
@@ -426,8 +430,12 @@ TEST(McpServer, AddFilterFxAndSetParams) {
         return r.value("result").toObject().value("isError").toBool(false);
     };
 
+    auto r = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+
     // add_fx {fxType:"filter"} -> ok; a live slot of type "filter" exists.
-    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"filter"})");
+    r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"filter"})");
     EXPECT_FALSE(r.value("error").isObject());
     EXPECT_FALSE(isError(r));
     EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
@@ -518,7 +526,11 @@ TEST(McpServer, ApplySubSynthModPreset) {
         return r.value("result").toObject().value("isError").toBool(false);
     };
 
-    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"sub_synth"})");
+    auto r = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+
+    r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"sub_synth"})");
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
 
     r = callTool(2, "apply_sub_synth_mod_preset", R"({"trackId":0,"slotIndex":0,"presetId":"vibrato"})");
@@ -662,20 +674,27 @@ TEST(McpServer, ApplySongCells) {
         return r.value("result").toObject().value("isError").toBool(false);
     };
 
-    auto r = callTool(1, "set_song_plan",
+    auto r = callTool(0, "add_track", R"({"name":"Track 0"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+    r = callTool(1, "add_track", R"({"name":"Track 1"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+
+    r = callTool(2, "set_song_plan",
         R"({"bpm":140,"keyRoot":5,"scaleMode":7,"style":"full-on","seed":42,"totalBars":24,"sections":[{"name":"intro","kind":"intro","bars":8},{"name":"build","kind":"build","bars":8},{"name":"main","kind":"mainA","bars":8}]})");
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
 
     // Gate 9: unknown sourceKind is a tool error.
-    r = callTool(2, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"wub"})");
+    r = callTool(3, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"wub"})");
     EXPECT_TRUE(isError(r));
 
-    r = callTool(3, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"phrase","params":{"style":"BassLine"}})");
+    r = callTool(4, "set_cell", R"({"section":"intro","role":"bass","trackId":1,"source":"phrase","params":{"style":"BassLine"}})");
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
-    r = callTool(4, "set_cell", R"({"section":"build","role":"hat","trackId":1,"source":"rhythm","params":{"pulseA":8,"pulseB":0,"pitchA":42,"pitchB":42}})");
+    r = callTool(5, "set_cell", R"({"section":"build","role":"hat","trackId":1,"source":"rhythm","params":{"pulseA":8,"pulseB":0,"pitchA":42,"pitchB":42}})");
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
 
-    r = callTool(5, "fill_cells", R"({"mode":"all"})");
+    r = callTool(6, "fill_cells", R"({"mode":"all"})");
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
     auto fill = QJsonDocument::fromJson(text(r).toUtf8()).object();
     EXPECT_EQ(fill.value("filled").toInt(), 2);
@@ -685,22 +704,22 @@ TEST(McpServer, ApplySongCells) {
     EXPECT_GT(fill.value("cells").toArray().at(0).toObject().value("noteCount").toInt(), 0);
     EXPECT_GT(fill.value("cells").toArray().at(0).toObject().value("seedUsed").toDouble(), 0.0);
 
-    r = callTool(6, "get_clip_provenance", QString(R"({"clipId":%1})").arg(clip0));
+    r = callTool(7, "get_clip_provenance", QString(R"({"clipId":%1})").arg(clip0));
     auto prov = QJsonDocument::fromJson(text(r).toUtf8()).object();
     EXPECT_TRUE(prov.value("found").toBool());
     EXPECT_EQ(prov.value("source").toString(), "phrase");
 
     const double seed0 = fill.value("cells").toArray().at(1).toObject().value("seedUsed").toDouble();
-    r = callTool(7, "reroll", R"({"role":"hat"})");
+    r = callTool(8, "reroll", R"({"role":"hat"})");
     auto reroll = QJsonDocument::fromJson(text(r).toUtf8()).object();
     EXPECT_EQ(reroll.value("filled").toInt(), 1);
     EXPECT_EQ(reroll.value("cells").toArray().at(0).toObject().value("seedUsed").toDouble(), seed0 + 1);
 
-    r = callTool(8, "get_cells", "{}");
+    r = callTool(9, "get_cells", "{}");
     EXPECT_EQ(QJsonDocument::fromJson(text(r).toUtf8()).object().value("cells").toArray().size(), 2);
-    r = callTool(9, "remove_cell", R"({"section":"intro","role":"bass"})");
-    EXPECT_FALSE(isError(r));
     r = callTool(10, "remove_cell", R"({"section":"intro","role":"bass"})");
+    EXPECT_FALSE(isError(r));
+    r = callTool(11, "remove_cell", R"({"section":"intro","role":"bass"})");
     EXPECT_TRUE(isError(r)); // already gone
 
     s.stop();
@@ -737,8 +756,12 @@ TEST(McpServer, AddDelaySyncAndSetParams) {
         return r.value("result").toObject().value("isError").toBool(false);
     };
 
+    auto r = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+
     // add_fx {fxType:"delay"} -> a live slot of type "delay" exists.
-    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"delay"})");
+    r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"delay"})");
     EXPECT_FALSE(r.value("error").isObject());
     EXPECT_FALSE(isError(r));
     EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
@@ -817,8 +840,12 @@ TEST(McpServer, SetFaderAuthoritativeDisablesVolumeAutomation) {
                 .value("text").toString();
     };
 
-    // The default project's track 0 already has a "Volume" (paramID 1) lane but
-    // it starts DISABLED; enable it first so the tool's disable is observable.
+    auto seed = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(seed.value("error").isObject());
+    ASSERT_FALSE(seed.value("result").toObject().value("isError").toBool(true));
+
+    // A new track has a disabled "Volume" (paramID 1) lane; enable it first
+    // so the tool's disable is observable.
     engine.getProjectCommands().setAutomationEnabled(0, "Volume", true);
 
     auto r = callTool(1, "set_fader_authoritative", R"({"trackId":0,"authoritative":true})");
@@ -1199,10 +1226,18 @@ TEST(McpServer, SetTimeSignature) {
 
 TEST(McpServer, GenerateRhythmPattern) {
     AudioEngine engine;
-    engine.initialize();  // default project: 3 tracks, track 0 exists
+    engine.initialize();
     mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
     tp.start(&s); s.setTransport(&tp); s.start();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":0,"method":"tools/call",
+        "params":{"name":"add_track","arguments":{"name":"Track"}}})"));
+    QByteArray seedOut; ASSERT_TRUE(tp.waitForOutgoing(500, &seedOut));
+    auto seed = parseOne(seedOut);
+    ASSERT_FALSE(seed.value("error").isObject());
+    ASSERT_FALSE(seed.value("result").toObject().value("isError").toBool(true));
+    tp.drainOutgoing();
 
     // Default params: two euclidean pulses (4-over-3, rotation 1) collide
     // once at step 0 -> 4 + 3 - 1 = 6 notes in a new MIDI clip.
@@ -1357,14 +1392,23 @@ TEST(McpServer, AutoGainToTargetTool) {
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
     tp.start(&s); s.setTransport(&tp); s.start();
 
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":0,"method":"tools/call",
+        "params":{"name":"add_track","arguments":{"name":"Track"}}})"));
+    QByteArray seedOut; ASSERT_TRUE(tp.waitForOutgoing(500, &seedOut));
+    auto seed = parseOne(seedOut);
+    ASSERT_FALSE(seed.value("error").isObject());
+    ASSERT_FALSE(seed.value("result").toObject().value("isError").toBool(true));
+    tp.drainOutgoing();
+
     const QString srcPath = writeSineWav("gainstage");
     ASSERT_FALSE(srcPath.isEmpty());
-    // Default project track 0 (audio) â€” add the sine as an audio clip (2 s
+    // Add the sine as an audio clip on the explicitly-created track (2 s
     // of content at 120 BPM; the 1.0 s window is fully covered by signal).
     const int clipId = engine.getProjectCommands().addAudioClip(
         0, 0.0, 4.0, srcPath.toStdString(), "sine");
     ASSERT_GE(clipId, 0);
 
+    tp.drainOutgoing();
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"auto_gain_to_target","arguments":{"trackId":0,"targetRms":0.05,"windowSeconds":1.0}}})"));
     QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
@@ -1616,10 +1660,18 @@ TEST(McpServer, ExportAudioRendersDefaultProject) {
 // threshold if whole blocks rendered silence).
 TEST(McpServer, ExportAudioStreamsLongClipWithoutDropouts) {
     AudioEngine engine;
-    engine.initialize();  // default project: 3 tracks, track 0 exists
+    engine.initialize();
     mcp::TransportLoopback tp;
     mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
     tp.start(&s); s.setTransport(&tp); s.start();
+
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":0,"method":"tools/call",
+        "params":{"name":"add_track","arguments":{"name":"Track"}}})"));
+    QByteArray seedOut; ASSERT_TRUE(tp.waitForOutgoing(5000, &seedOut));
+    auto seed = parseOne(seedOut);
+    ASSERT_FALSE(seed.value("error").isObject());
+    ASSERT_FALSE(seed.value("result").toObject().value("isError").toBool(true));
+    tp.drainOutgoing();
 
     const QString srcPath = writeLongSineWav();
     ASSERT_FALSE(srcPath.isEmpty());
@@ -2398,37 +2450,114 @@ TEST(McpServer, SendFxMidiValidation) {
     };
 
     // Non-plugin slot: send_fx_midi must reject it.
-    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"eq","position":0})");
+    auto r = callTool(1, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+    r = callTool(2, "add_fx", R"({"trackId":0,"fxType":"eq","position":0})");
     EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
 
-    r = callTool(2, "send_fx_midi",
+    r = callTool(3, "send_fx_midi",
                  R"({"trackId":0,"slotIndex":0,"messages":[{"kind":"programChange","channel":1,"program":40}]})");
     EXPECT_TRUE(isError(r));
         EXPECT_EQ(text(r).toStdString(), std::string("slot is not a plugin slot"));
 
     // Unknown track.
-    r = callTool(3, "send_fx_midi",
+    r = callTool(4, "send_fx_midi",
                  R"({"trackId":42,"slotIndex":0,"messages":[{"kind":"programChange","channel":1,"program":0}]})");
     EXPECT_TRUE(isError(r));
 
     // Unknown slot.
-    r = callTool(4, "send_fx_midi",
+    r = callTool(5, "send_fx_midi",
                  R"({"trackId":0,"slotIndex":9,"messages":[{"kind":"programChange","channel":1,"program":0}]})");
     EXPECT_TRUE(isError(r));
 
     // Empty batch.
-    r = callTool(5, "send_fx_midi", R"({"trackId":0,"slotIndex":0,"messages":[]})");
+    r = callTool(6, "send_fx_midi", R"({"trackId":0,"slotIndex":0,"messages":[]})");
     EXPECT_TRUE(isError(r));
 
     // Unknown kind.
-    r = callTool(6, "send_fx_midi",
+    r = callTool(7, "send_fx_midi",
                  R"({"trackId":0,"slotIndex":0,"messages":[{"kind":"wobble","channel":1}]})");
     EXPECT_TRUE(isError(r));
 
     // load_virus_preset mirrors the same validation.
-    r = callTool(7, "load_virus_preset", R"({"trackId":0,"slotIndex":0,"bank":2,"program":40})");
+    r = callTool(8, "load_virus_preset", R"({"trackId":0,"slotIndex":0,"bank":2,"program":40})");
     EXPECT_TRUE(isError(r));
         EXPECT_EQ(text(r).toStdString(), std::string("slot is not a plugin slot"));
+
+    // load_nord_bank: file-level + slot-level validation (BUG-7). A real
+    // NodalRed2x delivery probe lives in FxMidiInjection.* (env-gated).
+    {
+        // Synthetic NL2x .syx: two 139-byte single dumps (F0 33 0F 04 ...).
+        const auto makeDump = [](uint8_t spec) {
+            std::vector<uint8_t> d { 0xF0, 0x33, 0x0F, 0x04, 0x01, spec };
+            for (int i = 0; i < 132; ++i) d.push_back(static_cast<uint8_t>(i % 128));
+            d.push_back(0xF7);
+            return d;
+        };
+        const auto dumpA = makeDump(0), dumpB = makeDump(1);
+        std::vector<uint8_t> bank;
+        bank.insert(bank.end(), dumpA.begin(), dumpA.end());
+        bank.insert(bank.end(), dumpB.begin(), dumpB.end());
+        const juce::File bankFile = juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getChildFile("hdaw_test_nord_bank.syx");
+        bankFile.replaceWithData(bank.data(), static_cast<int>(bank.size()));
+
+        // Not a Clavia dump -> rejected before anything is queued.
+        const std::vector<uint8_t> badDump { 0xF0, 0x43, 0x00, 0x04, 0x00, 0x00,
+                                             0x01, 0xF7 };
+        const juce::File badFile = juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getChildFile("hdaw_test_bad.syx");
+        badFile.replaceWithData(badDump.data(), badDump.size());
+
+        // Missing file.
+        r = callTool(9, "load_nord_bank",
+                     R"({"trackId":0,"slotIndex":0,"filePath":"Z:/definitely/missing.syx"})");
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("file not found"));
+
+        // Unsupported extension.
+        r = callTool(10, "load_nord_bank",
+                     R"({"trackId":0,"slotIndex":0,"filePath":"C:\\nope.txt"})");
+        EXPECT_TRUE(isError(r));
+
+        // JSON args with the temp path, forward-slashed for JSON safety.
+        const std::string bankPath = bankFile.getFullPathName()
+                                         .replace("\\", "/").toStdString();
+        const std::string badPath = badFile.getFullPathName()
+                                        .replace("\\", "/").toStdString();
+        const auto nordArgs = [](int trackId, const std::string& file,
+                                 const std::string& extra) {
+            return std::string("{\"trackId\":")
+                 + std::to_string(trackId)
+                 + ",\"slotIndex\":0,\"filePath\":\"" + file + "\""
+                 + extra + "}";
+        };
+
+        // Bad header.
+        r = callTool(11, "load_nord_bank", nordArgs(0, badPath, "").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("invalid Nord dump"));
+
+        // Non-plugin slot (eq on track 0 from the fixture above).
+        r = callTool(12, "load_nord_bank", nordArgs(0, bankPath, "").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_EQ(text(r).toStdString(), std::string("slot is not a plugin slot"));
+
+        // Unknown track.
+        r = callTool(13, "load_nord_bank",
+                     nordArgs(42, bankPath, "").c_str());
+        EXPECT_TRUE(isError(r));
+
+        // Out-of-range program.
+        r = callTool(14, "load_nord_bank",
+                     nordArgs(0, bankPath, ",\"program\":200").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("program must be 0..127"));
+
+        badFile.deleteFile();
+        bankFile.deleteFile();
+    }
 
     s.stop();
     s.setTransport(nullptr);

@@ -138,21 +138,22 @@ These cost real debugging time — read before touching the relevant area:
    verify no unintended signal degradation. Check for denormalized floats,
    integer overflow in accumulators, and incorrect gain staging. See
    `docs/realtime-safety.md`.
-9. **The default project is empty of clips but DOES ship three tracks — count
-   assertions must scope to a track they control, and never hard-code an
-   absolute clip count.** `createDefaultProject()` (`ProjectModel.cpp`) creates
-   "Track 1" (audio), "Synth" (MIDI), and "Vocals" (audio) — all three with
-   **empty** `CLIP_LIST`s; there are NO seed `Melody`/`Chords` clips. (Earlier
-   versions of the default project shipped seed clips; hardcoded `.tl-clip`
-   baselines in E2E silently broke when the contract changed — prefer reading
-   the live count or filtering by `trackIndex` over a literal `toBe(2)`.) A
-   project-wide op (ripple delete, region ops) that touches a track you added
-   content to will still see those clips, so scope count assertions to the
-   track/chips you control (filter by `trackIndex`); `merge_clips_test` dodges
-   this by asserting on specific ids, `clip_slicing_test` by reading the raw
-   `ValueTree`. Corollary: `ProjectModel::sliceClipAtTimes` **reassigns ids**
-   to the pieces (the original clip is removed), so across a slice, track clips
-   by position/count, not by the original id.
+9. **The default project ships ZERO tracks and zero clips (v0.34.0) — tests
+   must create every track/clip they use and never assume inherited
+   baselines.** `createDefaultProject()` (`ProjectModel.cpp`) builds an empty
+   `TRACK_LIST`; the user (or MCP `add_track` /
+   `add_instrument_part` / audition keepTrack) creates tracks explicitly.
+   (Earlier versions shipped "Track 1"/"Synth"/"Vocals" stub tracks with empty
+   `CLIP_LIST`s — and before that, seed `Melody`/`Chords` clips; hardcoded
+   baselines silently broke both times.) Tests that need track N must seed
+   tracks 0..N explicitly, and any test reading a LIVE processor track
+   (`getMainProcessor()->getTrack(i)`) after `addTrack` must call
+   `engine.drainPendingRoutingRebuild()` first (the routing projection is
+   deferred; lessons 10/12). Never re-add default tracks in production to
+   paper over a test failure. Corollary:
+   `ProjectModel::sliceClipAtTimes` **reassigns ids** to the pieces (the
+   original clip is removed), so across a slice, track clips by
+   position/count, not by the original id.
 
 10. **A routing-graph rebuild must restore track state, and projection seams
     need state-preservation tests — not just no-crash smoke tests.** The

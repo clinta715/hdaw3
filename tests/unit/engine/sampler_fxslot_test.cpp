@@ -89,6 +89,8 @@ TEST (SamplerFxSlot, RebuildRestoresSampleAndParams)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track"); // default projects are empty
+    engine.drainPendingRoutingRebuild();
 
     auto* mp = engine.getMainProcessor();
     ASSERT_NE (mp, nullptr);

@@ -120,6 +120,7 @@ TEST(RaveRpc, ImportResultImportsWavAsClip)
 
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track"); // zero-track default: seed the target track
     auto r = frontend::dispatch(engine, "rave.importResult",
                                 QJsonObject{{"outputPath", wav},
                                             {"alignToGrid", false}});
@@ -160,6 +161,7 @@ TEST(RaveRpc, ImportResultTimelineAlignedSetsSourceOffset)
 
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track"); // zero-track default: seed the target track
     auto r = frontend::dispatch(engine, "rave.importResult",
                                 QJsonObject{{"outputPath", wav},
                                             {"trackIndex", 0},

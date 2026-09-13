@@ -96,6 +96,7 @@ TEST(TrackFxRebuildRace, RebuildTrackFXSerializedAgainstAsyncGraphRebuild)
     const juce::String path = file.getFullPathName();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     for (int i = 0; i < 25; ++i)
     {
         cmds.addAudioClip(0, 0.0, 1.0, path.toStdString(),
@@ -121,6 +122,7 @@ TEST(TrackFxRebuildRace, SubSynthSlotSurvivesRebuildAndRestoresParams)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addFxSlot(0, "sub_synth", 0, "");
 
     auto* track = engine.getMainProcessor()->getTrack(0);
@@ -184,7 +186,7 @@ TEST(TrackFxRebuildRace, SubSynthSlotSurvivesRebuildAndRestoresParams)
     EXPECT_EQ(fxSlots[0].fxType, "sub_synth");
 }
 
-// Same shape on the default MIDI "Synth" track (index 1) for
+// Same shape on the explicitly created track at index 1 for
 // rebuildMidiTrackFX: MIDI clip adds queue the async graph rebuild while the
 // MIDI-FX commands mutate the live track's chain from this thread.
 TEST(TrackFxRebuildRace, RebuildMidiTrackFXSerialized)
@@ -193,6 +195,9 @@ TEST(TrackFxRebuildRace, RebuildMidiTrackFXSerialized)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    engine.drainPendingRoutingRebuild();
     for (int i = 0; i < 25; ++i)
     {
         cmds.addMidiClip(1, 0.0, 1.0, std::string("raceMidi") + std::to_string(i));
@@ -219,6 +224,9 @@ TEST(TrackFxRebuildRace, RebuildModulationSerializedAgainstAsyncGraphRebuild)
     auto file = writeSineWav("modrace", 44100);
     const juce::String path = file.getFullPathName();
 
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
+
     // addModulation/removeModulation are concrete AudioEngineCommands methods
     // (they take a juce::ValueTree), not on the abstract ProjectCommands face.
     auto& cmds = dynamic_cast<AudioEngineCommands&>(engine.getProjectCommands());
@@ -239,8 +247,8 @@ TEST(TrackFxRebuildRace, RebuildModulationSerializedAgainstAsyncGraphRebuild)
         ASSERT_NE(track, nullptr);
         EXPECT_GE(track->getNumModulations(), 1);
 
-        // Removal path also runs against a possibly-pending rebuild; track 0
-        // ships no seeded MODULATION_LIST, so the count must return to 0.
+        // Removal path also runs against a possibly-pending rebuild; the explicit
+        // track 0 has no seeded MODULATION_LIST, so the count must return to 0.
         cmds.removeModulation(0, 0);
         track = engine.getMainProcessor()->getTrack(0);
         ASSERT_NE(track, nullptr);
@@ -252,8 +260,8 @@ TEST(TrackFxRebuildRace, RebuildModulationSerializedAgainstAsyncGraphRebuild)
 
 // Same race shape for rebuildAutomationCache: addAutomationLane calls it
 // directly (AudioEngineCommands_Automation.cpp) on this thread while the
-// async graph rebuild can swap the RoutingManager. Track 0 ships seeded
-// Volume/Pan/Mute lanes (ProjectModel::createTrackAutomationList), so
+// async graph rebuild can swap the RoutingManager. The explicit track 0 has
+// seeded Volume/Pan/Mute lanes (ProjectModel::createTrackAutomationList), so
 // assertions are baseline-relative (lesson 9 — no absolute counts).
 TEST(TrackFxRebuildRace, RebuildAutomationCacheSerializedAgainstAsyncGraphRebuild)
 {
@@ -264,6 +272,8 @@ TEST(TrackFxRebuildRace, RebuildAutomationCacheSerializedAgainstAsyncGraphRebuil
     const juce::String path = file.getFullPathName();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     for (int i = 0; i < 25; ++i)
     {
         cmds.addAudioClip(0, 0.0, 1.0, path.toStdString(),
@@ -304,6 +314,7 @@ TEST(TrackFxRebuildRace, ToggleFXEditorSerializedAgainstAsyncGraphRebuild)
     const juce::String path = file.getFullPathName();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     for (int i = 0; i < 25; ++i)
     {
         cmds.addAudioClip(0, 0.0, 1.0, path.toStdString(),
@@ -328,9 +339,9 @@ TEST(TrackFxRebuildRace, ToggleFXEditorSerializedAgainstAsyncGraphRebuild)
 // MidiClipProcessor's note cache directly on this thread while addAudioClip's
 // async graph rebuild can swap (and destroy) the RoutingManager mid-iteration.
 // The marshal must keep the cache observable synchronously — no sleep.
-// Track 1 is the default MIDI "Synth" track with an empty clip list (lesson 9),
-// so our clip is index 0 there; track 2 is an audio track whose clip adds
-// queue the async rebuild without touching track 1's clip indices.
+// Explicit track 1 has an empty clip list, so our clip is index 0 there;
+// explicit track 2 receives audio clips that queue the async rebuild without
+// touching track 1's clip indices.
 TEST(TrackFxRebuildRace, RebuildMidiClipCacheSerializedAgainstAsyncGraphRebuild)
 {
     AudioEngine engine;
@@ -340,6 +351,10 @@ TEST(TrackFxRebuildRace, RebuildMidiClipCacheSerializedAgainstAsyncGraphRebuild)
     const juce::String path = file.getFullPathName();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    cmds.addTrack("Track 2");
+    engine.drainPendingRoutingRebuild();
     const int clipId = cmds.addMidiClip(1, 0.0, 4.0, "raceMidiCache");
     ASSERT_GE(clipId, 0);
 
@@ -383,6 +398,7 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadSurvivesRebuild)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addFxSlot(0, "sub_synth", 0, "");
 
     auto fixture = virusFixtureFile();
@@ -458,6 +474,7 @@ TEST(TrackFxRebuildRace, SubSynthVirusUpgradesSurviveRebuild)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addFxSlot(0, "sub_synth", 0, "");
 
     cmds.setFxSlotParam(0, 0, 25, 0.5f);
@@ -514,6 +531,7 @@ TEST(TrackFxRebuildRace, SubSynthModPresetAppliesAtomicallyAndSurvivesRebuild)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addFxSlot(0, "sub_synth", 0, "");
 
     auto slotTree = [&]() {
@@ -589,6 +607,7 @@ TEST(TrackFxRebuildRace, SubSynthPatchLoadPersistsAcrossSaveLoad)
     engine.initialize();
 
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addFxSlot(0, "sub_synth", 0, "");
 
     auto fixture = virusFixtureFile();

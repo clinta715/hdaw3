@@ -268,12 +268,17 @@ TEST_F(FileLibraryPatchTest, AuditionPatchLoadsIntoProbeTrack) {
     EXPECT_EQ(result.value("role").toString().toStdString(), "bass");
     EXPECT_EQ(result.value("name").toString().toStdString(), "~WELCOME");
 
-    // Probe track created (default project has 3 tracks).
-    EXPECT_GE(trackId, 3);
+    // Probe track created by the tool (zero-track default, v0.33+ — lesson 9):
+    // any valid track id qualifies; the live-processor lookup below asserts the
+    // track actually exists.
+    EXPECT_GE(trackId, 0);
 
     // Gate 6: LIVE processor slot reflects the loaded patch (bcsingle.syx maps
     // osc1_wave raw 0 -> Saw = sub wave 1, osc1_level raw 64 -> 64/127,
     // cutoff raw 27 -> 86.8611 Hz; pinned by VirusSysexImport tests).
+    // The tool just added the probe track — drain the coalesced routing
+    // rebuild so the live projection is deterministic (lessons 10/12).
+    engine.drainPendingRoutingRebuild();
     auto* proc = engine.getMainProcessor();
     ASSERT_NE(proc, nullptr);
     auto* track = proc->getTrack(trackId);

@@ -7,6 +7,8 @@ TEST(TrackMixerState, RestoredAfterRoutingGraphRebuild)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     engine.setTrackVolume(0, 0.5f);
     engine.setTrackPan(0, -0.25f);
@@ -25,6 +27,8 @@ TEST(TrackMixerState, DefaultsAppliedWhenUnset)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     engine.getMainProcessor()->rebuildRoutingGraph();
 

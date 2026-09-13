@@ -60,7 +60,8 @@ TEST(IncrementalRoutingRemoveMove, RemoveEquivalentToFullRebuild)
         b.routing->removeClip(0, 5);
     }
     ASSERT_TRUE(b.waitForBake()) << "removeClip bake timed out";
-    EXPECT_EQ(b.routing->getAudioClipSources().size(), 5u);
+    // ASSERT: the later .at({0, 4}) derefs depend on this map being intact.
+    ASSERT_EQ(b.routing->getAudioClipSources().size(), 5u);
 
     // Graph C (reference): full rebuild of the 5-clip layout.
     RenderHarness c;
@@ -120,6 +121,7 @@ TEST(IncrementalRoutingRemoveMove, PlacementEquivalentToFullRebuild)
     RenderHarness a;
     a.init(initialClips);
     a.build();
+    ASSERT_EQ(a.routing->getAudioClipSources().size(), 5u);
     auto* aMoved = a.routing->getAudioClipSources().at({0, 4});
     ASSERT_NE(aMoved, nullptr);
     EXPECT_TRUE(aMoved->getGainEnvelopePoints().empty())
@@ -155,6 +157,8 @@ TEST(IncrementalRoutingRemoveMove, PlacementEquivalentToFullRebuild)
 
     // Moved clip gained crossfade points and matches the reference on the LIVE
     // processor.
+    ASSERT_EQ(b.routing->getAudioClipSources().size(), 5u);
+    ASSERT_EQ(c.routing->getAudioClipSources().size(), 5u);
     auto* bMoved = b.routing->getAudioClipSources().at({0, 4});
     auto* cMoved = c.routing->getAudioClipSources().at({0, 4});
     ASSERT_NE(bMoved, nullptr);
@@ -239,7 +243,8 @@ TEST(IncrementalRoutingRemoveMove, UndoRedoEquivalentToFullRebuild)
         b.routing->removeClip(0, 5);
     }
     ASSERT_TRUE(b.waitForBake()) << "undo remove bake timed out";
-    EXPECT_EQ(b.routing->getAudioClipSources().size(), 5u);
+    // ASSERT: the later .at({0, 4}) derefs depend on this map being intact.
+    ASSERT_EQ(b.routing->getAudioClipSources().size(), 5u);
 
     // Undo must leave the UNTOUCHED sibling (clip 0) bit-identical...
     EXPECT_EQ(sib0Base->getGainEnvelopePoints().size(), sib0EnvBefore.size());
@@ -254,6 +259,7 @@ TEST(IncrementalRoutingRemoveMove, UndoRedoEquivalentToFullRebuild)
     RenderHarness ref5;
     ref5.init(baseClips);
     ref5.build();
+    ASSERT_EQ(ref5.routing->getAudioClipSources().size(), 5u);
     auto* sib4Undo = b.routing->getAudioClipSources().at({0, 4});
     auto* sib4Ref = ref5.routing->getAudioClipSources().at({0, 4});
     ASSERT_NE(sib4Undo, nullptr);

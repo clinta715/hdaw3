@@ -65,8 +65,12 @@ JE8086 (JP-8000), Dexed (DX7), NodalRed2x — installed in
 `C:\Program Files\Common Files\CLAP\` with ROMs. Audition via
 `send_fx_midi` (CC0 bank + PC) → `save_project` → `export_audio {wait:true}`
 → wavpeak/mix_report fingerprints. Verified audible: OsTIrus default (0.33–0.47),
-Vavra, Xenia, JE8086, Osirus post-injection (0.55). Patch caveat: TI bank
-switching via CC0+PC unverified (all combos hash-identical — see
+Vavra, Xenia, JE8086, Osirus post-injection (0.55), NodalRed2x (multi-port
+fix, v0.34). Nord Lead 2x banks load via `load_nord_bank {trackId, slotIndex,
+filePath, program?}` (validated Clavia SysEx dumps; optional trailing PC);
+descriptive sidecars for the bank library live next to the patches
+(`timbre-lib/nl2x_patch.py`). Patch caveat: TI bank switching via CC0+PC
+unverified (all combos hash-identical — see
 docs/plans/2026-09-12-plugin-state-durability.md). State persistence: inject →
 save captures the preset; after `load_project`, re-apply.
 

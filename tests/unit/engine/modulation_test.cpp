@@ -432,11 +432,12 @@ TEST(Modulation, PersistsAcrossSaveLoad)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
 
     // Build a MODULATION_LIST on track 0 directly in the model.
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
-    ASSERT_GT(trackList.getNumChildren(), 0);
+    ASSERT_EQ(trackList.getNumChildren(), 1);
     auto trackTree = trackList.getChild(0);
     auto modList = juce::ValueTree(IDs::MODULATION_LIST);
     auto mod = juce::ValueTree(IDs::MODULATION);
@@ -461,6 +462,7 @@ TEST(Modulation, PersistsAcrossSaveLoad)
     ASSERT_TRUE(HDAW::ProjectSerializer::load(engine2.getProjectModel(), file));
 
     auto trackList2 = engine2.getProjectModel().getTrackListTree();
+    ASSERT_EQ(trackList2.getNumChildren(), 1);
     auto trackTree2 = trackList2.getChild(0);
     auto modList2 = trackTree2.getChildWithName(IDs::MODULATION_LIST);
     ASSERT_TRUE(modList2.isValid());

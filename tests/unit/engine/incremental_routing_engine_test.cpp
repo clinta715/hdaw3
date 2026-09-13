@@ -81,6 +81,40 @@ bool ensureRoutingGraph(AudioEngine& engine)
     return proc->getRoutingManager() != nullptr;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. Seed exactly the track the batch
+// ops reference and drain the coalesced routing rebuild so live-processor /
+// RoutingManager reads are deterministic (lessons 9/10/12; no sleeps). The
+// drain also settles the structural add's forceFull flag + fullRebuilds_
+// counter BEFORE any test baseline is captured — mirroring the old default
+// project, whose three tracks existed before any rebuild counting.
+int seedTrack(AudioEngine& engine, const char* name)
+{
+    // Model-level append with NO undo-manager entry (same TRACK shape
+    // AudioEngineCommands::createTrackValueTree builds): the old default project's
+    // three tracks were created before the undo stack existed, so the undo/redo
+    // loops below must not see (and undo) the seed. The ValueTree listener still
+    // fires (structural forceFull) — the drain below settles it before any test
+    // baseline is captured.
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    engine.getProjectModel().getTrackListTree().addChild(track, -1, nullptr);
+    engine.drainPendingRoutingRebuild();
+    return static_cast<int>(engine.getProjectModel().getTrackListTree().getNumChildren()) - 1;
+}
+
 // Settles the OFF (full-rebuild reference) engine to a state reflecting the
 // current ValueTree, free of pump-thread races: drain any coalesced async
 // rebuild that the commands queued (add/remove fire triggerAsyncUpdate), then
@@ -237,6 +271,10 @@ TEST(IncrementalRoutingEngine, FlagOffPathIsUnchangedFullRebuild)
     AudioEngine engine;
     engine.initialize();
     ASSERT_FALSE(engine.isIncrementalRoutingEnabled());
+    // Flag OFF: the structural track add never touches the incremental
+    // machinery (the flag/queue writes are gated on incrementalEnabled_), so
+    // the counters below stay at their zero baselines.
+    ASSERT_GE(seedTrack(engine, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(engine));
 
     auto file = writeSineWav(static_cast<int>(2.0 * 44100.0), 44100.0);
@@ -288,7 +326,12 @@ TEST(IncrementalRoutingEngine, FlagOnBatchAddEquivalent)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
+    // The seeded track's structural add was drained above; capture the
+    // counter baseline so the batch-add assertions below stay delta-exact
+    // (the old default project's three tracks predated any counting too).
+    const uint64_t rebuildsAtStart = on.debugFullRebuilds();
 
     AudioEngine off;
     {
@@ -296,6 +339,7 @@ TEST(IncrementalRoutingEngine, FlagOnBatchAddEquivalent)
         off.initialize();
     }
     ASSERT_FALSE(off.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
 
     auto file = writeSineWav(static_cast<int>(2.0 * 44100.0), 44100.0);
@@ -320,7 +364,8 @@ TEST(IncrementalRoutingEngine, FlagOnBatchAddEquivalent)
     EXPECT_EQ(on.debugIncrementalOpsApplied(),
               static_cast<uint64_t>(queuedOn))
         << "incremental drain must apply exactly the queued ops";
-    EXPECT_EQ(on.debugFullRebuilds(), 0u);
+    EXPECT_EQ(on.debugFullRebuilds(), rebuildsAtStart)
+        << "the batch add must not force a full rebuild (seed baseline)";
 
     {
         const juce::MessageManagerLock pumpPark;
@@ -348,6 +393,7 @@ TEST(IncrementalRoutingEngine, FlagOnRemoveMoveEquivalent)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
 
     AudioEngine off;
@@ -356,6 +402,7 @@ TEST(IncrementalRoutingEngine, FlagOnRemoveMoveEquivalent)
         off.initialize();
     }
     ASSERT_FALSE(off.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
 
     auto file = writeSineWav(static_cast<int>(2.0 * 44100.0), 44100.0);
@@ -449,6 +496,7 @@ TEST(IncrementalRoutingEngine, FlagOnUndoRedoEquivalent)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
 
     AudioEngine off;
@@ -457,6 +505,7 @@ TEST(IncrementalRoutingEngine, FlagOnUndoRedoEquivalent)
         off.initialize();
     }
     ASSERT_FALSE(off.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
 
     auto file = writeSineWav(static_cast<int>(2.0 * 44100.0), 44100.0);
@@ -593,6 +642,7 @@ TEST(IncrementalRoutingEngine, FlagOnCrossTrackMoveEquivalent)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
 
     AudioEngine off;
@@ -601,6 +651,7 @@ TEST(IncrementalRoutingEngine, FlagOnCrossTrackMoveEquivalent)
         off.initialize();
     }
     ASSERT_FALSE(off.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
 
     auto file = writeSineWav(static_cast<int>(2.0 * 44100.0), 44100.0);

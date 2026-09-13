@@ -159,6 +159,7 @@ TEST(ProjectLifecycle, NewProjectResetsClipCount)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     // Default project has no clips (empty start)
     int defaultClips = static_cast<int>(engine.getReadModel().snapshot().clips.size());
@@ -177,6 +178,7 @@ TEST(ProjectLifecycle, SaveAndLoadRoundTrip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTempo(150.0);
     cmds.setTimeSignature(3, 4);
@@ -215,6 +217,7 @@ TEST(ClipProperties, SetClipStart)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "MoveMe");
     ASSERT_GT(clipId, 0);
 
@@ -228,6 +231,7 @@ TEST(ClipProperties, SetClipDuration)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "ResizeMe");
     ASSERT_GT(clipId, 0);
 
@@ -241,6 +245,7 @@ TEST(ClipProperties, SetClipGain)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "GainTest");
     ASSERT_GT(clipId, 0);
 
@@ -254,6 +259,7 @@ TEST(ClipProperties, SetClipFadeIn)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "FadeIn");
     ASSERT_GT(clipId, 0);
 
@@ -267,6 +273,7 @@ TEST(ClipProperties, SetClipFadeOut)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "FadeOut");
     ASSERT_GT(clipId, 0);
 
@@ -280,6 +287,7 @@ TEST(ClipProperties, SetClipOffset)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "Offset");
     ASSERT_GT(clipId, 0);
 
@@ -293,6 +301,7 @@ TEST(ClipProperties, SetClipLooping)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "LoopTest");
     ASSERT_GT(clipId, 0);
 
@@ -310,6 +319,7 @@ TEST(ClipProperties, SetClipMuted)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "MuteClip");
     ASSERT_GT(clipId, 0);
 
@@ -331,6 +341,7 @@ TEST(ClipTimestretch, SetSourceBpm)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "BpmClip");
     ASSERT_GT(clipId, 0);
 
@@ -344,6 +355,7 @@ TEST(ClipTimestretch, SetStretchMode)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "StretchClip");
     ASSERT_GT(clipId, 0);
 
@@ -357,6 +369,7 @@ TEST(ClipTimestretch, SetStretchRatio)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RatioClip");
     ASSERT_GT(clipId, 0);
 
@@ -374,6 +387,7 @@ TEST(ClipSlicing, SliceAtTimesSplitsClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 8.0, "SliceMe");
     ASSERT_GT(clipId, 0);
     cmds.addNote(clipId, 60, 100, 0.0, 1.0);
@@ -396,6 +410,7 @@ TEST(ClipSlicing, SliceAtPlayheadDoesNotCrash)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 8.0, "PlayheadSlice");
     ASSERT_GT(clipId, 0);
 
@@ -412,6 +427,7 @@ TEST(GainEnvelope, AddAndRetrievePoints)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "EnvClip");
     ASSERT_GT(clipId, 0);
 
@@ -432,6 +448,7 @@ TEST(GainEnvelope, MovePoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "MoveEnv");
     ASSERT_GT(clipId, 0);
 
@@ -450,6 +467,7 @@ TEST(GainEnvelope, RemovePoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RmEnv");
     ASSERT_GT(clipId, 0);
 
@@ -467,6 +485,7 @@ TEST(GainEnvelope, ClearEnvelope)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "ClearEnv");
     ASSERT_GT(clipId, 0);
 
@@ -483,6 +502,7 @@ TEST(GainEnvelope, SetBulkPoints)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "BulkEnv");
     ASSERT_GT(clipId, 0);
 
@@ -502,6 +522,7 @@ TEST(TrackProperties, SetTrackArmed)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackArmed(0, true);
     auto track = engine.getReadModel().getTrack(0);
@@ -517,6 +538,7 @@ TEST(TrackProperties, SetTrackInputMonitor)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackInputMonitor(0, true);
     auto track = engine.getReadModel().getTrack(0);
@@ -532,6 +554,7 @@ TEST(TrackProperties, SetTrackHeight)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackHeight(0, 200);
     auto track = engine.getReadModel().getTrack(0);
@@ -543,6 +566,7 @@ TEST(TrackProperties, SetTrackMidiChannel)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackMidiChannel(0, 10);
     auto track = engine.getReadModel().getTrack(0);
@@ -568,6 +592,7 @@ TEST(TrackProperties, SetTrackColor)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackColor(0, 0xFF59e0c4);
     auto track = engine.getReadModel().getTrack(0);
@@ -598,6 +623,7 @@ TEST(TrackProperties, SetTrackHidden)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.setTrackHidden(0, true);
     auto track = engine.getReadModel().getTrack(0);
@@ -637,12 +663,14 @@ TEST(TrackProperties, MoveTrack)
     auto& cmds = engine.getProjectCommands();
 
     cmds.addTrack("First");
+    cmds.addTrack("Second"); // a real move needs > 1 track
     auto snap = engine.getReadModel().snapshot();
     int origCount = static_cast<int>(snap.tracks.size());
+    ASSERT_GE(origCount, 2);
     // Move last track to first position
     cmds.moveTrack(origCount - 1, 0);
     auto moved = engine.getReadModel().getTrack(0);
-    EXPECT_EQ(moved.name, "First");
+    EXPECT_EQ(moved.name, "Second");
 }
 
 // ============================================================================
@@ -654,6 +682,7 @@ TEST(NoteMutations, SetNotePitch)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "PitchNote");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -675,6 +704,7 @@ TEST(NoteMutations, SetNoteVelocity)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "VelNote");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -696,6 +726,7 @@ TEST(NoteMutations, SetNoteStart)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "StartNote");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -717,6 +748,7 @@ TEST(NoteMutations, SetNoteDuration)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "DurNote");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
     ASSERT_GT(noteId, 0);
@@ -738,6 +770,7 @@ TEST(NoteMutations, ClearNotes)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "ClearClip");
     ASSERT_GT(clipId, 0);
 
@@ -759,6 +792,7 @@ TEST(FxSurface, AddAndBypassFxSlot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addFxSlot(0, 0); // EQ
     EXPECT_FALSE(engine.getReadModel().getFxSlots(0).empty());
@@ -776,6 +810,7 @@ TEST(FxSurface, SetFxSlotParam)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addFxSlot(0, 0); // EQ
     cmds.setFxSlotParam(0, 0, 0, 0.75f);
@@ -788,6 +823,8 @@ TEST(FxSurface, RemoveFxSlot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     cmds.addFxSlot(0, 0);
     cmds.addFxSlot(0, 1);
@@ -802,6 +839,8 @@ TEST(FxSurface, AddMultipleInternalFxTypes)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     cmds.addFxSlot(0, 0); // EQ
     cmds.addFxSlot(0, 1); // Compressor
@@ -817,6 +856,7 @@ TEST(FxSurface, BypassMidiFxSlot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addMidiFxSlot(0, "arpeggiator");
     EXPECT_FALSE(engine.getReadModel().getMidiFxSlots(0).empty());
@@ -834,6 +874,7 @@ TEST(FxSurface, RemoveMidiFxSlot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addMidiFxSlot(0, "arpeggiator");
     cmds.addMidiFxSlot(0, "chord");
@@ -848,6 +889,7 @@ TEST(FxSurface, MidiFxSlotParams)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
     cmds.addMidiFxSlot(0, "transpose");
     auto trackList = engine.getProjectModel().getTrackListTree();
     auto chain = trackList.getChild(0).getChildWithName(IDs::MIDI_FX_CHAIN);
@@ -868,6 +910,7 @@ TEST(AutomationSurface, AddAndRemoveAutomationPoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addAutomationLane(0, "TestVolLane", 0); // paramID=0 (unbound) to avoid dedup
     cmds.addAutomationPoint(0, "TestVolLane", 0.0, 0.0f);
@@ -886,6 +929,7 @@ TEST(AutomationSurface, SetAutomationEnabled)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addAutomationLane(0, "TestLane", 1);
 
@@ -917,6 +961,7 @@ TEST(AutomationSurface, SetAutomationMode)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addAutomationLane(0, "ModeLane", 1);
     cmds.setAutomationMode(0, "ModeLane", "touch");
@@ -937,6 +982,7 @@ TEST(AutomationSurface, RemoveAutomationLane)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addAutomationLane(0, "TempLane", 1);
     EXPECT_FALSE(engine.getReadModel().getAutomationLanes(0).empty());
@@ -1063,6 +1109,7 @@ TEST(MarkerSurface, SetMarkerTime)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     int idx = cmds.addMarker("MoveMe", 4.0);
     ASSERT_GE(idx, 0);
@@ -1088,6 +1135,7 @@ TEST(BatchOps, AddClipsReturnsMultipleIds)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     std::vector<double> starts = {0.0, 4.0, 8.0};
     std::vector<double> durations = {4.0, 4.0, 4.0};
@@ -1112,6 +1160,7 @@ TEST(BatchOps, RemoveClips)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     int a = cmds.addMidiClip(0, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(0, 4.0, 4.0, "B");
@@ -1129,7 +1178,8 @@ TEST(BatchOps, MoveClips)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    cmds.addTrack("T2");
+    cmds.addTrack("T1"); // clip source track (index 0)
+    cmds.addTrack("T2"); // move target track (index 1)
     int a = cmds.addMidiClip(0, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(0, 4.0, 4.0, "B");
     ASSERT_GT(a, 0);
@@ -1151,7 +1201,8 @@ TEST(BatchOps, DuplicateClips)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    cmds.addTrack("T2");
+    cmds.addTrack("T1"); // clip source track (index 0)
+    cmds.addTrack("T2"); // duplicate target track (index 1)
     int a = cmds.addMidiClip(0, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(0, 4.0, 4.0, "B");
     ASSERT_GT(a, 0);
@@ -1175,6 +1226,7 @@ TEST(BatchOps, PaintClips)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     int src = cmds.addMidiClip(0, 0.0, 4.0, "Src");
     ASSERT_GT(src, 0);
@@ -1194,6 +1246,7 @@ TEST(SessionSurface, LaunchSceneUpdatesLaunchedScene)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.launchScene(3);
 
@@ -1209,6 +1262,7 @@ TEST(SessionSurface, StopAllSessionClips)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.createSessionClip(0, 0, true);
     cmds.launchScene(0);
@@ -1269,9 +1323,11 @@ TEST(AudioGraphSurface, RebuildRoutingGraphDoesNotCrash)
     engine.initialize();
     auto& ag = engine.getAudioGraphCommands();
 
-    // Add some clips and tracks to make it non-trivial
-    engine.getProjectCommands().addMidiClip(0, 0.0, 4.0, "Clip1");
+    // Add some clips and tracks to make it non-trivial (zero-track default:
+    // create both tracks before placing clips on them).
+    engine.getProjectCommands().addTrack("T1");
     engine.getProjectCommands().addTrack("T2");
+    engine.getProjectCommands().addMidiClip(0, 0.0, 4.0, "Clip1");
     engine.getProjectCommands().addMidiClip(1, 0.0, 4.0, "Clip2");
 
     ag.rebuildRoutingGraph();
@@ -1289,6 +1345,7 @@ TEST(RelinkSurface, FindMissingClipSourceFile)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "RelinkClip");
     ASSERT_GT(clipId, 0);
@@ -1308,7 +1365,8 @@ TEST(ClipMoveSurface, MoveClipToNewTrack)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    cmds.addTrack("T2");
+    cmds.addTrack("T1"); // clip source track (index 0)
+    cmds.addTrack("T2"); // move target track (index 1)
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "MoveClip");
     ASSERT_GT(clipId, 0);
 
@@ -1327,6 +1385,7 @@ TEST(ModulationSurface, AddRemoveLfo)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addLfo(0);
     auto lfos = engine.getReadModel().getModulationLfos(0);
@@ -1343,6 +1402,7 @@ TEST(ModulationSurface, SetLfoParam)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addLfo(0);
     auto lfos = engine.getReadModel().getModulationLfos(0);
@@ -1419,6 +1479,7 @@ TEST(ProjectBackup, SaveCreatesTimestampedBackup)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addMidiClip(0, 0.0, 4.0, "BackupTest");
 
@@ -1445,6 +1506,7 @@ TEST(ProjectBackup, PrunesOldestBeyondCap)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // zero-track default: seed the track under test
 
     cmds.addMidiClip(0, 0.0, 4.0, "BackupTest");
 

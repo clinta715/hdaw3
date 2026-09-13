@@ -228,6 +228,7 @@ TEST (InternalFxParamClamp, SetFxSlotParamClampsAndReports)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track"); // default projects are empty — create the track under test
     engine.drainPendingRoutingRebuild();
 
     // Internal EQ slot on track 0. EQ defs (TrackFXSlot::getParamDefsForType):

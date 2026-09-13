@@ -300,6 +300,11 @@ TEST(StreamingPoolDedup, EngineWiresStreamingPoolAndRebuildReacquiresWithoutReop
 {
     AudioEngine engine;
     engine.initialize();
+    auto& commands = engine.getProjectCommands();
+    commands.addTrack("Track 0");
+    commands.addTrack("Track 1");
+    commands.addTrack("Track 2");
+    engine.drainPendingRoutingRebuild();
 
     auto file = writeSineWav("engine_stream", 44100 * 9);
     const juce::String path = file.getFullPathName();

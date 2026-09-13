@@ -24,6 +24,21 @@ HDAW::EnvelopeGenerator::Params rampParams(double startBeat, double endBeat,
     return p;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed exactly the track(s) the test
+// addresses and drain the coalesced routing rebuild (lessons 9/10/12; no
+// sleeps). Undo-baseline note: every test here calls undo() exactly ONCE to
+// revert the generate step; the undoable addTrack sits one unit deeper on the
+// undo stack, so no loop-baseline adjustment is needed.
+int seedTrack(AudioEngine& engine, int count = 1)
+{
+    int idx = -1;
+    for (int i = 0; i < count; ++i)
+        idx = engine.getProjectCommands().addTrack("Track " + std::to_string(i));
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+
 } // namespace
 
 // ─── G2: generateAutomationEnvelope ───────────────────────────────
@@ -33,6 +48,7 @@ TEST(EnvelopeGeneration, G2_GenerateAutomation_ReplacesInRange)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);  // track 0 (zero-track default, v0.33+)
 
     // Add Volume automation lane on track 0.
     cmds.addAutomationLane(0, "Volume");
@@ -82,6 +98,7 @@ TEST(EnvelopeGeneration, G2_GenerateAutomation_UndoesCleanly)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);  // track 0 (zero-track default, v0.33+)
 
     cmds.addAutomationLane(0, "Volume");
     cmds.addAutomationPoint(0, "Volume", 4.0, 0.5f);
@@ -105,6 +122,7 @@ TEST(EnvelopeGeneration, G2_GenerateAutomation_LiveCacheAfterRebuild)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);  // track 0 (zero-track default, v0.33+)
 
     cmds.addAutomationLane(0, "Volume");
     auto params = rampParams(0.0, 16.0, 0.0, 1.0);
@@ -143,6 +161,7 @@ TEST(EnvelopeGeneration, G3_GenerateClipGainEnvelope_ReplacesInRange)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);  // track 0 (zero-track default, v0.33+)
 
     // Create audio clip on track 0.
     int clipId = cmds.addAudioClip(0, 0.0, 8.0, "test.wav", "TestClip");
@@ -173,6 +192,7 @@ TEST(EnvelopeGeneration, G3_GenerateClipGainEnvelope_LiveProcessorAfterRebuild)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);  // track 0 (zero-track default, v0.33+)
 
     int clipId = cmds.addAudioClip(0, 0.0, 8.0, "test.wav", "TestClip");
     ASSERT_GT(clipId, 0);
@@ -214,7 +234,9 @@ TEST(EnvelopeGeneration, G4_GenerateClipCcLane_ReplacesInRange)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    // Create MIDI clip on track 1 (Synth).
+    ASSERT_GE(seedTrack(engine, 2), 0);  // tracks 0+1 (zero-track default, v0.33+)
+
+    // Create MIDI clip on track 1.
     int clipId = cmds.addMidiClip(1, 0.0, 8.0, "MidiClip");
     ASSERT_GT(clipId, 0);
 
@@ -273,6 +295,7 @@ TEST(EnvelopeGeneration, G4_GenerateClipCcLane_OneUndo)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine, 2), 0);  // tracks 0+1 (zero-track default, v0.33+)
 
     int clipId = cmds.addMidiClip(1, 0.0, 8.0, "MidiClip");
     ASSERT_GT(clipId, 0);

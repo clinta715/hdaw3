@@ -3,6 +3,18 @@
 #include "engine/RoutingManager.h"
 #include "engine/MidiClipProcessor.h"
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed exactly the tracks the test uses
+// (indices 0/1/...) and drain the coalesced routing rebuild so live-processor
+// /RoutingManager reads are deterministic (lessons 9/10/12; no sleeps).
+static int seedTrack(AudioEngine& engine, const char* name)
+{
+    const int idx = engine.getProjectCommands().addTrack(name);
+    engine.drainPendingRoutingRebuild();
+    EXPECT_GE(idx, 0);
+    return idx;
+}
+
 TEST(Commands, AddRemoveTrack)
 {
     AudioEngine engine;
@@ -95,6 +107,8 @@ TEST(Commands, SetTrackVolume)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.setTrackVolume(0, 0.5f);
     auto track = engine.getReadModel().getTrack(0);
     EXPECT_DOUBLE_EQ(track.volume, 0.5);
@@ -105,6 +119,8 @@ TEST(Commands, SetTrackPan)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.setTrackPan(0, 0.25f);
     auto track = engine.getReadModel().getTrack(0);
     EXPECT_DOUBLE_EQ(track.pan, 0.25);
@@ -115,6 +131,8 @@ TEST(Commands, SetTrackMuted)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.setTrackMuted(0, true);
     auto track = engine.getReadModel().getTrack(0);
     EXPECT_TRUE(track.muted);
@@ -128,6 +146,8 @@ TEST(Commands, SetTrackName)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.setTrackName(0, "MyTrack");
     auto track = engine.getReadModel().getTrack(0);
     EXPECT_EQ(track.name, "MyTrack");
@@ -138,6 +158,8 @@ TEST(Commands, AddMidiClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "TestClip");
     EXPECT_GT(clipId, 0);
     auto snap = engine.getReadModel().snapshot();
@@ -160,6 +182,8 @@ TEST(Commands, RemoveClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "ToRemove");
     EXPECT_GT(clipId, 0);
     cmds.removeClip(clipId);
@@ -173,9 +197,11 @@ TEST(Commands, AddNote)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "NoteClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
-    EXPECT_GT(noteId, 0);
+    ASSERT_GT(noteId, 0);
     auto notes = engine.getReadModel().getNotes(clipId);
     EXPECT_FALSE(notes.empty());
     bool found = false;
@@ -196,9 +222,11 @@ TEST(Commands, RemoveNote)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "NoteClip");
     int noteId = cmds.addNote(clipId, 60, 100, 0.0, 1.0);
-    EXPECT_GT(noteId, 0);
+    ASSERT_GT(noteId, 0);
     cmds.removeNote(noteId);
     auto notes = engine.getReadModel().getNotes(clipId);
     for (const auto& n : notes)
@@ -245,6 +273,9 @@ TEST(Commands, AudioGraphCommands)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getAudioGraphCommands();
+    // Zero-track default: rebuildTrackFX/AutomationCache/Modulation target
+    // track 0 — seed it so the indices are real (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     // rebuildRoutingGraph should not crash
     cmds.rebuildRoutingGraph();
     cmds.rebuildTrackFX(0);
@@ -257,6 +288,8 @@ TEST(Commands, DuplicateClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "DupClip");
     EXPECT_GT(clipId, 0);
     int newId = cmds.duplicateClip(clipId);
@@ -278,8 +311,10 @@ TEST(Commands, DuplicateClipToPlacesAtTarget)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
-    // Two tracks so cross-track placement is exercised.
-    cmds.addTrack("T2");
+    // Two tracks so cross-track placement is exercised. Zero-track default:
+    // seed both explicitly; the second track must land at index 1.
+    ASSERT_GE(seedTrack(engine, "T1"), 0);
+    ASSERT_EQ(seedTrack(engine, "T2"), 1);
     const double srcStart = 0.0;
     const double duration = 4.0;
     int clipId = cmds.addMidiClip(0, srcStart, duration, "Orig");
@@ -309,6 +344,8 @@ TEST(Commands, DuplicateClipToInvalidReturnsNegative)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: track 0 must exist for the valid-clip leg below.
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     EXPECT_LT(cmds.duplicateClipTo(999999, 0.0, 0), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "X");
     EXPECT_GT(clipId, 0);
@@ -325,6 +362,8 @@ TEST(Commands, MoveFullyCoveringReplacesCoveredClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int origId = cmds.addMidiClip(0, 0.0, 4.0, "Orig");   // [0, 4]
     EXPECT_GT(origId, 0);
     // Give Orig a real note so we can distinguish its data from nothing.
@@ -358,11 +397,11 @@ TEST(Commands, OverlayMoveBackKeepsReplacementAudible)
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
 
-    // Add a second track to move the replacement away and back. Capture the
-    // returned index; the default project already ships track 0 and 1, so the
-    // new track appends rather than landing at a fixed index.
-    int awayTrack = cmds.addTrack("T2");
-    ASSERT_GE(awayTrack, 0);
+    // Zero-track default: seed track 0 (clip host) and a second track to move
+    // the replacement away and back — the indices are owned by this test.
+    ASSERT_GE(seedTrack(engine, "T1"), 0);
+    int awayTrack = seedTrack(engine, "T2");
+    ASSERT_GE(awayTrack, 1);
 
     // Track 0: place A with a note.
     int aId = cmds.addMidiClip(0, 0.0, 4.0, "A");          // [0, 4]
@@ -390,9 +429,10 @@ TEST(Commands, OverlayMoveBackKeepsReplacementAudible)
     cmds.removeClip(aId);
     cmds.moveClipWithOverlap(bId, 0, 0.0);
 
-    // No message-loop in the gtest, so the coalesced async rebuild never runs
-    // on its own — run it explicitly to mirror the production message loop.
-    engine.getMainProcessor()->rebuildRoutingGraph();
+    // No message pump in the gtest, so the coalesced async routing rebuild
+    // never runs on its own — drain it explicitly (deterministic; see
+    // AudioEngine::drainPendingRoutingRebuild).
+    engine.drainPendingRoutingRebuild();
 
     // B must be wired into the live routing graph with its note intact.
     auto* rm = engine.getMainProcessor()->getRoutingManager();
@@ -436,6 +476,8 @@ TEST(Commands, ReorderFxSlots)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: FX slots are added on track 0 — seed it (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     // Add two internal FX slots (EQ=0, Compressor=1)
     cmds.addFxSlot(0, 0);  // EQ
     cmds.addFxSlot(0, 1);  // Compressor
@@ -454,6 +496,8 @@ TEST(Commands, AddRemoveAutomationLane)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.addAutomationLane(0, "CustomLane");
     cmds.removeAutomationLane(0, "CustomLane");
     // Removing non-existent lane should not crash:
@@ -468,7 +512,9 @@ TEST(Commands, SwitchClipTake)
     auto& cmds = engine.getAudioGraphCommands();
     // switchClipTake on a non-existent clip should not crash
     cmds.switchClipTake(9999);
-    // switchClipTake on a MIDI clip (no source file) should not crash
+    // switchClipTake on a MIDI clip (no source file) should not crash.
+    // Zero-track default: seed track 0 for the clip (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = engine.getProjectCommands().addMidiClip(0, 0.0, 4.0, "TakeTest");
     EXPECT_GT(clipId, 0);
     cmds.switchClipTake(clipId);
@@ -523,6 +569,8 @@ TEST(Commands, SetClipName)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "OriginalName");
     ASSERT_GT(clipId, 0);
     ASSERT_EQ(engine.getReadModel().getClip(clipId).name, "OriginalName");
@@ -554,11 +602,15 @@ TEST(Commands, ReadModelExtensions)
     engine.initialize();
     auto& rm = engine.getReadModel();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed track 0 — FX slots/lanes are added on it (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
 
     // FX Slots
     cmds.addFxSlot(0, 0);  // EQ
     auto fxSlots = rm.getFxSlots(0);
-    EXPECT_FALSE(fxSlots.empty());
+    // SEH guard (0xc0000005): a failed empty-check must stop the test before
+    // fxSlots[0] is indexed.
+    ASSERT_FALSE(fxSlots.empty());
     EXPECT_EQ(fxSlots[0].fxType, "eq");
     EXPECT_FALSE(fxSlots[0].bypassed);
     cmds.removeFxSlot(0, 0);
@@ -607,6 +659,8 @@ TEST(Commands, DuplicateTrack)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: duplicateTrack(0) needs a real source track.
+    ASSERT_GE(seedTrack(engine, "Source"), 0);
     int before = engine.getReadModel().getTrackCount();
     int newIdx = cmds.duplicateTrack(0);
     EXPECT_EQ(engine.getReadModel().getTrackCount(), before + 1);
@@ -618,6 +672,8 @@ TEST(Commands, SetAutomationPointValue)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.addAutomationLane(0, "VolLane");
     cmds.addAutomationPoint(0, "VolLane", 4.0, 0.75f);
     cmds.setAutomationPointValue(0, "VolLane", 4.0, 0.5f);
@@ -640,6 +696,8 @@ TEST(Commands, SetFxSlotPlugin)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.addFxSlot(0, 0);  // EQ slot
     cmds.setFxSlotPlugin(0, 0, "plugin", "test.plugin", "VST3", "/path/test.vst3");
     auto fxSlots = engine.getReadModel().getFxSlots(0);
@@ -653,6 +711,8 @@ TEST(Commands, AddCcPoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 8.0, "CC Test");
     cmds.addCcPoint(clipId, 1, 2.0, 64);
     // Verify through the project model directly
@@ -673,6 +733,8 @@ TEST(Commands, SetAndRemoveCcPoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 8.0, "CC Edit");
     cmds.addCcPoint(clipId, 74, 1.0, 64);
 
@@ -699,6 +761,8 @@ TEST(Commands, CcRecordingWritesToClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
 
     cmds.addMidiClip(0, 0.0, 8.0, "RecTarget");
     engine.setTrackArmed(0, true);
@@ -727,6 +791,8 @@ TEST(Commands, AddMidiFxSlot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.addMidiFxSlot(0, "arpeggiator");
     auto trackList = engine.getProjectModel().getTrackListTree();
     auto chain = trackList.getChild(0).getChildWithName(IDs::MIDI_FX_CHAIN);
@@ -740,6 +806,8 @@ TEST(Commands, SetMidiFxSlotParam)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: seed the track this test drives (lesson 9).
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     cmds.addMidiFxSlot(0, "transpose");
     cmds.setMidiFxSlotParam(0, 0, "semitones", 7.0);
     auto slot = engine.getProjectModel().getTrackListTree()
@@ -752,6 +820,8 @@ TEST(Commands, MidiNoteRecording)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: notes are recorded onto the armed track 0 — seed it.
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     engine.setTrackArmed(0, true);
     engine.getTransportManager().setSampleRate(44100.0);
 
@@ -785,6 +855,8 @@ TEST(Commands, MidiNoteRecordingFlushOnDisarm)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    // Zero-track default: notes are recorded onto the armed track 0 — seed it.
+    ASSERT_GE(seedTrack(engine, "Track"), 0);
     engine.setTrackArmed(0, true);
     engine.getTransportManager().setSampleRate(44100.0);
 

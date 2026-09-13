@@ -30,6 +30,7 @@ TEST(InsertSilence, ShiftsLaterClipsRightAndOpensGap)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int after = cmds.addMidiClip(0, 8.0, 4.0, "after");   // beats [8,12)
     ASSERT_GT(after, 0);
@@ -49,6 +50,7 @@ TEST(InsertSilence, SplitsClipStraddlingInsertionPoint)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 0.0, 4.0, "head");   // beats [0,4), insertion point at beat 2
 
@@ -73,6 +75,7 @@ TEST(InsertSilence, EmptyRangeIsNoOp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int c = cmds.addMidiClip(0, 4.0, 4.0, "untouched");
     ASSERT_GT(c, 0);
@@ -93,6 +96,7 @@ TEST(DuplicateRegion, CopiesInsideAndShiftsAfterRight)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 3.0, 2.0, "inside");  // beats [3,5) inside [2,6)
     cmds.addMidiClip(0, 8.0, 4.0, "after");   // beats [8,12) after 6
@@ -122,6 +126,7 @@ TEST(DuplicateRegion, SplitsSpanningClipAndDuplicatesInside)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 0.0, 10.0, "span");   // beats [0,10)
 
@@ -137,6 +142,7 @@ TEST(DuplicateRegion, EmptyRangeIsNoOp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 4.0, 4.0, "untouched");
 

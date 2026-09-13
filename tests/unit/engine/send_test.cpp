@@ -6,10 +6,31 @@
 #include "model/ProjectModel.h"
 #include "common/ReadModel.h"
 
+#include <string>
+
+namespace {
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Send tests need a host track (0) plus a
+// send target (1); drain the coalesced routing rebuild so tree edits below hit
+// a deterministic projection (lessons 9/10/12; no sleeps).
+int seedTrack(AudioEngine& engine, int count = 1)
+{
+    int idx = -1;
+    for (int i = 0; i < count; ++i)
+        idx = engine.getProjectCommands().addTrack("Track " + std::to_string(i));
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+} // namespace
+
 TEST(Send, ReadModelReturnsSends)
 {
     AudioEngine engine;
     engine.initialize();
+
+    // Zero-track default (v0.33+): seed the two tracks this test uses (host
+    // track 0 + send target 1) and drain the coalesced routing rebuild.
+    ASSERT_GE(seedTrack(engine, 2), 0);
 
     auto& model = engine.getProjectModel();
     auto trackList = model.getTrackListTree();
@@ -56,6 +77,10 @@ TEST(Send, SetLevelThroughCommands)
     AudioEngine engine;
     engine.initialize();
 
+    // Zero-track default (v0.33+): seed the two tracks this test uses (host
+    // track 0 + send target 1) and drain the coalesced routing rebuild.
+    ASSERT_GE(seedTrack(engine, 2), 0);
+
     auto& model = engine.getProjectModel();
     auto trackTree = model.getTrackListTree().getChild(0);
     juce::ValueTree sendList(IDs::SEND_LIST);
@@ -87,6 +112,10 @@ TEST(Send, SetModeThroughCommands)
     AudioEngine engine;
     engine.initialize();
 
+    // Zero-track default (v0.33+): seed the two tracks this test uses (host
+    // track 0 + send target 1) and drain the coalesced routing rebuild.
+    ASSERT_GE(seedTrack(engine, 2), 0);
+
     auto& model = engine.getProjectModel();
     auto trackTree = model.getTrackListTree().getChild(0);
     juce::ValueTree sendList(IDs::SEND_LIST);
@@ -112,6 +141,10 @@ TEST(Send, SetBypassedThroughCommands)
 {
     AudioEngine engine;
     engine.initialize();
+
+    // Zero-track default (v0.33+): seed the two tracks this test uses (host
+    // track 0 + send target 1) and drain the coalesced routing rebuild.
+    ASSERT_GE(seedTrack(engine, 2), 0);
 
     auto& model = engine.getProjectModel();
     auto trackTree = model.getTrackListTree().getChild(0);
@@ -139,6 +172,10 @@ TEST(Send, StateSurvivesRoutingGraphRebuild)
 {
     AudioEngine engine;
     engine.initialize();
+
+    // Zero-track default (v0.33+): seed the two tracks this test uses (host
+    // track 0 + send target 1) and drain the coalesced routing rebuild.
+    ASSERT_GE(seedTrack(engine, 2), 0);
 
     auto& model = engine.getProjectModel();
     auto trackTree = model.getTrackListTree().getChild(0);

@@ -79,6 +79,9 @@ TEST(IncrementalRoutingSpike, SiblingStatePreserved)
     h.init(baseClips);
     h.build();
 
+    // ASSERT the map is fully populated before the .at() deref — a failed
+    // build would make .at() throw std::out_of_range instead of reporting.
+    ASSERT_EQ(h.routing->getAudioClipSources().size(), 4u);
     auto* sibling = h.routing->getAudioClipSources().at({0, 0});
     ASSERT_NE(sibling, nullptr);
     auto envBefore = sibling->getGainEnvelopePoints();
@@ -120,6 +123,7 @@ TEST(IncrementalRoutingSpike, SiblingStatePreserved)
     RenderHarness ref;
     ref.init(refClips);
     ref.build();
+    ASSERT_EQ(ref.routing->getAudioClipSources().size(), 6u);
     auto* refSibling = ref.routing->getAudioClipSources().at({0, 0});
     ASSERT_NE(refSibling, nullptr);
     auto refEnv = refSibling->getGainEnvelopePoints();

@@ -47,6 +47,7 @@ TEST(RippleDelete, RemovesInsideClipAndShiftsAfterClipLeft)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int inside = cmds.addMidiClip(0, 3.0, 2.0, "inside");   // beats [3,5)  -> inside [2,6)
     ASSERT_GT(inside, 0);
@@ -70,6 +71,7 @@ TEST(RippleDelete, TrimsClipStraddlingStart)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 0.0, 4.0, "head");   // beats [0,4)
 
@@ -87,6 +89,7 @@ TEST(RippleDelete, SplitsSpanningClipIntoTwo)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addMidiClip(0, 0.0, 10.0, "span");   // beats [0,10)
 
@@ -110,6 +113,7 @@ TEST(RippleDelete, EmptyRangeIsNoOp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int c = cmds.addMidiClip(0, 4.0, 4.0, "untouched");
     ASSERT_GT(c, 0);
@@ -128,6 +132,7 @@ TEST(RippleDelete, BoundaryTouchingClipIsUntouched)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int before = cmds.addMidiClip(0, 0.0, 2.0, "before");   // beats [0,2), touches rs=2
     ASSERT_GT(before, 0);
@@ -146,6 +151,7 @@ TEST(RippleDelete, UndoRestoresEverythingInOneStep)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int span  = cmds.addMidiClip(0, 0.0, 10.0, "span");
     int after = cmds.addMidiClip(0, 12.0, 4.0, "after");

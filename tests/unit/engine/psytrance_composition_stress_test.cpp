@@ -1040,6 +1040,41 @@ TEST(InternalFx, EqDefaultGainPassesAudio)
     EXPECT_GT(buf.getMagnitude(0, 0, 512), 0.05f);
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. The InternalFx tests seed exactly
+// the track they address and drain the coalesced routing rebuild so live-
+// processor reads are deterministic (lessons 9/10/12; no sleeps). The
+// PsytranceComposition tests below manage their own tracks and are untouched.
+static int seedTrack(AudioEngine& engine)
+{
+    const int idx = engine.getProjectCommands().addTrack("Track 0");
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+
+// Same contract for the ProjectModel-level (save/load) InternalFx tests: one
+// TRACK node with the same shape AudioEngineCommands::createTrackValueTree()
+// builds.
+static juce::ValueTree addSeedTrack(ProjectModel& model)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String("Track 0"), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    model.getTrackListTree().addChild(track, -1, nullptr);
+    return track;
+}
+
 // P1-2 (plan 2026-08-29): HONEST filter sweeps. The internal "filter" type is
 // a state-variable low/high/bandpass whose Cutoff attenuates a band — unlike
 // the "eq" peak filter, whose Frequency param moves a boost/cut centre and
@@ -1052,6 +1087,7 @@ TEST(InternalFx, FilterLowpassAttenuatesAboveCutoff)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     // Command layer: add + set REAL-unit params (Cutoff=200 Hz, Mode=lowpass,
     // Resonance=0.7).
@@ -1126,6 +1162,7 @@ TEST(InternalFx, FilterCutoffAutomationSweeps)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addFxSlot(0, "filter");        // slot 0 on track 0
     cmds.setFxSlotParam(0, 0, 1, 0.0f); // Mode = lowpass
@@ -1288,6 +1325,8 @@ TEST(InternalFx, DelaySyncDivisionRoundTripsProjectXml)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed the track whose FX_CHAIN this round-trips.
+    addSeedTrack(model);
     auto& um = model.getUndoManager();
     auto fxChain = model.getTrackListTree().getChild(0).getChildWithName(IDs::FX_CHAIN);
     ASSERT_TRUE(fxChain.isValid());
@@ -1353,6 +1392,7 @@ TEST(InternalFx, DelaySyncTrackPlayheadFeedsTempo)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addFxSlot(0, "delay");            // slot 0 on track 0
     cmds.setFxSlotParam(0, 0, 3, 1.0f);    // SyncToTempo on
@@ -1410,6 +1450,8 @@ TEST(InternalFx, FilterTypeRoundTripsProjectXml)
 {
     ProjectModel model;
     model.createDefaultProject();
+    // Zero-track default: seed the track whose FX_CHAIN this round-trips.
+    addSeedTrack(model);
     auto& um = model.getUndoManager();
     auto fxChain = model.getTrackListTree().getChild(0).getChildWithName(IDs::FX_CHAIN);
     ASSERT_TRUE(fxChain.isValid());
@@ -2216,6 +2258,7 @@ TEST (InternalFx, SaturatorDryMixBitIdentical)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE (seedTrack (engine), 0);
 
     cmds.addFxSlot (0, "saturator");
     cmds.setFxSlotParam (0, 0, 0, 40.0f); // Drive dB max — maximum contrast
@@ -2295,6 +2338,7 @@ TEST (InternalFx, SaturatorDriveAddsHarmonics)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE (seedTrack (engine), 0);
 
     cmds.addFxSlot (0, "saturator"); // defaults: Type SoftTanh, Mix 1, Out 0 dB
     engine.drainPendingRoutingRebuild();
@@ -2366,6 +2410,7 @@ TEST (InternalFx, SaturatorLatencyMatchesOversampler)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE (seedTrack (engine), 0);
 
     engine.drainPendingRoutingRebuild();
     engine.getMainProcessor()->rebuildRoutingGraph();
@@ -2429,6 +2474,7 @@ TEST (InternalFx, SaturatorAliasingSuppressed)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE (seedTrack (engine), 0);
 
     cmds.addFxSlot (0, "saturator"); // Mix defaults to 1
     cmds.setFxSlotParam (0, 0, 1, 2.0f);   // Type = Hard (maximum fold-back)
@@ -2575,6 +2621,7 @@ TEST (InternalFx, SaturatorNeutralFidelity)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE (seedTrack (engine), 0);
 
     cmds.addFxSlot (0, "saturator");
     cmds.setFxSlotParam (0, 0, 0, 0.0f); // Drive 0 dB (defs default is 12 — set explicitly)

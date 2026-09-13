@@ -139,6 +139,7 @@ TEST(StretchCommands, FitToLoopComputesRatio)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     // Set a 4-second loop region on the transport tree.
     // setLoopStart/End take beats; at 120 BPM, 2 beats = 1s and 10 beats = 5s.
@@ -176,6 +177,7 @@ TEST(StretchCommands, TempoMatchDerivesRatio)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     // Project tempo defaults to 120 in createDefaultProject.
     auto trackList = engine.getProjectModel().getTrackListTree();

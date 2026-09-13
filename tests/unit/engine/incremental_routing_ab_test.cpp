@@ -79,6 +79,39 @@ bool ensureRoutingGraph(AudioEngine& engine)
     return proc->getRoutingManager() != nullptr;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. Seed exactly the track the edit
+// sequence references and drain the coalesced routing rebuild so live-
+// processor/RoutingManager reads are deterministic (lessons 9/10/12; no
+// sleeps). The drain also settles the structural add's forceFull flag +
+// fullRebuilds_ counter BEFORE any test baseline is captured — mirroring the
+// old default project, whose three tracks existed before any counting.
+int seedTrack(AudioEngine& engine, const char* name)
+{
+    // Model-level append with NO undo-manager entry (same TRACK shape
+    // AudioEngineCommands::createTrackValueTree builds): the old default project's
+    // three tracks were created before the undo stack existed, so undo/redo never
+    // saw the seed. The ValueTree listener still fires (structural forceFull) —
+    // the drain below settles it before any baseline is captured.
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    engine.getProjectModel().getTrackListTree().addChild(track, -1, nullptr);
+    engine.drainPendingRoutingRebuild();
+    return static_cast<int>(engine.getProjectModel().getTrackListTree().getNumChildren()) - 1;
+}
+
 // Settles the OFF (full-rebuild reference) engine to a state reflecting the
 // current ValueTree, free of pump-thread races: drain any coalesced async
 // rebuild, then force an explicit full rebuild (moves only mutate placement
@@ -226,6 +259,7 @@ TEST(IncrementalRoutingAB, ProduceWavPair)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
 
     AudioEngine off;
@@ -234,6 +268,7 @@ TEST(IncrementalRoutingAB, ProduceWavPair)
         off.initialize();
     }
     ASSERT_FALSE(off.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
 
     // 3) IDENTICAL edit sequence on both engines, pump parked per command.
@@ -379,6 +414,7 @@ TEST(IncrementalRoutingAB, RealDeviceLatencyStable)
     auto* devOn = on.getDeviceManager().getCurrentAudioDevice();
     if (devOn == nullptr)
         GTEST_SKIP() << "no audio device present — skipping real-device latency probe";
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
     ASSERT_NE(on.getMainProcessor()->getRoutingManager(), nullptr);
     ASSERT_TRUE(waitForGraphBake()) << "initial graph bake timed out";
@@ -452,6 +488,7 @@ TEST(IncrementalRoutingAB, RealDeviceLatencyStable)
     auto* devOff = off.getDeviceManager().getCurrentAudioDevice();
     if (devOff == nullptr)
         GTEST_SKIP() << "no audio device present — skipping real-device latency probe (OFF)";
+    ASSERT_GE(seedTrack(off, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(off));
     {
         const juce::MessageManagerLock pumpPark;
@@ -489,6 +526,7 @@ TEST(IncrementalRoutingBake, OneRebuildPerBatch128Ops)
         on.initialize();
     }
     ASSERT_TRUE(on.isIncrementalRoutingEnabled());
+    ASSERT_GE(seedTrack(on, "Track 0"), 0);
     ASSERT_TRUE(ensureRoutingGraph(on));
 
     juce::File sourceWav = writeSineWav(static_cast<int>(44100.0 * 0.2), 44100.0);

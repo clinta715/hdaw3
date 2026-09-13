@@ -49,6 +49,8 @@ TEST(MergeClips, TwoContiguousClipsMergeCorrectly)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int a = cmds.addMidiClip(1, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(1, 4.0, 4.0, "B");
@@ -78,6 +80,8 @@ TEST(MergeClips, ClipsWithGapMergeAndReoffsetNotes)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int a = cmds.addMidiClip(1, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(1, 8.0, 4.0, "B");
@@ -123,6 +127,8 @@ TEST(MergeClips, RejectsFewerThanTwoClips)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int a = cmds.addMidiClip(1, 0.0, 4.0, "Solo");
     ASSERT_GT(a, 0);
@@ -136,6 +142,8 @@ TEST(MergeClips, RejectsMixedTracks)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int a = cmds.addMidiClip(1, 0.0, 4.0, "OnTrack1");
     int b = cmds.addMidiClip(0, 0.0, 4.0, "OnTrack0");
@@ -152,6 +160,8 @@ TEST(MergeClips, RejectsNonMidiClips)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int audioClip = cmds.addAudioClip(0, 0.0, 4.0, "test.wav", "Audio");
     int midiClip = cmds.addMidiClip(1, 0.0, 4.0, "Midi");
@@ -168,6 +178,8 @@ TEST(MergeClips, UndoRestoresOriginals)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int a = cmds.addMidiClip(1, 0.0, 4.0, "A");
     int b = cmds.addMidiClip(1, 4.0, 4.0, "B");

@@ -143,6 +143,9 @@ protected:
         loopback = std::make_unique<mcp::TransportLoopback>();
         server->setTransport(loopback.get());
         server->start();
+        // New projects are empty (zero tracks); tests here were written
+        // against the old 3-track default where trackId 0 exists.
+        call("add_track", {{"name", "Track"}});
     }
 
     void TearDown() override {
@@ -1818,7 +1821,7 @@ TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusPhrase) {
     for (const char* role : { "kick", "bass", "hat", "snare", "clap" })
     {
         const int t = addTrack(QString("Psy%1").arg(role));
-        ASSERT_GE(t, 3) << "palette track " << role;
+        ASSERT_GE(t, 0) << "palette track " << role;
         pt[role] = t;
     }
     auto r = call("generate_psytrance_markov", {
@@ -1841,7 +1844,7 @@ TEST_F(McpCoverageTest, GeneratePsytranceMarkovCorpusMelody) {
     for (const char* role : { "kick", "bass", "hat", "snare", "clap", "arp" })
     {
         const int t = addTrack(QString("PsyM%1").arg(role));
-        ASSERT_GE(t, 3) << "palette track " << role;
+        ASSERT_GE(t, 0) << "palette track " << role;
         pt[role] = t;
     }
     auto r = call("generate_psytrance_markov", {
@@ -2189,7 +2192,7 @@ TEST_F(McpCoverageTest, GeneratePsytranceRoundTrip) {
     for (const char* role : { "kick", "bass", "hat", "arp", "stab", "pad", "riser", "down" })
     {
         const int t = addTrack(QString("Psy%1").arg(role));
-        ASSERT_GE(t, 3) << "palette track " << role;
+        ASSERT_GE(t, 0) << "palette track " << role;
         pt[role] = t;
     }
 
@@ -3152,9 +3155,13 @@ TEST_F(McpCoverageTest, RaveImportReportsSamplerNotRequested) {
     const QString wavPath = makePercussionLoopWav();
     ASSERT_FALSE(wavPath.isEmpty());
 
-    // trackIndex 1 = the default project's "Synth" MIDI track.
+    auto add = callText("add_track", {{"name", "Rave Target"}});
+    const auto addPayload = QJsonDocument::fromJson(add.toString().toUtf8()).object();
+    const int targetTrackId = addPayload.value("trackId").toInt(-1);
+    ASSERT_GE(targetTrackId, 0);
+
     auto r = call("rave_import_result", {{"outputPath", wavPath},
-                                         {"trackIndex", 1},
+                                         {"trackIndex", targetTrackId},
                                          {"startBeats", 0.0}});
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
 

@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.31.0)
+## What works today (v0.34.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -43,9 +43,10 @@ pass `Debug` for breakpoint debugging.
   (Mixer, Piano Roll, FX Chain, Automation) below.
 - Add Track appends a new track below existing ones, all
   aligned to the timeline canvas.
-- Per-track clip lanes. Default project ships with a Synth track
-  carrying two MIDI clips (the project deliberately does **not**
-  ship sample audio files — see "Known limitations" below).
+- Per-track clip lanes. New projects start EMPTY (zero tracks) —
+  add tracks via Add Track / the MCP `add_track` tool, then drop or
+  paint clips (the project deliberately does **not** ship sample
+  audio files — see "Known limitations" below).
 - Drag-drop audio or MIDI files from File Explorer onto a track
   to import them.
 - Right-click empty timeline area for Add Track, Add MIDI Clip
@@ -201,7 +202,7 @@ pass `Debug` for breakpoint debugging.
 ## MCP server
 
 HDAW exposes an MCP (Model Context Protocol) server so an LLM client
-can drive the DAW. 50 tools cover project inspection, transport,
+can drive the DAW. 250+ tools cover project inspection, transport,
 tracks, clips, MIDI notes, composition (PhraseGenerator + arrangement
 generation with snare support and Techno/House/DnB genre styles +
 polyrhythmic & euclidean rhythm pattern generation
@@ -358,6 +359,35 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 ```
 
 ## Changelog
+
+### v0.34.0 — Empty-by-default projects, Nord Lead 2x preset pipeline, zero-track test hardening
+
+- **New projects start empty (zero tracks).** `createDefaultProject()` no
+  longer ships "Track 1"/"Synth"/"Vocals" stubs — an empty `TRACK_LIST`
+  instead; the user (or MCP `add_track` / `add_instrument_part` / audition)
+  creates tracks explicitly. All affected engine/MCP/integration tests
+  migrated to explicit track ownership with
+  `drainPendingRoutingRebuild()` before live-processor reads; crash-prone
+  `EXPECT` prerequisites upgraded to `ASSERT` (SEH access violations in
+  FxSurface/commands tests). Full suite: all 1564 tests green.
+- **Nord Lead 2x patch pipeline (NodalRed2x).** `timbre-lib/nl2x_patch.py`
+  parses raw Clavia SysEx (.syx) and SMF-wrapped banks (.mid; .fxb VST
+  chunks detected and skipped), decodes the nibble-encoded 66-parameter
+  single dumps (and 1063-byte multis), names every parameter via the
+  firmware's `SingleParam` enum, and writes `<patch>.nl2x.json`
+  descriptive sidecars (schema `hdaw.nl2x.patch.v1`) next to each patch —
+  6841 sidecars over `D:\pdf\NL2x Banks` (99.9% parse, 29436 dumps =
+  26630 singles + 2806 multis). `nl2x_survey.json` + 15 pytest tests.
+- **`load_nord_bank` MCP tool** — loads .syx/.mid NL2x banks into a
+  NodalRed2x slot via injected SysEx (every dump validated — Clavia header,
+  F7-terminated, ≤32768B — before anything queues), optional `program`
+  sends the trailing PC for voice selection. Shared parser/validator in
+  `PresetFileParser.h`. Env-gated live probe proves the injected bank is
+  captured to the tree and changes the offline render (incl. a
+  capture-vs-consumption race fix: force a fresh capture with a trailing
+  CC after the bank drains).
+- **Hardware VA suite status**: NodalRed2x now renders audibly since the
+  multi-port fix (removed from the kKnownSilent family).
 
 ### v0.33.0 — SubSynth modulation matrix + presets, plan/cell composition workflow, corpus melody bank, async MCP jobs
 

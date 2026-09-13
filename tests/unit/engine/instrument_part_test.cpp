@@ -91,6 +91,7 @@ TEST(InstrumentPart, CompositeCreatesTrackFxAndPhraseInOneUndoUnit)
 {
     AudioEngine engine;
     engine.initialize();
+    const int baseline = engine.getReadModel().getTrackCount();
 
     ProjectCommands::InstrumentPartParams params;
     params.trackName = "Lead";
@@ -102,27 +103,31 @@ TEST(InstrumentPart, CompositeCreatesTrackFxAndPhraseInOneUndoUnit)
 
     auto res = engine.getProjectCommands().addInstrumentPart(params);
     ASSERT_TRUE(res.error.empty()) << res.error;
-    // Default project ships 3 empty tracks (lesson 9) — the new track is 3.
-    ASSERT_EQ(res.trackIndex, 3);
+    // Zero-track default (v0.33+, lesson 9): the composite creates its own
+    // track at the baseline index.
+    ASSERT_EQ(res.trackIndex, baseline);
     ASSERT_EQ(res.clipIds.size(), 2u);   // original + 1 ghost copy (count=2)
     EXPECT_GT(res.noteCount, 0);
 
-    // Read-model: track 3 has an fm_synth fx slot.
-    auto fx = engine.getReadModel().getFxSlots(3);
+    // Read-model: the new track has an fm_synth fx slot.
+    auto fx = engine.getReadModel().getFxSlots(res.trackIndex);
     ASSERT_FALSE(fx.empty());
     EXPECT_EQ(fx[0].fxType, "fm_synth");
 
     // LIVE processor after a fresh rebuild (Gate 1/10 — not just ReadModel).
+    // The composite added its track through the command layer — drain the
+    // coalesced routing rebuild before the live read (lessons 10/12).
+    engine.drainPendingRoutingRebuild();
     engine.getMainProcessor()->rebuildRoutingGraph();
-    auto* track = engine.getMainProcessor()->getTrack(3);
+    auto* track = engine.getMainProcessor()->getTrack(res.trackIndex);
     ASSERT_NE(track, nullptr);
     ASSERT_FALSE(track->getFXChain().empty());
     EXPECT_EQ(track->getFXChain()[0]->getType(), "fm_synth");
 
-    // One undo unit: undo() removes the whole part (track 3 gone).
+    // One undo unit: undo() removes the whole part (the created track is gone).
     engine.getProjectCommands().undo();
-    EXPECT_EQ(engine.getReadModel().getTrackCount(), 3);
-    EXPECT_TRUE(engine.getReadModel().getFxSlots(3).empty());
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+    EXPECT_TRUE(engine.getReadModel().getFxSlots(res.trackIndex).empty());
 }
 
 TEST(InstrumentPart, WholeSongPlacementCoversProject)
@@ -132,9 +137,14 @@ TEST(InstrumentPart, WholeSongPlacementCoversProject)
 
     auto& pc = engine.getProjectCommands();
 
-    // Define a long project duration with a clip on an existing track:
-    // 32 beats at 120 BPM = 16 s of content → project duration ≈ 19 s.
-    const int longClip = pc.addMidiClip(0, 0.0, 32.0, "long");
+    // Zero-track default (v0.33+, lesson 9): seed the base track the long
+    // clip lands on — 32 beats at 120 BPM = 16 s of content → project
+    // duration ≈ 19 s.
+    const int baseTrack = pc.addTrack("Base");
+    ASSERT_GE(baseTrack, 0);
+    engine.drainPendingRoutingRebuild();
+
+    const int longClip = pc.addMidiClip(baseTrack, 0.0, 32.0, "long");
     ASSERT_GE(longClip, 0);
     const double projectDurSec =
         HDAW::ExportManager::calculateProjectDuration(engine.getProjectModel());

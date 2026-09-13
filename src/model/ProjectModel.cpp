@@ -388,58 +388,9 @@ void ProjectModel::createDefaultProject()
     routingGraph.addChild(busList, -1, nullptr);
     projectTree.addChild(routingGraph, -1, nullptr);
 
-    // Track 1 — audio
-    juce::ValueTree track1(IDs::TRACK);
-    track1.setProperty(IDs::name, "Track 1", nullptr);
-    track1.setProperty(IDs::volume, 1.0, nullptr);
-    track1.setProperty(IDs::pan, 0.0, nullptr);
-    track1.setProperty(IDs::isMuted, false, nullptr);
-    track1.setProperty(IDs::isSoloed, false, nullptr);
-    track1.setProperty(IDs::parentBus, 0, nullptr);
-    track1.setProperty(IDs::color, static_cast<int>(trackColorForIndex(0)), nullptr);
-    track1.setProperty(IDs::midiChannel, 1, nullptr);
-    {
-        juce::ValueTree clipList(IDs::CLIP_LIST);
-        track1.addChild(clipList, -1, nullptr);
-        track1.addChild(createFXChain(), -1, nullptr);
-        track1.addChild(createTrackAutomationList(), -1, nullptr);
-    }
-    trackList.addChild(track1, -1, nullptr);
-
-    // Track 2 — MIDI
-    juce::ValueTree track2(IDs::TRACK);
-    track2.setProperty(IDs::name, "Synth", nullptr);
-    track2.setProperty(IDs::volume, 0.85, nullptr);
-    track2.setProperty(IDs::pan, 0.0, nullptr);
-    track2.setProperty(IDs::isMuted, false, nullptr);
-    track2.setProperty(IDs::isSoloed, false, nullptr);
-    track2.setProperty(IDs::parentBus, 0, nullptr);
-    track2.setProperty(IDs::color, static_cast<int>(trackColorForIndex(1)), nullptr);
-    track2.setProperty(IDs::midiChannel, 1, nullptr); // Default MIDI channel 1
-    {
-        juce::ValueTree clipList(IDs::CLIP_LIST);
-        track2.addChild(clipList, -1, nullptr);
-        track2.addChild(createFXChain(), -1, nullptr);
-        track2.addChild(createTrackAutomationList(), -1, nullptr);
-    }
-    trackList.addChild(track2, -1, nullptr);
-
-    // Track 3 — audio
-    juce::ValueTree track3(IDs::TRACK);
-    track3.setProperty(IDs::name, "Vocals", nullptr);
-    track3.setProperty(IDs::volume, 0.9, nullptr);
-    track3.setProperty(IDs::pan, 0.0, nullptr);
-    track3.setProperty(IDs::isMuted, false, nullptr);
-    track3.setProperty(IDs::isSoloed, false, nullptr);
-    track3.setProperty(IDs::parentBus, 0, nullptr);
-    track3.setProperty(IDs::color, static_cast<int>(trackColorForIndex(2)), nullptr);
-    {
-        juce::ValueTree clipList(IDs::CLIP_LIST);
-        track3.addChild(clipList, -1, nullptr);
-        track3.addChild(createFXChain(), -1, nullptr);
-        track3.addChild(createTrackAutomationList(), -1, nullptr);
-    }
-    trackList.addChild(track3, -1, nullptr);
+    // New projects start with ZERO tracks — an empty TRACK_LIST. The user (or
+    // MCP add_track / add_instrument_part / audition keepTrack) creates tracks
+    // explicitly. No pre-populated "Track 1 / Synth / Vocals" stubs.
 }
 
 int ProjectModel::addFxSlot(int trackIdx, const std::string& type, int pos,

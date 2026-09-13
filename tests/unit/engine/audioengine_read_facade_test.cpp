@@ -100,6 +100,8 @@ TEST(AudioEngineReadFacadeTest, GetFxProgramListIsTypedAndReturnsData)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto* tr = engine.getMainProcessor()->getTrack(0);
     ASSERT_NE(tr, nullptr);
     addProgramSlot(tr);
@@ -119,6 +121,8 @@ TEST(AudioEngineReadFacadeTest, GetFxProgramListReturnsEmptyForNonPluginAndInval
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto* tr = engine.getMainProcessor()->getTrack(0);
     ASSERT_NE(tr, nullptr);
     addInternalSlot(tr);
@@ -133,6 +137,7 @@ TEST(AudioEngineReadFacadeTest, GetWaveformPeaksReturnsBinData)
     auto wav = makeSineWav(1.0, 44100);
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
 
     auto& pm = engine.getProjectModel();
     auto clip = pm.createAudioClip("Wave", 0.0, 1.0, wav.getFullPathName());
@@ -156,6 +161,7 @@ TEST(AudioEngineReadFacadeTest, GetWaveformPeaksRejectsMissingOrNonAudioClip)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
     auto& pm = engine.getProjectModel();
 
     // Unknown clip id.

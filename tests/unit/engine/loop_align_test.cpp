@@ -58,6 +58,7 @@ TEST(LoopAlign, AlignClipToGridWritesStretchProps)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     // addAudioClip takes beats; 16 beats at 120 BPM = 8 s (the loop length).
     int clipId = cmds.addAudioClip(0, 0, 16.0, wav.getFullPathName().toStdString(), "loop");
@@ -82,6 +83,7 @@ TEST(LoopAlign, AlignClipToGridMissingFileFails)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int clipId = cmds.addAudioClip(0, 0, 4.0, "C:/nonexistent/hdaw_loop_align_xyz.wav", "bad");
     ASSERT_GE(clipId, 0);
@@ -100,6 +102,7 @@ TEST(LoopAlign, ImportAudioFileAlignsToGrid)
     auto wav = makePercussionLoopWav();
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
 
     int clipId = HDAW::importAudioFile(
         engine, QString::fromUtf8(wav.getFullPathName().toRawUTF8()), /*trackIdx=*/0);

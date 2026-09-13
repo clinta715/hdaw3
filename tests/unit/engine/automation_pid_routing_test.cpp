@@ -73,6 +73,17 @@ private:
 constexpr double kSr = 48000.0;
 constexpr int kBlock = 4096;
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed exactly the track the test
+// addresses and drain the coalesced routing rebuild so live-processor reads
+// are deterministic (lessons 9/10/12; no sleeps).
+int seedTrack(AudioEngine& engine)
+{
+    const int idx = engine.getProjectCommands().addTrack("Track 0");
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+
 juce::AudioBuffer<float> makeSineMix()
 {
     // 200 Hz (below cutoff, passes) + 4 kHz (above, cut).
@@ -99,6 +110,7 @@ TEST(AutomationPidRouting, AudioLaneDrivesLiveFilterCutoff)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addFxSlot(0, "filter");          // slot 0 — wide open, transparent
     cmds.addFxSlot(0, "filter");          // slot 1 — the automated filter
@@ -183,6 +195,7 @@ TEST(AutomationPidRouting, MidiFxLanePid1000DrivesLiveArp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addMidiFxSlot(0, "arpeggiator", 0);
     cmds.addFxSlot(0, "filter"); // audio counterpart that must stay untouched
@@ -240,6 +253,7 @@ TEST(AutomationPidRouting, LfoTarget1000ModulatesLiveArp)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addMidiFxSlot(0, "arpeggiator", 0);
     cmds.addLfo(0);

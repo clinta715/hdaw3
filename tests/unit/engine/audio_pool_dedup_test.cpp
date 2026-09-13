@@ -221,6 +221,7 @@ TEST(AudioPoolDedup, ClipAndSamplerShareOneDecodeAcrossRebuild)
 
     // Two audio clips on tracks 0 and 2 (track 1 is the MIDI "Synth" track).
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     cmds.addAudioClip(0, 0.0, 1.0, path.toStdString(), "clipA");
     cmds.addAudioClip(2, 0.0, 1.0, path.toStdString(), "clipB");
 
@@ -289,6 +290,11 @@ TEST(AudioPoolDedup, EngineWiresPoolAndRebuildReacquiresWithoutRedecode)
 {
     AudioEngine engine;
     engine.initialize();
+    auto& commands = engine.getProjectCommands();
+    commands.addTrack("Track 0");
+    commands.addTrack("Track 1");
+    commands.addTrack("Track 2");
+    engine.drainPendingRoutingRebuild();
 
     auto file = writeSineWav("engine_wire", 44100);
     const juce::String path = file.getFullPathName();
@@ -416,6 +422,7 @@ TEST(AudioPoolDedup, SamplerResampleUpdatesLiveProcessor)
     auto fileA = writeSineWav("resample_a", 44100);
     auto fileB = writeSineWav("resample_b", 44100);
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addFxSlot(0, "sampler", 0, "");
     cmds.setSamplerSample(0, 0, fileA.getFullPathName().toStdString(), 60);

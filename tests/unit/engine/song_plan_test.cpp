@@ -265,6 +265,8 @@ TEST(SongCells, PhraseFillWindowReuseAndProvenance)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
     ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);   // intro 8/16/8 @138bpm, bpm metadata only; transport default 120
 
     std::string err;

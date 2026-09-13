@@ -15,6 +15,16 @@
 
 namespace {
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an
+// empty TRACK_LIST — tests own their setup. Seed exactly the track the test
+// addresses and drain the coalesced routing rebuild (lessons 9/10/12).
+int seedTrack(AudioEngine& engine)
+{
+    const int idx = engine.getProjectCommands().addTrack("Track 0");
+    engine.drainPendingRoutingRebuild();
+    return idx;
+}
+
 juce::ValueTree findClipTree(AudioEngine& engine, int clipId)
 {
     auto trackList = engine.getProjectModel().getTrackListTree();
@@ -66,6 +76,7 @@ TEST(AutomationUnits, BeatsInSecondsStoredBeatsOut)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationPoint(0, "Volume", 4.0, 0.75f);
 
@@ -96,6 +107,7 @@ TEST(AutomationUnits, RemoveMatchesAfterConversion)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "UnitsLane"); // unbound, empty lane
     cmds.addAutomationPoint(0, "UnitsLane", 4.0, 0.75f);
@@ -112,6 +124,7 @@ TEST(AutomationUnits, SetValueMatchesAfterConversion)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
 
     cmds.addAutomationLane(0, "UnitsLane2");
     cmds.addAutomationPoint(0, "UnitsLane2", 4.0, 0.75f);
@@ -130,6 +143,7 @@ TEST(GainEnvelopeUnits, RoundTripPreservesBeats)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "EnvClip");
     ASSERT_GT(clipId, 0);
 
@@ -156,6 +170,7 @@ TEST(GainEnvelopeUnits, AddMoveConvert)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    ASSERT_GE(seedTrack(engine), 0);
     int clipId = cmds.addMidiClip(0, 0.0, 4.0, "MoveEnv");
     ASSERT_GT(clipId, 0);
 

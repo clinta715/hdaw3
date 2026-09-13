@@ -60,6 +60,9 @@ protected:
         loopback = std::make_unique<mcp::TransportLoopback>();
         server->setTransport(loopback.get());
         server->start();
+        // New projects are empty (zero tracks); tests here were written
+        // against the old 3-track default where trackId 0 exists.
+        call("add_track", {{"name", "Track"}});
     }
 
     void TearDown() override {
@@ -637,6 +640,7 @@ TEST_F(GuiFuncTest, Rewind) {
 // ============================================================================
 
 TEST_F(GuiFuncTest, UndoAddTrack) {
+    engine->getProjectModel().getUndoManager().clearUndoHistory();
     int before = trackCount();
     call("add_track", {{"name", "Temp"}});
     EXPECT_EQ(trackCount(), before + 1);
@@ -647,6 +651,7 @@ TEST_F(GuiFuncTest, UndoAddTrack) {
 }
 
 TEST_F(GuiFuncTest, UndoRemoveTrack) {
+    engine->getProjectModel().getUndoManager().clearUndoHistory();
     int before = trackCount();
     call("remove_track", {{"trackId", before - 1}});
     EXPECT_EQ(trackCount(), before - 1);
@@ -687,14 +692,15 @@ TEST_F(GuiFuncTest, UndoMoveClip) {
 }
 
 TEST_F(GuiFuncTest, UndoSetTrackVolume) {
+    engine->getProjectModel().getUndoManager().clearUndoHistory();
+    const double before = findTrack(0).value("volume").toDouble();
     call("set_track", {{"trackId", 0}, {"volume", 0.25}});
     auto t = findTrack(0);
     EXPECT_NEAR(t.value("volume").toDouble(), 0.25, 0.01);
 
     call("undo", {});
     auto t2 = findTrack(0);
-    // Volume should be back to default (1.0)
-    EXPECT_NEAR(t2.value("volume").toDouble(), 1.0, 0.01);
+    EXPECT_NEAR(t2.value("volume").toDouble(), before, 0.01);
 }
 
 TEST_F(GuiFuncTest, UndoAddNote) {
@@ -849,14 +855,13 @@ TEST_F(GuiFuncTest, GetMarkers) {
 TEST_F(GuiFuncTest, NewProject) {
     call("add_track", {{"name", "Temp"}});
     int before = trackCount();
-    ASSERT_GT(before, 1); // default has tracks
+    ASSERT_GT(before, 0);
 
     auto r = call("new_project", {});
     EXPECT_FALSE(isError(r));
 
-    // After new project, track count should reset to defaults
     int after = trackCount();
-    EXPECT_GT(after, 0);
+    EXPECT_EQ(after, 0);
 }
 
 TEST_F(GuiFuncTest, GetProjectSummary) {

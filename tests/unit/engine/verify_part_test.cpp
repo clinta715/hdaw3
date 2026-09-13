@@ -84,8 +84,14 @@ TEST(VerifyPart, EmptyTrack)
     AudioEngine engine;
     engine.initialize();
 
-    // Default project track 0 ships with an empty CLIP_LIST (lesson 9).
-    auto v = engine.getProjectCommands().verifyPart(0, 4.0);
+    // Zero-track default (v0.33+, lesson 9): create an explicitly EMPTY track,
+    // then verify the "track has no clips" contract on it.
+    auto& pc = engine.getProjectCommands();
+    const int trackIdx = pc.addTrack("EmptyTrack");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = engine.getProjectCommands().verifyPart(trackIdx, 4.0);
     EXPECT_FALSE(v.ok);
     EXPECT_EQ(v.error, "track has no clips");
 }
@@ -119,11 +125,17 @@ TEST(VerifyPart, AudioClipWithHfContentHasBandsPresent)
     }
     ASSERT_TRUE(wavFile.existsAsFile());
 
-    // Add an audio clip on the default track 0 (which ships empty).
-    auto clipId = engine.getProjectCommands().addAudioClip(0, 0.0, 4.0, wavFile.getFullPathName().toStdString(), "BandTest");
+    // Zero-track default (v0.33+, lesson 9): seed the track the clip and the
+    // band verification use.
+    auto& pc = engine.getProjectCommands();
+    const int trackIdx = pc.addTrack("BandTest");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto clipId = pc.addAudioClip(trackIdx, 0.0, 4.0, wavFile.getFullPathName().toStdString(), "BandTest");
     ASSERT_GT(clipId, 0);
 
-    auto v = engine.getProjectCommands().verifyPart(0, 4.0);
+    auto v = pc.verifyPart(trackIdx, 4.0);
     EXPECT_TRUE(v.ok) << v.error;
     EXPECT_TRUE(v.audible);
     EXPECT_TRUE(v.bandLow);

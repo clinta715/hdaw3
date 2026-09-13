@@ -9,6 +9,7 @@ TEST(ModulationFx, AddChorusToTrack)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addFxSlot(0, "chorus");
 
@@ -22,6 +23,7 @@ TEST(ModulationFx, AddFlangerToTrack)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addFxSlot(0, "flanger");
 
@@ -35,6 +37,7 @@ TEST(ModulationFx, AddPhaserToTrack)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     cmds.addFxSlot(0, "phaser");
 

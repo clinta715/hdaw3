@@ -34,6 +34,8 @@ TEST(FmPatchPersistence, SetFmPatchWritesTreeAndRestoresOnRebuild)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     engine.getProjectCommands().addFxSlot(0, "fm_synth", 0, "");
 
@@ -71,6 +73,8 @@ TEST(FmPatchPersistence, RejectsWrongSizePatch)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     engine.getProjectCommands().addFxSlot(0, "fm_synth", 0, "");
 
@@ -96,6 +100,8 @@ TEST(FmPatchPersistence, PatchSurvivesReset)
     // whatever patch is in patchData_ on later prepare/reset calls.
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
 
     engine.getProjectCommands().addFxSlot(0, "fm_synth", 0, "");
 

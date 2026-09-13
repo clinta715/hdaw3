@@ -60,6 +60,9 @@ protected:
         server = std::make_unique<mcp::McpServer>();
         server->setEngine(engine.get());
         mcp::registerAllTools(*server);
+        // New projects are empty (zero tracks) — seed one for trackId-0 tests.
+        auto addTrackResult = call(*server, "add_track", {{"name", "Track"}});
+        (void) addTrackResult;
     }
 
     std::unique_ptr<AudioEngine> engine;

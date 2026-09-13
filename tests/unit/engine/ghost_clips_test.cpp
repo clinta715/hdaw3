@@ -60,6 +60,8 @@ TEST(GhostClips, CreateGhostSetsMetadata)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     ASSERT_GT(srcId, 0);
@@ -88,6 +90,7 @@ TEST(GhostClips, CreateGhostOnInvalidTrackReturnsNegOne)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     ASSERT_GT(srcId, 0);
     EXPECT_EQ(cmds.createGhostClip(srcId, 4.0, 999), -1);
@@ -101,6 +104,7 @@ TEST(GhostClips, GhostOfGhostResolvesToRoot)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int rootId = cmds.addMidiClip(0, 0.0, 4.0, "Root");
     ASSERT_GT(rootId, 0);
@@ -121,6 +125,7 @@ TEST(GhostClips, GhostInheritsContentProperties)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     cmds.setClipGain(srcId, 0.5f);
@@ -141,6 +146,7 @@ TEST(GhostClips, GhostMidiNotesCopiedWithFreshIds)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int noteA = cmds.addNote(srcId, 60, 100, 0.0, 1.0);
@@ -171,6 +177,8 @@ TEST(GhostClips, PropagateGainChangeToGhosts)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g1 = cmds.createGhostClip(srcId, 4.0, 0);
@@ -189,6 +197,7 @@ TEST(GhostClips, PropagateFadeInChangeToGhosts)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g = cmds.createGhostClip(srcId, 4.0, 0);
@@ -207,6 +216,7 @@ TEST(GhostClips, DoNotPropagateStartTime)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g = cmds.createGhostClip(srcId, 8.0, 0);
@@ -227,6 +237,7 @@ TEST(GhostClips, GhostEditsDoNotPropagate)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g1 = cmds.createGhostClip(srcId, 4.0, 0);
@@ -249,6 +260,7 @@ TEST(GhostClips, NewNoteOnSourcePropagatesToGhosts)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g = cmds.createGhostClip(srcId, 8.0, 0);
@@ -271,6 +283,7 @@ TEST(GhostClips, RemoveNoteOnSourcePropagatesToGhosts)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int noteId = cmds.addNote(srcId, 60, 100, 0.0, 1.0);
@@ -299,6 +312,8 @@ TEST(GhostClips, DeletingSourceRemovesAllGhosts)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g1 = cmds.createGhostClip(srcId, 4.0, 0);
@@ -327,6 +342,7 @@ TEST(GhostClips, DeletingGhostLeavesSourceAndSiblings)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g1 = cmds.createGhostClip(srcId, 4.0, 0);
@@ -353,6 +369,7 @@ TEST(PaintClips, SingleSourceTilesEndToEnd)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "PaintSrc");
     ASSERT_GT(srcId, 0);
@@ -377,6 +394,7 @@ TEST(PaintClips, MultipleSourcesTileAsGroup)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     // Two source clips at beats 0 and 2 (offsets 0 and 2 within the group).
     int a = cmds.addMidiClip(0, 0.0, 2.0, "A");
@@ -425,6 +443,7 @@ TEST(PaintClips, PaintedGhostsInheritNotes)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Src");
     cmds.addNote(srcId, 60, 100, 0.0, 1.0);
@@ -447,6 +466,7 @@ TEST(GhostClips, UndoCreateGhostClip)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Source");
     int g = cmds.createGhostClip(srcId, 4.0, 0);
@@ -470,6 +490,7 @@ TEST(PaintClips, UndoPaintRollsBackAllTiles)
     AudioEngine engine;
     engine.initialize();
     auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track");
 
     int srcId = cmds.addMidiClip(0, 0.0, 4.0, "Src");
     ASSERT_GT(srcId, 0);

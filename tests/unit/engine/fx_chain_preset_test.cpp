@@ -23,6 +23,8 @@ TEST(FxChainPreset, ApplySurvivesRebuildLive)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     HDAW::ChainPreset p;
@@ -166,6 +168,8 @@ TEST(FxChainPreset, ApplyPreservesInstrumentSlotsAndAppendsPresetFx)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     commands.addFxSlot(0, "psy_fm", 0, std::string());
@@ -220,6 +224,8 @@ TEST(FxChainPreset, SamplerRoundTripPreservesFileModeAndRoot)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     auto file = writeSineWavForChainTest("sampler");
@@ -265,12 +271,13 @@ TEST(FxChainPreset, PluginStateExportIsByteIdentical)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
     engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     auto& um = engine.getProjectModel().getUndoManager();
     auto trackList = engine.getProjectModel().getTrackListTree();
-    ASSERT_GT(trackList.getNumChildren(), 0);
+    ASSERT_EQ(trackList.getNumChildren(), 1);
     auto trackTree = trackList.getChild(0);
     auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
     if (!fxChain.isValid())
@@ -302,6 +309,8 @@ TEST(FxChainPreset, ApplyIsSingleUndoUnit)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     const size_t before = commands.getUndoDescriptions().size();
@@ -335,6 +344,8 @@ TEST(FxChainPreset, ApplyErrorPathsLeaveChainUnchanged)
 {
     AudioEngine engine;
     engine.initialize();
+    engine.getProjectCommands().addTrack("Track");
+    engine.drainPendingRoutingRebuild();
     auto& commands = engine.getAudioEngineCommands();
 
     auto valid = makeTwoSlotPreset();

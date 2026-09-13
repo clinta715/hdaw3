@@ -667,7 +667,7 @@ Real synth firmware running as isolated CLAP plugins — installed in
 | Xenia | Waldorf Microwave II/XT | ✅ voices (0.30) |
 | JE8086 | Roland JP-8000 | ✅ voices (0.23–0.27) |
 | Osirus | Access Virus A/B/C | ✅ voices; state-apply on load rejected by the plugin (see durability rules) |
-| NodalRed2x | Clavia Nord Lead 2x | ⚠️ kKnownSilent family (needs 4-channel port state) |
+| NodalRed2x | Clavia Nord Lead 2x | ✅ renders audibly since the multi-port fix (v0.34); banks load via `load_nord_bank` SysEx injection |
 | Dexed | Yamaha DX7 | ⚠️ kKnownSilent family (accepts sysex at the CLAP boundary; state/voicing rejected) |
 
 ### Injection tools (all verified end-to-end)
@@ -679,6 +679,16 @@ Real synth firmware running as isolated CLAP plugins — installed in
   select + PC (Virus banks A–H singles).
 - `load_dexed_cartridge {trackId, slotIndex, filePath}` — `.syx` single/cartridge
   into any DX7-engine slot (Dexed).
+- `load_nord_bank {trackId, slotIndex, filePath, program?}` — Nord Lead 2x
+  banks (`.syx` raw Clavia SysEx, `.mid` SMF-wrapped) into NodalRed2x:
+  every dump validated (F0 33 <dev> 04 header, F7-terminated, ≤32768B)
+  BEFORE queueing; optional `program` sends the trailing PC for voice
+  selection. Sidecar pipeline: `timbre-lib/nl2x_patch.py` writes
+  `<patch>.nl2x.json` descriptions over `D:\pdf\NL2x Banks` (6841
+  sidecars, 29436 dumps) — searchable by FileLibraryManager.
+  CAVEAT: force a fresh state capture after large banks (a trailing CC
+  with captureToTree) — the ~800ms capture timer can otherwise fire while
+  the SHM ring still drains the bank (test-verified race).
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.
