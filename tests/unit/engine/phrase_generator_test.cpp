@@ -147,3 +147,31 @@ TEST(PhraseGeneratorEuclidean, Deterministic)
     auto b = PhraseGenerator::generatePhrase(p);
     expectSameNotes(a, b);
 }
+
+// BUG-3 fix: Percussion honors density (total hits scale, voices split 4:4:2).
+TEST(PhraseGenerator, PercussionDensityScalesNoteCount)
+{
+    PhraseGenerator::PhraseParams p;
+    p.style = PhraseGenerator::Style::Percussion;
+    p.lengthBeats = 64.0;
+    p.density = 96;
+    p.lowNote = 36;
+    p.highNote = 42;
+    p.minVelocity = 60;
+    p.maxVelocity = 110;
+    p.seed = 5;
+
+    auto notes = PhraseGenerator::generatePhrase(p);
+    EXPECT_NEAR(static_cast<double>(notes.size()), 96.0, 12.0)
+        << "density should drive the total hit count";
+    for (const auto& n : notes)
+    {
+        EXPECT_GE(n.noteNumber, 36);
+        EXPECT_LE(n.noteNumber, 42);
+    }
+
+    // Halving the density halves the hit count.
+    p.density = 48;
+    auto notes2 = PhraseGenerator::generatePhrase(p);
+    EXPECT_NEAR(static_cast<double>(notes2.size()), 48.0, 8.0);
+}

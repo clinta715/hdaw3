@@ -81,6 +81,64 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
     return root;
 }
 
+// Shared bin computation for get_waveform_peaks: open the file through the
+// project format manager and produce downsampled min/max peak pairs. Both the
+// clipId branch and the raw-path branch funnel through here, so the two code
+// paths are byte-identical past file resolution. Pure offline file read on
+// the MCP thread — no audio-engine or graph state is touched. On failure
+// fills *errorOut ("cannot open audio file" / "empty audio") and returns {}.
+static QJsonObject computeWaveformPeaks(const juce::File& file, juce::AudioFormatManager& fmtMgr,
+                                        int numBins, QString* errorOut = nullptr)
+{
+    std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
+    if (!reader) {
+        if (errorOut) *errorOut = "cannot open audio file";
+        return {};
+    }
+
+    auto totalSamples = reader->lengthInSamples;
+    if (totalSamples <= 0) {
+        if (errorOut) *errorOut = "empty audio";
+        return {};
+    }
+
+    int numChannels = static_cast<int>(reader->numChannels);
+    double sampleRate = reader->sampleRate;
+    numBins = std::clamp(numBins, 100, 10000);
+    int64_t samplesPerBin = totalSamples / static_cast<int64_t>(numBins);
+    if (samplesPerBin < 1) samplesPerBin = 1;
+
+    juce::AudioBuffer<float> buffer(numChannels, static_cast<int>(samplesPerBin));
+    QJsonArray peaks;
+
+    for (int i = 0; i < numBins; ++i) {
+        int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
+        int numToRead = static_cast<int>(
+            (std::min)(samplesPerBin, totalSamples - startSample));
+        if (numToRead <= 0) {
+            peaks.append(0.0f);
+            peaks.append(0.0f);
+            continue;
+        }
+        buffer.clear();
+        reader->read(&buffer, 0, numToRead, startSample, true, true);
+
+        float minVal = 0.0f, maxVal = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            auto* data = buffer.getReadPointer(ch);
+            for (int s = 0; s < numToRead; ++s) {
+                if (data[s] < minVal) minVal = data[s];
+                if (data[s] > maxVal) maxVal = data[s];
+            }
+        }
+        peaks.append(minVal);
+        peaks.append(maxVal);
+    }
+
+    return QJsonObject{{"peaks", peaks},
+                       {"sampleRate", sampleRate},
+                       {"numSamples", static_cast<qint64>(totalSamples)}};
+}
 void registerAudioReadTools(McpServer& s, AudioEngine* e)
 {
     s.registerTool({"list_fx", "List FX slots on a track.",
@@ -133,11 +191,31 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"get_waveform_peaks",
-        "Return downsampled min/max peak pairs for an audio clip waveform.",
+        "Return downsampled min/max peak pairs for an audio waveform. "
+        "Pass clipId to read a project audio clip, or path to read any audio "
+        "file on disk (library samples, stems). If both are given, path wins. "
+        "Response: {\"peaks\":[min0,max0,min1,max1,...],\"sampleRate\",\"numSamples\"}.",
         objSchema({{"clipId", QJsonObject{{"type","integer"}}},
-                   {"numBins", QJsonObject{{"type","integer"}}}}, {"clipId"}),
+                   {"path", QJsonObject{{"type","string"}}},
+                   {"numBins", QJsonObject{{"type","integer"}}}}, {}),
         "audio",
         [e](const QJsonObject& a) -> McpToolResult {
+            const QString pathArg = a.value("path").toString();
+            if (!pathArg.isEmpty()) {
+                const juce::File file(pathArg.toStdString());
+                if (!file.existsAsFile())
+                    return McpToolResult::text("file not found: " + pathArg, true);
+                QString error;
+                QJsonObject result = computeWaveformPeaks(file,
+                                                          e->getProjectPool().getFormatManager(),
+                                                          a.value("numBins").toInt(1000), &error);
+                if (!error.isEmpty())
+                    return McpToolResult::text(error, true);
+                result["sourceFile"] = pathArg;
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            }
+
             int cid = a.value("clipId").toInt(-1);
             auto clip = findClip(e, cid, nullptr);
             if (!clip.isValid())
@@ -149,56 +227,16 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             if (sourceFile.isEmpty())
                 return McpToolResult::text("no source file", true);
 
-            auto file = juce::File(sourceFile);
+            const juce::File file(sourceFile.toStdString());
             if (!file.existsAsFile())
                 return McpToolResult::text("source file missing", true);
 
-            auto& fmtMgr = e->getProjectPool().getFormatManager();
-            std::unique_ptr<juce::AudioFormatReader> reader(fmtMgr.createReaderFor(file));
-            if (!reader)
-                return McpToolResult::text("cannot open audio file", true);
-
-            auto totalSamples = reader->lengthInSamples;
-            if (totalSamples <= 0)
-                return McpToolResult::text("empty audio", true);
-
-            int numChannels = static_cast<int>(reader->numChannels);
-            double sampleRate = reader->sampleRate;
-            int numBins = a.value("numBins").toInt(1000);
-            numBins = std::clamp(numBins, 100, 10000);
-            int64_t samplesPerBin = totalSamples / static_cast<int64_t>(numBins);
-            if (samplesPerBin < 1) samplesPerBin = 1;
-
-            juce::AudioBuffer<float> buffer(numChannels, static_cast<int>(samplesPerBin));
-            QJsonArray peaks;
-
-            for (int i = 0; i < numBins; ++i) {
-                int64_t startSample = static_cast<int64_t>(i) * samplesPerBin;
-                int numToRead = static_cast<int>(
-                    (std::min)(samplesPerBin, totalSamples - startSample));
-                if (numToRead <= 0) {
-                    peaks.append(0.0f);
-                    peaks.append(0.0f);
-                    continue;
-                }
-                buffer.clear();
-                reader->read(&buffer, 0, numToRead, startSample, true, true);
-
-                float minVal = 0.0f, maxVal = 0.0f;
-                for (int ch = 0; ch < numChannels; ++ch) {
-                    auto* data = buffer.getReadPointer(ch);
-                    for (int s = 0; s < numToRead; ++s) {
-                        if (data[s] < minVal) minVal = data[s];
-                        if (data[s] > maxVal) maxVal = data[s];
-                    }
-                }
-                peaks.append(minVal);
-                peaks.append(maxVal);
-            }
-
-            QJsonObject result{{"peaks", peaks},
-                               {"sampleRate", sampleRate},
-                               {"numSamples", static_cast<qint64>(totalSamples)}};
+            QString error;
+            QJsonObject result = computeWaveformPeaks(file,
+                                                      e->getProjectPool().getFormatManager(),
+                                                      a.value("numBins").toInt(1000), &error);
+            if (!error.isEmpty())
+                return McpToolResult::text(error, true);
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(result).toJson(QJsonDocument::Compact)));
         }});

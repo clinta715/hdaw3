@@ -1,4 +1,4 @@
-#include <gtest/gtest.h>
+﻿#include <gtest/gtest.h>
 #include "engine/AudioEngine.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
@@ -63,7 +63,7 @@ QJsonObject parseResponse(const QByteArray& buf) {
 // accumulated outgoing buffer (timeout in ms). Returns {} on timeout.
 // processEvents is required: exportComplete is delivered to the main thread
 // via a queued invokeMethod (notifyFromBackground), and test_main runs no
-// event loop. The budget is real elapsed time — waitForOutgoing returns
+// event loop. The budget is real elapsed time â€” waitForOutgoing returns
 // immediately while the buffer is non-empty (response + progress lines).
 QJsonObject waitExportComplete(mcp::TransportLoopback& tp, int msec) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(msec);
@@ -92,7 +92,7 @@ QJsonObject waitExportComplete(mcp::TransportLoopback& tp, int msec) {
 }
 
 // HTTP round-trip: POST a JSON-RPC request to the running TransportHttp and
-// read the response. Exercises the full HTTP → McpServer::dispatchRequest →
+// read the response. Exercises the full HTTP â†’ McpServer::dispatchRequest â†’
 // HTTP response path, replacing the v1 sync stub.
 //
 // This test is placed FIRST in the McpServer test suite because the
@@ -621,7 +621,7 @@ TEST(McpServer, ApplySongPlan) {
     ASSERT_EQ(tmpl.value("sections").toArray().size(), 4);
 
     // Brief apply is FULL-REPLACEMENT: intro matched/updated, build+drop
-    // removed (out-of-plan), a/b/c/d created → 4 section-typed regions.
+    // removed (out-of-plan), a/b/c/d created â†’ 4 section-typed regions.
     EXPECT_EQ(regionTree.getNumChildren(), 4);
 
     // Gate 9: bad kind is an error with NO mutation.
@@ -768,7 +768,7 @@ TEST(McpServer, AddDelaySyncAndSetParams) {
     EXPECT_EQ(p4.value("paramID").toInt(), 104);
 
     // set_internal_fx_param (REAL units): SyncToTempo = 1, Division = 4
-    // (dotted-1/8) — the G1 "one param instead of hand-computed seconds" path.
+    // (dotted-1/8) â€” the G1 "one param instead of hand-computed seconds" path.
     r = callTool(3, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":3,"value":1})");
     EXPECT_FALSE(isError(r)) << text(r).toStdString();
     r = callTool(4, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":4,"value":4})");
@@ -923,7 +923,7 @@ QString writeSineWav(const char* tag) {
     return path;
 }
 
-// 12 s stereo 440 Hz sine (0.5 amplitude) — longer than the 8 s streaming
+// 12 s stereo 440 Hz sine (0.5 amplitude) â€” longer than the 8 s streaming
 // promotion threshold (StreamingClipSource::kPromoteToWholeFileMs), for the
 // streamed-clip export test (Subsystem D gate G2).
 QString writeLongSineWav() {
@@ -963,6 +963,67 @@ QString textOf(const QJsonObject& r) {
             .value("text").toString();
 }
 } // namespace
+
+// get_waveform_peaks must accept a raw path (any file on disk) in addition to
+// clipId â€” the Curator role's audio-honesty gate reads library samples and
+// stems that are not project clips. Path takes precedence when both are given.
+TEST(McpServer, WaveformPeaksByPath) {
+    AudioEngine engine;
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const QString path = writeSineWav("wavepeaks");
+    ASSERT_FALSE(path.isEmpty());
+    ASSERT_TRUE(QFile::exists(path));
+
+    // Path only: clipId omitted entirely (no longer required).
+    QString args = QString(R"({"path":"%1"})").arg(path);
+    QString req = QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",)"
+                          R"("params":{"name":"get_waveform_peaks","arguments":%1}})"
+                          ).arg(args);
+    tp.pumpIncoming(req.toUtf8());
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QJsonObject result = QJsonDocument::fromJson(textOf(r).toUtf8()).object();
+    EXPECT_FALSE(result.isEmpty());
+
+    // Default numBins = 1000 -> one (min,max) pair per bin.
+    QJsonArray peaks = result.value("peaks").toArray();
+    ASSERT_EQ(peaks.size(), 2000);
+    EXPECT_EQ(result.value("sampleRate").toDouble(), 44100.0);
+    EXPECT_EQ(result.value("numSamples").toDouble(), 44100.0 * 8.0);
+    EXPECT_EQ(result.value("sourceFile").toString(), path);
+
+    double maxPeak = -1.0;
+    for (int i = 0; i < peaks.size(); ++i) {
+        const double v = peaks.at(i).toDouble();
+        EXPECT_TRUE(std::isfinite(v)) << "non-finite peak at index " << i;
+        if (i % 2 == 1 && v > maxPeak) maxPeak = v;  // odd index = bin max
+    }
+    EXPECT_GT(maxPeak, 0.0);   // a 0.5-amplitude sine is audible: some bin max > 0
+    EXPECT_LT(maxPeak, 0.75);  // sanity: peak cannot exceed the written amplitude
+
+    // Path takes precedence over clipId when both are supplied: a bogus
+    // clipId alongside a valid path must still resolve from the file.
+    args = QString(R"({"clipId":98765,"path":"%1"})").arg(path);
+    req = QString(R"({"jsonrpc":"2.0","id":2,"method":"tools/call",)"
+                  R"("params":{"name":"get_waveform_peaks","arguments":%1}})"
+                  ).arg(args);
+    tp.pumpIncoming(req.toUtf8());
+    out.clear(); ASSERT_TRUE(tp.waitForOutgoing(500, &out));
+    r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    result = QJsonDocument::fromJson(textOf(r).toUtf8()).object();
+    EXPECT_EQ(result.value("peaks").toArray().size(), 2000);
+
+    QFile::remove(path);
+    s.stop();
+    s.setTransport(nullptr);
+}
 
 TEST(McpServer, ExportAudioDryRunReturnsPlan) {
     AudioEngine engine;
@@ -1192,7 +1253,7 @@ TEST(McpServer, AddInstrumentPartTool) {
     s.setTransport(nullptr);
 }
 
-// role:"bass" with NO style → the engine fills the typed bass preset
+// role:"bass" with NO style â†’ the engine fills the typed bass preset
 // (BassLine, low range, density, velocities). Explicit targetRms:0 wins over
 // the role's ~-18 dB default, so no gain-stage render runs. The produced notes
 // must match a hand-configured bass phrase.
@@ -1251,7 +1312,7 @@ TEST(McpServer, AddInstrumentPartRole) {
     EXPECT_EQ(roleNotes.size(), handNotes.size());
     ASSERT_GT(roleNotes.size(), 0u);
 
-    // The bass range [36,48] — proving the role preset, not another style.
+    // The bass range [36,48] â€” proving the role preset, not another style.
     int minPitch = 128, maxPitch = -1;
     for (const auto& n : roleNotes)
     {
@@ -1265,7 +1326,7 @@ TEST(McpServer, AddInstrumentPartRole) {
     s.setTransport(nullptr);
 }
 
-// Unknown role → clean in-band tool error ("unknown role"), project untouched.
+// Unknown role â†’ clean in-band tool error ("unknown role"), project untouched.
 TEST(McpServer, AddInstrumentPartUnknownRole) {
     AudioEngine engine;
     engine.initialize();
@@ -1282,7 +1343,7 @@ TEST(McpServer, AddInstrumentPartUnknownRole) {
     EXPECT_TRUE(r.value("result").toObject().value("isError").toBool(true));
     EXPECT_TRUE(textOf(r).contains("unknown role")) << "got: [" << textOf(r).toStdString() << "]";
 
-    // Rejected before any tree mutation — no track added.
+    // Rejected before any tree mutation â€” no track added.
     EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
 
     s.stop();
@@ -1298,7 +1359,7 @@ TEST(McpServer, AutoGainToTargetTool) {
 
     const QString srcPath = writeSineWav("gainstage");
     ASSERT_FALSE(srcPath.isEmpty());
-    // Default project track 0 (audio) — add the sine as an audio clip (2 s
+    // Default project track 0 (audio) â€” add the sine as an audio clip (2 s
     // of content at 120 BPM; the 1.0 s window is fully covered by signal).
     const int clipId = engine.getProjectCommands().addAudioClip(
         0, 0.0, 4.0, srcPath.toStdString(), "sine");
@@ -1324,7 +1385,7 @@ TEST(McpServer, AutoGainGlobalScale) {
     engine.initialize();
 
     // Stack multiple loud parts so the full mix clips at unity. A single
-    // fm_synth Lead peaks at ~0.28 — four叠加 push the mix peak past 1.0,
+    // fm_synth Lead peaks at ~0.28 â€” fourå åŠ  push the mix peak past 1.0,
     // triggering the global-scale path.
     int targetTrack = -1;
     for (int i = 0; i < 4; ++i)
@@ -1376,10 +1437,39 @@ TEST(McpServer, AuditionPluginTool) {
     const int baseline = engine.getReadModel().getTrackCount();
 
     // A fake plugin id: the probe completes, renders silence (audible=false),
-    // and is reverted — the tool must not crash and the project must be left
+    // and is reverted â€” the tool must not crash and the project must be left
     // untouched (temp-probe cleanup contract).
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"audition_plugin","arguments":{"pluginId":"test.plugin.id","windowSeconds":1.0}}})"));
+    QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
+    auto r = parseOne(out);
+    EXPECT_FALSE(r.value("error").isObject());
+    EXPECT_FALSE(r.value("result").toObject().value("isError").toBool(true));
+    QString txt = textOf(r);
+    EXPECT_TRUE(txt.contains("ok=1")) << "got: [" << txt.toStdString() << "]";
+    EXPECT_TRUE(txt.contains("audible=0")) << "got: [" << txt.toStdString() << "]";
+
+    // The probe track was cleaned up.
+    EXPECT_EQ(engine.getReadModel().getTrackCount(), baseline);
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+TEST(McpServer, AuditionPluginExplicitProbeTrackIndex) {
+    AudioEngine engine;
+    engine.initialize();
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    const int baseline = engine.getReadModel().getTrackCount();
+
+    // Explicit temp-probe path: trackIndex = -1 must pass MCP schema validation
+    // (schema minimum is now -1), reach the engine tempProbe branch, and be
+    // cleaned up so the project returns to its baseline track count.
+    tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"audition_plugin","arguments":{"pluginId":"test.plugin.id","trackIndex":-1,"windowSeconds":1.0}}})"));
     QByteArray out; ASSERT_TRUE(tp.waitForOutgoing(30000, &out));
     auto r = parseOne(out);
     EXPECT_FALSE(r.value("error").isObject());
@@ -1444,7 +1534,7 @@ TEST(McpServer, AddInstrumentPartProgramIndex) {
 
     // programIndex is passed through the tool into the engine command. Per the
     // plan's G2 contract, programIndex >= 0 without a pluginId is rejected at
-    // the command boundary — the composite is NOT built, so the project is left
+    // the command boundary â€” the composite is NOT built, so the project is left
     // untouched.
     tp.pumpIncoming(QByteArray(R"({"jsonrpc":"2.0","id":1,"method":"tools/call",
         "params":{"name":"add_instrument_part","arguments":{"trackName":"MCP P","style":"Lead","lengthBeats":4,"placement":"region","count":1,"programIndex":0}}})"));
@@ -1455,7 +1545,7 @@ TEST(McpServer, AddInstrumentPartProgramIndex) {
     EXPECT_TRUE(textOf(r).contains("programIndex requires a pluginId"))
         << "got: [" << textOf(r).toStdString() << "]";
 
-    // Rejected before any tree mutation — track count unchanged.
+    // Rejected before any tree mutation â€” track count unchanged.
     EXPECT_EQ(engine.getReadModel().getTrackCount(), before);
 
     s.stop();
@@ -1659,7 +1749,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
     engine.initialize();
 
     // Find a CLAP instrument plugin from the cache (loaded by initialize()).
-    // We don't call scanAll() here — it spawns external scanner processes
+    // We don't call scanAll() here â€” it spawns external scanner processes
     // and can take many minutes, blocking the test thread.
     QString clapPluginId;
     for (const auto& pd : engine.getPluginManager().getPlugins()) {
@@ -1670,7 +1760,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
     }
 
     if (clapPluginId.isEmpty()) {
-        GTEST_SKIP() << "No CLAP plugins found in cache — skipping export hang test";
+        GTEST_SKIP() << "No CLAP plugins found in cache â€” skipping export hang test";
     }
 
     mcp::TransportLoopback tp;
@@ -1704,7 +1794,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         ASSERT_TRUE(tp.waitForOutgoing(10000, &out));
     }
 
-    // Export to WAV — this must complete within 30 seconds.
+    // Export to WAV â€” this must complete within 30 seconds.
     // Before the fix, this would hang forever.
     QString path = makeTempWavPath("clap");
     {
@@ -1715,7 +1805,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
         tp.drainOutgoing();
         tp.pumpIncoming(req.toUtf8());
         QByteArray out;
-        // 30-second timeout — if the fix doesn't work, this will fail
+        // 30-second timeout â€” if the fix doesn't work, this will fail
         // instead of hanging the test suite forever.
         ASSERT_TRUE(tp.waitForOutgoing(30000, &out))
             << "Export with CLAP plugin timed out (the on_main_thread fix is not working)";
@@ -1734,7 +1824,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
     EXPECT_TRUE(QFile::exists(path));
     EXPECT_GT(QFile(path).size(), 0);
 
-    // Assert the render is non-silent — the silent-export regression (CLAP
+    // Assert the render is non-silent â€” the silent-export regression (CLAP
     // identifier string instead of file path reaching the isolated child)
     // produced a present-but-zero WAV. Block that class of regression here.
     {
@@ -1767,7 +1857,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
 // untouched. Before the isolation-export-wedge fix, the export render graph
 // shared the live PluginManager/ProxyProcessManager (slot counter, children
 // map, crash callbacks), so live FX-chain rebuilds during export could kill
-// the export's own children via defensive killPluginHost(slotId) — the render
+// the export's own children via defensive killPluginHost(slotId) â€” the render
 // never settled and the export hung forever. The fix gives the export its own
 // plugin domain. This test drives the old failure shape (several isolated
 // instances inside one export, several isolated instances on the live graph)
@@ -1775,7 +1865,7 @@ TEST(McpServer, ExportAudioWithClapPluginDoesNotHang) {
 // wait budget; a hang regression trips the waitExportComplete timeout.
 // 2026-09-02: previously DISABLED for in-suite "Export cancelled." flakes.
 // Root cause: startExport set active=true while the dedicated-domain flag was
-// only published later inside renderThreadFunc — a queued live rebuild landing
+// only published later inside renderThreadFunc â€” a queued live rebuild landing
 // in that window drained (cancelAndJoin) and cancelled the export. Fixed by
 // publishing dedicatedDomainActive in startExport before the thread starts.
 TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
@@ -1792,7 +1882,7 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
     }
 
     if (clapPluginId.isEmpty()) {
-        GTEST_SKIP() << "No CLAP plugins found in cache — skipping multi-instance export test";
+        GTEST_SKIP() << "No CLAP plugins found in cache â€” skipping multi-instance export test";
     }
 
     mcp::TransportLoopback tp;
@@ -1828,7 +1918,7 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
     }
 
     // Export 8 seconds with the three isolated instances on the render graph.
-    // Must complete within the wait budget — a wedge regression hangs here.
+    // Must complete within the wait budget â€” a wedge regression hangs here.
     QString path1 = makeTempWavPath("multiinst1");
     {
         QString args = QString(R"({"outputPath":"%1","format":"wav","start":0.0,"end":8.0,"sampleRate":44100.0,"bitDepth":16})")
@@ -1931,7 +2021,7 @@ TEST(McpServer, ExportAudioWithMultipleIsolatedInstances) {
 // child over the shm header (docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md).
 // Root cause (investigated, evidence in the plan): these instruments ship
 // silent factory-default patches (e.g. the NodalRed2x gearmulator port drops
-// program-change messages and has no presets — n2xdevice.cpp:91) and the
+// program-change messages and has no presets â€” n2xdevice.cpp:91) and the
 // matrix feeds no plugin state/preset, so they legitimately output zeros
 // (outPeak=0 with healthy process status). The transport forward is correct
 // host behavior and stays; the silent set is documented-skipped below rather
@@ -1946,7 +2036,11 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     // Explicit target substrings. Missing plugins are reported and skipped.
     static const char* kTargets[] = {
         "Vital", "Dexed", "JC303", "Odin2", "ShinRonin",
-        "Identity", "Gneiss", "Retrospect", "NodalRed2x", "Altitude"
+        "Identity", "Gneiss", "Retrospect", "NodalRed2x", "Altitude",
+        // 2026-09-11: gearmulator 2.2.9 synths (Osirus=Virus A/B/C, OsTIrus=Virus TI,
+        // Vavra=microQ, Xenia=Microwave II/XT, JE-8086=JP-8000), all installed in
+        // CLAP dir with ROMs. "8086" (not "JE8086") so it matches "JE-8086" too.
+        "Osirus", "OsTIrus", "Vavra", "Xenia", "8086"
     };
 
     // Plugins known to render silence on isolated export. Skip with a clear
@@ -1972,7 +2066,25 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
     // 2026-09-02: Vital/Dexed/JC303 still show Export cancelled after drain fix
     // (dedicated domain) - likely bake timeout vs spawn time for heavy plugins;
     // add to known set to keep suite green while investigating.
-    static const char* kKnownSilent[] = { "Vital", "Dexed", "JC303", "Identity", "NodalRed2x", "Altitude", nullptr };
+    // 2026-09-11 Osirus: loads healthy in the isolated child (params=3086, add=ok,
+    // export=ok, hung=0) but renders peak=0.000092 on a 20-note Lead phrase â€”
+    // near-silence, i.e. the DSP boots (not digital zero) but no voices fire.
+    // Same documented-skip family as NodalRed2x: needs user-side setup (ROM
+    // selection/preset) before it can be fully asserted. gearmulator source:
+    // virusLib/romloader.cpp only auto-detects ROMs whose bytes contain
+    // "(C)ACCESS [" (detectModel), so filename alone doesn't fix it; Osirus
+    // likely needs its ROM via the plugin's config dir / editor first-run flow.
+    // 2026-09-11: NodalRed2x REMOVED from this set â€” it now renders audibly on
+    // the plain MIDI phrase (peak 0.197 / 0.243 across two full matrix runs,
+    // add=ok export=ok hung=0), so it is fully asserted like the other healthy
+    // instruments. Remaining entries are silent-by-state/setup (see notes above).
+    // 2026-09-12: Vital / Dexed / JC303 / Identity / Altitude REMOVED — four
+    // consecutive full matrix runs rendered every one of them audibly with
+    // add=ok export=ok complete=ok hung=0 (peaks 0.067-0.40). The 2026-09-02
+    // "Export cancelled" is not reproducible: Altitude.clap is now installed
+    // (the stale-cache prune no longer fires) and the drain fix holds.
+    // Remaining: Osirus only (documented above).
+    static const char* kKnownSilent[] = { "Osirus", nullptr };
     auto isKnownSilent = [](const juce::String& name) {
         for (const char* s : kKnownSilent)
         {
@@ -1992,6 +2104,10 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
         {
             if (pd.pluginFormatName != "CLAP") continue;
             if (!pd.name.containsIgnoreCase(juce::String(t))) continue;
+            // Instrument targets must not match the gearmulator FX variants
+            // (OsirusFX.clap, OsTIrusFX.clap, VavraFX.clap, XeniaFX.clap) â€”
+            // they share the instrument's name substring.
+            if (pd.name.containsIgnoreCase("FX")) continue;
             bool dup = false;
             for (const auto& s : selected)
                 if (s.name == pd.name) { dup = true; break; }
@@ -2203,7 +2319,7 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                 HDAW_LOG("DiagMatrix",
                          juce::String("HUNG plugin=") + juce::String(row.name)
                          + " id=" + juce::String(row.id));
-                // Can't join (stuck inside a render wait) — detach and let the
+                // Can't join (stuck inside a render wait) â€” detach and let the
                 // process teardown reclaim it. Keep processing subsequent plugins.
                 worker.detach();
                 continue;
@@ -2237,7 +2353,7 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                       << " peak=" << r.peak
                       << " (known isolated-export silence, TODO investigate)"
                       << std::endl;
-            // Cannot use GTEST_SKIP() here — it would skip assertions for
+            // Cannot use GTEST_SKIP() here â€” it would skip assertions for
             // plugins later in the list. Just log + continue.
             continue;
         }
@@ -2246,6 +2362,73 @@ TEST(McpServer, DiagnosticClapExportMatrix) {
                                  << " peak=" << r.peak
                                  << " phase=" << r.phaseNote;
     }
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
+// G5 for docs/plans/2026-09-11-fx-midi-injection-virus-presets.md: MCP surface
+// validation for send_fx_midi / load_virus_preset (no real plugin needed â€”
+// error paths only; delivery is covered by FxMidiInjection.* unit tests and
+// the env-guarded Osirus probe).
+TEST(McpServer, SendFxMidiValidation) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(5000, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    // Non-plugin slot: send_fx_midi must reject it.
+    auto r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"eq","position":0})");
+    EXPECT_EQ(text(r).toStdString(), std::string("slot=0"));
+
+    r = callTool(2, "send_fx_midi",
+                 R"({"trackId":0,"slotIndex":0,"messages":[{"kind":"programChange","channel":1,"program":40}]})");
+    EXPECT_TRUE(isError(r));
+        EXPECT_EQ(text(r).toStdString(), std::string("slot is not a plugin slot"));
+
+    // Unknown track.
+    r = callTool(3, "send_fx_midi",
+                 R"({"trackId":42,"slotIndex":0,"messages":[{"kind":"programChange","channel":1,"program":0}]})");
+    EXPECT_TRUE(isError(r));
+
+    // Unknown slot.
+    r = callTool(4, "send_fx_midi",
+                 R"({"trackId":0,"slotIndex":9,"messages":[{"kind":"programChange","channel":1,"program":0}]})");
+    EXPECT_TRUE(isError(r));
+
+    // Empty batch.
+    r = callTool(5, "send_fx_midi", R"({"trackId":0,"slotIndex":0,"messages":[]})");
+    EXPECT_TRUE(isError(r));
+
+    // Unknown kind.
+    r = callTool(6, "send_fx_midi",
+                 R"({"trackId":0,"slotIndex":0,"messages":[{"kind":"wobble","channel":1}]})");
+    EXPECT_TRUE(isError(r));
+
+    // load_virus_preset mirrors the same validation.
+    r = callTool(7, "load_virus_preset", R"({"trackId":0,"slotIndex":0,"bank":2,"program":40})");
+    EXPECT_TRUE(isError(r));
+        EXPECT_EQ(text(r).toStdString(), std::string("slot is not a plugin slot"));
 
     s.stop();
     s.setTransport(nullptr);

@@ -1,4 +1,4 @@
-#include "ChainLibrary.h"
+﻿#include "ChainLibrary.h"
 #include "AudioEngineCommands.h"
 #include "AudioEngine.h"
 #include "../common/DebugLog.h"
@@ -25,7 +25,7 @@
 #undef slots
 #endif
 
-// ─── ProjectCommands — FX operations ──────────────────────────────
+// â”€â”€â”€ ProjectCommands â€” FX operations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void AudioEngineCommands::addFxSlot(int trackIndex, int type, int position,
                                     const std::string& pluginId)
@@ -303,7 +303,7 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     // Write-side clamp: internal FX param values land in the ValueTree and
     // are re-read verbatim on every rebuild/export (loadParamsFromTree), so
     // an out-of-range write would persist into saves and can drive recursive
-    // DSP (reverb comb feedback) to inf/NaN — the "export silent after 0.6s"
+    // DSP (reverb comb feedback) to inf/NaN â€” the "export silent after 0.6s"
     // bug. Clamp to the slot type's documented defs BEFORE the property
     // write. Plugin/none slots have no defs and pass through unchanged
     // (their params use the 0..1 plugin cache, not these defs).
@@ -323,6 +323,131 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     return value;
 }
 
+ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectCommands::FxMidiParams& params)
+{
+    ProjectCommands::FxMidiResult r;
+    r.trackIndex = params.trackIndex;
+    r.slotIndex = params.slotIndex;
+    auto fail = [&r](const std::string& m) { r.error = m; return r; };
+    if (params.events.empty())
+        return fail("no events");
+    if (params.events.size() > 200)
+        return fail("too many events (max 64)");
+    auto* proc = engine_.getMainProcessor();
+    if (proc == nullptr)
+        return fail("audio processor unavailable");
+    auto* track = proc->getTrack(params.trackIndex);
+    if (track == nullptr)
+        return fail("track not found: " + std::to_string(params.trackIndex));
+    auto& chain = track->getFXChain();
+    if (params.slotIndex < 0 || static_cast<size_t>(params.slotIndex) >= chain.size())
+        return fail("slot not found: " + std::to_string(params.slotIndex));
+    auto* slot = chain[static_cast<size_t>(params.slotIndex)].get();
+    if (slot == nullptr || !slot->isPlugin())
+        return fail("slot is not a plugin slot");
+    // NOTE: routes through the LIVE TrackFXSlot (main-processor tracks), not
+    // the ValueTree â€” MIDI injection is per-instance realtime state.
+    for (const auto& ev : params.events)
+    {
+        const int ch = juce::jlimit(1, 16, ev.channel);
+        const int d1 = juce::jlimit(0, 127, ev.data1);
+        const int d2 = juce::jlimit(0, 127, ev.data2);
+        switch (ev.kind)
+        {
+            case ProjectCommands::FxMidiEvent::Kind::ProgramChange:
+                slot->queueMidiForNextBlock(juce::MidiMessage::programChange(ch, d1));
+                break;
+            case ProjectCommands::FxMidiEvent::Kind::ControlChange:
+                slot->queueMidiForNextBlock(juce::MidiMessage::controllerEvent(ch, d1, d2));
+                break;
+            case ProjectCommands::FxMidiEvent::Kind::NoteOn:
+                slot->queueMidiForNextBlock(juce::MidiMessage::noteOn(ch, d1, static_cast<juce::uint8>(d2)));
+                break;
+            case ProjectCommands::FxMidiEvent::Kind::NoteOff:
+                slot->queueMidiForNextBlock(juce::MidiMessage::noteOff(ch, d1, static_cast<juce::uint8>(d2)));
+                break;
+            case ProjectCommands::FxMidiEvent::Kind::SysEx:
+            {
+                // Raw dump (e.g. DX7 cartridge for Dexed). The SHM midiIn ring
+                // carries sysex via its dedicated buffer (128KB cap).
+                if (ev.sysex.empty() || ev.sysex.size() > 32768)
+                    return fail("sysex payload must be 1..32768 bytes");
+                slot->queueMidiForNextBlock(
+                    juce::MidiMessage(ev.sysex.data(), static_cast<int>(ev.sysex.size())));
+                break;
+            }
+        }
+        ++r.queued;
+    }
+
+    // Capture-to-tree (plan item #3): once the child has processed the queued
+    // messages, snapshot the plugin state into IDs::pluginState so offline
+    // exports / rebuilds / save-load all see the injected preset (Track.cpp
+    // restore path reads exactly this property). Mirrors the applyPluginProgram
+    // snapshot (non-undoable, nullptr um).
+    if (params.captureToTree)
+    {
+        const bool deviceOpen = engine_.getDeviceManager().getCurrentAudioDevice() != nullptr;
+        if (deviceOpen)
+        {
+            // Realtime callbacks are clocking the graph — a manual drive here
+            // would race them. Defer the capture to the message thread: by
+            // then the child has processed the queued messages, and the state
+            // request is the same control path the save flow uses mid-playback.
+            const int ti = params.trackIndex;
+            const int si = params.slotIndex;
+            juce::Timer::callAfterDelay(800, [this, ti, si]() {
+                auto* proc = engine_.getMainProcessor();
+                auto* tr = proc ? proc->getTrack(ti) : nullptr;
+                if (tr == nullptr || si < 0 || static_cast<size_t>(si) >= tr->getFXChain().size())
+                    return;
+                auto* inst = tr->getFXChain()[static_cast<size_t>(si)]->getPluginInstance();
+                if (inst == nullptr)
+                    return;
+                juce::MemoryBlock mb;
+                inst->getStateInformation(mb);
+                auto slotTree = engine_.getProjectModel().getTrackListTree()
+                                    .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
+                if (slotTree.isValid())
+                    slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+            });
+            r.note = "state capture deferred ~800ms (audio device running)";
+        }
+        else
+        {
+            // No device (headless/tests): nothing else clocks the live graph,
+            // so drive a few scratch blocks through the slot to deliver the
+            // queued messages, then capture synchronously. Prepare first — in
+            // this environment the live slot is unprepared (no device spec).
+            // Prepare unconditionally: in this environment the live slot is
+            // unprepared (no device spec ever reached it), and prepare is
+            // idempotent (re-issues PREPARE to the child, resizes buffers).
+            slot->prepare(juce::dsp::ProcessSpec{ 44100.0, 512u, 2u });
+            juce::AudioBuffer<float> scratch(2, 512);
+            scratch.clear();
+            juce::MidiBuffer scratchMidi;
+            for (int i = 0; i < 24; ++i)
+                slot->process(scratch, scratchMidi);
+            auto* inst = slot->getPluginInstance();
+            juce::MemoryBlock mb;
+            if (inst != nullptr)
+                inst->getStateInformation(mb);
+            auto slotTree = engine_.getProjectModel().getTrackListTree()
+                                .getChild(params.trackIndex)
+                                .getChildWithName(IDs::FX_CHAIN)
+                                .getChild(params.slotIndex);
+            if (slotTree.isValid())
+            {
+                slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+                r.capturedToTree = true;
+            }
+        }
+    }
+
+    r.ok = true;
+    return r;
+}
+
 bool AudioEngineCommands::applySubSynthModPreset(int trackIndex, int slotIndex,
                                                  const std::string& presetId,
                                                  std::string* error)
@@ -340,7 +465,7 @@ bool AudioEngineCommands::applySubSynthModPreset(int trackIndex, int slotIndex,
         return fail("slot is not a sub_synth");
 
     // [LFO Wave, LFO Rate Hz, LFO Cutoff Amt (st), LFO Pitch Amt (cents),
-    //  LFO Amp Amt, LFO FM Amt] — real units within the sub_synth param defs
+    //  LFO Amp Amt, LFO FM Amt] â€” real units within the sub_synth param defs
     // (TrackFXSlot::getParamDefsForType); setFxSlotParam clamps on write.
     // Wave enum: 0=sine, 1=saw, 2=square, 3=triangle.
     static const struct { const char* id; float v[6]; } kPresets[] = {
@@ -378,19 +503,19 @@ void AudioEngineCommands::setFmPatch(int trackIndex, int slotIndex,
     if (!slot.isValid()) return;
     if (slot.getProperty(IDs::fxType, "").toString() != "fm_synth") return;
 
-    // Gate 9: validate at the command boundary — exactly 156 bytes.
+    // Gate 9: validate at the command boundary â€” exactly 156 bytes.
     juce::MemoryBlock block;
     if (!block.fromBase64Encoding(juce::String(patchBase64)))
         return;
     if (block.getSize() != FmSynthEngine::kPatchSize)
         return;
 
-    // nullptr undo — matches the pluginState volatile-cache convention in
+    // nullptr undo â€” matches the pluginState volatile-cache convention in
     // applyPluginProgram (AudioEngineCommands_Composition.cpp).
     slot.setProperty(IDs::fmPatchData, juce::String(patchBase64), nullptr);
 
     // Live load (best-effort): no crash when the live processor/track/slot is
-    // absent — the tree write above is what headless/no-device exports need.
+    // absent â€” the tree write above is what headless/no-device exports need.
     if (auto* proc = engine_.getMainProcessor())
     {
         auto* track = proc->getTrack(trackIndex);
@@ -465,7 +590,7 @@ AudioEngineCommands::VirusLoadResult AudioEngineCommands::loadVirusPatch(
     // One undo unit for the whole patch load (applyFxChain precedent): every
     // setFxSlotParam writes under &um between the two beginNewTransaction
     // calls coalesce into a single undo step. All validation happened above,
-    // so this loop cannot fail — the slot only changes here.
+    // so this loop cannot fail â€” the slot only changes here.
     beginTransaction("Load Virus patch");
     int mappedCount = 0;
     for (int i = 0; i < static_cast<int>(patch->mapped.size()); ++i)
@@ -726,7 +851,7 @@ void AudioEngineCommands::respawnFxSlot(int trackIndex, int slotIndex)
     engine_.getPluginManager().recovery().requestRespawn(proxy->getSlotId(), true);
 }
 
-// ─── PsyFm preset/matrix commands (tree-first, deviceless-safe) ──────
+// â”€â”€â”€ PsyFm preset/matrix commands (tree-first, deviceless-safe) â”€â”€â”€â”€â”€â”€
 
 bool AudioEngineCommands::setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
                                                const std::string& presetName)
@@ -739,7 +864,7 @@ bool AudioEngineCommands::setFxSlotPsyFmPreset(int trackIndex, int slotIndex,
     if (!slot.isValid()) return false;
     if (slot.getProperty(IDs::fxType).toString() != "psy_fm") return false;
 
-    // Write all 33 params: ratios 0–5, feedback 6, envelopes 7–30, level 31, algorithm 32
+    // Write all 33 params: ratios 0â€“5, feedback 6, envelopes 7â€“30, level 31, algorithm 32
     for (int i = 0; i < 6; ++i)
         slot.setProperty(juce::Identifier("param_" + juce::String(i)),
                          static_cast<double>(preset->ratios[i]), &um);
@@ -781,7 +906,7 @@ void AudioEngineCommands::setFxSlotPsyFmModRoute(int trackIndex, int slotIndex,
 
     auto src = HDAW::PsyFmState::sourceFromName(srcName);
     auto dst = HDAW::PsyFmState::destFromName(destName);
-    if (!src || !dst) return; // unknown name — silently ignore
+    if (!src || !dst) return; // unknown name â€” silently ignore
 
     bool updated = false;
     for (auto& r : routes)
@@ -808,7 +933,7 @@ void AudioEngineCommands::clearFxSlotPsyFmModRoutes(int trackIndex, int slotInde
     slot.setProperty(juce::Identifier("psyFmMatrix"), juce::String(), &um);
 }
 
-// ─── FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2) ───
+// â”€â”€â”€ FX chain presets (plan 2026-09-02-fx-chain-presets, Task 2) â”€â”€â”€
 
 int AudioEngineCommands::getTrackCount() const
 {
@@ -926,7 +1051,7 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
 
 namespace {
 // Parse a "param_N" key to N, or -1 when the shape is wrong. Gate 9: never
-// write stray props — keys must be exactly "param_" + short digits.
+// write stray props â€” keys must be exactly "param_" + short digits.
 int parsePresetParamIndex(const juce::String& key, int defCount)
 {
     if (!key.startsWith("param_"))
@@ -982,7 +1107,7 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
     if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
         return fail("applyFxChain: invalid track index " + juce::String(trackIndex));
 
-    // 1. Gate 9 — validate EVERYTHING before any write.
+    // 1. Gate 9 â€” validate EVERYTHING before any write.
     for (size_t si = 0; si < preset.slots.size(); ++si)
     {
         const auto& s = preset.slots[si];
@@ -1020,7 +1145,7 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
     beginTransaction("Apply FX chain preset");
 
     // 3a. Remove existing slots WITHOUT the per-op rebuild that removeFxSlot
-    // performs — direct tree ops under &um, single rebuild at the end.
+    // performs â€” direct tree ops under &um, single rebuild at the end.
     auto trackTree = trackList.getChild(trackIndex);
     auto fxChain = trackTree.getChildWithName(IDs::FX_CHAIN);
     if (!fxChain.isValid())
@@ -1073,7 +1198,7 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
             const int idx =
                 parsePresetParamIndex(kv.first, static_cast<int>(defs.size()));
             // Re-checked: indices were validated pre-write; a miss here can
-            // only mean the tree changed under us — fail loudly, never write
+            // only mean the tree changed under us â€” fail loudly, never write
             // a stray prop.
             if (idx < 0)
             {
@@ -1098,8 +1223,8 @@ bool AudioEngineCommands::applyFxChain(int trackIndex, const HDAW::ChainPreset& 
 
         if (s.fxType == "sampler")
         {
-            // Sampler file fallback: stored absolute path → engine-side
-            // library filename search → slot WITHOUT sample + HDAW_LOG
+            // Sampler file fallback: stored absolute path â†’ engine-side
+            // library filename search â†’ slot WITHOUT sample + HDAW_LOG
             // warning (Gate 2: warn, never silently pass).
             auto it = s.sampler.find("sampleFile");
             if (it != s.sampler.end() && it->second.isNotEmpty())

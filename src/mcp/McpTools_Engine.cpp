@@ -36,8 +36,13 @@ void registerEngineInfoTool(McpServer& s) {
         "seconds), size, app version and export status. Optional buildBinaryPath "
         "compares against a freshly built binary and returns buildMtime/buildSize "
         "plus stale=true when the build tree is newer than the running engine. "
-        "Use before engine_restart.",
-        objSchema({{"buildBinaryPath", QJsonObject{{"type","string"}}}}),
+        "Optional expectedVersion cross-checks the RUNNING binary's actual "
+        "version (actualVersion) and reports versionMismatch=true when they "
+        "differ - the source-vs-binary guard so a stale engine built before a "
+        "version bump is detected instead of silently running without the "
+        "expected tools. Use before engine_restart.",
+        objSchema({{"buildBinaryPath",  QJsonObject{{"type","string"}}},
+                   {"expectedVersion", QJsonObject{{"type","string"}}}}),
         "engine",
         [e, &s](const QJsonObject& a) -> McpToolResult {
             QJsonObject out;
@@ -73,6 +78,19 @@ void registerEngineInfoTool(McpServer& s) {
             out.insert("exporting", exporting);
 
             out.insert("version", s.serverVersion());
+
+            // Source-vs-binary version guard: when the caller states the
+            // version it expects (e.g. the source tree's CMake project
+            // version), report whether the RUNNING binary actually matches.
+            // These three keys appear ONLY when expectedVersion is passed, so
+            // bare calls stay backward compatible.
+            const QString expectedVersion = a.value("expectedVersion").toString();
+            if (a.contains("expectedVersion") && !expectedVersion.isEmpty()) {
+                out.insert("expectedVersion", expectedVersion);
+                const QString actualVersion = s.serverVersion();
+                out.insert("actualVersion", actualVersion);
+                out.insert("versionMismatch", expectedVersion != actualVersion);
+            }
 
             return McpToolResult::text(QString::fromUtf8(
                 QJsonDocument(out).toJson(QJsonDocument::Compact)));

@@ -731,9 +731,56 @@ void CLAPPluginInstance::processMidiToClap(const juce::MidiBuffer& midi,
             midiEvent.header.type = CLAP_EVENT_MIDI;
             midiEvent.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
             midiEvent.port_index = 0;
-            midiEvent.data[0] = static_cast<uint8_t>(msg.getChannel() - 1);
+            // data[0] is the FULL status byte (clap-juce-wrapper feeds it
+            // straight into juce::MidiMessage(b0, b1, b2)).
+            midiEvent.data[0] = static_cast<uint8_t>(0xB0 | (msg.getChannel() - 1));
             midiEvent.data[1] = static_cast<uint8_t>(msg.getControllerNumber());
             midiEvent.data[2] = static_cast<uint8_t>(msg.getControllerValue());
+            events.push(midiEvent.header);
+        }
+        else if (msg.isProgramChange())
+        {
+            clap_event_midi_t midiEvent{};
+            midiEvent.header.size = sizeof(clap_event_midi_t);
+            midiEvent.header.time = static_cast<uint32_t>(samplePos);
+            midiEvent.header.type = CLAP_EVENT_MIDI;
+            midiEvent.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            midiEvent.port_index = 0;
+            midiEvent.data[0] = static_cast<uint8_t>(0xC0 | (msg.getChannel() - 1));
+            midiEvent.data[1] = static_cast<uint8_t>(msg.getProgramChangeNumber());
+            midiEvent.data[2] = 0;
+            events.push(midiEvent.header);
+        }
+        else if (msg.isSysEx())
+        {
+            // Buffer lifetime (CLAP contract): clap_event_midi_sysex carries a
+            // pointer; the source MidiMessage lives in the caller's MidiBuffer,
+            // which outlives the plugin's process call, and CLAPInputEvents
+            // copies the event struct into its per-block storage.
+            HDAW_LOG("FxMidiToClap", "sysex " + juce::String(msg.getRawDataSize()) + " bytes");
+            clap_event_midi_sysex_t sysexEvent{};
+            sysexEvent.header.size = sizeof(clap_event_midi_sysex_t);
+            sysexEvent.header.time = static_cast<uint32_t>(samplePos);
+            sysexEvent.header.type = CLAP_EVENT_MIDI_SYSEX;
+            sysexEvent.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            sysexEvent.port_index = 0;
+            sysexEvent.buffer = msg.getRawData();
+            sysexEvent.size = static_cast<uint32_t>(msg.getRawDataSize());
+            events.push(sysexEvent.header);
+        }
+        else if (const int rawSize = msg.getRawDataSize(); rawSize >= 1 && rawSize <= 3)
+        {
+            // Generic short-MIDI passthrough (pitch bend, aftertouch, ...):
+            // raw bytes already carry the status nibble.
+            const auto* raw = msg.getRawData();
+            clap_event_midi_t midiEvent{};
+            midiEvent.header.size = sizeof(clap_event_midi_t);
+            midiEvent.header.time = static_cast<uint32_t>(samplePos);
+            midiEvent.header.type = CLAP_EVENT_MIDI;
+            midiEvent.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            midiEvent.port_index = 0;
+            for (int b = 0; b < rawSize; ++b)
+                midiEvent.data[b] = raw[b];
             events.push(midiEvent.header);
         }
     }

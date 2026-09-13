@@ -67,6 +67,55 @@ TEST (EngineTools, EngineInfoReturnsParseableJson)
     EXPECT_GT (o.value("runningSize").toDouble(), 0.0);
     EXPECT_FALSE (o.value("version").toString().isEmpty());
     EXPECT_FALSE (o.contains("stale")) << "stale only applies when buildBinaryPath is given";
+    EXPECT_FALSE (o.contains("versionMismatch"))
+        << "versionMismatch only applies when expectedVersion is given (backward compat)";
+}
+
+TEST (EngineTools, EngineInfoVersionMatches)
+{
+    AudioEngine engine;
+    mcp::McpServer s;
+    s.setEngine (&engine);
+    mcp::registerAllTools (s);
+
+    // Read the version the RUNNING binary actually reports...
+    auto bare = s.handleRequestOnTestThread (1, "tools/call",
+        QJsonObject { { "name", "engine_info" }, { "arguments", QJsonObject {} } });
+    ASSERT_FALSE (isError (bare));
+    const auto bareObj = resultObj (bare);
+    ASSERT_FALSE (bareObj.value("version").toString().isEmpty());
+    const QString actual = bareObj.value("version").toString();
+
+    // ...then cross-check engine_info with that same value: it must agree.
+    auto r = s.handleRequestOnTestThread (2, "tools/call",
+        QJsonObject { { "name", "engine_info" },
+                      { "arguments", QJsonObject { { "expectedVersion", actual } } } });
+    ASSERT_FALSE (isError (r));
+    const auto o = resultObj (r);
+    EXPECT_EQ (o.value("actualVersion").toString(), actual);
+    EXPECT_TRUE (o.contains("expectedVersion"));
+    EXPECT_FALSE (o.value("versionMismatch").toBool (true))
+        << "an expectedVersion equal to the running version is not a mismatch";
+    EXPECT_FALSE (o.value("actualVersion").toString().isEmpty());
+}
+
+TEST (EngineTools, EngineInfoVersionMismatchDetected)
+{
+    AudioEngine engine;
+    mcp::McpServer s;
+    s.setEngine (&engine);
+    mcp::registerAllTools (s);
+
+    // A stale engine built before a version bump reports the older version.
+    auto r = s.handleRequestOnTestThread (1, "tools/call",
+        QJsonObject { { "name", "engine_info" },
+                      { "arguments", QJsonObject { { "expectedVersion", QStringLiteral ("0.0.0-different") } } } });
+    ASSERT_FALSE (isError (r));
+    const auto o = resultObj (r);
+    EXPECT_EQ (o.value("expectedVersion").toString(), QStringLiteral ("0.0.0-different"));
+    EXPECT_TRUE (o.value("versionMismatch").toBool (false))
+        << "a differing expectedVersion must flag versionMismatch";
+    EXPECT_FALSE (o.value("actualVersion").toString().isEmpty());
 }
 
 TEST (EngineTools, EngineInfoStaleFlagWhenBuildNewer)

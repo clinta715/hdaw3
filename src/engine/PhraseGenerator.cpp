@@ -515,8 +515,12 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
 
     case Percussion:
     {
-        struct PercVoice { int pitch; int hits; int rotation; };
-        std::vector<PercVoice> percVoices = {
+        // Density drives the total hit count; voices split it 4:4:2
+        // (kick / closed-hat / tom). Euclidean spacing keeps each voice
+        // musical at any density. Multi-pitch output: pair with
+        // set_sampler_key_range role-split kits (see composition guide 4D).
+        struct PercVoice { int pitch; int weight; int rotation; };
+        const std::vector<PercVoice> percVoices = {
             {36, 4, 0},
             {42, 4, 0},
             {38, 2, 0},
@@ -525,11 +529,14 @@ std::vector<PhraseGenerator::GeneratedNote> PhraseGenerator::generatePhrase(cons
         const int effHigh = (std::max)(params.highNote, 42);
         const int totalSteps = (std::max)(1, static_cast<int>(std::lround(params.lengthBeats * 4.0)));
         const double beatPerStep = params.lengthBeats / static_cast<double>(totalSteps);
+        constexpr int totalWeight = 10;
         for (const auto& v : percVoices)
         {
             if (v.pitch < effLow || v.pitch > effHigh)
                 continue;
-            int k = std::clamp(v.hits, 1, totalSteps);
+            const int k = std::clamp(params.density * v.weight / totalWeight, 0, totalSteps);
+            if (k <= 0)
+                continue;
             auto onsets = HDAW::euclideanSteps(k, totalSteps, v.rotation);
             for (size_t oi = 0; oi < onsets.size(); ++oi)
             {

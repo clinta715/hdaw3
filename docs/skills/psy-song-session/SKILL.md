@@ -84,6 +84,46 @@ Concurrent dispatch rule: multiple roles may hold the engine ONLY if every one
 of them is in a read-only phase (Verifier measuring a finished render, Selector
 auditioning). Any mutation => one writer at a time.
 
+## Layered mode (preferred for final tracks)
+
+Layered mode is the PREFERRED path for FINAL tracks: one element at a time, each
+written by a dedicated layer-agent that MEASURES the cumulative mix (the four
+gates in `roles/layer-agent.md`) BEFORE writing, so every voice lands in a
+register/band the mix has left open. Bulk cell fill (the plan/cell workflow of
+`fill_cells`) remains the FALLBACK for SKETCH mode — fast seeded structure to
+capture the shape, then rebuilt layer by layer when the track goes final.
+
+**Fixed layer order** — each layer is a SEPARATE dispatch, strictly sequential,
+single writer, never overlapping:
+
+1. kick
+2. bass
+3. hats/snare/clap/down — the percussion bed in ONE layer-agent pass, but the
+   pass MUST build a VARIED bed (offbeat hats, backbeat clap, down-beat role,
+   ghost notes); a mono straight 4x4 with a single hat loop fails
+4. stab
+5. pad
+6. lead — THE one high part (the register budget's usual holder)
+7. riser
+
+**Orchestrator responsibilities per layer:**
+- (a) Dispatch with the FULL layer-agent playbook (`roles/layer-agent.md`) plus
+  the `compositions/<song>/layers.json` ledger so far — register budget and
+  cumulative rms are CONTRACT INPUTS, not optional context.
+- (b) After each PASS handoff: append the layer entry to
+  `compositions/<song>/layers.json` (create if absent) and checkpoint-save via
+  `save_project` to `compositions/<song>/neon-layer-<N>.hdaw` (or the song's
+  usual checkpoint name).
+- (c) NEVER let the next layer start before the previous layer's gate output is
+  recorded.
+
+**Gate contract addition:** a layer handoff WITHOUT `beforeRms` / `afterRms`
+and `verify_part` numbers is rejected — same rule as the generic gate
+contract: evidence is machine output, not prose.
+
+Note: `layers.json` is orchestrator-owned RUNTIME state — like `brief.json`
+it is updated ONLY between phases; it is NOT part of the immutable brief.
+
 ## Gate contract
 A role handoff WITHOUT gate evidence is rejected — send it back with the failed
 gate named. Evidence is machine output (verify_part / mix_report / analyze_tuning

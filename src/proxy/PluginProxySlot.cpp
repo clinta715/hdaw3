@@ -1,4 +1,4 @@
-#include "PluginProxySlot.h"
+﻿#include "PluginProxySlot.h"
 #include "ProxyEditor.h"
 #include "CrashDialog.h"
 #include "../common/DebugLog.h"
@@ -53,7 +53,7 @@ PluginProxySlot::~PluginProxySlot() {
     shmHandle.reset();
     // Notify the registry LAST, after all shm/process resources are released,
     // so the caller (PluginManager) can safely erase this slot and cancel any
-    // pending respawn — a respawn that would otherwise dereference `this`
+    // pending respawn â€” a respawn that would otherwise dereference `this`
     // after destruction completes.
     if (slotDestroyedFn) slotDestroyedFn(slotId);
 }
@@ -121,7 +121,7 @@ void PluginProxySlot::releaseResources() {
 }
 
 // ---------------------------------------------------------------------------
-// ProxiedParameter — getValue/setValue/stageParam.
+// ProxiedParameter â€” getValue/setValue/stageParam.
 float ProxiedParameter::getValue() const { return loadCache(); }
 void ProxiedParameter::setValue(float newValue) {
     setCache(newValue);
@@ -134,7 +134,7 @@ juce::String ProxiedParameter::getName(int maxLen) const {
 }
 
 // ---------------------------------------------------------------------------
-// stageParam — message OR audio thread writes the parent-local staging slot
+// stageParam â€” message OR audio thread writes the parent-local staging slot
 // and marks it dirty; processBlock (audio thread, single writer) flushes it
 // into the shm paramSet ring.
 void PluginProxySlot::stageParam(uint32_t index, float value) {
@@ -144,10 +144,10 @@ void PluginProxySlot::stageParam(uint32_t index, float value) {
 }
 
 // ---------------------------------------------------------------------------
-// fetchParamMetadata — runs on the message thread at construction. The child's
+// fetchParamMetadata â€” runs on the message thread at construction. The child's
 // controlLoop starts AFTER loadPlugin(), so a bounded round-trip waits for the
 // plugin to be loaded. Any failure (null pipe, timeout, OOB) early-returns
-// leaving 0 params — never hangs.
+// leaving 0 params â€” never hangs.
 void PluginProxySlot::fetchParamMetadata() {
     auto* pipe = processManager.getPipe(slotId);
     if (!pipe) return;
@@ -322,7 +322,7 @@ const juce::String PluginProxySlot::getProgramName(int index) {
 }
 
 // ---------------------------------------------------------------------------
-// drainParamNotifications — message thread. Pops the local notification queue
+// drainParamNotifications â€” message thread. Pops the local notification queue
 // (filled by processBlock from the paramNotify shm ring) and forwards each to
 // the AudioProcessor listeners of the matching ProxiedParameter.
 void PluginProxySlot::drainParamNotifications() {
@@ -350,13 +350,13 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         return;
 
     // Lock-free check: if the child has been terminated (e.g. by the crash
-    // handler), don't access the shm — it may be about to be destroyed.
+    // handler), don't access the shm â€” it may be about to be destroyed.
     if (!childAlive.load(std::memory_order_relaxed)) {
         buffer.clear();
         return;
     }
 
-    // Use cached pointer instead of getShm() (which takes a mutex — forbidden
+    // Use cached pointer instead of getShm() (which takes a mutex â€” forbidden
     // on the audio thread). The pointer is valid for the proxy's lifetime:
     // killPluginHost(fullCleanup=false) keeps the ShmRegion alive in the map.
     auto shm = shmHandle;
@@ -373,10 +373,10 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     // Transport clock forward: snapshot the engine playhead into the shm
-    // header (lock-free, allocation-free — audio thread + export render).
+    // header (lock-free, allocation-free â€” audio thread + export render).
     // Fields are written first, revision release-stored last so the child
-    // sees a consistent snapshot. No playhead / no position → revision
-    // unchanged → child interprets it as "no new info" and keeps its last
+    // sees a consistent snapshot. No playhead / no position â†’ revision
+    // unchanged â†’ child interprets it as "no new info" and keeps its last
     // snapshot (a stopped-transport default if never populated).
     if (auto* ph = getPlayHead())
     {
@@ -411,7 +411,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     if (static_cast<uint32_t>(totalSamples) > cap - (w - r)) {
         // In render mode, spin-wait for the child to consume input. A
         // slotFailed slot skips the spin entirely (behave as if the deadline
-        // hit immediately — the output section below outputs silence).
+        // hit immediately â€” the output section below outputs silence).
         if (isRenderMode()) {
             if (slotFailed.load(std::memory_order_relaxed))
                 return;
@@ -431,7 +431,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
                 r = hdr->inputReadPos.load(std::memory_order_acquire);
             }
         } else {
-            // Live drop path: the ring is full — drop this block (caller
+            // Live drop path: the ring is full â€” drop this block (caller
             // passes dry audio through) and drain the output ring so no
             // stale output survives for a future read.
             hdr->outputReadPos.store(hdr->outputWritePos.load(std::memory_order_acquire),
@@ -496,14 +496,14 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         hdr->midiInWritePos.store(mw, std::memory_order_release);
     }
 
-    // NOW signal that audio input is available — host won't start processing
+    // NOW signal that audio input is available â€” host won't start processing
     // until this store is visible, and MIDI is already written above.
     hdr->inputWritePos.store(w + static_cast<uint32_t>(totalSamples),
                               std::memory_order_release);
     // Use inputPosBefore (position BEFORE this block's write) for the output
     // resync check. The output ring holds the child's response to the
-    // PREVIOUS block — the child hasn't processed this block yet. Comparing
-    // against the post-write position would always be stale → permanent silence.
+    // PREVIOUS block â€” the child hasn't processed this block yet. Comparing
+    // against the post-write position would always be stale â†’ permanent silence.
     const uint64_t inputPosWrittenThisCall = inputPosBefore;
 
     MidiEvent* midiOut = shm->getMidiOutRing();
@@ -520,7 +520,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
             if ((evt.flags & 0x80u) != 0) {
                 if (sysexBuf != nullptr && evt.sysexLen > 0
                     && evt.sysexLen <= SYSEX_BUFFER_SIZE) {
-                    // Reconstructing the received SysEx allocates — the one
+                    // Reconstructing the received SysEx allocates â€” the one
                     // accepted heap allocation on the audio path (rare event).
                     midiMessages.addEvent(
                         juce::MidiMessage(sysexBuf, static_cast<int>(evt.sysexLen)),
@@ -539,7 +539,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         hdr->midiOutReadPos.store(or_mr + toRead, std::memory_order_release);
     }
 
-    // Param bridge — single audio-thread writer. Flush parent-local staged
+    // Param bridge â€” single audio-thread writer. Flush parent-local staged
     // params into the shm paramSet ring; if the ring is full leave the dirty
     // flag set for the next block.
     if (paramCacheSize_ > 0 && stagedParams_ && paramDirty_) {
@@ -561,7 +561,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // Param bridge — drain child->parent notify ring into the parent-local
+    // Param bridge â€” drain child->parent notify ring into the parent-local
     // bounded queue (consumed by drainParamNotifications on the message thread).
     if (auto* notifyRing = shm->getParamNotifyRing()) {
         uint32_t nw = hdr->paramNotifyWritePos.load(std::memory_order_acquire);
@@ -590,7 +590,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     const uint64_t consumedPos = hdr->lastConsumedInputPos.load(std::memory_order_acquire);
     bool outputCurrent = proxyOutputIsCurrent(consumedPos, inputPosWrittenThisCall);
 
-    // In render mode, spin-wait for the child process to catch up — but only
+    // In render mode, spin-wait for the child process to catch up â€” but only
     // while the output is stale (not current), and never when the slot is
     // marked failed (skip straight to silence). The render loop runs at CPU
     // speed with no real-time pacing, so the child (separate OS process)
@@ -624,7 +624,7 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     if (!outputCurrent || available < static_cast<uint32_t>(totalSamples)) {
-        // Stale (misaligned) output or nothing available: never deliver it —
+        // Stale (misaligned) output or nothing available: never deliver it â€”
         // drain the ring and output silence.
         hdr->outputReadPos.store(hdr->outputWritePos.load(std::memory_order_acquire),
                                  std::memory_order_release);
@@ -661,6 +661,7 @@ void PluginProxySlot::getStateInformation(juce::MemoryBlock& destData) {
 
     ProxyResponse resp{};
     if (!pipe->receiveRespBounded(resp, kStateTimeoutMs)) return;
+    HDAW_LOG("FxStateRead", "GET_STATE slot=" + juce::String((int) slotId) + " total=" + juce::String((juce::int64) resp.dataSize) + " result=" + juce::String((int) resp.result));
     if (resp.type != MessageType::GET_STATE_RESULT || resp.result != 1) return;
 
     // dataSize carries the TOTAL state size; resp.data holds the first chunk
@@ -690,33 +691,20 @@ void PluginProxySlot::setStateInformation(const void* data, int sizeInBytes) {
 
     const auto total = static_cast<size_t>(sizeInBytes);
     const auto* bytes = static_cast<const uint8_t*>(data);
+    HDAW_LOG("FxStateSend", ("SET_STATE slot=" + juce::String((int) slotId) + " bytes=" + juce::String(sizeInBytes)).toStdString().c_str());
 
-    // dataSize carries the TOTAL state size; data holds the first chunk and
-    // the remainder is sent as STATE_CHUNK messages before the single response.
-    ProxyMessage msg{};
-    msg.type = MessageType::SET_STATE;
-    msg.slotId = slotId;
-    msg.dataSize = static_cast<uint32_t>(total);
-    const size_t first = std::min(total, kStateChunkSize);
-    std::memcpy(msg.data, bytes, first);
-    if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return;
-
-    size_t offset = first;
-    while (offset < total) {
-        ProxyMessage chunk{};
-        chunk.type = MessageType::STATE_CHUNK;
-        chunk.slotId = slotId;
-        const size_t take = std::min(total - offset, kStateChunkSize);
-        chunk.dataSize = static_cast<uint32_t>(take);
-        std::memcpy(chunk.data, bytes + offset, take);
-        if (!pipe->sendMsgBounded(chunk, kStateTimeoutMs)) return;
-        offset += take;
+    if (!sendStateInternal(bytes, total)) return;
+    if (verifyStateApplied(total)) {
+        HDAW_LOG("FxStateSend", "SET_STATE verified (child reports " + juce::String((juce::int64) total) + "B)");
+        return;
     }
 
-    ProxyResponse resp{};
-    pipe->receiveRespBounded(resp, kStateTimeoutMs);
+    // Phase 4b (plugin-state durability): slow-booting children can silently
+    // reject an early SET_STATE â€” re-apply in the background with backoff.
+    HDAW_LOG("FxStateSend", ("state verify mismatch: sent " + juce::String(sizeInBytes)
+        + "B — starting background retry").toStdString().c_str());
+    startStateRetryWorker(std::vector<uint8_t>(bytes, bytes + total), total);
 }
-
 const juce::String PluginProxySlot::getName() const {
     return pluginDisplayName;
 }
@@ -763,7 +751,23 @@ void PluginProxySlot::saveStateToTemp() {
     auto file = tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix +
         juce::String(static_cast<int>(slotId)) + ".bin");
     file.getParentDirectory().createDirectory();
+
+    // T4.2 poisoning guard (plugin-state durability): a degraded/pre-boot
+    // child reports a tiny "state" â€” never let it replace a substantial
+    // previously-captured state, or the post-respawn restore applies the stub.
+    const juce::int64 existingSize = file.existsAsFile()
+        ? static_cast<juce::int64>(file.getSize()) : 0;
+    if (existingSize > 4096 && block.getSize() < 1024)
+    {
+        HDAW_LOG("proxy", (juce::String("pluginState temp kept: existing ")
+            + juce::String(existingSize) + "B > new "
+            + juce::String((int) block.getSize())
+            + "B (suspected pre-boot stub)").toStdString().c_str());
+        return;
+    }
     file.replaceWithData(block.getData(), block.getSize());
+    HDAW_LOG("proxy", (juce::String("pluginState temp saved ")
+        + juce::String((int) block.getSize()) + "B").toStdString().c_str());
 }
 
 bool PluginProxySlot::restartAfterCrash() {
@@ -774,12 +778,67 @@ bool PluginProxySlot::restartAfterCrash() {
 void PluginProxySlot::migrateToNewSlot(uint32_t newSlotId, std::shared_ptr<ShmRegion> newShm) {
     slotId = newSlotId;
     // The param set/notify rings live inside the shm region body, so they are
-    // carried automatically by the shmHandle swap below — no extra wiring.
+    // carried automatically by the shmHandle swap below â€” no extra wiring.
     shmHandle = std::move(newShm);
     crashed.store(false);
     childAlive.store(true);
 }
 
+bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
+    auto* pipe = processManager.getPipe(slotId);
+    if (!pipe || !data || total == 0) return false;
+    static constexpr DWORD kStateTimeoutMs = 3000;
+    ProxyMessage msg{};
+    msg.type = MessageType::SET_STATE;
+    msg.slotId = slotId;
+    msg.dataSize = static_cast<uint32_t>(total);
+    const size_t first = std::min(total, kStateChunkSize);
+    std::memcpy(msg.data, data, first);
+    if (!pipe->sendMsgBounded(msg, kStateTimeoutMs)) return false;
+    size_t offset = first;
+    while (offset < total) {
+        ProxyMessage chunk{};
+        chunk.type = MessageType::STATE_CHUNK;
+        chunk.slotId = slotId;
+        const size_t take = std::min(total - offset, kStateChunkSize);
+        chunk.dataSize = static_cast<uint32_t>(take);
+        std::memcpy(chunk.data, static_cast<const uint8_t*>(data) + offset, take);
+        if (!pipe->sendMsgBounded(chunk, kStateTimeoutMs)) return false;
+        offset += take;
+    }
+    ProxyResponse resp{};
+    pipe->receiveRespBounded(resp, kStateTimeoutMs);
+    return true;
+}
+
+bool PluginProxySlot::verifyStateApplied(size_t total) {
+    juce::MemoryBlock verify;
+    getStateInformation(verify);
+    return verify.getSize() >= total / 2;
+}
+
+void PluginProxySlot::startStateRetryWorker(std::vector<uint8_t> state, size_t total) {
+    if (stateRetryRunning.exchange(true)) return;
+    if (stateRetryThread.joinable()) { stateRetryThread.request_stop(); stateRetryThread.join(); }
+    stateRetryThread = std::jthread([this, state = std::move(state), total]() {
+        const int delaysMs[] = { 1000, 2000, 4000, 8000, 16000 };
+        for (int attempt = 0; attempt < 5; ++attempt) {
+            for (int ms = 0; ms < delaysMs[attempt] && !stateRetryThread.get_stop_token().stop_requested(); ms += 100)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (stateRetryThread.get_stop_token().stop_requested()) break;
+            if (!sendStateInternal(state.data(), state.size())) break;
+            if (verifyStateApplied(state.size())) {
+                HDAW_LOG("FxStateSend", "SET_STATE verified on background retry "
+                    + juce::String(attempt + 1) + " (child reports "
+                    + juce::String((juce::int64) total) + "B)");
+                break;
+            }
+            HDAW_LOG("FxStateSend", "background retry " + juce::String(attempt + 1)
+                + ": child reports " + ": patch still not accepted by plugin");
+        }
+        stateRetryRunning.store(false);
+    });
+}
 bool PluginProxySlot::restoreStateFromTemp() {
     auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
     auto file = tempDir.getChildFile("hdaw_proxy_state_" + stateFilePrefix +
@@ -793,6 +852,10 @@ bool PluginProxySlot::restoreStateFromTemp() {
 
     if (block.getSize() > 0) {
         setStateInformation(block.getData(), static_cast<int>(block.getSize()));
+        HDAW_LOG("proxy", (juce::String("pluginState temp restored ")
+            + juce::String((int) block.getSize()) + "B"
+            + (block.getSize() < 1024 ? juce::String(" (STUB â€” degraded capture)")
+                                      : juce::String())).toStdString().c_str());
         return true;
     }
     return false;

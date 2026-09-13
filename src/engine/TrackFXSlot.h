@@ -1,9 +1,10 @@
-#pragma once
+﻿#pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <mutex>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -102,7 +103,7 @@ public:
                 { 4, "Mix",              0.5f,    0.0f,    1.0f     },
             };
         // State-variable filter (lowpass/highpass/bandpass) with an automatable
-        // Cutoff — the honest filter sweep for generation scripts (plan
+        // Cutoff â€” the honest filter sweep for generation scripts (plan
         // 2026-08-29 P1-2). Param 1 is an int enum: 0=lowpass, 1=highpass,
         // 2=bandpass. Automation of Mode is rounded to the nearest enum value.
         if (type == "filter")
@@ -387,12 +388,31 @@ public:
     bool isIsolated() const { return isolated; }
 
     // Feed the project tempo (beats per minute) from the audio thread each
-    // block (Track::processBlock -> TrackFXSlot::process). Atomic store only —
+    // block (Track::processBlock -> TrackFXSlot::process). Atomic store only â€”
     // lock-free, no allocation, safe on the audio thread. Tempo-synced delay
     // divisions read this when SyncToTempo (param 3) is on.
     void setTempo(double bpm) { tempoBpm.store(static_cast<float>(bpm), std::memory_order_relaxed); }
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
+
+    // --- Command-thread MIDI injection (program change / CC / note) ---------
+    // Queue a short MIDI message for delivery to the plugin in the NEXT
+    // processed block (drained at the top of process() into the incoming
+    // MidiBuffer). Realtime mutation: NOT undoable, no ValueTree write; the
+    // resulting plugin state persists via the pluginState captured on project
+    // save. Drop-never-block: the queue is capped, overflow is logged+dropped.
+    // Messages queued while the slot is bypassed are consumed but inert.
+    void queueMidiForNextBlock(const juce::MidiMessage& msg)
+    {
+        std::lock_guard<std::mutex> lk(pendingMidiMutex_);
+        if (pendingMidi_.size() >= kMaxQueuedMidi)
+        {
+            HDAW_LOG("FxMidiQueue", "drop: queue full");
+            return;
+        }
+        pendingMidi_.push_back(msg);
+        HDAW_LOG("FxMidiQueue", "queued message on slot " + juce::String::toHexString((juce::pointer_sized_int) this) + " (total " + juce::String(pendingMidi_.size()) + ")");
+    }
 
     // Returns the isolated plugin's proxy slot id, or -1 if this slot is not an
     // isolated/external-proxy plugin.
@@ -440,7 +460,7 @@ public:
         }
         else
         {
-            // Internal FX: denormalize 0..1 → real range and apply
+            // Internal FX: denormalize 0..1 â†’ real range and apply
             if (paramIndex < 0 || paramIndex >= static_cast<int>(internalParamValues.size()))
                 return;
             auto defs = getParamDefsForType(slotType);
@@ -448,7 +468,7 @@ public:
                 return;
             float realValue = denormalizeParam(normalizedValue, defs[static_cast<size_t>(paramIndex)]);
             // Lesson-23 contract: automation/modulation is an entry point
-            // into internalParamValues — clamp after denormalize exactly like
+            // into internalParamValues â€” clamp after denormalize exactly like
             // setInternalParam, so out-of-range normalized writes (e.g. >1)
             // can't reach recursive DSP unclamped.
             realValue = clampToParamDef(paramIndex, realValue);
@@ -470,7 +490,7 @@ public:
         }
         else
         {
-            // Internal FX: normalize real value → 0..1
+            // Internal FX: normalize real value â†’ 0..1
             if (paramIndex < 0 || paramIndex >= static_cast<int>(internalParamValues.size()))
                 return 0.0f;
             auto defs = getParamDefsForType(slotType);
@@ -492,7 +512,7 @@ public:
             // Per-param dirty flag: only push the cached value into the plugin
             // when an automation source (lane playback, MCP set_fx_param) has
             // updated it since the last block. This preserves plugin-GUI edits
-            // — without it, applyAutomation runs every block and reverts any
+            // â€” without it, applyAutomation runs every block and reverts any
             // knob the user moves in the VST editor back to the stale cache.
             if (!paramDirty[i].load(std::memory_order_relaxed))
                 continue;
@@ -507,7 +527,7 @@ public:
     void prepare(const juce::dsp::ProcessSpec& spec)
     {
         // Lesson 13 tripwire: prepare recreates DSP objects under stateLock;
-        // it must run message-side. Best-effort — the existing stateLock
+        // it must run message-side. Best-effort â€” the existing stateLock
         // still protects the DSP objects.
         if (!HDAW::RealtimeGuard::isMessageThread())
             juce::Logger::writeToLog("TrackFXSlot::prepare off message thread");
@@ -518,7 +538,7 @@ public:
         {
             // Prepare first: for isolated slots this round-trips PREPARE to
             // the child, which is when the proxy refreshes its reported
-            // channel layout from the shm header — so the width read below
+            // channel layout from the shm header â€” so the width read below
             // reflects the hosted plugin's real (possibly multi-port) count.
             pluginInstance->prepareToPlay(spec.sampleRate, spec.maximumBlockSize);
             // Multi-channel plugins (e.g. 4-output CLAP instruments) need a
@@ -646,7 +666,7 @@ public:
                 // FetchContent JUCE 8.0.0 source (build/_deps/juce-src),
                 // juce_Oversampling.cpp:548-594: (numChannels, factor,
                 // filterType, isMaxQuality, useIntegerLatency) where factor
-                // is the EXPONENT (2^factor stages) — factor 1 = 2x
+                // is the EXPONENT (2^factor stages) â€” factor 1 = 2x
                 // oversampling. useIntegerLatency=true keeps the reported
                 // latency an exact integer (Track::setLatencySamples is int)
                 // and the down-path adds the matching fractional delay.
@@ -857,13 +877,30 @@ public:
         // plugin instance. Track::processBlock forwards its own playhead
         // here so both in-process CLAP instances and isolated PluginProxySlot
         // children can feed the plugin transport clock. Pointer assignment
-        // only — safe on the audio thread (mirrors the graph's own pattern).
+        // only â€” safe on the audio thread (mirrors the graph's own pattern).
         if (isExternal && pluginInstance)
             pluginInstance->setPlayHead(ph);
     }
 
+    // Render-side drain (called at the top of process()): try-lock â€” never
+    // blocks the audio/render thread; if the command thread holds the lock the
+    // queued messages simply ride the next block.
+    void drainPendingMidi(juce::MidiBuffer& out)
+    {
+        if (!pendingMidiMutex_.try_lock())
+            return;
+        std::vector<juce::MidiMessage> local;
+        local.swap(pendingMidi_);
+        pendingMidiMutex_.unlock();
+        if (!local.empty())
+            HDAW_LOG("FxMidiDrain", "drained " + juce::String(local.size()) + " queued messages on slot " + juce::String::toHexString((juce::pointer_sized_int) this));
+        for (const auto& m : local)
+            out.addEvent(m, 0);
+    }
+
     void process(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
     {
+        drainPendingMidi(midiMessages);
         if (bypassed.load(std::memory_order_relaxed)) return;
 
         if (isExternal && pluginInstance)
@@ -1033,13 +1070,13 @@ public:
                 if (over_ == nullptr) break;
                 // Mix == 0 exactly is a bit-identical bypass (plan Gate 1):
                 // skip the whole oversampled path and leave the block
-                // untouched. (Mixing inside the oversampled domain — as
-                // below — would still pass the dry through the halfband
+                // untouched. (Mixing inside the oversampled domain â€” as
+                // below â€” would still pass the dry through the halfband
                 // filters, adding the oversampler latency.)
                 if (internalParamValues.size() > 3 && internalParamValues[3] == 0.0f)
                     break;
                 // Float reads straight from internalParamValues in process()
-                // follow the delay-case precedent (fb/wetMix) — benign tear
+                // follow the delay-case precedent (fb/wetMix) â€” benign tear
                 // tolerance, written only under Track::stateLock.
                 const float mix = (internalParamValues.size() > 3)
                     ? internalParamValues[3] : 1.0f;
@@ -1298,7 +1335,7 @@ public:
         }
         else
         {
-            // Engine not yet prepared — stage the sound for prepare() to adopt.
+            // Engine not yet prepared â€” stage the sound for prepare() to adopt.
             stagedSound_ = sound;
             stagedParams_ = sp;
         }
@@ -1358,7 +1395,7 @@ public:
     SubtractiveSynthEngine* subSynthEngineForTest() { return subSynth.get(); }
     PsyFmEngine* psyFmEngine() { return psyFm.get(); }
 
-    // ── PsyFm matrix/sweep state (tree-persisted, rebuild-safe) ──
+    // â”€â”€ PsyFm matrix/sweep state (tree-persisted, rebuild-safe) â”€â”€
     // Called on the message thread under Track::stateLock (mirrors
     // setInternalParam's guard): decodes the encoded route string and swaps
     // the live engine's matrix (PsyFmEngine::setModMatrix is itself
@@ -1375,7 +1412,7 @@ public:
     void applySweepRate (float hz)
     {
         if (activeType != ActiveType::PsyFm || ! psyFm) return;
-        // Plain float store — same tolerance as the Track::processBlock FM
+        // Plain float store â€” same tolerance as the Track::processBlock FM
         // modulation pass writing the pool from the audio thread.
         psyFm->getModSourcePool().ratioSweepLFORateHz = hz;
     }
@@ -1415,6 +1452,11 @@ private:
     bool isolated = false;
     std::atomic<bool> remoteEditorOpen{false};
     std::unique_ptr<juce::AudioPluginInstance> pluginInstance;
+
+    // Command-thread MIDI injection queue (see queueMidiForNextBlock above).
+    static constexpr size_t kMaxQueuedMidi = 256;
+    std::mutex pendingMidiMutex_;
+    std::vector<juce::MidiMessage> pendingMidi_;
     std::unique_ptr<juce::DocumentWindow> editorWindow;
     juce::String pluginIdentifier;
 
@@ -1427,7 +1469,7 @@ private:
     std::unique_ptr<juce::dsp::Compressor<float>> comp;
     std::unique_ptr<juce::dsp::Chorus<float>> chorusDsp;
     std::unique_ptr<juce::dsp::Phaser<float>> phaserDsp;
-    // Manual TPT state-variable filter — replaces juce::dsp::StateVariableTPTFilter
+    // Manual TPT state-variable filter â€” replaces juce::dsp::StateVariableTPTFilter
     // which silently passed through in ProcessContextReplacing mode (the inherited
     // block-level process() never applied the coefficients). This is pure math:
     // per-sample TPT SVF with explicit coefficient update on every param change.
@@ -1442,7 +1484,7 @@ private:
         // Correct TPT (trapezoidal) SVF, verified numerically against the
         // analytic loop solve (2026-09-09): the previous hand-rolled variant
         // omitted the damping term in v3, mis-derived v2 (spurious ic1
-        // feed-in, missing the a2*v3 term) and returned k*v2 for HP — the
+        // feed-in, missing the a2*v3 term) and returned k*v2 for HP â€” the
         // filter never actually swept its cutoff (AutomationPidRouting
         // regression). Loop: hp = x - k*bp - lp, trap: y = g*u + s,
         // s' = 2y - s, solved instantaneously:
@@ -1482,7 +1524,7 @@ private:
     double sampleRate_ = 44100.0;
     std::vector<float> internalParamValues;
 
-    // Delay parameter cache — avoids recomputing delay samples per sample
+    // Delay parameter cache â€” avoids recomputing delay samples per sample
     float lastDelayTime = -1.0f;
     int lastDelaySamps = 1;
     // Project tempo fed from Track::processBlock each block (audio-thread
@@ -1566,7 +1608,7 @@ private:
     // without a def definition pass through unchanged. Out-of-range values
     // reach us from hand-edited/legacy project files and unvalidated command
     // writes; feeding them to recursive DSP (reverb comb feedback, delay/
-    // chorus/phaser feedback) causes exponential runaway to inf/NaN — the
+    // chorus/phaser feedback) causes exponential runaway to inf/NaN â€” the
     // 2026-08-31 "export silent after 0.6s" bug (see
     // docs/handoffs/2026-09-17-export-silence-investigation.md follow-up).
     float clampToParamDef(int paramIndex, float value) const
@@ -1696,7 +1738,7 @@ private:
                 // re-push the full state so any of drive/type/asym/bits can
                 // move through one path. Mix (3) and Output dB (4) are read
                 // by process() from internalParamValues directly (delay
-                // precedent) — nothing to push here.
+                // precedent) â€” nothing to push here.
                 applySaturatorParamsFromValues();
                 break;
             }
@@ -1710,7 +1752,7 @@ private:
                     case 2: sampler->setSustain (value); break;
                     case 3: sampler->setRelease (value); break;
                     case 4: sampler->setTranspose (static_cast<int> (value)); break;
-                    case 5: /* sampleStart — handled via loadSamplerState */ break;
+                    case 5: /* sampleStart â€” handled via loadSamplerState */ break;
                     case 6: sampler->setHold    (value); break;
                     case 7: sampler->setGlide   (value); break;
                     case 8: sampler->setReverse (value >= 0.5f); break;

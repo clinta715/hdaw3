@@ -704,7 +704,40 @@ public:
         bool audible = false;
         std::string error;
     };
+
+    // --- FX MIDI injection (program change / CC / note) ----------------------
+    // Queues short MIDI into a plugin FX slot's NEXT processed block
+    // (TrackFXSlot::queueMidiForNextBlock). Loads MIDI-selectable presets —
+    // e.g. gearmulator Virus plugins: CC0 bank select (0..7 = banks A..H
+    // singles) + program change. Realtime mutation: not undoable.
+    struct FxMidiEvent {
+        enum class Kind { ProgramChange, ControlChange, NoteOn, NoteOff, SysEx };
+        Kind kind = Kind::ProgramChange;
+        int channel = 1;   // 1..16
+        int data1 = 0;     // PC: program 0..127; CC: controller; note: pitch
+        int data2 = 0;     // CC value / note velocity (0..127)
+        std::vector<uint8_t> sysex;  // Kind::SysEx only: raw bytes incl. F0..F7 (1..32768)
+    };
+    struct FxMidiParams {
+        int trackIndex = -1;
+        int slotIndex = -1;
+        std::vector<FxMidiEvent> events;   // 1..64
+        // After the child processes the queued messages, snapshot the plugin
+        // state into IDs::pluginState so offline exports / rebuilds / save-load
+        // see the injected preset (Track.cpp restore path). Default on.
+        bool captureToTree = true;
+    };
+    struct FxMidiResult {
+        bool ok = false;
+        int queued = 0;
+        int trackIndex = -1;
+        int slotIndex = -1;
+        bool capturedToTree = false;   // true when the capture completed synchronously
+        std::string note;              // e.g. "state capture deferred ~800ms (audio device running)"
+        std::string error;
+    };
     virtual AuditionResult auditionPlugin(const AuditionParams& params) = 0;
+    virtual FxMidiResult sendFxMidi(const FxMidiParams& params) = 0;
 
     // ── Part verification ──
     // Self-verification for composed parts: solo-renders the track's window AND

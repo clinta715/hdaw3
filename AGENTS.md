@@ -538,6 +538,17 @@ product pillar and should be reached for wherever it fits:
   section templates persist under `AppData/HDAW/section-templates`. Variation
   comes from re-seeded content, never from structure drift.
 
+- **Hardware VA suite (gearmulator CLAPs)** — OsTIrus (Virus TI), Osirus
+  (Virus A/B/C), Vavra (microQ), Xenia (Microwave), JE8086 (JP-8000),
+  NodalRed2x (Nord Lead 2x), Dexed (DX7) run as isolated CLAPs with their real
+  firmware (installed in `C:\Program Files\Common Files\CLAP\` with ROMs).
+  Injection tools: `send_fx_midi` (PC/CC/note/sysEx), `load_virus_preset`
+  (CC0 bank + PC), `load_dexed_cartridge` (.syx). Audition workflow:
+  inject → `save_project` → `export_audio` → measure — the preset lives in the
+  live plugin state; the save persists it into the tree for offline renders.
+  Constraint: the serializer's size-regression guard protects plugin states
+  across load→save cycles (see docs/plans/2026-09-12-plugin-state-durability.md).
+
 **Guideline: when adding a feature, ask whether the generative/random/modulation
 toolkit applies.** New note or parameter editing should offer humanize/randomize;
 new content types should consider a generative path; new modulatable parameters

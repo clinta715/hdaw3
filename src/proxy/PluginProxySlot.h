@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <thread>
+#include <vector>
 
 namespace proxy {
 
@@ -152,6 +153,14 @@ public:
     using RespawnRequestFn = std::function<void(uint32_t)>;
     void setRespawnRequestFn(RespawnRequestFn fn) { respawnRequestFn = std::move(fn); }
     void requestRespawn() { if (respawnRequestFn) respawnRequestFn(slotId); }
+
+    // Phase 4b (plugin-state durability): background re-apply with backoff
+    // for slow-booting children that silently reject an early SET_STATE.
+    bool sendStateInternal(const void* data, size_t total);
+    bool verifyStateApplied(size_t total);
+    void startStateRetryWorker(std::vector<uint8_t> state, size_t total);
+    std::jthread stateRetryThread;
+    std::atomic<bool> stateRetryRunning { false };
 
     // Destruction notifier — fired at the END of ~PluginProxySlot (after all
     // shm/process cleanup). The PluginManager uses it to erase this slot from

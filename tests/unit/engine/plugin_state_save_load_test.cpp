@@ -192,3 +192,21 @@ TEST(PluginStateSaveLoad, FixedStatePluginSerializesRecognizableBytes)
     EXPECT_EQ(std::memcmp(receiver.lastReceived.getData(),
                           state.getData(), state.getSize()), 0);
 }
+
+// FIX-1 guard (docs/plans/2026-09-12-plugin-state-durability.md): the
+// serializer must not overwrite a substantial existing pluginState blob with
+// a suspiciously tiny read (a load→save cycle once shrank 177KB states to
+// 262B stubs this way).
+TEST(PluginStateSaveLoad, SizeRegressionGuard)
+{
+    using HDAW::shouldReplacePluginState;
+
+    EXPECT_TRUE(shouldReplacePluginState(0, 100));        // absent existing → trust read
+    EXPECT_TRUE(shouldReplacePluginState(500, 100));      // tiny existing → trust read
+    EXPECT_TRUE(shouldReplacePluginState(2000, 262));     // <4KB existing → trust read
+    EXPECT_FALSE(shouldReplacePluginState(50000, 0));     // never blank out a real state
+    EXPECT_FALSE(shouldReplacePluginState(177845, 262));  // THE regression from the field
+    EXPECT_FALSE(shouldReplacePluginState(50000, 1000));  // <1KB new → suspicious
+    EXPECT_TRUE(shouldReplacePluginState(50000, 8000));   // 8000 >= 50000/8 → legit
+    EXPECT_TRUE(shouldReplacePluginState(4096, 4096));    // equal sizes → replace
+}

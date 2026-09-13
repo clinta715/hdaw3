@@ -669,6 +669,105 @@ TEST(PluginIsolation, TransportClockHandoff) {
     mgr.killPluginHost(9061, KillMode::KillHard);
 }
 
+// G3 for docs/plans/2026-09-11-fx-midi-injection-virus-presets.md: a short
+// MIDI message (the exact bytes send_fx_midi queues) pushed through
+// PluginProxySlot::processBlock must traverse the SHM midiIn ring, reach the
+// hosted child processor, and its echo must come back through midiOut —
+// byte-exact and in order. Uses the child's __midiecho__ diagnostic
+// (MidiEchoProcessor), which swaps incoming MIDI to the output.
+TEST(PluginIsolation, MidiInjectionProxyRoundTrip) {
+    ProxyProcessManager mgr;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__midiecho__", 9461));
+    for (int i = 0; i < 100 && !mgr.isAlive(9461); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    ASSERT_TRUE(mgr.isAlive(9461)) << "child should be alive after spawn";
+
+    auto* shm = mgr.getShm(9461);
+    ASSERT_NE(shm, nullptr);
+    auto* hdr = shm->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    PluginProxySlot slot(mgr, 9461, "TestPlugin");
+    slot.prepareToPlay(44100.0, 512);
+
+    int retries = 100;
+    while ((hdr->numChannels == 0 || hdr->capacity == 0) && retries-- > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ASSERT_GT(hdr->numChannels, 0u) << "child should init shm after PREPARE";
+
+    juce::AudioBuffer<float> buffer(2, 512);
+    std::vector<juce::MidiMessage> echoed;
+    auto push = [&](const std::vector<juce::MidiMessage>& in) {
+        juce::MidiBuffer midi;
+        int sample = 0;
+        for (const auto& m : in) {
+            midi.addEvent(m, sample);
+            sample += 16;
+        }
+        slot.processBlock(buffer, midi);
+        // The child's response to the PREVIOUS block is read during this call
+        // (same one-block latency as the audio ring) — accumulate everything.
+        for (const auto& md : midi)
+            echoed.push_back(md.getMessage());
+    };
+
+    // Warm-up blocks: establish the render loop; echoes lag one block.
+    push({});
+    push({});
+
+    // Program change round trip: 0xC0 0x28 on channel 1.
+    push({ juce::MidiMessage::programChange(1, 40) });
+    push({});
+    push({});
+
+    bool pcSeen = false;
+    for (const auto& m : echoed)
+        if (m.isProgramChange() && m.getChannel() == 1 && m.getProgramChangeNumber() == 40)
+            pcSeen = true;
+    EXPECT_TRUE(pcSeen) << "program change did not round-trip parent -> child -> parent";
+
+    // CC + note round trip, order preserved (FIFO ring).
+    echoed.clear();
+    push({ juce::MidiMessage::controllerEvent(1, 0, 2), juce::MidiMessage::noteOn(1, 60, static_cast<juce::uint8>(100)) });
+    push({});
+    push({});
+
+    bool ccSeen = false, noteSeen = false, ccBeforeNote = false;
+    int ccAt = -1, noteAt = -1, i = 0;
+    for (const auto& m : echoed) {
+        if (m.isController() && m.getControllerNumber() == 0 && m.getControllerValue() == 2) { ccSeen = true; ccAt = i; }
+        if (m.isNoteOn() && m.getNoteNumber() == 60 && m.getVelocity() == 100) { noteSeen = true; noteAt = i; }
+        ++i;
+    }
+    EXPECT_TRUE(ccSeen) << "control change did not round-trip";
+    EXPECT_TRUE(noteSeen) << "note on did not round-trip";
+    ccBeforeNote = (ccAt >= 0 && noteAt >= 0 && ccAt < noteAt);
+    EXPECT_TRUE(ccBeforeNote) << "events must arrive in queue order (FIFO)";
+
+    // SysEx round trip: the SHM midiIn/midiOut rings carry sysex via their
+    // dedicated buffers (flags bit 0x80, 128KB cap) — byte-exact both ways.
+    echoed.clear();
+    const std::vector<uint8_t> dump = {0xF0, 0x43, 0x00, 0x7A, 0xF7};
+    push({ juce::MidiMessage(dump.data(), static_cast<int>(dump.size())) });
+    push({});
+    push({});
+    bool sysexSeen = false;
+    for (const auto& m : echoed) {
+        if (!m.isSysEx() || m.getRawDataSize() != static_cast<int>(dump.size()))
+            continue;
+        const auto* raw = m.getRawData();
+        bool equal = true;
+        for (size_t b = 0; b < dump.size(); ++b)
+            if (raw[b] != dump[b]) { equal = false; break; }
+        if (equal)
+            sysexSeen = true;
+    }
+    EXPECT_TRUE(sysexSeen) << "sysex did not round-trip parent -> child -> parent";
+
+    mgr.killPluginHost(9461, KillMode::KillHard);
+}
+
 TEST(PluginIsolation, MultiPortWidthHandoff) {
     // The __multiport__ sentinel declares two stereo output ports (4 channels)
     // — the NodalRed2x layout. The child must PREPARE 4 channels, report 4 in

@@ -95,6 +95,12 @@ public:
                                      double windowSeconds, bool verify,
                                      bool allowGlobalScale) override;
     AuditionResult auditionPlugin(const AuditionParams& params) override;
+
+    /// Queue short MIDI (program change / CC / note) into a plugin FX slot's
+    /// next processed block (TrackFXSlot::queueMidiForNextBlock). Realtime
+    /// mutation — not undoable; persists via plugin state on save. Returns
+    /// ok=false + error on invalid track/slot or malformed batch.
+    FxMidiResult sendFxMidi(const FxMidiParams& params) override;
     VerifyPartResult verifyPart(int trackIndex, double windowSeconds) override;
 
     // ProjectCommands — audio clip timestretch

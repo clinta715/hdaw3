@@ -601,6 +601,111 @@ FX send builds (delay/reverb over a phrase), stereo width/pan drift, macro
 mix HP-sweep during builds, reverb tail drift. These map onto `automations[]`
 entries with different `param` values — no new wiring needed when they land.
 
+## 4C. Layered composition (per-element agents — PREFERRED for final tracks)
+
+Generating the whole section×role matrix at once writes every layer against an
+empty slate, and mixing all layers together afterwards leaves voices that land
+in the same registers masking each other. Measured evidence, Neon Mycelium
+2026-09: the lead (F4–C7) masked the rhythm bed, and body-band energy dropped
+5x once the psy_fm output cut + an octave-down lead were in. The fix that
+stuck: build the song LAYER BY LAYER, one dedicated element agent per layer,
+each MEASURING the cumulative mix (spectrum, register, levels) before writing,
+and crafting its part into the gaps. Bulk cell fill (§4 plan/cell) stays as
+the SKETCH-mode fallback; layered is the PREFERRED path for final tracks.
+
+**Layer order** — each a separate dispatch, strictly sequential, single writer
+(full playbook: `docs/skills/psy-song-session/roles/layer-agent.md`):
+
+| Layer | Band target | Register cap |
+| --- | --- | --- |
+| kick | <120 Hz | n/a |
+| bass | 60–250 Hz | ≤ MIDI 60 |
+| hats/snare/clap/down | n/a (percussion) | n/a |
+| stab | 200–900 Hz | ≤ MIDI 72 |
+| pad | 150–600 Hz | ≤ MIDI 72 |
+| lead | 400–3000 Hz | ≤ MIDI 88 — THE one high part |
+| riser | sweep (band sweep) | 400–4000 Hz |
+
+**Register budget rule:** at most 2 parts above MIDI 72 across the whole song,
+yours included; the lead is the usual holder. Gate G2 in the playbook counts
+the existing parts BEFORE you commit.
+
+**psy_fm level rule (non-negotiable):** Output Level (param 31) =
+**0.15..0.22**, fader **0.7..0.8** — NEVER 0.3+. The 0.3+ overdrive is the
+measured cause of the Neon Mycelium lead masking the rhythm bed. Write in real
+units via `set_internal_fx_param` and read every param back (lesson 23).
+
+**Measuring gates (condensed from the playbook):** cumulative render
+(`export_audio`) → `mix_report {fromPlan: true}` for rms/peak/4-band;
+`analyze_tuning` per role against its band target (kick <120, bass 60–250,
+arp/lead 400–3000, hat >6k); `verify_part` after writing (audible=1,
+nonClipping=1); level ceiling — your layer's solo render may add at most +20%
+to the cumulative rms, then reduce YOUR output level/fader, never other parts.
+
+**Delay + bitcrusher recipes (same as the playbook):** tempo-synced echo on a
+melodic lead — two delay slots: A SyncToTempo=1, Division=4 (dotted-1/8 =
+3/16), Feedback=0.30, Mix=0.35; B SyncToTempo=0, DelayTime=0.5172 (5/16 @145 —
+no division slot exists, so manual seconds), Feedback=0.30, Mix=0.30; read
+back the derived seconds (no ping-pong yet — tagged engine future). Bitcrusher:
+saturator Type=3 (Bitcrush), Bits 8–10, Mix ≤0.4 — subtle (idx1 Type 0..3,
+idx5 Bits, idx3 Mix; Bits range 2..16).
+
+Progress ledger: each layer's handoff `{role, trackId, band, register,
+beforeRms, afterRms, verifyPart, ...}` is appended to
+`compositions/<song>/layers.json` by the orchestrator between layers — read it
+before you start; it is the contract input for your register/level gates.
+
+## 4D. Hardware VA suite — the gearmulator CLAPs (verified 2026-09-11/12)
+
+Real synth firmware running as isolated CLAP plugins — installed in
+`C:\Program Files\Common Files\CLAP\` with their ROMs:
+
+| Plugin | Emulates | Isolated-render status (measured) |
+| --- | --- | --- |
+| OsTIrus | Access Virus TI | ✅ voices at default (peak 0.33–0.47) — the workhorse |
+| Vavra | Waldorf microQ | ✅ voices (0.056–0.078) |
+| Xenia | Waldorf Microwave II/XT | ✅ voices (0.30) |
+| JE8086 | Roland JP-8000 | ✅ voices (0.23–0.27) |
+| Osirus | Access Virus A/B/C | ✅ voices; state-apply on load rejected by the plugin (see durability rules) |
+| NodalRed2x | Clavia Nord Lead 2x | ⚠️ kKnownSilent family (needs 4-channel port state) |
+| Dexed | Yamaha DX7 | ⚠️ kKnownSilent family (accepts sysex at the CLAP boundary; state/voicing rejected) |
+
+### Injection tools (all verified end-to-end)
+- `send_fx_midi {trackId, slotIndex, messages[]}` — PC / CC / note / **sysEx**
+  into the slot's LIVE instance (parent → SHM → child, byte-exact round-trip
+  tested). Background re-apply with backoff for slow-booting children (the
+  OsTIrus DSP boot takes seconds).
+- `load_virus_preset {trackId, slotIndex, bank 0-7, program 0-127}` — CC0 bank
+  select + PC (Virus banks A–H singles).
+- `load_dexed_cartridge {trackId, slotIndex, filePath}` — `.syx` single/cartridge
+  into any DX7-engine slot (Dexed).
+
+### The audition workflow (inject → save → export → measure)
+1. `send_fx_midi` (CC0 + PC) on the plugin slot.
+2. `save_project` — REQUIRED: the preset lives in the plugin's live state; the
+   save serializes it into the tree (`pluginState`), and offline exports render
+   from the tree.
+3. `export_audio {start, end, wait:true}` → measure (wavpeak / mix_report).
+4. Compare RMS/peak fingerprints across presets; keep the distinct ones.
+
+### State-durability rules (read before relying on presets)
+- The serializer REFUSES to overwrite a substantial `pluginState` blob with a
+  tiny read (size-regression guard, shipped 2026-09-12) — a load→save cycle
+  once shrank 177KB Virus states to 262B stubs this way.
+- After `load_project`, re-apply presets via `load_virus_preset` (the loaded
+  state may be rejected by the plugin's own `setStateInformation` — OsTIrus
+  silently falls back to its default; documented in
+  `docs/plans/2026-09-12-plugin-state-durability.md` Phase 4b).
+- Dexed/OsTIrus `setStateInformation` rejections are plugin-side (same family
+  as Serum 2 — see the 2026-09-08 Serum investigation handoff).
+
+### Known limitations
+- TI bank switching via CC0+PC: unverified/ineffective on OsTIrus (all
+  bank/program combos rendered hash-identically). TI part singles likely need
+  TI-specific sysex or the plugin UI.
+- `Percussion` phrase style on single-sample tracks: multi-pitch output
+  (36/38/42) — pair with `set_sampler_key_range` per-role kits.
+
 ## 5. Production stack (the difference between a sketch and a psytrance track)
 
 Per-role internal FX chains + LFOs — this is what the "too stripped down"

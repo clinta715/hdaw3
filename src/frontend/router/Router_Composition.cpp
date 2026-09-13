@@ -929,6 +929,59 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         return { false, res };
     }
 
+    if (m == "sendFxMidi") {
+        // Queue short MIDI (program change / CC / note) into a plugin slot's
+        // next processed block. Loads MIDI-selectable presets (Virus CC0+PC).
+        ProjectCommands::FxMidiParams p;
+        if (!requireInt(o, "trackIndex", p.trackIndex, nullptr)
+            || !requireInt(o, "slotIndex", p.slotIndex, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        if (!o.contains("events") || !o.value("events").isArray())
+            return makeError(-32602, "events array required");
+        const auto evArr = o.value("events").toArray();
+        for (const auto& evv : evArr)
+        {
+            const auto ev = evv.toObject();
+            const std::string kind = ev.value("kind").toString().toStdString();
+            ProjectCommands::FxMidiEvent e;
+            e.channel = optInt(ev, "channel", 1, nullptr);
+            if (kind == "programChange") {
+                e.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
+                e.data1 = optInt(ev, "program", 0, nullptr);
+            } else if (kind == "controlChange") {
+                e.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
+                e.data1 = optInt(ev, "controller", 0, nullptr);
+                e.data2 = optInt(ev, "value", 0, nullptr);
+            } else if (kind == "noteOn") {
+                e.kind = ProjectCommands::FxMidiEvent::Kind::NoteOn;
+                e.data1 = optInt(ev, "pitch", 60, nullptr);
+                e.data2 = optInt(ev, "velocity", 100, nullptr);
+            } else if (kind == "noteOff") {
+                e.kind = ProjectCommands::FxMidiEvent::Kind::NoteOff;
+                e.data1 = optInt(ev, "pitch", 60, nullptr);
+                e.data2 = optInt(ev, "velocity", 0, nullptr);
+            } else if (kind == "sysEx") {
+                if (!ev.contains("bytes") || !ev.value("bytes").isArray())
+                    return makeError(-32602, "sysEx event requires a bytes array");
+                e.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+                const auto byteArr = ev.value("bytes").toArray();
+                for (const auto& b : byteArr)
+                    e.sysex.push_back(static_cast<uint8_t>(b.toInt()));
+            } else {
+                return makeError(-32602, QString::fromStdString("unknown event kind: " + kind));
+            }
+            p.events.push_back(e);
+        }
+        p.captureToTree = optBool(o, "captureToTree", true, nullptr);
+        auto r = c.sendFxMidi(p);
+        if (!r.ok)
+            return makeError(-32602, QString::fromStdString(r.error));
+        QJsonObject res{ {"queued", r.queued}, {"trackIndex", r.trackIndex}, {"slotIndex", r.slotIndex}, {"capturedToTree", r.capturedToTree} };
+        if (!r.note.empty())
+            res.insert("note", QString::fromStdString(r.note));
+        return { false, res };
+    }
+
     if (m == "auditionPlugin") {
         // Solo-render a plugin over a short window and report peak/rms/audible
         // so silent-at-default plugins stop being a blocker. Probe mode

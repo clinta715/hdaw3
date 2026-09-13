@@ -77,8 +77,19 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                         auto slotTree = fxChainTree.getChild(static_cast<int>(si));
                         if (slotTree.getProperty(IDs::pluginID).toString() == slot->getPluginID())
                         {
-                            if (state.getSize() > 0)
+                            // FIX-1 (plugin-state durability, docs/plans/2026-09-12-plugin-state-durability.md):
+                            // never overwrite a substantial existing blob with a
+                            // suspiciously tiny read — a load→save cycle once
+                            // shrank 177KB states to 262B stubs this way.
+                            const juce::String existing = slotTree.getProperty(IDs::pluginState, "").toString();
+                            const long long existingBytes = static_cast<long long>(existing.length()) * 3 / 4;
+                            if (HDAW::shouldReplacePluginState(existingBytes, state.getSize()))
                                 slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+                            else
+                                juce::Logger::writeToLog("HDAW: pluginState size regression kept (track "
+                                    + juce::String(ti) + " slot " + juce::String(static_cast<int>(si))
+                                    + ": existing ~" + juce::String(existingBytes) + "B, new "
+                                    + juce::String(static_cast<int>(state.getSize())) + "B)");
                         }
                     }
                 }
