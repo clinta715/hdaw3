@@ -20,3 +20,43 @@ New MCP tool `load_nord_bank {trackId, slotIndex, filePath}`:
 
 ## Effort/risk
 0.5d. Risk LOW — file parsing + existing injection path; no audio-thread changes.
+
+---
+
+## Resolution (2026-09-13)
+
+Shipped as `load_nord_bank {trackId, slotIndex, filePath, program?}`
+(`src/mcp/McpTools_FxSlot.cpp`) with the parser/validator shared in
+`src/mcp/PresetFileParser.h`:
+
+- `splitNordSyx` splits concatenated F0..F7 runs (pre-F0 bytes skipped;
+  unterminated dump rejects the file).
+- `validateNordDump` enforces the Clavia header (F0 33 <dev> 04), F7
+  termination and the 32768B SHM cap — EVERY dump validated before anything
+  is queued (no partial bank loads).
+- Optional `program` (0-127) appends a trailing programChange for voice
+  selection (plan step 4); out-of-range = error.
+- Format facts baked in from the real-library survey
+  (`docs/plans/2026-09-13-nl2x-patch-decoder-survey.md`): SMF F0-event
+  lengths INCLUDE the trailing F7 (JUCE rejoins F0..F7); real bank multis
+  are 1063 B (8x66 params), not the 715 B the n2x header constant implies.
+
+### Gates — evidence
+- G1 (unit): PresetFileParser.* 12/12 (Nord splitter/validation/SMF-rejoin
+  roundtrip + DX7/Serum regression), FxMidiInjection.* unit tests green.
+- G2 (MCP): McpServer.SendFxMidiValidation extended with the load_nord_bank
+  error paths (missing file, unsupported type, bad header, non-plugin slot,
+  unknown track, program range) — McpServer.* 37/37 green.
+- G2 live-engine: `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`
+  (HDAW_REAL_PLUGIN_TESTS=1 + NodalRed2x.clap + real ProgBank0.mid):
+  parse -> validate 110 dumps -> queue via SHM -> PC 3 -> capture pluginState
+  -> offline audition re-render differs from the boot-state render. 4/4
+  stable passes after fixing the capture race (the ~800ms capture timer can
+  fire while the SHM ring still drains 110 dumps; a trailing CC with
+  captureToTree re-arms the capture post-consumption — flake fix).
+- Full engine suite: unchanged contract; no production code outside the MCP
+  layer (command layer reuses the existing virtual sendFxMidi face).
+
+### Effort/risk
+Realized ~0.3d (tool existed in skeleton form; hardened validation + program
+param + tests). Risk LOW: parsing only; no audio-thread changes.

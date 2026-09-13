@@ -2,6 +2,33 @@
 # TimbreLib ??? analyzed sample library for HDAW
 
 Pipeline: DSP descriptors -> CLAP captions + AudioSet tags -> Qwen2.5-3B prose.
+
+## NL2X patch decoder (NodalRed2x / Nord Lead 2x)
+
+`nl2x_patch.py` mirrors `virus_patch.py` for the Clavia Nord Lead 2x bank
+library (`D:\pdf\NL2x Banks`, 6898 files). It parses raw Clavia SysEx
+(.syx) and SMF-wrapped banks (.mid; .fxb VST chunks are detected and
+skipped), decodes the nibble-encoded 66-parameter single dumps (and the
+1063-byte multi dumps), names every parameter via the firmware's
+`SingleParam` enum (cutoff/resonance/envs/LFOs/FM/sync/distortion/...),
+and writes `<patch>.nl2x.json` sidecars (schema `hdaw.nl2x.patch.v1`,
+engine `nodalred2x`) next to each patch file so FileLibraryManager /
+`search_library` can index them.
+
+Usage:
+
+    py -3.14 timbre-lib/nl2x_patch.py --dump <file>       # decode one file
+    py -3.14 timbre-lib/nl2x_patch.py --survey "D:\pdf\NL2x Banks" \
+        --out nl2x_survey.json
+    py -3.14 timbre-lib/nl2x_patch.py --sidecars "D:\pdf\NL2x Banks"
+    py -3.14 timbre-lib/nl2x_patch.py --sidecars "D:\pdf\NL2x Banks" --role bass
+
+Results (2026-09-13 sweep): 6841/6846 files parsed (99.9%; 57 skipped:
+.fxb chunks + unreadable), 29436 dumps = 26630 singles + 2806 multis,
+6841 sidecars written. Survey: `nl2x_survey.json`. Tests:
+`test_nl2x_patch.py` (15, incl. real-library spot checks that skip when
+the bank root is absent). Plan:
+`docs/plans/2026-09-13-nl2x-patch-decoder-survey.md`.
 All local. Toolchain: python 3.11 venv (torch cu128, transformers, librosa,
 scipy, llama-cpp-python CPU wheel), GGUF at ./Qwen2.5-3B-Instruct-Q4_K_M.gguf.
 

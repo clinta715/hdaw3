@@ -1,5 +1,6 @@
 ﻿#include "McpTools.h"
 #include "McpTools_Private.h"
+#include "PresetFileParser.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -396,10 +397,11 @@ s.registerTool({"load_dexed_cartridge",
         return McpToolResult::text(QString("queued sysex %1 bytes (r.queued=%2, track=%3 slot=%4, capturedToTree=%5)").arg(static_cast<int>(block.getSize())).arg(r.queued).arg(p.trackIndex).arg(p.slotIndex).arg(r.capturedToTree ? 1 : 0));
     }});
 s.registerTool({"load_nord_bank",
-    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia dump, or .mid SMF wrapping Clavia sysex) into a NodalRed2x plugin slot via injected MIDI SysEx â€” the emulated NL2x firmware applies the dump to its patch banks, then program changes select voices. Realtime mutation: not undoable; capture via project save.",
+    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. Validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything. Realtime mutation: not undoable; capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
-              {"filePath", QJsonObject{{"type","string"}}}},
+              {"filePath", QJsonObject{{"type","string"}}},
+              {"program",  QJsonObject{{"type","integer"}}}},
               {"trackId","slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
@@ -410,19 +412,14 @@ s.registerTool({"load_nord_bank",
         juce::MemoryBlock block;
         if (!f.loadFileAsData(block))
             return McpToolResult::text("failed to read file", true);
-        std::vector<juce::MidiMessage> sysexMessages;
         const auto suffix = f.getFileExtension().toLowerCase();
+        // Normalize to complete F0..F7 dumps (payload coordinates differ
+        // between containers; see PresetFileParser.h for the wire format).
+        std::vector<std::vector<uint8_t>> dumps;
         if (suffix == ".syx") {
             const auto* b = static_cast<const uint8_t*>(block.getData());
-            size_t start = 0;
-            for (size_t i2 = 1; i2 <= block.getSize(); ++i2) {
-                const bool atEnd = i2 == block.getSize();
-                if (atEnd || (b[i2] == 0xF0 && i2 > start)) {
-                    if (i2 > start) sysexMessages.emplace_back(b + start, static_cast<int>(i2 - start));
-                    start = i2;
-                    if (atEnd) break;
-                }
-            }
+            if (mcp::splitNordSyx(b, block.getSize(), dumps) < 0)
+                return McpToolResult::text("truncated SysEx (missing F7)", true);
         } else if (suffix == ".mid") {
             juce::MemoryInputStream in(block, false);
             juce::MidiFile mf;
@@ -434,28 +431,55 @@ s.registerTool({"load_nord_bank",
                 for (int e2 = 0; e2 < seq->getNumEvents(); ++e2)
                 {
                     const auto metadata = seq->getEventPointer(e2);
-                    if (metadata->message.isSysEx())
-                        sysexMessages.push_back(metadata->message);
+                    if (!metadata->message.isSysEx())
+                        continue;
+                    const auto* raw = metadata->message.getRawData();
+                    dumps.emplace_back(raw, raw + metadata->message.getRawDataSize());
                 }
             }
         } else return McpToolResult::text("unsupported file type (use .syx or .mid)", true);
-        if (sysexMessages.empty())
+        if (dumps.empty())
             return McpToolResult::text("no sysex data found in file", true);
+        // Validate EVERY dump before queueing anything (no partial bank loads).
+        size_t totalBytes = 0;
+        for (const auto& d : dumps)
+        {
+            if (auto err = mcp::validateNordDump(d.data(), d.size()); !err.isEmpty())
+                return McpToolResult::text(
+                    "invalid Nord dump: " + QString::fromStdString(
+                        err.toStdString()), true);
+            totalBytes += d.size();
+        }
+        const int program = a.value("program").toInt(-1);
+        if (program > 127 || (a.contains("program") && program < 0))
+            return McpToolResult::text("program must be 0..127", true);
         ProjectCommands::FxMidiParams p;
         p.trackIndex = a.value("trackId").toInt();
         p.slotIndex = a.value("slotIndex").toInt();
         p.captureToTree = a.value("captureToTree").toBool(true);
-        for (const auto& msg : sysexMessages) {
+        for (const auto& d : dumps) {
             ProjectCommands::FxMidiEvent ev;
             ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-            const auto* raw = msg.getRawData();
-            ev.sysex.assign(raw, raw + msg.getRawDataSize());
-            p.events.push_back(ev);
+            ev.sysex = d;
+            p.events.push_back(std::move(ev));
+        }
+        if (program >= 0)
+        {
+            // Voice selection AFTER the bank dumps land (BUG-7 plan step 4).
+            ProjectCommands::FxMidiEvent pc;
+            pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
+            pc.channel = 1;
+            pc.data1 = program;
+            p.events.push_back(std::move(pc));
         }
         auto r = e->getProjectCommands().sendFxMidi(p);
         if (!r.ok)
             return McpToolResult::text(QString::fromStdString(r.error), true);
-        return McpToolResult::text(QString("queued %1 sysex messages (%2 bytes, capturedToTree=%3)").arg(r.queued).arg(static_cast<int>(block.getSize())).arg(r.capturedToTree ? 1 : 0));
+        return McpToolResult::text(QString("queued %1 sysex dumps (%2 bytes)%3 capturedToTree=%4")
+            .arg(r.queued)
+            .arg(static_cast<int>(totalBytes))
+            .arg(program >= 0 ? QString(" program=%1").arg(program) : QString())
+            .arg(r.capturedToTree ? 1 : 0));
     }});
 s.registerTool({"set_master_fx_param",
         "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB, param1=Release ms). A slot only processes when bypassed=false.",

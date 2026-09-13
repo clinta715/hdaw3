@@ -15,11 +15,15 @@
 #include "engine/MainAudioProcessor.h"
 #include "engine/Track.h"
 #include "engine/TrackFXSlot.h"
+#include "mcp/PresetFileParser.h"
 #include "model/ProjectModel.h"
 
 namespace {
 
 constexpr const char* kOsTIrusClap = "C:\\Program Files\\Common Files\\CLAP\\OsTIrus.clap";
+constexpr const char* kNodalRed2xClap = "C:\\Program Files\\Common Files\\CLAP\\NodalRed2x.clap";
+// Real NL2x bank for the live probe (BUG-7): user's bank library.
+constexpr const char* kNordBankMid = "D:\\pdf\\NL2x Banks\\NL2x Factory\\ProgBank0.mid";
 
 bool realPluginTestsEnabled()
 {
@@ -301,5 +305,129 @@ TEST(FxMidiInjection, OsTIrusInjectionCapturesToTreeAndSurvivesRebuild)
     ASSERT_TRUE(r2.ok) << r2.error;
     EXPECT_GT(std::abs(r2.rms - a.rms), 1e-4f)
         << "offline render did not reflect the captured preset (a.rms=" << a.rms
+        << " r2.rms=" << r2.rms << ")";
+}
+
+// BUG-7 live probe: the NodalRed2x boots with NO valid presets (program
+// changes are dropped as garbage — n2xdevice.cpp), so a bank of Clavia SysEx
+// dumps must land FIRST, then a PC selects a voice. This drives the
+// load_nord_bank pipeline end to end against the real isolated plugin:
+// parse .mid -> validate dumps -> queue via SHM -> child applies the dump to
+// its volatile patch RAM -> PC selects -> capture pluginState -> offline
+// audition reflects the loaded bank (render differs from the boot state).
+TEST(FxMidiInjection, NordBankLoadChangesNodalRed2xRender)
+{
+    if (!realPluginTestsEnabled() || !juce::File(kNodalRed2xClap).existsAsFile())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or NodalRed2x.clap missing";
+    if (!juce::File(kNordBankMid).existsAsFile())
+        GTEST_SKIP() << "NL2x bank library not mounted (" << kNordBankMid << ")";
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    // Initial render: boot state (no valid presets -> fixed default tone).
+    ProjectCommands::AuditionParams probe;
+    probe.pluginId = kNodalRed2xClap;
+    probe.trackIndex = -1;
+    probe.keepTrack = true;
+    probe.lengthBeats = 2.0;
+    probe.windowSeconds = 2.0;
+    probe.seed = 5;
+    auto a = cmds.auditionPlugin(probe);
+    ASSERT_TRUE(a.ok) << a.error;
+    ASSERT_GE(a.trackIndex, 0);
+
+    // Parse the factory bank exactly like load_nord_bank does (.mid ->
+    // juce::MidiFile -> sysex events; SMF lengths include the trailing F7).
+    juce::MemoryBlock block;
+    ASSERT_TRUE(juce::File(kNordBankMid).loadFileAsData(block));
+    juce::MemoryInputStream in(block, false);
+    juce::MidiFile mf;
+    ASSERT_TRUE(mf.readFrom(in));
+    std::vector<std::vector<uint8_t>> dumps;
+    int dumpCount = 0;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+    {
+        const auto* seq = mf.getTrack(t);
+        for (int e = 0; e < seq->getNumEvents(); ++e)
+        {
+            const auto meta = seq->getEventPointer(e);
+            if (!meta->message.isSysEx())
+                continue;
+            const auto* raw = meta->message.getRawData();
+            std::vector<uint8_t> d(raw, raw + meta->message.getRawDataSize());
+            const auto verr = mcp::validateNordDump(d.data(), d.size());
+            if (!verr.isEmpty())
+                std::cout << "[NordBank] dump " << dumpCount << " size="
+                          << d.size() << " head=" << std::hex
+                          << (int) d[0] << "," << (int) d[1] << ","
+                          << (int) d[2] << "," << (int) d[3] << std::dec
+                          << " tail=" << (int) d[d.size()-2] << ","
+                          << (int) d[d.size()-1]
+                          << " err=" << verr.toStdString() << "\n";
+            ASSERT_TRUE(verr.isEmpty()) << "bank contains an invalid dump";
+            ++dumpCount;
+        }
+    }
+    ASSERT_GT(dumpCount, 0);
+
+    ProjectCommands::FxMidiParams mp;
+    mp.trackIndex = a.trackIndex;
+    mp.slotIndex = a.slotIndex;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+    {
+        const auto* seq = mf.getTrack(t);
+        for (int e = 0; e < seq->getNumEvents(); ++e)
+        {
+            const auto meta = seq->getEventPointer(e);
+            if (!meta->message.isSysEx())
+                continue;
+            ProjectCommands::FxMidiEvent ev;
+            ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+            const auto* raw = meta->message.getRawData();
+            ev.sysex.assign(raw, raw + meta->message.getRawDataSize());
+            mp.events.push_back(std::move(ev));
+        }
+    }
+    mp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ProgramChange, 1, 3, 0});
+    auto mr = cmds.sendFxMidi(mp);
+    ASSERT_TRUE(mr.ok) << mr.error;
+    EXPECT_EQ(mr.queued, dumpCount + 1);
+
+    // Let the child consume the whole bank, then force a FRESH state capture:
+    // the ~800ms capture timer can fire while the SHM ring is still draining
+    // 110 dumps, snapshotting a partially-applied state (observed as a
+    // near-boot render). A tiny trailing CC with captureToTree re-arms the
+    // capture AFTER everything has been consumed.
+    ProjectCommands::FxMidiParams cp;
+    cp.trackIndex = a.trackIndex;
+    cp.slotIndex = a.slotIndex;
+    cp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 74, 100}); // harmless: cutoff CC
+    auto cr = cmds.sendFxMidi(cp);
+    ASSERT_TRUE(cr.ok) << cr.error;
+    if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+        mm->runDispatchLoopUntil(3000);
+
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+        .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN).getChild(a.slotIndex);
+    ASSERT_TRUE(slotTree.isValid());
+    const auto stateStr = slotTree.getProperty(IDs::pluginState, "").toString();
+    EXPECT_FALSE(stateStr.isEmpty()) << "pluginState was not captured";
+
+    // Offline audition re-renders from the tree: with the bank applied the
+    // engine plays a real patch voice instead of the boot default tone.
+    ProjectCommands::AuditionParams rp;
+    rp.trackIndex = a.trackIndex;
+    rp.slotIndex = a.slotIndex;
+    rp.lengthBeats = 2.0;
+    rp.windowSeconds = 2.0;
+    rp.seed = 5;
+    auto r2 = cmds.auditionPlugin(rp);
+    ASSERT_TRUE(r2.ok) << r2.error;
+    // Render is otherwise deterministic; ANY difference proves the bank load
+    // reached the offline domain (observed diffs ~1e-4..1e-2 across patches).
+    EXPECT_GT(std::abs(r2.rms - a.rms), 1e-5f)
+        << "bank load did not change the render (a.rms=" << a.rms
         << " r2.rms=" << r2.rms << ")";
 }

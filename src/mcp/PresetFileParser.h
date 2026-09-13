@@ -156,4 +156,70 @@ inline ParsedPresetFile parsePresetFile(const juce::MemoryBlock& raw)
     return parsed;
 }
 
+// ---------------------------------------------------------------------------
+// Clavia Nord Lead 2x (NodalRed2x) bank dumps (docs/plans/2026-09-12-nodal-preset-loading.md)
+//
+// Wire format (gearmulator 2.2.9 source/nord/n2x/n2xLib/n2xmiditypes.h,
+// verified against the D:\pdf\NL2x Banks library):
+//   F0 33 <device> 04 <msgType> <msgSpec> | data | F7
+//   single dump = 139 B (66 nibble-encoded params), "+name" variant 149 B
+//   bank multi  = 1063 B (8 x 66 params) — SMF-wrapped banks (.mid) carry the
+//   SAME dumps as SMF F0 events whose length INCLUDES the trailing F7.
+// ---------------------------------------------------------------------------
+
+inline constexpr uint8_t kNordIdClavia = 0x33;
+inline constexpr uint8_t kNordIdN2x = 0x04;
+inline constexpr size_t kNordMaxDumpSize = 32768;   // SHM midiIn sysex margin
+
+inline bool isNordDumpHeader(const uint8_t* bytes, size_t size) noexcept
+{
+    return size >= 4 && bytes[0] == 0xF0 && bytes[1] == kNordIdClavia
+        && bytes[3] == kNordIdN2x;
+}
+
+inline juce::String validateNordDump(const uint8_t* bytes, size_t size)
+{
+    if (size < 8)
+        return "dump too small (" + juce::String((int) size) + " bytes)";
+    if (bytes[0] != 0xF0 || bytes[1] != kNordIdClavia)
+        return "not a Clavia SysEx dump (expected F0 33)";
+    if (bytes[3] != kNordIdN2x)
+        return "not a Nord Lead 2x dump (expected N2x id 04)";
+    if (bytes[size - 1] != 0xF7)
+        return "dump is not F7-terminated";
+    if (size > kNordMaxDumpSize)
+        return "dump too large (" + juce::String((int) size)
+             + " bytes, max 32768)";
+    return {};
+}
+
+/// Split a raw .syx byte run into complete F0..F7 dumps. Bytes before the
+/// first F0 are ignored; each dump must pass isNordDumpHeader. Returns the
+/// number of dumps appended, or -1 when a dump is not F7-terminated (truncated
+/// file) — partial trailing data is never silently queued.
+inline int splitNordSyx(const uint8_t* bytes, size_t size,
+                        std::vector<std::vector<uint8_t>>& outDumps)
+{
+    int count = 0;
+    size_t i = 0;
+    while (i < size)
+    {
+        if (bytes[i] != 0xF0)
+        {
+            ++i;
+            continue;
+        }
+        const size_t start = i;
+        size_t end = i + 1;
+        while (end < size && bytes[end] != 0xF7)
+            ++end;
+        if (end >= size)
+            return -1;              // unterminated dump — reject the file
+        outDumps.emplace_back(bytes + start, bytes + end + 1);
+        ++count;
+        i = end + 1;
+    }
+    return count;
+}
+
 } // namespace mcp

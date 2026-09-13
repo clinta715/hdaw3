@@ -1,0 +1,33 @@
+{
+  "formats": {
+    "nl2xmid": {
+      "failed": 4,
+      "files": 81,
+      "multis": 1666,
+      "patches": 7787,
+      "singles": 6121
+    },
+    "nl2xsyx": {
+      "failed": 1,
+      "files": 6765,
+      "multis": 1140,
+      "patches": 21649,
+      "singles": 20509
+    }
+  },
+  "generated_at": "2026-09-13T10:12:46",
+  "kinds": {
+    "multi": 2806,
+    "single": 26630
+  },
+  "root": "D:\\pdf\\NL2x Banks",
+  "schema": "hdaw.nl2x.survey.v1",
+  "totals": {
+    "dumps": 29436,
+    "failed": 5,
+    "files": 6846,
+    "parsed": 6841,
+    "patches": 29436,
+    "skipped": 52
+  }
+}
