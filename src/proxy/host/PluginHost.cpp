@@ -1102,12 +1102,33 @@ void PluginHost::controlLoop()
                         auto* p = params[static_cast<int>(index)];
                         float defaultValue = p->getDefaultValue();
                         uint8_t automatable = p->isAutomatable() ? 1u : 0u;
+                        // CLAP range metadata (scope B): plain-unit min/max/
+                        // default + stepped flag from clap_param_info_t.
+                        // Non-CLAP formats expose no ranges: hasRange = 0.
+                        double minVal = 0.0, maxVal = 1.0, defaultPlain = 0.0;
+                        uint8_t stepped = 0u, hasRange = 0u;
+                        if (auto* clapP = dynamic_cast<CLAPParameter*>(p))
+                        {
+                            // Degenerate ranges (min==max) carry no mapping info.
+                            if (clapP->getMaxValue() > clapP->getMinValue())
+                            {
+                                minVal = clapP->getMinValue();
+                                maxVal = clapP->getMaxValue();
+                                defaultPlain = clapP->getDefaultPlainValue();
+                                stepped = clapP->isStepped() ? 1u : 0u;
+                                hasRange = 1u;
+                            }
+                        }
                         juce::String nameStr = p->getName(512);
                         auto nameUtf8 = nameStr.toRawUTF8();
                         uint32_t nameLen = static_cast<uint32_t>(std::strlen(nameUtf8));
                         // Layout: float defaultValue; uint8 automatable;
+                        //          double minVal; double maxVal; double defaultPlain;
+                        //          uint8 stepped; uint8 hasRange;
                         //          uint32 nameLen; char name[nameLen]
-                        uint32_t headerBytes = sizeof(float) + sizeof(uint8_t) + sizeof(uint32_t);
+                        uint32_t headerBytes = sizeof(float) + sizeof(uint8_t)
+                            + 3 * sizeof(double) + sizeof(uint8_t) + sizeof(uint8_t)
+                            + sizeof(uint32_t);
                         uint32_t total = headerBytes + nameLen;
                         resp.dataSize = total;
                         resp.result = 1;
@@ -1115,6 +1136,16 @@ void PluginHost::controlLoop()
                         std::memcpy(resp.data + offset, &defaultValue, sizeof(float));
                         offset += sizeof(float);
                         std::memcpy(resp.data + offset, &automatable, sizeof(uint8_t));
+                        offset += sizeof(uint8_t);
+                        std::memcpy(resp.data + offset, &minVal, sizeof(double));
+                        offset += sizeof(double);
+                        std::memcpy(resp.data + offset, &maxVal, sizeof(double));
+                        offset += sizeof(double);
+                        std::memcpy(resp.data + offset, &defaultPlain, sizeof(double));
+                        offset += sizeof(double);
+                        std::memcpy(resp.data + offset, &stepped, sizeof(uint8_t));
+                        offset += sizeof(uint8_t);
+                        std::memcpy(resp.data + offset, &hasRange, sizeof(uint8_t));
                         offset += sizeof(uint8_t);
                         std::memcpy(resp.data + offset, &nameLen, sizeof(uint32_t));
                         offset += sizeof(uint32_t);

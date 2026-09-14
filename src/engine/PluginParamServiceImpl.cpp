@@ -1,6 +1,8 @@
 #include "PluginParamServiceImpl.h"
 #include "MainAudioProcessor.h"
 #include "Track.h"
+#include "CLAPPluginInstance.h"
+#include "../proxy/PluginProxySlot.h"
 
 PluginParamServiceImpl::PluginParamServiceImpl(MainAudioProcessor& proc)
     : proc_(proc) {}
@@ -38,6 +40,39 @@ std::vector<PluginParamSnapshot> PluginParamServiceImpl::getParams(int trackInde
         snap.text = p->getText(snap.value, 128).toStdString();
         snap.label = p->getLabel().toStdString();
         snap.automatable = p->isAutomatable();
+        // In-process CLAP: full range metadata from clap_param_info_t.
+        // Other formats (VST3 via JUCE) expose no ranges: hasRange stays
+        // false and consumers must treat value as blind normalized.
+        if (auto* clap = dynamic_cast<CLAPParameter*>(p))
+        {
+            // Degenerate ranges (min==max: meters, triggers) carry no
+            // mapping info — same guard as CLAPParameter::getValue.
+            if (clap->getMaxValue() > clap->getMinValue())
+            {
+                snap.hasRange = true;
+                snap.minVal = clap->getMinValue();
+                snap.maxVal = clap->getMaxValue();
+                snap.defaultVal = clap->getDefaultPlainValue();
+                snap.plainValue = clap->getPlainValue();
+                snap.stepped = clap->isStepped();
+            }
+        }
+        else if (auto* prox = dynamic_cast<proxy::ProxiedParameter*>(p))
+        {
+            // Isolated CLAP: range metadata arrived via GET_PARAM_INFO.
+            if (prox->hasRangeInfo())
+            {
+                snap.hasRange = true;
+                snap.minVal = prox->rangeMin();
+                snap.maxVal = prox->rangeMax();
+                snap.defaultVal = prox->rangeDefault();
+                const double range = snap.maxVal - snap.minVal;
+                snap.plainValue = range > 0.0
+                    ? snap.minVal + static_cast<double>(snap.value) * range
+                    : snap.minVal;
+                snap.stepped = prox->isSteppedInfo();
+            }
+        }
         result.push_back(std::move(snap));
     }
     return result;

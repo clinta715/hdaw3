@@ -232,18 +232,25 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString("scanned %1 plugins").arg(count));
         }});
 
-    s.registerTool({"list_plugins", "List all scanned plugins.",
-        objSchema({}),
+    s.registerTool({"list_plugins", "List scanned plugins. Optional kind filter: effect (audio FX) | instrument (synths/samplers) | all (default). Each entry reports its kind so agents can find installable effects without guessing.",
+        objSchema({{"kind", QJsonObject{{"type","string"},{"enum",QJsonArray{"effect","instrument","all"}}}}}),
         "project",
-        [e](const QJsonObject&) {
+        [e](const QJsonObject& a) {
+            const QString kind = a.value("kind").toString("all").toLower();
+            if (kind != "effect" && kind != "instrument" && kind != "all")
+                return McpToolResult::text("kind must be effect|instrument|all", true);
             auto& pm = e->getPluginManager();
             QJsonArray arr;
             for (const auto& pd : pm.getPlugins()) {
+                const bool isInstr = pd.isInstrument;
+                if (kind == "effect" && isInstr) continue;
+                if (kind == "instrument" && !isInstr) continue;
                 QJsonObject o;
                 o["name"] = jstr(pd.name);
                 o["manufacturer"] = jstr(pd.manufacturerName);
                 o["format"] = jstr(pd.pluginFormatName);
                 o["category"] = jstr(pd.category);
+                o["kind"] = isInstr ? "instrument" : "effect";
                 o["id"] = jstr(pd.createIdentifierString());
                 auto* presetInfo = pm.getPresetInfo(pd.createIdentifierString());
                 if (presetInfo && presetInfo->numPrograms > 1) {

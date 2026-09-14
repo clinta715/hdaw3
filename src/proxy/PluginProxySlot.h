@@ -42,12 +42,25 @@ class ProxiedParameter : public juce::HostedAudioProcessorParameter
 {
 public:
     ProxiedParameter(uint32_t idx, const juce::String& name,
-                     float defaultValue, bool automatable, class PluginProxySlot& owner)
+                     float defaultValue, bool automatable, class PluginProxySlot& owner,
+                     double minVal = 0.0, double maxVal = 1.0, double defaultPlain = 0.0,
+                     bool stepped = false, bool hasRange = false)
         : HostedAudioProcessorParameter(), index(idx), nameStr(name),
-          defaultValue_(defaultValue), automatable_(automatable), ownerSlot(owner)
+          defaultValue_(defaultValue), automatable_(automatable), ownerSlot(owner),
+          minVal_(minVal), maxVal_(maxVal), defaultPlain_(defaultPlain),
+          stepped_(stepped), hasRange_(hasRange)
     {
         cache.store(defaultValue, std::memory_order_relaxed);
     }
+
+    // CLAP range metadata from the isolated child (plain units). hasRangeInfo
+    // is false when the child exposes no ranges — treat values as blind
+    // normalized, same as VST3.
+    bool hasRangeInfo() const noexcept { return hasRange_; }
+    double rangeMin() const noexcept { return minVal_; }
+    double rangeMax() const noexcept { return maxVal_; }
+    double rangeDefault() const noexcept { return defaultPlain_; }
+    bool isSteppedInfo() const noexcept { return stepped_; }
 
     juce::String getParameterID() const override { return "proxy_param_" + juce::String(index); }
     float getValue() const override;
@@ -69,6 +82,11 @@ private:
     juce::String nameStr;
     float defaultValue_;
     bool automatable_;
+    double minVal_ = 0.0;
+    double maxVal_ = 1.0;
+    double defaultPlain_ = 0.0;
+    bool stepped_ = false;
+    bool hasRange_ = false;
     std::atomic<float> cache{ 0.f };
     class PluginProxySlot& ownerSlot;
 };

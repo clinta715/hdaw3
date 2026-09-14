@@ -668,7 +668,7 @@ Real synth firmware running as isolated CLAP plugins — installed in
 | JE8086 | Roland JP-8000 | ✅ voices (0.23–0.27) |
 | Osirus | Access Virus A/B/C | ✅ voices; state-apply on load rejected by the plugin (see durability rules) |
 | NodalRed2x | Clavia Nord Lead 2x | ✅ renders audibly since the multi-port fix (v0.34); banks load via `load_nord_bank` SysEx injection |
-| Dexed | Yamaha DX7 | ⚠️ kKnownSilent family (accepts sysex at the CLAP boundary; state/voicing rejected) |
+| Dexed | Yamaha DX7 | ❌ preset pipeline removed 2026-09-14 (ignores injected state; probed silent) — use internal `fm_synth` for DX7 voices |
 
 ### Injection tools (all verified end-to-end)
 - `send_fx_midi {trackId, slotIndex, messages[]}` — PC / CC / note / **sysEx**
@@ -677,8 +677,7 @@ Real synth firmware running as isolated CLAP plugins — installed in
   OsTIrus DSP boot takes seconds).
 - `load_virus_preset {trackId, slotIndex, bank 0-7, program 0-127}` — CC0 bank
   select + PC (Virus banks A–H singles).
-- `load_dexed_cartridge {trackId, slotIndex, filePath}` — `.syx` single/cartridge
-  into any DX7-engine slot (Dexed).
+- ~~`load_dexed_cartridge` removed 2026-09-14~~ — Dexed ignores injected cartridge state (probed: peak 0, state byte-identical). For DX7 voices use `fm_synth_import_sysex` into an internal `fm_synth` slot (same DX7 engine, fully controllable).
 - `load_nord_bank {trackId, slotIndex, filePath, program?}` — Nord Lead 2x
   banks (`.syx` raw Clavia SysEx, `.mid` SMF-wrapped) into NodalRed2x:
   ATOMIC — every dump validated (F0 33 <dev> 04 header, F7-terminated,

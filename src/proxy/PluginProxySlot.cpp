@@ -188,12 +188,21 @@ void PluginProxySlot::fetchParamMetadata() {
 
         float defaultValue = 0.f;
         uint8_t automatable = 0u;
+        double minVal = 0.0, maxVal = 1.0, defaultPlain = 0.0;
+        uint8_t stepped = 0u, hasRange = 0u;
         uint32_t nameLen = 0;
-        uint32_t headerBytes = sizeof(float) + sizeof(uint8_t) + sizeof(uint32_t);
+        uint32_t headerBytes = sizeof(float) + sizeof(uint8_t)
+            + 3 * sizeof(double) + sizeof(uint8_t) + sizeof(uint8_t)
+            + sizeof(uint32_t);
         if (infoResp.dataSize < headerBytes) { paramCacheSize_ = 0; return; }
         uint32_t off = 0;
         std::memcpy(&defaultValue, infoResp.data + off, sizeof(float)); off += sizeof(float);
         std::memcpy(&automatable, infoResp.data + off, sizeof(uint8_t)); off += sizeof(uint8_t);
+        std::memcpy(&minVal, infoResp.data + off, sizeof(double)); off += sizeof(double);
+        std::memcpy(&maxVal, infoResp.data + off, sizeof(double)); off += sizeof(double);
+        std::memcpy(&defaultPlain, infoResp.data + off, sizeof(double)); off += sizeof(double);
+        std::memcpy(&stepped, infoResp.data + off, sizeof(uint8_t)); off += sizeof(uint8_t);
+        std::memcpy(&hasRange, infoResp.data + off, sizeof(uint8_t)); off += sizeof(uint8_t);
         std::memcpy(&nameLen, infoResp.data + off, sizeof(uint32_t)); off += sizeof(uint32_t);
 
         std::vector<char> nameBuf;
@@ -232,7 +241,9 @@ void PluginProxySlot::fetchParamMetadata() {
             }
         }
 
-        auto* p = new ProxiedParameter(i, name, defaultValue, automatable != 0, *this);
+        auto* p = new ProxiedParameter(i, name, defaultValue, automatable != 0, *this,
+                                          minVal, maxVal, defaultPlain,
+                                          stepped != 0, hasRange != 0);
         p->setCache(value);
         addHostedParameter(std::unique_ptr<HostedParameter>(p));
     }

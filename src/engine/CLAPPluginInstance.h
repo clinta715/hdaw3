@@ -125,6 +125,9 @@ public:
 
     clap_id getClapID() const { return info.id; }
     bool isStepped() const { return (info.flags & CLAP_PARAM_IS_STEPPED) != 0; }
+    double getMinValue() const { return info.min_value; }
+    double getMaxValue() const { return info.max_value; }
+    double getDefaultPlainValue() const { return info.default_value; }
     double getPlainValue() const { return currentPlain.load(); }
     void setPlainValue(double v) { currentPlain.store(v); }
 

@@ -216,7 +216,7 @@ s.registerTool({"restart_fx", "Restart a crashed isolated plugin FX slot.",
             return McpToolResult::text("ok");
         }});
 
-s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
+s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot. Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth). Plugin (CLAP) params additionally report hasRange/minVal/maxVal/defaultVal/plainValue/stepped plus minText/maxText/defaultText (real units) so writes can be mapped meaningfully; hasRange=false means blind normalized 0..1 (VST3, older children).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}}}, {"trackId","slotIndex"}),
         "fx",
@@ -233,6 +233,7 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
             if (fxSlots[si].fxType == "plugin")
             {
                 auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+                auto& paramSvc = e->getPluginParamService();
                 for (const auto& pi : params) {
                     QJsonObject o;
                     o["index"] = pi.index;
@@ -240,6 +241,23 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                     o["automatable"] = pi.automatable;
                     o["value"] = static_cast<double>(pi.value);
                     o["text"] = QString::fromStdString(pi.text);
+                    o["hasRange"] = pi.hasRange;
+                    if (pi.hasRange)
+                    {
+                        o["minVal"] = pi.minVal;
+                        o["maxVal"] = pi.maxVal;
+                        o["defaultVal"] = pi.defaultVal;
+                        o["plainValue"] = pi.plainValue;
+                        o["stepped"] = pi.stepped;
+                        const double range = pi.maxVal - pi.minVal;
+                        const double dflt = range > 0.0 ? (pi.defaultVal - pi.minVal) / range : 0.0;
+                        o["minText"] = QString::fromStdString(
+                            paramSvc.getParamText(ti, fxSlots[si].pluginId, pi.index, 0.0f));
+                        o["maxText"] = QString::fromStdString(
+                            paramSvc.getParamText(ti, fxSlots[si].pluginId, pi.index, 1.0f));
+                        o["defaultText"] = QString::fromStdString(
+                            paramSvc.getParamText(ti, fxSlots[si].pluginId, pi.index, static_cast<float>(dflt)));
+                    }
                     o["paramID"] = 100 + si * 100 + pi.index;
                     arr.append(o);
                 }
@@ -333,7 +351,7 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by 
         }});
 
 s.registerTool({"send_fx_midi",
-    "Queue short MIDI messages (programChange/controlChange/noteOn/noteOff/sysEx) into a plugin FX slot's NEXT processed block of the LIVE plugin instance. Loads MIDI-selectable presets â€” e.g. gearmulator Virus plugins: controlChange controller=0 value=bank (0-7 = banks A-H singles) then programChange program=patch; Dexed: sysEx cartridge dump via load_dexed_cartridge. Realtime mutation: not undoable. The changed preset reaches offline exports once captured via project save.",
+    "Queue short MIDI messages (programChange/controlChange/noteOn/noteOff/sysEx) into a plugin FX slot's NEXT processed block of the LIVE plugin instance. Loads MIDI-selectable presets â€” e.g. gearmulator Virus plugins: controlChange controller=0 value=bank (0-7 = banks A-H singles) then programChange program=patch. DX7 voices: use fm_synth_import_sysex into an fm_synth slot (plugin slots ignore injected SysEx). Realtime mutation: not undoable. The changed preset reaches offline exports once captured via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"captureToTree", QJsonObject{{"type","boolean"}}},
@@ -415,19 +433,6 @@ s.registerTool({"load_virus_preset",
             a.value("captureToTree").toBool(true));
     }});
 
-s.registerTool({"load_dexed_cartridge",
-    "Load a DX7 SysEx preset file (.syx: single voice 163B or 32-voice cartridge 4104B) into a Dexed (or any DX7-engine) plugin FX slot by injecting it as MIDI SysEx on the next processed block â€” the plugin's own DX7 engine applies the dump. Realtime mutation: not undoable; capture via project save.",
-    objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
-              {"slotIndex",QJsonObject{{"type","integer"}}},
-              {"filePath", QJsonObject{{"type","string"}}}},
-              {"trackId","slotIndex","filePath"}),
-    "fx",
-    [e](const QJsonObject& a) -> McpToolResult {
-        return runDexedCartridgeFile(*e,
-            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
-            a.value("filePath").toString(),
-            a.value("captureToTree").toBool(true));
-    }});
 s.registerTool({"load_nord_bank",
     "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 after the dumps; delivery is paced at <=1 SysEx per block and the deferred capture is delayed per queued dump, then confirmed via get_fx_capture_status (no capture-race). Realtime mutation: not undoable; capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
@@ -663,11 +668,10 @@ s.registerTool({"sub_synth_import_sysex",
         }});
 
 s.registerTool({"apply_preset",
-    "Apply a preset to ONE FX slot, dispatching by slot target + file header — the agentic front door that replaces load_nord_bank / load_virus_preset / load_dexed_cartridge / fm_synth_import_sysex / sub_synth_import_sysex / load_plugin_preset_file (which all stay registered). Reads the slot's fxType + pluginId, detects the file format from the header bytes, routes to the matching loader, and returns that loader's result:\n"
+    "Apply a preset to ONE FX slot, dispatching by slot target + file header — the agentic front door that replaces load_nord_bank / load_virus_preset / fm_synth_import_sysex / sub_synth_import_sysex / load_plugin_preset_file (which all stay registered). Reads the slot's fxType + pluginId, detects the file format from the header bytes, routes to the matching loader, and returns that loader's result:\n"
     "- NodalRed2x slot + Clavia dump (F0 33 .syx / SMF .mid) -> bank load via MIDI SysEx (optional program 0-127 selects a voice afterwards).\n"
     "- Gearmulator Virus slot (OsTIrus/Osirus/Vavra/Xenia/JE8086) + program (optional bank 0-7, no filePath) -> ROM preset via CC0+PC.\n"
-    "- Dexed/DX7-engine plugin slot + F0 43 .syx -> cartridge/single dump via MIDI SysEx.\n"
-    "- Internal fm_synth slot + F0 43 .syx (single 163B, cartridge 4104B, raw VMEM 4096B) -> patch via setFmPatch (voiceIndex picks the cartridge voice).\n"
+        "- Internal fm_synth slot + F0 43 .syx (single 163B, cartridge 4104B, raw VMEM 4096B) -> patch via setFmPatch (voiceIndex picks the cartridge voice).\n"
     "- Internal sub_synth slot + Virus dump (F0 00 20 33) -> patch via loadVirusPatch (voiceIndex for TI banks).\n"
     "- Any plugin slot + .SerumPreset (XferJson) / .fxp (CcnK) -> setStateInformation via parsePresetFile.\n"
     "Otherwise errors: cannot determine preset type. Realtime mutations (SysEx/CC/PC routes) are not undoable; capture via project save.",
@@ -738,8 +742,6 @@ s.registerTool({"apply_preset",
                 return runVirusRomPreset(*e, ti, si,
                     a.value("bank").toInt(0), a.value("program").toInt(0),
                     a.value("channel").toInt(1), capture);
-            case PresetRouteKind::DexedCartridge:
-                return runDexedCartridgeFile(*e, ti, si, path, capture);
             case PresetRouteKind::FmSysex:
                 return runFmImportSysex(*e, ti, si, path,
                     a.value("voiceIndex").toInt(0));

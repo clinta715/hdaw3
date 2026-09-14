@@ -3,11 +3,12 @@
 //
 // resolvePresetRoute() is the pure dispatch table behind the apply_preset MCP
 // tool: it maps (slot fxType, slot pluginId, file header bytes) onto the same
-// loaders the five individual preset tools use. The run* executors below are
-// the SINGLE implementations of those loaders — the five individual tools
-// (load_nord_bank, load_virus_preset, load_dexed_cartridge, fm_synth_import_
+// loaders the individual preset tools use. The run* executors below are
+// the SINGLE implementations of those loaders — the individual tools
+// (load_nord_bank, load_virus_preset, fm_synth_import_
 // sysex, sub_synth_import_sysex, load_plugin_preset_file) delegate to them so
-// apply_preset never duplicates their logic.
+// apply_preset never duplicates their logic. (load_dexed_cartridge removed
+// 2026-09-14: Dexed ignores injected cartridge state.)
 //
 // MCP-layer only: no audio-thread code, no graph mutation, no DSP writes
 // beyond the pre-existing command-layer calls.
@@ -36,7 +37,6 @@ namespace mcp {
 enum class PresetRouteKind {
     NordBank,         // Clavia dumps -> NodalRed2x slot (load_nord_bank path)
     VirusRom,         // CC0+PC ROM preset -> gearmulator Virus slot (load_virus_preset path)
-    DexedCartridge,   // F0 43 SysEx -> Dexed/DX7-engine plugin slot (load_dexed_cartridge path)
     FmSysex,          // F0 43 SysEx -> internal fm_synth slot (fm_synth_import_sysex path)
     SubSynthVirus,    // Virus F0 00 20 33 -> internal sub_synth slot (sub_synth_import_sysex path)
     PluginPresetFile, // XferJson / CcnK -> any plugin slot (load_plugin_preset_file path)
@@ -61,11 +61,6 @@ inline bool isVirusGearmulatorPluginId(const std::string& pluginId)
         || containsCI(pluginId, "JE8086");
 }
 
-inline bool isDexedPluginId(const std::string& pluginId)
-{
-    return containsCI(pluginId, "Dexed");
-}
-
 inline bool isNodalRed2xPluginId(const std::string& pluginId)
 {
     return containsCI(pluginId, "NodalRed2x");
@@ -83,8 +78,7 @@ inline bool isSubSynthSlot(const std::string& fxType, const std::string& pluginI
 //     1. fm_synth slot            + F0 43            -> FmSysex
 //     2. sub_synth slot           + F0 00 20 33      -> SubSynthVirus
 //     3. NodalRed2x plugin slot   + F0 33 or .mid    -> NordBank
-//     4. Dexed plugin slot        + F0 43            -> DexedCartridge
-//     5. any plugin slot          + XferJson/CcnK or .SerumPreset/.fxp/.fxb -> PluginPresetFile
+//     4. any plugin slot          + XferJson/CcnK or .SerumPreset/.fxp/.fxb -> PluginPresetFile
 //   no file:
 //     6. Virus gearmulator slot   + program          -> VirusRom (ROM preset, no file)
 //   else: None + "cannot determine preset type ..."
@@ -109,9 +103,15 @@ inline PresetRoute resolvePresetRoute(const std::string& fxType,
                 || fileExtension == ".mid"))
             return { PresetRouteKind::NordBank, {} };
 
-        if (fxType == "plugin" && isDexedPluginId(pluginId)
-            && bytes[0] == 0xF0 && bytes[1] == 0x43)
-            return { PresetRouteKind::DexedCartridge, {} };
+        // DX7 SysEx into a plugin slot has no reliable route: plugins
+        // ignore injected cartridge state (probed silent 2026-09-14, peak 0,
+        // state byte-identical). Steer to the working internal engine.
+        if (fxType == "plugin" && bytes[0] == 0xF0 && bytes[1] == 0x43)
+            return { PresetRouteKind::None,
+                     "cannot determine preset type for this file into this slot"
+                     " (slot fxType=" + juce::String(fxType) + "): DX7 SysEx"
+                     " (F0 43) into plugin slots is unreliable — use"
+                     " fm_synth_import_sysex into an fm_synth slot" };
 
         if (fxType == "plugin")
         {
@@ -168,39 +168,6 @@ inline McpToolResult runVirusRomPreset(AudioEngine& e, int ti, int si,
         return McpToolResult::text(QString::fromStdString(r.error), true);
     return McpToolResult::text(QString("queued bank=%1 program=%2 (banks A-H singles) capturedToTree=%3")
                                    .arg(bank).arg(program).arg(r.capturedToTree ? 1 : 0));
-}
-
-/// load_dexed_cartridge: raw DX7 SysEx file -> sendFxMidi SysEx on the slot.
-inline McpToolResult runDexedCartridgeFile(AudioEngine& e, int ti, int si,
-                                           const QString& path,
-                                           bool captureToTree)
-{
-    const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-    if (!f.existsAsFile())
-        return McpToolResult::text("file not found: " + path, true);
-    juce::MemoryBlock block;
-    if (!f.loadFileAsData(block))
-        return McpToolResult::text("failed to read file", true);
-    if (block.getSize() < 2)
-        return McpToolResult::text("file too small", true);
-    const auto* bytes = static_cast<const uint8_t*>(block.getData());
-    if (bytes[0] != 0xF0 || bytes[1] != 0x43)
-        return McpToolResult::text("not a DX7 SysEx file (expected F0 43 header)", true);
-    if (block.getSize() > 32768)
-        return McpToolResult::text("sysex payload too large (max 32768 bytes)", true);
-    ProjectCommands::FxMidiParams p;
-    p.trackIndex = ti;
-    p.slotIndex = si;
-    p.captureToTree = captureToTree;
-    ProjectCommands::FxMidiEvent ev;
-    ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-    ev.sysex.assign(bytes, bytes + block.getSize());
-    p.events.push_back(std::move(ev));
-    auto r = e.getProjectCommands().sendFxMidi(p);
-    if (!r.ok)
-        return McpToolResult::text(QString::fromStdString(r.error), true);
-    return McpToolResult::text(QString("queued sysex %1 bytes (r.queued=%2, track=%3 slot=%4, capturedToTree=%5)")
-        .arg(static_cast<int>(block.getSize())).arg(r.queued).arg(ti).arg(si).arg(r.capturedToTree ? 1 : 0));
 }
 
 /// load_nord_bank: Clavia .syx/.mid -> validated dumps -> sendFxMidi + CC125.

@@ -32,7 +32,7 @@ Writes: add_track_with_fx, add_fx, add_midi_fx, remove_fx,
   add_automation_lane, set_automation_points, automation_preset,
   add_lfo, set_lfo_param, sampler_set_sample, set_sampler_key_range,
   psy_fm_load_preset, apply_sub_synth_mod_preset,
-  load_nord_bank, load_virus_preset, load_dexed_cartridge,
+  load_nord_bank, load_virus_preset,
   send_fx_midi, save_project (orchestrator only)
 FORBIDDEN: load_project, save_project (unless allowed),
   remove_track, all note/clip mutations outside your layer

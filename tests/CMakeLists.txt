@@ -138,8 +138,8 @@ add_executable(hdaw_tests
     unit/engine/clap_preset_probe_test.cpp
     unit/engine/clap_preset_database_test.cpp
     unit/engine/clap_program_test.cpp
+    unit/engine/clap_param_metadata_test.cpp
     unit/engine/fx_midi_injection_test.cpp
-    unit/engine/dexed_preset_file_test.cpp
     unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp

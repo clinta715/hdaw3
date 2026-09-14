@@ -109,12 +109,17 @@ TEST(ApplyPresetResolver, VirusRomWithoutProgramErrors)
     EXPECT_TRUE(r.error.contains("program"));
 }
 
-TEST(ApplyPresetResolver, F043IntoDexedPlugin)
+TEST(ApplyPresetResolver, F043IntoPluginSlotSteersToFmSynth)
 {
+    // DX7 SysEx into a plugin slot has no reliable route (probed silent
+    // 2026-09-14): None with an actionable error, still matching the
+    // generic "cannot determine preset type" contract.
     const std::vector<uint8_t> dump { 0xF0, 0x43, 0x00, 0x09, 0x00, 0xF7 };
     auto r = mcp::resolvePresetRoute("plugin", "Dexed.clap",
         dump.data(), dump.size(), ".syx", false);
-    EXPECT_EQ(r.kind, mcp::PresetRouteKind::DexedCartridge);
+    EXPECT_EQ(r.kind, mcp::PresetRouteKind::None);
+    EXPECT_TRUE(r.error.contains("cannot determine preset type"));
+    EXPECT_TRUE(r.error.contains("fm_synth_import_sysex"));
 }
 
 TEST(ApplyPresetResolver, F043IntoInternalFmSynth)
@@ -199,12 +204,14 @@ protected:
     std::unique_ptr<mcp::McpServer> server;
 };
 
-TEST_F(ApplyPresetToolTest, AllSixToolsRegistered)
+TEST_F(ApplyPresetToolTest, AllFiveToolsRegistered)
 {
+    // load_dexed_cartridge removed 2026-09-14 (probed silent): DX7 SysEx
+    // into plugin slots changes nothing audible; use fm_synth_import_sysex.
     EXPECT_TRUE(server->tools().contains("apply_preset"));
     EXPECT_TRUE(server->tools().contains("load_nord_bank"));
     EXPECT_TRUE(server->tools().contains("load_virus_preset"));
-    EXPECT_TRUE(server->tools().contains("load_dexed_cartridge"));
+    EXPECT_FALSE(server->tools().contains("load_dexed_cartridge"));
     EXPECT_TRUE(server->tools().contains("fm_synth_import_sysex"));
     EXPECT_TRUE(server->tools().contains("sub_synth_import_sysex"));
     EXPECT_TRUE(server->tools().contains("load_plugin_preset_file"));
@@ -287,27 +294,6 @@ TEST_F(ApplyPresetToolTest, NoFileNoProgramErrors)
         QJsonObject{{"trackId", 0}, {"slotIndex", 0}});
     EXPECT_TRUE(resultIsError(r));
     EXPECT_TRUE(resultText(r).contains("cannot determine preset type"))
-        << resultText(r).toStdString();
-}
-
-TEST_F(ApplyPresetToolTest, DexedRouteQueuesSysexInjection)
-{
-    ASSERT_FALSE(resultIsError(callTool(*server, 1, "add_track",
-        QJsonObject{{"name", "Track"}})));
-    // pluginId containing "Dexed" but NOT installed: dispatch routes to the
-    // load_dexed_cartridge path; queueing itself is safe without a live
-    // instance (send_fx_midi buffers on the slot).
-    ASSERT_EQ(resultText(callTool(*server, 2, "add_fx",
-        QJsonObject{{"trackId", 0}, {"pluginId", "DexedFake.clap"}})), QString("slot=0"));
-
-    auto fixture = fixtureFile("../engine/testdata/dx7/cartridge.syx");
-    ASSERT_TRUE(fixture.existsAsFile());
-    auto r = callTool(*server, 3, "apply_preset",
-        QJsonObject{{"trackId", 0}, {"slotIndex", 0},
-                    {"filePath", QString::fromStdString(
-                        fixture.getFullPathName().toStdString())}});
-    EXPECT_FALSE(resultIsError(r)) << resultText(r).toStdString();
-    EXPECT_TRUE(resultText(r).contains("queued sysex"))
         << resultText(r).toStdString();
 }
 
