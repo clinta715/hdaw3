@@ -45,7 +45,11 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    audible (solo peak > -80 dBFS). Silent-at-default presets are rejected, not
    shipped. Sampler roles: `sampler_set_sample` + `sampler_get_state` to verify.
 7. **Load per-role FX chains** from `list_fx_chains` factory presets when they fit
-   the role ("Kick Punch", "Bass Glue", "Acid Lead", ...).
+   the role ("Kick Punch", "Bass Glue", "Acid Lead", ...). **This step is
+   MANDATORY** — the tracks must ship with role-appropriate processing, not
+   bare FX slots. If a factory preset doesn't fit, set the key params manually
+   (e.g. the pad needs a low-pass + slow filter LFO; the kick needs punch EQ).
+   Record the loaded FX chain in the audition evidence.
 8. **Record the palette**: for each role — trackIndex, instrument, preset name,
    audition evidence — into the brief's `palette` section and `paletteTrackMap`.
 

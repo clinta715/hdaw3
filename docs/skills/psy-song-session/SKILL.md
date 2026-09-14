@@ -94,8 +94,9 @@ register/band the mix has left open. Bulk cell fill (the plan/cell workflow of
 capture the shape, then rebuilt layer by layer when the track goes final.
 
 **Fixed layer order** — each layer is a SEPARATE dispatch, strictly sequential,
-single writer, never overlapping:
+single writer, never overlapping. Two modes:
 
+**layerMode: "full-build"** (default) — the seven-layer sequence:
 1. kick
 2. bass
 3. hats/snare/clap/down — the percussion bed in ONE layer-agent pass, but the
@@ -105,6 +106,14 @@ single writer, never overlapping:
 5. pad
 6. lead — THE one high part (the register budget's usual holder)
 7. riser
+
+**layerMode: "post-hoc"** — for adding ONE layer to an existing arrangement
+(e.g. the acidvar revision on Modular Dawn). The dispatch prompt should say
+"this is a REVISION, not a first-pass layer" and include:
+- The layers.json ledger (the register budget and cumulative rms are contract inputs)
+- The existing track's fx chain state (what to keep, what to replace)
+- Which sections the new layer enters/exits
+- The G1 pre-measure can be skipped (the committed mix IS the baseline)
 
 **Orchestrator responsibilities per layer:**
 - (a) Dispatch with the FULL layer-agent playbook (`roles/layer-agent.md`) plus
