@@ -68,7 +68,7 @@ void registerMidiFxTools(McpServer& s, AudioEngine* e)
         }});
 
     s.registerTool({"set_midi_fx_param",
-        "Set a parameter on a MIDI FX slot.",
+        "Set a parameter on a MIDI FX slot. Values are in the param's own range — call list_midi_fx_params {trackId, slotIndex} to discover the exact range.",
         objSchema({{"trackId", QJsonObject{{"type","integer"}}},
                    {"slotIndex", QJsonObject{{"type","integer"}}},
                    {"paramName", QJsonObject{{"type","string"}}},

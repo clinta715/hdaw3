@@ -4,6 +4,7 @@
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
+#include "common/Version.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
 #include "../engine/MainAudioProcessor.h"
 #include "../engine/PluginManager.h"
@@ -43,7 +44,8 @@ void registerReadTools(McpServer& s, AudioEngine* e)
                 .arg(static_cast<double>(m.getTree().getProperty(IDs::tempo)))
                 .arg(tracks).arg(clips)
                 .arg(static_cast<double>(tp.getProperty(IDs::position)))
-                .arg(jstr(tp.getProperty(IDs::isPlaying).toString())));
+                .arg(jstr(tp.getProperty(IDs::isPlaying).toString()))
+                .arg(jstr(HDAW_VERSION)));
         }});
 
     s.registerTool({"get_scale", "Return the project scale (root, mode).",

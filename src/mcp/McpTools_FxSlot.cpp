@@ -567,7 +567,7 @@ s.registerTool({"get_master_fx_params",
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth.",
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex — out-of-range values are silently clamped (lesson 23).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},

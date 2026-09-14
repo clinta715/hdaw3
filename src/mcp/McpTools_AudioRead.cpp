@@ -58,8 +58,11 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
         {"sampleRate", rep.sampleRate},
         {"peak", rep.peak},
         {"rms", rep.rms},
-        {"bands", QJsonArray{rep.bands[0], rep.bands[1], rep.bands[2], rep.bands[3]}},
-        {"bandLabels", QJsonArray{"sub","bass","body","high"}},
+        {"bands", QJsonObject{
+            {"sub", rep.bands[0]},
+            {"bass", rep.bands[1]},
+            {"body", rep.bands[2]},
+            {"high", rep.bands[3]}}},
         {"kickProminence", rep.kickProminence}
     };
     if (rep.hasPumpDepth)
@@ -73,8 +76,11 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
             {"end", s.end},
             {"rms", s.rms},
             {"peak", s.peak},
-            {"bandEnergy", QJsonArray{s.bandEnergy[0], s.bandEnergy[1],
-                                      s.bandEnergy[2], s.bandEnergy[3]}}
+            {"bandEnergy", QJsonObject{
+                {"sub", s.bandEnergy[0]},
+                {"bass", s.bandEnergy[1]},
+                {"body", s.bandEnergy[2]},
+                {"high", s.bandEnergy[3]}}}
         });
     }
     root["sections"] = sections;
