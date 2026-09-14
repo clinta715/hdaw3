@@ -146,6 +146,198 @@ TEST(VerifyPart, AudioClipWithHfContentHasBandsPresent)
     wavFile.deleteFile();
 }
 
+TEST(VerifyPart, SamplerSoloRenderWithOffsetNotesIsAudible)
+{
+    // B7 regression (Modular Dawn audit): verify_part solo-rendered a
+    // sampler track SILENT (soloRms=0, audible=0) while the full-mix render
+    // showed real contribution. The notes here sit at a NON-ZERO beat offset
+    // inside the clip (the audit's kick pattern), so a broken window or a
+    // broken note->sampler seam shows up as hard silence.
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    // Small sine WAV as the sampler's sample.
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    auto wavFile = tempDir.getChildFile("hdaw_b7_sampler_" + juce::String(juce::Random::getSystemRandom().nextInt()) + ".wav");
+    {
+        const double sr = 44100.0;
+        const int len = static_cast<int>(sr * 1.0);
+        juce::AudioBuffer<float> buf(1, len);
+        for (int s = 0; s < len; ++s)
+            buf.setSample(0, s, 0.8f * std::sin(2.0f * juce::MathConstants<float>::pi * 220.0f * s / sr));
+        juce::WavAudioFormat wavFmt;
+        std::unique_ptr<juce::AudioFormatWriter> w(wavFmt.createWriterFor(
+            new juce::FileOutputStream(wavFile), sr, 1, 16, {}, 0));
+        ASSERT_NE(w, nullptr);
+        w->writeFromAudioSampleBuffer(buf, 0, len);
+    }
+
+    const int trackIdx = pc.addTrack("Kick");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    pc.addFxSlot(trackIdx, "sampler", 0, "");
+    pc.setSamplerSample(trackIdx, 0, wavFile.getFullPathName().toStdString(), 60);
+    engine.drainPendingRoutingRebuild();
+
+    // 4-bar clip starting at beat 8 (a NON-zero start — the audit's shape).
+    const int clipId = pc.addMidiClip(trackIdx, 8.0, 16.0, "Kick");
+    ASSERT_GT(clipId, 0);
+    for (int b = 0; b < 16; b += 4)
+        ASSERT_GT(pc.addNote(clipId, 60, 100, b + 0.5, 0.25), 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(trackIdx, 4.0);
+    EXPECT_TRUE(v.ok) << v.error;
+    EXPECT_GT(v.soloPeak, 1e-4f) << "sampler solo render must be audible (B7)";
+    EXPECT_TRUE(v.audible);
+
+    wavFile.deleteFile();
+}
+
+TEST(VerifyPart, PsyFmSoloRenderWithOffsetNotesIsAudible)
+{
+    // B7 companion (Modular Dawn audit: acidvar, psy_fm, same silent-solo
+    // evidence): an internal psy_fm slot with notes at a non-zero beat offset
+    // must solo-render audibly through the same export path.
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const int trackIdx = pc.addTrack("Acidvar");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    pc.addFxSlot(trackIdx, "psy_fm", 0, "");
+    engine.drainPendingRoutingRebuild();
+
+    const int clipId = pc.addMidiClip(trackIdx, 4.0, 8.0, "Acid");
+    ASSERT_GT(clipId, 0);
+    for (int b = 0; b < 8; ++b)
+        ASSERT_GT(pc.addNote(clipId, 45 + (b % 5), 100, b + 0.25, 0.5), 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(trackIdx, 4.0);
+    EXPECT_TRUE(v.ok) << v.error;
+    EXPECT_GT(v.soloPeak, 1e-4f) << "psy_fm solo render must be audible (B7)";
+    EXPECT_TRUE(v.audible);
+}
+
+TEST(VerifyPart, MissingSamplerSampleFailsLoud)
+{
+    // B7 root cause (Modular Dawn): a sampler whose sampleFile no longer
+    // exists renders SILENT offline (the live engine keeps the pooled decode,
+    // so the mix context still shows contribution) — silence masquerading as
+    // a broken part. The render path must fail LOUDLY instead.
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const int trackIdx = pc.addTrack("GhostKick");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    pc.addFxSlot(trackIdx, "sampler", 0, "");
+    pc.setSamplerSample(trackIdx, 0, "Q:/nonexistent/gone.wav", 60);
+    engine.drainPendingRoutingRebuild();
+
+    const int clipId = pc.addMidiClip(trackIdx, 0.0, 4.0, "Kick");
+    ASSERT_GT(clipId, 0);
+    ASSERT_GT(pc.addNote(clipId, 60, 100, 0.5, 0.25), 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(trackIdx, 2.0);
+    EXPECT_FALSE(v.ok) << "missing sample must fail loudly, not render silence";
+    EXPECT_NE(v.error.find("sample file missing"), std::string::npos) << v.error;
+}
+
+TEST(VerifyPart, ExplicitBeatWindowRendersLateNotes)
+{
+    // B8 (Modular Dawn audit): a whole-arrangement clip (beat 0, notes only at
+    // beats 12+) could not be solo-verified — the default window renders from
+    // the earliest clip start (beat 0) and misses the notes entirely.
+    // startBeat/endBeat pin the window onto the late notes.
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const int trackIdx = pc.addTrack("LateLayer");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+
+    pc.addFxSlot(trackIdx, "fm_synth", 0, "");
+    engine.drainPendingRoutingRebuild();
+
+    // One clip spanning beats 0..16 (the psytrance score shape), notes ONLY
+    // at beats 12..14.
+    const int clipId = pc.addMidiClip(trackIdx, 0.0, 16.0, "Whole");
+    ASSERT_GT(clipId, 0);
+    for (int b = 12; b < 14; ++b)
+        ASSERT_GT(pc.addNote(clipId, 60, 100, b + 0.0, 0.5), 0);
+    engine.drainPendingRoutingRebuild();
+
+    // Default window (earliest clip start = beat 0): 2 s of intro silence.
+    auto def = pc.verifyPart(trackIdx, 2.0);
+    ASSERT_TRUE(def.ok) << def.error;
+    EXPECT_DOUBLE_EQ(def.windowStart, 0.0);
+    EXPECT_FALSE(def.audible) << "notes live at beats 12+; the default window must miss them";
+
+    // Explicit window pinned onto the notes (beats -> seconds at 120 BPM).
+    auto v = pc.verifyPart(trackIdx, 2.0, 12.0, 14.0);
+    ASSERT_TRUE(v.ok) << v.error;
+    EXPECT_GT(v.soloPeak, 1e-4f) << "explicit window must capture the late notes (B8)";
+    EXPECT_TRUE(v.audible);
+    EXPECT_DOUBLE_EQ(v.windowStart, 6.0);          // 12 beats * 60/120
+    EXPECT_DOUBLE_EQ(v.durationSeconds, 1.0);      // (14-12) beats * 60/120
+    EXPECT_DOUBLE_EQ(v.startBeat, 12.0);
+    EXPECT_DOUBLE_EQ(v.endBeat, 14.0);
+}
+
+TEST(VerifyPart, ExplicitStartBeatUsesWindowSeconds)
+{
+    // startBeat without endBeat: window spans [startBeat, startBeat + windowSeconds).
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const int trackIdx = pc.addTrack("StartOnly");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+    pc.addFxSlot(trackIdx, "fm_synth", 0, "");
+    engine.drainPendingRoutingRebuild();
+
+    const int clipId = pc.addMidiClip(trackIdx, 0.0, 16.0, "Whole");
+    ASSERT_GT(clipId, 0);
+    ASSERT_GT(pc.addNote(clipId, 60, 100, 8.0, 0.5), 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(trackIdx, 2.0, 8.0, 0.0);
+    ASSERT_TRUE(v.ok) << v.error;
+    EXPECT_GT(v.soloPeak, 1e-4f);
+    EXPECT_DOUBLE_EQ(v.windowStart, 4.0);      // 8 beats * 60/120
+    EXPECT_DOUBLE_EQ(v.durationSeconds, 2.0);  // windowSeconds kept
+    EXPECT_DOUBLE_EQ(v.startBeat, 8.0);
+}
+
+TEST(VerifyPart, ExplicitWindowRejectsInvertedRange)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& pc = engine.getProjectCommands();
+
+    const int trackIdx = pc.addTrack("BadWindow");
+    ASSERT_GE(trackIdx, 0);
+    engine.drainPendingRoutingRebuild();
+    const int clipId = pc.addMidiClip(trackIdx, 0.0, 4.0, "C");
+    ASSERT_GT(clipId, 0);
+    engine.drainPendingRoutingRebuild();
+
+    auto v = pc.verifyPart(trackIdx, 2.0, 6.0, 4.0);
+    EXPECT_FALSE(v.ok);
+    EXPECT_NE(v.error.find("startBeat/endBeat invalid"), std::string::npos) << v.error;
+}
+
 TEST(VerifyPart, OfflineRenderDoesNotClobberClipIds)
 {
     // Regression: ExportManager's local ProjectModel ctor used to reset the

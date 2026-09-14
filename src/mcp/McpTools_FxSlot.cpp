@@ -482,7 +482,7 @@ s.registerTool({"load_nord_bank",
             .arg(r.capturedToTree ? 1 : 0));
     }});
 s.registerTool({"set_master_fx_param",
-        "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB, param1=Release ms). A slot only processes when bypassed=false.",
+        "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB [-24..0], param1=Release ms [1..500], param2=Ceiling linear [0.5..1.0] — post-limiter output clamp; 1.0 = full scale). A slot only processes when bypassed=false.",
         objSchema({{"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
                   {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","paramIndex","value"}),

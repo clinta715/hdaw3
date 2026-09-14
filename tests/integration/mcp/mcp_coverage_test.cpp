@@ -3387,6 +3387,24 @@ TEST_F(McpCoverageTest, MasterFxToolsRoundTrip) {
     ASSERT_FALSE(isError(clamp)) << text(clamp).toStdString();
     EXPECT_TRUE(text(clamp).contains("clamped")) << text(clamp).toStdString();
 
+    // B10: limiter paramIndex 2 = Ceiling (0.5..1.0 linear). In-range write
+    // lands; below-range clamps to 0.5.
+    auto ceilWrite = call("set_master_fx_param", {{"slotIndex", 1}, {"paramIndex", 2}, {"value", 0.8}});
+    ASSERT_FALSE(isError(ceilWrite)) << text(ceilWrite).toStdString();
+    auto ceilClamp = call("set_master_fx_param", {{"slotIndex", 1}, {"paramIndex", 2}, {"value", 0.3}});
+    ASSERT_FALSE(isError(ceilClamp)) << text(ceilClamp).toStdString();
+    EXPECT_TRUE(text(ceilClamp).contains("clamped")) << text(ceilClamp).toStdString();
+    // get_master_fx_params lists the Ceiling def for the limiter slot.
+    auto ceilRead = call("get_master_fx_params");
+    ASSERT_FALSE(isError(ceilRead)) << text(ceilRead).toStdString();
+    auto ceilObj = QJsonDocument::fromJson(text(ceilRead).toUtf8()).object();
+    auto limSlot = ceilObj.value("slots").toArray().at(1).toObject();
+    auto limParams = limSlot.value("params").toArray();
+    ASSERT_EQ(limParams.size(), 3);
+    EXPECT_EQ(limParams.at(2).toObject().value("name").toString(), "Ceiling");
+    EXPECT_DOUBLE_EQ(limParams.at(2).toObject().value("minValue").toDouble(), 0.5);
+    EXPECT_DOUBLE_EQ(limParams.at(2).toObject().value("maxValue").toDouble(), 1.0);
+
     // Enable the limiter; readback reflects the clamped threshold (0 dB).
     auto enable = call("set_master_fx_bypassed", {{"slotIndex", 1}, {"bypassed", false}});
     ASSERT_FALSE(isError(enable)) << text(enable).toStdString();

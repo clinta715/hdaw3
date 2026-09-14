@@ -188,6 +188,27 @@ public:
                     juce::dsp::AudioBlock<float> block(buffer);
                     juce::dsp::ProcessContextReplacing<float> ctx(block);
                     l.process(ctx);
+                    // Ceiling (param 2, 0.5..1.0): juce's dsp::Limiter always
+                    // ceilings at 0 dBFS, so a lower ceiling is a post-gain
+                    // clamp. Applied after the limiter's makeup stage so the
+                    // loudness drive still happens — only the ceiling moves
+                    // (B10). A value below the def minimum (0.5) means the
+                    // slot never stored a ceiling (legacy project / direct
+                    // construction) — treat as unity so the pre-Ceiling
+                    // contract (hard clip at 0 dBFS) is bit-identical.
+                    // Audio-thread safe: atomic read + jlimit per sample, no
+                    // alloc/lock (Gate 3).
+                    const float ceilingRaw = slotParams[(size_t) i][2].load(std::memory_order_relaxed);
+                    const float ceiling = (ceilingRaw >= 0.5f) ? ceilingRaw : 1.0f;
+                    if (ceiling < 1.0f)
+                    {
+                        for (int ch = 0; ch < numChannels; ++ch)
+                        {
+                            auto* data = buffer.getWritePointer(ch);
+                            for (int s = 0; s < numSamples; ++s)
+                                data[s] = juce::jlimit(-ceiling, ceiling, data[s]);
+                        }
+                    }
                 }
             }
         }

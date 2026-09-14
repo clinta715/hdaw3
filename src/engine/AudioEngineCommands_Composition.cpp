@@ -329,7 +329,8 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
                                      double windowSeconds, float fader,
                                      bool applyFader, bool soloMuteOthers = true,
                                      BandPresence* outBands = nullptr,
-                                     float masterScale = 1.0f)
+                                     float masterScale = 1.0f,
+                                     double windowStartOverride = -1.0)
 {
     RenderWindowResult result;
 
@@ -377,6 +378,11 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
         result.error = "track has no clips";
         return result;
     }
+    // B8: an explicit window (verify_part startBeat/endBeat, converted to
+    // seconds by the caller at the project BPM — lesson 1) pins the render
+    // start instead of the track's earliest clip startTime.
+    if (windowStartOverride >= 0.0)
+        windowStart = windowStartOverride;
     result.windowStart = windowStart;
 
     // Tree copy: solos always cleared; other tracks muted only in solo mode.
@@ -403,6 +409,41 @@ RenderWindowResult renderTrackWindow(AudioEngine& engine, int trackIndex,
     {
         const double current = static_cast<double>(treeCopy.getProperty(IDs::masterGain, 1.0));
         treeCopy.setProperty(IDs::masterGain, current * static_cast<double>(masterScale), nullptr);
+    }
+
+    // B7 (Modular Dawn audit): a sampler slot whose sampleFile no longer
+    // resolves renders SILENT offline (the export graph's loadSamplerState
+    // fallback returns without a sound) while the LIVE engine stays audible —
+    // it holds the decoded sound in the pool from when the file existed.
+    // RAVE-imported stems are the classic case (temp paths cleaned between
+    // sessions). Silence then masquerades as a broken part. Fail LOUDLY
+    // instead: every unmuted track in this render must have decodable
+    // sampler samples. Runs on the post-mutation copy so solo/mix mute
+    // state is final.
+    {
+        for (int t = 0; t < copyTrackList.getNumChildren(); ++t)
+        {
+            auto track = copyTrackList.getChild(t);
+            if (static_cast<bool>(track.getProperty(IDs::isMuted, false)))
+                continue;
+            auto fxChain = track.getChildWithName(IDs::FX_CHAIN);
+            for (int s = 0; fxChain.isValid() && s < fxChain.getNumChildren(); ++s)
+            {
+                auto slot = fxChain.getChild(s);
+                if (slot.getProperty(IDs::fxType).toString() != "sampler")
+                    continue;
+                const juce::String sampleFile = slot.getProperty("sampleFile", "").toString();
+                if (sampleFile.isEmpty())
+                    continue;   // no sample loaded — renders silence by design
+                if (!juce::File(sampleFile).existsAsFile())
+                {
+                    result.error = "sampler sample file missing: " + sampleFile.toStdString()
+                                 + " (track " + std::to_string(t) + " slot " + std::to_string(s) + ")"
+                                 + " — reload the sample before rendering";
+                    return result;
+                }
+            }
+        }
     }
 
     auto& fm = engine.getProjectPool().getFormatManager();
@@ -1265,7 +1306,8 @@ ProjectCommands::AuditionResult AudioEngineCommands::auditionPlugin(const Auditi
     return result;
 }
 
-ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex, double windowSeconds)
+ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex, double windowSeconds,
+                                                                  double startBeat, double endBeat)
 {
     VerifyPartResult result;
 
@@ -1282,18 +1324,54 @@ ProjectCommands::VerifyPartResult AudioEngineCommands::verifyPart(int trackIndex
         return result;
     }
 
+    // B8: optional explicit window in BEATS (frontend/MCP unit — lesson 1).
+    // startBeat pins the window start; endBeat (> startBeat, optional) pins
+    // the end — windowSeconds is then derived from the span. With startBeat
+    // only, windowSeconds is kept. The 0/0 sentinel pair (what the MCP tool
+    // and RPC send for "absent") falls back to the track's earliest clip
+    // startTime — the original behavior. Converted to seconds at the project
+    // BPM.
+    double windowStartSec = -1.0;
+    const bool hasStart = (startBeat > 0.0);
+    const bool hasEnd = (endBeat > 0.0);
+    if (hasStart || hasEnd)
+    {
+        if (!hasStart || (hasEnd && !(endBeat > startBeat)))
+        {
+            result.error = "startBeat/endBeat invalid: need 0 < startBeat (< endBeat)";
+            return result;
+        }
+        const double bpm = engine_.getTransportManager().getBPM();
+        if (!(bpm > 0.0))
+        {
+            result.error = "project BPM not set";
+            return result;
+        }
+        windowStartSec = HDAW::beatsToSeconds(startBeat, bpm);
+        if (hasEnd)
+        {
+            // The window spans [startBeat, endBeat) — windowSeconds is derived
+            // so the two render calls (solo + mix) measure the pinned span.
+            windowSeconds = HDAW::beatsToSeconds(endBeat, bpm) - windowStartSec;
+            result.endBeat = endBeat;
+        }
+        result.startBeat = startBeat;
+    }
+
     // Solo render (with band analysis) + full-mix render of the same window —
     // both via the shared renderTrackWindow. Read-only: no tree writes, no
     // undo, no rebuild.
     BandPresence bands;
-    auto solo = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, true, &bands);
+    auto solo = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, true, &bands,
+                                  1.0f, windowStartSec);
     if (!solo.error.empty())
     {
         result.error = solo.error;
         return result;
     }
 
-    auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, false);
+    auto mix = renderTrackWindow(engine_, trackIndex, windowSeconds, 1.0f, false, false,
+                                 nullptr, 1.0f, windowStartSec);
     if (!mix.error.empty())
     {
         solo.wavPath.deleteFile();

@@ -101,7 +101,8 @@ public:
     /// mutation — not undoable; persists via plugin state on save. Returns
     /// ok=false + error on invalid track/slot or malformed batch.
     FxMidiResult sendFxMidi(const FxMidiParams& params) override;
-    VerifyPartResult verifyPart(int trackIndex, double windowSeconds) override;
+    VerifyPartResult verifyPart(int trackIndex, double windowSeconds,
+                                double startBeat = 0.0, double endBeat = 0.0) override;
 
     // ProjectCommands — audio clip timestretch
     void setClipSourceBpm(int clipId, double bpm) override;

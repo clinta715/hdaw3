@@ -1030,8 +1030,11 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!requireInt(o, "trackIndex", trackIndex, nullptr))
             return makeError(-32602, "trackIndex required");
         const double windowSeconds = optDouble(o, "windowSeconds", 4.0, nullptr);
+        // B8: optional explicit window in beats. 0/0 = absent (earliest-clip fallback).
+        const double startBeat = optDouble(o, "startBeat", 0.0, nullptr);
+        const double endBeat = optDouble(o, "endBeat", 0.0, nullptr);
 
-        auto r = c.verifyPart(trackIndex, windowSeconds);
+        auto r = c.verifyPart(trackIndex, windowSeconds, startBeat, endBeat);
         QJsonObject res{
             { "ok", r.ok },
             { "soloRms", static_cast<double>(r.soloRms) },
@@ -1045,7 +1048,9 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
             { "bandMid", r.bandMid },
             { "bandHigh", r.bandHigh },
             { "windowStart", r.windowStart },
-            { "durationSeconds", r.durationSeconds }
+            { "durationSeconds", r.durationSeconds },
+            { "startBeat", r.startBeat },
+            { "endBeat", r.endBeat }
         };
         if (!r.error.empty())
             res.insert("error", QString::fromStdString(r.error));

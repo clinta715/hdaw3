@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 #include <juce_core/juce_core.h>
@@ -754,9 +755,18 @@ public:
         bool bandLow = false, bandMid = false, bandHigh = false;
         double windowStart = 0.0;
         double durationSeconds = 0.0;
+        // Echo of the requested window in beats (NaN = not requested — the
+        // window fell back to the track's earliest clip start).
+        double startBeat = std::numeric_limits<double>::quiet_NaN();
+        double endBeat = std::numeric_limits<double>::quiet_NaN();
         std::string error;
     };
-    virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0) = 0;
+    // startBeat/endBeat (BEATS — the frontend/MCP unit, lesson 1) override the
+    // default window (the track's earliest clip startTime in seconds). Both
+    // must be provided together; endBeat > startBeat. Converted to seconds at
+    // the project BPM internally.
+    virtual VerifyPartResult verifyPart(int trackIndex, double windowSeconds = 4.0,
+                                        double startBeat = 0.0, double endBeat = 0.0) = 0;
 
     // Missing source-file relinking. Searches the given directory (recursively)
     // for a file matching either (a) the exact filename, or (b) the same

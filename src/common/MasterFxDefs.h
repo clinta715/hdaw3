@@ -25,6 +25,12 @@ inline const std::vector<MasterFxParamDef>& masterFxParamDefs(const juce::String
     static const std::vector<MasterFxParamDef> lim = {
         {"Threshold",  -3.0f, -24.0f,   0.0f},
         {"Release",    80.0f,   1.0f, 500.0f},
+        // Ceiling: post-limiter output clamp (0.5..1.0 linear). juce's
+        // dsp::Limiter always ceilings at 0 dBFS (two compressor stages +
+        // threshold-derived makeup + hard clip at +/-1.0), so a ceiling below
+        // full scale is applied as a post-gain clamp here (B10, Modular Dawn
+        // audit: "engaging the limiter can never yield peak < 1.0").
+        {"Ceiling",     1.0f,   0.5f,   1.0f},
     };
     static const std::vector<MasterFxParamDef> none = {};
     if (fxType == "eq")         return eq;

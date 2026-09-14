@@ -233,20 +233,27 @@ s.registerTool({"audition_plugin",
         }});
 
 s.registerTool({"verify_part",
-        "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (mix peak < 1.0), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy). Read-only. Calls the same engine command as the composition.verifyPart RPC.",
+        "Self-verify a composed part: solo-render + full-mix render of the track's window; reports solo/mix rms+peak, nonClipping (mix peak < 1.0), audible (solo peak > -80 dBFS), bandsPresent (low/mid/high spectral energy). Read-only. Window defaults to the track's earliest clip start; provide startBeat (BEATS) — and optionally endBeat (BEATS, > startBeat; the window then spans [startBeat,endBeat) instead of using windowSeconds) — to pin an explicit window for a late-section layer without moving the playhead. Calls the same engine command as the composition.verifyPart RPC.",
         objSchema({{"trackIndex",    QJsonObject{{"type","integer"},{"minimum",0}}},
-                   {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}}},
+                   {"windowSeconds", QJsonObject{{"type","number"},{"minimum",0.1}}},
+                   {"startBeat",     QJsonObject{{"type","number"},{"minimum",0}}},
+                   {"endBeat",       QJsonObject{{"type","number"},{"minimum",0}}}},
                    {"trackIndex"}),
         "composition",
         [e](const QJsonObject& a) -> McpToolResult {
             const int trackIndex = a.value("trackIndex").toInt(-1);
             const double windowSeconds = a.value("windowSeconds").toDouble(4.0);
-            auto r = e->getProjectCommands().verifyPart(trackIndex, windowSeconds);
+            const double startBeat = a.value("startBeat").toDouble(0.0);
+            const double endBeat = a.value("endBeat").toDouble(0.0);
+            auto r = e->getProjectCommands().verifyPart(trackIndex, windowSeconds, startBeat, endBeat);
             if (!r.error.empty())
                 return McpToolResult::text(QString::fromStdString(r.error), true);
-            return McpToolResult::text(QString("ok=%1 soloRms=%2 soloPeak=%3 mixRms=%4 mixPeak=%5 nonClipping=%6 audible=%7 bandsPresent=%8")
+            QString extra;
+            if (!(r.startBeat != r.startBeat)) // !NaN -> explicit window requested
+                extra = QString(" startBeat=%1 endBeat=%2").arg(r.startBeat).arg(r.endBeat);
+            return McpToolResult::text(QString("ok=%1 soloRms=%2 soloPeak=%3 mixRms=%4 mixPeak=%5 nonClipping=%6 audible=%7 bandsPresent=%8%9")
                 .arg(r.ok).arg(r.soloRms).arg(r.soloPeak).arg(r.mixRms).arg(r.mixPeak)
-                .arg(r.nonClipping).arg(r.audible).arg(r.bandsPresent));
+                .arg(r.nonClipping).arg(r.audible).arg(r.bandsPresent).arg(extra));
         }});
 
 }

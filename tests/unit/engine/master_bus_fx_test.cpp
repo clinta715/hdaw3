@@ -123,6 +123,86 @@ TEST(MasterBusFx, LimiterCapsPeakWhenEnabled)
     EXPECT_GT(limitedPeak, 0.90f);             // makeup keeps it near full scale, not muted
 }
 
+TEST(MasterBusFx, LimiterCeilingCapsBelowFullScale)
+{
+    // B10 (Modular Dawn audit): the limiter's output ceiling was pinned at
+    // 0 dBFS — engaging it could never yield peak < 1.0. Ceiling (param 2,
+    // 0.5..1.0 linear) post-clamps the limiter output.
+    const std::vector<float> params = { -12.0f, 80.0f, 0.8f };
+    const float peak = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, params, "limiter");
+    EXPECT_LE(peak, 0.81f) << "ceiling 0.8 must cap the rendered peak";
+    EXPECT_GE(peak, 0.5f) << "ceiling must clamp, not mute";
+}
+
+TEST(MasterBusFx, LimiterCeilingUnsetBehavesAsUnity)
+{
+    // Legacy/direct-constructed slots that never stored param_2 (resetSlotsTo
+    // Defaults zeroes it) must keep the pre-Ceiling contract: hard clip at
+    // 0 dBFS, makeup near full scale.
+    const std::vector<float> params = { -12.0f, 80.0f };
+    const float peak = renderPeak(44100.0, 44100, 200.0f, 1.5f, 1, false, params, "limiter");
+    EXPECT_LT(peak, 1.01f);
+    EXPECT_GT(peak, 0.90f);
+}
+
+TEST(MasterBusFx, LimiterCeilingClampsAtCommandLayer)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    // Ceiling def range is 0.5..1.0; 0.3 clamps to 0.5, 0.8 lands verbatim.
+    EXPECT_FLOAT_EQ(engine.getProjectCommands().setMasterFxParam(1, 2, 0.3f), 0.5f);
+    EXPECT_FLOAT_EQ(engine.getProjectCommands().setMasterFxParam(1, 2, 0.8f), 0.8f);
+
+    auto masterFx = engine.getProjectModel().getTree().getChildWithName(IDs::MASTER_FX);
+    ASSERT_TRUE(masterFx.isValid());
+    EXPECT_FLOAT_EQ(
+        (float) (double) masterFx.getChild(1).getProperty("param_2", 0.0), 0.8f);
+}
+
+TEST(MasterBusFx, LimiterCeilingSurvivesRebuildOnLiveProcessor)
+{
+    // Gate 1/10: the ceiling travels tree -> command -> LIVE master bus
+    // processor, and the live processor's processBlock renders peak <= ceiling.
+    AudioEngine engine;
+    engine.initialize();
+
+    engine.getProjectCommands().setMasterFxBypassed(1, false);
+    engine.getProjectCommands().setMasterFxParam(1, 0, -12.0f);
+    engine.getProjectCommands().setMasterFxParam(1, 2, 0.8f);
+    engine.getMainProcessor()->rebuildRoutingGraph();
+
+    auto* mb = engine.getMainProcessor()->getRoutingManager()->getMasterBus();
+    ASSERT_NE(mb, nullptr);
+    EXPECT_FLOAT_EQ(mb->getSlotParam(1, 2), 0.8f);
+
+    // Drive the LIVE processor's master bus with a hot stereo sine: the
+    // limiter's makeup drives into its 0 dBFS clipper, the ceiling clamps
+    // the result to 0.8.
+    const int samples = 44100;
+    juce::AudioBuffer<float> buf(2, samples);
+    const double twoPi = 6.28318530717958647692;
+    for (int s = 0; s < samples; ++s)
+    {
+        const float v = 1.5f * (float) std::sin(twoPi * 200.0 * s / 44100.0);
+        buf.setSample(0, s, v);
+        buf.setSample(1, s, v);
+    }
+    juce::MidiBuffer midi;
+    float peak = 0.0f;
+    for (int start = 0; start < samples; start += 512)
+    {
+        const int n = std::min(512, samples - start);
+        juce::AudioBuffer<float> chunk(2, n);
+        for (int ch = 0; ch < 2; ++ch)
+            chunk.copyFrom(ch, 0, buf, ch, start, n);
+        mb->processBlock(chunk, midi);
+        peak = std::max(peak, chunk.getMagnitude(0, 0, n));
+    }
+    EXPECT_LE(peak, 0.81f) << "live master bus must honor the ceiling (B10)";
+    EXPECT_GE(peak, 0.5f);
+}
+
 TEST(MasterBusFx, LimiterBypassedPassesThrough)
 {
     const std::vector<float> limiterParams = { -12.0f, 80.0f };
