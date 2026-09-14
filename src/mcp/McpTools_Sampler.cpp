@@ -122,7 +122,7 @@ s.registerTool({"sampler_get_state",
         }});
 
 s.registerTool({"set_sampler_param",
-        "Set a sampler FX slot parameter. Either a named slot property ({property, value}: mono, playReverse, transpose, baseNote) or a real parameter value by paramIndex.",
+        "Set a sampler FX slot parameter. Either a named slot property ({property, value}: mono, playReverse, transpose, baseNote) or a real parameter value by paramIndex. Unknown property names are an ERROR — keyRange has its own tool (set_sampler_key_range).",
         objSchema({{"trackId",    QJsonObject{{"type","integer"}}},
                   {"slotIndex",  QJsonObject{{"type","integer"}}},
                   {"paramIndex", QJsonObject{{"type","integer"}}},
@@ -140,12 +140,35 @@ s.registerTool({"set_sampler_param",
                 return McpToolResult::text("slot is not a sampler", true);
             if (a.contains("property"))
             {
+                // B12 (Modular Dawn audit): set_sampler_param silently no-oped on
+                // unknown properties (e.g. param:'keyRange' — the real tool is
+                // set_sampler_key_range) while reporting ok, so agents believed
+                // a write had landed that never did. Validate against the exact
+                // set setSamplerProperty implements; anything else is an error.
+                static const char* kSamplerProperties[] = { "mono", "playReverse", "transpose", "baseNote" };
                 QString prop = a.value("property").toString();
+                bool known = false;
+                for (const char* k : kSamplerProperties)
+                    if (prop == k) { known = true; break; }
+                if (!known)
+                    return McpToolResult::text(
+                        QString("unknown sampler property '%1' (valid: mono, playReverse, transpose, baseNote; keyRange is set via set_sampler_key_range)")
+                            .arg(prop), true);
+                // The wire value may arrive as a JSON bool (mono/playReverse)
+                // or a number (transpose/baseNote) — QJsonValue's scalar
+                // readers return the DEFAULT for the wrong type, so normalize
+                // explicitly (B12 family: silent value coercion).
+                const QJsonValue wireVal = a.value("value");
                 e->getAudioEngineCommands().setSamplerProperty(
-                    ti, si, prop.toStdString(), a.value("value").toBool(false));
+                    ti, si, prop.toStdString(),
+                    wireVal.isBool() ? (wireVal.toBool() ? 1.0 : 0.0)
+                                     : wireVal.toDouble());
                 return McpToolResult::text(QJsonDocument(QJsonObject{{"ok", true}})
                     .toJson(QJsonDocument::Compact));
             }
+            if (!a.contains("paramIndex"))
+                return McpToolResult::text(
+                    "set_sampler_param requires either 'property' or 'paramIndex' (with 'value')", true);
             int pi = a.value("paramIndex").toInt();
             float v = static_cast<float>(a.value("value").toDouble());
             e->getProjectCommands().setFxSlotParam(ti, si, pi, v);

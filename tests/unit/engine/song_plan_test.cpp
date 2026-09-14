@@ -7,6 +7,7 @@
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
+#include <set>
 
 #include "engine/AudioEngine.h"
 #include "common/ProjectCommands.h"
@@ -359,6 +360,79 @@ TEST(SongCells, HarvestNotesAndRemove)
     EXPECT_TRUE(cmds.removeCellRecipe("build", "hits"));
     EXPECT_TRUE(cmds.getCells().empty());
     EXPECT_FALSE(cmds.removeCellRecipe("build", "hits"));
+}
+
+TEST(SongCells, PadCellFillsChordVoicing)
+{
+    // B6 (Modular Dawn audit): a pad-role cell must produce a chord voicing
+    // (root + fifth +7 + octave +12 per chord slot), not a single-note drone.
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(makeCell("intro", "pad", "phrase"), &err)) << err;
+
+    auto b = cmds.fillCells("all");
+    ASSERT_TRUE(b.ok) << b.error;
+    ASSERT_EQ(b.cells.size(), 1u);
+    ASSERT_TRUE(b.cells[0].ok) << b.cells[0].error;
+    // A voicing stack: >= 3 notes (one chord slot minimum).
+    EXPECT_GE(b.cells[0].noteCount, 3);
+
+    // Every filled note carries its +7 and +12 companions at the same start
+    // beat — the chord-voicing contract (group by exact startBeat; collisions
+    // between base notes are tolerated by the companion lookup).
+    auto clip = findClipNode(engine, b.cells[0].clipId);
+    ASSERT_TRUE(clip.isValid());
+    auto notes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    ASSERT_TRUE(notes.isValid());
+    struct P { double start; int pitch; };
+    std::vector<P> ns;
+    for (int i = 0; i < notes.getNumChildren(); ++i)
+    {
+        auto n = notes.getChild(i);
+        ns.push_back({ (double) n.getProperty(IDs::startBeat),
+                       (int) n.getProperty(IDs::noteNumber) });
+    }
+    ASSERT_GE(ns.size(), 3u);
+    // Membership contract: EVERY filled note must belong to a root+fifth+octave
+    // triple {r, r+7, r+12} sharing its exact start beat (a note counts when it
+    // is the root, the fifth (root = pitch-7), or the octave (root = pitch-12)
+    // of a complete triple at the same start). Collision-tolerant.
+    int covered = 0;
+    for (const auto& n : ns)
+    {
+        bool member = false;
+        for (int rootOffset : { 0, -7, -12 })
+        {
+            const int root = n.pitch + rootOffset;
+            if (root < 0 || root > 115) continue;
+            bool hasRoot = false, hasFifth = false, hasOct = false;
+            for (const auto& m : ns)
+            {
+                if (m.start != n.start) continue;
+                if (m.pitch == root) hasRoot = true;
+                if (m.pitch == root + 7) hasFifth = true;
+                if (m.pitch == root + 12) hasOct = true;
+            }
+            if (hasRoot && hasFifth && hasOct) { member = true; break; }
+        }
+        if (member) ++covered;
+    }
+    EXPECT_EQ(covered, static_cast<int>(ns.size()))
+        << "every pad note must belong to a root+fifth+octave voicing triple";
+    // And the stack is real: several independent chord slots (start groups).
+    std::set<double> starts;
+    for (const auto& n : ns) starts.insert(n.start);
+    EXPECT_GE(starts.size(), 3u);
+
+    // The octave voice proves it's a real stack, not a unison retrigger.
+    int maxPitch = 0;
+    for (const auto& n : ns) maxPitch = std::max(maxPitch, n.pitch);
+    EXPECT_GE(maxPitch - 12, 48) << "expected stacked octaves (root+12)";
 }
 
 TEST(SongCells, CellsPersistAcrossSaveLoad)

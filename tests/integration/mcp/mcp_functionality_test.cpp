@@ -1294,6 +1294,41 @@ TEST_F(GuiFuncTest, SamplerToolsRegistered) {
         EXPECT_TRUE(server->tools().contains(name)) << "missing tool: " << name;
 }
 
+// B12 (Modular Dawn audit): set_sampler_param silently reported ok on unknown
+// property names (e.g. param:'keyRange' — the real tool is
+// set_sampler_key_range), so agents believed a write landed that never did.
+// Unknown properties must ERROR; known ones must round-trip.
+TEST_F(GuiFuncTest, SamplerSetParamRejectsUnknownProperty) {
+    auto add = call("add_fx", {{"trackId", 0}, {"fxType", "sampler"}});
+    ASSERT_FALSE(isError(add)) << text(add).toStdString();
+    QString addText = text(add);
+    int slot = addText.mid(addText.indexOf('=') + 1).toInt();
+
+    auto bad = call("set_sampler_param",
+                    {{"trackId", 0}, {"slotIndex", slot},
+                     {"property", "keyRange"}, {"value", 60}});
+    EXPECT_TRUE(isError(bad)) << "unknown property must error, got: "
+                              << text(bad).toStdString();
+    EXPECT_TRUE(text(bad).contains("unknown sampler property"))
+        << text(bad).toStdString();
+
+    // keyRange's real tool works and the slot state reflects it.
+    auto kr = call("set_sampler_key_range",
+                   {{"trackId", 0}, {"slotIndex", slot},
+                    {"keyLow", 36}, {"keyHigh", 60}});
+    EXPECT_FALSE(isError(kr)) << text(kr).toStdString();
+
+    // A known property still succeeds and round-trips through the state read.
+    auto good = call("set_sampler_param",
+                     {{"trackId", 0}, {"slotIndex", slot},
+                      {"property", "transpose"}, {"value", 5}});
+    EXPECT_FALSE(isError(good)) << text(good).toStdString();
+    auto state = QJsonDocument::fromJson(
+        callText("sampler_get_state", {{"trackId", 0}, {"slotIndex", slot}}).toString().toUtf8()).object();
+    EXPECT_EQ(state.value("transpose").toInt(), 5);
+    EXPECT_EQ(state.value("keyRangeLow").toInt(), 36);
+}
+
 // MCP round-trip for the sampler mode control: add a sampler slot, switch it
 // to slice mode, and read the state back.
 TEST_F(GuiFuncTest, SamplerSetModeRoundTrip) {

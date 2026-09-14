@@ -754,8 +754,28 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
         }
         overridePhraseFields(pp, params);
         pp.seed = seedUsed;   // seed authority stays the cell's
+        // B6 (Modular Dawn audit): a pad-role cell must fill CHORD VOICINGS,
+        // not a single-note drone — every pad section sounded like one held
+        // pitch (the user heard "uninitialized synth"). Default the phrase
+        // style to Pad (long-held notes) when the recipe doesn't pin one, and
+        // stack root + fifth (+7) + octave (+12) under every generated note
+        // so each chord slot sounds as a voicing. Pitches stay in range:
+        // generatePhrase bounds to [lowNote, highNote] (48..84 defaults), so
+        // +12 <= 96 — the defensive 0..127 clamp never merges voices.
+        const bool padVoicing = juce::String(cell.role).equalsIgnoreCase("pad");
+        if (padVoicing && !(params.isObject() && params.hasProperty("style")))
+            pp.style = PhraseGenerator::Pad;
         for (const auto& n : PhraseGenerator::generatePhrase(pp))
+        {
             addGuarded(n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
+            if (padVoicing)
+            {
+                addGuarded(juce::jlimit(0, 127, n.noteNumber + 7),
+                           n.velocity, n.startBeat, n.durationBeats);
+                addGuarded(juce::jlimit(0, 127, n.noteNumber + 12),
+                           n.velocity, n.startBeat, n.durationBeats);
+            }
+        }
     }
     else if (cell.sourceKind == "rhythm")
     {

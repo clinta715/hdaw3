@@ -40,7 +40,12 @@ DispatchResult dispatchSampler(AudioEngine& engine, const QString& m, const QJso
             std::string prop;
             if (!requireString(o, "property", prop, nullptr) || !o.contains("value"))
                 return makeError(-32602, "property and value required");
-            cmds.setSamplerProperty(ti, si, prop, o.value("value").toBool());
+            // The wire value may arrive as a JSON bool (mono/playReverse) or a
+            // number (transpose/baseNote) — QJsonValue's scalar readers return
+            // their DEFAULT for the wrong type, so normalize explicitly.
+            const QJsonValue v = o.value("value");
+            cmds.setSamplerProperty(ti, si, prop,
+                v.isBool() ? (v.toBool() ? 1.0 : 0.0) : v.toDouble());
             return { false, QJsonValue::Null };
         }
 

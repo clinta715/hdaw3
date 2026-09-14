@@ -166,11 +166,15 @@ struct EngineAndServer {
 
 // Zero-track default contract (v0.33+): createDefaultProject() ships an empty
 // TRACK_LIST — track-indexed tests seed via the same project.addTrack RPC the
-// UI uses. NOTE: a track add escalates the delta accumulator to fullSync for
-// its 16 ms debounce window, so delta-shape assertions must consume the seed's
-// own notify.treeChanged (waitForNotificationParams) before their real
-// mutation; processEvents() alone cannot settle it because it returns early
-// when no events are pending.
+// UI uses. A track add cannot be expressed as a clip/track delta (indices
+// shift), so it legitimately latches the delta accumulator to fullSync for its
+// 16 ms debounce window; the flush broadcasts fullSync=true and the client
+// re-fetches (B13 fixed: the escalation no longer DISCARDS events — mutations
+// racing the window are retained and covered by the re-fetch). Delta-SHAPE
+// assertions must still consume the seed's own notify.treeChanged
+// (waitForNotificationParams) before their real mutation, so the seed burst
+// doesn't masquerade as their delta; processEvents() alone cannot settle it
+// because it returns early when no events are pending.
 void seedTrack(AudioEngine& engine)
 {
     auto r = frontend::dispatch(engine, "project.addTrack",

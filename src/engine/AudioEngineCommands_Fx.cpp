@@ -687,14 +687,18 @@ void AudioEngineCommands::setSamplerMode(int trackIndex, int slotIndex,
 }
 
 void AudioEngineCommands::setSamplerProperty(int trackIndex, int slotIndex,
-                                             const std::string& property, bool value)
+                                             const std::string& property, double value)
 {
     auto& um = engine_.getProjectModel().getUndoManager();
     auto slot = findFxSlot(trackIndex, slotIndex);
     if (!slot.isValid()) return;
 
+    // B12 follow-up: the wire value is a NUMBER (the tool schema says number).
+    // The old bool parameter coerced QJsonValue::toBool() — which returns the
+    // DEFAULT for non-bool JSON values — so transpose:5/baseNote:30 were
+    // silently written as 0/1 (same silent-write family as B12).
     if (property == "mono" || property == "playReverse")
-        slot.setProperty(juce::Identifier(property), value, &um);
+        slot.setProperty(juce::Identifier(property), value != 0.0, &um);
     else if (property == "transpose" || property == "baseNote")
         slot.setProperty(juce::Identifier(property), static_cast<int>(value), &um);
     else

@@ -10,8 +10,11 @@ namespace frontend {
 // Accumulates granular juce::ValueTree change callbacks over a debounce window
 // and coalesces them into a minimal delta (changed/removed clips, changed
 // tracks). Any change it cannot cleanly represent as a delta (track add/remove,
-// markers, tempo, FX, automation, sub-clip detail, reorder) sets a fullSync flag
-// so the client falls back to a whole-snapshot re-fetch.
+// markers, tempo, FX, automation, sub-clip detail, reorder) latches a fullSync
+// flag so the client falls back to a whole-snapshot re-fetch. The latch is
+// NON-destructive (B13): pending deltas are retained and further events keep
+// accumulating until the flush; the flush broadcasts fullSync=true and the
+// client re-fetches, so nothing observed in the window can be lost.
 //
 // Used by FrontendTreeWatcher. Unit-testable in isolation (no server needed).
 //

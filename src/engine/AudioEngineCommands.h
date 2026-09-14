@@ -263,7 +263,7 @@ public:
                           const std::string& filePath, int rootNote = 60) override;
     void setSamplerMode(int trackIndex, int slotIndex, const std::string& mode);
     void setSamplerProperty(int trackIndex, int slotIndex,
-                            const std::string& property, bool value);
+                            const std::string& property, double value);
     void setSamplerKeyRange(int trackIndex, int slotIndex, int keyLow, int keyHigh) override;
     void setSamplerSliceMode(int trackIndex, int slotIndex,
                              const std::string& sliceMode,

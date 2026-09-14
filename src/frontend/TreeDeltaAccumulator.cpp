@@ -5,7 +5,10 @@
 namespace frontend {
 
 void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree, const juce::Identifier& property) {
-    if (fullSync_) return;
+    // B13: no early return on the fullSync latch — events keep accumulating
+    // under it (see escalateToFullSync). The latch only pins the flush mode;
+    // discarding events here is what swallowed the first mutation after a
+    // seed burst (audit 2026-09-13).
     const auto type = tree.getType();
     if (type == IDs::CLIP) {
         upsertClip(tree);
@@ -27,13 +30,11 @@ void TreeDeltaAccumulator::notePropertyChanged(const juce::ValueTree& tree, cons
 }
 
 void TreeDeltaAccumulator::noteChildAdded(const juce::ValueTree& child) {
-    if (fullSync_) return;
     if (child.getType() == IDs::CLIP) upsertClip(child);
     else                              escalateToFullSync();  // TRACK add (indices shift), notes, markers, ...
 }
 
 void TreeDeltaAccumulator::noteChildRemoved(const juce::ValueTree& child) {
-    if (fullSync_) return;
     if (child.getType() == IDs::CLIP) removeClip(child);
     else                              escalateToFullSync();  // TRACK remove, notes, markers, ...
 }
@@ -43,10 +44,17 @@ void TreeDeltaAccumulator::noteStructuralChange() {
 }
 
 void TreeDeltaAccumulator::escalateToFullSync() {
+    // B13 (Modular Dawn audit): escalation must NOT discard the deltas already
+    // accumulated in this debounce window. The old clear() swallowed them: a
+    // burst that started with a delta (e.g. a clip upsert) and then escalated
+    // (track add) lost the delta — the client's fullSync re-fetch covered the
+    // final state, but the seed's own notification was never flushed before
+    // the next mutation landed under the escalated latch, whose upsert was
+    // then dropped. Retain the pending maps instead: the flush broadcasts
+    // fullSync=true (the client re-fetches the whole snapshot, so retained
+    // deltas cost nothing), and after the flush's reset() the next events
+    // delta normally again.
     fullSync_ = true;
-    clipsUpserted_.clear();
-    clipsRemoved_.clear();
-    tracksUpserted_.clear();
 }
 
 void TreeDeltaAccumulator::upsertClip(const juce::ValueTree& clipTree) {

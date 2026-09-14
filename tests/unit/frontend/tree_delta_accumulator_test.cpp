@@ -176,7 +176,7 @@ TEST(TreeDelta, StructuralChangeIsFullSync) {
     EXPECT_TRUE(acc.fullSync());
 }
 
-TEST(TreeDelta, FullSyncEscalationDiscardsPendingDelta) {
+TEST(TreeDelta, FullSyncEscalationRetainsPendingDelta) {
     ValueTree trackList(IDs::TRACK_LIST);
     ValueTree track = makeTrackTree("Synth", 1.0);
     ValueTree clip = makeClipTree(5, 0.0, "C");
@@ -188,12 +188,20 @@ TEST(TreeDelta, FullSyncEscalationDiscardsPendingDelta) {
     EXPECT_EQ(acc.clipsUpserted().size(), 1u);
     acc.noteStructuralChange();                        // escalates to fullSync
     EXPECT_TRUE(acc.fullSync());
-    EXPECT_TRUE(acc.clipsUpserted().empty());          // pending delta discarded
+    // B13: escalation RETAINS the pending delta (non-destructive latch). The
+    // flush broadcasts fullSync=true, so the retained maps cost nothing — but
+    // they must not be silently discarded: the old clear() swallowed the first
+    // mutation after a seed burst (audit 2026-09-13).
+    EXPECT_EQ(acc.clipsUpserted().size(), 1u);         // pending delta retained
+    EXPECT_EQ(acc.clipsUpserted().at(5).clipId, 5);
     EXPECT_TRUE(acc.clipsRemoved().empty());
-    EXPECT_TRUE(acc.tracksUpserted().empty());
+
+    acc.reset();
+    EXPECT_TRUE(acc.empty());                          // flush cleared everything
+    EXPECT_FALSE(acc.fullSync());
 }
 
-TEST(TreeDelta, FullSyncLatchIgnoresFurtherChanges) {
+TEST(TreeDelta, FullSyncLatchRetainsFurtherChanges) {
     ValueTree trackList(IDs::TRACK_LIST);
     ValueTree track = makeTrackTree("Synth", 1.0);
     ValueTree clip = makeClipTree(5, 0.0, "C");
@@ -202,13 +210,18 @@ TEST(TreeDelta, FullSyncLatchIgnoresFurtherChanges) {
 
     TreeDeltaAccumulator acc;
     acc.noteStructuralChange();                        // latch fullSync
-    acc.notePropertyChanged(clip, IDs::name);                     // ignored
-    acc.notePropertyChanged(track, IDs::name);                    // ignored
-    acc.noteChildAdded(clip);                          // ignored
     EXPECT_TRUE(acc.fullSync());
-    EXPECT_TRUE(acc.clipsUpserted().empty());
-    EXPECT_TRUE(acc.tracksUpserted().empty());
-    EXPECT_TRUE(acc.clipsRemoved().empty());
+    // B13: events arriving under the latch are RETAINED, not ignored — a
+    // mutation racing the escalated debounce window must never vanish.
+    acc.notePropertyChanged(clip, IDs::name);
+    acc.notePropertyChanged(track, IDs::name);
+    acc.noteChildAdded(clip);
+    EXPECT_TRUE(acc.fullSync());                       // latch still pins fullSync mode
+    EXPECT_EQ(acc.clipsUpserted().count(5), 1u);       // clip upsert retained
+    EXPECT_EQ(acc.tracksUpserted().count(0), 1u);      // track upsert retained
+
+    acc.reset();
+    EXPECT_TRUE(acc.empty());
 }
 
 TEST(TreeDelta, ResetClearsState) {
