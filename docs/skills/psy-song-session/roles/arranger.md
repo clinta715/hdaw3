@@ -43,7 +43,9 @@ library ingestion or preset choice (Sound Selector) except to READ the palette.
 3. **Fill with cells, then fix**: bind content recipes to (section, role) cells —
    `set_cell` per role from the brief's palette map and the Pattern Researcher's
    stock (`phrase`/`rhythm`/`pattern`/`harvest`/`break` sources; omit seed for
-   plan-derived variation) — then ONE `fill_cells {mode:"all"}` (one undo unit;
+   plan-derived variation; omit euclidean rhythm params for seeded per-song
+   variation, or set `corpusRole` (kick/snare/clap/hats/perc/...) for a
+   corpus-bank groove) — then ONE `fill_cells {mode:"all"}` (one undo unit;
    each clip spans its section window exactly and carries provenance). Iterate:
    `reroll` weak cells, `lock` keepers, re-`fill_cells`. Never N per-role generate
    calls in a loop — the batch rule is exactly what fill_cells exists for. The

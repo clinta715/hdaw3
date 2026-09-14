@@ -7,7 +7,9 @@
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
+#include <cmath>
 #include <set>
+#include <string>
 
 #include "engine/AudioEngine.h"
 #include "common/ProjectCommands.h"
@@ -457,5 +459,132 @@ TEST(SongCells, CellsPersistAcrossSaveLoad)
     EXPECT_EQ(cells[0].role, "bass");
     EXPECT_EQ(cells[0].sourceKind, "rhythm");
     file.deleteFile();
+}
+
+namespace {
+
+// "pitch@start;" signature of every note in a clip (start rounded to 1e-3
+// so float formatting never spuriously differs).
+std::string clipNoteSig(AudioEngine& engine, int clipId, double* maxStart = nullptr)
+{
+    std::string sig;
+    double mx = 0.0;
+    auto clip = findClipNode(engine, clipId);
+    auto notes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    for (int i = 0; i < notes.getNumChildren(); ++i)
+    {
+        auto n = notes.getChild(i);
+        const double st = (double) n.getProperty(IDs::startBeat, 0.0);
+        mx = std::max(mx, st);
+        sig += std::to_string((int) n.getProperty(IDs::noteNumber, 0)) + "@"
+             + std::to_string((int) std::lround(st * 1000.0)) + ";";
+    }
+    if (maxStart != nullptr) *maxStart = mx;
+    return sig;
+}
+
+} // namespace
+
+// (A1) A bare rhythm cell varies with the plan seed and is deterministic
+// per seed — the identical-defaults bug (4/3/1/1 in every song).
+TEST(SongCells, BareRhythmCellVariesWithSeedAndIsDeterministic)
+{
+    // ASSERT_* cannot appear in a non-void lambda (bare failure return),
+    // so this helper reports failure as an empty signature.
+    auto fillSig = [](uint64_t planSeed, int* clipIdOut) -> std::string {
+        AudioEngine engine;
+        engine.initialize();
+        auto& cmds = engine.getProjectCommands();
+        cmds.addTrack("Track 0");
+        cmds.addTrack("Track 1");
+        auto plan = makePlan();
+        plan.seed = planSeed;
+        if (!cmds.setSongPlan(plan).ok) return {};
+        std::string err;
+        if (!cmds.setCellRecipe(makeCell("build", "hat", "rhythm", "{}"), &err))
+            return {};
+        auto b = cmds.fillCells("all");
+        if (!b.ok || b.cells.size() != 1u || !b.cells[0].ok) return {};
+        if (clipIdOut != nullptr) *clipIdOut = b.cells[0].clipId;
+        // NOTE: engine dies at scope end; read the signature before that.
+        return clipNoteSig(engine, b.cells[0].clipId);
+    };
+    const std::string sig777 = fillSig(777, nullptr);
+    const std::string sig778 = fillSig(778, nullptr);
+    EXPECT_FALSE(sig777.empty()) << "fill 777 produced nothing";
+    EXPECT_FALSE(sig778.empty()) << "fill 778 produced nothing";
+    EXPECT_NE(sig777, sig778) << "bare rhythm cells must vary per seed";
+    const std::string sig777b = fillSig(777, nullptr);
+    EXPECT_EQ(sig777, sig777b) << "same seed must refill identically";
+}
+
+// (B1) corpusRole fills from a seeded bank phrase at the phrase GM pitch.
+TEST(SongCells, CorpusRoleFillsBankPhraseAtPhrasePitch)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(
+        makeCell("build", "hat", "rhythm", R"({"corpusRole":"hats"})"), &err)) << err;
+    auto b = cmds.fillCells("all");
+    ASSERT_TRUE(b.ok) << b.error;
+    ASSERT_TRUE(b.cells[0].ok) << b.cells[0].error;
+    EXPECT_GT(b.cells[0].noteCount, 0);
+    auto clip = findClipNode(engine, b.cells[0].clipId);
+    ASSERT_TRUE(clip.isValid());
+    auto notes = clip.getChildWithName(IDs::MIDI_NOTE_LIST);
+    ASSERT_GT(notes.getNumChildren(), 0);
+    for (int i = 0; i < notes.getNumChildren(); ++i)
+        EXPECT_EQ((int) notes.getChild(i).getProperty(IDs::noteNumber, 0), 42)
+            << "hats phrases sound at GM pitch 42 without pitchA";
+    // Deterministic per seed: refill after touching nothing is identical.
+    const std::string before = clipNoteSig(engine, b.cells[0].clipId);
+    auto b2 = cmds.fillCells("all");
+    ASSERT_TRUE(b2.cells[0].ok);
+    EXPECT_EQ(before, clipNoteSig(engine, b2.cells[0].clipId));
+}
+
+// (B2) Unknown bank role falls back to euclidean — ok, never an error.
+TEST(SongCells, CorpusRoleUnknownRoleFallsBackToEuclidean)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(
+        makeCell("build", "hat", "rhythm", R"({"corpusRole":"kazoo"})"), &err)) << err;
+    auto b = cmds.fillCells("all");
+    ASSERT_TRUE(b.ok) << b.error;
+    EXPECT_TRUE(b.cells[0].ok) << b.cells[0].error;
+    EXPECT_GT(b.cells[0].noteCount, 0);
+}
+
+// (B3) The phrase tiles across the whole section window (drop = 16 bars).
+TEST(SongCells, CorpusRoleTilesAcrossSectionWindow)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(
+        makeCell("drop", "snare", "rhythm", R"({"corpusRole":"snare"})"), &err)) << err;
+    auto b = cmds.fillCells("all");
+    ASSERT_TRUE(b.ok) << b.error;
+    ASSERT_TRUE(b.cells[0].ok) << b.cells[0].error;
+    double mx = 0.0;
+    clipNoteSig(engine, b.cells[0].clipId, &mx);
+    // drop window = 64 beats; longest bank phrase = 8 bars = 32 beats, so a
+    // tiled fill must reach at least beat 64 - 32.
+    EXPECT_GE(mx, 64.0 - 32.0) << "phrase did not tile to the window end";
 }
 

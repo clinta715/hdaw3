@@ -197,7 +197,7 @@ void registerSongPlanTools(McpServer& s, AudioEngine* e)
         } });
 
     s.registerTool({ "set_cell",
-        "Assign a content recipe to a (section, role) cell of the song plan. source ∈ phrase | rhythm | break | pattern | harvest; params is the source-specific parameter object (see fill_cells). seed 0 = derived deterministically from the plan seed. Upsert by (section, role); validates the section against the plan.",
+        "Assign a content recipe to a (section, role) cell of the song plan. source ∈ phrase | rhythm | break | pattern | harvest; params is the source-specific parameter object (see fill_cells). seed 0 = derived deterministically from the plan seed. Rhythm cells: omitted pulseA/pulseB/rotationA/rotationB are drawn from the cell seed (bare cells vary per song — pass explicit values to pin); params.corpusRole (kick/snare/clap/hats/perc/...) fills from a seeded corpus-bank phrase instead. Upsert by (section, role); validates the section against the plan.",
         objSchema({ { "section", QJsonObject{ { "type", "string" } } },
                     { "role", QJsonObject{ { "type", "string" } } },
                     { "trackId", QJsonObject{ { "type", "integer" } } },

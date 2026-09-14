@@ -285,7 +285,12 @@ public:
     //                            rhythmGrid?, stateCount?}}
     //   rhythm:  {grid?, bars?, pulseA?, pulseB?, rotationA?, rotationB?,
     //             pitchA?, pitchB?, velocityA?, velocityB?, dsl?, dslPitch?,
-    //             dslVelocity?}
+    //             dslVelocity?, corpusRole?} — omitted euclidean params are
+    //             drawn from the cell seed (bare cells vary per song); dsl
+    //             cells keep fixed pulse/rotation defaults. corpusRole
+    //             (kick/snare/clap/hats/perc/...) fills from a seeded
+    //             corpus-bank phrase tiled across the window (unknown role
+    //             falls back to euclidean).
     //   break:   {slotIndex?, style?, grid?, dropFirst?, ghostFills?,
     //             velocityMin?, velocityMax?}  (needs a sliced sampler clip)
     //   pattern: {patternId}  (PatternLibrary preset -> phrase generation)

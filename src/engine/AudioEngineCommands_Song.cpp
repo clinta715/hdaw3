@@ -3,6 +3,7 @@
 #include "PsytranceGenerator.h"
 #include "PhraseGenerator.h"
 #include "RhythmPatternGenerator.h"
+#include "RhythmPatternBank.h"
 #include "PatternLibrary.h"
 #include "../model/ProjectModel.h"
 
@@ -11,6 +12,7 @@
 #include <cctype>
 #include <cmath>
 #include <map>
+#include <random>
 #include <stdexcept>
 
 // Song plan (plan/cell workflow keystone, docs/plans/2026-09-11):
@@ -779,25 +781,90 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
     }
     else if (cell.sourceKind == "rhythm")
     {
-        RhythmPatternGenerator::Params rp;
-        rp.grid = paramI(params, "grid", 16);
-        rp.bars = paramI(params, "bars", std::max(1, sec->bars));
-        rp.pulseA = paramI(params, "pulseA", 4);
-        rp.pulseB = paramI(params, "pulseB", 3);
-        rp.rotationA = paramI(params, "rotationA", 1);
-        rp.rotationB = paramI(params, "rotationB", 1);
-        rp.pitchA = paramI(params, "pitchA", 36);
-        rp.pitchB = paramI(params, "pitchB", 42);
-        rp.velocityA = paramI(params, "velocityA", 112);
-        rp.velocityB = paramI(params, "velocityB", 96);
-        rp.dsl = paramS(params, "dsl", "").toStdString();
-        rp.dslPitch = paramI(params, "dslPitch", 39);
-        rp.dslVelocity = paramI(params, "dslVelocity", 104);
-        std::vector<RhythmPatternGenerator::Note> notes;
-        try { notes = RhythmPatternGenerator::generate(rp); }
-        catch (const std::invalid_argument& e) { res.error = e.what(); return res; }
-        for (const auto& n : notes)
-            addGuarded(n.pitch, n.velocity, n.startBeat, n.durationBeats);
+        // Seeded cell rng (fixed draw order): corpus-phrase pick, then
+        // pulseA, pulseB, rotationA, rotationB. Explicit params consume zero
+        // rng, so pinned cells are stable no matter which siblings vary.
+        std::seed_seq sseq{ (uint32_t) (seedUsed & 0xffffffffu),
+                            (uint32_t) ((seedUsed >> 32) & 0xffffffffu) };
+        std::mt19937 crng(sseq);
+        auto hasP = [&](const char* n) { return params.isObject() && params.hasProperty(n); };
+
+        // (B) corpus-bank phrase: a seeded pick from params.corpusRole
+        // (kick/snare/clap/hats/perc/...) tiled across the section window
+        // at the phrase GM pitch (explicit pitchA wins). Unknown/empty bank
+        // role falls back to euclidean below — never an error.
+        const HDAW::RhythmicPhrase* cph = nullptr;
+        {
+            const std::string corpusRole = paramS(params, "corpusRole", "").toStdString();
+            if (!corpusRole.empty())
+            {
+                const auto list = HDAW::rhythmPhrasesForRole(corpusRole.c_str());
+                if (!list.empty())
+                {
+                    std::uniform_int_distribution<size_t> pick(0, list.size() - 1);
+                    const HDAW::RhythmicPhrase* cand = list[pick(crng)];
+                    if (cand != nullptr && cand->bars >= 1 && cand->bars <= 8
+                        && cand->grid > 0 && cand->dsl != nullptr)
+                        cph = cand;
+                }
+            }
+        }
+        if (cph != nullptr)
+        {
+            RhythmPatternGenerator::Params rp;
+            rp.grid = cph->grid;
+            rp.bars = cph->bars;
+            rp.dsl = cph->dsl;
+            rp.pulseA = 0;
+            rp.pulseB = 0;
+            rp.dslPitch = hasP("pitchA") ? paramI(params, "pitchA", cph->pitch)
+                                         : cph->pitch;
+            rp.dslVelocity = paramI(params, "dslVelocity", 104);
+            std::vector<RhythmPatternGenerator::Note> notes;
+            try { notes = RhythmPatternGenerator::generate(rp); }
+            catch (const std::invalid_argument& e) { res.error = e.what(); return res; }
+            const double phraseBeats = (double) cph->bars * kBeatsPerBar;
+            for (double off = 0.0; off < winBeats - 1e-9; off += phraseBeats)
+                for (const auto& n : notes)
+                {
+                    const double st = n.startBeat + off;
+                    if (st < winBeats)
+                        addGuarded(n.pitch, n.velocity, st, n.durationBeats);
+                }
+        }
+        else
+        {
+            RhythmPatternGenerator::Params rp;
+            rp.grid = paramI(params, "grid", 16);
+            rp.bars = paramI(params, "bars", std::max(1, sec->bars));
+            // (A) seeded euclidean defaults: bare cells vary per cell seed
+            // instead of repeating 4/3/1/1 in every song. DSL cells keep the
+            // legacy fixed pulse/rotation defaults — DSL and pulses ADD in
+            // the generator, so reseeding them would rewrite existing layers.
+            const bool hasDsl = hasP("dsl") && !paramS(params, "dsl", "").isEmpty();
+            auto rParam = [&](const char* n, int lo, int hi, int dflt) {
+                if (hasP(n)) return paramI(params, n, dflt);
+                if (hasDsl) return dflt;
+                std::uniform_int_distribution<int> d(lo, hi);
+                return d(crng);
+            };
+            rp.pulseA = rParam("pulseA", 2, 7, 4);
+            rp.pulseB = rParam("pulseB", 0, 4, 3);
+            rp.rotationA = rParam("rotationA", 0, 15, 1);
+            rp.rotationB = rParam("rotationB", 0, 15, 1);
+            rp.pitchA = paramI(params, "pitchA", 36);
+            rp.pitchB = paramI(params, "pitchB", 42);
+            rp.velocityA = paramI(params, "velocityA", 112);
+            rp.velocityB = paramI(params, "velocityB", 96);
+            rp.dsl = paramS(params, "dsl", "").toStdString();
+            rp.dslPitch = paramI(params, "dslPitch", 39);
+            rp.dslVelocity = paramI(params, "dslVelocity", 104);
+            std::vector<RhythmPatternGenerator::Note> notes;
+            try { notes = RhythmPatternGenerator::generate(rp); }
+            catch (const std::invalid_argument& e) { res.error = e.what(); return res; }
+            for (const auto& n : notes)
+                addGuarded(n.pitch, n.velocity, n.startBeat, n.durationBeats);
+        }
     }
     else if (cell.sourceKind == "break")
     {
