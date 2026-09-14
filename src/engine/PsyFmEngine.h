@@ -69,6 +69,11 @@ private:
         int channel = 0;
         bool keydown = false;
         bool live = false;
+        // Polyphony scale captured when the key is released: the tail keeps
+        // rendering at the normalization it had while held, so stacked
+        // release tails no longer steal headroom from the newest voice
+        // (see the voice-counter regression note in PsyFmEngine.cpp).
+        float releaseScale = 1.0f;
     };
 
     void noteOn (int channel, int pitch, int velocity);

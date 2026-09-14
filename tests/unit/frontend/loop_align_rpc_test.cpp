@@ -68,6 +68,15 @@ QJsonValue rpc(AudioEngine& engine, const QString& method, const QJsonValue& par
     return r.payload;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests dispatch track-indexed RPCs, so seed via the same
+// project.addTrack RPC the UI uses.
+void seedTracks(AudioEngine& engine, int n)
+{
+    for (int i = 0; i < n; ++i)
+        rpc(engine, "project.addTrack", QJsonObject{ { "name", "Track" } });
+}
+
 } // namespace
 
 // ─── project.alignClipToGrid ───────────────────────────────────────
@@ -77,6 +86,7 @@ TEST(LoopAlignRpc, AlignClipToGrid_HappyPath)
     auto wav = makePercussionLoopWav();
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
 
     // Create an audio clip via RPC (beats at this boundary; 16 beats at the
     // default 120 BPM = 8 s, the full loop length).
@@ -127,6 +137,7 @@ TEST(LoopAlignRpc, ImportAudioFile_HappyPath)
     auto wav = makePercussionLoopWav();
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
 
     auto resp = rpc(engine, "project.importAudioFile",
                     QJsonObject{ { "path", QString::fromStdString(wav.getFullPathName().toStdString()) },

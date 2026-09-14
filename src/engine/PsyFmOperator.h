@@ -37,6 +37,14 @@ private:
     float feedbackAmount_ = 0.0f;
     float baseFreq_ = 220.0f;
     float currentEnvValue_ = 0.0f;
+    // Same-block note handling: the ADSR advances only inside renderBlock(),
+    // so a note born and killed inside one block has envelopeVal == 0 when
+    // noteOff arrives — the plain ADSR would compute releaseRate = 0 and sit
+    // in State::release forever (an immortal silent voice the engine can
+    // never reap). noteOff() while noteOnUnsampled_ defers the release to
+    // the end of the block's render, after the keydown phase has sounded.
+    bool noteOnUnsampled_ = false;
+    bool pendingNoteOff_ = false;
 };
 
 } // namespace HDAW

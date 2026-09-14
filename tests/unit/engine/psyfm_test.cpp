@@ -7,6 +7,7 @@
 #include "engine/PsyFmState.h"
 #include "engine/TrackFXSlot.h"
 #include <cmath>
+#include <iostream>
 #include <thread>
 #include <atomic>
 
@@ -484,7 +485,7 @@ TEST(PsyFmStateTest, AbsentPropertiesLeaveDefaults) {
     ASSERT_NE(psyFm, nullptr);
     // sweep rate stays at engine default when tree has no psyFmSweepRate
     EXPECT_NEAR(psyFm->getModSourcePool().ratioSweepLFORateHz, 0.2f, 1e-5f);
-    // no crash, no state corruption � Gate 1/10 sanity
+    // no crash, no state corruption � Gate 1/10 sanity
 }
 
 TEST(PsyFmStateTest, NonPsyFmSlotIgnoresMatrixRestore) {
@@ -550,4 +551,90 @@ TEST(PsyFmModMatrixTest, SingleRouteUnaffectedByBudget) {
     m.apply(sources, baseRatios, 0.3f, outRatios, outFeedback);
     // 0.3 + (1.0 * 0.4) = 0.7, no scaling
     EXPECT_NEAR(outFeedback, 0.7f, 0.01f);
+}
+
+// ── Voice-counter regression (psy_fm) ──────────────────────────────────
+// Symptom (shipped v0.34.0, caught by the Modular Dawn acidvar layer):
+// noteOn() starts all six operators' envelopes, but the algorithm functions
+// render a SUBSET (acidLead uses ops 0+5). The unrendered operators' ADSR
+// envelopes never advance, so isActive() stayed true forever, the voice
+// reap check never fired, live voices accumulated to kMaxVoices and the
+// polyphony normalization pinned the render gain at 1/min(N, kMaxVoices)
+// — a persistent 1/1, 1/2, 1/3... gain ladder on repeated notes.
+// Regression: sequential same-pitch notes must render at the SAME level —
+// peak(note N) / peak(note 1) == 1 within tolerance (the bug gives 1/N).
+
+TEST_F(PsyFmEngineTest, RepeatedNotesRenderAtConstantGain) {
+    // Acid lead: renders only ops 0+5 — the unrendered ones used to wedge
+    // the voice counter. Fast envelopes so tails die between notes.
+    engine.setAlgorithm (acidLeadAlgorithm);
+    juce::ADSR::Parameters env;
+    env.attack = 0.002f; env.decay = 0.06f; env.sustain = 0.0f; env.release = 0.05f;
+    for (int op = 0; op < 6; op++) engine.setOpEnvelope (op, env);
+
+    const int numNotes = 5;
+    float firstNotePeak = 0.0f;
+    juce::AudioBuffer<float> buf (1, 512);
+
+    // Sanity: acidLead must produce nonzero output at all (matches the
+    // growlBass RenderProducesNonZeroOutput gate).
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+        buf.clear();
+        engine.render (buf, midi);
+        float peak = 0.0f;
+        for (int i = 0; i < buf.getNumSamples(); i++)
+            peak = std::max (peak, std::abs (buf.getSample (0, i)));
+        std::cout << "[psyfm-reg] acidLead sanity peak=" << peak
+                  << " voices=" << engine.activeVoiceCount() << "\n";
+        ASSERT_GT (peak, 0.0f);
+
+        // Release the sanity note (it would otherwise hold a live voice
+        // forever — the fixture's keydown voice is correct engine behavior,
+        // not part of the regression).
+        juce::MidiBuffer off;
+        off.addEvent (juce::MidiMessage::noteOff (1, 60), 0);
+        buf.clear();
+        engine.render (buf, off);
+        for (int i = 0; i < 6; ++i)
+        {
+            juce::MidiBuffer empty;
+            engine.render (buf, empty);
+        }
+    }
+
+    for (int n = 0; n < numNotes; ++n)
+    {
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+        midi.addEvent (juce::MidiMessage::noteOff (1, 60), 480);
+        buf.clear();
+        engine.render (buf, midi);
+
+        float peak = 0.0f;
+        for (int i = 0; i < buf.getNumSamples(); i++)
+            peak = std::max (peak, std::abs (buf.getSample (0, i)));
+        std::cout << "[psyfm-reg] note " << n << " peak=" << peak
+                  << " voices=" << engine.activeVoiceCount() << "\n";
+
+        if (n == 0)
+            firstNotePeak = peak;
+        else
+            // The bug renders note n at firstPeak / min(n+1, 6).
+            EXPECT_GT (peak, firstNotePeak * 0.8f)
+                << "note " << n << " rendered at " << peak
+                << " vs first-note " << firstNotePeak
+                << " — voice counter is not being reaped";
+    }
+
+    // All tails finished (release 0.05s = ~4.3 blocks at 512/44.1k):
+    // the counter must drain back to zero.
+    buf.clear();
+    for (int i = 0; i < 8; ++i)
+    {
+        juce::MidiBuffer empty;
+        engine.render (buf, empty);
+    }
+    EXPECT_EQ (engine.activeVoiceCount(), 0);
 }

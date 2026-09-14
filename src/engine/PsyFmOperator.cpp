@@ -9,6 +9,8 @@ void PsyFmOperator::prepare (double sampleRate)
     phase_ = 0.0f;
     lastOutput_ = 0.0f;
     currentEnvValue_ = 0.0f;
+    noteOnUnsampled_ = false;
+    pendingNoteOff_ = false;
 }
 
 void PsyFmOperator::setEnvelopeParams (const juce::ADSR::Parameters& p)
@@ -21,10 +23,21 @@ void PsyFmOperator::noteOn()
     indexEnv_.noteOn();
     phase_ = 0.0f;
     lastOutput_ = 0.0f;
+    noteOnUnsampled_ = true;
+    pendingNoteOff_ = false;
 }
 
 void PsyFmOperator::noteOff()
 {
+    if (noteOnUnsampled_)
+    {
+        // Same-block kill: the ADSR envelope has not advanced yet
+        // (envelopeVal == 0), so a plain noteOff computes releaseRate = 0
+        // and the voice would sit silent in State::release forever. Defer
+        // the release until after this block's keydown phase has sounded.
+        pendingNoteOff_ = true;
+        return;
+    }
     indexEnv_.noteOff();
 }
 
@@ -62,6 +75,17 @@ void PsyFmOperator::renderBlock (float* outBuffer, const float* modInputBuffer, 
         float sample = std::sin (phase_ + externalMod + selfFeedback) * envValue;
         outBuffer[i] = sample;
         lastOutput_ = sample;
+    }
+
+    // The keydown phase has sounded — a deferred same-block noteOff takes
+    // effect now, releasing from the envelope level the note actually
+    // reached instead of its (unstarted) level 0.
+    if (numSamples > 0 && noteOnUnsampled_)
+        noteOnUnsampled_ = false;
+    if (numSamples > 0 && pendingNoteOff_)
+    {
+        indexEnv_.noteOff();
+        pendingNoteOff_ = false;
     }
 }
 

@@ -185,6 +185,13 @@ void PsyFmEngine::noteOff (int channel, int pitch)
     {
         if (v.live && v.midiNote == pitch && v.channel == channel && v.keydown)
         {
+            // Freeze the polyphony normalization at release: the tail keeps
+            // the scale it had while held (see render()).
+            int held = 0;
+            for (const auto& other : voices_)
+                if (other.live && other.keydown)
+                    ++held;
+            v.releaseScale = 1.0f / static_cast<float> (std::max (1, held));
             v.keydown = false;
             for (auto& op : v.operators)
                 op.noteOff();
@@ -248,11 +255,14 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
     // Per-voice render
     buffer.clear();
 
-    // Polyphony normalization — prevents additive clipping
-    int liveCount = 0;
+    // Polyphony normalization — prevents additive clipping. Held voices
+    // share 1/held; release-tail voices keep the scale captured at
+    // note-off (Voice::releaseScale), so a monophonic riff's newest note
+    // always renders at full normalization instead of sinking under its
+    // own stacked release tails.
+    int heldCount = 0;
     for (auto& v : voices_)
-        if (v.live) ++liveCount;
-    const float voiceScale = (liveCount > 0) ? (1.0f / static_cast<float> (liveCount)) : 1.0f;
+        if (v.live && v.keydown) ++heldCount;
 
     for (auto& v : voices_)
     {
@@ -279,11 +289,19 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
             v.operators[0].renderBlock (carrierMixBuffer_.data(), nullptr, numSamples);
         }
 
-        // Check if all operators are done AFTER rendering (envelopes may have finished during this block)
-        bool anyActive = false;
-        for (auto& op : v.operators)
-            if (op.isActive()) { anyActive = true; break; }
-        if (! anyActive)
+        // Voice reaping — gate on the CARRIER (op 0) only. Each algorithm
+        // renders a SUBSET of the six operators (e.g. acidLeadAlgorithm uses
+        // ops 0+5), so the remaining operators' juce::ADSR envelopes are
+        // started by noteOn() but never advanced by renderBlock(): their
+        // isActive() stays true forever. The old all-operators check never
+        // fired, live voices accumulated up to kMaxVoices and the block
+        // normalization pinned the render gain at 1/min(N, kMaxVoices).
+        // The carrier (op 0) is rendered by every algorithm; when its
+        // envelope decays the voice is inaudible regardless of the mod
+        // operators (they only feed op 0's phase input), so this is the
+        // correct "voice is done" signal.
+        const bool carrierActive = v.operators[0].isActive();
+        if (! carrierActive)
         {
             v.live = false;
             v.keydown = false;
@@ -291,6 +309,9 @@ void PsyFmEngine::render (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& mi
         }
 
         // Accumulate into output buffer
+        const float voiceScale = v.keydown
+            ? 1.0f / static_cast<float> (std::max (1, heldCount))
+            : v.releaseScale;
         for (int i = 0; i < numSamples; ++i)
             buffer.addSample (0, i, carrierMixBuffer_[static_cast<size_t> (i)] * outGain * voiceScale);
     }

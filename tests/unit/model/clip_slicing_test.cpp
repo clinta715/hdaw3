@@ -3,10 +3,34 @@
 
 using namespace HDAW;
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests own their setup. Seed a minimal TRACK node with the same
+// shape AudioEngineCommands::createTrackValueTree() builds (read_model_test
+// idiom).
+static juce::ValueTree addSeedTrack(ProjectModel& model, const char* name)
+{
+    juce::ValueTree track(IDs::TRACK);
+    track.setProperty(IDs::name, juce::String(name), nullptr);
+    track.setProperty(IDs::volume, 1.0, nullptr);
+    track.setProperty(IDs::pan, 0.0, nullptr);
+    track.setProperty(IDs::isMuted, false, nullptr);
+    track.setProperty(IDs::isSoloed, false, nullptr);
+    track.setProperty(IDs::isArm, false, nullptr);
+    track.setProperty(IDs::inputMonitor, false, nullptr);
+    track.setProperty(IDs::midiChannel, 1, nullptr);
+    track.setProperty(IDs::trackHeight, 80.0, nullptr);
+    track.setProperty(IDs::trackType, 0, nullptr);
+    track.addChild(juce::ValueTree(IDs::CLIP_LIST), -1, nullptr);
+    track.addChild(juce::ValueTree(IDs::FX_CHAIN), -1, nullptr);
+    track.addChild(ProjectModel::createTrackAutomationList(), -1, nullptr);
+    model.getTrackListTree().addChild(track, -1, nullptr);
+    return track;
+}
+
 TEST(ProjectModel, SliceClipAtTime)
 {
     ProjectModel model;
-    auto track = model.getTrackListTree().getChild(0);  // assume default track exists
+    auto track = addSeedTrack(model, "Track");
     auto clip = model.createAudioClip("Test", 0.0, 4.0, "dummy.wav");
     track.getChildWithName(IDs::CLIP_LIST).addChild(clip, -1, &model.getUndoManager());
     int clipId = clip.getProperty(IDs::clipID);

@@ -23,6 +23,15 @@ QJsonValue rpc(AudioEngine& engine, const QString& method, const QJsonValue& par
     return r.payload;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests dispatch track-indexed RPCs, so seed via the same
+// project.addTrack RPC the UI uses.
+void seedTracks(AudioEngine& engine, int n)
+{
+    for (int i = 0; i < n; ++i)
+        rpc(engine, "project.addTrack", QJsonObject{ { "name", "Track" } });
+}
+
 } // namespace
 
 // ─── G5: generateAutomationEnvelope RPC ───────────────────────────
@@ -31,6 +40,8 @@ TEST(EnvelopeGenerationRpc, G5_GenerateAutomationEnvelope_HappyPath)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 1);
 
     // Add automation lane first.
     rpc(engine, "project.addAutomationLane",
@@ -53,6 +64,8 @@ TEST(EnvelopeGenerationRpc, G5_GenerateClipGainEnvelope_HappyPath)
     AudioEngine engine;
     engine.initialize();
 
+    seedTracks(engine, 1);
+
     // Create audio clip.
     auto clipResp = rpc(engine, "project.addAudioClip",
                         QJsonObject{ { "trackIndex", 0 }, { "start", 0.0 },
@@ -70,6 +83,8 @@ TEST(EnvelopeGenerationRpc, G5_GenerateClipCcLane_HappyPath)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 2);  // midi clip lands on track 1
 
     // Create MIDI clip.
     auto clipResp = rpc(engine, "project.addMidiClip",
@@ -89,6 +104,8 @@ TEST(EnvelopeGenerationRpc, G5_InvalidShape_ReturnsError)
     AudioEngine engine;
     engine.initialize();
 
+    seedTracks(engine, 1);
+
     rpc(engine, "project.addAutomationLane",
         QJsonObject{ { "trackIndex", 0 }, { "laneName", "Volume" } });
 
@@ -103,6 +120,8 @@ TEST(EnvelopeGenerationRpc, G5_DefaultsApplied)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 1);
 
     rpc(engine, "project.addAutomationLane",
         QJsonObject{ { "trackIndex", 0 }, { "laneName", "Volume" } });

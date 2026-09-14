@@ -22,6 +22,15 @@ QJsonValue rpc(AudioEngine& engine, const QString& method, const QJsonValue& par
     return r.payload;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests dispatch track-indexed RPCs, so seed via the same
+// project.addTrack RPC the UI uses.
+void seedTracks(AudioEngine& engine, int n)
+{
+    for (int i = 0; i < n; ++i)
+        rpc(engine, "project.addTrack", QJsonObject{ { "name", "Track" } });
+}
+
 QJsonObject findClipJson(const QJsonObject& snap, int clipId)
 {
     for (const auto& v : snap.value("clips").toArray())
@@ -40,6 +49,7 @@ TEST(RhythmGenerationRpc, DefaultPolyrhythmCreatesClip)
 {
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
 
     auto resp = rpc(engine, "composition.generateRhythmPattern",
                     QJsonObject{ { "trackIndex", 0 } });
@@ -60,6 +70,7 @@ TEST(RhythmGenerationRpc, DslVoiceRespected)
 {
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
     auto resp = rpc(engine, "composition.generateRhythmPattern",
                     QJsonObject{ { "trackIndex", 0 },
                                  { "pulseA", 0 }, { "pulseB", 0 },
@@ -91,6 +102,7 @@ TEST(RhythmGenerationRpc, CorpusPhraseCreatesClip)
     // snare_s2_4bar: 4-bar offbeat phrase with 7 hits (see bank test).
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
     auto resp = rpc(engine, "composition.generateRhythmPattern",
                     QJsonObject{ { "trackIndex", 0 }, { "phrase", "snare_s2_4bar" } });
     ASSERT_TRUE(resp.isObject());
@@ -108,6 +120,7 @@ TEST(RhythmGenerationRpc, CorpusPhraseByRoleCreatesClip)
 {
     AudioEngine engine;
     engine.initialize();
+    seedTracks(engine, 1);
     auto resp = rpc(engine, "composition.generateRhythmPattern",
                     QJsonObject{ { "trackIndex", 0 }, { "phraseRole", "clap" }, { "phraseIndex", 0 } });
     ASSERT_TRUE(resp.isObject());

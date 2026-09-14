@@ -164,6 +164,20 @@ struct EngineAndServer {
     }
 };
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — track-indexed tests seed via the same project.addTrack RPC the
+// UI uses. NOTE: a track add escalates the delta accumulator to fullSync for
+// its 16 ms debounce window, so delta-shape assertions must consume the seed's
+// own notify.treeChanged (waitForNotificationParams) before their real
+// mutation; processEvents() alone cannot settle it because it returns early
+// when no events are pending.
+void seedTrack(AudioEngine& engine)
+{
+    auto r = frontend::dispatch(engine, "project.addTrack",
+                                QJsonObject{ { "name", "Track" } });
+    EXPECT_FALSE(r.isError) << r.payload.toObject().value("message").toString().toStdString();
+}
+
 } // namespace
 
 // Smoke test: server binds, client connects, a read returns the default
@@ -219,6 +233,7 @@ TEST(FrontendServer, AddTrackMutation) {
 TEST(FrontendServer, SetTrackNameAndRead) {
     EngineAndServer s;
     s.setUp();
+    seedTrack(s.engine);
     ASSERT_GT(s.engine.getReadModel().getTrackCount(), 0);
 
     TestClient client;
@@ -378,6 +393,7 @@ TEST(FrontendServer, SaveFxChainPresetRejectsOutOfRangeTrack) {
 TEST(FrontendServer, FmSynthImportSysexRpc) {
     EngineAndServer s;
     s.setUp();
+    seedTrack(s.engine);
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
@@ -456,6 +472,7 @@ TEST(FrontendServer, FmSynthImportSysexRpc) {
 TEST(FrontendServer, FxSlotPluginFormatExposed) {
     EngineAndServer s;
     s.setUp();
+    seedTrack(s.engine);
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
@@ -495,6 +512,7 @@ TEST(FrontendServer, FxSlotPluginFormatExposed) {
 TEST(FrontendServer, FmSynthImportSysexCartridgeVoices) {
     EngineAndServer s;
     s.setUp();
+    seedTrack(s.engine);
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
@@ -909,6 +927,13 @@ TEST(FrontendServer, ClipAddRemoveBroadcastsIncrementalDelta) {
     // nothing on connect, but meter/transport broadcasts may already be queued.)
     client.drainMessages();
 
+    // Seed AFTER connecting (see seedTrack note): consume the seed track add's
+    // own fullSync treeChanged so the accumulator is clean before the clip
+    // mutation below.
+    seedTrack(s.engine);
+    client.waitForNotificationParams("notify.treeChanged");
+    client.drainMessages();
+
     // --- Add a MIDI clip -> expect a delta with clipsUpserted ---
     // Track 0 in the default project already has an (empty) CLIP_LIST, so this
     // is a pure CLIP child-add -> upsertClip -> incremental delta (no fullSync).
@@ -966,6 +991,7 @@ TEST(FrontendServer, ClipAddRemoveBroadcastsIncrementalDelta) {
 TEST(FrontendServer, SamplerRpcFamily) {
     EngineAndServer s;
     s.setUp();
+    seedTrack(s.engine);
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
@@ -1142,6 +1168,13 @@ TEST(FrontendServer, ForceFullSyncKillSwitchBroadcastsFullSync) {
 
     TestClient client;
     ASSERT_TRUE(client.connect(QUrl(QString("ws://127.0.0.1:%1").arg(s.port))));
+    client.drainMessages();
+
+    // Seed AFTER connecting and consume the seed track add's own fullSync
+    // treeChanged (see seedTrack note) so the captured notification below is
+    // provably the kill-switch-routed clip add.
+    seedTrack(s.engine);
+    client.waitForNotificationParams("notify.treeChanged");
     client.drainMessages();
 
     // A pure CLIP child-add is an incremental delta when the kill-switch is off

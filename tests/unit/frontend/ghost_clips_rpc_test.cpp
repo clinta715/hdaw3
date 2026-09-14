@@ -29,6 +29,15 @@ QJsonValue rpc(AudioEngine& engine, const QString& method, const QJsonValue& par
     return r.payload;
 }
 
+// Zero-track default contract (v0.33+): createDefaultProject() ships an empty
+// TRACK_LIST — tests dispatch track-indexed RPCs, so seed via the same
+// project.addTrack RPC the UI uses.
+void seedTracks(AudioEngine& engine, int n)
+{
+    for (int i = 0; i < n; ++i)
+        rpc(engine, "project.addTrack", QJsonObject{ { "name", "Track" } });
+}
+
 // Find a single clip object in a read.snapshot result by id.
 QJsonObject findClipJson(const QJsonObject& snap, int clipId)
 {
@@ -50,6 +59,8 @@ TEST(GhostClipsRpc, CreateGhostClipRoundTrip)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 2);  // source on track 0, ghost lands on track 1
 
     auto srcResp = rpc(engine, "project.addMidiClip",
                        QJsonObject{ { "trackIndex", 0 }, { "start", 0.0 },
@@ -95,6 +106,8 @@ TEST(PaintClipsRpc, PaintClipsReturnsIdArray)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 1);
 
     auto srcResp = rpc(engine, "project.addMidiClip",
                        QJsonObject{ { "trackIndex", 0 }, { "start", 0.0 },
@@ -154,6 +167,8 @@ TEST(RemoveClipsRpc, RemovesMultipleClips)
                          { "duration", 4.0 }, { "name", name } }).toDouble());
     };
 
+    seedTracks(engine, 1);
+
     int a = addClip("A", 0.0);
     int b = addClip("B", 8.0);
     int c = addClip("C", 16.0);
@@ -198,6 +213,8 @@ TEST(AddClipsRpc, AddsMultipleClips)
 {
     AudioEngine engine;
     engine.initialize();
+
+    seedTracks(engine, 1);
 
     auto resp = rpc(engine, "project.addClips",
         QJsonObject{
@@ -260,6 +277,8 @@ TEST(GhostClipsRpc, NonGhostClipHasDefaultGhostFields)
     AudioEngine engine;
     engine.initialize();
 
+    seedTracks(engine, 1);
+
     auto srcResp = rpc(engine, "project.addMidiClip",
                        QJsonObject{ { "trackIndex", 0 }, { "start", 0.0 },
                                     { "duration", 4.0 }, { "name", "Plain" } });
@@ -282,6 +301,8 @@ TEST(DuplicateClipsRpc, ReturnsIdArray)
             QJsonObject{ { "trackIndex", 0 }, { "start", start },
                          { "duration", 4.0 }, { "name", name } }).toDouble());
     };
+
+    seedTracks(engine, 1);
 
     int a = addClip("A", 0.0);
     int b = addClip("B", 8.0);
@@ -354,6 +375,8 @@ TEST(DuplicateClipsRpc, CrossTrackDuplicate)
     AudioEngine engine;
     engine.initialize();
 
+    seedTracks(engine, 1);  // track 0; the addTrack("B") below becomes track 1
+
     auto addResp = rpc(engine, "project.addMidiClip",
         QJsonObject{ { "trackIndex", 0 }, { "start", 0.0 },
                      { "duration", 4.0 }, { "name", "X" } });
@@ -400,6 +423,8 @@ TEST(MoveClipsRpc, MovesClipsAtomically)
             QJsonObject{ { "trackIndex", 0 }, { "start", start },
                          { "duration", 4.0 }, { "name", name } }).toDouble());
     };
+
+    seedTracks(engine, 1);
 
     int a = addClip("A", 0.0);
     int b = addClip("B", 8.0);
