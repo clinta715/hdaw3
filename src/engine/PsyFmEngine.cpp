@@ -71,6 +71,22 @@ void PsyFmEngine::setModMatrix (PsyFmModMatrix matrix)
     matrix_ = std::move (matrix);
 }
 
+void PsyFmEngine::snapshotModState (std::vector<PsyFmModRoute>& outRoutes,
+                                    float outBaseRatios[kNumOperators],
+                                    float& outBaseFeedback,
+                                    PsyFmModSourcePool& outPool)
+{
+    // Same lock contract as setModMatrix: render() TryLocks and skips the
+    // matrix pass on contention, so a short hold here is benign. All copies
+    // are small (a handful of routes + fixed-size params).
+    const juce::SpinLock::ScopedLockType lock (matrixLock_);
+    outRoutes = matrix_.getRoutes();
+    for (int i = 0; i < kNumOperators; ++i)
+        outBaseRatios[i] = baseRatios_[i];
+    outBaseFeedback = baseFeedback_;
+    outPool = sources_;
+}
+
 // ── Bar clock ──
 
 void PsyFmEngine::onBarBoundary (int barCounter)

@@ -49,6 +49,18 @@ public:
     PsyFmModMatrix& getModMatrix() { return matrix_; }
     PsyFmModSourcePool& getModSourcePool() { return sources_; }
 
+    /// Read-only debug/inspection snapshot (message thread): copies the matrix
+    /// routes, base params, and the source pool under matrixLock_ so a
+    /// concurrent setModMatrix swap cannot race the read. The caller simulates
+    /// apply() on the copies — no audio is rendered, nothing is mutated.
+    /// (Direct getModMatrix() access is NOT thread-safe; debug tools must use
+    /// this instead.) Render() uses TryLock+skip, so a brief ScopedLock hold
+    /// here only ever costs one skipped matrix pass, never a stall.
+    void snapshotModState (std::vector<PsyFmModRoute>& outRoutes,
+                           float outBaseRatios[kNumOperators],
+                           float& outBaseFeedback,
+                           PsyFmModSourcePool& outPool);
+
     // ── Bar clock (called from MutatorConductor) ──
     void onBarBoundary (int barCounter);
 
