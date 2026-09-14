@@ -709,6 +709,18 @@ Real synth firmware running as isolated CLAP plugins — installed in
 - Dexed/OsTIrus `setStateInformation` rejections are plugin-side (same family
   as Serum 2 — see the 2026-09-08 Serum investigation handoff).
 
+### Isolated children render non-deterministically (known limitation)
+
+The emulated synths run real firmware inside a DSP56300 emulator with
+free-running oscillator phase — two exports of the same project produce
+different sample data (~±2% RMS). The internal engines (psy_fm, sub_synth,
+fm_synth, sampler) ARE deterministic.
+
+Gate margins must tolerate ±2% when isolated plugins are in the project.
+A/B comparisons should use spectral properties (centroid, band energies),
+not sample-level equality. See `docs/realtime-safety.md` for the full
+documentation.
+
 ### Known limitations
 - TI bank switching via CC0+PC: unverified/ineffective on OsTIrus (all
   bank/program combos rendered hash-identically). TI part singles likely need

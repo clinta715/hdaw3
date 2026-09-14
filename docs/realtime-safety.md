@@ -411,6 +411,30 @@ take down the DAW. Enabled by default; disable with `-DHDAW_PLUGIN_ISOLATION=OFF
 `ProxyProcessManager`, `PluginProxySlot`, `ProxyEditor`,
 `CrashRecoveryManager`, and the `hdaw_plugin_host` target.
 
+### Isolated children render non-deterministically (known limitation)
+
+The emulated synths (NodalRed2x, OsTIrus, Vavra, Xenia, JE8086, Dexed) run
+real firmware inside a DSP56300 emulator. The emulated oscillators have a
+free-running phase that depends on when the DSP starts processing after
+respawn — the host cannot reset it without modifying the emulated firmware's
+boot sequence (which is ROM-locked).
+
+**Consequence:** two offline exports of the same project produce different
+sample data beyond gain scaling. Measured residual: >95% samples mismatch;
+RMS varies ~±2%. The internal engines (psy_fm, sub_synth, fm_synth,
+sampler, subtractive) ARE deterministic.
+
+**Guidance for gate margins and A/B comparisons:**
+- Mix gate margins must tolerate ±2% RMS variance when isolated plugins are
+  in the project.
+- A/B comparisons should compare SPECTRAL properties (centroid, band
+  energies) rather than sample-level equality — the spectral centroid is
+  stable within ±5 Hz across respawns.
+- The ceilingHitPct metric is stable within ±0.01% — reliable for gate checks.
+- The internal engines (psy_fm, sub_synth, fm_synth, sampler) ARE
+  deterministic — A/B comparisons on tracks without isolated plugins are
+  sample-exact.
+
 **Spec / plan:**
 - `docs/archive/superpowers/specs/2026-06-30-plugin-process-isolation-design.md`
 - `docs/archive/superpowers/specs/2026-08-03-plugin-isolation-fixes-design.md`

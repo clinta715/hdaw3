@@ -129,6 +129,12 @@ A role handoff WITHOUT gate evidence is rejected — send it back with the faile
 gate named. Evidence is machine output (verify_part / mix_report / analyze_tuning
 / audition peaks / waveform peaks), not prose.
 
+**Render variance note:** the emulated synths (NodalRed2x, OsTIrus, etc.) have
+free-running oscillator phase — two exports of the same project differ by ~±2%
+RMS. Gate margins must tolerate this. A/B comparisons should use spectral
+properties (centroid, band energies), not sample-level equality. See
+`docs/realtime-safety.md` for the full documentation.
+
 ## Session lessons that bind every role
 - Verify the SAVED project state (mutes, faders, offsets) before diagnosing a
   bad render (AGENTS.md lesson 24).
