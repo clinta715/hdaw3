@@ -681,14 +681,13 @@ Real synth firmware running as isolated CLAP plugins — installed in
   into any DX7-engine slot (Dexed).
 - `load_nord_bank {trackId, slotIndex, filePath, program?}` — Nord Lead 2x
   banks (`.syx` raw Clavia SysEx, `.mid` SMF-wrapped) into NodalRed2x:
-  every dump validated (F0 33 <dev> 04 header, F7-terminated, ≤32768B)
-  BEFORE queueing; optional `program` sends the trailing PC for voice
-  selection. Sidecar pipeline: `timbre-lib/nl2x_patch.py` writes
-  `<patch>.nl2x.json` descriptions over `D:\pdf\NL2x Banks` (6841
-  sidecars, 29436 dumps) — searchable by FileLibraryManager.
-  CAVEAT: force a fresh state capture after large banks (a trailing CC
-  with captureToTree) — the ~800ms capture timer can otherwise fire while
-  the SHM ring still drains the bank (test-verified race).
+  ATOMIC — every dump validated (F0 33 <dev> 04 header, F7-terminated,
+  ≤32768B) BEFORE queueing, and a harmless CC125 is appended to trigger
+  the deferred state capture AFTER the bank is fully consumed by the
+  child. No separate send_fx_midi call needed. Sidecar pipeline:
+  `timbre-lib/nl2x_patch.py` writes `<patch>.nl2x.json` descriptions
+  over `D:\pdf\NL2x Banks` (6841 sidecars, 29436 dumps) — searchable
+  by FileLibraryManager.
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.

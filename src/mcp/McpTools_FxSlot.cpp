@@ -397,7 +397,7 @@ s.registerTool({"load_dexed_cartridge",
         return McpToolResult::text(QString("queued sysex %1 bytes (r.queued=%2, track=%3 slot=%4, capturedToTree=%5)").arg(static_cast<int>(block.getSize())).arg(r.queued).arg(p.trackIndex).arg(p.slotIndex).arg(r.capturedToTree ? 1 : 0));
     }});
 s.registerTool({"load_nord_bank",
-    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. Validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything. Realtime mutation: not undoable; capture via project save.",
+    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 to trigger the deferred state capture AFTER the bank is fully consumed by the child (no capture-race). Realtime mutation: not undoable; capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"filePath", QJsonObject{{"type","string"}}},
@@ -471,6 +471,20 @@ s.registerTool({"load_nord_bank",
             pc.channel = 1;
             pc.data1 = program;
             p.events.push_back(std::move(pc));
+        }
+        // Capture-race protocol: append a harmless CC125 (undefined on the
+        // NL2x) at the END of the batch. The deferred state capture fires
+        // ~800ms after sendFxMidi returns — the CC125 ensures the capture
+        // snapshots the state AFTER the child has consumed the entire bank,
+        // not a partially-applied intermediate state (the capture race
+        // observed on Modular Dawn with 110-dump banks).
+        {
+            ProjectCommands::FxMidiEvent cc;
+            cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
+            cc.channel = 1;
+            cc.data1 = 125; // undefined on the NL2x — the firmware ignores it
+            cc.data2 = 0;
+            p.events.push_back(std::move(cc));
         }
         auto r = e->getProjectCommands().sendFxMidi(p);
         if (!r.ok)
