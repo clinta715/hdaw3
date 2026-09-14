@@ -524,6 +524,91 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                 return McpToolResult::text(QString::fromUtf8(ex.what()), true);
             }
         }});
+
+    s.registerTool({"mix_diff",
+        "Compare two rendered WAVs per-band (render A/B verification): measures both with the mix_report analyzer, then reports rmsDb (rmsA - rmsB in dB), peakRatio (peakA / peakB), per-band energy deltas (linear power, bandA - bandB). Optional sections (seconds, same format as mix_report) add per-section deltas {name,start,end,rmsDb,peakRatio,bandEnergy}. Same band cutoffs as mix_report: sub 40-110, bass 90-300, body 300-2000, high >6000 Hz.",
+        objSchema({{"filePathA", QJsonObject{{"type","string"}}},
+                   {"filePathB", QJsonObject{{"type","string"}}},
+                   {"bpm",      QJsonObject{{"type","number"}}},
+                   {"sections", QJsonObject{
+                       {"type","array"},
+                       {"items", QJsonObject{
+                           {"type","object"},
+                           {"properties", QJsonObject{
+                               {"name",  QJsonObject{{"type","string"}}},
+                               {"start", QJsonObject{{"type","number"}}},
+                               {"end",   QJsonObject{{"type","number"}}}}},
+                           {"required", QJsonArray{"name","start","end"}}}}}}
+        }, {"filePathA","filePathB"}),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const QString pathA = a.value("filePathA").toString();
+            const QString pathB = a.value("filePathB").toString();
+            const double bpm = a.value("bpm").toDouble(0.0);
+            const bool hasSections = a.contains("sections");
+            const QJsonArray sectionsArg = a.value("sections").toArray();
+            try {
+                const QJsonObject mA = runMixReportAnalysis(pathA, bpm, sectionsArg, hasSections);
+                const QJsonObject mB = runMixReportAnalysis(pathB, bpm, sectionsArg, hasSections);
+                const auto bandOf = [](const QJsonObject& m, const char* name) {
+                    return m.value("bands").toObject().value(name).toDouble();
+                };
+                const auto rmsDbOf = [](const QJsonObject& m) {
+                    const double rms = m.value("rms").toDouble();
+                    return rms > 1e-12 ? 20.0 * std::log10(rms) : -240.0;
+                };
+                const double rmsDbA = rmsDbOf(mA), rmsDbB = rmsDbOf(mB);
+                const double peakA = mA.value("peak").toDouble();
+                const double peakB = mB.value("peak").toDouble();
+                QJsonObject bands;
+                bands["sub"]  = bandOf(mA, "sub")  - bandOf(mB, "sub");
+                bands["bass"] = bandOf(mA, "bass") - bandOf(mB, "bass");
+                bands["body"] = bandOf(mA, "body") - bandOf(mB, "body");
+                bands["high"] = bandOf(mA, "high") - bandOf(mB, "high");
+                QJsonObject delta;
+                delta["rmsDb"] = rmsDbA - rmsDbB;
+                delta["peakRatio"] = peakB > 1e-12 ? peakA / peakB : 0.0;
+                delta["bands"] = bands;
+                QJsonArray sections;
+                const auto secsA = mA.value("sections").toArray();
+                const auto secsB = mB.value("sections").toArray();
+                for (int i = 0; i < secsA.size(); ++i) {
+                    const auto sa = secsA.at(i).toObject();
+                    const auto sb = i < secsB.size() ? secsB.at(i).toObject() : QJsonObject{};
+                    const double rmsAi = sa.value("rms").toDouble();
+                    const double rmsBi = sb.value("rms").toDouble();
+                    const double peakAi = sa.value("peak").toDouble();
+                    const double peakBi = sb.value("peak").toDouble();
+                    QJsonObject secBands;
+                    secBands["sub"]  = sa.value("bandEnergy").toObject().value("sub").toDouble()
+                                     - sb.value("bandEnergy").toObject().value("sub").toDouble();
+                    secBands["bass"] = sa.value("bandEnergy").toObject().value("bass").toDouble()
+                                     - sb.value("bandEnergy").toObject().value("bass").toDouble();
+                    secBands["body"] = sa.value("bandEnergy").toObject().value("body").toDouble()
+                                     - sb.value("bandEnergy").toObject().value("body").toDouble();
+                    secBands["high"] = sa.value("bandEnergy").toObject().value("high").toDouble()
+                                     - sb.value("bandEnergy").toObject().value("high").toDouble();
+                    QJsonObject sec;
+                    sec["name"] = sa.value("name");
+                    sec["start"] = sa.value("start");
+                    sec["end"] = sa.value("end");
+                    sec["rmsDb"] = (rmsAi > 1e-12 && rmsBi > 1e-12)
+                        ? 20.0 * std::log10(rmsAi) - 20.0 * std::log10(rmsBi) : -240.0;
+                    sec["peakRatio"] = peakBi > 1e-12 ? peakAi / peakBi : 0.0;
+                    sec["bandEnergy"] = secBands;
+                    sections.append(sec);
+                }
+                QJsonObject root;
+                root["fileA"] = pathA;
+                root["fileB"] = pathB;
+                root["delta"] = delta;
+                root["sections"] = sections;
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(root).toJson(QJsonDocument::Compact)));
+            } catch (const std::exception& ex) {
+                return McpToolResult::text(QString::fromUtf8(ex.what()), true);
+            }
+        }});
 }
 
 } // namespace mcp

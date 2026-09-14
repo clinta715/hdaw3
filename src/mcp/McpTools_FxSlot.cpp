@@ -107,6 +107,26 @@ std::vector<ProbeNote> buildPatchProbeNotes(const QString& role, int root,
     return notes;
 }
 
+// M4 (Modular Dawn audit): resolve a param NAME to its index against the
+// defs list list_fx_params exposes. Returns -1 when not found.
+int internalParamIndexByName(const std::vector<HDAW::TrackFXSlot::InternalParamDef>& defs,
+                             const QString& name)
+{
+    for (const auto& def : defs)
+        if (QString::fromUtf8(def.name.toRawUTF8()).compare(name, Qt::CaseInsensitive) == 0)
+            return def.index;
+    return -1;
+}
+
+int masterParamIndexByName(const std::vector<HDAW::MasterFxParamDef>& defs,
+                           const QString& name)
+{
+    for (size_t i = 0; i < defs.size(); ++i)
+        if (QString::fromUtf8(defs[i].name).compare(name, Qt::CaseInsensitive) == 0)
+            return static_cast<int>(i);
+    return -1;
+}
+
 } // namespace
 
 void registerFxSlotTools(McpServer& s, AudioEngine* e)
@@ -252,11 +272,12 @@ s.registerTool({"list_fx_params", "List all automatable parameters of an FX slot
                 QJsonDocument(QJsonObject{{"params", arr}}).toJson(QJsonDocument::Compact)));
         }});
 
-s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
+s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1) by paramIndex or paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given). Works for both plugin and internal FX (eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, sub_synth).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
-                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
+                  {"paramName", QJsonObject{{"type","string"}}},
+                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
@@ -266,6 +287,9 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
                 return McpToolResult::text("slot not found", true);
             if (fxSlots[si].fxType == "none")
                 return McpToolResult::text("slot is empty", true);
+            const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
+            if (!hasName && !a.contains("paramIndex"))
+                return McpToolResult::text("paramIndex or paramName required", true);
             int pi = a.value("paramIndex").toInt();
             float v = static_cast<float>(a.value("value").toDouble());
             v = std::clamp(v, 0.0f, 1.0f);
@@ -273,6 +297,16 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
             if (fxSlots[si].fxType == "plugin")
             {
                 auto params = e->getPluginParamService().getParams(ti, fxSlots[si].pluginId);
+                if (hasName)
+                {
+                    pi = -1;
+                    const QString wantName = a.value("paramName").toString();
+                    for (const auto& p : params)
+                        if (QString::fromStdString(p.name).compare(wantName, Qt::CaseInsensitive) == 0)
+                            { pi = p.index; break; }
+                    if (pi < 0)
+                        return McpToolResult::text("unknown paramName: " + wantName, true);
+                }
                 if (pi < 0 || pi >= static_cast<int>(params.size()))
                     return McpToolResult::text("param index out of range", true);
                 e->getPluginParamService().setParam(ti, fxSlots[si].pluginId, pi, v);
@@ -283,6 +317,12 @@ s.registerTool({"set_fx_param", "Set an FX parameter value (normalized 0..1). Wo
                 // ValueTree property, triggering the listener to apply to DSP.
                 // The ValueTree stores real values, so denormalize first.
                 auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+                if (hasName)
+                {
+                    pi = internalParamIndexByName(defs, a.value("paramName").toString());
+                    if (pi < 0)
+                        return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
+                }
                 if (pi < 0 || pi >= static_cast<int>(defs.size()))
                     return McpToolResult::text("param index out of range", true);
                 float realValue = defs[static_cast<size_t>(pi)].minValue
@@ -384,10 +424,11 @@ s.registerTool({"load_nord_bank",
             a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"set_master_fx_param",
-        "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB [-24..0], param1=Release ms [1..500], param2=Ceiling linear [0.5..1.0] — post-limiter output clamp; 1.0 = full scale). A slot only processes when bypassed=false.",
+        "Set a MASTER-bus FX slot parameter (eq / compressor / limiter) by paramIndex or paramName (the name get_master_fx_params returns; case-insensitive, paramName wins when both are given). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB [-24..0], param1=Release ms [1..500], param2=Ceiling linear [0.5..1.0] — post-limiter output clamp; 1.0 = full scale). A slot only processes when bypassed=false.",
         objSchema({{"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
-                  {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","paramIndex","value"}),
+                  {"paramName", QJsonObject{{"type","string"}}},
+                  {"value",     QJsonObject{{"type","number"}}}}, {"slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int si = a.value("slotIndex").toInt();
@@ -403,6 +444,15 @@ s.registerTool({"set_master_fx_param",
                 return McpToolResult::text("slot not found", true);
             const juce::String fxType = masterFx.getChild(si).getProperty(IDs::fxType, "").toString();
             const auto& defs = HDAW::masterFxParamDefs(fxType);
+            const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
+            if (!hasName && !a.contains("paramIndex"))
+                return McpToolResult::text("paramIndex or paramName required", true);
+            if (hasName)
+            {
+                pi = masterParamIndexByName(defs, a.value("paramName").toString());
+                if (pi < 0)
+                    return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
+            }
             if (pi < 0 || pi >= static_cast<int>(defs.size()))
                 return McpToolResult::text("param index out of range", true);
             const float written = e->getProjectCommands().setMasterFxParam(si, pi, v);
@@ -469,11 +519,12 @@ s.registerTool({"get_master_fx_params",
         }});
 
 s.registerTool({"set_internal_fx_param",
-        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex — out-of-range values are silently clamped (lesson 23).",
+        "Set an internal (non-plugin) FX parameter value. Works for eq, compressor, reverb, delay, chorus, flanger, phaser, filter, saturator, sampler, fm_synth, growl_bass, psyarp, psy_fm, and sub_synth. Values are in REAL units (the engine's internal range per param — cutoff in Hz, drive in dB, etc). Call list_fx_params {trackId, slotIndex} FIRST to discover the exact range and default for each paramIndex, or pass paramName (the name list_fx_params returns; case-insensitive, paramName wins when both are given) — out-of-range values are silently clamped (lesson 23).",
         objSchema({{"trackId",   QJsonObject{{"type","integer"}}},
                   {"slotIndex", QJsonObject{{"type","integer"}}},
                   {"paramIndex",QJsonObject{{"type","integer"}}},
-                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","paramIndex","value"}),
+                  {"paramName", QJsonObject{{"type","string"}}},
+                  {"value",     QJsonObject{{"type","number"}}}}, {"trackId","slotIndex","value"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
             int ti = a.value("trackId").toInt();
@@ -488,6 +539,15 @@ s.registerTool({"set_internal_fx_param",
             // out-of-range index must be an error, never a stray param_N
             // property write (existing set_fx_param behavior).
             auto defs = HDAW::TrackFXSlot::getParamDefsForType(fxSlots[si].fxType);
+            const bool hasName = a.contains("paramName") && !a.value("paramName").toString().isEmpty();
+            if (!hasName && !a.contains("paramIndex"))
+                return McpToolResult::text("paramIndex or paramName required", true);
+            if (hasName)
+            {
+                pi = internalParamIndexByName(defs, a.value("paramName").toString());
+                if (pi < 0)
+                    return McpToolResult::text("unknown paramName: " + a.value("paramName").toString(), true);
+            }
             if (pi < 0 || pi >= static_cast<int>(defs.size()))
                 return McpToolResult::text("param index out of range", true);
             float v = static_cast<float>(a.value("value").toDouble());

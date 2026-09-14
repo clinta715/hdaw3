@@ -497,6 +497,112 @@ TEST(McpServer, AddFilterFxAndSetParams) {
     s.setTransport(nullptr);
 }
 
+// M4 (Modular Dawn audit): paramName resolution on the FX param write tools.
+// set_internal_fx_param {paramName} lands the same tree / read-model value as
+// the equivalent paramIndex call; set_master_fx_param {paramName} likewise;
+// an unknown name is an error that mutates nothing (Gate 9). paramName wins
+// when both are given.
+TEST(McpServer, SetFxParamByName) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+
+    auto callTool = [&](int id, const char* name, const char* args) {
+        tp.drainOutgoing();
+        QString req = QString(R"({"jsonrpc":"2.0","id":%1,"method":"tools/call",)"
+                              R"("params":{"name":"%2","arguments":%3}})")
+                          .arg(id).arg(name).arg(args);
+        tp.pumpIncoming(req.toUtf8());
+        QByteArray out; EXPECT_TRUE(tp.waitForOutgoing(500, &out));
+        return parseOne(out);
+    };
+    auto text = [](const QJsonObject& r) -> QString {
+        return r.value("result").toObject()
+                .value("content").toArray().at(0).toObject()
+                .value("text").toString();
+    };
+    auto isError = [](const QJsonObject& r) {
+        return r.value("result").toObject().value("isError").toBool(false);
+    };
+
+    auto r = callTool(0, "add_track", R"({"name":"Track"})");
+    ASSERT_FALSE(r.value("error").isObject());
+    ASSERT_FALSE(isError(r));
+    r = callTool(1, "add_fx", R"({"trackId":0,"fxType":"filter"})");
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+
+    // set_internal_fx_param by NAME: Cutoff is paramIndex 0 for "filter".
+    r = callTool(2, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramName":"Cutoff","value":400})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    ASSERT_EQ(snaps.size(), 3u);
+    EXPECT_NEAR(snaps[0].value, 400.0f, 0.01f);
+    auto slotTree = engine.getProjectModel().getTrackListTree()
+                        .getChild(0).getChildWithName(IDs::FX_CHAIN).getChild(0);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_0"))), 400.0);
+
+    // Same result as the index form.
+    r = callTool(3, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":0,"value":700})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    EXPECT_NEAR(snaps[0].value, 700.0f, 0.01f);
+    EXPECT_DOUBLE_EQ(static_cast<double>(slotTree.getProperty(juce::Identifier("param_0"))), 700.0);
+
+    // paramName wins when both are given: Resonance is paramIndex 2.
+    r = callTool(4, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramIndex":0,"paramName":"Resonance","value":5.5})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    EXPECT_NEAR(snaps[2].value, 5.5f, 0.01f);
+    EXPECT_NEAR(snaps[0].value, 700.0f, 0.01f);
+
+    // Unknown name is an error and mutates nothing.
+    r = callTool(5, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"paramName":"Nope","value":1})");
+    EXPECT_TRUE(isError(r));
+    EXPECT_TRUE(text(r).contains("unknown paramName")) << text(r).toStdString();
+    snaps = engine.getReadModel().getInternalFxParams(0, 0);
+    EXPECT_NEAR(snaps[0].value, 700.0f, 0.01f);
+    EXPECT_NEAR(snaps[2].value, 5.5f, 0.01f);
+
+    // Neither paramName nor paramIndex is an error.
+    r = callTool(6, "set_internal_fx_param", R"({"trackId":0,"slotIndex":0,"value":1})");
+    EXPECT_TRUE(isError(r));
+    EXPECT_TRUE(text(r).contains("paramIndex or paramName required")) << text(r).toStdString();
+
+    // set_master_fx_param by NAME: default slot 1 = limiter, param 0 = Threshold.
+    r = callTool(7, "set_master_fx_param", R"({"slotIndex":1,"paramName":"Threshold","value":-6.0})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    {
+        auto lim = engine.getProjectModel().getTree()
+                        .getChildWithName(IDs::MASTER_FX).getChild(1);
+        EXPECT_DOUBLE_EQ(static_cast<double>(lim.getProperty(juce::Identifier("param_0"))), -6.0);
+    }
+
+    // Same result as the index form.
+    r = callTool(8, "set_master_fx_param", R"({"slotIndex":1,"paramIndex":0,"value":-12.0})");
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    {
+        auto lim = engine.getProjectModel().getTree()
+                        .getChildWithName(IDs::MASTER_FX).getChild(1);
+        EXPECT_DOUBLE_EQ(static_cast<double>(lim.getProperty(juce::Identifier("param_0"))), -12.0);
+    }
+
+    // Unknown master name ("Gain" exists only on the eq slot) errors, no write.
+    r = callTool(9, "set_master_fx_param", R"({"slotIndex":1,"paramName":"Gain","value":1.0})");
+    EXPECT_TRUE(isError(r));
+    EXPECT_TRUE(text(r).contains("unknown paramName")) << text(r).toStdString();
+    {
+        auto lim = engine.getProjectModel().getTree()
+                        .getChildWithName(IDs::MASTER_FX).getChild(1);
+        EXPECT_DOUBLE_EQ(static_cast<double>(lim.getProperty(juce::Identifier("param_0"), -12.0)), -12.0);
+    }
+
+    s.stop();
+    s.setTransport(nullptr);
+}
+
 // Matrix-only SubSynth modulation factory presets over MCP: apply writes the
 // LFO params (27..32) in REAL units to the tree + read model; unknown preset
 // ids and non-sub_synth slots are errors with no mutation (Gate 9).

@@ -2743,6 +2743,31 @@ QString writeMixReportFixtureWav()
     return QString::fromStdString(f.getFullPathName().toStdString());
 }
 
+// 8 s @ 48 kHz mono sine fixture for mix_diff (same content shape as
+// writeMixReportFixtureWav, with an overall gain scale) so A/B comparisons
+// have deterministic, exactly-scalable RMS and peak.
+QString writeMixDiffFixtureWav(double scale)
+{
+    const juce::File f = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getChildFile("hdaw_mix_diff_" + juce::String(juce::Random::getSystemRandom().nextInt()) + ".wav");
+    f.deleteFile();
+    constexpr double sr = 48000.0;
+    constexpr int len = static_cast<int>(sr * 8.0);
+    juce::AudioBuffer<float> buf(1, len);
+    for (int64_t i = 0; i < len; ++i) {
+        const double t = static_cast<double>(i) / sr;
+        float v = (t < 4.0)
+            ? static_cast<float>(scale * (synthSineAt(t, 60.0, 0.5) + synthSineAt(t, 440.0, 0.3)))
+            : static_cast<float>(scale * (synthSineAt(t, 440.0, 0.2) + synthSineAt(t, 8000.0, 0.3)));
+        buf.setSample(0, static_cast<int>(i), v);
+    }
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wav.createWriterFor(new juce::FileOutputStream(f), sr, 1, 24, {}, 0));
+    if (writer == nullptr) return {};
+    writer->writeFromAudioSampleBuffer(buf, 0, len);
+    return QString::fromStdString(f.getFullPathName().toStdString());
+}
 // P2-4: analyze_midi_file now returns key/scale/bpm (top-level) and stable
 // per-pattern ids. Fixture: two identical bars of C minor @ 128 bpm — C is
 // the heaviest pitch class so detectScale lands on Aeolian (scaleType 1).
@@ -2845,7 +2870,12 @@ TEST_F(McpCoverageTest, MixReportSections)
     EXPECT_NEAR(obj.value("rms").toDouble(), std::sqrt(0.1175), 0.01);
     EXPECT_NEAR(obj.value("duration").toDouble(), 8.0, 1e-6);
     EXPECT_EQ(obj.value("sampleRate").toDouble(), 48000.0);
-    EXPECT_EQ(obj.value("bandLabels").toArray().size(), 4);
+    auto bandsObj = obj.value("bands").toObject();
+    EXPECT_EQ(bandsObj.size(), 4);
+    EXPECT_TRUE(bandsObj.contains("sub"));
+    EXPECT_TRUE(bandsObj.contains("bass"));
+    EXPECT_TRUE(bandsObj.contains("body"));
+    EXPECT_TRUE(bandsObj.contains("high"));
     EXPECT_TRUE(obj.contains("pumpDepth")) << "bpm given, 8-beat sections -> pumpDepth expected";
 
     auto secs = obj.value("sections").toArray();
@@ -2853,8 +2883,8 @@ TEST_F(McpCoverageTest, MixReportSections)
     EXPECT_EQ(secs[0].toObject().value("name").toString(), "A");
     EXPECT_NEAR(secs[0].toObject().value("rms").toDouble(), std::sqrt(0.17), 0.01);
     EXPECT_NEAR(secs[1].toObject().value("rms").toDouble(), std::sqrt(0.065), 0.01);
-    auto secA = secs[0].toObject().value("bandEnergy").toArray();
-    EXPECT_GT(secA[0].toDouble(), secA[1].toDouble());   // sub > bass in A
+    auto secA = secs[0].toObject().value("bandEnergy").toObject();
+    EXPECT_GT(secA.value("sub").toDouble(), secA.value("bass").toDouble());   // sub > bass in A
 
     // Default: one "whole" section, pumpDepth omitted when no bpm.
     auto r2 = call("mix_report", {{"filePath", wavPath}});
@@ -2873,6 +2903,72 @@ TEST_F(McpCoverageTest, MixReportSections)
     juce::File(wavPath.toStdString()).deleteFile();
 }
 
+// W5 (Modular Dawn audit): mix_diff compares two renders with the mix_report
+// analyzer and reports level + per-band deltas. Identical files give ~0 delta
+// and peakRatio 1; a -12 dB variant gives rmsDb ~ +12.04 and peakRatio ~ 4.
+// Also: per-section deltas with the mix_report section format, and error on a
+// missing file.
+TEST_F(McpCoverageTest, MixDiffDeltaShape)
+{
+    QStringList toolNames;
+    for (const auto& t2 : toolList())
+        toolNames << t2.toObject().value("name").toString();
+    EXPECT_TRUE(toolNames.contains("mix_diff"));
+
+    const QString wavA = writeMixDiffFixtureWav(1.0);
+    const QString wavB = writeMixDiffFixtureWav(0.25);
+    ASSERT_FALSE(wavA.isEmpty());
+    ASSERT_FALSE(wavB.isEmpty());
+
+    // Identical files: every delta ~ 0, peakRatio ~ 1, one "whole" section.
+    auto same = call("mix_diff", {{"filePathA", wavA}, {"filePathB", wavA}});
+    ASSERT_FALSE(isError(same)) << text(same).toStdString();
+    auto sameObj = QJsonDocument::fromJson(text(same).toUtf8()).object();
+    EXPECT_EQ(sameObj.value("fileA").toString(), wavA);
+    EXPECT_EQ(sameObj.value("fileB").toString(), wavA);
+    auto d = sameObj.value("delta").toObject();
+    EXPECT_NEAR(d.value("rmsDb").toDouble(), 0.0, 1e-6);
+    EXPECT_NEAR(d.value("peakRatio").toDouble(), 1.0, 1e-6);
+    auto b = d.value("bands").toObject();
+    ASSERT_EQ(b.size(), 4);
+    EXPECT_NEAR(b.value("sub").toDouble(), 0.0, 1e-9);
+    EXPECT_NEAR(b.value("bass").toDouble(), 0.0, 1e-9);
+    EXPECT_NEAR(b.value("body").toDouble(), 0.0, 1e-9);
+    EXPECT_NEAR(b.value("high").toDouble(), 0.0, 1e-9);
+    ASSERT_EQ(sameObj.value("sections").toArray().size(), 1);
+
+    // A = B + 12 dB: rmsDb ~ 20*log10(4), peakRatio ~ 4, every content band
+    // (sub/body/high) strictly higher in A.
+    auto r = call("mix_diff", {{"filePathA", wavA}, {"filePathB", wavB}});
+    ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    auto obj = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    auto d2 = obj.value("delta").toObject();
+    EXPECT_NEAR(d2.value("rmsDb").toDouble(), 20.0 * std::log10(4.0), 0.05);
+    EXPECT_NEAR(d2.value("peakRatio").toDouble(), 4.0, 0.01);
+    auto bands2 = d2.value("bands").toObject();
+    EXPECT_GT(bands2.value("sub").toDouble(), 0.0);
+    EXPECT_GT(bands2.value("body").toDouble(), 0.0);
+    EXPECT_GT(bands2.value("high").toDouble(), 0.0);
+
+    // Per-section deltas use the mix_report section format.
+    QJsonArray sectionsArg{
+        QJsonObject{{"name","A"}, {"start",0.0}, {"end",4.0}},
+        QJsonObject{{"name","B"}, {"start",4.0}, {"end",8.0}}};
+    auto rs = call("mix_diff", {{"filePathA", wavA}, {"filePathB", wavB}, {"sections", sectionsArg}});
+    ASSERT_FALSE(isError(rs)) << text(rs).toStdString();
+    auto objs = QJsonDocument::fromJson(text(rs).toUtf8()).object();
+    auto secs = objs.value("sections").toArray();
+    ASSERT_EQ(secs.size(), 2);
+    EXPECT_EQ(secs[0].toObject().value("name").toString(), "A");
+    EXPECT_NEAR(secs[0].toObject().value("rmsDb").toDouble(), 20.0 * std::log10(4.0), 0.05);
+    EXPECT_TRUE(secs[0].toObject().value("bandEnergy").toObject().contains("sub"));
+
+    // Error path: missing file B.
+    EXPECT_TRUE(isError(call("mix_diff", {{"filePathA", wavA}, {"filePathB", "C:/nonexistent/render.wav"}})));
+
+    juce::File(wavA.toStdString()).deleteFile();
+    juce::File(wavB.toStdString()).deleteFile();
+}
 // Task 3 (plan 2026-09-02-fx-chain-presets): save_fx_chain -> list_fx_chains
 // -> load_fx_chain round-trip over MCP; the restored chain is asserted on the
 // LIVE processor (Gate 2), not the ReadModel.
