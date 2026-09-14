@@ -274,8 +274,10 @@ inline McpToolResult runNordBankFile(AudioEngine& e, int ti, int si,
         p.events.push_back(std::move(pc));
     }
     // Capture-race protocol: append a harmless CC125 (undefined on the
-    // NL2x) at the END of the batch. The deferred state capture fires
-    // only AFTER the child has consumed the whole bank (see send_fx_midi).
+    // NL2x) at the END of the batch so the trailing slot state is inert.
+    // Delivery is paced by the slot drain (<=1 SysEx per block, order
+    // preserved) and the deferred state capture is delayed ~30ms per queued
+    // SysEx (see sendFxMidi), then confirmed via get_fx_capture_status.
     {
         ProjectCommands::FxMidiEvent cc;
         cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;

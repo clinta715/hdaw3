@@ -396,9 +396,11 @@ public:
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
 
     // --- Command-thread MIDI injection (program change / CC / note) ---------
-    // Queue a short MIDI message for delivery to the plugin in the NEXT
-    // processed block (drained at the top of process() into the incoming
-    // MidiBuffer). Realtime mutation: NOT undoable, no ValueTree write; the
+    // Queue a short MIDI message for delivery to the plugin starting with
+    // the NEXT processed block (drained at the top of process() into the
+    // incoming MidiBuffer; SysEx-heavy batches spread over successive blocks
+    // at most one SysEx per block — see drainPendingMidi). Realtime mutation:
+    // NOT undoable, no ValueTree write; the
     // resulting plugin state persists via the pluginState captured on project
     // save. Drop-never-block: the queue is capped, overflow is logged+dropped.
     // Messages queued while the slot is bypassed are consumed but inert.
@@ -892,6 +894,35 @@ public:
         std::vector<juce::MidiMessage> local;
         local.swap(pendingMidi_);
         pendingMidiMutex_.unlock();
+        // SysEx metering (NB1/NB4): the isolated-plugin SHM midiIn ring
+        // carries at most ONE SysEx per block (single sysexInBusy lane — a
+        // second SysEx in the same block is dropped as "lane busy"). Deliver
+        // the prefix through the first SysEx and re-queue the remainder so
+        // multi-dump bank loads spread over successive blocks IN ORDER
+        // (dumps, then trailing PC/CC). SysEx-free batches are unaffected.
+        // Re-queue uses try_lock (never blocks the render thread); if it
+        // fails we deliver everything now (previous behavior) rather than
+        // lose messages.
+        bool seenSysex = false;
+        size_t deliverCount = local.size();
+        for (size_t i = 0; i < local.size(); ++i)
+        {
+            if (local[i].isSysEx())
+            {
+                if (seenSysex) { deliverCount = i; break; }
+                seenSysex = true;
+            }
+        }
+        if (deliverCount < local.size()
+            && pendingMidiMutex_.try_lock())
+        {
+            pendingMidi_.insert(pendingMidi_.begin(),
+                                local.begin() + static_cast<ptrdiff_t>(deliverCount),
+                                local.end());
+            local.erase(local.begin() + static_cast<ptrdiff_t>(deliverCount),
+                        local.end());
+            pendingMidiMutex_.unlock();
+        }
         if (!local.empty())
             HDAW_LOG("FxMidiDrain", "drained " + juce::String(local.size()) + " queued messages on slot " + juce::String::toHexString((juce::pointer_sized_int) this));
         for (const auto& m : local)

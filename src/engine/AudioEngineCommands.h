@@ -101,6 +101,13 @@ public:
     /// mutation — not undoable; persists via plugin state on save. Returns
     /// ok=false + error on invalid track/slot or malformed batch.
     FxMidiResult sendFxMidi(const FxMidiParams& params) override;
+
+    /// Write the deferred-capture receipt onto an FX_SLOT tree (NB4): status
+    /// "pending" | "ok" | "failed: ...", byte count, timestamp. Shared by the
+    /// realtime-deferred and headless-synchronous capture paths; static for tests.
+    static void writeFxCaptureReceipt(juce::ValueTree slotTree,
+                                      const juce::String& status,
+                                      int stateBytes);
     VerifyPartResult verifyPart(int trackIndex, double windowSeconds,
                                 double startBeat = 0.0, double endBeat = 0.0) override;
 

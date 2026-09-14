@@ -323,6 +323,21 @@ float AudioEngineCommands::setFxSlotParam(int trackIndex, int slotIndex,
     return value;
 }
 
+// NB4 capture receipt: always-fresh values (status + byte count + timestamp)
+// so the write is never a setProperty no-op (lesson 2) and agents can poll
+// get_fx_capture_status to confirm an injected preset landed in the tree.
+void AudioEngineCommands::writeFxCaptureReceipt(juce::ValueTree slotTree,
+                                               const juce::String& status,
+                                               int stateBytes)
+{
+    if (!slotTree.isValid())
+        return;
+    slotTree.setProperty(IDs::captureStatus, status, nullptr);
+    slotTree.setProperty(IDs::captureBytes, stateBytes, nullptr);
+    slotTree.setProperty(IDs::captureTimeMs,
+                         juce::Time::getCurrentTime().toMilliseconds(), nullptr);
+}
+
 ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectCommands::FxMidiParams& params)
 {
     ProjectCommands::FxMidiResult r;
@@ -384,9 +399,24 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
     // messages, snapshot the plugin state into IDs::pluginState so offline
     // exports / rebuilds / save-load all see the injected preset (Track.cpp
     // restore path reads exactly this property). Mirrors the applyPluginProgram
-    // snapshot (non-undoable, nullptr um).
+    // snapshot (non-undoable, nullptr um). A "pending" receipt is stamped
+    // synchronously so get_fx_capture_status never reports a STALE receipt
+    // from a previous load (NB4); the deferred/headless capture overwrites
+    // it with "ok" (+bytes) or "failed: ...".
     if (params.captureToTree)
     {
+        int sysexCount = 0;
+        for (const auto& ev : params.events)
+            if (ev.kind == ProjectCommands::FxMidiEvent::Kind::SysEx)
+                ++sysexCount;
+        writeFxCaptureReceipt(engine_.getProjectModel().getTrackListTree()
+                                  .getChild(params.trackIndex)
+                                  .getChildWithName(IDs::FX_CHAIN)
+                                  .getChild(params.slotIndex),
+                              "pending", 0);
+        // One SysEx per block through the metered drain: give the child a
+        // block per dump plus the base window before snapshotting (D3).
+        const int captureDelayMs = 800 + 30 * sysexCount;
         const bool deviceOpen = engine_.getDeviceManager().getCurrentAudioDevice() != nullptr;
         if (deviceOpen)
         {
@@ -396,22 +426,36 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
             // request is the same control path the save flow uses mid-playback.
             const int ti = params.trackIndex;
             const int si = params.slotIndex;
-            juce::Timer::callAfterDelay(800, [this, ti, si]() {
-                auto* proc = engine_.getMainProcessor();
-                auto* tr = proc ? proc->getTrack(ti) : nullptr;
-                if (tr == nullptr || si < 0 || static_cast<size_t>(si) >= tr->getFXChain().size())
-                    return;
-                auto* inst = tr->getFXChain()[static_cast<size_t>(si)]->getPluginInstance();
-                if (inst == nullptr)
-                    return;
-                juce::MemoryBlock mb;
-                inst->getStateInformation(mb);
+            juce::Timer::callAfterDelay(captureDelayMs, [this, ti, si]() {
                 auto slotTree = engine_.getProjectModel().getTrackListTree()
                                     .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
+                auto* proc = engine_.getMainProcessor();
+                auto* tr = proc ? proc->getTrack(ti) : nullptr;
+                auto* slot = (tr != nullptr && si >= 0
+                                  && static_cast<size_t>(si) < tr->getFXChain().size())
+                    ? tr->getFXChain()[static_cast<size_t>(si)].get()
+                    : nullptr;
+                auto* inst = (slot != nullptr) ? slot->getPluginInstance() : nullptr;
+                if (inst == nullptr)
+                {
+                    writeFxCaptureReceipt(slotTree, "failed: no plugin instance", 0);
+                    return;
+                }
+                juce::MemoryBlock mb;
+                inst->getStateInformation(mb);
+                // Never clobber last-good state with an empty snapshot (dead
+                // child) — same guard as Track::rebuildFXChain / save.
+                if (mb.getSize() == 0)
+                {
+                    writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
+                    return;
+                }
                 if (slotTree.isValid())
                     slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+                writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
             });
-            r.note = "state capture deferred ~800ms (audio device running)";
+            r.note = "state capture deferred ~" + std::to_string(captureDelayMs)
+                + "ms (audio device running); poll get_fx_capture_status to confirm";
         }
         else
         {
@@ -436,10 +480,19 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
                                 .getChild(params.trackIndex)
                                 .getChildWithName(IDs::FX_CHAIN)
                                 .getChild(params.slotIndex);
-            if (slotTree.isValid())
+            if (mb.getSize() == 0)
+            {
+                writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
+            }
+            else if (slotTree.isValid())
             {
                 slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+                writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
                 r.capturedToTree = true;
+            }
+            else
+            {
+                writeFxCaptureReceipt(slotTree, "failed: slot not in tree", 0);
             }
         }
     }

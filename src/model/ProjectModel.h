@@ -228,6 +228,15 @@ namespace IDs {
     DECLARE_ID(pluginState)
     DECLARE_ID(pluginPath)
 
+    // Deferred FX-MIDI capture receipt (NB4): sendFxMidi stamps "pending"
+    // synchronously, then the deferred/headless capture overwrites with "ok"
+    // or "failed: ...". Values are always fresh (timestamped) so the write
+    // is never a setProperty no-op (lesson 2) — poll get_fx_capture_status
+    // to confirm an injected preset landed in the tree.
+    DECLARE_ID(captureStatus)
+    DECLARE_ID(captureBytes)
+    DECLARE_ID(captureTimeMs)
+
     // FM synth DX7 patch (base64 of the 156-byte VCED patch; tree-persisted
     // so tree-copy renders and save/load restore the imported patch)
     DECLARE_ID(fmPatchData)

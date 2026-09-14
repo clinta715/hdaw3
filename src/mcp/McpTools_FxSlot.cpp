@@ -376,6 +376,28 @@ s.registerTool({"send_fx_midi",
             .arg(r.note.empty() ? QString() : QString(" note=") + QString::fromStdString(r.note)));
     }});
 
+s.registerTool({"get_fx_capture_status",
+    "Report the deferred plugin-state capture receipt for ONE FX slot (see send_fx_midi / load_nord_bank / load_virus_preset / apply_preset): {status, stateBytes, capturedAtMs, hasPluginState}. status is pending while the deferred capture is in flight, ok when the injected preset landed in IDs::pluginState, or failed:<reason>. Poll this after a bank load instead of trusting the immediate capturedToTree=0 (the realtime capture completes after the call returns).",
+    objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"slotIndex",QJsonObject{{"type","integer"}}}},
+             {"trackId","slotIndex"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        const int ti = a.value("trackId").toInt();
+        const int si = a.value("slotIndex").toInt();
+        auto slotTree = e->getProjectModel().getTrackListTree()
+            .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
+        if (!slotTree.isValid())
+            return McpToolResult::text("slot not found in tree", true);
+        const QString status = QString::fromUtf8(
+            slotTree.getProperty(IDs::captureStatus, "none").toString().toRawUTF8());
+        const int stateBytes = static_cast<int>(slotTree.getProperty(IDs::captureBytes, 0));
+        const juce::int64 atMs = static_cast<juce::int64>(slotTree.getProperty(IDs::captureTimeMs, 0));
+        const QString stateB64 = QString::fromUtf8(
+            slotTree.getProperty(IDs::pluginState, "").toString().toRawUTF8());
+        return McpToolResult::text(QString("status=%1 stateBytes=%2 capturedAtMs=%3 hasPluginState=%4")
+            .arg(status).arg(stateBytes).arg(atMs).arg(stateB64.isEmpty() ? 0 : 1));
+    }});
 s.registerTool({"load_virus_preset",
     "Load a Virus ROM preset into a gearmulator plugin slot (Osirus=Virus A/B/C, OsTIrus, Vavra, Xenia): CC0 bank select (0-7 = banks A-H singles) + program change (0-127), like the hardware front panel. Applies to the LIVE plugin instance; for offline exports capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
@@ -407,7 +429,7 @@ s.registerTool({"load_dexed_cartridge",
             a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"load_nord_bank",
-    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 to trigger the deferred state capture AFTER the bank is fully consumed by the child (no capture-race). Realtime mutation: not undoable; capture via project save.",
+    "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 after the dumps; delivery is paced at <=1 SysEx per block and the deferred capture is delayed per queued dump, then confirmed via get_fx_capture_status (no capture-race). Realtime mutation: not undoable; capture via project save.",
     objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
               {"slotIndex",QJsonObject{{"type","integer"}}},
               {"filePath", QJsonObject{{"type","string"}}},

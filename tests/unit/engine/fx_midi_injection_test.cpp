@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "engine/AudioEngine.h"
+#include "engine/AudioEngineCommands.h"
 #include "engine/MainAudioProcessor.h"
 #include "engine/Track.h"
 #include "engine/TrackFXSlot.h"
@@ -395,25 +396,27 @@ TEST(FxMidiInjection, NordBankLoadChangesNodalRed2xRender)
     ASSERT_TRUE(mr.ok) << mr.error;
     EXPECT_EQ(mr.queued, dumpCount + 1);
 
-    // Let the child consume the whole bank, then force a FRESH state capture:
-    // the ~800ms capture timer can fire while the SHM ring is still draining
-    // 110 dumps, snapshotting a partially-applied state (observed as a
-    // near-boot render). A tiny trailing CC with captureToTree re-arms the
-    // capture AFTER everything has been consumed.
+    // The bank sendFxMidi stamps a pending receipt and defers its capture
+    // ~30ms per queued dump (adaptive delay), so it fires after the metered
+    // drain (<=1 SysEx/block) delivers every dump. A tiny trailing CC125
+    // (undefined on the NL2x — B4: CC74 would retune the cutoff) re-arms a
+    // second capture AFTER everything has been consumed.
     ProjectCommands::FxMidiParams cp;
     cp.trackIndex = a.trackIndex;
     cp.slotIndex = a.slotIndex;
-    cp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 74, 100}); // harmless: cutoff CC
+    cp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 125, 0});
     auto cr = cmds.sendFxMidi(cp);
     ASSERT_TRUE(cr.ok) << cr.error;
     if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
-        mm->runDispatchLoopUntil(3000);
+        mm->runDispatchLoopUntil(800 + 30 * dumpCount + 2000);
 
     auto slotTree = engine.getProjectModel().getTrackListTree()
         .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN).getChild(a.slotIndex);
     ASSERT_TRUE(slotTree.isValid());
     const auto stateStr = slotTree.getProperty(IDs::pluginState, "").toString();
     EXPECT_FALSE(stateStr.isEmpty()) << "pluginState was not captured";
+    EXPECT_EQ(slotTree.getProperty(IDs::captureStatus, "").toString(), "ok")
+        << "capture receipt missing (NB4)";
 
     // Offline audition re-renders from the tree: with the bank applied the
     // engine plays a real patch voice instead of the boot default tone.
@@ -430,4 +433,101 @@ TEST(FxMidiInjection, NordBankLoadChangesNodalRed2xRender)
     EXPECT_GT(std::abs(r2.rms - a.rms), 1e-5f)
         << "bank load did not change the render (a.rms=" << a.rms
         << " r2.rms=" << r2.rms << ")";
+}
+
+namespace {
+
+juce::MidiMessage makeTestSysex(uint8_t tag)
+{
+    const uint8_t d[] = { 0xF0, 0x33, 0x01, tag, 0xF7 };
+    return juce::MidiMessage(d, 5);
+}
+
+uint8_t sysexTag(const juce::MidiMessage& m)
+{
+    return static_cast<const uint8_t*>(m.getRawData())[3];
+}
+
+} // namespace
+
+// NB1/NB4: SysEx metering — at most one SysEx per processed block, order
+// preserved across blocks (the SHM midiIn ring has a single SysEx lane).
+TEST(FxMidiInjection, SysExMeteredOnePerBlockInOrder)
+{
+    HDAW::TrackFXSlot slot(std::make_unique<RecordingPlugin>(), "fake-meter", false);
+    auto* rec = static_cast<RecordingPlugin*>(slot.getPluginInstance());
+    ASSERT_NE(rec, nullptr);
+    juce::AudioBuffer<float> buffer(2, 512);
+    slot.queueMidiForNextBlock(makeTestSysex(1));
+    slot.queueMidiForNextBlock(makeTestSysex(2));
+    slot.queueMidiForNextBlock(makeTestSysex(3));
+    slot.queueMidiForNextBlock(juce::MidiMessage::programChange(1, 7));
+    for (int i = 0; i < 4; ++i)
+    {
+        juce::MidiBuffer midi;
+        slot.process(buffer, midi);
+    }
+    // The trailing PC rides WITH the last dump (no second SysEx follows it),
+    // so 4 process calls yield 3 non-empty blocks: order is what matters.
+    ASSERT_EQ(rec->received.size(), 3u);
+    for (size_t i = 0; i < 2; ++i)
+    {
+        const auto msgs = flatten(rec->received[i]);
+        ASSERT_EQ(msgs.size(), 1u) << "block " << i;
+        ASSERT_TRUE(msgs[0].isSysEx()) << "block " << i;
+        EXPECT_EQ(sysexTag(msgs[0]), static_cast<uint8_t>(i + 1)) << "block " << i;
+    }
+    const auto last = flatten(rec->received[2]);
+    ASSERT_EQ(last.size(), 2u);
+    ASSERT_TRUE(last[0].isSysEx());
+    EXPECT_EQ(sysexTag(last[0]), 3u);
+    EXPECT_TRUE(last[1].isProgramChange());
+    EXPECT_EQ(last[1].getProgramChangeNumber(), 7);
+}
+
+// The non-SysEx prefix rides WITH the first SysEx; only the post-SysEx
+// remainder is held (order preserved, short-message timing unchanged).
+TEST(FxMidiInjection, NonSysexPrefixRidesWithFirstSysex)
+{
+    HDAW::TrackFXSlot slot(std::make_unique<RecordingPlugin>(), "fake-prefix", false);
+    auto* rec = static_cast<RecordingPlugin*>(slot.getPluginInstance());
+    ASSERT_NE(rec, nullptr);
+    juce::AudioBuffer<float> buffer(2, 512);
+    slot.queueMidiForNextBlock(juce::MidiMessage::programChange(1, 9));
+    slot.queueMidiForNextBlock(juce::MidiMessage::controllerEvent(1, 0, 2));
+    slot.queueMidiForNextBlock(makeTestSysex(5));
+    slot.queueMidiForNextBlock(makeTestSysex(6));
+    for (int i = 0; i < 2; ++i)
+    {
+        juce::MidiBuffer midi;
+        slot.process(buffer, midi);
+    }
+    ASSERT_EQ(rec->received.size(), 2u);
+    const auto first = flatten(rec->received[0]);
+    ASSERT_EQ(first.size(), 3u);
+    EXPECT_TRUE(first[0].isProgramChange());
+    EXPECT_TRUE(first[1].isController());
+    ASSERT_TRUE(first[2].isSysEx());
+    EXPECT_EQ(sysexTag(first[2]), 5u);
+    const auto second = flatten(rec->received[1]);
+    ASSERT_EQ(second.size(), 1u);
+    ASSERT_TRUE(second[0].isSysEx());
+    EXPECT_EQ(sysexTag(second[0]), 6u);
+}
+
+// NB4: the capture receipt helper stamps always-fresh values (never a
+// setProperty no-op) so agents can poll capture completion.
+TEST(FxMidiInjection, CaptureReceiptStampsFreshValues)
+{
+    juce::ValueTree slotTree(IDs::FX_SLOT);
+    AudioEngineCommands::writeFxCaptureReceipt(slotTree, "pending", 0);
+    EXPECT_EQ(slotTree.getProperty(IDs::captureStatus).toString(), "pending");
+    EXPECT_EQ(static_cast<int>(slotTree.getProperty(IDs::captureBytes, -1)), 0);
+    const auto t0 = static_cast<juce::int64>(slotTree.getProperty(IDs::captureTimeMs, 0));
+    EXPECT_GT(t0, 0);
+    AudioEngineCommands::writeFxCaptureReceipt(slotTree, "ok", 1234);
+    EXPECT_EQ(slotTree.getProperty(IDs::captureStatus).toString(), "ok");
+    EXPECT_EQ(static_cast<int>(slotTree.getProperty(IDs::captureBytes, -1)), 1234);
+    // Invalid trees are a silent no-op (deferred timer vs rebuilt chain).
+    AudioEngineCommands::writeFxCaptureReceipt(juce::ValueTree(), "ok", 1);
 }

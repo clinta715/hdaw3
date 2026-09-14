@@ -977,6 +977,8 @@ DispatchResult dispatchComposition(AudioEngine& engine, const QString& m, const 
         if (!r.ok)
             return makeError(-32602, QString::fromStdString(r.error));
         QJsonObject res{ {"queued", r.queued}, {"trackIndex", r.trackIndex}, {"slotIndex", r.slotIndex}, {"capturedToTree", r.capturedToTree} };
+        if (p.captureToTree && !r.capturedToTree)
+            res.insert("capturePending", true);
         if (!r.note.empty())
             res.insert("note", QString::fromStdString(r.note));
         return { false, res };
