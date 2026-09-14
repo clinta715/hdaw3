@@ -1,5 +1,6 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+#include "PresetRoute.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "PresetFileParser.h"
@@ -132,56 +133,9 @@ s.registerTool({"load_plugin_preset_file",
                   {"trackId","slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
-            int si = a.value("slotIndex").toInt();
-            auto fxSlots = e->getReadModel().getFxSlots(ti);
-            if (si < 0 || si >= static_cast<int>(fxSlots.size()))
-                return McpToolResult::text("slot not found", true);
-            if (fxSlots[si].fxType != "plugin")
-                return McpToolResult::text("slot is not a plugin", true);
-
-            auto* proc = e->getMainProcessor();
-            if (!proc) return McpToolResult::text("audio engine not initialized", true);
-            auto* track = proc->getTrack(ti);
-            if (!track) return McpToolResult::text("track not found", true);
-            auto& chain = track->getFXChain();
-            if (si < 0 || si >= static_cast<int>(chain.size()) || !chain[si])
-                return McpToolResult::text("FX slot not found in chain", true);
-            auto* slot = chain[si].get();
-            if (!slot->isPlugin() || !slot->getPluginInstance())
-                return McpToolResult::text("slot has no plugin instance", true);
-
-            QString filePath = a.value("filePath").toString();
-            if (filePath.isEmpty())
-                return McpToolResult::text("filePath required", true);
-
-            juce::File fxpFile(filePath.toStdString());
-            if (!fxpFile.existsAsFile())
-                return McpToolResult::text("file not found: " + filePath, true);
-
-            juce::MemoryBlock raw;
-            if (!fxpFile.loadFileAsData(raw))
-                return McpToolResult::text("failed to read file", true);
-
-            auto parsed = parsePresetFile(raw);
-            if (!parsed.ok())
-                return McpToolResult::text(QString::fromStdString(parsed.error.toStdString()), true);
-
-            if (parsed.size > static_cast<size_t>(std::numeric_limits<int>::max()))
-                return McpToolResult::text("preset payload too large", true);
-
-            slot->getPluginInstance()->setStateInformation(parsed.data, static_cast<int>(parsed.size));
-
-            auto& model = e->getProjectModel();
-            auto& um = model.getUndoManager();
-            auto slotTree = model.getTrackListTree().getChild(ti)
-                .getChildWithName(IDs::FX_CHAIN).getChild(si);
-            if (slotTree.isValid()) {
-                juce::MemoryBlock stateBlock(parsed.data, parsed.size);
-                slotTree.setProperty(IDs::pluginState, stateBlock.toBase64Encoding(), &um);
-            }
-
-            return McpToolResult::text("ok");
+            return runLoadPluginPresetFile(*e,
+                a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+                a.value("filePath").toString());
         }});
 
 }

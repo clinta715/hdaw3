@@ -1,6 +1,7 @@
 ﻿#include "McpTools.h"
 #include "McpTools_Private.h"
 #include "PresetFileParser.h"
+#include "PresetRoute.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -345,20 +346,11 @@ s.registerTool({"load_virus_preset",
               {"trackId","slotIndex","bank","program"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const int bank = a.value("bank").toInt();
-        const int program = a.value("program").toInt();
-        ProjectCommands::FxMidiParams p;
-        p.trackIndex = a.value("trackId").toInt();
-        p.slotIndex = a.value("slotIndex").toInt();
-        p.captureToTree = a.value("captureToTree").toBool(true);
-        const int ch = a.value("channel").toInt(1);
-        p.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, ch, 0, bank});
-        p.events.push_back({ProjectCommands::FxMidiEvent::Kind::ProgramChange, ch, program, 0});
-        auto r = e->getProjectCommands().sendFxMidi(p);
-        if (!r.ok)
-            return McpToolResult::text(QString::fromStdString(r.error), true);
-        return McpToolResult::text(QString("queued bank=%1 program=%2 (banks A-H singles) capturedToTree=%3")
-                                       .arg(bank).arg(program).arg(r.capturedToTree ? 1 : 0));
+        return runVirusRomPreset(*e,
+            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            a.value("bank").toInt(), a.value("program").toInt(),
+            a.value("channel").toInt(1),
+            a.value("captureToTree").toBool(true));
     }});
 
 s.registerTool({"load_dexed_cartridge",
@@ -369,32 +361,10 @@ s.registerTool({"load_dexed_cartridge",
               {"trackId","slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const QString path = a.value("filePath").toString();
-        const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-        if (!f.existsAsFile())
-            return McpToolResult::text("file not found: " + path, true);
-        juce::MemoryBlock block;
-        if (!f.loadFileAsData(block))
-            return McpToolResult::text("failed to read file", true);
-        if (block.getSize() < 2)
-            return McpToolResult::text("file too small", true);
-        const auto* bytes = static_cast<const uint8_t*>(block.getData());
-        if (bytes[0] != 0xF0 || bytes[1] != 0x43)
-            return McpToolResult::text("not a DX7 SysEx file (expected F0 43 header)", true);
-        if (block.getSize() > 32768)
-            return McpToolResult::text("sysex payload too large (max 32768 bytes)", true);
-        ProjectCommands::FxMidiParams p;
-        p.trackIndex = a.value("trackId").toInt();
-        p.slotIndex = a.value("slotIndex").toInt();
-        p.captureToTree = a.value("captureToTree").toBool(true);
-        ProjectCommands::FxMidiEvent ev;
-        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-        ev.sysex.assign(bytes, bytes + block.getSize());
-        p.events.push_back(std::move(ev));
-        auto r = e->getProjectCommands().sendFxMidi(p);
-        if (!r.ok)
-            return McpToolResult::text(QString::fromStdString(r.error), true);
-        return McpToolResult::text(QString("queued sysex %1 bytes (r.queued=%2, track=%3 slot=%4, capturedToTree=%5)").arg(static_cast<int>(block.getSize())).arg(r.queued).arg(p.trackIndex).arg(p.slotIndex).arg(r.capturedToTree ? 1 : 0));
+        return runDexedCartridgeFile(*e,
+            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            a.value("filePath").toString(),
+            a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"load_nord_bank",
     "Load a Nord Lead 2x bank/preset file (.syx raw Clavia SysEx, or .mid SMF wrapping Clavia SysEx) into a NodalRed2x plugin slot via injected MIDI SysEx \u2014 the emulated NL2x firmware applies each dump to its patch banks; optional program (0-127) sends a trailing program change to select a voice afterwards. ATOMIC: validates every dump (F0 33 <dev> 04 header, F7-terminated, <=32768B) BEFORE queueing anything, appends a harmless CC125 to trigger the deferred state capture AFTER the bank is fully consumed by the child (no capture-race). Realtime mutation: not undoable; capture via project save.",
@@ -405,95 +375,13 @@ s.registerTool({"load_nord_bank",
               {"trackId","slotIndex","filePath"}),
     "fx",
     [e](const QJsonObject& a) -> McpToolResult {
-        const QString path = a.value("filePath").toString();
-        const juce::File f(juce::String::fromUTF8(path.toUtf8()));
-        if (!f.existsAsFile())
-            return McpToolResult::text("file not found: " + path, true);
-        juce::MemoryBlock block;
-        if (!f.loadFileAsData(block))
-            return McpToolResult::text("failed to read file", true);
-        const auto suffix = f.getFileExtension().toLowerCase();
-        // Normalize to complete F0..F7 dumps (payload coordinates differ
-        // between containers; see PresetFileParser.h for the wire format).
-        std::vector<std::vector<uint8_t>> dumps;
-        if (suffix == ".syx") {
-            const auto* b = static_cast<const uint8_t*>(block.getData());
-            if (mcp::splitNordSyx(b, block.getSize(), dumps) < 0)
-                return McpToolResult::text("truncated SysEx (missing F7)", true);
-        } else if (suffix == ".mid") {
-            juce::MemoryInputStream in(block, false);
-            juce::MidiFile mf;
-            if (!mf.readFrom(in))
-                return McpToolResult::text("invalid .mid file", true);
-            for (int t = 0; t < mf.getNumTracks(); ++t)
-            {
-                const auto* seq = mf.getTrack(t);
-                for (int e2 = 0; e2 < seq->getNumEvents(); ++e2)
-                {
-                    const auto metadata = seq->getEventPointer(e2);
-                    if (!metadata->message.isSysEx())
-                        continue;
-                    const auto* raw = metadata->message.getRawData();
-                    dumps.emplace_back(raw, raw + metadata->message.getRawDataSize());
-                }
-            }
-        } else return McpToolResult::text("unsupported file type (use .syx or .mid)", true);
-        if (dumps.empty())
-            return McpToolResult::text("no sysex data found in file", true);
-        // Validate EVERY dump before queueing anything (no partial bank loads).
-        size_t totalBytes = 0;
-        for (const auto& d : dumps)
-        {
-            if (auto err = mcp::validateNordDump(d.data(), d.size()); !err.isEmpty())
-                return McpToolResult::text(
-                    "invalid Nord dump: " + QString::fromStdString(
-                        err.toStdString()), true);
-            totalBytes += d.size();
-        }
-        const int program = a.value("program").toInt(-1);
-        if (program > 127 || (a.contains("program") && program < 0))
+        const int program = a.contains("program") ? a.value("program").toInt(-1) : -1;
+        if (a.contains("program") && program < 0)
             return McpToolResult::text("program must be 0..127", true);
-        ProjectCommands::FxMidiParams p;
-        p.trackIndex = a.value("trackId").toInt();
-        p.slotIndex = a.value("slotIndex").toInt();
-        p.captureToTree = a.value("captureToTree").toBool(true);
-        for (const auto& d : dumps) {
-            ProjectCommands::FxMidiEvent ev;
-            ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
-            ev.sysex = d;
-            p.events.push_back(std::move(ev));
-        }
-        if (program >= 0)
-        {
-            // Voice selection AFTER the bank dumps land (BUG-7 plan step 4).
-            ProjectCommands::FxMidiEvent pc;
-            pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
-            pc.channel = 1;
-            pc.data1 = program;
-            p.events.push_back(std::move(pc));
-        }
-        // Capture-race protocol: append a harmless CC125 (undefined on the
-        // NL2x) at the END of the batch. The deferred state capture fires
-        // ~800ms after sendFxMidi returns — the CC125 ensures the capture
-        // snapshots the state AFTER the child has consumed the entire bank,
-        // not a partially-applied intermediate state (the capture race
-        // observed on Modular Dawn with 110-dump banks).
-        {
-            ProjectCommands::FxMidiEvent cc;
-            cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
-            cc.channel = 1;
-            cc.data1 = 125; // undefined on the NL2x — the firmware ignores it
-            cc.data2 = 0;
-            p.events.push_back(std::move(cc));
-        }
-        auto r = e->getProjectCommands().sendFxMidi(p);
-        if (!r.ok)
-            return McpToolResult::text(QString::fromStdString(r.error), true);
-        return McpToolResult::text(QString("queued %1 sysex dumps (%2 bytes)%3 capturedToTree=%4")
-            .arg(r.queued)
-            .arg(static_cast<int>(totalBytes))
-            .arg(program >= 0 ? QString(" program=%1").arg(program) : QString())
-            .arg(r.capturedToTree ? 1 : 0));
+        return runNordBankFile(*e,
+            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            a.value("filePath").toString(), program,
+            a.value("captureToTree").toBool(true));
     }});
 s.registerTool({"set_master_fx_param",
         "Set a MASTER-bus FX slot parameter (eq / compressor / limiter). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB [-24..0], param1=Release ms [1..500], param2=Ceiling linear [0.5..1.0] — post-limiter output clamp; 1.0 = full scale). A slot only processes when bypassed=false.",
@@ -686,41 +574,103 @@ s.registerTool({"sub_synth_import_sysex",
                    {"trackId","slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
-            int si = a.value("slotIndex").toInt();
-            auto fxSlots = e->getReadModel().getFxSlots(ti);
-            if (si < 0 || si >= (int)fxSlots.size())
-                return McpToolResult::text("slot not found", true);
-            if (fxSlots[si].fxType != "sub_synth")
-                return McpToolResult::text("slot is not a sub_synth", true);
-
-            QString filePath = a.value("filePath").toString();
-            if (filePath.isEmpty())
-                return McpToolResult::text("filePath required", true);
-            juce::File syxFile(filePath.toStdString());
-            if (!syxFile.existsAsFile())
-                return McpToolResult::text("file not found: " + filePath, true);
-
-            const int vi = a.value("voiceIndex").toInt(0);
-            auto r = e->getAudioEngineCommands().loadVirusPatch(
-                ti, si, filePath.toStdString(), vi);
-            if (!r.ok)
-                return McpToolResult::text(QString::fromStdString(r.error), true);
-
-            QJsonObject result;
-            result["ok"] = true;
-            result["name"] = QString::fromStdString(r.name);
-            result["bank"] = r.bank;
-            result["program"] = r.program;
-            result["mappedCount"] = r.mappedCount;
-            QJsonArray unmapped;
-            for (const auto& u : r.unmapped)
-                unmapped.append(QString::fromStdString(u));
-            result["unmapped"] = unmapped;
-            return McpToolResult::text(QString::fromUtf8(
-                QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            return runSubSynthImportSysex(*e,
+                a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+                a.value("filePath").toString(),
+                a.value("voiceIndex").toInt(0));
         }});
 
+s.registerTool({"apply_preset",
+    "Apply a preset to ONE FX slot, dispatching by slot target + file header — the agentic front door that replaces load_nord_bank / load_virus_preset / load_dexed_cartridge / fm_synth_import_sysex / sub_synth_import_sysex / load_plugin_preset_file (which all stay registered). Reads the slot's fxType + pluginId, detects the file format from the header bytes, routes to the matching loader, and returns that loader's result:\n"
+    "- NodalRed2x slot + Clavia dump (F0 33 .syx / SMF .mid) -> bank load via MIDI SysEx (optional program 0-127 selects a voice afterwards).\n"
+    "- Gearmulator Virus slot (OsTIrus/Osirus/Vavra/Xenia/JE8086) + program (optional bank 0-7, no filePath) -> ROM preset via CC0+PC.\n"
+    "- Dexed/DX7-engine plugin slot + F0 43 .syx -> cartridge/single dump via MIDI SysEx.\n"
+    "- Internal fm_synth slot + F0 43 .syx (single 163B, cartridge 4104B, raw VMEM 4096B) -> patch via setFmPatch (voiceIndex picks the cartridge voice).\n"
+    "- Internal sub_synth slot + Virus dump (F0 00 20 33) -> patch via loadVirusPatch (voiceIndex for TI banks).\n"
+    "- Any plugin slot + .SerumPreset (XferJson) / .fxp (CcnK) -> setStateInformation via parsePresetFile.\n"
+    "Otherwise errors: cannot determine preset type. Realtime mutations (SysEx/CC/PC routes) are not undoable; capture via project save.",
+    objSchema({{"trackId",     QJsonObject{{"type","integer"}}},
+              {"slotIndex",   QJsonObject{{"type","integer"}}},
+              {"filePath",    QJsonObject{{"type","string"}}},
+              {"program",     QJsonObject{{"type","integer"},{"minimum",0},{"maximum",127}}},
+              {"bank",        QJsonObject{{"type","integer"},{"minimum",0},{"maximum",7}}},
+              {"voiceIndex",  QJsonObject{{"type","integer"},{"minimum",0}}},
+              {"channel",     QJsonObject{{"type","integer"},{"minimum",1},{"maximum",16}}},
+              {"captureToTree",QJsonObject{{"type","boolean"}}}},
+             {"trackId","slotIndex"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        int ti = a.value("trackId").toInt();
+        int si = a.value("slotIndex").toInt();
+        auto fxSlots = e->getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= (int)fxSlots.size())
+            return McpToolResult::text("slot not found", true);
+        if (fxSlots[si].fxType == "none")
+            return McpToolResult::text("slot is empty", true);
+        const std::string fxType = fxSlots[si].fxType;
+        const std::string pluginId = fxSlots[si].pluginId;
+
+        const bool hasFile = a.contains("filePath")
+            && !a.value("filePath").toString().isEmpty();
+        juce::MemoryBlock raw;
+        const uint8_t* bytes = nullptr;
+        size_t size = 0;
+        juce::String extension;
+        if (hasFile)
+        {
+            const QString path = a.value("filePath").toString();
+            const juce::File f(juce::String::fromUTF8(path.toUtf8()));
+            if (!f.existsAsFile())
+                return McpToolResult::text("file not found: " + path, true);
+            if (!f.loadFileAsData(raw))
+                return McpToolResult::text("failed to read file", true);
+            bytes = static_cast<const uint8_t*>(raw.getData());
+            size = raw.getSize();
+            extension = f.getFileExtension().toLowerCase();
+        }
+
+        const bool hasProgram = a.contains("program");
+        if (hasProgram)
+        {
+            const int program = a.value("program").toInt(-1);
+            if (program < 0 || program > 127)
+                return McpToolResult::text("program must be 0..127", true);
+        }
+
+        const auto route = mcp::resolvePresetRoute(
+            fxType, pluginId, bytes, size, extension, hasProgram);
+        if (route.kind == PresetRouteKind::None)
+            return McpToolResult::text(jstr(route.error), true);
+
+        const bool capture = a.value("captureToTree").toBool(true);
+        const QString path = hasFile ? a.value("filePath").toString() : QString();
+        switch (route.kind)
+        {
+            case PresetRouteKind::NordBank:
+            {
+                const int program = a.contains("program")
+                    ? a.value("program").toInt(-1) : -1;
+                return runNordBankFile(*e, ti, si, path, program, capture);
+            }
+            case PresetRouteKind::VirusRom:
+                return runVirusRomPreset(*e, ti, si,
+                    a.value("bank").toInt(0), a.value("program").toInt(0),
+                    a.value("channel").toInt(1), capture);
+            case PresetRouteKind::DexedCartridge:
+                return runDexedCartridgeFile(*e, ti, si, path, capture);
+            case PresetRouteKind::FmSysex:
+                return runFmImportSysex(*e, ti, si, path,
+                    a.value("voiceIndex").toInt(0));
+            case PresetRouteKind::SubSynthVirus:
+                return runSubSynthImportSysex(*e, ti, si, path,
+                    a.value("voiceIndex").toInt(0));
+            case PresetRouteKind::PluginPresetFile:
+                return runLoadPluginPresetFile(*e, ti, si, path);
+            case PresetRouteKind::None:
+                break;
+        }
+        return McpToolResult::text(jstr(route.error), true);
+    }});
 s.registerTool({"audition_patch",
         "Load a synth patch file into a probe FX slot and place a role-appropriate "
         "probe MIDI clip, so pressing play on the probe track auditions the patch. "

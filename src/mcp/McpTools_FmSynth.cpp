@@ -1,5 +1,6 @@
 #include "McpTools.h"
 #include "McpTools_Private.h"
+#include "PresetRoute.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
 #include "../model/ProjectModel.h"
@@ -69,87 +70,10 @@ s.registerTool({"fm_synth_import_sysex",
                    {"trackId","slotIndex","filePath"}),
         "fx",
         [e](const QJsonObject& a) -> McpToolResult {
-            int ti = a.value("trackId").toInt();
-            int si = a.value("slotIndex").toInt();
-            auto fxSlots = e->getReadModel().getFxSlots(ti);
-            if (si < 0 || si >= (int)fxSlots.size())
-                return McpToolResult::text("slot not found", true);
-            if (fxSlots[si].fxType != "fm_synth")
-                return McpToolResult::text("slot is not an FM synth", true);
-
-            QString filePath = a.value("filePath").toString();
-            if (filePath.isEmpty())
-                return McpToolResult::text("filePath required", true);
-
-            juce::File syxFile(filePath.toStdString());
-            if (!syxFile.existsAsFile())
-                return McpToolResult::text("file not found: " + filePath, true);
-
-            juce::MemoryBlock raw;
-            if (!syxFile.loadFileAsData(raw))
-                return McpToolResult::text("failed to read file", true);
-
-            auto* bytes = static_cast<const uint8_t*>(raw.getData());
-            size_t fileSize = raw.getSize();
-
-            std::optional<HDAW::Dx7Voice> voice;
-            std::vector<HDAW::Dx7Voice> voices;
-            int resolvedVoiceIndex = 0;
-
-            if (fileSize >= 163 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x00) {
-                voice = HDAW::parseSingleVoiceSysex(bytes, fileSize);
-            } else if (fileSize >= 4104 && bytes[0] == 0xF0 && bytes[1] == 0x43 && bytes[3] == 0x09) {
-                voices = HDAW::parseCartridgeSysex(bytes, fileSize);
-                int vi = a.value("voiceIndex").toInt(0);
-                if (vi >= 0 && vi < (int)voices.size()) {
-                    voice = voices[vi];
-                    resolvedVoiceIndex = vi;
-                }
-            } else if ((fileSize == 4096 || fileSize == 4097) && !(bytes[0] == 0xF0 && bytes[1] == 0x43)) {
-                // Raw 4096-byte VMEM bank (no sysex framing, no checksum;
-                // 4097 = trailing F7). Routes through the cartridge parser,
-                // which unpacks all 32 voices.
-                voices = HDAW::parseCartridgeSysex(bytes, fileSize);
-                int vi = a.value("voiceIndex").toInt(0);
-                if (vi >= 0 && vi < (int)voices.size()) {
-                    voice = voices[vi];
-                    resolvedVoiceIndex = vi;
-                }
-            } else {
-                return McpToolResult::text(
-                    "not a recognized DX7 SysEx file (expected F0 43 00 00 or F0 43 00 09 header)", true);
-            }
-
-            if (!voice.has_value())
-                return McpToolResult::text("failed to parse SysEx data (bad checksum or size)", true);
-
-            // Route through the command: writes fmPatchData to the slot tree
-            // (so tree-copy renders and save/load hear it) and applies live
-            // best-effort. Works without an audio device.
-            juce::MemoryBlock block(voice->patchData.data(), FmSynthEngine::kPatchSize);
-            e->getProjectCommands().setFmPatch(ti, si, block.toBase64Encoding().toStdString());
-
-            QJsonObject result;
-            result["ok"] = true;
-            result["voiceName"] = QString::fromStdString(voice->voiceName);
-            result["algorithm"] = voice->algorithm;
-            result["feedback"] = voice->feedback;
-            if (!voices.empty()) {
-                result["totalVoices"] = static_cast<int>(voices.size());
-                QJsonArray voicesArr;
-                for (int i = 0; i < (int)voices.size(); ++i) {
-                    QJsonObject v;
-                    v["index"] = i;
-                    v["name"] = QString::fromStdString(voices[i].voiceName);
-                    v["algorithm"] = voices[i].algorithm;
-                    voicesArr.append(v);
-                }
-                result["voices"] = voicesArr;
-                result["voiceIndex"] = resolvedVoiceIndex;
-            }
-
-            return McpToolResult::text(
-                QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+            return runFmImportSysex(*e,
+                a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+                a.value("filePath").toString(),
+                a.value("voiceIndex").toInt(0));
         }});
 
 s.registerTool({"fm_synth_get_state",

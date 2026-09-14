@@ -17,6 +17,7 @@ add_executable(hdaw_tests
     unit/mcp/schema_test.cpp
     unit/mcp/tool_registry_test.cpp
     unit/mcp/preset_file_parser_test.cpp
+    unit/mcp/apply_preset_test.cpp
     unit/mcp/dry_run_test.cpp
     unit/mcp/note_id_test.cpp
     unit/mcp/transport_stdio_test.cpp
