@@ -706,6 +706,13 @@ Real synth firmware running as isolated CLAP plugins — installed in
   `docs/plans/2026-09-12-plugin-state-durability.md` Phase 4b).
 - Dexed/OsTIrus `setStateInformation` rejections are plugin-side (same family
   as Serum 2 — see the 2026-09-08 Serum investigation handoff).
+- **Serum 2 is RETIRED (2026-09-14): do not pick it for sessions.** The state
+  path is dead end-to-end — param tweaks, program switches (128 programs),
+  and persisted-tree renders all produce a byte-identical 3076 B blob and
+  identical audio (default patch only). No host-side control surface moves it;
+  see `docs/plans/2026-09-14-b10-verdict-serum-probe.md` for the probe
+  evidence. Use OsTIrus / Osirus / NodalRed2x / Dexed / sub_synth / psy_fm
+  instead.
 
 ### Isolated children render non-deterministically (known limitation)
 

@@ -78,10 +78,12 @@ Evidence:
 3. **Recall** = `setStateInformation` with the stored Serum-native blob → should round-trip (this is the natural next verification: capture init state, restore it, compare).
 4. Option B (full automation) later: use cua-driver to click Serum's preset-name bar → type keywords → step results, piloting after Option A proves the capture/store loop on a UI-loaded preset.
 
-## Open questions / outstanding verifications
-- Does a **UI-loaded** Serum preset (user manually loads via the now-open editor window) capture as a *different* state blob than `e6977e55`? (Test: user loads a preset in the opened window → `save_fx_chain` → compare md5. If it differs, the capture loop is fundamentally sound and only *loading* needs UI.)
-- Does the `3076.` state round-trip through `setStateInformation` (capture → restore → compare)?
-- Fix the WinRT OCR Await helper (select the generic `IAsyncOperation<T>` AsTask) or pip-install pytesseract for coordinate grounding.
+## Open questions / outstanding verifications — ANSWERED 2026-09-14 (probe)
+- ~~Does a UI-loaded Serum preset capture as a different state blob?~~
+  **Moot for automation**: the 2026-09-14 probe (docs/plans/2026-09-14-b10-verdict-serum-probe.md) proved the state snapshot NEVER changes — param tweaks, driven blocks, program switches, and persisted-tree renders all produce the byte-identical 3076 B blob and identical audio. Only a UI-load *inside the editor* can change what Serum plays; the host sees nothing.
+- ~~Does the `3076.` state round-trip through `setStateInformation`?~~
+  **Vacuously yes** — S0==S1==S2 always, because nothing ever lands in the state. The round-trip cannot distinguish anything.
+- WinRT OCR helper: superseded — the state path is dead end-to-end (state bytes, programs, params all unresponsive), so the UI-capture loop was retired too (user decision 2026-09-14: Serum2 retired, no further automation work).
 
 ## Scratch/artifacts left on disk (safe to delete)
 - `compositions/probe_rawstate.fxp`, `probe_enveloped.fxp`, `probe_zlib.fxp`, `probeD_fullserumpreset.fxp`, `probeE_fullfxp.fxp` (synthetic probe files)

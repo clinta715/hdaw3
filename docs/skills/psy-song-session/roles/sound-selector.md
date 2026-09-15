@@ -26,8 +26,12 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    determinism: psy_fm for melodic acid roles, sub_synth for bass/chords, sampler
    for drum one-shots).
 3. **Load sounds**: presets via `load_plugin_preset`/`load_plugin_preset_file`
-   (.SerumPreset/.fxp/.syx) or psytrance Virus banks via `sub_synth_import_sysex` —
+   (.fxp/.syx) or psytrance Virus banks via `sub_synth_import_sysex` —
    always confirm the returned patch NAME. Internal presets via `psy_fm_load_preset`.
+   **NEVER pick Serum 2** (retired 2026-09-14: its state/param/program surface
+   is unresponsive in the isolated path — byte-identical 3076 B state and
+   identical audio no matter what the host writes; see
+   `docs/plans/2026-09-14-b10-verdict-serum-probe.md`).
    **Stage the mod matrix**: on sub_synth slots, `apply_sub_synth_mod_preset`
    {trackId, slotIndex, presetId} moves the internal LFO (params 27–32) in ONE
    atomic, undoable call — the loaded patch (params 0–26) is untouched. Role
