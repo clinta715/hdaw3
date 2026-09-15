@@ -10,7 +10,7 @@ drums role, fm_synth defaults) — see §Remaining agenda.**
 
 ## What shipped (#3 — complete)
 
-Plan: `docs/plans/2026-08-20-proxy-namespace-per-instance.md` (gates + evidence).
+Plan: `docs/archive/plans/2026-08-20-proxy-namespace-per-instance.md` (gates + evidence).
 
 | File | Change |
 |------|--------|
@@ -63,7 +63,7 @@ Proxy namespace is now auto-unique per instance (lesson 20 guard complete).
 
 ## Where to look (this session's work)
 
-- Plan + gates: `docs/plans/2026-08-20-proxy-namespace-per-instance.md`
+- Plan + gates: `docs/archive/plans/2026-08-20-proxy-namespace-per-instance.md`
 - Proxy: `src/proxy/ProxyProcessManager.{h,cpp}`, `ProxyPipe.{h,cpp}`, `ProxySharedMemory.cpp`
 - Engine: `src/engine/PluginManager.{h,cpp}`, `AudioEngine.cpp:80`, `ExportManager.cpp:145`
 - Tests: `tests/integration/proxy/namespace_collision_test.cpp`, `tests/unit/proxy/crash_recovery_test.cpp:488-496`

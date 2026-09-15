@@ -16,11 +16,11 @@ except gitignored `projects/`. Commits:
 
 | Hash | Change |
 |------|--------|
-| `76bd865` | **fix(engine): scale export render-bake timeout with project size** — the spurious "Render graph bake timed out after 15000ms" on large projects. `ExportManager::computeBakeWaitMs` (floor 15s, 50ms/clip, cap 120s); `HDAW_EXPORT_BAKE_TIMEOUT_MS` still overrides. Plan: `docs/plans/2026-08-18-export-bake-timeout-scale.md`. |
+| `76bd865` | **fix(engine): scale export render-bake timeout with project size** — the spurious "Render graph bake timed out after 15000ms" on large projects. `ExportManager::computeBakeWaitMs` (floor 15s, 50ms/clip, cap 120s); `HDAW_EXPORT_BAKE_TIMEOUT_MS` still overrides. Plan: `docs/archive/plans/2026-08-18-export-bake-timeout-scale.md`. |
 | `1072e09` | **fix(fm):** remove double -69 semitone offset + pitch EG neutral (DX7). |
 | `2e37eb6` | **fix(frontend):** guard client disconnect during export (Qt 6.11.1 nested-loop NULL-deref; `ExcludeSocketNotifiers` + QPointer). See `docs/handoffs/2026-08-18-disconnect-during-export-fix.md`. |
 | `ddfff36` | docs: track-building automation handoff + `export_volume_bypass_test` diagnostic (DISABLED, needs gitignored polywave project). |
-| `9f0526d` | **feat(engine): `setFaderAuthoritative`** — disable ALL Volume automation on a track (`-1` = whole project) so faders win in playback/export. Engine command + `project.setFaderAuthoritative {trackIndex, authoritative}` RPC + MCP `set_fader_authoritative {trackId, authoritative}` (one shared command path). Automation points kept, one undo unit. Plan: `docs/plans/2026-08-18-set-fader-authoritative.md`. |
+| `9f0526d` | **feat(engine): `setFaderAuthoritative`** — disable ALL Volume automation on a track (`-1` = whole project) so faders win in playback/export. Engine command + `project.setFaderAuthoritative {trackIndex, authoritative}` RPC + MCP `set_fader_authoritative {trackId, authoritative}` (one shared command path). Automation points kept, one undo unit. Plan: `docs/archive/plans/2026-08-18-set-fader-authoritative.md`. |
 
 ## The remaining agenda (priority order)
 
@@ -31,7 +31,7 @@ instrument FX slot `fm_synth`/pluginId → `generatePhrase` → inline paint
 (solo-render window on a tree copy → measure RMS/peak → `fader = target/measured`,
 clamped at 1.0 → `setTrackVolume`). MCP twins `add_instrument_part` /
 `auto_gain_to_target` share the same engine commands. Plan:
-`docs/plans/2026-08-18-instrument-part-composer.md`. 917/917 tests (was 908).
+`docs/archive/plans/2026-08-18-instrument-part-composer.md`. 917/917 tests (was 908).
 **New lesson (pan law):** the gain stage measures the ACTUAL solo render, not the
 source WAV's nominal RMS — a center-panned track is scaled by cos(π/4)=0.7071
 per channel (`Track.cpp:638-640`), so a 0.5-amp sine renders at RMS 0.25, not
@@ -109,7 +109,7 @@ verify a fresh engine's log shows `saved audio device restored`, don't blame the
 ## Where to look
 - `docs/handoffs/2026-08-18-track-tooling-handoff.md` — the 9 design questions + bug list.
 - `docs/handoffs/2026-08-18-track-building-automation.md` — the think-piece.
-- `docs/plans/2026-08-18-export-bake-timeout-scale.md`, `docs/plans/2026-08-18-set-fader-authoritative.md` — the two executed plans.
+- `docs/archive/plans/2026-08-18-export-bake-timeout-scale.md`, `docs/archive/plans/2026-08-18-set-fader-authoritative.md` — the two executed plans.
 - `docs/handoffs/2026-08-18-disconnect-during-export-fix.md` — the Qt bug fix.
 - `src/engine/PhraseGenerator.h`, `src/engine/RhythmPatternGenerator.h` — generative toolkit.
 - `src/mcp/McpTools_Audio.cpp` (registerAutomationTools), `src/frontend/router/Router_*.cpp` — RPC/MCP wiring patterns.

@@ -166,5 +166,5 @@ Failing files show `peak=32768` (max 16-bit) in the first 0.6s. Working files sh
 
 - `docs/handoffs/2026-08-31-export-silence-bug.md` — earlier investigation, same symptom
 - `docs/handoffs/2026-08-17-staticy-audio-proxy-resync.md` — proxy pacing / stale output (separate issue)
-- `docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md` — transport forwarding (implemented, not root cause)
+- `docs/archive/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md` — transport forwarding (implemented, not root cause)
 - `docs/postmortem-silent-clap-export.md` — CLAP lifecycle / message pump (implemented, not root cause)

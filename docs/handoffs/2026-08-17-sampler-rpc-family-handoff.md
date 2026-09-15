@@ -9,12 +9,12 @@
 
 ## What this session did
 
-Closed the plan-audit gap (`docs/plans/2026-08-13-internal-sampler-plan.md`
+Closed the plan-audit gap (`docs/archive/plans/2026-08-13-internal-sampler-plan.md`
 Tasks 10-11, gate G6): the `sampler.*` RPC namespace + `sampler_*` MCP tools
 never landed as named, and the SamplerEditor's writes were BROKEN (it called
 `sampler.setSample` → "unknown method namespace: sampler", bare `setFxSlotParam`
 → no-dot error, and setMode wrote param 6 = Hold). Plan:
-`docs/plans/2026-08-17-sampler-rpc-family.md`.
+`docs/archive/plans/2026-08-17-sampler-rpc-family.md`.
 
 ## Delivered
 
@@ -98,9 +98,9 @@ Uncommitted (since `bb4ffcb`):
 `frontend/src/components/SamplerEditor.{tsx,css}`,
 `frontend/src/components/__tests__/SamplerEditor.test.tsx`,
 `frontend/e2e/sampler.spec.ts`,
-`docs/plans/2026-08-13-internal-sampler-plan.md` (Tasks 10/11 + G6 ticked)
+`docs/archive/plans/2026-08-13-internal-sampler-plan.md` (Tasks 10/11 + G6 ticked)
 Untracked: `src/frontend/router/Router_Sampler.{h,cpp}`,
-`docs/plans/2026-08-17-sampler-rpc-family.md` (+ this handoff).
+`docs/archive/plans/2026-08-17-sampler-rpc-family.md` (+ this handoff).
 
 ## Known limitations / follow-ups
 - `sampler.triggerSlice` reads the LIVE engine sound (`currentSound()`); if the

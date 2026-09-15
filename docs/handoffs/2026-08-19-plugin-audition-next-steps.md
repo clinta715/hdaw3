@@ -6,7 +6,7 @@ The previous session shipped handoff #1 (plugin preset selection / audition) AND
 its prerequisite #5 (shared render helper). This file is the briefing for a
 **fresh context** continuing the REMAINING items of the composer agenda IN
 PRIORITY ORDER. Each item below is actionable on its own; pick up #2 first.
-The plan that shipped is `docs/plans/2026-08-19-plugin-preset-audition.md`; the
+The plan that shipped is `docs/archive/plans/2026-08-19-plugin-preset-audition.md`; the
 prior agenda lives in `docs/handoffs/2026-08-19-composer-remaining-items.md`.
 
 ## Baseline: committed and verified (all on `main`)
@@ -222,7 +222,7 @@ composer already accepts beats at the RPC boundary and converts internally.
 
 ## Where to look
 
-- Plan that shipped: `docs/plans/2026-08-19-plugin-preset-audition.md` (includes
+- Plan that shipped: `docs/archive/plans/2026-08-19-plugin-preset-audition.md` (includes
   the verified VST3 finding + the "programs differ" gate removal rationale).
 - Prior agenda: `docs/handoffs/2026-08-19-composer-remaining-items.md`.
 - Composer implementation: `src/engine/AudioEngineCommands_Composition.cpp`

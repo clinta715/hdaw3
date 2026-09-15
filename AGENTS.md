@@ -259,7 +259,7 @@ These cost real debugging time — read before touching the relevant area:
     main-thread-only CLAP call on a render/pipe thread must pass
     `threadCheckIsMainThread()`. This recovered Odin2 (isolated export
     `peak≈0.5`, removed from `kKnownSilent`). See
-    `docs/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md`.
+    `docs/archive/plans/2026-08-09-forward-transport-playhead-to-isolated-children.md`.
 
 17. **Audio-device init must degrade to output-only, and device errors must be
     logged somewhere visible.** `initialiseWithDefaultDevices(2, 2)` fails the
@@ -574,7 +574,7 @@ over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
   adds a `hdaw_time_sync` ALL target covering bare `cmake --build`; direct
   `ninja` / `npm run build` runs need the explicit `scripts/time-sync.sh`.
   The hook is a fast no-op outside WSL and NEVER fails a build. See
-  `docs/plans/2026-09-05-time-sync-build-hook.md` and
+  `docs/archive/plans/2026-09-05-time-sync-build-hook.md` and
   `docs/skills/pre-build-time-sync/SKILL.md`.
 
 ### Shell: PowerShell only (no `&&` or `&`)
@@ -625,9 +625,9 @@ for a fix marker) before trusting the package.
 - **C++ engine tests (gtest):** `build/hdaw_tests.exe` (flat Ninja RelWithDebInfo layout — there is no `build/Debug/`; `build-fast.bat test` builds it, `build-fast.bat all` also builds `hdaw_plugin_host.exe` which the PluginIsolation/CrashRecovery suites require)
   - Filter: `--gtest_filter=SuiteName.*`
   - Full suite: ~1328 tests, ~13 min. Fast iteration tier: `run_fast_tests.bat` (~3.3 min; excludes the render/recipe/spawn-heavy suites — run the full suite before delivery).
-  - Current baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
+  - Current baseline (2026-09-02, post DISABLED-test rewrite pass): 0 failed; 4 RealtimeSafety detector tests SKIP in release configs (`BufferCheck` is `#if JUCE_DEBUG`-only by design); 0 DISABLED — every formerly `DISABLED_` test is either re-enabled against current contracts (PluginIsolation ×4, ExportVolumeBypass.RealProjectVolumeSensitivity, TrackFXSlotShowEditor — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md`) or re-enabled after its fix (`ExportAudioWithMultipleIsolatedInstances`, commit abf8a3d).
   - Build sequentially: two concurrent `build-fast` invocations on the same `build/` dir overwrite each other's `.ninja_log`, and the next build re-runs as near-full. One build at a time.
-  - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
+  - WSL-side edits must be synced for the Windows compiler (drvfs/9p attribute cache shows stale content/mtimes for minutes): after editing from WSL, `cp <file> /mnt/c/temp/sync_tmp.cpp`, then from Windows `Copy-Item C:\temp\sync_tmp.cpp -> <D: path> -Force`, then touch `(Get-Item <path>).LastWriteTime = Get-Date`, and verify with PowerShell `Select-String`/`Get-Content` (never findstr through bash→cmd quoting). Symptom if skipped: ninja rebuilds "succeed" against stale sources. Verified recipe — see `docs/archive/plans/2026-09-02-seven-failure-baseline-fix.md` outcome.
   - 1015→1328 tests across 182→216 suites: MCP tools/server, transport, tracks, clips,
     notes, FX, automation, undo, save/load, phrase generation, slicing, merge,
     ripple delete, ghost clips, stretch, markers, error conditions, batch ops,

@@ -170,7 +170,7 @@ pass `Debug` for breakpoint debugging.
 - MCP HTTP server host/port are configurable in Preferences and persist
   in `QSettings` (defaults to `127.0.0.1:18765`).
 
-- Generative composition: PhraseGeneratorDialog (phrase styles, chords, progressions) gained a Rhythm mode — polyrhythmic/euclidean drum patterns, snare toggle, and house/techno/dnb genre styles.
+- Generative composition: Compose tab (phrase styles, chords, progressions) gained a Rhythm mode — polyrhythmic/euclidean drum patterns, snare toggle, and house/techno/dnb genre styles.
 
 ### File Library
 - **File Library System** — a centralized registry of external audio and
@@ -527,7 +527,7 @@ them into a factory bank:
   `processBlock`/DSP/audio-thread impact.
 - **Full parity:** RPC `composition.generateRhythmPattern` gains
   `phrase`/`phraseRole`/`phraseIndex`; MCP `generate_rhythm_pattern` mirrors
-  them; `PhraseGeneratorDialog` Rhythm mode gains a Corpus Phrase picker.
+  them; Compose tab Rhythm mode gains a Corpus Phrase picker.
 - **Markov percussion:** `PercussionEngine` hat/snare theme voices can source
   from the bank (opt-in `percCorpusPhraseProb` on
   `generate_psytrance_markov`, default 0 so the legacy euclidean-only theme
@@ -769,8 +769,8 @@ hang indefinitely (observed ~2.5 h at 0 bytes) because the offline render
 shared the live `PluginManager`, so live graph rebuilds collided with the
 export's proxy children and JUCE 8's non-realtime render-sequence bake had no
 interrupt or timeout. Exports now run on a dedicated, per-export offline
-plugin manager. See `docs/plans/2026-08-11-rhythm-pattern-generation.md`
-(feature) and `docs/plans/2026-08-11-export-isolation-wedge.md` (fix) for the
+plugin manager. See `docs/archive/plans/2026-08-11-rhythm-pattern-generation.md`
+(feature) and `docs/archive/plans/2026-08-11-export-isolation-wedge.md` (fix) for the
 full records.
 
 **Rhythm pattern generation:**
@@ -782,7 +782,7 @@ full records.
   (style 0 = Techno unchanged, 1 = House, 2 = DnB).
 - RPC `composition.generateRhythmPattern`, MCP `generate_rhythm_pattern`
   (plus `enableSnare`/genre styles on `generate_arrangement`), and a new
-  "Rhythm" mode in `PhraseGeneratorDialog` with snare toggle and genre
+  "Rhythm" mode in the Compose tab with snare toggle and genre
   selector.
 
 **Fix — export plugin isolation (the wedge):**
@@ -813,7 +813,7 @@ Adds the missing tempo/time-signature surface to MCP (feature-parity gap:
 `project.setTempo`/`project.setTimeSignature` existed as frontend RPCs but had
 no MCP tools), puts the time signature on the live transport wire end-to-end,
 and fixes the MCP `export_audio` tool being permanently blocked by a stale
-cancel flag. See `docs/plans/2026-08-11-mcp-tempo-timesig-and-export-fix.md`
+cancel flag. See `docs/archive/plans/2026-08-11-mcp-tempo-timesig-and-export-fix.md`
 for the full record.
 
 **MCP:**
@@ -856,7 +856,7 @@ for the full record.
 
 Fixes to the plugin scan/blacklist engine surfaced by the preset-listing task
 (`list_plugin_presets` / `list_fx_params`). See
-`docs/plans/2026-08-11-fix-scan-blacklist-bugs.md` for the full record.
+`docs/archive/plans/2026-08-11-fix-scan-blacklist-bugs.md` for the full record.
 
 **Engine fixes:**
 - **Blacklist now actually loads.** `saveBlacklist()` writes `<BLACKLIST>` as the

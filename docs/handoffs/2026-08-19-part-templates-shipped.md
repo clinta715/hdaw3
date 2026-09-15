@@ -12,7 +12,7 @@ that section before planning.**
 
 ## What shipped (#2 — complete)
 
-Plan: `docs/plans/2026-08-19-part-templates-role-defaults.md` (gates + evidence).
+Plan: `docs/archive/plans/2026-08-19-part-templates-role-defaults.md` (gates + evidence).
 
 | File | Change |
 |---|---|
@@ -135,7 +135,7 @@ New from this session: `role` defaults on `addInstrumentPart` are stable
 
 ## Where to look (this session's work)
 
-- Plan + gates: `docs/plans/2026-08-19-part-templates-role-defaults.md`
+- Plan + gates: `docs/archive/plans/2026-08-19-part-templates-role-defaults.md`
 - Engine: `src/engine/AudioEngineCommands_Composition.cpp:459` (role block),
   `src/common/ProjectCommands.h:330,364-365`
 - RPC: `src/frontend/router/Router_Composition.cpp:276-307`

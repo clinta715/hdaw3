@@ -152,7 +152,7 @@ even before P1 lands — pure win, matches lesson 6. Low risk, isolated.
 
 Do we treat **P1 + P2** (composite track builder + default instruments) as a
 planned feature? If yes, the follow-up is a proper plan doc
-(`docs/plans/2026-08-18-track-builder.md`) with success gates, then
+(`docs/archive/plans/2026-08-18-track-builder.md`) with success gates, then
 implementation via hdaw-guard (subagent tasks; C++ command + gtest, RPC + MCP
 parity, frontend AddTrackMenu assisted flow, E2E). P4 is a safe standalone fix
 worth doing regardless. Bug #2 (build typecheck gap) is cheap to fix and

@@ -53,8 +53,8 @@ file-based import if ever wanted.
 
 ## What shipped (Phase 1)
 
-Plans: `docs/plans/2026-08-19-clap-preset-capability-probe.md`,
-`docs/plans/2026-08-19-clap-preset-program-wiring.md` (gates + evidence).
+Plans: `docs/archive/plans/2026-08-19-clap-preset-capability-probe.md`,
+`docs/archive/plans/2026-08-19-clap-preset-program-wiring.md` (gates + evidence).
 
 | File | Change |
 |---|---|

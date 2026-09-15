@@ -23,9 +23,9 @@ wiring** first — it is the only path to real per-program audio.
 - Knowledge graph refreshed (`graphify`, 9825 nodes).
 - `projects/` kept untracked; no new files left out of commits.
 - Plans (with success gates + measured evidence):
-  `docs/plans/2026-08-19-pluginformat-snapshot-field.md`,
-  `docs/plans/2026-08-19-composition-verify-part.md`,
-  `docs/plans/2026-08-19-master-gain-global-scale.md`.
+  `docs/archive/plans/2026-08-19-pluginformat-snapshot-field.md`,
+  `docs/archive/plans/2026-08-19-composition-verify-part.md`,
+  `docs/archive/plans/2026-08-19-master-gain-global-scale.md`.
 
 ### What shipped (API surface)
 

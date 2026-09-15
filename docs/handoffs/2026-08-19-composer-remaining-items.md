@@ -4,7 +4,7 @@
 
 The previous session shipped the headline item from the track-tooling agenda:
 `composition.addInstrumentPart` + `composition.autoGainToTarget` (RPC + MCP), with
-the whole plan at `docs/plans/2026-08-18-instrument-part-composer.md`. This file
+the whole plan at `docs/archive/plans/2026-08-18-instrument-part-composer.md`. This file
 is the briefing for a **fresh context** that continues the remaining items IN
 PRIORITY ORDER. Each item below is actionable on its own; pick up #1 first.
 
@@ -190,7 +190,7 @@ composer already accepts beats at the RPC boundary and converts internally.
 
 ## Where to look
 
-- Plan for what shipped: `docs/plans/2026-08-18-instrument-part-composer.md`.
+- Plan for what shipped: `docs/archive/plans/2026-08-18-instrument-part-composer.md`.
 - Composer implementation: `src/engine/AudioEngineCommands_Composition.cpp`.
 - Composition RPC: `src/frontend/router/Router_Composition.cpp`.
 - MCP composition tools: `src/mcp/McpTools_Project.cpp` (`registerCompositionTools`).

@@ -134,7 +134,7 @@ removes the manual arithmetic.
    `ExportManager::computeBakeWaitMs`: the default bake-wait now scales with
    clip count (floor 15 s, 50 ms/clip, cap 120 s); `HDAW_EXPORT_BAKE_TIMEOUT_MS`
    still overrides. Plan + evidence:
-   `docs/plans/2026-08-18-export-bake-timeout-scale.md`.
+   `docs/archive/plans/2026-08-18-export-bake-timeout-scale.md`.
 2. **"Export volume bypass" was NOT a bug** — the project ships ENABLED volume
    automation on Perc Low + DX7 Pad that overrides faders. Documented as
    project-intent. The recurring confusion argues directly for idea #4
@@ -172,7 +172,7 @@ removes the manual arithmetic.
   spuriously fail with "Render graph bake timed out after 15000ms". Verified:
   904/904 engine tests, `*Export*` 11/11, runtime repro (load polywave + export
   with default settings) succeeds. See
-  `docs/plans/2026-08-18-export-bake-timeout-scale.md`.
+  `docs/archive/plans/2026-08-18-export-bake-timeout-scale.md`.
 - This handoff is a design-thinking artifact only — no code was changed for it.
 - Next session: pick one idea to prototype (likely #1/#3 — the compose-part tool
   with auto gain staging — or #4 the one-line fader-authoritative tool).

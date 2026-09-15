@@ -23,7 +23,7 @@ lessons recorded in `docs/pitfalls-juce.md` (PsyFm section) and
   namespace), tab id `psy-fm`.
 - Tests: 25 passing in `tests/unit/engine/psyfm_test.cpp` (4 suites).
 - Docs: guide §5b (FM synthesis), pitfalls-juce (3 PsyFm entries), plan
-  `docs/plans/2026-09-01-psytrance-fm-integration.md`.
+  `docs/archive/plans/2026-09-01-psytrance-fm-integration.md`.
 - Renders: 5 verified WAVs + `.hdaw` projects in `renders/` (`psytrance_full_A/B/C`,
   `psytrance_dark_fm`, `psytrance_hypnotic`).
 

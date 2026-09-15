@@ -27,7 +27,7 @@
 - **Tests** — new `FrontendServer.FmSynthImportSysexCartridgeVoices` gtest
   (asserts 32 voices + names + voiceIndex + live processor) and a new E2E
   journey (drop cartridge → picker → pick named voice → `voiceIndex` param).
-  Plan: `docs/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
+  Plan: `docs/archive/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
 
 ### Verified this session (all evidence on record)
 - C++ build ✓ (HDAW_lib + HDAW.exe + hdaw_tests.exe, 8/17 3:47 PM)
@@ -59,7 +59,7 @@ is committed as `5339206`..`2e39cd8`). Modified:
 `tests/unit/frontend/frontend_server_test.cpp`, `frontend/src/components/FXChain.tsx`,
 `frontend/src/components/FXChain.css`, `frontend/e2e/fm-synth-sysex.spec.ts`
 Untracked:
-`docs/plans/2026-08-17-dx7-cartridge-voice-picker.md` (+ this handoff updated).
+`docs/archive/plans/2026-08-17-dx7-cartridge-voice-picker.md` (+ this handoff updated).
 
 **Before starting new work, decide:** commit this batch (one commit — it's a
 single feature) or keep working on top of it.
@@ -80,7 +80,7 @@ single feature) or keep working on top of it.
    effect (NOT the `[.., refreshKey]` fetch effect — `refresh()` would wipe it).
    Gates: FrontendServer 11/11 (new `...CartridgeVoices` gtest incl. live
    processor), Dx7+FmSynth 34/34, npm build ✓, vitest 337/337, E2E spec 5/5.
-   Plan: `docs/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
+   Plan: `docs/archive/plans/2026-08-17-dx7-cartridge-voice-picker.md`.
 
 2. **Full engine test suite — DONE (2026-08-17)** — `833/833 passed` (162
    suites, 336 s) with the exclusion filter below. No regressions from the
