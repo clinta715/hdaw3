@@ -289,7 +289,8 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 juce::AudioProcessorGraph::BusesLayout renderLayout;
                 renderLayout.inputBuses.add(juce::AudioChannelSet::stereo());
                 renderLayout.outputBuses.add(juce::AudioChannelSet::stereo());
-                renderGraph.setBusesLayout(renderLayout);
+                const bool layoutOk = renderGraph.setBusesLayout(renderLayout);
+                HDAW_LOG("Export", "render graph buses layout ok=" + juce::String(layoutOk ? 1 : 0));
             }
     
             // Note: no DecodedSoundPool here — the export render thread must
@@ -405,7 +406,9 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 }
             }
     
-            int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
+            HDAW_LOG("Export", "render graph nodes=" + juce::String(renderGraph.getNumNodes()));
+
+    int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);
             int64_t totalBlocks = (totalSamples + blockSize - 1) / blockSize;
             int64_t blocksDone = 0;
     

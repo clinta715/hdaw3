@@ -201,6 +201,8 @@ void RoutingManager::reconnectMasterToOutput()
     int numOut = master->getTotalNumOutputChannels();
     int ioInChannels = ioNode->getProcessor()->getTotalNumInputChannels();
     int channelsToConnect = (ioInChannels > 0) ? juce::jmin(numOut, ioInChannels) : numOut;
+    HDAW_LOG("RoutingDiag", "reconnectMasterToOutput: numOut=" + juce::String(numOut)
+        + " ioIn=" + juce::String(ioInChannels) + " connecting=" + juce::String(channelsToConnect));
 
     for (int ch = 0; ch < channelsToConnect; ++ch)
     {

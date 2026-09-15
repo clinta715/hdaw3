@@ -53,6 +53,21 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
     if (!HDAW::MixReportAnalyzer::analyze(file, windows, bpm, rep, err))
         throw std::runtime_error(jstr(err).toStdString());
 
+    // Windows file-visibility guard: a just-finished export's writer may still
+    // hold the file with unflushed data — another handle then reads zeros for
+    // the unflushed region (an all-zero measurement for real audio; burned an
+    // entire agentic remix session 2026-09-15). When the first pass measures
+    // SILENCE on a non-trivial file, wait and re-measure once; a genuinely
+    // silent render measures silent twice.
+    if (rep.peak <= 0.0f && rep.duration > 0.5)
+    {
+        juce::Thread::sleep(3000);
+        HDAW::MixReport retry;
+        if (HDAW::MixReportAnalyzer::analyze(file, windows, bpm, retry, err)
+            && retry.peak > 0.0f)
+            rep = retry;
+    }
+
     QJsonObject root{
         {"duration", rep.duration},
         {"sampleRate", rep.sampleRate},
