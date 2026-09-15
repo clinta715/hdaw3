@@ -278,8 +278,8 @@ public:
     // spans exactly the section window, plus provenance properties on the
     // clip. sourceKind ∈ phrase | rhythm | break | pattern | harvest.
     // paramsJson is source-specific ("{}"/empty = defaults):
-    //   phrase:  {style, lengthBeats?, density?, noteDuration?, scaleRoot?,
-    //             scaleMode?, lowNote?, highNote?, minVelocity?, maxVelocity?,
+    //   phrase:  {style?, lengthBeats?, density?, noteDuration?, scaleRoot?,
+    //             scaleMode?, lowNote?, highNote?, minVelocity?, maxVelocity?, // (omitted style draws from role + cell seed)
     //             styleParams?: {ratchetChance?, restProbability?,
     //                            responseVariation?, swingPercent?,
     //                            rhythmGrid?, stateCount?}}
@@ -292,7 +292,8 @@ public:
     //             corpus-bank phrase tiled across the window (unknown role
     //             falls back to euclidean).
     //   break:   {slotIndex?, style?, grid?, dropFirst?, ghostFills?,
-    //             velocityMin?, velocityMax?}  (needs a sliced sampler clip)
+    //             velocityMin?, velocityMax?}  (needs a sliced sampler clip;
+    //             omitted style draws from the cell seed)
     //   pattern: {patternId}  (PatternLibrary preset -> phrase generation)
     //   harvest: {notes:[{pitch, velocity, startBeat, durationBeats}]}
     // seed 0 => derived deterministically from plan seed + section + role.

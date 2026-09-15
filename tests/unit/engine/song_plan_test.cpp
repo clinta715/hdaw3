@@ -12,6 +12,7 @@
 #include <string>
 
 #include "engine/AudioEngine.h"
+#include "engine/SeededCellDefaults.h"
 #include "common/ProjectCommands.h"
 #include "model/ProjectModel.h"
 
@@ -400,32 +401,29 @@ TEST(SongCells, PadCellFillsChordVoicing)
                        (int) n.getProperty(IDs::noteNumber) });
     }
     ASSERT_GE(ns.size(), 3u);
-    // Membership contract: EVERY filled note must belong to a root+fifth+octave
-    // triple {r, r+7, r+12} sharing its exact start beat (a note counts when it
-    // is the root, the fifth (root = pitch-7), or the octave (root = pitch-12)
-    // of a complete triple at the same start). Collision-tolerant.
+    // Voicing contract (B6 + E3): every filled note stacks companions from
+    // ONE seeded shape ({7,12} legacy, {7,12,19} rich, {12,19} open) at the
+    // same start beat — never a single-note drone. Collision-tolerant: a
+    // note counts when another note in its start group sits at one of the
+    // shape intervals above or below it.
+    const int shape = HDAW::SeededDefaults::padVoicingShape(b.cells[0].seedUsed);
+    const auto intervals = HDAW::SeededDefaults::padVoicingIntervals(shape);
     int covered = 0;
     for (const auto& n : ns)
     {
         bool member = false;
-        for (int rootOffset : { 0, -7, -12 })
+        for (const auto& m : ns)
         {
-            const int root = n.pitch + rootOffset;
-            if (root < 0 || root > 115) continue;
-            bool hasRoot = false, hasFifth = false, hasOct = false;
-            for (const auto& m : ns)
-            {
-                if (m.start != n.start) continue;
-                if (m.pitch == root) hasRoot = true;
-                if (m.pitch == root + 7) hasFifth = true;
-                if (m.pitch == root + 12) hasOct = true;
-            }
-            if (hasRoot && hasFifth && hasOct) { member = true; break; }
+            if (&m == &n || m.start != n.start) continue;
+            const int d = n.pitch - m.pitch;
+            for (int iv : intervals)
+                if (d == iv || d == -iv) { member = true; break; }
+            if (member) break;
         }
         if (member) ++covered;
     }
     EXPECT_EQ(covered, static_cast<int>(ns.size()))
-        << "every pad note must belong to a root+fifth+octave voicing triple";
+        << "every pad note must stack the seeded voicing shape (shape=" << shape << ")";
     // And the stack is real: several independent chord slots (start groups).
     std::set<double> starts;
     for (const auto& n : ns) starts.insert(n.start);
@@ -586,5 +584,96 @@ TEST(SongCells, CorpusRoleTilesAcrossSectionWindow)
     // drop window = 64 beats; longest bank phrase = 8 bars = 32 beats, so a
     // tiled fill must reach at least beat 64 - 32.
     EXPECT_GE(mx, 64.0 - 32.0) << "phrase did not tile to the window end";
+}
+
+// ── Seeded cell defaults (E1–E3): pure-picker unit tests ──────────────────
+
+TEST(SeededDefaults, BreakStyleVariesAndIsDeterministic)
+{
+    using HDAW::SeededDefaults::defaultBreakStyle;
+    // Valid style for a spread of seeds (incl. 0), deterministic per seed.
+    for (uint64_t s = 0; s < 50; ++s)
+    {
+        const auto st = defaultBreakStyle(s);
+        EXPECT_GE((int) st, 0);
+        EXPECT_LE((int) st, 4);
+        EXPECT_EQ(st, defaultBreakStyle(s));
+    }
+    // Variation: more than one style across seeds.
+    std::set<int> seen;
+    for (uint64_t s = 1; s <= 20; ++s)
+        seen.insert((int) defaultBreakStyle(s));
+    EXPECT_GT(seen.size(), 1u) << "break default never varies";
+}
+
+TEST(SeededDefaults, PhraseRoleStyles)
+{
+    using HDAW::SeededDefaults::defaultPhraseStyleForRole;
+    EXPECT_EQ(defaultPhraseStyleForRole("bass", 7), PhraseGenerator::BassLine);
+    EXPECT_EQ(defaultPhraseStyleForRole("pad", 7), PhraseGenerator::Pad);
+    EXPECT_EQ(defaultPhraseStyleForRole("riser", 7), PhraseGenerator::Buildup);
+    EXPECT_EQ(defaultPhraseStyleForRole("wobble", 7), PhraseGenerator::Standard);
+    EXPECT_EQ(defaultPhraseStyleForRole("", 7), PhraseGenerator::Standard);
+    // Sets stay musical: lead never draws BassLine, etc.
+    for (uint64_t s = 0; s < 50; ++s)
+    {
+        const auto lead = defaultPhraseStyleForRole("lead", s);
+        EXPECT_TRUE(lead == PhraseGenerator::Lead || lead == PhraseGenerator::RandomWalk);
+        const auto arp = defaultPhraseStyleForRole("arp", s);
+        EXPECT_TRUE(arp == PhraseGenerator::Arpeggio || arp == PhraseGenerator::RandomWalk);
+        const auto stab = defaultPhraseStyleForRole("stab", s);
+        EXPECT_TRUE(stab == PhraseGenerator::ChordStab || stab == PhraseGenerator::Standard);
+        EXPECT_EQ(defaultPhraseStyleForRole("lead", s), lead); // deterministic
+    }
+    std::set<int> leadSeen, arpSeen;
+    for (uint64_t s = 1; s <= 20; ++s)
+    {
+        leadSeen.insert((int) defaultPhraseStyleForRole("lead", s));
+        arpSeen.insert((int) defaultPhraseStyleForRole("arp", s));
+    }
+    EXPECT_GT(leadSeen.size(), 1u) << "lead style never varies";
+    EXPECT_GT(arpSeen.size(), 1u) << "arp style never varies";
+}
+
+TEST(SeededDefaults, PadVoicingShapes)
+{
+    using HDAW::SeededDefaults::padVoicingIntervals;
+    using HDAW::SeededDefaults::padVoicingShape;
+    EXPECT_EQ(padVoicingIntervals(0), (std::vector<int>{ 7, 12 }));
+    EXPECT_EQ(padVoicingIntervals(1), (std::vector<int>{ 7, 12, 19 }));
+    EXPECT_EQ(padVoicingIntervals(2), (std::vector<int>{ 12, 19 }));
+    EXPECT_EQ(padVoicingIntervals(99), (std::vector<int>{ 7, 12 }));
+    std::set<int> seen;
+    for (uint64_t s = 0; s < 50; ++s)
+    {
+        const int sh = padVoicingShape(s);
+        EXPECT_GE(sh, 0);
+        EXPECT_LE(sh, 2);
+        EXPECT_EQ(padVoicingShape(s), sh); // deterministic
+        seen.insert(sh);
+    }
+    EXPECT_GT(seen.size(), 1u) << "pad voicing never varies";
+}
+
+// (E2 wiring smoke) A bare lead phrase cell fills and refills identically.
+TEST(SongCells, BareLeadCellFillsDeterministically)
+{
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+    cmds.addTrack("Track 0");
+    cmds.addTrack("Track 1");
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);
+    std::string err;
+    ASSERT_TRUE(cmds.setCellRecipe(
+        makeCell("drop", "lead", "phrase", "{}"), &err)) << err;
+    auto b = cmds.fillCells("all");
+    ASSERT_TRUE(b.ok) << b.error;
+    ASSERT_TRUE(b.cells[0].ok) << b.cells[0].error;
+    EXPECT_GT(b.cells[0].noteCount, 0);
+    const std::string before = clipNoteSig(engine, b.cells[0].clipId);
+    auto b2 = cmds.fillCells("all");
+    ASSERT_TRUE(b2.cells[0].ok);
+    EXPECT_EQ(before, clipNoteSig(engine, b2.cells[0].clipId));
 }
 

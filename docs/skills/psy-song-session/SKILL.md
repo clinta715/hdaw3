@@ -32,6 +32,11 @@ BEFORE dispatching anything: bpm, keyRoot, scaleMode, style, seed, totalBars,
 sections, targets (masterRms, ceilingHitPctMax), and later — role-written —
 `palette`/`paletteTrackMap`/`patterns`/`artifacts`. The brief is IMMUTABLE once
 pinned: roles read it, only the orchestrator updates it between phases.
+Seed discipline (repetition guard): pin a FRESH random seed per song — never
+reuse a seed across songs (deterministic generators render the same seed
+identically, so a reused seed is a remixed arrangement, not a new song).
+Vary the section layout per style/brief (intro/build/drop bar counts and
+kinds), not one template for every track.
 
 All runtime artifacts (brief, renders, reports) live under `compositions/<song>/`
 (gitignored). Deterministic generators take the brief's seed; verification uses

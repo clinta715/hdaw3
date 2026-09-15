@@ -4,6 +4,7 @@
 #include "PhraseGenerator.h"
 #include "RhythmPatternGenerator.h"
 #include "RhythmPatternBank.h"
+#include "SeededCellDefaults.h"
 #include "PatternLibrary.h"
 #include "../model/ProjectModel.h"
 
@@ -732,6 +733,7 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
     if (cell.sourceKind == "phrase" || cell.sourceKind == "pattern")
     {
         PhraseGenerator::PhraseParams pp;
+        bool styleExplicit = false; // preset/params style pins (E2)
         pp.seed = seedUsed;
         pp.lengthBeats = winBeats;
         pp.scaleRoot = plan.keyRoot;
@@ -745,38 +747,45 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
             if (!cellPatternLib().loadPattern(pid, preset, perr))
             { res.error = "pattern load failed: " + perr.toStdString(); return res; }
             if (preset.paramsJson.isNotEmpty())
-                overridePhraseFields(pp, juce::JSON::parse(preset.paramsJson));
+            {
+                auto preparsed = juce::JSON::parse(preset.paramsJson);
+                overridePhraseFields(pp, preparsed);
+                if (preparsed.isObject() && preparsed.hasProperty("style"))
+                    styleExplicit = true;
+            }
             if (preset.styleParamsJson.isNotEmpty())
                 applyStyleParams(pp, juce::JSON::parse(preset.styleParamsJson));
             if (preset.style.isNotEmpty())
             {
                 PhraseGenerator::Style st;
-                if (phraseStyleFromName(preset.style, st)) pp.style = st;
+                if (phraseStyleFromName(preset.style, st)) { pp.style = st; styleExplicit = true; }
             }
         }
         overridePhraseFields(pp, params);
+        if (params.isObject() && params.hasProperty("style")) styleExplicit = true;
         pp.seed = seedUsed;   // seed authority stays the cell's
+        // Seeded role style (E2): explicit preset/params style always wins;
+        // otherwise the role draws (pad still resolves Pad = B6 intact).
+        if (!styleExplicit)
+            pp.style = HDAW::SeededDefaults::defaultPhraseStyleForRole(cell.role, seedUsed);
         // B6 (Modular Dawn audit): a pad-role cell must fill CHORD VOICINGS,
         // not a single-note drone — every pad section sounded like one held
-        // pitch (the user heard "uninitialized synth"). Default the phrase
-        // style to Pad (long-held notes) when the recipe doesn't pin one, and
-        // stack root + fifth (+7) + octave (+12) under every generated note
+        // pitch (the user heard "uninitialized synth"). The voicing SHAPE is
+        // seeded per fill (E3: legacy +7/+12, rich +7/+12/+19, open +12/+19)
         // so each chord slot sounds as a voicing. Pitches stay in range:
         // generatePhrase bounds to [lowNote, highNote] (48..84 defaults), so
-        // +12 <= 96 — the defensive 0..127 clamp never merges voices.
+        // +19 <= 103 — the defensive 0..127 clamp never merges voices.
         const bool padVoicing = juce::String(cell.role).equalsIgnoreCase("pad");
-        if (padVoicing && !(params.isObject() && params.hasProperty("style")))
-            pp.style = PhraseGenerator::Pad;
+        const std::vector<int> padIntervals = padVoicing
+            ? HDAW::SeededDefaults::padVoicingIntervals(
+                  HDAW::SeededDefaults::padVoicingShape(seedUsed))
+            : std::vector<int>();
         for (const auto& n : PhraseGenerator::generatePhrase(pp))
         {
             addGuarded(n.noteNumber, n.velocity, n.startBeat, n.durationBeats);
-            if (padVoicing)
-            {
-                addGuarded(juce::jlimit(0, 127, n.noteNumber + 7),
+            for (int iv : padIntervals)
+                addGuarded(juce::jlimit(0, 127, n.noteNumber + iv),
                            n.velocity, n.startBeat, n.durationBeats);
-                addGuarded(juce::jlimit(0, 127, n.noteNumber + 12),
-                           n.velocity, n.startBeat, n.durationBeats);
-            }
         }
     }
     else if (cell.sourceKind == "rhythm")
@@ -872,9 +881,18 @@ ProjectCommands::CellFillResult AudioEngineCommands::fillOneCell(const CellRecip
         bp.trackIndex = cell.trackId;
         bp.slotIndex = paramI(params, "slotIndex", 0);
         bp.clipId = clipId;
+        // Seeded style default (E1): explicit style (incl. invalid-name
+        // error) unchanged; omitted style draws from the cell seed.
         BreakPatternGenerator::Style bs;
-        if (!BreakPatternGenerator::styleFromName(paramS(params, "style", "amen").toStdString(), bs))
-        { res.error = "unknown break style"; return res; }
+        if (params.isObject() && params.hasProperty("style"))
+        {
+            if (!BreakPatternGenerator::styleFromName(paramS(params, "style", "amen").toStdString(), bs))
+            { res.error = "unknown break style"; return res; }
+        }
+        else
+        {
+            bs = HDAW::SeededDefaults::defaultBreakStyle(seedUsed);
+        }
         bp.style = bs;
         bp.bars = paramI(params, "bars", std::max(1, sec->bars));
         bp.grid = paramI(params, "grid", 4);

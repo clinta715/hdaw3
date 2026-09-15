@@ -57,6 +57,9 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    loaded FX chain in the audition evidence.
 8. **Record the palette**: for each role — trackIndex, instrument, preset name,
    audition evidence — into the brief's `palette` section and `paletteTrackMap`.
+   Shortlist depth (repetition guard): audition AT LEAST 3 candidates per
+   melodic role and 2 per drum role before committing; vary banks/engines
+   across songs (don't start every track from the same ROM bank).
 
 ## Surface gotchas (smoke-run feedback)
 - `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track

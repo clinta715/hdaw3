@@ -110,6 +110,10 @@ measured. Never fix the mix by editing someone else's layer.
 - [ ] Register budget still ≤ 2 high parts (above MIDI 72)
 - [ ] Every FX param read back in real units, in range
 - [ ] Batch: one coherent change = one undo unit; no N-loop single calls
+- [ ] Mutation pass: the layer carries human variation — a MIDI-FX humanize/
+  chance/strum lane, `set_note_chance`/`set_note_velocities` drift, or
+  velocity/timing edits audibly different from the generator grid (verify by
+  ear against the unmutated render, not by gate numbers alone)
 - [ ] Zero mutations to other layers
 
 ## Handoff
