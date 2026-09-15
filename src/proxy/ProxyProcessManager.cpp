@@ -118,15 +118,42 @@ bool ProxyProcessManager::spawnPluginHost(const std::string& pluginPath, uint32_
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
 
+    // Diagnostic: redirect the child's stdout to a file when
+    // HDAW_PROXY_CHILD_STDOUT is set. Plugins that printf to stdout (e.g.
+    // VirtualJV's MAME-core diagnostics: "Not enough samples!", "click")
+    // become observable from the parent side. No effect when unset.
+    HANDLE childStdoutFile = INVALID_HANDLE_VALUE;
+    BOOL inheritHandles = FALSE;
+    if (const char* childStdoutPath = getenv("HDAW_PROXY_CHILD_STDOUT");
+        childStdoutPath != nullptr && childStdoutPath[0] != '\0')
+    {
+        SECURITY_ATTRIBUTES sa { sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE };
+        childStdoutFile = CreateFileA(
+            childStdoutPath, FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (childStdoutFile != INVALID_HANDLE_VALUE)
+        {
+            si.dwFlags = STARTF_USESTDHANDLES;
+            si.hStdOutput = childStdoutFile;
+            si.hStdInput = childStdoutFile;
+            si.hStdError = childStdoutFile;
+            inheritHandles = TRUE;
+        }
+    }
+
     std::vector<char> cmdBuf(cmdLine.begin(), cmdLine.end());
     cmdBuf.push_back(0);
 
     BOOL ok = CreateProcessA(
         nullptr, cmdBuf.data(),
-        nullptr, nullptr, FALSE,
+        nullptr, nullptr, inheritHandles,
         CREATE_NO_WINDOW,
         nullptr, nullptr,
         &si, &pi);
+
+    if (childStdoutFile != INVALID_HANDLE_VALUE)
+        CloseHandle(childStdoutFile);
 
     if (!ok) {
         HDAW_LOG("proxy", "spawnPluginHost: CreateProcessA FAILED error=" + std::to_string(static_cast<int>(GetLastError())));

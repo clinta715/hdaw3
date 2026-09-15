@@ -27,7 +27,7 @@ struct CaptureLogger : public juce::Logger
 namespace {
 
 const char* kVesBundle =
-    "C:\\Program Files\\Common Files\\VST3\\Vintage Emulator Studio.vst3";
+    "C:\\Program Files\\Common Files\\VST3\\jv880.vst3";
 
 bool vesAvailable()
 {
@@ -41,6 +41,13 @@ bool vesAvailable()
 }
 
 } // namespace
+
+// VirtualJV (JV-880 rompler emulator). Real program system: 65 internal +
+// 65 bank A + 65 bank B + expansion patches, real names, setCurrentProgram
+// writes the patch into NVRAM and posts a program change to the MCU. State
+// struct carries the current patch + expansion (a real preset round-trip).
+// ROMs expected in %APPDATA%\\JV880 with exact filenames (jv880_*.bin etc.);
+// first load descrambles waveroms into Cache (~1 min).
 
 TEST(VesBootProbe, BootsAndRenders)
 {
@@ -93,11 +100,20 @@ TEST(VesBootProbe, BootsAndRenders)
     }
     if (instance == nullptr)
         GTEST_SKIP() << "VES instance failed to load";
-    std::cout << "[VesProbe] instance loaded: " << instance->getName().toStdString() << std::endl;
+    std::cout << "[VesProbe] instance loaded: " << instance->getName().toStdString()
+              << " numPrograms=" << instance->getNumPrograms() << std::endl;
+    for (int i = 0; i < 5 && i < instance->getNumPrograms(); ++i)
+        std::cout << "[VesProbe]   program " << i << " = \""
+                  << instance->getProgramName(i).toStdString() << "\"" << std::endl;
 
-    // Realtime-paced drive with the transport RUNNING (the child reads the
-    // playhead snapshot from the SHM header; some hosts gate plugin audio
-    // on transportPlaying). One noteOn per second, peak per second.
+    // Realtime-paced drive with a fresh noteOn per second. The JV-880 is a
+    // rompler: a note should sound as soon as the ROMs are up (first run
+    // pays a waverom descramble, allow a few minutes).
+    // Select program 0 explicitly — the MCU may need a patch posted before
+    // it voices MIDI notes.
+    instance->setCurrentProgram(0);
+    std::cout << "[VesProbe] setCurrentProgram(0) -> \""
+              << instance->getProgramName(0).toStdString() << "\"" << std::endl;
     engine.getTransportCommands().play();
     juce::Thread::sleep(300);
 
@@ -113,7 +129,7 @@ TEST(VesBootProbe, BootsAndRenders)
     juce::MidiBuffer midi;
     float bestPeak = 0.0f;
     const int blocksPerSecond = std::max(1, sr / blockSize);
-    for (int sec = 0; sec < 60; ++sec)
+    for (int sec = 0; sec < 90; ++sec)
     {
         float secPeak = 0.0f;
         for (int b = 0; b < blocksPerSecond; ++b)
