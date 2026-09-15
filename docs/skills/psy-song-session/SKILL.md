@@ -1,6 +1,6 @@
 ---
 name: psy-song-session
-description: Orchestrates a full psy-song writing session as five scoped subagent roles (Curator, Pattern Researcher, Sound Selector, Arranger, Mix Verifier) over HDAW's MCP surface, with an immutable Song Brief and machine-verifiable gates between roles.
+description: Orchestrates a full psy-song writing session as six scoped subagent roles (Curator, Pattern Researcher, Sound Selector, Arranger, FX & Automation Engineer, Mix Verifier) over HDAW's MCP surface, with an immutable Song Brief and machine-verifiable gates between roles.
 ---
 
 # psy-song-session: agentic song-writing pipeline
@@ -13,8 +13,9 @@ Each role has its own playbook with a strict tool surface:
 | ---- | -------- | -------------------- |
 | Curator (offline) | `roles/curator.md` | library ingestion + descriptors, never the project |
 | Pattern Researcher (offline) | `roles/pattern-researcher.md` | external MIDI -> pattern library, never the project |
-| Sound Selector | `roles/sound-selector.md` | tracks, presets, FX slots, auditions; no notes |
-| Arranger (single writer) | `roles/arranger.md` | sections/clips/notes/automation; the only arrangement mutator |
+| Sound Selector | `roles/sound-selector.md` | tracks, presets, FX slots, initial factory chains, auditions; no notes |
+| Arranger (single writer) | `roles/arranger.md` | sections/clips/notes; arrangement-internal automation (clip gain/CC envelopes) — the only arrangement mutator |
+| FX & Automation Engineer | `roles/fx-automation-engineer.md` | FX chain refinement + FX-parameter automation lanes (movement); never notes/clips/instruments |
 | Mix Verifier (read-mostly) | `roles/mix-verifier.md` | export + measure + fader/master gain only |
 
 Role files resolve against this skill's directory (parent of SKILL.md).
@@ -76,9 +77,14 @@ Subagents read `docs/psytrance-composition-guide.md` for recipes when needed.
 3. **Arranger** (single writer): writes the song against the palette. No other
    role may hold the engine concurrently — the harness enforces this by only
    dispatching the Arranger while nothing else mutates.
-4. **Mix Verifier**: renders + measures async; on FAIL it names the fix and the
+4. **FX & Automation Engineer** (movement pass): runs over the FINISHED
+   arrangement — verifies/refines the chains Sound Selector staged in context,
+   then adds the movement layer (cutoff sweeps, pump, riser curves) as
+   FX-parameter automation lanes. Single writer while dispatched; never notes,
+   clips, or instruments; no exports.
+5. **Mix Verifier**: renders + measures async; on FAIL it names the fix and the
    owning role; bounded to 3 render/rework loops before reporting to the user.
-5. **Persist** only on a PASS verdict (`save_project`), then stop.
+6. **Persist** only on a PASS verdict (`save_project`), then stop.
 
 Concurrent dispatch rule: multiple roles may hold the engine ONLY if every one
 of them is in a read-only phase (Verifier measuring a finished render, Selector
@@ -164,5 +170,6 @@ properties (centroid, band energies), not sample-level equality. See
 ## First run (smoke)
 Pin a minimal 96-bar brief (known-good corpus seeds from
 `compositions/psytrance_corpus_fulltracks.tsv`), run the pipeline end to end on
-the five-role split, and record where handoffs needed human help — that list is
+the pipeline end to end on
+the six-role split, and record where handoffs needed human help — that list is
 the Phase 1 backlog.

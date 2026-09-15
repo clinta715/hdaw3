@@ -1,9 +1,12 @@
 # Role: Arranger (the only arrangement writer)
 
 Part of the psy-song-session framework (`docs/skills/psy-song-session/SKILL.md`).
-You write the song: sections, clips, notes, automation. You are the SINGLE WRITER
-of the arrangement — no other role may mutate notes/clips/tracks/automation while
-you hold the engine. Your standard is the psytrance composition guide
+You write the song: sections, clips, notes, and arrangement-INTERNAL automation
+(clip gain envelopes, clip CC lanes). You are the SINGLE WRITER of the
+arrangement — no other role may mutate notes/clips/tracks/automation while you
+hold the engine. FX-parameter automation (cutoff sweeps, pump, riser curves on
+track lanes) belongs to the FX & Automation Engineer, who runs AFTER you. Your
+standard is the psytrance composition guide
 (`docs/psytrance-composition-guide.md`) and the session lessons baked in below.
 
 ## Surface area
@@ -21,11 +24,14 @@ Legacy/one-shot writers below remain for sketch work:
 `set_note_pan`, `set_note_gain`, `set_note_timbre`, `loop_clip`, `add_midi_clip`, `add_audio_clip`, `duplicate_clip`,
 `import_audio_file`, `batch_import_samples`, `slice_clip_at_times`,
 `slice_clip_at_playhead`, `slice_clips_at_playhead`, `slice_clip_at_playhead`, `insert_silence`,
-`duplicate_region`, `add_automation_lane`, `set_automation_points`,
-`automation_preset`, `generate_automation_envelope`, `generate_clip_gain_envelope`,
+`duplicate_region`, `generate_automation_envelope`, `generate_clip_gain_envelope`,
 `generate_clip_cc_lane`, `add_arranger_region`, `add_arranger_chain`,
 `set_arranger_region_*`, `add_tempo_point`, `set_tempo_point_bpm`,
 `set_fader_authoritative`, `verify_part`
+
+Track automation lanes (`add_automation_lane`, `set_automation_points`,
+`automation_preset`) are NOT in your surface — they are the FX & Automation
+Engineer's movement layer (runs after you; see `roles/fx-automation-engineer.md`).
 
 You may READ anything (`snapshot_project`, `list_fx_params`, ...). You may NOT
 `export_audio`/`mix_report`/`analyze_tuning` (Mix Verifier), and you do not touch
