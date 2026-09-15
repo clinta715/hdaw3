@@ -713,6 +713,14 @@ Real synth firmware running as isolated CLAP plugins — installed in
   see `docs/plans/2026-09-14-b10-verdict-serum-probe.md` for the probe
   evidence. Use OsTIrus / Osirus / NodalRed2x / Dexed / sub_synth / psy_fm
   instead.
+- **VES (Vintage Emulator Studio) is PARKED (2026-09-15).** Loads and runs
+  isolated (MAME emulation executes, ~1 core) but the audio bridge delivers
+  silence to the host; fails to load in-process. Patch data is never in the
+  plugin state (machine+media paths only), the program API is a stub, and
+  MAME NVRAM is transient per boot — presets would only ever be reachable via
+  MIDI injection or disk images, and only after the silent-bridge question is
+  resolved. Do not pick it; see
+  `docs/plans/2026-09-15-ves-preset-loading-probe.md`.
 
 ### Isolated children render non-deterministically (known limitation)
 
