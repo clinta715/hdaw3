@@ -23,7 +23,7 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.34.0)
+## What works today (v0.35.0)
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE
@@ -360,6 +360,41 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 
 ## Changelog
 
+### v0.35.0 — Seeded cell style defaults, apply_preset dispatch, six-role song-session, plugin verdicts
+
+- **Seeded cell style defaults (break/phrase/pad).** The A-pattern (seed the
+  defaults, pin the choices) extended to the remaining fixed-content
+  templates: break style draws per cell seed (no more always-amen), phrase
+  style draws from role + cell seed when omitted (pad stays Standard), pad
+  voicing pinned to root+5+oct. `fill_cells` stays deterministic per seed;
+  song-session playbooks refreshed to match. Fast tier 1539/1539 on a
+  verified-fresh binary.
+- **`apply_preset` MCP dispatch tool (M1).** One tool that dispatches by file
+  type and target plugin (`filePath`/`program`/`bank`/`voiceIndex`/
+  `channel`/`captureToTree`), replacing the 5 individual preset-loading
+  tools for agentic use. The individual tools stay registered
+  (backwards compat).
+- **`list_fx_params` CLAP ranges + `list_plugins` kind filter.** Automatable
+  CLAP params report real min/max from the child; plugin listing filters by
+  instrument/effect. Dexed removed from the live preset-injection path
+  (probed silent — cartridges remain usable via `fm_synth_import_sysex`).
+- **psy-song-session is a six-role framework.** The previously dangling
+  `fx-automation-engineer` playbook is wired in as the sixth dispatch — FX
+  chain refinement + the movement pass (cutoff sweeps, pump, riser curves)
+  between the Arranger and the Mix Verifier; Sound Selector stages chains
+  for auditions only; the Arranger keeps arrangement-internal automation.
+- **Plugin verdicts documented.** Serum 2 RETIRED (state path dead
+  end-to-end — byte-identical 3076 B blob and identical audio regardless of
+  what the host writes; probe evidence in
+  `docs/plans/2026-09-14-b10-verdict-serum-probe.md`). Vintage Emulator
+  Studio and JV-880 (VirtualJV) PARKED with full probe findings
+  (`docs/plans/2026-09-15-*.md`).
+- **MCP session lifecycle documented** (docs/testing-mcp.md): lazy-mcp's
+  10 s request timeout and 5-min idle sleep were terminating the engine
+  during long composition operations (the "engine crash / empty project
+  respawn" family). Fix documented in `~/.config/lazy-mcp/servers.json`
+  (`requestTimeout` 900000, `healthMonitor.idleTimeout` 0).
+
 ### v0.34.0 — Empty-by-default projects, Nord Lead 2x preset pipeline, zero-track test hardening
 
 - **New projects start empty (zero tracks).** `createDefaultProject()` no
@@ -446,7 +481,8 @@ DEV_PLAN_CPP.md                  — original Rust-to-C++ conversion plan
 - **sub_synth polyphony / subtractive engine rework**, **corpus arranger**
   (`generate_arrangement_corpus`), **plugin preset file loader**
   (`load_plugin_preset_file`: .SerumPreset / .fxp / .syx via
-  `PresetFileParser`), and a **track FX delay slot** — each with its own
+  `PresetFileParser`; plus the `apply_preset` dispatch tool), and a
+  **track FX delay slot** — each with its own
   gtest suite.
 - **RAVE is deprecated.** Real-model results were overdriven/incoherent in
   mixes, the offline level behavior was fragile, and native synth tracks
