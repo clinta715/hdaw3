@@ -233,3 +233,42 @@ when tempo match is on.
 `AudioSourcePlayer` to avoid interfering with the main audio graph.
 The player does not apply time-stretching — tempo matching adjusts
 playback rate (pitch changes with speed).
+
+## The engine "crashes" during MCP sessions — lazy-mcp lifecycle knobs
+
+The hdaw MCP server runs through **lazy-mcp** (`~/.pi/agent/mcp.json` →
+npx lazy-mcp → `~/.config/lazy-mcp/servers.json` → mcp-launch.bat → the
+engine). lazy-mcp has two lifecycle defaults that silently kill the
+engine process, and each relaunch starts a FRESH EMPTY project:
+
+- **`requestTimeout` default 10 000 ms** — any tool call longer than 10 s
+  (`export_audio` with `wait:true`, a full-length `mix_report`) makes
+  lazy-mcp discard the connection; the engine keeps rendering on its
+  worker thread and exits abnormally (exit code 1) when the response can
+  no longer be delivered, or is killed outright. Symptom: the adapter
+  reports `Server timeout (10s)` and the next call relaunches an empty
+  engine (a "silent export" from a fresh engine is this exact bug).
+- **`healthMonitor.idleTimeout` default 300 000 ms (5 min)** — the engine
+  is put to sleep (clean exit 0 on stdin EOF — correct stdio behavior)
+  after 5 minutes without activity. Any pause longer than 5 minutes
+  during a composition session loses the live project.
+
+**Fix (applied 2026-09-15) in `~/.config/lazy-mcp/servers.json`**:
+
+```json
+{
+  "requestTimeout": 900000,
+  "healthMonitor": { "idleTimeout": 0 },
+  "servers": [ { "name": "hdaw", "requestTimeout": 900000, ... } ]
+}
+```
+
+`idleTimeout: 0` is lazy-mcp's documented "legacy never-sleep mode" — the
+echo-friendly default is right for most servers but wrong for a DAW
+engine that holds live session state. Config changes take effect on the
+next lazy-mcp start (a new pi session); procdump exit-code forensics live
+in `%TEMP%\hdaw_crash_captures\engine_*\procdump.log` — exit 0x00000000
+= the idle/EOF path (lazy-mcp lifecycle, not an engine bug), exit 0x1
+after a long render = the response pipe died mid-render. Also relevant:
+the saved `.hdaw` is the source of truth — after ANY engine relaunch,
+`load_project` before doing anything else.
