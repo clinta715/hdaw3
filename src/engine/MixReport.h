@@ -2,6 +2,7 @@
 #include <juce_core/juce_core.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_dsp/juce_dsp.h>
+#include "../common/DebugLog.h"
 #include <vector>
 #include <complex>
 #include <cmath>
@@ -158,11 +159,19 @@ inline void MixReportAnalyzer::streamRange(juce::AudioFormatReader& reader,
     };
 
     int64_t pos = s0;
+    bool firstRead = true;
     while (pos < s1)
     {
         const int want = static_cast<int>(std::min<int64_t>(n, s1 - pos));
         if (!reader.read(&buf, 0, want, pos, true, true))
+        {
+            HDAW_LOG("MixReport", "streamRange read FAILED at pos=" + juce::String(juce::int64(pos))
+                + " want=" + juce::String(want)
+                + " readerFrames=" + juce::String(juce::int64(reader.lengthInSamples))
+                + (firstRead ? " (FIRST read)" : ""));
             break;
+        }
+        firstRead = false;
 
         for (int i = 0; i < want; ++i)
         {
