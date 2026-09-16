@@ -123,6 +123,10 @@ Extracted from the `parameterDescriptions_*.json` files named in §1 — these a
 devices' real parameter names, not approximations.
 
 ### Waldorf microQ (Vavra) — per-destination source + amount (192 mod parameters)
+
+Control caveat: these are patch-level settings. The microQ remote control accepts only
+button/encoder events (see §7 row 5), so from HDAW the matrix is reachable only by
+loading a patch that already contains the routing, or by puppeting the front panel.
 | Target | Modulation parameters |
 |---|---|
 | Pitch | `PitchModSrc`, `PitchModAmount` (plus `GlideMode`, `VoiceMode`) |
@@ -207,7 +211,7 @@ first (see §2 for why this order):
 | 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | devices that publish params: JE8086 (461), Virus, Xenia, Nord 2x. **Not Vavra (0 params)** |
 | 3 | **Automation / movement** — ramps, risers, throws, macro morphs on those parameters | track automation lanes and `apply_movement_plan` (macro events with start/end values) | same as #2 (e.g. the guide's JP-8080 delay-throw automates DelayLevel) |
 | 4 | **MIDI CC / program change** — drive the device's CC-mapped routings and switch ROM presets | `send_fx_midi` (CC, PC, notes) | all devices that respond to MIDI (Virus Modulation Wheel, CC74 brightness, CC0+PC preset select) |
-| 5 | **Remote-control SysEx** — page/index/value parameter writes for params the CLAP does not publish | `send_fx_midi` {kind:"sysEx"} with the emulation's own protocol: Waldorf header `F0 3E 10 <devId> <cmd>` plus page/index/value nibbles (`wLib/wSysexRemoteControl.h`, `mqLib/mqsysexremotecontrol.cpp`; the emulator also emits LCD/LED data back) | **the route for Vavra's FX/matrix** and a fallback for hidden params on other devices — structurally reachable (handled on the live MIDI path) but **unverified from HDAW** |
+| 5 | **Front-panel puppetry (remote-control SysEx)** — press the device's buttons and turn its encoders, i.e. drive it the way a human does | `send_fx_midi` {kind:"sysEx"} with the emulation's protocol. microQ (verified in source): header `F0 3E 10 00 <cmd>`, then `EmuButtons` = `52 <buttonIdx> <state>` or `EmuRotaries` = `53 <encoderIdx> <amount+64>` (`mqLib/mqsysexremotecontrol.cpp`); the device streams `EmuLCD` / `EmuLEDs` / `EmuLCDCGRata` back for verification. There is **no parameter-address write** — a `SetParam` message is ignored (probed: state byte-identical) | **the only HDAW route into Vavra's FX and matrix pages** (navigate with `EmuButtons`, adjust with `EmuRotaries`), and a fallback for hidden params elsewhere. Unverified from HDAW; verify by watching the plugin editor's LCD |
 | 6 | **State / preset operations** — snapshot, save, recall | `capture_fx_snapshot`, `save_fx_chain`, `load_plugin_preset`, `apply_preset`, `save_project` | all, subject to the isolation caveats in §1 (a plugin whose state does not round-trip its patch exports differently from what you audition) |
 
 ### Onboard FX inventory (from each device's own parameter vocabulary)
@@ -282,13 +286,16 @@ trick is knowing which lever each device exposes and which one HDAW can drive.
 
 ### Open verification (the next concrete steps)
 
-1. **Vavra remote-control SysEx**: header verified (`F0 3E 10 00 <cmd>`,
-   `wLib/wSysexRemoteControl.h`; `SetParam` is the last entry of the microQ
-   `CommandType` enum), and the emulation handles it on the live MIDI path
-   (`device.cpp`) while streaming LCD/LED data back — so a crafted `SetParam` should
-   drive FX/matrix parameters that the CLAP never publishes. The exact nibble payload
-   lives in the microQ remote-control source (retromulator tree); read it, then send one
-   `SetParam` and diff the captured state before/after to confirm it landed.
+1. **Vavra: DONE — panel puppetry is the only route.** Verified in
+   `mqLib/mqsysexremotecontrol.cpp`: the device accepts `EmuButtons`
+   (`52 <buttonIdx> <state>`), `EmuRotaries` (`53 <encoderIdx> <amount+64>`) and
+   answers `EmuLCD`/`EmuLEDs`/`EmuLCDCGRata`; **there is no parameter write** — a
+   crafted `SetParam` (page 0, index 191) left the captured state byte-identical, as
+   the source predicts. So HDAW can *navigate and dial the microQ's front panel*
+   (`EmuButtons` to reach the FX/ModMatrix pages, `EmuRotaries` to change values) but
+   cannot address parameters; the practical consequence stands: **bake microQ FX/matrix
+   movement into the patch**, and treat live control as a future experiment verified via
+   the plugin editor's LCD.
 2. **Virus matrix table**: its matrix is exposed as `Assign1 Source` / `Assign1
    Destination` pairs (plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`) — 107
    matrix-related names harvested; enumerating the Assign1..N pairs and their
