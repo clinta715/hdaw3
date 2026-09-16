@@ -733,6 +733,17 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   `timbre-lib/nl2x_patch.py` writes `<patch>.nl2x.json` descriptions
   over `D:\pdf\NL2x Banks` (6841 sidecars, 29436 dumps) — searchable
   by FileLibraryManager.
+- `load_je8086_preset {trackId, slotIndex, filePath, preset?, recall?}` — Roland
+  JP-8080 banks (`.syx` raw DT1 SysEx, `.mid` SMF-wrapped) into JE8086: ATOMIC —
+  every DT1 message validated (F0 41 10 00 06 12 header, F7-terminated, Roland
+  checksum, ≤32768B) BEFORE queueing, then the selected patch is recalled with
+  CC0=1 (USER bank) + PC = bank*64 + slot-1. `preset` is the 1-based patch unit
+  in file order — choose one from the je8086 survey `roleShortlist` refs
+  (`perf016/part2`, `bank0/slot25`). PER-PATCH by design: a 64-patch bank is 128
+  DT1 messages while the injection carries ≤64 events over a single sysex lane
+  that drops (not queues) when busy. Sidecar pipeline:
+  `timbre-lib/je8086_patch.py` writes `<bank>.je8086.json` over `D:\pdf\je8086`
+  (45 sidecars, 4276 entries + role shortlist) — searchable by FileLibraryManager.
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.

@@ -147,9 +147,18 @@ the first pass decoded **0 entries** from all 46 files; (2) a performance
 performance names (now `role: performance`, no params). Both were caught by
 checking the decoder against the known census rather than by trusting the output.
 
-**Follow-ups** — (a) `FileLibraryManager::applyPatchSidecar` recognises
-`.virus.json`/`.dx7.json` only; adding `.je8086.json` (and `.nl2x.json`) is a
-two-line change to make these sidecars searchable in-app; (b) `load_je8086_bank`
-MCP tool mirroring `load_nord_bank` (DT1 bank -> JE8086 slot via `sendFxMidi`)
-to actually inject a curated patch and render it.
+**Follow-ups — both DONE (2026-09-16)**
+
+- (a) `FileLibraryManager::applyPatchSidecar` now also reads `.nl2x.json` and
+  `.je8086.json` (with a filename→engine fallback to nodalred2x / je8086), so the
+  NL2X and JP-8080 bank sidecars are searchable in-app — commit `0089bed`, tests
+  `FileLibraryPatchTest.Je8086BankSidecarIngested` and
+  `Nl2xBankSidecarIngestedWithoutEngineKey`.
+- (b) `load_je8086_preset {trackId, slotIndex, filePath, preset?, recall?}` —
+  DT1 bank → validated atomically → ONE patch unit injected into a JE8086 slot +
+  CC0(USER)+PC recall — commits `a9d2807` (loader) and `4573d0f` (MCP-surface
+  test). Per-patch by design (a 64-patch bank is 128 messages vs the 64-event
+  cap and a drop-on-busy sysex lane). Remaining live verification: inject → save
+  → export → measure against a real JE8086 instance, following the env-gated
+  `FxMidiInjection` probe pattern.
 
