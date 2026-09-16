@@ -117,6 +117,84 @@ effect whenever the device already has the effect onboard.
 - Cartridge injection is ignored; use the internal `fm_synth` (same engine family,
   fully parameterized) and its own envelopes/operator levels for FM movement.
 
+## 5. Modulation matrices (harvested from the emulators' own vocabularies)
+
+Extracted from the `parameterDescriptions_*.json` files named in §1 — these are the
+devices' real parameter names, not approximations.
+
+### Waldorf microQ (Vavra) — per-destination source + amount (192 mod parameters)
+| Target | Modulation parameters |
+|---|---|
+| Pitch | `PitchModSrc`, `PitchModAmount` (plus `GlideMode`, `VoiceMode`) |
+| Osc 1/2/3 FM | `O1FmSource`, `O2FmSource`, `O3FmSource` |
+| Osc 1/2/3 PWM | `O1PwmSource`, `O2PwmSource`, `O3PwmSource` |
+| Filter 1 | `F1ModSource`, `F1CutoffMod`, `F1EnvMod`, `F1VelMod`, `F1FmSource` |
+| Filter 1 pan | `F1PanModSource`, `F1PanMod` |
+| Filter 2 / pan | `F2ModSource`, `F2CutoffMod`, `F2EnvMod`, `F2VelMod`, `F2PanModSource` |
+| Texture | `RingModLevel`, `RingModBalance`, `NoiseModeF1`, `NoiseModeF2` |
+
+Recipes: a **source-per-destination** matrix means movement is written into the patch —
+`F1ModSource` = an LFO with `F1CutoffMod` amount for a filter that opens on its own;
+`F1PanModSource`/`F1PanMod` for per-voice pan drift (width with no host automation);
+`O1PwmSource` for PWM shimmer on a pad; `PitchModSrc` micro-drift on a pad/stab only
+(no pitch modulation on bass or leads — guide §4D rule).
+
+### Access Virus TI / C (OsTIrus / Osirus) — "X > Y" routing names
+`Osc2 HyperSaw/FilterEnv > Pitch`, `Osc2 Wavetable/FilterEnv > FM`,
+`Osc2 HyperSaw/FilterEnv > SyncFrequency`, `Filter1 Env Amt` / `Filter2 Env Amt`,
+`Filter Env Attack/Decay/Sustain/Sustain Time/Release`, `Modulation Wheel`,
+`Ringmodulator Volume`, `Vocoder/Modulator Center Frequency | Frequency Offset |
+Q Factor | Frequency Spread` (157 mod-related names in the TI, 106 in the C).
+
+Recipes: env→pitch only where the guide allows it (never bass/lead);
+env→FM or env→sync for metallic movement instead of a plugin distortion;
+the **vocoder** parameters are worth an FX pass on their own (modulated center
+frequency = classic psy vocal/gate texture) and they live in the device, so no plugin
+vocoder is needed.
+
+### Roland JP-8080 (JE8086) — fixed destinations, depth per target (298 names)
+`Lfo1Waveform/Rate/Fade`, `Lfo1AndEnvelopeDestination` (OSC1+2 / OSC2 / X-MOD),
+`OscLfo1Depth`, `PitchLfo2Depth`, `PitchEnvelopeDepth/Attack/Decay`,
+`Osc1Control2LFO1Depth`, `Osc2Control2LFO1Depth`, `FilterLfo1Depth`, `FilterLfo2Depth`,
+`FilterEnvelopeDepth/ADSR`, `AmpLfo1/2Depth`, `Lfo2DepthSelect`, `RingModulatorSwitch`,
+`CrossModulationDepth`.
+
+Note: the plugin's parameter list is **not** the SysEx patch layout (it contains
+parameters such as `Osc1Control2LFO1Depth` that have no dump offset), so map by NAME
+against `list_fx_params`, never by patch offset. These are HDAW-automatable with
+`set_fx_param`, which is the practical route for JP-8080 movement (dumps do not apply).
+
+### Waldorf Microwave XT (Xenia) — env amounts + velocity sensitivity
+`W1EnvAmount`/`W1EnvVelAmount`, `W2EnvAmount`/`W2EnvVelAmount`, `F1EnvAmount`,
+`F1EnvVelAmount`, `F1EnvAttack/Decay/Sustain/Release/Trigger`,
+`AmpEnvAttack/Decay/Sustain/Release/Trigger`, `MixRingMod`, `GlideMode`, `ArpMode`,
+`AllocationMode`.
+
+Recipes: wave-envelope amounts are the XT's signature — use them instead of a plugin
+filter/phaser sweep; `MixRingMod` for bell/metallic FX; the arp is in-device, so
+sequence it in the patch rather than with a plugin arpeggiator.
+
+### Clavia Nord Lead 2x (NodalRed2x) — MOD ENV + LFOs with sensitivity dials
+`ModEnvA`, `ModEnvD`, `ModEnvLevel`, `Lfo1Rate`, `Lfo1Level`, `Lfo2Rate`,
+`FilterEnvAmount`, `FilterEnvA/D/S/R`, `AmpEnvA/D/S/R` and per-parameter
+**sensitivities**: `FilterEnvAmountSens`, `FilterEnvASens/DSens/SSens/RSens` (84
+mod-related names).
+
+Recipes: MOD ENV → filter (`FilterEnvAmount`) with sensitivity set for velocity gives
+plucks and stabs without any plugin; the Nord has **no onboard FX**, so HDAW internal
+chorus/delay is the correct layer here (§3).
+
+## 6. What to add next (evidence-gated)
+
+- **Xenia (Microwave XT)**: a patch pipeline like the others — its vocabulary is
+  already available (`parameterDescriptions_xt.json`), only banks are missing.
+- **Virus TI/C**: enumerate the "X > Y" routings into a matrix table (the JSON has
+  them; `157`/`106` mod-related names) and check whether SysEx bank loading works the
+  way CC0+PC does.
+- **microQ**: verify injection by watching the plugin editor's LCD (the emulation's
+  State does receive external dumps, unlike the JP-8080) — that is the one open check
+  before a `load_vavra_preset` tool.
+
 ## 4. Pipeline commands (one line each)
 
     py -3.14 timbre-lib/virus_patch.py  --sidecars "<Virus bank dir>"
