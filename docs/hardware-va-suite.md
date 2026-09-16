@@ -226,6 +226,76 @@ plan) rather than re-created with a plugin — and where the device hides the pa
 from the host (Vavra), the honest options are patch-level editing or the
 remote-control SysEx route, not `set_fx_param`.
 
+
+## 8. Transitional effects over time (the modulation matrix as a transition engine)
+
+A modulation matrix is **static routing** — what it cannot do by itself is *change over
+time*. Every audible transition in these devices comes from one of five levers; the
+trick is knowing which lever each device exposes and which one HDAW can drive.
+
+### The five levers
+
+| Lever | What it gives you | Where it lives |
+|---|---|---|
+| **1. One-shot envelope shape** routed to a destination | risers (long attack → pitch/filter), downlifters (fast decay → pitch), plucks (short decay → filter) | device patch (matrix amount + env ADSR) |
+| **2. Automating the matrix AMOUNT, not the destination** | a filter sweep that *widens* as it rises; a vibrato that appears only in the last bar; a build whose timbre opens progressively | HDAW parameter automation / movement plans — the single most useful transition lever |
+| **3. LFO rate/depth ramps** | periodic → transitional: 1/8 gate lifting to 32nds, a wobble that accelerates into the drop | automate the LFO rate/depth parameter (or CC), with the LFO already routed in the matrix |
+| **4. FX changes over time** | delay feedback dives, reverb swells, chorus widening, distorted build | device onboard FX (type/mix/time/feedback) via parameter write or CC |
+| **5. Discrete patch/bank morphs** | section-to-section character change | Nord 2x bank load (verified), Virus CC0+PC program change, patch load per section |
+
+### Recipe catalogue (device-internal first)
+
+| Transition | Build | Device + encoder |
+|---|---|---|
+| **Riser (tension build)** | env with long attack → pitch (small amount) + cutoff sweep + filter-env-depth ramp | Virus: `Osc2 Wavetable/FilterEnv > Pitch` + `Assign1 Source/Destination`; Nord: `ModEnvLevel` → filter; JE8086: `Lfo1AndEnvelopeDestination` + `FilterEnvelopeDepth` ramp via `set_fx_param` |
+| **Filter sweep that widens** | automate cutoff AND filter-env depth (lever 2) | any device with params: JE8086 `CutoffFrequency`+`FilterEnvelopeDepth`, Nord `FilterEnvAmount`, Xenia `F1EnvAmount`+`F1CutoffMod` |
+| **Gate lift (psy staple)** | LFO → amp routed in the matrix, then automate the LFO rate from 1/8 to 1/32 | Virus `Lfo3 Destination` + rate automation/CC; microQ `AmpModSource` + LFO rate; JE8086 `AmpLfo1Depth` + `Lfo1Rate` |
+| **Wobble that accelerates** | LFO → filter with a rate ramp (lever 3) | microQ `F1ModSource`/`F1CutoffMod`; Xenia `ModDelaySource`/`ModDelayTime`; Nord `Lfo2Rate` |
+| **Downlifter / drop-out** | fast-decay env → pitch (negative amount) at the section boundary | Virus `FilterEnv > Pitch` with a short env; microQ `PitchModAmount` negative; JE8086 `PitchEnvelopeDepth` |
+| **Delay dive / throw** | automate FX feedback + level together | JE8086 `DelayFeedback`+`DelayLevel` (guide §4D params 186/187); Virus `Delay` mix; microQ `FX1Mix` (SysEx route only); Xenia `DelayTime` |
+| **Reverb swell into a breakdown** | automate the FX mix over the last bar before the break | Virus `Reverb`; microQ `FX2Mix` (SysEx); Xenia `EffectParamA/B/C` |
+| **Metallic FM/ring build** | env → FM/ring amount, ramped | Virus `Osc2 Wavetable/FilterEnv > FM`; microQ `O1FmSource`/`RingModLevel`; Xenia `MixRingMod` |
+| **Morph between two characters** | load bank B for the next section instead of automating anything | Nord `load_nord_bank` (verified render change); Virus CC0+PC |
+| **Vocal/gate texture** | Vocoder with a ramped modulator frequency | Virus `Vocoder/Modulator Center Frequency` + `Vocoder/Bands`, `Attack`/`Release` |
+
+### Rules that keep transitions clean
+
+- **Ramp, never step** — a single parameter jump clicks; automation lanes and movement
+  plans interpolate, one-shot writes do not.
+- **Automate amounts, not destinations** (lever 2). Rewriting a matrix *destination* per
+  block is a step change with no musical shape; ramping the *amount* into a fixed
+  destination is a sweep.
+- **No pitch modulation on bass or leads** (guide §4D): use pitch envelopes only for
+  risers/downlifters, with small amounts.
+- **Per-voice LFO pumping is not bus pumping.** A matrix LFO → amp gives per-voice
+  tremolo; the psy "sidechain" pump is a *bus* behaviour, so use HDAW's master/track
+  compressor or an amplitude automation lane for that instead.
+- **Verify on the right instrument.** A render reflects the device only when its state
+  round-trips (Nord: verified via `load_nord_bank`; JE8086: state does not carry the
+  patch, so verify by audition or by rendering the Nord-style path). For microQ there is
+  no host-visible surface at all — its transitions must be baked into the patch or sent
+  over the remote-control SysEx.
+- **Keep the transition in the project file.** Device-internal movement is saved inside
+  the patch (via the plugin state); HDAW automation is saved in the ValueTree. Anything
+  driven by hand (SysEx pokes, live CC) disappears on reload — prefer the two durable
+  layers.
+
+### Open verification (the next concrete steps)
+
+1. **Vavra remote-control SysEx**: header verified (`F0 3E 10 00 <cmd>`,
+   `wLib/wSysexRemoteControl.h`; `SetParam` is the last entry of the microQ
+   `CommandType` enum), and the emulation handles it on the live MIDI path
+   (`device.cpp`) while streaming LCD/LED data back — so a crafted `SetParam` should
+   drive FX/matrix parameters that the CLAP never publishes. The exact nibble payload
+   lives in the microQ remote-control source (retromulator tree); read it, then send one
+   `SetParam` and diff the captured state before/after to confirm it landed.
+2. **Virus matrix table**: its matrix is exposed as `Assign1 Source` / `Assign1
+   Destination` pairs (plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`) — 107
+   matrix-related names harvested; enumerating the Assign1..N pairs and their
+   source/destination options is a cheap follow-up that makes Virus transitions
+   scriptable.
+3. **Xenia patch pipeline** once Microwave banks exist (vocabulary already harvested).
+
 ## 6. Pipeline commands (one line each)
 
     py -3.14 timbre-lib/virus_patch.py  --sidecars "<Virus bank dir>"
