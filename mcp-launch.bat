@@ -61,12 +61,12 @@ if not "%SRCSZ%"=="%DSTSZ%" (
 call :hash_of "%SRC%" SRCH
 call :hash_of "%DST%" DSTH
 if not "%SRCH%"=="%DSTH%" (
-    echo ERROR: Content mismatch copying HDAW_headless.exe (hash ^"%SRCH%^" vs ^"%DSTH%^") — stale or mid-copy binary >&2
+    echo ERROR: Content mismatch copying HDAW_headless.exe ^(hash ^"%SRCH%^" vs ^"%DSTH%^"^) - stale or mid-copy binary >&2
     exit /b 1
 )
 findstr /c:"audit_song_structure" "%DST%" >nul 2>&1
 if errorlevel 1 (
-    echo ERROR: Copied engine missing current MCP tool surface (audit_song_structure sentinel) - stale build? Rebuild then rerun. >&2
+    echo ERROR: Copied engine missing current MCP tool surface ^(audit_song_structure sentinel^) - stale build? Rebuild then rerun. >&2
     exit /b 1
 )
 
@@ -88,7 +88,7 @@ if not "%HOST_SRCSZ%"=="%HOST_DSTSZ%" (
 call :hash_of "%HOST_SRC%" HSRCH
 call :hash_of "%HOST_DST%" HDSTH
 if not "%HSRCH%"=="%HDSTH%" (
-    echo ERROR: Content mismatch copying hdaw_plugin_host.exe (hash ^"%HSRCH%^" vs ^"%HDSTH%^") >&2
+    echo ERROR: Content mismatch copying hdaw_plugin_host.exe ^(hash ^"%HSRCH%^" vs ^"%HDSTH%^"^) >&2
     exit /b 1
 )
 
@@ -110,7 +110,7 @@ if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
 call :hash_of "%SCAN_SRC%" SSRCH
 call :hash_of "%SCAN_DST%" SDSTH
 if not "%SSRCH%"=="%SDSTH%" (
-    echo ERROR: Content mismatch copying hdaw_plugin_scanner.exe (hash ^"%SSRCH%^" vs ^"%SDSTH%^") >&2
+    echo ERROR: Content mismatch copying hdaw_plugin_scanner.exe ^(hash ^"%SSRCH%^" vs ^"%SDSTH%^"^) >&2
     exit /b 1
 )
 
@@ -167,7 +167,7 @@ if exist "%RES_VSDBG%" (
     set "%~2=%RES_VSDBG%"
     exit /b 0
 )
-echo ERROR: Neither %RES_NINJA% nor %RES_VSDBG% found. Build first (build-fast.bat, or cmake --build build --target HDAW_headless hdaw_plugin_host hdaw_plugin_scanner). >&2
+echo ERROR: Neither %RES_NINJA% nor %RES_VSDBG% found. Build first ^(build-fast.bat, or cmake --build build --target HDAW_headless hdaw_plugin_host hdaw_plugin_scanner^). >&2
 exit /b 1
 
 :: MD5 of a file into a variable. Validated 2026-09-16 after two false-pass
