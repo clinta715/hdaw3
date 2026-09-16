@@ -36,6 +36,36 @@ Applied the session's new capabilities to `compositions/terra-signal` (145 BPM, 
    tracks) -> coverage 2/12 to 14/14, i.e. the "modulation on everything, subtle"
    standing rule is now mechanically satisfied.
 
+
+## Fix pass (v5, same day) — the four gaps from the first pass, closed
+
+| Gap | Fix | Result |
+| --- | --- | --- |
+| Flat dynamics (peaks 1.00x their builds) | **Volume-lane dips across each WHOLE build window** (beats 96-160, 352-416) on the dominant elements: kick to 0.26x, bass to 0.45x, hats to 0.70x, rising back into each drop | **peak 1.322x, peak2 1.301x, peak3 1.296x, outro 1.201x** — all pass |
+| Unused headroom (peak 0.414, then overshot to 0.966) | master gain staged twice: 1.6 (too hot) -> 0.85 | **peak 0.782**, rms 0.357 |
+| Bass fader silently overridden by its Volume lane | `set_fader_authoritative {trackId:5, authoritative:true}` | `faderOverriddenIds: [0,3,5]` — now *intentional* (those lanes carry the build dips) |
+| JE8086 curated patch not renderable | not fixable engine-side: its state does not round-trip the patch (measured) | documented; the Nord layer remains the renderable VA demonstrator |
+
+Section arc after the fix: intro 0.150, **build 0.299, peak 0.395**, breakdown 0.209,
+**build2 0.333, peak2 0.433**, peak3 0.431, outro 0.400 — i.e. quiet intro, thin builds,
+loud drops, a real breakdown dip, and each build visibly lifting into its drop.
+Coverage still 14/14 and the structure gate still green.
+
+### The reusable lesson (worth more than the numbers)
+
+My first two attempts failed for a *measured* reason, not a taste one:
+
+- A dip of `4 dB on 3 of `10 elements moved the ratio only **0.99 -> 1.05** — the mix sum
+  is dominated by everything, so a partial dip barely registers.
+- A dip that covered only **4 of the 64 beats** in a build window did nothing at all: the
+  section RMS averages the whole window, so the dip must span it.
+- What worked was stripping the **dominant** element (the kick, `0.72 kickProminence)
+  across the **whole** build window: ratio 1.32x.
+
+Rule of thumb for build/drop contrast on these tracks: automate the *kick and bass* (the
+loudness carriers), not the risers/FX; span the entire build; and expect the first
+estimate to be too shallow by `6 dB.
+
 ## Honest gaps (next targets)
 
 - **Flat dynamics**: builds (0.232-0.234) sit at the same level as the peaks (0.233).
