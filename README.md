@@ -4,7 +4,7 @@ A desktop DAW built in C++20 with a React 19 + TypeScript frontend and
 JUCE 8 for the audio engine. Versioned as a single self-contained
 application — clone, configure, build, run.
 
-**Current version**: 0.31.0
+**Current version**: 0.36.0
 
 ## Quick start
 
@@ -23,7 +23,21 @@ Or use the build scripts: `frontend\build.bat` (full pipeline) or
 `build-fast.bat` (incremental). Both default to RelWithDebInfo;
 pass `Debug` for breakpoint debugging.
 
-## What works today (v0.35.0)
+## What works today (v0.36.0)
+
+### Hardware VA presets & patch libraries
+- Five preset pipelines decode the gearmulator synth libraries into searchable
+  sidecars (`.je8086.json`, `.vavra.json`, `.xenia.json`, `.nl2x.json`,
+  `.virus.json`) with names, roles, descriptions and tags: JP-8080 (2676 usable
+  patches), Waldorf microQ (528), Microwave XT (1791), Nord Lead 2x (6841), Virus.
+  Register a bank folder as a **patch** library and `search_library` finds individual
+  patches (`patchEngine`, `roleVerdict`, `category:` tags).
+- `load_je8086_preset` injects one JP-8080 patch into a JE8086 slot (atomic DT1
+  validation, CC0+PC recall); `load_nord_bank` loads Clavia banks (verified to change
+  the render); Virus ROM presets via `load_virus_preset` (CC0+PC); CC/PC injection for
+  all via `send_fx_midi`.
+- Capability matrix, per-device modulation maps, transitional-effect recipes and the
+  modulation-first policy: `docs/hardware-va-suite.md`.
 
 ### Project & transport
 - New / Open / Save / Save-As projects (`.hdaw` files via JUCE

@@ -15,7 +15,7 @@ Project-specific lessons learned. Read this before working on the timeline,
 the project model, or the frontend — these are the pitfalls that cost real
 debugging time.
 
-**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.33.0** with a
+**Current scope**: HDAW is a JUCE 8 desktop DAW at version **0.36.0** with a
 **React 19 + TypeScript frontend** (Zustand, Vite). The frontend runs in two
 contexts: system browser (default) or Electron shell. The C++ engine exposes
 state via JSON-RPC 2.0 over WebSocket (port 8766) and serves the bundled React
@@ -41,6 +41,7 @@ pitfall, search the relevant file; for architecture start with
 | [`docs/postmortem-silent-clap-export.md`](docs/postmortem-silent-clap-export.md) | Multi-layer root-cause writeup of the silent-WAV-export bug (no message pump → bake-race ordering → stale-`.obj` build trap → teardown race → mutation-race crash family) — the canonical reference for lessons 11–15 |
 | [`docs/adr-automation-model.md`](docs/adr-automation-model.md) | ADR: track-based automation as the primary model (clip-based/relative deferred), beats-vs-seconds implication |
 | [`docs/bitwig-reference.md`](docs/bitwig-reference.md) | Bitwig Studio UI/architecture design reference with HDAW-side takeaways |
+| [`docs/hardware-va-suite.md`](docs/hardware-va-suite.md) | Hardware VA suite (gearmulator CLAPs): devices, patch libraries + pipelines, loader status per device, host-param reality, modulation matrices, transitional-effect recipes, modulation-first policy |
 | [`docs/psytrance-composition-guide.md`](docs/psytrance-composition-guide.md) | Psytrance composition via MCP: style canon, sample pipeline, score grammar, FX/LFO/automation recipes, **FM synthesis (PsyFm engine, presets, modulation targets 300–308)**, slicing/timestretch tools, mix + verification, contract traps — distilled from the 2026-08-26/27 composition sessions and 2026-09-01 FM integration (recipes: `psytrance_composition_stress_test.cpp`) |
 | [`docs/skills/psy-song-session/`](docs/skills/psy-song-session/SKILL.md) | Agentic song-writing pipeline: five scoped role playbooks (Curator, Pattern Researcher, Sound Selector, Arranger, Mix Verifier) + Song Brief schema + orchestrator dispatch rules |
 | [`docs/handoffs/`](docs/handoffs/) | Session handoff notes (one file per handoff; completed-work context, not live specs) |
@@ -701,8 +702,8 @@ for a fix marker) before trusting the package.
 
 Version numbers are stored in **two places** and must be kept in sync manually:
 
-- `CMakeLists.txt` → `project(HDAW VERSION 0.33.0 ...)` — **canonical** for C++.
-- `frontend/package.json` → `"version": "0.33.0"` — **canonical** for the frontend.
+- `CMakeLists.txt` → `project(HDAW VERSION 0.36.0 ...)` — **canonical** for C++.
+- `frontend/package.json` → `"version": "0.36.0"` — **canonical** for the frontend.
 
 See [docs/architecture.md](docs/architecture.md) for full details.
 

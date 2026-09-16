@@ -16,7 +16,31 @@ Each role has its own playbook with a strict tool surface:
 | Sound Selector | `roles/sound-selector.md` | tracks, presets, FX slots, initial factory chains, auditions; no notes |
 | Arranger (single writer) | `roles/arranger.md` | sections/clips/notes; arrangement-internal automation (clip gain/CC envelopes) — the only arrangement mutator |
 | FX & Automation Engineer | `roles/fx-automation-engineer.md` | FX chain refinement + FX-parameter automation lanes (movement); never notes/clips/instruments |
-| Mix Verifier (read-mostly) | `roles/mix-verifier.md` | export + measure + fader/master gain only |
+| Mix Verifier (read-mostly) | `roles/mix-verifier.md` | export + measure + fade
+
+## Hardware VA suite + patch libraries (read before choosing sounds)
+
+The gearmulator CLAPs (JP-8080, microQ, Virus, Nord Lead 2x, Microwave XT, DX7) each
+have a **patch pipeline** that writes searchable sidecars, and the Curator registers
+those folders as *patch* libraries:
+
+| Library | Pipeline | Sidecar | Scale |
+| --- | --- | --- | --- |
+| `D:/pdf/je8086` | `timbre-lib/je8086_patch.py` | `<bank>.je8086.json` (+ exploded tree) | 2676 usable patches |
+| `D:/pdf/rhythm-lab.com_waldorf_micro_q` | `microq_patch.py` | `<patch>.vavra.json` | 528 |
+| `D:/pdf/microwave` | `microwave_patch.py` | `<bank>.xenia.json` | 1791 |
+| `D:/pdf/NL2x Banks` | `nl2x_patch.py` | `<patch>.nl2x.json` | 6841 |
+| Virus banks | `virus_patch.py` | `<patch>.virus.json` | shipped earlier |
+
+Two rules that follow from measurement (details in `docs/hardware-va-suite.md`):
+
+1. **Modulation-first**: prefer the device's own matrix/envelopes/onboard FX, then HDAW
+   parameter automation, then HDAW internal FX, and only then a third-party plugin -
+   plugin FX add CPU, latency, isolation and state-round-trip risk.
+2. **Only JE8086 publishes host parameters** (461). Every other VA device is
+   CC/PC + patch/bank loading (plus microQ front-panel puppetry, unverified). Plan
+   automatable movement on the internal engines or the Nord's verified bank loads, and
+   treat the rest as character/audition sources.r/master gain only |
 
 Role files resolve against this skill's directory (parent of SKILL.md).
 

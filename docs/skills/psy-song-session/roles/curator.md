@@ -18,6 +18,15 @@ need one, STOP and report back to the orchestrator instead.
 ## Procedure
 1. **Ingest**: `add_library {name, path, type}` per source pack (type: audio|patch|midi),
    then `scan_library {id}`. Poll until scanning completes; never assume scan state.
+   **Hardware VA patch libraries**: the synthesizer bank libraries are decoded offline
+   by the timbre-lib pipelines (the *orchestrator* runs them - your surface is MCP-only):
+   `je8086_patch.py` (JP-8080 -> `<bank>.je8086.json` plus an exploded per-patch tree),
+   `microq_patch.py` (`<patch>.vavra.json`), `microwave_patch.py`
+   (`<bank>.xenia.json`), `nl2x_patch.py` (`<patch>.nl2x.json`), `virus_patch.py`
+   (`<patch>.virus.json`). Register each bank folder as type `patch`; the sidecars are
+   what make individual patches findable, and a sweep's `--verify` must report **0 bad**
+   before you trust it. Device list, patch counts, which loaders actually work, and the
+   modulation-first rule: `docs/hardware-va-suite.md`.
 2. **Verify audio honesty**: for every claimed sample entry, `get_library_entry` then
    `get_waveform_peaks` — a file whose peaks are all zero is dead/silent: mark it
    UNUSABLE in the report (file size lies; handoff lesson).
