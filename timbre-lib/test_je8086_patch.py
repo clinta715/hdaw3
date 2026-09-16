@@ -282,5 +282,20 @@ def test_real_library_checksum_invariants():
         for m in j.parse_file(path):
             total += 1
             bad += 0 if m["checksumOk"] else 1
-    assert total == 6144
+    # 10368 = the verified census AFTER the SMF one-byte-varint fix (2026-09-16);
+    # the pre-fix parser dropped 4224 short messages (payloads < 128 bytes).
+    assert total == 10368
     assert bad == 0
+
+def test_smf_one_byte_varint_messages_are_kept(tmp_path):
+    # A 48-byte payload gets a ONE-byte SMF varint prefix (0x33 < 0x80): the
+    # high-bit test cannot see it, so the parser must fall back to stripping one
+    # byte. Short messages used to vanish silently.
+    stream = dt1((2, 0, 0), patch_body("SHORT")[:48]) + dt1((2, 0, 2), patch_body("LONG")[:256])
+    p = tmp_path / "short_messages.syx"
+    p.write_bytes(smf_wrap(stream))
+    msgs = j.parse_file(str(p))
+    ASSERT_COUNT = len(msgs)
+    assert ASSERT_COUNT == 2, "short SMF-wrapped DT1 messages must not be dropped"
+    assert [m["value"] for m in msgs] == [j.page_value((2, 0, 0)), j.page_value((2, 0, 2))]
+    assert all(m["checksumOk"] for m in msgs)

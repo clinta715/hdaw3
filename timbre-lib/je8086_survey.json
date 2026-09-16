@@ -330,7 +330,7 @@
   "SUPER SAW": 1184,
   "TRI": 188,
   "TWM": 209,
-  "n/a": 383,
+  "n/a": 1087,
   "noise": 121
  },
  "paramHistograms": {
@@ -375,7 +375,7 @@
    "area": "patch",
    "entries": 64,
    "file": "001 JP-8080 - Init Patches.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 0,
    "nonInitPatches": 0,
    "roles": {
@@ -383,13 +383,14 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "001 JP-8080 - Init Performances.mid",
-   "messages": 128,
+   "messages": 512,
    "nonInit": 0,
    "nonInitPatches": 0,
    "roles": {
+    "performance": 64,
     "pluck": 128
    }
   },
@@ -397,7 +398,7 @@
    "area": "patch",
    "entries": 64,
    "file": "AZS Eternal JP8080  Single Patches.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -410,11 +411,11 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "AZS Eternal JP8080 Performances.mid",
-   "messages": 128,
-   "nonInit": 33,
+   "messages": 512,
+   "nonInit": 97,
    "nonInitPatches": 33,
    "roles": {
     "bass": 5,
@@ -422,6 +423,7 @@
     "lead": 63,
     "other": 4,
     "pad": 25,
+    "performance": 64,
     "pluck": 26
    }
   },
@@ -429,7 +431,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Alan Marcero - Trance Soundset A.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -442,7 +444,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Alan Marcero - Trance Soundset B.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -457,7 +459,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Alan Marcero Trance A.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -470,7 +472,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Alan Marcero Trance B.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -485,7 +487,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Bass Collection 1.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 63,
    "nonInitPatches": 63,
    "roles": {
@@ -498,7 +500,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Bass Collection 2.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 63,
    "nonInitPatches": 63,
    "roles": {
@@ -512,7 +514,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Bass Collection 3.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 50,
    "nonInitPatches": 50,
    "roles": {
@@ -526,7 +528,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Cinematica Patches.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -586,7 +588,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Dustons Trance Classics Vol 1.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -601,7 +603,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Dustons Trance Classics Vol 2.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -613,11 +615,11 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Dustons Trance Classics Vol 3.mid",
-   "messages": 128,
-   "nonInit": 42,
+   "messages": 512,
+   "nonInit": 106,
    "nonInitPatches": 42,
    "roles": {
     "bass": 3,
@@ -625,6 +627,7 @@
     "lead": 35,
     "other": 2,
     "pad": 4,
+    "performance": 64,
     "pluck": 78
    }
   },
@@ -645,11 +648,11 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "JayB_JP-8080.MID",
-   "messages": 128,
-   "nonInit": 66,
+   "messages": 512,
+   "nonInit": 127,
    "nonInitPatches": 66,
    "roles": {
     "arp": 1,
@@ -658,45 +661,48 @@
     "lead": 44,
     "other": 1,
     "pad": 7,
+    "performance": 64,
     "pluck": 67
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Kulshan Altitude.mid",
-   "messages": 128,
-   "nonInit": 100,
+   "messages": 320,
+   "nonInit": 160,
    "nonInitPatches": 100,
    "roles": {
     "bass": 7,
     "fx": 18,
     "lead": 58,
     "pad": 6,
+    "performance": 64,
     "pluck": 39
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Kulshan Mystical Psytrance.mid",
-   "messages": 128,
-   "nonInit": 100,
+   "messages": 320,
+   "nonInit": 160,
    "nonInitPatches": 100,
    "roles": {
     "bass": 30,
     "fx": 9,
     "lead": 40,
     "pad": 4,
+    "performance": 64,
     "pluck": 45
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Luke Terry - Sonisphere.mid",
-   "messages": 128,
-   "nonInit": 6,
+   "messages": 512,
+   "nonInit": 70,
    "nonInitPatches": 6,
    "roles": {
     "bass": 13,
@@ -704,6 +710,7 @@
     "lead": 41,
     "other": 4,
     "pad": 1,
+    "performance": 64,
     "pluck": 63
    }
   },
@@ -711,7 +718,7 @@
    "area": "patch",
    "entries": 64,
    "file": "MIKE PUSH Vol 1.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -740,17 +747,18 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Mystery Islands EDM Vol 1.mid",
-   "messages": 128,
-   "nonInit": 128,
+   "messages": 320,
+   "nonInit": 192,
    "nonInitPatches": 128,
    "roles": {
     "bass": 10,
     "lead": 91,
     "other": 4,
     "pad": 6,
+    "performance": 64,
     "pluck": 17
    }
   },
@@ -758,7 +766,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Novaline JP-8080 EDM Unison & Distortion.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -771,7 +779,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Novaline JP-Nova Soundset A.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -785,7 +793,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Novaline JP-Nova Soundset B.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -816,7 +824,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Quarantine Vol 1.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -832,7 +840,7 @@
    "area": "patch",
    "entries": 64,
    "file": "Quarantine Vol 2.mid",
-   "messages": 64,
+   "messages": 128,
    "nonInit": 64,
    "nonInitPatches": 64,
    "roles": {
@@ -890,13 +898,15 @@
    }
   },
   {
-   "area": "none",
-   "entries": 0,
+   "area": "performance-common",
+   "entries": 64,
    "file": "SOR Revolution Vol 1 Performances.MID",
-   "messages": 128,
-   "nonInit": 0,
+   "messages": 320,
+   "nonInit": 64,
    "nonInitPatches": 0,
-   "roles": {}
+   "roles": {
+    "performance": 64
+   }
   },
   {
    "area": "patch",
@@ -914,17 +924,18 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 128,
+   "area": "performance-common",
+   "entries": 192,
    "file": "Seraphic Music Alpha Centauri.mid",
-   "messages": 128,
-   "nonInit": 0,
+   "messages": 320,
+   "nonInit": 64,
    "nonInitPatches": 0,
    "roles": {
     "bass": 10,
     "lead": 42,
     "other": 4,
     "pad": 25,
+    "performance": 64,
     "pluck": 47
    }
   },
@@ -1023,17 +1034,18 @@
    }
   },
   {
-   "area": "performance-patch",
-   "entries": 122,
+   "area": "performance-common",
+   "entries": 186,
    "file": "Vengeance X-Plorations Vol 3.mid",
-   "messages": 128,
-   "nonInit": 57,
+   "messages": 320,
+   "nonInit": 121,
    "nonInitPatches": 57,
    "roles": {
     "bass": 1,
     "lead": 48,
     "other": 5,
     "pad": 11,
+    "performance": 64,
     "pluck": 57
    }
   },
@@ -1087,6 +1099,7 @@
     "fx": 9,
     "lead": 40,
     "pad": 4,
+    "performance": 64,
     "pluck": 45
    },
    "score": 6.0
@@ -1203,7 +1216,7 @@
   "lead": 1345,
   "other": 55,
   "pad": 501,
-  "performance": 383,
+  "performance": 1087,
   "pluck": 1333
  },
  "roleShortlist": {
@@ -1836,13 +1849,13 @@
  "schema": "hdaw.je8086.survey.v1",
  "totals": {
   "checksumFailures": 0,
-  "entries": 4276,
+  "entries": 4980,
   "files": 46,
-  "messages": 6144,
-  "nonInit": 3057,
+  "messages": 10368,
+  "nonInit": 3686,
   "nonInitPatches": 2674,
-  "performanceNames": 383,
-  "truncated": 3572
+  "performanceNames": 1087,
+  "truncated": 2484
  },
  "unmapped": [
   "velocity/morph block 0x119-0x16C not decoded (page 2 of a 2-page patch)",

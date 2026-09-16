@@ -284,6 +284,16 @@ def parse_file(path: str) -> List[dict]:
     out = []
     for body in iter_sysex_blocks(data):
         msg = parse_dt1(body)
+        if msg is None and body and not (body[0] & 0x80):
+            # SMF F0 events carry a varint length prefix. Payloads under 128
+            # bytes use a ONE-byte prefix (< 0x80), which the high-bit test in
+            # iter_sysex_blocks cannot detect, so the body still starts with the
+            # length byte. Retrying with one byte stripped recovers those
+            # messages -- short performance-common pages and the 7-byte patch
+            # tails were silently dropped before 2026-09-16 (found by comparing
+            # the C++ loader's unit count against the survey: 320 SMF events in
+            # Kulshan Mystical Psytrance.mid vs 128 parsed).
+            msg = parse_dt1(body[1:])
         if msg is not None:
             out.append(msg)
     return out

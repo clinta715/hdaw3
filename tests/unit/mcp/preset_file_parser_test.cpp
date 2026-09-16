@@ -409,3 +409,75 @@ TEST(PresetFileParser, Jp8080RejectsTruncatedAndSkipsForeignSysex)
     ASSERT_EQ(only.size(), 1u);
     EXPECT_EQ(only[0].slot, 2);
 }
+
+
+TEST(PresetFileParser, Jp8080UnitsCountOnlyNamedPatches)
+{
+    // A performance bank: an UNNAMED common block, two named parts (pages 0), and
+    // a page-1 continuation. Only the two named parts are patch units, so a
+    // preset index matches the sidecar survey's numbering.
+    std::vector<uint8_t> unnamed(256, 0);
+    unnamed[1] = 0x01;                       // binary, not a name
+    std::vector<uint8_t> stream;
+    for (const auto& m : { jpDt1(3, 0, 0, unnamed),
+                           jpDt1(3, 0, 64, jpPage("PART ONE")),
+                           jpDt1(3, 0, 65, std::vector<uint8_t>(16, 0)),
+                           jpDt1(3, 0, 66, jpPage("PART TWO")) })
+        stream.insert(stream.end(), m.begin(), m.end());
+
+    std::vector<mcp::Jp8080Dump> dumps;
+    ASSERT_EQ(mcp::splitJp8080Syx(stream.data(), stream.size(), dumps), 4);
+    const auto units = mcp::jp8080UnitsInFileOrder(dumps);
+    ASSERT_EQ(units.size(), 2u) << "the unnamed common block and page 1 are not units";
+    EXPECT_EQ(units[0].slot, 1);
+    EXPECT_EQ(units[1].slot, 2);
+
+    // ...but the selected unit still carries its page-1 continuation (both pages
+    // are injected, so a 2-page patch loads whole).
+    std::vector<const mcp::Jp8080Dump*> sel;
+    EXPECT_EQ(mcp::jp8080SelectUnit(dumps, units[0], sel), 2);
+}
+
+// Real-library contract: the loader's unit numbering must match the sidecar
+// survey's (timbre-lib/je8086_patch.py). Skips when the bank library is absent.
+TEST(PresetFileParser, Jp8080RealKulshanBankUnitsMatchTheSidecarIndex)
+{
+    const juce::File bank("D:/pdf/je8086/Kulshan Mystical Psytrance.mid");
+    if (!bank.existsAsFile())
+        GTEST_SKIP() << "JP-8080 bank library not mounted";
+    juce::MemoryBlock block;
+    ASSERT_TRUE(bank.loadFileAsData(block));
+    juce::MemoryInputStream in(block, false);
+    juce::MidiFile mf;
+    ASSERT_TRUE(mf.readFrom(in));
+    std::vector<uint8_t> run;
+    int sysexEvents = 0;
+    for (int t = 0; t < mf.getNumTracks(); ++t)
+    {
+        const auto* seq = mf.getTrack(t);
+        for (int ev = 0; ev < seq->getNumEvents(); ++ev)
+        {
+            const auto msg = seq->getEventPointer(ev)->message;
+            if (!msg.isSysEx())
+                continue;
+            ++sysexEvents;
+            const auto* raw = msg.getRawData();
+            run.insert(run.end(), raw, raw + static_cast<size_t>(msg.getRawDataSize()));
+        }
+    }
+    std::vector<mcp::Jp8080Dump> dumps;
+    const int parsed = mcp::splitJp8080Syx(run.data(), run.size(), dumps);
+    const size_t units = mcp::jp8080UnitsInFileOrder(dumps).size();
+    std::cout << "[Jp8080 real bank] sysexEvents=" << sysexEvents
+              << " parsed=" << parsed << " dumps=" << dumps.size()
+              << " units=" << units << "\n";
+    for (size_t i = 0; i < dumps.size() && i < 4; ++i)
+        std::cout << "   dump[" << i << "] area=" << (int) dumps[i].area
+                  << " bank=" << dumps[i].bank << " slot=" << dumps[i].slot
+                  << " pageInPatch=" << dumps[i].pageInPatch
+                  << " size=" << dumps[i].raw.size()
+                  << " named=" << (mcp::jp8080MessageHasName(dumps[i]) ? 1 : 0) << "\n";
+    EXPECT_EQ(sysexEvents, 128) << "the SMF holds 128 DT1 events (timbre-lib census)";
+    ASSERT_EQ(parsed, 128);
+    EXPECT_EQ(units, 128u);
+}
