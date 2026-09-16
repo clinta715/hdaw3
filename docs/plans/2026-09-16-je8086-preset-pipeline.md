@@ -192,6 +192,23 @@ Ran the loader against a live engine with a real JE8086 instance (audition keepT
   Follow-up: decide whether JE8086 parts are audition-only (use internal engines
   for deliverable parts) or whether the plugin's state serialization can be
   worked around.
+**Final root cause (2026-09-16, third iteration — the evidence, in order)**
+1. Isolation ON, no capture yet: `export_audio` follows the live plugin
+   (peak 0.2063, bass 4372, `stateBytes=0`).
+2. Isolation ON, after a capture: every render is frozen at peak
+   0.2455155849456787 / bass 5353 (the plugin's default patch) regardless of DT1
+   injections, parameter writes, or even `MASTER VOLUME` = 0. The captured state is
+   `captureBytes="233"` (== the proxy chunk size 244 is not the limit).
+3. Isolation OFF (in-process): the render always follows the live plugin
+   (peak 0.2111) and reports `stateBytes=0` — no state transfer involved.
+
+=> The isolated child's captured state is a remote-control-only stub, and
+restoring it in the render path overrides the live patch. The render was never
+the right instrument for the earlier A/Bs *because a capture had been taken*.
+Recipe: `captureToTree:false` for JE8086 slots (or in-process) keeps renders
+aligned with the live instance; the engine-side follow-up is to capture after the
+child's slow ROM/DSP boot and to reject/flag an implausibly small state rather
+than restoring it.
 
 **Two real bugs the E2E cross-check caught** (both invisible to the unit tests)
 1. `mcp-launch.bat` aborted before launching the engine: unescaped parentheses in

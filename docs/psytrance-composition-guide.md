@@ -758,17 +758,23 @@ range before writing (lesson 23 discipline: no out-of-range writes).
     SetParam (`sysexRemoteControl.h`); the patch protocol (`CommandIdDataSet1`)
     lives in `State` (`state.cpp`), which only the device→host and plugin-state
     restore paths feed. So a host cannot write patches into the emulation this way.
-  - **Offline renders play the plugin's DEFAULT patch, always.** With a real
-    JE8086 instance, every `export_audio` — before any injection, after DT1
-    injections, after parameter writes, and even with `MASTER VOLUME` set to 0.0
-    plus a fresh `capture_fx_snapshot` — rendered a bit-identical signal (peak
-    0.2455155849456787). The captured state is 233 bytes (`captureBytes="233"` in
-    the saved project; the proxy chunk is 244 B, so this is not truncation) and
-    carries no patch data, so a freshly instantiated render plugin restores a stub
-    and plays its default. Consequence: **what you audition is not what you
-    export** — do not deliver Je8086 parts through `export_audio`; audition them
-    live, or use an engine whose state round-trips (internal `sub_synth` /
-    `fm_synth`, or plugins the export tests already cover).
+  - **A captured 233-byte state POISONS the render (isolated mode).** Measured
+    three ways with a real instance: (a) isolation ON with **no capture taken** ->
+    `export_audio` follows the live plugin (peak 0.2063, bass 4372, close to the
+    in-process render); (b) isolation ON **after** a capture (`captureBytes="233"`,
+    proxy chunk is 244 B so not truncation) -> every later render is frozen at the
+    identical signature peak 0.2455155849456787 / bass 5353, i.e. the plugin's
+    default patch, no matter what is injected or set (even `MASTER VOLUME` = 0);
+    (c) isolation OFF (in-process) -> the render always follows the live plugin
+    (peak 0.2111, and `capture_status` reports `stateBytes=0`, no transfer needed).
+    So the stub is the *isolated child's* early/remote-control-only state, and
+    restoring it in the render overrides the live patch. Recipe until this is
+    fixed: for JE8086 slots pass `captureToTree:false` (no capture) so renders keep
+    following the live instance, or run the engine in-process; and treat "the
+    export sounds like a default patch" as this bug, not as a patch-selection
+    failure. Worth an engine-side follow-up: validate/retry the isolated state
+    capture (the child's ROM/DSP boot is slow - capture after readiness and reject
+    an implausibly small state instead of restoring it).
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.
