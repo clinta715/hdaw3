@@ -621,7 +621,16 @@ bool applyPluginProgram(AudioEngine& engine, int trackIndex, int slotIndex,
         error = "plugin instance unavailable";
         return false;
     }
-    fxChain.getChild(slotIndex).setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+    // D-lite: a capture that merely echoes the state this instance reported when it
+    // appeared carries no information (an isolated child answers before its ROM/DSP
+    // boot settles, and the proxy polls it every few seconds), so it is not written
+    // to the tree. Measured: restoring such a state does not change an isolated
+    // render at all (peak identical to 16 digits), so this is hygiene, not a fix for
+    // plugin state that fails to round-trip its patch (that part is plugin-side).
+    if (!slot->stateLooksUnchangedSinceBoot(state))
+        fxChain.getChild(slotIndex).setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
+    else
+        juce::Logger::writeToLog("setPluginProgram: skipped meaningless (unchanged boot-state) capture");
     return true;
 }
 

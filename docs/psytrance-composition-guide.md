@@ -758,23 +758,22 @@ range before writing (lesson 23 discipline: no out-of-range writes).
     SetParam (`sysexRemoteControl.h`); the patch protocol (`CommandIdDataSet1`)
     lives in `State` (`state.cpp`), which only the device→host and plugin-state
     restore paths feed. So a host cannot write patches into the emulation this way.
-  - **A captured 233-byte state POISONS the render (isolated mode).** Measured
-    three ways with a real instance: (a) isolation ON with **no capture taken** ->
-    `export_audio` follows the live plugin (peak 0.2063, bass 4372, close to the
-    in-process render); (b) isolation ON **after** a capture (`captureBytes="233"`,
-    proxy chunk is 244 B so not truncation) -> every later render is frozen at the
-    identical signature peak 0.2455155849456787 / bass 5353, i.e. the plugin's
-    default patch, no matter what is injected or set (even `MASTER VOLUME` = 0);
-    (c) isolation OFF (in-process) -> the render always follows the live plugin
-    (peak 0.2111, and `capture_status` reports `stateBytes=0`, no transfer needed).
-    So the stub is the *isolated child's* early/remote-control-only state, and
-    restoring it in the render overrides the live patch. Recipe until this is
-    fixed: for JE8086 slots pass `captureToTree:false` (no capture) so renders keep
-    following the live instance, or run the engine in-process; and treat "the
-    export sounds like a default patch" as this bug, not as a patch-selection
-    failure. Worth an engine-side follow-up: validate/retry the isolated state
-    capture (the child's ROM/DSP boot is slow - capture after readiness and reject
-    an implausibly small state instead of restoring it).
+  - **Captured state and renders (CORRECTED 2026-09-16).** An isolated render
+    instantiates a fresh child that restores `IDs::pluginState`, so an export only
+    sounds like the live instance when the plugin's own `getStateInformation`
+    carries the patch. The JP-8080 emulation's 233-byte state does not - that is why
+    exports play its default patch, and it is plugin-side. Measured directly by
+    holding the SLOT fixed (isolated, created via `add_fx {pluginId}`) and varying
+    only the presence of a captured state: both renders were identical to 16 digits
+    (`peak 0.10575640201568604`, rms 0.032181 vs 0.032177). Restoring a captured
+    state is therefore a NO-OP for the render. The earlier reading was that a
+    captured state poisons the render (peak 0.2455 default vs 0.2063 live); that
+    comparison was between an **in-process** slot and an **isolated** one - a
+    slot-type effect, not a state effect - so those numbers are withdrawn.
+    Engine hygiene that did ship (D-lite): a capture that merely echoes the state an
+    instance reported when it appeared is not persisted, and the deferred capture
+    reports `captureStatus="unchanged"` instead of writing a fake ok. That is
+    tidiness plus an honest receipt; it is not a fix for hear-not-equal-export.
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.

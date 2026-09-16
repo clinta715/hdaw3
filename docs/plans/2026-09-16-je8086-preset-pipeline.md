@@ -192,7 +192,21 @@ Ran the loader against a live engine with a real JE8086 instance (audition keepT
   Follow-up: decide whether JE8086 parts are audition-only (use internal engines
   for deliverable parts) or whether the plugin's state serialization can be
   worked around.
-**Final root cause (2026-09-16, third iteration — the evidence, in order)**
+**WITHDRAWN (2026-09-16, fourth iteration): the capture was never the problem.**
+Holding the slot fixed (isolated, via `add_fx {pluginId}`) and varying only whether a
+state had been captured: both exports were identical to 16 digits (peak
+0.10575640201568604). Restoring a captured state does not change the render, and the
+earlier poison readings compared an in-process slot against an isolated one. What
+remains true: an isolated render restores the plugin's own state into a FRESH child,
+so an export matches the live sound only if that plugin's `getStateInformation`
+round-trips its patch - the JP-8080 emulation's 233-byte state does not (plugin-side).
+D-lite shipped as hygiene only (skip a capture unchanged since the instance appeared;
+report `captureStatus="unchanged"`). The per-plugin boot-baseline registry (item b)
+was NOT built, because this measurement removed its premise.
+
+**Superseded root-cause notes (kept for the audit trail)**
+
+**Final root cause (third iteration)**
 1. Isolation ON, no capture yet: `export_audio` follows the live plugin
    (peak 0.2063, bass 4372, `stateBytes=0`).
 2. Isolation ON, after a capture: every render is frozen at peak
