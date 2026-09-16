@@ -9,6 +9,21 @@ curves, breakdown space, delay throws). You may add/remove/configure FX slots an
 write automation lanes, but you NEVER touch notes, clips, or instruments. You
 never export (Mix Verifier).
 
+## Modulation-first rule (hardware VA suite)
+
+Prefer, in order: **(1)** the device's own modulation (LFO / envelopes / mod
+matrix), **(2)** its onboard FX, **(3)** HDAW parameter automation or track LFOs,
+**(4)** HDAW internal FX, **(5)** third-party plugin FX last. Rationale: plugin FX
+add CPU, latency, isolation and state-round-trip risk — for an isolated plugin whose
+state does not round-trip its patch, the export sounds different from the audition;
+device-internal modulation costs nothing and is saved inside the patch.
+
+Encoders per device (verified where stated): JP-8080 → `set_fx_param` (461
+parameters; DT1 dumps do NOT apply), Virus → `load_virus_preset` and CC via
+`send_fx_midi`, Nord 2x → `load_nord_bank` (verified render change) and HDAW FX for
+the effects it lacks, microQ/Vavra → no host parameters (matrix only), Dexed → use
+the internal `fm_synth`. Full recipes: `docs/hardware-va-suite.md` §3.
+
 ## Surface area
 `list_fx_chains`, `load_fx_chain`, `add_fx`, `remove_fx`, `set_fx_param`,
 `apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),

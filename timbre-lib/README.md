@@ -3,6 +3,20 @@
 
 Pipeline: DSP descriptors -> CLAP captions + AudioSet tags -> Qwen2.5-3B prose.
 
+## Patch pipelines at a glance
+
+| Decoder | Engine (sidecar) | Library | Sidecar name | Notes |
+| --- | --- | --- | --- | --- |
+| `virus_patch.py` | `sub_synth` | Virus patch library | `<patch>.virus.json` | mapped onto the internal sub_synth |
+| `nl2x_patch.py` | `nodalred2x` | `D:\pdf\NL2x Banks` | `<patch>.nl2x.json` | 6841 sidecars; `load_nord_bank` verified |
+| `je8086_patch.py` | `je8086` | `D:\pdf\je8086` | `<bank>.je8086.json` | + exploded per-patch tree; DT1 dumps do not apply |
+| `microq_patch.py` | `vavra` | `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `<patch>.vavra.json` | categories from the dump; no host params |
+
+All four suffixes are ingested by `FileLibraryManager` (register the folder as a
+*patch* library), so the presets become searchable with engine, role and tags. Device
+capability matrix, modulation matrices, loader status and FX recipes:
+`docs/hardware-va-suite.md`.
+
 ## NL2X patch decoder (NodalRed2x / Nord Lead 2x)
 
 `nl2x_patch.py` mirrors `virus_patch.py` for the Clavia Nord Lead 2x bank

@@ -665,6 +665,20 @@ layers.json is the human mirror.
 Real synth firmware running as isolated CLAP plugins — installed in
 `C:\Program Files\Common Files\CLAP\` with their ROMs:
 
+**Patch pipelines + loader reality (2026-09-16).** Every bank library now has a
+decoder writing searchable sidecars: JP-8080 `timbre-lib/je8086_patch.py` (4983
+entries / 2676 usable patches, plus an exploded per-patch tree), microQ
+`microq_patch.py` (528 patches, categories carried in the dump), Nord 2x
+`nl2x_patch.py` (6841 sidecars), Virus `virus_patch.py`. Loaders:
+`load_nord_bank` is the one **verified** bank loader (a test asserts the render
+changes); `load_virus_preset` (CC0+PC) works; **JE8086 DT1 dumps never apply** — use
+`set_fx_param` (461 params); **Vavra exposes no host parameters**
+(`{"params":[]}`), so it is matrix/audition-only from HDAW. Rendering caveat: an
+isolated export restores `pluginState` into a **fresh child**, so a plugin whose
+state does not round-trip its patch exports differently from what you audition.
+Device matrix, per-device modulation/FX recipes and the modulation-first policy:
+`docs/hardware-va-suite.md`.
+
 | Plugin | Emulates | Isolated-render status (measured) |
 | --- | --- | --- |
 | OsTIrus | Access Virus TI | ✅ voices at default (peak 0.33–0.47) — the workhorse |

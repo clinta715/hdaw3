@@ -549,6 +549,18 @@ product pillar and should be reached for wherever it fits:
   live plugin state; the save persists it into the tree for offline renders.
   Constraint: the serializer's size-regression guard protects plugin states
   across load→save cycles (see docs/plans/2026-09-12-plugin-state-durability.md).
+  **Patch pipelines:** every device with a bank library has a decoder writing
+  searchable sidecars — `virus_patch.py` (`.virus.json`), `nl2x_patch.py`
+  (`.nl2x.json`), `je8086_patch.py` (`.je8086.json` + an exploded per-patch tree),
+  `microq_patch.py` (`.vavra.json`); FileLibraryManager ingests all four (register
+  the folder as a *patch* library). **Loaders are evidence-gated:** `load_nord_bank`
+  verified to change the render, `load_virus_preset` (CC0+PC) works, JE8086 DT1 dumps
+  do NOT apply (its 461 parameters do), Vavra exposes no host parameters and its
+  SysEx injection is unverified. **Prefer the device over a plugin for movement:**
+  own modulation matrix → onboard FX → HDAW automation/track LFO → HDAW internal FX →
+  third-party plugin last (plugin FX add CPU, latency, isolation and state-round-trip
+  risk). Device matrix, per-device FX recipes and caveats:
+  `docs/hardware-va-suite.md`.
 
 **Guideline: when adding a feature, ask whether the generative/random/modulation
 toolkit applies.** New note or parameter editing should offer humanize/randomize;

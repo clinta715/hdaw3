@@ -83,6 +83,20 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
   plain-text summary `ok=1 ... rms=.. peak=.. audible=..`, not JSON.
 
 ## Hardware VA suite (gearmulator CLAPs — verified 2026-09-12)
+
+**Select from the sidecar surveys, not from names.** Register each bank folder as a
+*patch* library and query `search_library`; every sidecar is `<patch>.<engine>.json`
+and reports `patchEngine` plus a role verdict, description and tags:
+
+| Library | Survey | What it tells you |
+| --- | --- | --- |
+| `D:\pdf\je8086` (46 banks) | `je8086_survey.json` | 2676 usable patches + a per-role `roleShortlist`; the psy-NAMED `.syx` banks hold only 1-2 usable patches each (`nonInitPatches` exposes it) — `Kulshan Mystical Psytrance.mid` is the real psy bank |
+| `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `microq_survey.json` | 528 patches with categories from the dump (Arp 147, Pad+Atmo 122, Lead 81, Bass 79, Poly+Keys 43, FX 27) |
+| `D:\pdf\NL2x Banks` | `nl2x_survey.json` | 6841 Clavia sidecars, params named from the firmware enum |
+| Virus banks | `virus_survey.json` | mapped onto the internal `sub_synth` |
+
+Capability matrix, loader status and per-device FX recipes:
+`docs/hardware-va-suite.md`.
 OsTIrus (Virus TI), Osirus (Virus A/B/C), Vavra (microQ), Xenia (Microwave),
 JE8086 (JP-8000), Dexed (DX7), NodalRed2x — installed in
 `C:\Program Files\Common Files\CLAP\` with ROMs. Audition via
