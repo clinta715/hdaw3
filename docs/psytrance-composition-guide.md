@@ -744,18 +744,31 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   that drops (not queues) when busy. Sidecar pipeline:
   `timbre-lib/je8086_patch.py` writes `<bank>.je8086.json` over `D:\pdf\je8086`
   (45 sidecars, 4276 entries + role shortlist) — searchable by FileLibraryManager.
-  LIVE VERIFICATION (2026-09-16): delivery is verified (queued DT1 messages,
-  deferred capture receipt ok, unit index aligned with the sidecar survey —
-  survey unit 44 == loader "bank 15 slot 1" == Kulshan perf015/part1 DEEPSAW),
-  but the AUDIBLE patch does NOT change: `list_fx_params` was byte-identical
-  (104,535 chars) before/after an injection, and three different selections
-  (DEEPSAW, Novaline LUNA NL, and a CC0=2 ROM preset) rendered bit-identical
-  audio (peak 0.2455155849456787). jeLib/sysexRemoteControl.cpp only handles the
-  gearmulator LCD/button/param protocol, so DT1 patch writes are never applied by
-  the plugin. Treat JE8086 as an audition-only instrument for now (its own UI/ROM
-  preset selection is the only path that has produced sound); do not build a
-  workflow that depends on host-side JE8086 patch selection until the plugin's
-  patch-receive path is investigated.
+  LIVE VERIFICATION (2026-09-16) — DT1 dumps DO NOT apply, but the PARAMETER
+  API does, and the plugin's saved state is a 233-byte stub:
+  - **Parameter writes work live.** `set_fx_param` on `A OSC WAVEFORM` (index 30)
+    and `A OSC1 HARMONICS` (39) changed the plugin's own parameter list exactly as
+    commanded (verified by diffing `list_fx_params` before/after). This is the
+    supported control surface — it is what the JE8086 recipes above already use
+    (delay type 184, vocal mix 542).
+  - **DT1 patch dumps are never applied.** The 461-entry parameter list was
+    byte-identical after an injection. Root cause (gearmulator sources):
+    `jeLib/device.cpp` routes live host MIDI to the DSP thread and only offers
+    SysEx to `SysexRemoteControl`, which implements just LCD / Button / Rotary /
+    SetParam (`sysexRemoteControl.h`); the patch protocol (`CommandIdDataSet1`)
+    lives in `State` (`state.cpp`), which only the device→host and plugin-state
+    restore paths feed. So a host cannot write patches into the emulation this way.
+  - **Offline renders play the plugin's DEFAULT patch, always.** With a real
+    JE8086 instance, every `export_audio` — before any injection, after DT1
+    injections, after parameter writes, and even with `MASTER VOLUME` set to 0.0
+    plus a fresh `capture_fx_snapshot` — rendered a bit-identical signal (peak
+    0.2455155849456787). The captured state is 233 bytes (`captureBytes="233"` in
+    the saved project; the proxy chunk is 244 B, so this is not truncation) and
+    carries no patch data, so a freshly instantiated render plugin restores a stub
+    and plays its default. Consequence: **what you audition is not what you
+    export** — do not deliver Je8086 parts through `export_audio`; audition them
+    live, or use an engine whose state round-trips (internal `sub_synth` /
+    `fm_synth`, or plugins the export tests already cover).
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.

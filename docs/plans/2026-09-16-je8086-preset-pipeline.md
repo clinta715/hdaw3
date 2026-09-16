@@ -168,16 +168,30 @@ Ran the loader against a live engine with a real JE8086 instance (audition keepT
 - Validation is atomic: a corrupt checksum, an out-of-range preset, a Clavia file
   and a bogus path are all rejected before anything is queued.
 
-**Disproved (the important part)**
-- **The audible patch does not change.** `list_fx_params` before/after an
-  injection was byte-identical (104,535 chars), and three different selections
-  (perf-patch DEEPSAW, user-bank LUNA NL, and CC0=2+PC ROM preset 33) rendered
-  bit-identical audio (peak 0.2455155849456787). `jeLib/sysexRemoteControl.cpp`
-  implements only the gearmulator LCD/button/SetParam protocol, so DT1 patch
-  writes are never applied. Conclusion: JE8086 is currently **audition-only** for
-  host-driven patch selection; the loader is a verified *transport*, not a working
-  patch switch. (Same class as the documented Dexed "ignores injected state"
-  finding — document and steer around, don't build on it.)
+**Disproved, then corrected (the important part)**
+- **DT1 patch dumps are not applied** (holds up): the plugin's 461-entry
+  parameter list was byte-identical before/after an injection. Root cause from the
+  gearmulator sources: `jeLib/device.cpp` gives live host MIDI to the DSP thread
+  and offers SysEx only to `SysexRemoteControl` (LCD/Button/Rotary/SetParam —
+  `sysexRemoteControl.h`); the DT1 patch protocol lives in `State`
+  (`state.cpp`: `CommandIdDataSet1`), reachable only from the device→host and
+  state-restore paths.
+- **CORRECTION: the parameter API works.** `set_fx_param` on index 30
+  (`A OSC WAVEFORM`) and 39 (`A OSC1 HARMONICS`) changed the plugin's parameter
+  list exactly as commanded. My first conclusion ("JE8086 ignores host control")
+  was too broad: it is specifically the *patch-dump* path that is dead, and the
+  parametric path is live.
+- **The real blocker is the export path, not the injection.** Every `export_audio`
+  — baseline, after DT1 injections, after parameter writes, and even with
+  `MASTER VOLUME` = 0.0 plus a fresh `capture_fx_snapshot` — rendered a
+  bit-identical signal (peak 0.2455155849456787). The captured state is
+  `captureBytes="233"` and contains no patch data (the proxy chunk is 244 B, so
+  this is not the lesson-14 truncation); a freshly instantiated render plugin
+  restores that stub and plays its default patch. So renders were the *wrong
+  instrument* for every A/B in this section: **audition ≠ export for JE8086**.
+  Follow-up: decide whether JE8086 parts are audition-only (use internal engines
+  for deliverable parts) or whether the plugin's state serialization can be
+  worked around.
 
 **Two real bugs the E2E cross-check caught** (both invisible to the unit tests)
 1. `mcp-launch.bat` aborted before launching the engine: unescaped parentheses in
