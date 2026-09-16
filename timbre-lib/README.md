@@ -108,6 +108,45 @@ Note: `FileLibraryManager::applyPatchSidecar` now also reads `.nl2x.json` and
 `.je8086.json` (engine fallback nodalred2x / je8086), so these sidecars are
 searchable in-app.
 
+## MicroQ patch decoder + sidecar sweep (Waldorf microQ / Vavra)
+
+`microq_patch.py` decodes the rhythm-lab microQ library
+(`D:\pdf\rhythm-lab.com_waldorf_micro_q`, 528 single-sound files) and writes
+`<patch>.vavra.json` sidecars (schema `hdaw.microq.patch.v1`, engine `vavra`) next
+to each patch, so `FileLibraryManager` / `search_library` can index them.
+
+Format (gearmulator 2.2.9 `source/mqLib` + all 528 files, 2026-09-16): `F0 3E 10 00
+10 <buffer>` + 363 parameter bytes + 16-char name at offset 370 + 4-char category at
+386 + checksum + `F7` = exactly 392 bytes, matching
+`Dumps[DumpType::Single].dumpSize = 392` (mqstate.h). The name/category offsets are
+the emulator's own constants (`mq::g_singleNameOffset = 370`,
+`mq::g_categoryOffset = 386`, mqmiditypes.h); the 'q' variant (371/387) does not
+occur here (0/528). The emulation validates dump SIZE only (`wLib/wState.h
+convertTo`) and never checksum, and these third-party files do not follow the
+Waldorf 7-bit-sum rule (249/528 match), so the checksum is recorded as
+informational and never rejects a file.
+
+    py -3.14 timbre-lib/microq_patch.py --dump "<patch>.syx"
+    py -3.14 timbre-lib/microq_patch.py --survey "D:\pdf\rhythm-lab.com_waldorf_micro_q" --out microq_survey.json
+    py -3.14 timbre-lib/microq_patch.py --sidecars "D:\pdf\rhythm-lab.com_waldorf_micro_q"
+    py -3.14 timbre-lib/microq_patch.py --verify "D:\pdf\rhythm-lab.com_waldorf_micro_q"
+
+Sweep: **528/528 parsed, 528 sidecars, verify: 528 ok / 0 bad**. Roles come from the
+in-file category (Arp 147, Pad+Atmo 122, Lead 81, Bass 79, Poly+Keys 43, FX 27,
+other 29); sidecar tags carry `category:<X>` and the pack - the two things worth
+searching on. Provenance: "MicroQ Patches by Chris Jones" (rhythm-lab.com), free to
+use with credit.
+
+**Loader status (measured, not assumed).** Injecting a dump into a live Vavra slot
+works at the transport level (`send_fx_midi {kind:"sysEx", bytes:[...]}` ->
+`queued=1`, state captures at 440 B), but the exported audio did not change
+measurably (peak 0.02603 -> 0.02591) and **Vavra exposes no host parameters**
+(`list_fx_params` -> `{"params":[]}`), so there is no observation channel to confirm
+the patch applied. The emulation's own State does receive external dumps
+(`mqLib/device.cpp` -> `State::receive(..., Origin::External)`), unlike the JP-8080,
+so the remaining check is interactive: open Vavra's editor and watch its LCD after
+injecting. No loader tool is shipped until that check passes.
+
 ## Analyze a folder
     ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
 (plain `python` on this WSL box has no ML toolchain; use ./analyze.sh, or set

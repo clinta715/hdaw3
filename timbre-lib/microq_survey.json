@@ -1,0 +1,121 @@
+{
+ "categories": {
+  "Arp": 147,
+  "Atmo": 36,
+  "Bass": 79,
+  "Bell": 1,
+  "Bras": 1,
+  "Brss": 1,
+  "FX": 26,
+  "Fx": 1,
+  "Keys": 24,
+  "Lead": 81,
+  "Misc": 18,
+  "NRZ": 1,
+  "Orgn": 1,
+  "Pad": 86,
+  "Perc": 4,
+  "Poly": 19,
+  "Rnd": 1,
+  "Wind": 1
+ },
+ "duplicateNames": [
+  {
+   "files": [
+    "The Daddy     CJ Arp.syx",
+    "The daddy     CJ Atmo.syx"
+   ],
+   "name": "the daddy     cj"
+  },
+  {
+   "files": [
+    "Someday       CJ Arp.syx",
+    "Someday       CJ Pad.syx"
+   ],
+   "name": "someday       cj"
+  },
+  {
+   "files": [
+    "Twang time    CJ Arp.syx",
+    "Twang time 2  CJ Arp.syx"
+   ],
+   "name": "twang time    cj"
+  },
+  {
+   "files": [
+    "Thunder       CJ Bass.syx",
+    "Thunder       CJ FX.syx"
+   ],
+   "name": "thunder       cj"
+  },
+  {
+   "files": [
+    "Fist Full o'  CJ Atmo.syx",
+    "Fist Full o'  CJ Lead.syx"
+   ],
+   "name": "fist full o'  cj"
+  },
+  {
+   "files": [
+    "Wishbone      CJ Lead.syx",
+    "Wishbone      CJ Misc.syx"
+   ],
+   "name": "wishbone      cj"
+  },
+  {
+   "files": [
+    "Resonator     CJ Lead.syx",
+    "Resonator     CJ Misc.syx"
+   ],
+   "name": "resonator     cj"
+  },
+  {
+   "files": [
+    "Whisp         CJ Misc.syx",
+    "Whisp         CJ Pad.syx"
+   ],
+   "name": "whisp         cj"
+  },
+  {
+   "files": [
+    "Tip toes      CJ Atmo.syx",
+    "Tip toes      CJ Keys.syx"
+   ],
+   "name": "tip toes      cj"
+  }
+ ],
+ "engine": "vavra",
+ "folders": {
+  "Arp": 138,
+  "Atmo": 28,
+  "Bass": 73,
+  "FX": 28,
+  "Lead": 75,
+  "Misc": 23,
+  "New patches": 36,
+  "Pad": 82,
+  "Poly": 45
+ },
+ "provenance": "MicroQ Patches by Chris Jones (rhythm-lab.com); free to use with credit",
+ "roles": {
+  "arp": 147,
+  "bass": 79,
+  "chord": 43,
+  "fx": 27,
+  "lead": 81,
+  "other": 29,
+  "pad": 122
+ },
+ "root": "rhythm-lab.com_waldorf_micro_q",
+ "schema": "hdaw.microq.survey.v1",
+ "totals": {
+  "checksumMatches": 249,
+  "failed": 0,
+  "files": 528,
+  "parsed": 528
+ },
+ "unmapped": [
+  "parameter semantics not decoded (no sound-parameter name table in mqLib); bytes 7-369 are reported raw under 'params'",
+  "checksum is informational only: the emulation validates dump SIZE, not checksum (wLib/wState.h convertTo)"
+ ]
+}

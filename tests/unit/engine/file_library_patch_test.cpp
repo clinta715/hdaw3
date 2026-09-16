@@ -491,3 +491,46 @@ TEST_F(FileLibraryPatchTest, Nl2xBankSidecarIngestedWithoutEngineKey) {
     EXPECT_EQ(results[0].roleVerdict, "pass");
     EXPECT_TRUE(results[0].description.contains("Nord Lead 2x"));
 }
+
+// A microQ (.vavra.json) patch sidecar must be ingested too - the 528 Waldorf
+// patches are otherwise invisible to search (timbre-lib/microq_patch.py).
+TEST(FileLibraryPatch, VavraPatchSidecarIngested) {
+    // self-contained: this section of the file is outside the fixture class
+    const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                          .getChildFile("hdaw_vavra_sidecar_test");
+    root.deleteRecursively();
+    const auto dir = root.getChildFile("patchlib");
+    dir.createDirectory();
+    auto patchFile = dir.getChildFile("Acid bass.syx");
+    patchFile.replaceWithText("F0 3E 10 00 10 30 F7");
+    juce::File(patchFile.getFullPathName() + ".vavra.json").replaceWithText(juce::String(R"({
+      "schema": "hdaw.microq.patch.v1",
+      "engine": "vavra",
+      "name": "Acid bass",
+      "category": "Bass",
+      "description": "microQ bass patch: category Bass",
+      "roleCheck": {"verdict": "bass", "category": "Bass"},
+      "unmapped": ["parameter semantics not decoded"],
+      "mappedParams": {"category": {"param": "category:Bass"}, "pack": {"param": "pack:MicroQ Patches"}},
+      "params": {"7": 1, "8": 52}
+    })"));
+
+    HDAW::FileLibraryManager mgr(root);
+    auto id = mgr.addLibrary("Vavra Patches", dir.getFullPathName(), "patch");
+    ASSERT_FALSE(id.isEmpty());
+    mgr.scanLibrary(id);
+    for (int i = 0; i < 50 && mgr.isScanning(); ++i)
+        juce::Thread::sleep(100);
+    ASSERT_FALSE(mgr.isScanning());
+
+    auto results = mgr.search("", "patch");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].patchEngine, "vavra");
+    EXPECT_EQ(results[0].roleVerdict, "bass");
+    EXPECT_TRUE(results[0].tags.contains("category:Bass"))
+        << "the category tag is what makes these patches findable";
+
+    auto bassHits = mgr.search("Bass", "patch");
+    EXPECT_EQ(bassHits.size(), 1u);
+    root.deleteRecursively();
+}
