@@ -272,6 +272,27 @@ public:
     virtual SongPlanResult applySongBrief(const std::string& briefJson) = 0;
     virtual std::string exportSongBrief(std::string* error = nullptr) const = 0;
 
+    // ── Layer handoff ledger (hybrid workflow; project-native) ──
+    // One handoff per layer = per-track workflow metadata (role, sound/pattern
+    // intent, modulation evidence JSON, verify numbers JSON). Stored as track
+    // properties (persist via whole-tree toXmlString save/load) — no audio
+    // processors consume it, so no rebuild-restore is involved. Written in ONE
+    // undo unit.
+    struct LayerHandoff {
+        std::string role;            // e.g. "bass", "lead", "kick"
+        std::string soundIntent;     // e.g. "acid psy_fm with phaser bite"
+        std::string patternIntent;   // e.g. "call-response hook by bar 24"
+        std::string modulation;      // JSON: {target, recipe, depth, readback}
+        std::string verify;          // JSON: {beforeRms, afterRms, verifyPart, warnings[]}
+        bool empty() const {
+            return role.empty() && soundIntent.empty() && patternIntent.empty()
+                && modulation.empty() && verify.empty();
+        }
+    };
+    virtual bool setLayerHandoff(int trackIndex, const LayerHandoff& handoff,
+                                 std::string* error = nullptr) = 0;
+    virtual bool clearLayerHandoff(int trackIndex, std::string* error = nullptr) = 0;
+
     // ── Cells: role×section content recipes (plan/cell workflow) ──
     // A cell binds one generator source to one plan section. fillCells
     // executes recipes in ONE undo transaction, writing a MIDI clip that
@@ -329,6 +350,10 @@ public:
     // Upsert by (section, role). Validates against the plan (Gate 9):
     // section exists, trackId >= 0, known sourceKind, params parse.
     virtual bool setCellRecipe(const CellRecipe& recipe, std::string* error = nullptr) = 0;
+    // Batch: N recipes in ONE undo unit. Returns the ok-count; when `errors`
+    // is non-null it is filled in parallel (empty string = ok).
+    virtual int setCellRecipes(const std::vector<CellRecipe>& recipes,
+                               std::vector<std::string>* errors = nullptr) = 0;
     virtual std::vector<CellRecipe> getCells() const = 0;
     virtual bool removeCellRecipe(const std::string& section,
                                   const std::string& role) = 0;
@@ -368,6 +393,39 @@ public:
     // authoritative again (trackIndex -1 = every track). Non-destructive: only
     // toggles automationEnabled; automation points are kept. One undo unit.
     virtual void setFaderAuthoritative(int trackIndex, bool authoritative) = 0;
+
+    // ── Movement plan (FX & Automation choreography) ──
+    // Batch section-aware movement across MULTIPLE tracks in ONE undo unit.
+    // Each event resolves-or-creates its lane (reuse the lane already bound to
+    // paramID — never stack two lanes on one parameter), then writes the named
+    // preset across the beat window (clear=true: replaces points inside).
+    // paramID default 1 (volume; reuses the built-in Volume lane); pass the
+    // compound id (100 + slotIndex*100 + paramIndex) for FX params. Partial
+    // failure keeps the good events; each event reports ok/error.
+    struct MovementEvent {
+        int trackIndex = -1;
+        double startBeats = 0.0;
+        double endBeats = 16.0;
+        std::string preset = "riser";      // pump|macro|openClose|riser|sine|square|
+                                           // subtleLife|randomDrift|steppedGate|phaseSweep|delayThrow
+        int paramID = -1;                  // -1 => 1 (volume)
+        std::string laneName;              // empty => auto (reuse by paramID, else create)
+        std::optional<double> startValue;  // preset defaults when unset
+        std::optional<double> endValue;
+        uint64_t seed = 12345;
+    };
+    struct MovementEventResult {
+        std::string laneName;
+        int pointsWritten = 0;
+        bool ok = false;
+        std::string error;
+    };
+    struct MovementPlanResult {
+        int okCount = 0;
+        int failCount = 0;
+        std::vector<MovementEventResult> events;
+    };
+    virtual MovementPlanResult applyMovementPlan(const std::vector<MovementEvent>& events) = 0;
     virtual void setAutomationMode(int trackIndex, const std::string& laneName,
                                     const std::string& mode) = 0;
     virtual void notifyAutomationTouch(int trackIndex, int paramID, bool touching) = 0;

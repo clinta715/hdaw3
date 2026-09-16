@@ -57,6 +57,13 @@ namespace IDs {
     DECLARE_ID(isArm)
     DECLARE_ID(inputMonitor)
     DECLARE_ID(midiChannel)
+    // Layer handoff ledger (psy-song-session workflow metadata; track
+    // properties persist via whole-tree toXmlString save)
+    DECLARE_ID(layerRole)
+    DECLARE_ID(layerSoundIntent)
+    DECLARE_ID(layerPatternIntent)
+    DECLARE_ID(layerModulation)
+    DECLARE_ID(layerVerify)
 
     // Clip properties
     DECLARE_ID(clipID)

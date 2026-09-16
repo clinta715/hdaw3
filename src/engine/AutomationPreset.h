@@ -30,7 +30,12 @@ public:
         OpenClose,
         Riser,
         Sine,
-        Square
+        Square,
+        SubtleLife,
+        RandomDrift,
+        SteppedGate,
+        PhaseSweep,
+        DelayThrow
     };
 
     // One named recipe over one beat window. Optionals override the recipe's
@@ -59,9 +64,14 @@ public:
             case Preset::Macro:     return "macro";
             case Preset::OpenClose: return "openClose";
             case Preset::Riser:     return "riser";
-            case Preset::Sine:      return "sine";
-            case Preset::Square:    return "square";
-            default:                return "pump";
+            case Preset::Sine:        return "sine";
+            case Preset::Square:      return "square";
+            case Preset::SubtleLife:  return "subtleLife";
+            case Preset::RandomDrift: return "randomDrift";
+            case Preset::SteppedGate: return "steppedGate";
+            case Preset::PhaseSweep:  return "phaseSweep";
+            case Preset::DelayThrow:  return "delayThrow";
+            default:                  return "pump";
         }
     }
 
@@ -71,8 +81,13 @@ public:
         if (name == "macro")     return Preset::Macro;
         if (name == "openClose") return Preset::OpenClose;
         if (name == "riser")     return Preset::Riser;
-        if (name == "sine")      return Preset::Sine;
-        if (name == "square")    return Preset::Square;
+        if (name == "sine")        return Preset::Sine;
+        if (name == "square")      return Preset::Square;
+        if (name == "subtleLife")  return Preset::SubtleLife;
+        if (name == "randomDrift") return Preset::RandomDrift;
+        if (name == "steppedGate") return Preset::SteppedGate;
+        if (name == "phaseSweep")  return Preset::PhaseSweep;
+        if (name == "delayThrow")  return Preset::DelayThrow;
         return std::nullopt;
     }
 
@@ -89,9 +104,14 @@ public:
         {"openClose", "down-then-up filter sweep: S-curve closes startValue (default 0.60) down to 0.05 at midPoint (default window centre), then ramps back up to endValue (default 0.90) — breakdown open"},
         {"riser",     "S-curve riser from startValue (default 0.10) to endValue (default 0.90) — drop build"},
         {"sine",      "sine wobble: startValue (default 0) to endValue (default 1); one full cycle per 4 beats (cycles default = window length / 4) — LFO-style movement"},
-        {"square",    "square-wave gate: startValue (default 0) to endValue (default 1); one full cycle per 4 beats (cycles default = window length / 4) — rhythmic gating"}
+        {"square",    "square-wave gate: startValue (default 0) to endValue (default 1); one full cycle per 4 beats (cycles default = window length / 4) — rhythmic gating"},
+        {"subtleLife",  "nearly invisible sine life: default 0.48↔0.52 over 16-beat cycles — fallback modulation for any otherwise-static layer"},
+        {"randomDrift", "seeded random-walk drift: default 0.40↔0.60 with smoothing — analog-ish cutoff/pan/drive wandering"},
+        {"steppedGate", "8-step staircase between startValue (default 0.20) and endValue (default 0.90) — techno/industrial stepped movement"},
+        {"phaseSweep",  "slow sine sweep between startValue (default 0.25) and endValue (default 0.75), 8-beat cycles — phaser/flanger/comb motion"},
+        {"delayThrow",  "late-window throw: mostly low then S-curve to endValue (default 0.80) in the final quarter — delay/reverb send throws"}
     };
-    inline static constexpr std::size_t kPresetDocumentationCount = 6;
+    inline static constexpr std::size_t kPresetDocumentationCount = 11;
 
     // Build the generator segments for one beat window. Times and density stay
     // in beats (density 4.0 = 0.25-beat grid). All values are clamped 0..1.
@@ -176,6 +196,57 @@ public:
                 p.endValue   = clamp01(w.endValue.value_or(1.0));
                 p.cycles     = w.cycles.value_or(len / 4.0); // 4-beat gate
                 out.segments.push_back(p);
+                break;
+            }
+            case Preset::SubtleLife:
+            {
+                auto p = seg(EnvelopeGenerator::Shape::Sine, w.start, w.end);
+                p.startValue = clamp01(w.startValue.value_or(0.48));
+                p.endValue   = clamp01(w.endValue.value_or(0.52));
+                p.cycles     = w.cycles.value_or(std::max(1.0, len / 16.0));
+                p.densityPerSec = 1.0; // gentle, low-point fallback movement
+                out.segments.push_back(p);
+                break;
+            }
+            case Preset::RandomDrift:
+            {
+                auto p = seg(EnvelopeGenerator::Shape::RandomWalk, w.start, w.end);
+                p.startValue = clamp01(w.startValue.value_or(0.40));
+                p.endValue   = clamp01(w.endValue.value_or(0.60));
+                p.densityPerSec = 1.0;
+                p.smooth = 0.35;
+                out.segments.push_back(p);
+                break;
+            }
+            case Preset::SteppedGate:
+            {
+                auto p = seg(EnvelopeGenerator::Shape::Staircase, w.start, w.end);
+                p.startValue = clamp01(w.startValue.value_or(0.20));
+                p.endValue   = clamp01(w.endValue.value_or(0.90));
+                p.steps = 8;
+                out.segments.push_back(p);
+                break;
+            }
+            case Preset::PhaseSweep:
+            {
+                auto p = seg(EnvelopeGenerator::Shape::Sine, w.start, w.end);
+                p.startValue = clamp01(w.startValue.value_or(0.25));
+                p.endValue   = clamp01(w.endValue.value_or(0.75));
+                p.cycles     = w.cycles.value_or(std::max(1.0, len / 8.0));
+                out.segments.push_back(p);
+                break;
+            }
+            case Preset::DelayThrow:
+            {
+                const double throwStart = w.start + len * 0.75;
+                auto hold = seg(EnvelopeGenerator::Shape::Ramp, w.start, throwStart);
+                hold.startValue = clamp01(w.startValue.value_or(0.05));
+                hold.endValue   = hold.startValue;
+                out.segments.push_back(hold);
+                auto rise = seg(EnvelopeGenerator::Shape::SCurve, throwStart, w.end);
+                rise.startValue = hold.startValue;
+                rise.endValue   = clamp01(w.endValue.value_or(0.80));
+                out.segments.push_back(rise);
                 break;
             }
         }

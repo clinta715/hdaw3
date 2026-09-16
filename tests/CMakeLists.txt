@@ -69,6 +69,10 @@ add_executable(hdaw_tests
     unit/engine/audio_pool_dedup_test.cpp
     unit/engine/track_fx_rebuild_race_test.cpp
     unit/engine/song_plan_test.cpp
+    unit/engine/layer_handoff_test.cpp
+    unit/engine/movement_plan_test.cpp
+    unit/engine/gearmulator_params_probe_test.cpp
+    unit/engine/song_structure_audit_test.cpp
     unit/engine/ves_boot_probe_test.cpp
     unit/engine/internal_fx_param_clamp_test.cpp
     unit/engine/render_sequence_release_test.cpp

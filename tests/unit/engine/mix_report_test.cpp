@@ -177,6 +177,115 @@ TEST(MixReportTest, MissingFileErrors)
     EXPECT_FALSE(err.isEmpty());
 }
 
+TEST(MixReportTest, QuietIntroDetectsNothing)
+{
+    const juce::File f = writeSynthWav(static_cast<int>(48000.0 * 2.0), 48000.0,
+        [](int64_t i) { return static_cast<float>(sine(i / 48000.0, 440.0, 0.1)); });
+    ASSERT_TRUE(f.existsAsFile());
+    HDAW::BlastReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyzeBlast(f, 2.0, 0.125, rep, err))
+        << err.toStdString();
+    EXPECT_FALSE(rep.detected);
+    EXPECT_FALSE(rep.clipping);
+    EXPECT_FALSE(rep.loudTransient);
+    EXPECT_FALSE(rep.silenceAfter);
+    EXPECT_FALSE(rep.dcOffset);
+    f.deleteFile();
+}
+
+TEST(MixReportTest, ClippingBlastDetectedAtStart)
+{
+    // 3 s: 0.3 s of amplitude-1.0 sine (clips the WAV), then a quiet 0.05 bed.
+    const juce::File f = writeSynthWav(static_cast<int>(48000.0 * 3.0), 48000.0,
+        [](int64_t i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            if (t < 0.3) return static_cast<float>(sine(t, 200.0, 1.0));
+            return static_cast<float>(sine(t, 440.0, 0.05));
+        });
+    ASSERT_TRUE(f.existsAsFile());
+    HDAW::BlastReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyzeBlast(f, 3.0, 0.125, rep, err))
+        << err.toStdString();
+    EXPECT_TRUE(rep.detected);
+    EXPECT_TRUE(rep.clipping);
+    EXPECT_TRUE(rep.loudTransient);
+    EXPECT_LE(rep.blastStart, 0.01);
+    EXPECT_GT(rep.blastPeak, 0.99);
+    EXPECT_GT(rep.blastRms, 0.5);
+    EXPECT_LT(rep.preBlastRms, 1e-6);
+    EXPECT_LT(rep.postBlastRms, rep.blastRms);
+    EXPECT_GE(rep.blastEnd, 0.2);
+    EXPECT_FALSE(rep.silenceAfter);   // bed is quiet but NOT digital silence
+    f.deleteFile();
+}
+
+TEST(MixReportTest, SaturationThenSilenceFlagged)
+{
+    // 1.5 s: 0.4 s near-full-scale blast, then hard digital silence (0.0).
+    const juce::File f = writeSynthWav(static_cast<int>(48000.0 * 1.5), 48000.0,
+        [](int64_t i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            if (t < 0.4) return static_cast<float>(sine(t, 100.0, 0.99));
+            return 0.0f;
+        });
+    ASSERT_TRUE(f.existsAsFile());
+    HDAW::BlastReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyzeBlast(f, 1.5, 0.125, rep, err))
+        << err.toStdString();
+    EXPECT_TRUE(rep.detected);
+    EXPECT_TRUE(rep.loudTransient);
+    EXPECT_EQ(rep.postBlastRms, 0.0);
+    EXPECT_TRUE(rep.silenceAfter);
+    f.deleteFile();
+}
+
+TEST(MixReportTest, DcOffsetFlagged)
+{
+    // 0.2 DC offset + 440 Hz @ 0.1 — mean ~0.2, no loud run.
+    const juce::File f = writeSynthWav(static_cast<int>(48000.0 * 1.0), 48000.0,
+        [](int64_t i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            return static_cast<float>(0.2 + sine(t, 440.0, 0.1));
+        });
+    ASSERT_TRUE(f.existsAsFile());
+    HDAW::BlastReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyzeBlast(f, 1.0, 0.125, rep, err))
+        << err.toStdString();
+    EXPECT_TRUE(rep.dcOffset);
+    EXPECT_FALSE(rep.loudTransient);
+    EXPECT_FALSE(rep.detected);
+    f.deleteFile();
+}
+
+// boundaryPeak = max |sample| over the FIRST 0.1 s of a section: the
+// "drop entry" transient gate (a section can slam in far louder than its
+// sustained RMS). Loud 0.5 s head, quiet tail; the second section starts quiet.
+TEST(MixReportTest, BoundaryPeakProbesSectionStart)
+{
+    const juce::File f = writeSynthWav(static_cast<int>(48000.0 * 1.5), 48000.0,
+        [](int64_t i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            return static_cast<float>(t < 0.5 ? sine(t, 200.0, 0.9)
+                                              : sine(t, 200.0, 0.05));
+        });
+    ASSERT_TRUE(f.existsAsFile());
+    HDAW::MixReport rep;
+    juce::String err;
+    ASSERT_TRUE(HDAW::MixReportAnalyzer::analyze(f, {
+        HDAW::SectionWindow{"loud", 0.0, 0.5},
+        HDAW::SectionWindow{"quiet", 0.5, 1.5}}, 0.0, rep, err)) << err.toStdString();
+    ASSERT_EQ(rep.sections.size(), 2u);
+    EXPECT_GT(rep.sections[0].boundaryPeak, 0.6);
+    EXPECT_LT(rep.sections[1].boundaryPeak, 0.15);
+    EXPECT_LE(rep.sections[0].boundaryPeak, rep.sections[0].peak + 1e-9);
+    EXPECT_LE(rep.sections[1].boundaryPeak, rep.sections[1].peak + 1e-9);
+    f.deleteFile();
+}
+
 TEST(MixReportTest, DegenerateAndOutOfFileSectionsError)
 {
     const juce::File f = writeTwoSectionWav();

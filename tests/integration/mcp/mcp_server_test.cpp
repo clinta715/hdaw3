@@ -700,6 +700,7 @@ TEST(McpServer, ApplySongPlan) {
     auto r = callTool(1, "set_song_plan",
         R"({"bpm":140,"keyRoot":5,"scaleMode":7,"style":"full-on","seed":777,"totalBars":32,"sections":[{"name":"intro","kind":"intro","bars":8},{"name":"build","kind":"build","bars":8},{"name":"drop","kind":"mainA","bars":16}]})");
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_NEAR((double) engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0), 140.0, 1e-9);
 
     // Regions synced: three section-typed children under ARRANGER_LIST.
     auto regionTree = engine.getProjectModel().getTree().getChildWithName(IDs::ARRANGER_LIST);
@@ -721,6 +722,7 @@ TEST(McpServer, ApplySongPlan) {
     const QString briefArgs = QString(R"({"brief":%1})").arg(brief);
     r = callTool(3, "apply_song_brief", briefArgs.toUtf8().constData());
     ASSERT_FALSE(isError(r)) << text(r).toStdString();
+    EXPECT_NEAR((double) engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0), 138.0, 1e-9);
 
     r = callTool(4, "export_song_brief", "{}");
     EXPECT_FALSE(isError(r));

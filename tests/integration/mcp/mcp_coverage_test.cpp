@@ -1578,6 +1578,15 @@ TEST_F(McpCoverageTest, AutomationPresetWindows) {
     // ramp: value ≈ 0.4.
     EXPECT_NEAR(nearestAt(24.0), 0.4, 0.05);
 
+    // New movement-bank presets are reachable through the MCP surface too.
+    auto movementR = call("automation_preset",
+        {{"trackId", 0}, {"lane", "CutPump"}, {"preset", "phaseSweep"},
+         {"start", 32}, {"end", 48}, {"clear", true}});
+    EXPECT_FALSE(isError(movementR)) << text(movementR).toStdString();
+    auto movementObj = QJsonDocument::fromJson(text(movementR).toUtf8()).object();
+    EXPECT_EQ(movementObj.value("presets").toArray()[0].toString(), QString("phaseSweep"));
+    EXPECT_GT(movementObj.value("pointsAdded").toInt(0), 0);
+
     // Error cases (Gate 9: actionable messages, atomic no-ops).
     auto badPreset = call("automation_preset",
         {{"trackId", 0}, {"lane", "CutPump"}, {"preset", "bogus"}, {"start", 0}, {"end", 4}});
@@ -1764,6 +1773,574 @@ TEST_F(McpCoverageTest, AddNotesDescriptionDocumentsAbsoluteMode) {
     ASSERT_FALSE(desc.isEmpty()) << "add_notes tool not found in tools/list";
     EXPECT_TRUE(desc.contains("ABSOLUTE")) << desc.toStdString();
     EXPECT_TRUE(desc.contains("relative")) << desc.toStdString();
+}
+
+TEST_F(McpCoverageTest, LayerHandoffToolsRegistered) {
+    auto tools = toolList();
+    QJsonArray names;
+    for (const auto& t : tools) names.append(t.toObject().value("name").toString());
+    for (const char* name : { "set_layer_handoff", "clear_layer_handoff",
+                              "get_layer_handoffs", "audit_modulation_coverage" })
+    {
+        bool found = false;
+        for (const auto& n : names) if (n.toString() == name) { found = true; break; }
+        EXPECT_TRUE(found) << name << " not registered";
+    }
+}
+
+TEST_F(McpCoverageTest, LayerHandoffSetGetRoundTrip) {
+    auto r = call("set_layer_handoff", {
+        { "trackId", 0 },
+        { "role", "lead" },
+        { "soundIntent", "acid psy_fm with phaser bite" },
+        { "patternIntent", "call-response hook by bar 24" },
+        { "modulation", QJsonObject{ { "target", "filter cutoff" },
+                                      { "recipe", "phaseSweep" },
+                                      { "depth", "medium" } } },
+        { "verify", QJsonObject{ { "beforeRms", 0.12 }, { "afterRms", 0.144 },
+                                  { "verifyPart", "audible=1;nonClipping=1" } } }
+    });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+
+    auto arr = QJsonDocument::fromJson(
+        callText("get_layer_handoffs", { { "trackId", 0 } }).toString().toUtf8()).array();
+    ASSERT_EQ(arr.size(), 1);
+    auto o = arr[0].toObject();
+    EXPECT_TRUE(o.value("hasHandoff").toBool());
+    EXPECT_EQ(o.value("role").toString(), "lead");
+    EXPECT_EQ(o.value("soundIntent").toString(), "acid psy_fm with phaser bite");
+    EXPECT_EQ(o.value("patternIntent").toString(), "call-response hook by bar 24");
+    EXPECT_EQ(o.value("modulation").toObject().value("target").toString(), "filter cutoff");
+    EXPECT_EQ(o.value("verify").toObject().value("afterRms").toDouble(), 0.144);
+}
+
+TEST_F(McpCoverageTest, LayerHandoffValidation) {
+    auto r1 = call("set_layer_handoff", { { "trackId", 999 }, { "role", "kick" } });
+    EXPECT_TRUE(isError(r1)) << "out-of-range trackId must be an error";
+
+    auto r2 = call("set_layer_handoff", { { "trackId", 0 } });
+    EXPECT_TRUE(isError(r2)) << "empty handoff must be an error";
+
+    auto r3 = call("get_layer_handoffs", { { "trackId", 999 } });
+    EXPECT_TRUE(isError(r3)) << "out-of-range read must be an error";
+}
+
+TEST_F(McpCoverageTest, LayerHandoffClearRemoves) {
+    auto set = call("set_layer_handoff", { { "trackId", 0 }, { "role", "bass" },
+                                            { "soundIntent", "rolling" } });
+    EXPECT_FALSE(isError(set)) << text(set).toStdString();
+
+    auto c = call("clear_layer_handoff", { { "trackId", 0 } });
+    EXPECT_FALSE(isError(c)) << text(c).toStdString();
+
+    auto arr = QJsonDocument::fromJson(
+        callText("get_layer_handoffs", { { "trackId", 0 } }).toString().toUtf8()).array();
+    ASSERT_EQ(arr.size(), 1);
+    EXPECT_FALSE(arr[0].toObject().value("hasHandoff").toBool());
+}
+
+TEST_F(McpCoverageTest, AuditModulationCoverageFlagsUnmodulatedSoundingTrack) {
+    // Fixture track has no clips -> not sounding -> not flagged.
+    auto a0 = QJsonDocument::fromJson(
+        callText("audit_modulation_coverage").toString().toUtf8()).object();
+    EXPECT_EQ(a0.value("summary").toObject().value("tracksWithClips").toInt(), 0);
+
+    // Mint a clip so track 0 is sounding; no modulation yet -> needsAttention.
+    auto gen = call("generate_rhythm_pattern",
+                    { { "trackId", 0 }, { "bars", 4 }, { "grid", 16 },
+                      { "pulseA", 4 }, { "pulseB", 3 } });
+    EXPECT_FALSE(isError(gen)) << text(gen).toStdString();
+    auto a1 = QJsonDocument::fromJson(
+        callText("audit_modulation_coverage").toString().toUtf8()).object();
+    ASSERT_EQ(a1.value("tracks").toArray().size(), 1);
+    auto t1 = a1.value("tracks").toArray()[0].toObject();
+    EXPECT_TRUE(t1.value("needsAttention").toBool());
+    bool hasNoLfo = false;
+    for (const auto& r : t1.value("reasons").toArray())
+        if (r.toString() == "no-lfo") hasNoLfo = true;
+    EXPECT_TRUE(hasNoLfo);
+    EXPECT_EQ(a1.value("summary").toObject().value("attentionRequiredIds").toArray().size(), 1);
+
+    // add_lfo (enabled by default, targets volume) -> covered.
+    auto al = call("add_lfo", { { "trackId", 0 } });
+    EXPECT_FALSE(isError(al)) << text(al).toStdString();
+    auto a2 = QJsonDocument::fromJson(
+        callText("audit_modulation_coverage").toString().toUtf8()).object();
+    auto t2 = a2.value("tracks").toArray()[0].toObject();
+    EXPECT_FALSE(t2.value("needsAttention").toBool());
+    EXPECT_EQ(t2.value("lfos").toObject().value("enabled").toInt(), 1);
+    EXPECT_EQ(a2.value("summary").toObject().value("fullyCovered").toInt(), 1);
+}
+
+TEST_F(McpCoverageTest, ApplyMovementPlanRegistered) {
+    auto tools = toolList();
+    bool found = false;
+    for (const auto& t : tools)
+        if (t.toObject().value("name").toString() == "apply_movement_plan") { found = true; break; }
+    EXPECT_TRUE(found) << "apply_movement_plan not registered";
+}
+
+TEST_F(McpCoverageTest, ApplyMovementPlanEndToEndCoversAudit) {
+    // Make track 0 sounding, then choreograph volume pump + pan riser.
+    auto gen = call("generate_rhythm_pattern",
+                    { { "trackId", 0 }, { "bars", 4 }, { "grid", 16 },
+                      { "pulseA", 4 }, { "pulseB", 3 } });
+    EXPECT_FALSE(isError(gen)) << text(gen).toStdString();
+
+    auto plan = call("apply_movement_plan", { { "events", QJsonArray{
+        QJsonObject{ { "trackId", 0 }, { "preset", "pump" }, { "start", 0 }, { "end", 8 } },
+        QJsonObject{ { "trackId", 0 }, { "preset", "riser" }, { "start", 8 }, { "end", 16 },
+                     { "paramID", 2 } } } } });
+    EXPECT_FALSE(isError(plan)) << text(plan).toStdString();
+    auto po = QJsonDocument::fromJson(text(plan).toUtf8()).object();
+    EXPECT_EQ(po.value("okCount").toInt(), 2);
+    EXPECT_EQ(po.value("failCount").toInt(), 0);
+
+    // pump reused the built-in Volume lane; riser reused the built-in Pan
+    // lane (pid 2) — never two lanes on one parameter.
+    auto lanes = callText("list_automation_lanes", { { "trackId", 0 } });
+    EXPECT_TRUE(lanes.toString().contains("Volume")) << lanes.toString().toStdString();
+    EXPECT_TRUE(lanes.toString().contains("Pan")) << lanes.toString().toStdString();
+
+    // The movement plan alone is enough to clear the modulation audit.
+    auto a = QJsonDocument::fromJson(
+        callText("audit_modulation_coverage").toString().toUtf8()).object();
+    EXPECT_EQ(a.value("summary").toObject().value("fullyCovered").toInt(), 1);
+    EXPECT_EQ(a.value("summary").toObject().value("attentionRequiredIds").toArray().size(), 0);
+}
+
+TEST_F(McpCoverageTest, ApplyMovementPlanReportsPartialFailures) {
+    auto plan = call("apply_movement_plan", { { "events", QJsonArray{
+        QJsonObject{ { "trackId", 0 }, { "preset", "wobble" }, { "start", 0 }, { "end", 8 } },
+        QJsonObject{ { "trackId", 0 }, { "preset", "pump" }, { "start", 8 }, { "end", 16 } }
+    } } });
+    EXPECT_FALSE(isError(plan)) << text(plan).toStdString();
+    auto po = QJsonDocument::fromJson(text(plan).toUtf8()).object();
+    EXPECT_EQ(po.value("failCount").toInt(), 1);
+    EXPECT_EQ(po.value("okCount").toInt(), 1);
+    const auto events = po.value("events").toArray();
+    ASSERT_EQ(events.size(), 2);
+    EXPECT_FALSE(events[0].toObject().value("ok").toBool());
+    EXPECT_TRUE(events[0].toObject().value("error").toString().contains("unknown preset"));
+    EXPECT_TRUE(events[1].toObject().value("ok").toBool());
+}
+
+TEST_F(McpCoverageTest, AuditSongStructureRegistered) {
+    auto tools = toolList();
+    bool found = false;
+    for (const auto& t : tools)
+        if (t.toObject().value("name").toString() == "audit_song_structure") { found = true; break; }
+    EXPECT_TRUE(found) << "audit_song_structure not registered";
+}
+
+QJsonObject planTwoSections()
+{
+    return QJsonObject{
+        { "bpm", 120.0 }, { "keyRoot", 0 }, { "scaleMode", 1 }, { "style", "test" },
+        { "seed", 1 }, { "totalBars", 16 },
+        { "sections", QJsonArray{
+            QJsonObject{ { "name", "intro" }, { "kind", "intro" }, { "bars", 8 } },
+            QJsonObject{ { "name", "dropA" }, { "kind", "mainA" }, { "bars", 8 } } } } };
+}
+
+TEST_F(McpCoverageTest, AuditSongStructureFlagsBoringArrangement) {
+    auto sp = call("set_song_plan", planTwoSections());
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    // Track 0 exists from the fixture; add kick/bass/hats with full-span clips.
+    for (const char* name : { "kick", "bass", "hats" })
+    {
+        auto t = call("add_track", { { "name", name } });
+        EXPECT_FALSE(isError(t)) << text(t).toStdString();
+    }
+    for (int ti = 1; ti <= 3; ++ti)
+    {
+        auto g = call("generate_rhythm_pattern",
+                      { { "trackId", ti }, { "bars", 16 }, { "grid", 16 },
+                        { "pulseA", 4 }, { "pulseB", 3 } });
+        EXPECT_FALSE(isError(g)) << text(g).toStdString();
+    }
+
+    auto a = QJsonDocument::fromJson(
+        callText("audit_song_structure").toString().toUtf8()).object();
+    EXPECT_TRUE(a.value("hasPlan").toBool());
+    EXPECT_FALSE(a.value("ok").toBool());
+    ASSERT_GE(a.value("spans").toArray().size(), 1);
+    EXPECT_EQ(a.value("spans").toArray()[0].toObject().value("flag").toString(), "bass-hat-only");
+    auto gates = a.value("gates").toObject();
+    EXPECT_EQ(gates.value("boredomSpans").toInt(), 1);   // intro+dropA merged run
+    EXPECT_FALSE(gates.value("allDropsHaveBackbeat").toBool());
+    EXPECT_FALSE(gates.value("firstDropHasMotif").toBool());
+}
+
+TEST_F(McpCoverageTest, AuditSongStructurePassesWithBackbeatAndLead) {
+    auto sp = call("set_song_plan", planTwoSections());
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    for (const char* name : { "kick", "bass", "hats", "clap", "lead" })
+    {
+        auto t = call("add_track", { { "name", name } });
+        EXPECT_FALSE(isError(t)) << text(t).toStdString();
+    }
+    for (int ti = 1; ti <= 5; ++ti)
+    {
+        auto g = call("generate_rhythm_pattern",
+                      { { "trackId", ti }, { "bars", 16 }, { "grid", 16 },
+                        { "pulseA", 4 }, { "pulseB", 3 } });
+        EXPECT_FALSE(isError(g)) << text(g).toStdString();
+    }
+
+    auto a = QJsonDocument::fromJson(
+        callText("audit_song_structure").toString().toUtf8()).object();
+    EXPECT_TRUE(a.value("ok").toBool()) << "audit should pass with clap + lead";
+    EXPECT_TRUE(a.value("gates").toObject().value("allDropsHaveBackbeat").toBool());
+    EXPECT_TRUE(a.value("gates").toObject().value("firstDropHasMotif").toBool());
+}
+
+TEST_F(McpCoverageTest, MixReportCarriesStructureWhenFromPlan) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("mix.wav");
+    const int kSamples = 44100 * 5;   // 5 s at 44.1 kHz
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, kSamples);
+        for (int i = 0; i < kSamples; ++i)
+            buffer.setSample(0, i, 0.3f * std::sin(2.0f * 3.14159265f * 220.0f * i / 44100.0f));
+        writer->writeFromAudioSampleBuffer(buffer, 0, kSamples);
+        writer.reset();
+    }
+    // 2-bar plan at 120 BPM fits well inside the 5 s file (1 bar = 2 s).
+    auto sp = call("set_song_plan", QJsonObject{
+        { "bpm", 120.0 }, { "keyRoot", 0 }, { "scaleMode", 1 }, { "style", "test" },
+        { "seed", 1 }, { "totalBars", 2 },
+        { "sections", QJsonArray{
+            QJsonObject{ { "name", "intro" }, { "kind", "intro" }, { "bars", 1 } },
+            QJsonObject{ { "name", "dropA" }, { "kind", "mainA" }, { "bars", 1 } } } } });
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    auto r = call("mix_report", { { "filePath", wavPath }, { "fromPlan", true } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(o.contains("structure")) << text(r).toStdString();
+    EXPECT_TRUE(o.value("structure").toObject().value("hasPlan").toBool());
+
+    // Without fromPlan there is no structure block.
+    auto r2 = call("mix_report", { { "filePath", wavPath } });
+    EXPECT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto o2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    EXPECT_FALSE(o2.contains("structure"));
+}
+
+TEST_F(McpCoverageTest, DiagnoseIntroBlastRegistered) {
+    auto tools = toolList();
+    bool found = false;
+    for (const auto& t : tools)
+        if (t.toObject().value("name").toString() == "diagnose_intro_blast") { found = true; break; }
+    EXPECT_TRUE(found) << "diagnose_intro_blast not registered";
+}
+
+TEST_F(McpCoverageTest, DiagnoseIntroBlastFindsClippingBlast) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("blast.wav");
+    const int kSamples = 44100 * 3;
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, kSamples);
+        for (int i = 0; i < kSamples; ++i)
+        {
+            const double t = static_cast<double>(i) / 44100.0;
+            buffer.setSample(0, i, t < 0.3
+                ? static_cast<float>(std::sin(2.0 * 3.14159265 * 200.0 * t))   // amplitude 1.0 -> clips
+                : static_cast<float>(0.05 * std::sin(2.0 * 3.14159265 * 440.0 * t)));
+        }
+        writer->writeFromAudioSampleBuffer(buffer, 0, kSamples);
+        writer.reset();
+    }
+
+    // maxTracks 0 -> pure detection, no engine renders.
+    auto r = call("diagnose_intro_blast", { { "filePath", wavPath }, { "maxTracks", 0 } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(o.value("detected").toBool());
+    EXPECT_TRUE(o.value("flags").toObject().value("clipping").toBool());
+    EXPECT_TRUE(o.value("flags").toObject().value("loudTransient").toBool());
+    EXPECT_LE(o.value("blast").toObject().value("start").toDouble(), 0.01);
+    EXPECT_FALSE(o.contains("attribution"));
+    EXPECT_GE(o.value("bins").toArray().size(), 8);
+
+    // Default maxTracks with the live engine: attribution key present (the
+    // fixture track has no clips, so the ranked list is empty but the gate runs).
+    auto r2 = call("diagnose_intro_blast", { { "filePath", wavPath } });
+    EXPECT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto o2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    EXPECT_TRUE(o2.contains("attribution"));
+}
+
+TEST_F(McpCoverageTest, DiagnoseIntroBlastQuietPasses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("quiet.wav");
+    const int kSamples = 44100 * 2;
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, kSamples);
+        for (int i = 0; i < kSamples; ++i)
+            buffer.setSample(0, i, static_cast<float>(0.05 * std::sin(2.0 * 3.14159265 * 440.0 * i / 44100.0)));
+        writer->writeFromAudioSampleBuffer(buffer, 0, kSamples);
+        writer.reset();
+    }
+    auto r = call("diagnose_intro_blast", { { "filePath", wavPath }, { "maxTracks", 0 } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_FALSE(o.value("detected").toBool());
+}
+
+TEST_F(McpCoverageTest, DiagnoseIntroBlastBinsSummaryCapsLongScans) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("longquiet.wav");
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, 44100 * 3);
+        for (int i = 0; i < 44100 * 3; ++i)
+            buffer.setSample(0, i,
+                static_cast<float>(0.05 * std::sin(2.0 * 3.14159265 * 440.0 * i / 44100.0)));
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100 * 3);
+        writer.reset();
+    }
+    // 24 bins at 0.125 s -> complete trace, total == emitted.
+    auto r1 = call("diagnose_intro_blast",
+                   { { "filePath", wavPath }, { "maxTracks", 0 },
+                     { "windowSeconds", 3.0 }, { "binSeconds", 0.125 } });
+    EXPECT_FALSE(isError(r1)) << text(r1).toStdString();
+    auto o1 = QJsonDocument::fromJson(text(r1).toUtf8()).object();
+    auto s1 = o1.value("binsSummary").toObject();
+    EXPECT_FALSE(s1.value("truncated").toBool());
+    EXPECT_EQ(s1.value("totalBins").toInt(), s1.value("emittedBins").toInt());
+    // 150 bins at 0.02 s -> capped (the 1200-bin dump used to trip the output
+    // guard); the response stays bounded and reports the totals.
+    auto r2 = call("diagnose_intro_blast",
+                   { { "filePath", wavPath }, { "maxTracks", 0 },
+                     { "windowSeconds", 3.0 }, { "binSeconds", 0.02 } });
+    EXPECT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto o2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    auto s2 = o2.value("binsSummary").toObject();
+    EXPECT_TRUE(s2.value("truncated").toBool());
+    EXPECT_GE(s2.value("totalBins").toInt(), 120);
+    EXPECT_LE(o2.value("bins").toArray().size(), 200);
+    EXPECT_LE(s2.value("emittedBins").toInt(), 200);
+}
+
+TEST_F(McpCoverageTest, MixReportFromPlanClampsToFileDuration) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("short.wav");
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        juce::AudioBuffer<float> buffer(1, 44100 * 5);
+        for (int i = 0; i < 44100 * 5; ++i)
+            buffer.setSample(0, i,
+                static_cast<float>(0.3 * std::sin(2.0 * 3.14159265 * 220.0 * i / 44100.0)));
+        writer->writeFromAudioSampleBuffer(buffer, 0, 44100 * 5);
+        writer.reset();
+    }
+    // 8 bars @ 120 bpm = 16 s of plan inside a 5 s file: windows must clamp
+    // (with clampedSections reported), not hard-error - the preview-render
+    // measurement loop depends on it.
+    auto sp = call("set_song_plan", QJsonObject{
+        { "bpm", 120.0 }, { "keyRoot", 0 }, { "scaleMode", 1 },
+        { "style", "test" }, { "seed", 1 }, { "totalBars", 8 },
+        { "sections", QJsonArray{ QJsonObject{
+            { "name", "intro" }, { "kind", "intro" }, { "bars", 8 } } } } });
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    auto r = call("mix_report",
+                  { { "filePath", wavPath }, { "fromPlan", true }, { "wait", true } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(o.contains("clampedSections")) << text(r).toStdString();
+    EXPECT_TRUE(o.value("clampedSections").toArray().contains(QString("intro")));
+    auto secs = o.value("sections").toArray();
+    ASSERT_EQ(secs.size(), 1);
+    EXPECT_LE(secs[0].toObject().value("end").toDouble(), 5.0 + 1e-3);
+}
+
+TEST_F(McpCoverageTest, ListPluginsReportsScanState) {
+    // An empty catalog must be distinguishable from "a scan is still running"
+    // (the ambiguity that cost a session's worth of plugin debugging).
+    auto r = call("list_plugins", { { "kind", "all" } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_TRUE(o.contains("plugins"));
+    EXPECT_TRUE(o.contains("scanning")) << text(r).toStdString();
+    EXPECT_TRUE(o.contains("scannedCount"));
+}
+
+TEST_F(McpCoverageTest, MixReportFlagsDropQuieterThanBuild) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString wavPath = dir.filePath("build_loud.wav");
+    {
+        juce::File wavFile(wavPath.toStdString());
+        auto outStream = wavFile.createOutputStream();
+        ASSERT_NE(outStream, nullptr);
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(outStream.get(), 44100.0, 1, 16, {}, 0));
+        ASSERT_NE(writer, nullptr);
+        outStream.release();
+        const int n = 44100 * 4;
+        juce::AudioBuffer<float> buffer(1, n);
+        for (int i = 0; i < n; ++i)
+        {
+            const double t = static_cast<double>(i) / 44100.0;
+            const double amp = t < 2.0 ? 0.6 : 0.08;   // build loud, drop quiet
+            buffer.setSample(0, i,
+                static_cast<float>(amp * std::sin(2.0 * 3.14159265 * 220.0 * t)));
+        }
+        writer->writeFromAudioSampleBuffer(buffer, 0, n);
+        writer.reset();
+    }
+    // bpm 120 -> 1 bar = 2 s: build [0,2 s), dropA [2,4 s).
+    auto sp = call("set_song_plan", QJsonObject{
+        { "bpm", 120.0 }, { "keyRoot", 0 }, { "scaleMode", 1 },
+        { "style", "test" }, { "seed", 3 }, { "totalBars", 2 },
+        { "sections", QJsonArray{
+            QJsonObject{ { "name", "build" }, { "kind", "build" }, { "bars", 1 } },
+            QJsonObject{ { "name", "dropA" }, { "kind", "mainA" }, { "bars", 1 } } } } });
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    auto r = call("mix_report",
+                  { { "filePath", wavPath }, { "fromPlan", true }, { "wait", true } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    auto gates = o.value("loudnessGates").toObject();
+    EXPECT_FALSE(gates.value("ok").toBool()) << text(r).toStdString();
+    auto rows = gates.value("dropVsBuild").toArray();
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows[0].toObject().value("drop").toString(), "dropA");
+    EXPECT_FALSE(rows[0].toObject().value("ok").toBool());
+    EXPECT_GE(gates.value("issues").toArray().size(), 1);
+
+    // A plan WITHOUT kinds cannot run the gate (explicit sections path).
+    auto r2 = call("mix_report", { { "filePath", wavPath },
+                                   { "sections", QJsonArray{ QJsonObject{
+                                       { "name", "whole" }, { "start", 0.0 }, { "end", 4.0 } } } } });
+    EXPECT_FALSE(isError(r2)) << text(r2).toStdString();
+    auto o2 = QJsonDocument::fromJson(text(r2).toUtf8()).object();
+    EXPECT_FALSE(o2.contains("loudnessGates"));
+}
+
+TEST_F(McpCoverageTest, SetCellsBatchesInOneUndoUnit) {
+    auto sp = call("set_song_plan", QJsonObject{
+        { "bpm", 120.0 }, { "keyRoot", 5 }, { "scaleMode", 1 },
+        { "style", "test" }, { "seed", 7 }, { "totalBars", 16 },
+        { "sections", QJsonArray{
+            QJsonObject{ { "name", "intro" }, { "kind", "intro" }, { "bars", 8 } },
+            QJsonObject{ { "name", "dropA" }, { "kind", "mainA" }, { "bars", 8 } } } } });
+    EXPECT_FALSE(isError(sp)) << text(sp).toStdString();
+
+    // 2 valid recipes + 1 invalid (unknown section): partial success, and the
+    // batch is ONE undo unit (the tool's per-recipe loop used to start a
+    // transaction per recipe - N undo steps).
+    auto r = call("set_cells", { { "cells", QJsonArray{
+        QJsonObject{ { "section", "intro" }, { "role", "kick" }, { "trackId", 0 },
+                     { "source", "rhythm" } },
+        QJsonObject{ { "section", "dropA" }, { "role", "bass" }, { "trackId", 0 },
+                     { "source", "phrase" },
+                     { "params", QJsonObject{ { "style", "BassLine" },
+                                              { "scaleRoot", 5 }, { "scaleMode", 1 } } } },
+        QJsonObject{ { "section", "nope" }, { "role", "hats" }, { "trackId", 0 },
+                     { "source", "rhythm" } } } } });
+    EXPECT_FALSE(isError(r)) << text(r).toStdString();
+    auto o = QJsonDocument::fromJson(text(r).toUtf8()).object();
+    EXPECT_EQ(o.value("count").toInt(), 2);
+    EXPECT_EQ(o.value("failed").toInt(), 1);
+    EXPECT_FALSE(o.value("ok").toBool());
+    const auto results = o.value("cells").toArray();
+    ASSERT_EQ(results.size(), 3);
+    EXPECT_FALSE(results[2].toObject().value("error").toString().isEmpty());
+
+    auto listed = QJsonDocument::fromJson(callText("get_cells").toString().toUtf8()).object();
+    EXPECT_EQ(listed.value("cells").toArray().size(), 2);
+
+    auto u = call("undo", { { "count", 1 } });
+    EXPECT_FALSE(isError(u)) << text(u).toStdString();
+    auto after = QJsonDocument::fromJson(callText("get_cells").toString().toUtf8()).object();
+    EXPECT_EQ(after.value("cells").toArray().size(), 0)
+        << "one undo must remove the whole batch (single transaction)";
+}
+
+TEST_F(McpCoverageTest, AuditReportsVolumeLaneAuthority) {
+    // A sounding track (>= 1 clip) with movement-plan Volume automation.
+    auto gen = call("generate_rhythm_pattern",
+                    { { "trackId", 0 }, { "bars", 4 }, { "grid", 16 },
+                      { "pulseA", 4 }, { "pulseB", 3 } });
+    EXPECT_FALSE(isError(gen)) << text(gen).toStdString();
+    auto plan = call("apply_movement_plan", { { "events", QJsonArray{
+        QJsonObject{ { "trackId", 0 }, { "preset", "pump" },
+                     { "start", 0 }, { "end", 8 } } } } });
+    EXPECT_FALSE(isError(plan)) << text(plan).toStdString();
+
+    auto audit = [&]() {
+        return QJsonDocument::fromJson(
+            callText("audit_modulation_coverage").toString().toUtf8()).object();
+    };
+    auto a1 = audit();
+    ASSERT_FALSE(a1.value("tracks").toArray().isEmpty());
+    auto t1 = a1.value("tracks").toArray()[0].toObject();
+    EXPECT_TRUE(t1.value("faderOverridden").toBool())
+        << "an enabled Volume lane must report faderOverridden";
+    EXPECT_GE(t1.value("volumeLanes").toObject().value("enabled").toInt(), 1);
+    EXPECT_TRUE(a1.value("summary").toObject().value("faderOverriddenIds")
+                    .toArray().contains(QJsonValue(0)));
+
+    // The remedy: fader authority clears the override report.
+    auto fa = call("set_fader_authoritative", { { "trackId", 0 }, { "authoritative", true } });
+    EXPECT_FALSE(isError(fa)) << text(fa).toStdString();
+    auto a2 = audit();
+    ASSERT_FALSE(a2.value("tracks").toArray().isEmpty());
+    EXPECT_FALSE(a2.value("tracks").toArray()[0].toObject()
+                     .value("faderOverridden").toBool());
+    EXPECT_FALSE(a2.value("summary").toObject().value("faderOverriddenIds")
+                     .toArray().contains(QJsonValue(0)));
 }
 
 TEST_F(McpCoverageTest, GenerateRhythmPatternLongBars) {

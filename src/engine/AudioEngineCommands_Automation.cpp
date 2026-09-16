@@ -283,9 +283,27 @@ std::string AudioEngineCommands::applyAutomationPreset(
                    ") must be > start (" + std::to_string(w.start) + ")";
     }
 
-    auto* proc = engine_.getMainProcessor();
     auto& um = engine_.getProjectModel().getUndoManager();
     um.beginNewTransaction("apply automation preset");
+
+    const int added = writePresetWindowsToLane(trackIndex, autoLane, windows,
+                                               clearWindowBeforeApply, seed);
+    if (pointsAdded) *pointsAdded = added;
+    return "";
+}
+
+// Shared NON-transactional core of the preset bank: writes envelope points
+// for one or more windows onto an EXISTING lane (assumed valid), enables it,
+// and refreshes the automation cache. The caller owns the undo transaction
+// boundary — applyAutomationPreset begins its own; applyMovementPlan batches
+// many lanes inside ONE. Returns the number of points written.
+int AudioEngineCommands::writePresetWindowsToLane(
+    int trackIndex, juce::ValueTree autoLane,
+    const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
+    bool clearWindowBeforeApply, uint64_t seed)
+{
+    auto* proc = engine_.getMainProcessor();
+    auto& um = engine_.getProjectModel().getUndoManager();
 
     double bpm = engine_.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
 
@@ -346,7 +364,146 @@ std::string AudioEngineCommands::applyAutomationPreset(
     autoLane.setProperty(IDs::automationEnabled, true, &um);
     if (proc)
         proc->rebuildAutomationCache(trackIndex);
+    return added;
+}
 
-    if (pointsAdded) *pointsAdded = added;
-    return "";
+namespace {
+
+juce::ValueTree findLaneByParamID(const juce::ValueTree& autoList, int paramID)
+{
+    if (!autoList.isValid()) return {};
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+    {
+        const auto lane = autoList.getChild(i);
+        if (static_cast<int>(lane.getProperty(IDs::paramID, 0)) == paramID)
+            return lane;
+    }
+    return {};
+}
+
+bool laneNameExists(const juce::ValueTree& autoList, const juce::String& name)
+{
+    if (!autoList.isValid()) return false;
+    for (int i = 0; i < autoList.getNumChildren(); ++i)
+        if (autoList.getChild(i).getProperty(IDs::name, "").toString() == name) return true;
+    return false;
+}
+
+juce::String firstFreeLaneName(const juce::ValueTree& autoList, const juce::String& base)
+{
+    if (!laneNameExists(autoList, base)) return base;
+    int n = 2;
+    while (laneNameExists(autoList, base + juce::String("_") + juce::String(n))) ++n;
+    return base + juce::String("_") + juce::String(n);
+}
+
+} // namespace
+
+// ─── applyMovementPlan (FX & Automation choreography) ─────────────
+// Batch section-aware movement across tracks in ONE undo unit: per event,
+// resolve-or-create the lane (reuse the lane already bound to paramID — never
+// stack two lanes on the same parameter), then write the named preset across
+// the beat window via the shared preset-writer (clear=true replaces points
+// inside the window and enables the lane). Partial failure keeps the good
+// events; each event reports ok/error. Deterministic per-event seed.
+AudioEngineCommands::MovementPlanResult AudioEngineCommands::applyMovementPlan(
+    const std::vector<MovementEvent>& events)
+{
+    MovementPlanResult result;
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+
+    beginTransaction("Movement plan");
+    for (const auto& ev : events)
+    {
+        MovementEventResult res;
+        res.ok = false;
+
+        const auto fail = [&res](const std::string& msg) { res.error = msg; };
+        if (ev.trackIndex < 0 || ev.trackIndex >= trackList.getNumChildren())
+        {
+            fail("track not found");
+            result.events.push_back(res); ++result.failCount;
+            continue;
+        }
+        const auto preset = HDAW::AutomationPreset::presetFromName(ev.preset);
+        if (!preset)
+        {
+            fail("unknown preset: " + ev.preset);
+            result.events.push_back(res); ++result.failCount;
+            continue;
+        }
+        if (!(ev.endBeats > ev.startBeats))
+        {
+            fail("bad window: end must be > start");
+            result.events.push_back(res); ++result.failCount;
+            continue;
+        }
+
+        const int paramID = ev.paramID == -1 ? 1 : ev.paramID;
+        auto track = trackList.getChild(ev.trackIndex);
+        auto autoList = track.getChildWithName(IDs::AUTOMATION_LIST);
+
+        juce::ValueTree lane;
+        std::string laneName = ev.laneName;
+        if (!laneName.empty())
+        {
+            lane = findAutomationLane(ev.trackIndex, laneName);
+            if (!lane.isValid())
+            {
+                if (!addAutomationLane(ev.trackIndex, laneName, paramID))
+                {
+                    fail("lane create conflict: " + laneName);
+                    result.events.push_back(res); ++result.failCount;
+                    continue;
+                }
+                lane = findAutomationLane(ev.trackIndex, laneName);
+            }
+            else
+            {
+                const int existingPid = static_cast<int>(lane.getProperty(IDs::paramID, 0));
+                if (existingPid != 0 && paramID != 0 && existingPid != paramID)
+                {
+                    fail("paramID conflict on lane " + laneName);
+                    result.events.push_back(res); ++result.failCount;
+                    continue;
+                }
+            }
+        }
+        else
+        {
+            lane = findLaneByParamID(autoList, paramID);
+            if (lane.isValid())
+                laneName = lane.getProperty(IDs::name, "").toString().toStdString();
+            else
+            {
+                laneName = firstFreeLaneName(
+                    autoList, juce::String("movement-")
+                        + juce::String(HDAW::AutomationPreset::presetName(*preset)))
+                    .toStdString();
+                if (!addAutomationLane(ev.trackIndex, laneName, paramID))
+                {
+                    fail("lane create failed: " + laneName);
+                    result.events.push_back(res); ++result.failCount;
+                    continue;
+                }
+                lane = findAutomationLane(ev.trackIndex, laneName);
+            }
+        }
+
+        HDAW::AutomationPreset::PresetWindow w;
+        w.start = ev.startBeats;
+        w.end = ev.endBeats;
+        w.preset = *preset;
+        w.startValue = ev.startValue;
+        w.endValue = ev.endValue;
+        const int added = writePresetWindowsToLane(
+            ev.trackIndex, lane, { w }, true, ev.seed);
+        res.laneName = laneName;
+        res.pointsWritten = added;
+        res.ok = true;
+        result.events.push_back(res);
+        ++result.okCount;
+    }
+    endTransaction();
+    return result;
 }

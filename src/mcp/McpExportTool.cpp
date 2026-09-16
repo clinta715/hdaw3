@@ -1,4 +1,5 @@
 #include "McpExportTool.h"
+#include "McpJobs.h"
 #include "McpServer.h"
 #include "McpJsonRpc.h"
 #include "McpToolDef.h"
@@ -167,8 +168,25 @@ void registerExportTool(McpServer& s) {
                     QString("export wait timeout after %1ms; render may still be running (poll notifications/exportComplete or the file)").arg(waitMs), true);
             }
 
-            return McpToolResult::text(QString("export started: %1 (format=%2, rate=%3, bits=%4, duration=%5s)")
+            // The async path ALSO submits a McpJobs job that polls the export
+            // manager until it leaves the rendering state — agents then get a
+            // RELIABLE completion state via poll_job (the writer is joined and
+            // the WAV fully flushed before the job completes). Measuring by
+            // file-size polling alone silently reads a mid-write file: the
+            // artifact that burned the 2026-09-15 remix session.
+            const int jobId = McpJobs::instance().submit("export_audio", [&em, path]() -> QJsonObject {
+                if (em.waitForIdle(1500000))
+                    return QJsonObject{{"success", true},
+                                       {"message", QStringLiteral("export complete: %1").arg(path)},
+                                       {"outputPath", path}};
+                return QJsonObject{{"success", false},
+                                   {"message", QStringLiteral("export wait timeout after 1500000ms")},
+                                   {"outputPath", path}};
+            });
+
+            return McpToolResult::text(QString("export started: %1 (jobId=%2, format=%3, rate=%4, bits=%5, duration=%6s)")
                 .arg(path)
+                .arg(jobId)
                 .arg(formatStr)
                 .arg(sampleRate)
                 .arg(bitDepth)

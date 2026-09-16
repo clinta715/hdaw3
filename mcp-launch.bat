@@ -58,6 +58,17 @@ if not "%SRCSZ%"=="%DSTSZ%" (
     echo ERROR: Size mismatch copying HDAW_headless.exe: source %SRCSZ% bytes, destination %DSTSZ% bytes. Stale engine holding the target? >&2
     exit /b 1
 )
+call :hash_of "%SRC%" SRCH
+call :hash_of "%DST%" DSTH
+if not "%SRCH%"=="%DSTH%" (
+    echo ERROR: Content mismatch copying HDAW_headless.exe (hash ^"%SRCH%^" vs ^"%DSTH%^") — stale or mid-copy binary >&2
+    exit /b 1
+)
+findstr /c:"audit_song_structure" "%DST%" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Copied engine missing current MCP tool surface (audit_song_structure sentinel) - stale build? Rebuild then rerun. >&2
+    exit /b 1
+)
 
 call :resolve_engine_src "hdaw_plugin_host.exe" HOST_SRC
 if errorlevel 1 exit /b 1
@@ -74,6 +85,12 @@ if not "%HOST_SRCSZ%"=="%HOST_DSTSZ%" (
     echo ERROR: Size mismatch copying hdaw_plugin_host.exe: source %HOST_SRCSZ% bytes, destination %HOST_DSTSZ% bytes. Stale engine holding the target? >&2
     exit /b 1
 )
+call :hash_of "%HOST_SRC%" HSRCH
+call :hash_of "%HOST_DST%" HDSTH
+if not "%HSRCH%"=="%HDSTH%" (
+    echo ERROR: Content mismatch copying hdaw_plugin_host.exe (hash ^"%HSRCH%^" vs ^"%HDSTH%^") >&2
+    exit /b 1
+)
 
 call :resolve_engine_src "hdaw_plugin_scanner.exe" SCAN_SRC
 if errorlevel 1 exit /b 1
@@ -88,6 +105,12 @@ for %%A in ("%SCAN_SRC%") do set "SCAN_SRCSZ=%%~zA"
 for %%A in ("%SCAN_DST%") do set "SCAN_DSTSZ=%%~zA"
 if not "%SCAN_SRCSZ%"=="%SCAN_DSTSZ%" (
     echo ERROR: Size mismatch copying hdaw_plugin_scanner.exe: source %SCAN_SRCSZ% bytes, destination %SCAN_DSTSZ% bytes. Stale engine holding the target? >&2
+    exit /b 1
+)
+call :hash_of "%SCAN_SRC%" SSRCH
+call :hash_of "%SCAN_DST%" SDSTH
+if not "%SSRCH%"=="%SDSTH%" (
+    echo ERROR: Content mismatch copying hdaw_plugin_scanner.exe (hash ^"%SSRCH%^" vs ^"%SDSTH%^") >&2
     exit /b 1
 )
 
@@ -146,3 +169,17 @@ if exist "%RES_VSDBG%" (
 )
 echo ERROR: Neither %RES_NINJA% nor %RES_VSDBG% found. Build first (build-fast.bat, or cmake --build build --target HDAW_headless hdaw_plugin_host hdaw_plugin_scanner). >&2
 exit /b 1
+
+:: MD5 of a file into a variable. Validated 2026-09-16 after two false-pass
+:: traps: (1) a QUOTED path in for /f is parsed as a literal string, not a file
+:: (iteration yields nothing / the path itself), and (2) certutil prints a
+:: header, the hex digest, then a "completed successfully" summary - a naive
+:: last-line capture stores the SUMMARY, so any copy compares equal. skip=1
+:: drops the header and the DONE guard keeps the digest line exactly once.
+:: NOTE: the unquoted for /f file-set requires %TEMP% to be space-free (true on
+:: the supported dev boxes).
+:hash_of
+set "DONEH="
+certutil -hashfile "%~1" MD5 > %TEMP%\hdaw_hash_probe.txt 2>nul
+for /f "skip=1" %%H in (%TEMP%\hdaw_hash_probe.txt) do if not defined DONEH (set "DONEH=1" & set "%~2=%%H")
+exit /b 0

@@ -14,6 +14,7 @@
 #include "../../engine/EnvelopeGenerator.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QSettings>
@@ -366,6 +367,30 @@ DispatchResult dispatchProject(ProjectCommands& c, const QString& m, const QJson
         if (!c.applySubSynthModPreset(i, s, presetId, &err))
             return makeError(-32602, QString::fromStdString(err.empty() ? "applySubSynthModPreset failed" : err));
         return { false, QJsonObject{{"ok", true}, {"presetId", QString::fromStdString(presetId)}} };
+    }
+    if (m == "setLayerHandoff") {
+        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        ProjectCommands::LayerHandoff h;
+        if (o.value("role").isString())          h.role          = o.value("role").toString().toStdString();
+        if (o.value("soundIntent").isString())   h.soundIntent   = o.value("soundIntent").toString().toStdString();
+        if (o.value("patternIntent").isString()) h.patternIntent = o.value("patternIntent").toString().toStdString();
+        if (o.value("modulation").isObject())
+            h.modulation = QString::fromUtf8(QJsonDocument(o.value("modulation").toObject())
+                .toJson(QJsonDocument::Compact)).toStdString();
+        if (o.value("verify").isObject())
+            h.verify = QString::fromUtf8(QJsonDocument(o.value("verify").toObject())
+                .toJson(QJsonDocument::Compact)).toStdString();
+        std::string err;
+        if (!c.setLayerHandoff(i, h, &err))
+            return makeError(-32602, QString::fromStdString(err.empty() ? "setLayerHandoff failed" : err));
+        return { false, QJsonObject{{ "ok", true }, { "trackIndex", i }} };
+    }
+    if (m == "clearLayerHandoff") {
+        int i; if (!requireInt(o, "trackIndex", i, nullptr)) return makeError(-32602, "trackIndex required");
+        std::string err;
+        if (!c.clearLayerHandoff(i, &err))
+            return makeError(-32602, QString::fromStdString(err.empty() ? "clearLayerHandoff failed" : err));
+        return { false, QJsonObject{{ "ok", true }} };
     }
     if (m == "reorderFxSlots")      { int i, f, t; if (!requireInt(o, "trackIndex", i, nullptr) || !requireInt(o, "fromSlot", f, nullptr) || !requireInt(o, "toSlot", t, nullptr)) return makeError(-32602, "trackIndex, fromSlot, toSlot required"); c.reorderFxSlots(i, f, t); return { false, QJsonValue::Null }; }
     if (m == "setFxSlotPlugin") {

@@ -70,6 +70,7 @@ TEST(SongPlan, SetSyncsTypedRegionsAndEchoes)
     auto plan = cmds.getSongPlan();
     ASSERT_EQ(plan.sections.size(), 3u);
     EXPECT_DOUBLE_EQ(plan.bpm, 138.0);
+    EXPECT_DOUBLE_EQ((double) engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0), 138.0);
     EXPECT_EQ(plan.keyRoot, 5);
     EXPECT_EQ(plan.scaleMode, 7);
     EXPECT_EQ(plan.style, "full-on");
@@ -197,6 +198,7 @@ TEST(SongPlan, BriefRoundTripAndValidation)
     auto r = cmds.applySongBrief(brief);
     ASSERT_TRUE(r.ok) << r.error;
     ASSERT_EQ(r.plan.sections.size(), 4u);
+    EXPECT_DOUBLE_EQ((double) engine.getProjectModel().getTree().getProperty(IDs::tempo, 0.0), 140.0);
     // Brief type aliases map onto canonical kinds.
     EXPECT_EQ(r.plan.sections[2].kind, "breakdown");
     EXPECT_EQ(r.plan.sections[3].kind, "finale");
@@ -271,7 +273,9 @@ TEST(SongCells, PhraseFillWindowReuseAndProvenance)
     auto& cmds = engine.getProjectCommands();
     cmds.addTrack("Track 0");
     cmds.addTrack("Track 1");
-    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);   // intro 8/16/8 @138bpm, bpm metadata only; transport default 120
+    // setSongPlan APPLIES the plan bpm to the transport (see SongPlan.SetSyncs…),
+    // so fills below size their windows at 138, not the 120 default.
+    ASSERT_TRUE(cmds.setSongPlan(makePlan()).ok);   // intro 8/16/8 @138bpm
 
     std::string err;
     ASSERT_TRUE(cmds.setCellRecipe(makeCell("intro", "bass", "phrase", R"({"style":"BassLine"})"), &err)) << err;
@@ -289,10 +293,12 @@ TEST(SongCells, PhraseFillWindowReuseAndProvenance)
     EXPECT_GT(rhythm.noteCount, 0);
     EXPECT_GT(phrase.seedUsed, 0u);
 
-    // Window math: clip spans EXACTLY the section (120 BPM transport default).
+    // Window math: clip spans EXACTLY the section at the ACTIVE transport
+    // tempo (setSongPlan wrote the plan's 138 bpm into the tree).
     auto clip = findClipNode(engine, phrase.clipId);
     ASSERT_TRUE(clip.isValid());
-    const double bpm = 120.0;
+    const double bpm = (double) engine.getProjectModel().getTree().getProperty(IDs::tempo, 120.0);
+    EXPECT_NEAR(bpm, 138.0, 1e-6);
     EXPECT_NEAR((double) clip.getProperty(IDs::startTime), 0.0 * 60.0 / bpm, 1e-6);   // intro starts at beat 0
     EXPECT_NEAR((double) clip.getProperty(IDs::duration), 8.0 * 4 * 60.0 / bpm, 1e-6); // 8 bars = 32 beats
 

@@ -167,6 +167,10 @@ void applyPlanWrites(AudioEngine& engine, const ProjectCommands::SongPlanData& p
         planTree = { IDs::SONG_PLAN, {} };
         root.addChild(planTree, -1, &um);
     }
+    // The plan BPM is also the project transport tempo. Generators and
+    // beat/seconds conversions read IDs::tempo, while mix_report(fromPlan)
+    // reads spBpm, so keep both sources synchronized in the same undo unit.
+    root.setProperty(IDs::tempo, plan.bpm, &um);
     planTree.setProperty(IDs::spBpm, plan.bpm, &um);
     planTree.setProperty(IDs::spKeyRoot, plan.keyRoot, &um);
     planTree.setProperty(IDs::spScaleMode, plan.scaleMode, &um);
@@ -552,7 +556,11 @@ bool knownSourceKind(const std::string& kind)
 
 } // namespace
 
-bool AudioEngineCommands::setCellRecipe(const CellRecipe& recipe, std::string* error)
+// Shared validation + write path for one recipe. NO transaction of its own:
+// setCellRecipe() wraps it in a single-recipe unit and setCellRecipes() wraps
+// many in ONE unit (a per-recipe transaction silently made a 55-cell batch 55
+// undo steps - fix 2026-09-16).
+bool AudioEngineCommands::setCellRecipeImpl(const CellRecipe& recipe, std::string* error)
 {
     auto fail = [&](const juce::String& msg) {
         if (error) *error = msg.toStdString();
@@ -608,7 +616,6 @@ bool AudioEngineCommands::setCellRecipe(const CellRecipe& recipe, std::string* e
     if (!planTree.isValid())
         return fail("no song plan set");
 
-    beginTransaction("Set cell recipe");
     auto cells = planTree.getChildWithName(IDs::CELLS);
     if (!cells.isValid())
     {
@@ -638,8 +645,35 @@ bool AudioEngineCommands::setCellRecipe(const CellRecipe& recipe, std::string* e
     node.setProperty(IDs::cellLocked, recipe.locked, &um);
     if (isNew || !node.hasProperty(IDs::cellLastClipId)) node.setProperty(IDs::cellLastClipId, -1, &um);
     if (isNew || !node.hasProperty(IDs::cellLastSeed))    node.setProperty(IDs::cellLastSeed, 0.0, &um);
-    endTransaction();
     return true;
+}
+
+// Public single-recipe entry: ONE undo unit around the shared impl.
+bool AudioEngineCommands::setCellRecipe(const CellRecipe& recipe, std::string* error)
+{
+    beginTransaction("Set cell recipe");
+    const bool ok = setCellRecipeImpl(recipe, error);
+    endTransaction();
+    return ok;
+}
+
+// Batch entry: N validated recipes in ONE undo unit and one message-loop tick.
+// Returns the ok-count; when `errors` is non-null it is filled in parallel
+// (empty string = ok) so the caller can report partial failure.
+int AudioEngineCommands::setCellRecipes(const std::vector<CellRecipe>& recipes,
+                                        std::vector<std::string>* errors)
+{
+    if (errors) errors->assign(recipes.size(), std::string());
+    int ok = 0;
+    beginTransaction("Set cells");
+    for (size_t i = 0; i < recipes.size(); ++i)
+    {
+        std::string err;
+        if (setCellRecipeImpl(recipes[i], &err)) ++ok;
+        else if (errors) (*errors)[i] = err;
+    }
+    endTransaction();
+    return ok;
 }
 
 std::vector<ProjectCommands::CellRecipe> AudioEngineCommands::getCells() const
@@ -1039,5 +1073,62 @@ std::string AudioEngineCommands::getClipProvenance(int clipId) const
     obj->setProperty("seed", (double) (long long) (double) node.getProperty(IDs::genSeed, 0.0));
     obj->setProperty("params", node.getProperty(IDs::genParams, "").toString());
     return juce::JSON::toString(juce::var(obj), true).toStdString();
+}
+
+// ─── ProjectCommands — Layer handoff ledger (hybrid workflow) ──────────────
+// Workflow metadata only: written as track properties, persisted by the
+// whole-tree toXmlString save/load path, read back by the MCP ledger/audit
+// tools. No audio processor consumes these properties, so there is no
+// rebuild-restore requirement (Gates 1/10 N/A).
+
+bool AudioEngineCommands::setLayerHandoff(int trackIndex,
+                                          const LayerHandoff& handoff,
+                                          std::string* error)
+{
+    auto fail = [error](const juce::String& msg) {
+        if (error) *error = msg.toStdString();
+        return false;
+    };
+
+    // Gate 9: validate BEFORE any write.
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return fail("track not found");
+    if (handoff.empty())
+        return fail("empty handoff: provide role, soundIntent, patternIntent, modulation, and/or verify");
+
+    auto track = trackList.getChild(trackIndex);
+    beginTransaction("Layer handoff");
+    track.setProperty(IDs::layerRole,          juce::String(handoff.role),          &um);
+    track.setProperty(IDs::layerSoundIntent,   juce::String(handoff.soundIntent),   &um);
+    track.setProperty(IDs::layerPatternIntent, juce::String(handoff.patternIntent), &um);
+    track.setProperty(IDs::layerModulation,    juce::String(handoff.modulation),    &um);
+    track.setProperty(IDs::layerVerify,        juce::String(handoff.verify),        &um);
+    endTransaction();
+    return true;
+}
+
+bool AudioEngineCommands::clearLayerHandoff(int trackIndex, std::string* error)
+{
+    auto fail = [error](const juce::String& msg) {
+        if (error) *error = msg.toStdString();
+        return false;
+    };
+
+    auto& um = engine_.getProjectModel().getUndoManager();
+    auto trackList = engine_.getProjectModel().getTrackListTree();
+    if (trackIndex < 0 || trackIndex >= trackList.getNumChildren())
+        return fail("track not found");
+
+    auto track = trackList.getChild(trackIndex);
+    beginTransaction("Clear layer handoff");
+    track.removeProperty(IDs::layerRole,          &um);
+    track.removeProperty(IDs::layerSoundIntent,   &um);
+    track.removeProperty(IDs::layerPatternIntent, &um);
+    track.removeProperty(IDs::layerModulation,    &um);
+    track.removeProperty(IDs::layerVerify,        &um);
+    endTransaction();
+    return true;
 }
 

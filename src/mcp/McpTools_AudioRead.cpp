@@ -22,8 +22,55 @@
 #include <optional>
 #include <vector>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include "../engine/SongStructureAudit.h"
 
 namespace mcp {
+
+// Drop-vs-build loudness gate (Mix Verifier): a drop section must measure at
+// least `ratio` x the RMS of the build that precedes it. Builds are tension
+// sections - busy is expected, LOUDER than the payoff is not (the RMS-hotter-
+// build case was found by hand on Neon Meridian). Audio-level companion of
+// audit_song_structure's dropsAtLeastBuildLoad. No-op unless the plan's section
+// kinds are known (fromPlan) and names match the analyzed sections.
+static void applyDropVsBuildGate(QJsonObject& root, const QJsonObject& planKinds, double ratio)
+{
+    if (planKinds.isEmpty()) return;
+    const auto secs = root.value("sections").toArray();
+    if (secs.isEmpty()) return;
+    const auto isBuild = [](const QString& k) {
+        return k.compare("build", Qt::CaseInsensitive) == 0
+            || k.compare("build2", Qt::CaseInsensitive) == 0; };
+    const auto isDrop = [](const QString& k) {
+        return k.compare("mainA", Qt::CaseInsensitive) == 0
+            || k.compare("mainB", Qt::CaseInsensitive) == 0
+            || k.compare("finale", Qt::CaseInsensitive) == 0
+            || k.compare("drop", Qt::CaseInsensitive) == 0; };
+    QJsonArray rows, issues;
+    QString buildName; double buildRms = 0.0; bool haveBuild = false;
+    for (const auto& v : secs)
+    {
+        const auto o = v.toObject();
+        const QString name = o.value("name").toString();
+        const QString kind = planKinds.value(name).toString();
+        const double rms = o.value("rms").toDouble();
+        if (isBuild(kind)) { buildName = name; buildRms = rms; haveBuild = true; continue; }
+        if (!isDrop(kind)) continue;
+        if (!haveBuild || buildRms <= 0.0) continue;
+        const double r = rms / buildRms;
+        rows.append(QJsonObject{ { "drop", name }, { "dropRms", rms },
+                                 { "build", buildName }, { "buildRms", buildRms },
+                                 { "ratio", r }, { "ok", r >= ratio } });
+        if (r < ratio)
+            issues.append(QString("%1 is %2x its build %3 (build rms %4, drop rms %5) - thin the build cells or lift the drop layers")
+                              .arg(name).arg(QString::number(r, 'f', 2)).arg(buildName)
+                              .arg(QString::number(buildRms, 'f', 3)).arg(QString::number(rms, 'f', 3)));
+    }
+    if (rows.isEmpty()) return;
+    root["loudnessGates"] = QJsonObject{ { "ok", issues.isEmpty() },
+                                         { "ratioThreshold", ratio },
+                                         { "dropVsBuild", rows },
+                                         { "issues", issues } };
+}
 
 static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, const QJsonArray& sectionsArg, bool hasSections)
 {
@@ -67,6 +114,12 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
             && retry.peak > 0.0f)
             rep = retry;
     }
+    if (rep.peak <= 0.0f && rep.duration > 0.5)
+    {
+        // Persistently-zero measurement on a known-rendered file: the wedged-
+        // instance state (clears on engine restart via the engine_restart tool).
+        rep.measurementSuspicious = true;
+    }
 
     QJsonObject root{
         {"duration", rep.duration},
@@ -78,7 +131,8 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
             {"bass", rep.bands[1]},
             {"body", rep.bands[2]},
             {"high", rep.bands[3]}}},
-        {"kickProminence", rep.kickProminence}
+        {"kickProminence", rep.kickProminence},
+        {"measurementSuspicious", rep.measurementSuspicious}
     };
     if (rep.hasPumpDepth)
         root["pumpDepth"] = rep.pumpDepth;
@@ -91,6 +145,7 @@ static QJsonObject runMixReportAnalysis(const QString& filePath, double bpm, con
             {"end", s.end},
             {"rms", s.rms},
             {"peak", s.peak},
+            {"boundaryPeak", s.boundaryPeak},
             {"bandEnergy", QJsonObject{
                 {"sub", s.bandEnergy[0]},
                 {"bass", s.bandEnergy[1]},
@@ -474,7 +529,7 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
 
     s.registerTool({"mix_report",
         "Offline mix analysis of a rendered audio file (render verification): overall "
-        "peak/RMS, 4-band energies, per-section RMS/peak/band details, pump depth and "
+        "peak/RMS, 4-band energies, per-section RMS/peak/boundaryPeak/band details, pump depth and "
         "kick prominence. Section times are SECONDS; windows are [start,end). Band "
         "cutoffs (Hz): sub 40-110, bass 90-300, body 300-2000, high >6000. "
         "kickProminence = E(35-110) / (E(35-110) + E(120-320)), range 0..1 (0 when "
@@ -484,13 +539,17 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
         "'whole' window [0, duration) is analyzed. bandEnergy is mean power per FFT "
         "window (linear amplitude^2, not dB). Pass fromPlan=true to derive the windows from "
         "the current song plan (section beats converted to seconds via bpm; bpm 0 falls back "
-        "to the plan bpm) — callers never do beat math. Optional wait=false returns immediately "
+        "to the plan bpm) — callers never do beat math. With fromPlan the response also carries "
+        "\"loudnessGates\": each drop section's RMS against the build that precedes it (gate passes "
+        "at >= dropBuildRatio, default 0.9) with per-drop rows and issue strings — a build louder "
+        "than its payoff is a FAIL (thin the build cells or lift the drop). Optional wait=false returns immediately "
         "with {jobId,state:'running',pollWith:'poll_job'}; poll poll_job for the result.",
         objSchema({
             {"filePath", QJsonObject{{"type","string"}}},
             {"bpm",      QJsonObject{{"type","number"}}},
             {"fromPlan", QJsonObject{{"type","boolean"}}},
             {"wait",     QJsonObject{{"type","boolean"}}},
+            {"dropBuildRatio", QJsonObject{{"type","number"}}},
             {"sections", QJsonObject{
                 {"type","array"},
                 {"items", QJsonObject{
@@ -507,6 +566,13 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             double bpm = a.value("bpm").toDouble(0.0);
             bool hasSections = a.contains("sections");
             QJsonArray sectionsArg = a.value("sections").toArray();
+            QJsonObject structureJson;
+            bool hasStructure = false;
+            QJsonArray clampedJson;
+            bool hasClamped = false;
+            QJsonObject planKinds;   // section name -> plan kind (for the loudness gate)
+            double dropBuildRatio = a.value("dropBuildRatio").toDouble(0.9);
+            if (dropBuildRatio <= 0.0 || dropBuildRatio > 1.5) dropBuildRatio = 0.9;
             if (a.value("fromPlan").toBool(false))
             {
                 if (!e)
@@ -516,23 +582,67 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
                     return McpToolResult::text("mix_report: no song plan set (fromPlan)", true);
                 if (bpm <= 0.0) bpm = plan.bpm;
                 const double spb = (bpm > 0.0) ? 60.0 / bpm : 0.5;
+                // Clamp plan windows to the file's actual duration so a short
+                // preview render can be measured with fromPlan without a hard
+                // error (fix 2026-09-16: render -> measure loop).
+                double dur = 0.0;
+                const juce::File pf(filePath.toStdString());
+                if (pf.existsAsFile())
+                {
+                    auto pstream = std::unique_ptr<juce::InputStream>(pf.createInputStream());
+                    std::unique_ptr<juce::AudioFormatReader> pread(
+                        juce::WavAudioFormat().createReaderFor(pstream.release(), true));
+                    if (pread && pread->sampleRate > 0.0 && pread->lengthInSamples > 0)
+                        dur = static_cast<double>(pread->lengthInSamples) / pread->sampleRate;
+                }
                 sectionsArg = QJsonArray();
                 for (const auto& s : plan.sections)
+                {
+                    double st0 = s.startBeat * spb;
+                    double en = s.endBeat * spb;
+                    if (dur > 0.0)
+                    {
+                        if (st0 >= dur) continue;               // fully outside -> drop
+                        if (en > dur)
+                        {
+                            clampedJson.append(QString::fromStdString(s.name));
+                            hasClamped = true;
+                            en = dur;
+                        }
+                    }
                     sectionsArg.append(QJsonObject{{"name", QString::fromStdString(s.name)},
-                                                   {"start", s.startBeat * spb},
-                                                   {"end", s.endBeat * spb}});
+                                                   {"start", st0},
+                                                   {"end", en}});
+                    planKinds.insert(QString::fromStdString(s.name),
+                                     QString::fromStdString(s.kind));
+                }
+                if (sectionsArg.isEmpty())
+                    return McpToolResult::text(
+                        "mix_report: no plan sections fall inside the file duration", true);
                 hasSections = true;
+                structureJson = structureAuditJson(HDAW::auditSongStructure(
+                    e->getProjectModel().getTrackListTree(), plan, bpm));
+                hasStructure = true;
             }
             const bool wait = a.value("wait").toBool(true);
             if (!wait) {
-                const int id = McpJobs::instance().submit("mix_report", [filePath, bpm, sectionsArg, hasSections]() {
-                    return runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
-                });
+                const int id = McpJobs::instance().submit("mix_report",
+                    [filePath, bpm, sectionsArg, hasSections, structureJson, hasStructure,
+                     clampedJson, hasClamped, planKinds, dropBuildRatio]() {
+                        QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
+                        if (hasStructure) root["structure"] = structureJson;
+                        if (hasClamped) root["clampedSections"] = clampedJson;
+                        if (!planKinds.isEmpty()) applyDropVsBuildGate(root, planKinds, dropBuildRatio);
+                        return root;
+                    });
                 QJsonObject payload{{"jobId", id}, {"state", "running"}, {"pollWith", "poll_job"}};
                 return McpToolResult::text(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact)));
             }
             try {
-                const QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
+                QJsonObject root = runMixReportAnalysis(filePath, bpm, sectionsArg, hasSections);
+                if (hasStructure) root["structure"] = structureJson;
+                if (hasClamped) root["clampedSections"] = clampedJson;
+                if (!planKinds.isEmpty()) applyDropVsBuildGate(root, planKinds, dropBuildRatio);
                 return McpToolResult::text(QString::fromUtf8(
                     QJsonDocument(root).toJson(QJsonDocument::Compact)));
             } catch (const std::exception& ex) {
@@ -623,6 +733,165 @@ void registerAudioReadTools(McpServer& s, AudioEngine* e)
             } catch (const std::exception& ex) {
                 return McpToolResult::text(QString::fromUtf8(ex.what()), true);
             }
+        }});
+
+    s.registerTool({"diagnose_intro_blast",
+        "Diagnose a loud/discordant/noisy INTRO in a rendered audio file (the recurring 'big "
+        "loud weird sound at the start' bug class). Windowed trace over the intro: per-bin "
+        "peak/RMS/DC/clipping/non-finite; classified into clipping, loudTransient, nonFinite "
+        "(NaN/Inf poison), dcOffset, and 'saturation-then-silence' (blast collapses to digital "
+        "silence). filePath = rendered master (or a stem). binSeconds default 0.125; "
+        "windowSeconds default 8 (the intro span to scan). Long scans cap the emitted bins "
+        "(binsSummary: totalBins/emittedBins/truncated/flaggedBins; all flagged bins are kept). "
+        "Optional attribution: with maxTracks "
+        "> 0 and a live engine, solo-renders each track over the detected blast window "
+        "(verifyPart) and reports per-track solo peak/RMS + nonClipping + audible, ranked by "
+        "soloRms (top = likely culprit). Read-only; renders tree copies, never mutates.",
+        objSchema({ { "filePath", QJsonObject{ { "type", "string" } } },
+                    { "windowSeconds", QJsonObject{ { "type", "number" } } },
+                    { "binSeconds", QJsonObject{ { "type", "number" } } },
+                    { "maxTracks", QJsonObject{ { "type", "integer" } } } },
+                  { "filePath" }),
+        "audio",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const QString filePath = a.value("filePath").toString();
+            const double windowSeconds = a.value("windowSeconds").toDouble(8.0);
+            const double binSeconds = a.value("binSeconds").toDouble(0.125);
+            const int maxTracks = a.value("maxTracks").toInt(8);
+
+            HDAW::BlastReport rep;
+            juce::String err;
+            if (!HDAW::MixReportAnalyzer::analyzeBlast(
+                    juce::File(filePath.toStdString()), windowSeconds, binSeconds, rep, err))
+                return McpToolResult::text(jstr(err), true);
+
+            QJsonObject root;
+            root["ok"] = true;
+            root["filePath"] = filePath;
+            root["duration"] = rep.duration;
+            root["binSeconds"] = rep.binSeconds;
+            root["detected"] = rep.detected;
+            root["flags"] = QJsonObject{
+                { "clipping", rep.clipping },
+                { "loudTransient", rep.loudTransient },
+                { "nonFinite", rep.nonFinite },
+                { "dcOffset", rep.dcOffset },
+                { "silenceAfter", rep.silenceAfter } };
+            if (rep.loudTransient)
+                root["blast"] = QJsonObject{
+                    { "start", rep.blastStart }, { "end", rep.blastEnd },
+                    { "peak", rep.blastPeak }, { "rms", rep.blastRms },
+                    { "preBlastRms", rep.preBlastRms }, { "postBlastRms", rep.postBlastRms } };
+            // Cap the emitted bin trace for long scans (300 s @ 0.25 s bins
+            // is >1 KB/bin -> tens of KB; a 1200-bin dump tripped the MCP
+            // output guard, fix 2026-09-16). Head of the trace plus ALL
+            // flagged bins (loud/clipping/non-finite) stay visible; the rest
+            // is summarized in binsSummary.
+            std::vector<int> flaggedIdx;
+            for (int i = 0; i < (int) rep.bins.size(); ++i)
+            {
+                const auto& b = rep.bins[i];
+                if (b.peak >= 0.9 || b.clippingRatio > 0.0 || b.nonFiniteSamples > 0)
+                    flaggedIdx.push_back(i);
+            }
+            const bool binsTruncated = (int) rep.bins.size() > 120;
+            QJsonArray bins;
+            int emitted = 0;
+            auto emitBin = [&bins, &emitted](const HDAW::BlastBin& b) {
+                bins.append(QJsonObject{
+                    { "start", b.start }, { "end", b.end }, { "peak", b.peak },
+                    { "rms", b.rms }, { "mean", b.mean },
+                    { "clippingRatio", b.clippingRatio },
+                    { "nonFiniteSamples", b.nonFiniteSamples } });
+                ++emitted;
+            };
+            if (!binsTruncated)
+            {
+                for (const auto& b : rep.bins) emitBin(b);
+            }
+            else
+            {
+                for (int i = 0; i < (int) rep.bins.size() && emitted < 96; ++i)
+                    emitBin(rep.bins[i]);
+                for (const int fi : flaggedIdx)
+                {
+                    if (emitted >= 200) break;
+                    bool dup = false;
+                    for (int j = 0; j < emitted; ++j)
+                        if (bins[j].toObject().value("start").toDouble()
+                            == rep.bins[fi].start) { dup = true; break; }
+                    if (!dup) emitBin(rep.bins[fi]);
+                }
+            }
+            root["bins"] = bins;
+            root["binsSummary"] = QJsonObject{
+                { "totalBins", (int) rep.bins.size() },
+                { "emittedBins", emitted },
+                { "truncated", binsTruncated },
+                { "flaggedBins", (int) flaggedIdx.size() } };
+
+            if (e && rep.detected && maxTracks != 0)
+            {
+                QJsonArray attribution;
+                struct Entry
+                {
+                    double soloRms = 0.0, soloPeak = 0.0;
+                    QString name;
+                    int track = -1;
+                    bool nonClipping = false, audible = false;
+                };
+                std::vector<Entry> entries;
+                if (rep.loudTransient)
+                {
+                    const double bpm = e->getProjectModel().getTree().getProperty(IDs::tempo, 0.0);
+                    if (bpm > 0.0)
+                    {
+                        const double startBeat = rep.blastStart * bpm / 60.0;
+                        const double endBeat = rep.blastEnd * bpm / 60.0;
+                        const double winSeconds = rep.blastEnd - rep.blastStart;
+                        auto trackList = e->getProjectModel().getTrackListTree();
+                        int done = 0;
+                        for (int t = 0;
+                             t < trackList.getNumChildren() && (maxTracks < 0 || done < maxTracks);
+                             ++t)
+                        {
+                            const auto track = trackList.getChild(t);
+                            const auto clips = track.getChildWithName(IDs::CLIP_LIST);
+                            if (!clips.isValid() || clips.getNumChildren() == 0) continue;
+                            auto r = e->getProjectCommands().verifyPart(
+                                t, winSeconds, startBeat, endBeat);
+                            if (!r.error.empty()) continue;
+                            Entry en;
+                            en.soloRms = r.soloRms;
+                            en.soloPeak = r.soloPeak;
+                            en.name = jstr(track.getProperty(IDs::name, "Track").toString());
+                            en.track = t;
+                            en.nonClipping = r.nonClipping;
+                            en.audible = r.audible;
+                            entries.push_back(en);
+                            ++done;
+                        }
+                        std::sort(entries.begin(), entries.end(),
+                                  [](const Entry& x, const Entry& y) { return x.soloRms > y.soloRms; });
+                        bool first = true;
+                        for (const auto& en : entries)
+                        {
+                            QJsonObject o;
+                            o["trackId"] = en.track;
+                            o["name"] = en.name;
+                            o["soloPeak"] = en.soloPeak;
+                            o["soloRms"] = en.soloRms;
+                            o["nonClipping"] = en.nonClipping;
+                            o["audible"] = en.audible;
+                            if (first) { o["topContributor"] = true; first = false; }
+                            attribution.append(o);
+                        }
+                    }
+                }
+                root["attribution"] = attribution;
+            }
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 }
 

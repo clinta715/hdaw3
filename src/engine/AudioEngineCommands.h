@@ -152,6 +152,9 @@ public:
                                       const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
                                       bool clearWindowBeforeApply, uint64_t seed,
                                       int* pointsAdded) override;
+    // Batch section-aware movement across tracks in ONE undo unit (lane
+    // auto-create/reuse by paramID, never two lanes on one parameter).
+    MovementPlanResult applyMovementPlan(const std::vector<MovementEvent>& events) override;
 
     // ProjectCommands — Modulation (LFO)
     void addLfo(int trackIndex) override;
@@ -207,6 +210,9 @@ public:
     // ── Song plan (see ProjectCommands.h for the data contract) ──
     SongPlanResult setSongPlan(const SongPlanData& plan) override;
     SongPlanData getSongPlan() const override;
+    bool setLayerHandoff(int trackIndex, const LayerHandoff& handoff,
+                         std::string* error) override;
+    bool clearLayerHandoff(int trackIndex, std::string* error) override;
     bool saveSectionTemplate(const std::string& name, std::string* error = nullptr) override;
     SongPlanData loadSectionTemplate(const std::string& name, std::string* error = nullptr) override;
     std::vector<std::string> listSectionTemplates() const override;
@@ -214,6 +220,8 @@ public:
     std::string exportSongBrief(std::string* error = nullptr) const override;
     // ── Cells (Phase C) — see ProjectCommands.h for the contract ──
     bool setCellRecipe(const CellRecipe& recipe, std::string* error = nullptr) override;
+    int setCellRecipes(const std::vector<CellRecipe>& recipes,
+                       std::vector<std::string>* errors = nullptr) override;
     std::vector<CellRecipe> getCells() const override;
     bool removeCellRecipe(const std::string& section, const std::string& role) override;
     CellFillBatchResult fillCells(const std::string& mode) override;
@@ -498,6 +506,18 @@ private:
 
     // Find the AUTOMATION child by lane name in a track.
     juce::ValueTree findAutomationLane(int trackIndex, const std::string& lane) const;
+
+    // Shared NON-transactional core of the preset bank: writes envelope
+    // points for one or more windows onto an EXISTING lane (assumed valid),
+    // enables it, refreshes the automation cache. The caller owns the undo
+    // transaction boundary. Returns the number of points written.
+    int writePresetWindowsToLane(int trackIndex, juce::ValueTree autoLane,
+                                 const std::vector<HDAW::AutomationPreset::PresetWindow>& windows,
+                                 bool clearWindowBeforeApply, uint64_t seed);
+
+    // Shared validation + write path for one cell recipe. No transaction of its
+    // own — setCellRecipe/setCellRecipes own the undo boundary (fix 2026-09-16).
+    bool setCellRecipeImpl(const CellRecipe& recipe, std::string* error);
 
     // Add a new track ValueTree to the project. Returns the new index.
     juce::ValueTree createTrackValueTree(const std::string& name, int color, int parentBus, int trackType = 0);

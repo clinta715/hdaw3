@@ -174,6 +174,85 @@ TEST(AutomationPreset, RiserMonotonicUp)
         EXPECT_GE(pts[i].second + 1e-9, pts[i - 1].second); // non-decreasing
 }
 
+TEST(AutomationPreset, MovementRecipesCoverSubtleRandomStepPhaseAndThrow)
+{
+    {
+        const auto w = window(AutomationPreset::Preset::SubtleLife, 0.0, 32.0);
+        const auto plan = AutomationPreset::plan(w, 99);
+        ASSERT_EQ(plan.segments.size(), 1u);
+        const auto& seg = plan.segments[0];
+        EXPECT_EQ(seg.shape, EnvelopeGenerator::Shape::Sine);
+        EXPECT_DOUBLE_EQ(seg.startValue, 0.48);
+        EXPECT_DOUBLE_EQ(seg.endValue, 0.52);
+        EXPECT_DOUBLE_EQ(seg.cycles, 2.0);
+        const auto pts = generatePlan(w, 99);
+        ASSERT_FALSE(pts.empty());
+        for (const auto& [time, value] : pts)
+        {
+            EXPECT_GE(value, 0.48 - 1e-9);
+            EXPECT_LE(value, 0.52 + 1e-9);
+        }
+    }
+
+    {
+        const auto w = window(AutomationPreset::Preset::RandomDrift, 0.0, 16.0);
+        const auto plan = AutomationPreset::plan(w, 123);
+        ASSERT_EQ(plan.segments.size(), 1u);
+        const auto& seg = plan.segments[0];
+        EXPECT_EQ(seg.shape, EnvelopeGenerator::Shape::RandomWalk);
+        EXPECT_DOUBLE_EQ(seg.startValue, 0.40);
+        EXPECT_DOUBLE_EQ(seg.endValue, 0.60);
+        EXPECT_DOUBLE_EQ(seg.densityPerSec, 1.0);
+        EXPECT_DOUBLE_EQ(seg.smooth, 0.35);
+        const auto a = generatePlan(w, 123);
+        const auto b = generatePlan(w, 123);
+        ASSERT_EQ(a.size(), b.size());
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            EXPECT_DOUBLE_EQ(a[i].first, b[i].first);
+            EXPECT_DOUBLE_EQ(a[i].second, b[i].second);
+            EXPECT_GE(a[i].second, 0.40 - 1e-9);
+            EXPECT_LE(a[i].second, 0.60 + 1e-9);
+        }
+    }
+
+    {
+        const auto w = window(AutomationPreset::Preset::SteppedGate, 0.0, 8.0);
+        const auto plan = AutomationPreset::plan(w, 7);
+        ASSERT_EQ(plan.segments.size(), 1u);
+        EXPECT_EQ(plan.segments[0].shape, EnvelopeGenerator::Shape::Staircase);
+        EXPECT_EQ(plan.segments[0].steps, 8);
+        EXPECT_DOUBLE_EQ(plan.segments[0].startValue, 0.20);
+        EXPECT_DOUBLE_EQ(plan.segments[0].endValue, 0.90);
+    }
+
+    {
+        const auto w = window(AutomationPreset::Preset::PhaseSweep, 0.0, 16.0);
+        const auto plan = AutomationPreset::plan(w, 7);
+        ASSERT_EQ(plan.segments.size(), 1u);
+        EXPECT_EQ(plan.segments[0].shape, EnvelopeGenerator::Shape::Sine);
+        EXPECT_DOUBLE_EQ(plan.segments[0].startValue, 0.25);
+        EXPECT_DOUBLE_EQ(plan.segments[0].endValue, 0.75);
+        EXPECT_DOUBLE_EQ(plan.segments[0].cycles, 2.0);
+    }
+
+    {
+        const auto w = window(AutomationPreset::Preset::DelayThrow, 0.0, 16.0);
+        const auto plan = AutomationPreset::plan(w, 7);
+        ASSERT_EQ(plan.segments.size(), 2u);
+        EXPECT_EQ(plan.segments[0].shape, EnvelopeGenerator::Shape::Ramp);
+        EXPECT_DOUBLE_EQ(plan.segments[0].startTime, 0.0);
+        EXPECT_DOUBLE_EQ(plan.segments[0].endTime, 12.0);
+        EXPECT_DOUBLE_EQ(plan.segments[0].startValue, 0.05);
+        EXPECT_DOUBLE_EQ(plan.segments[0].endValue, 0.05);
+        EXPECT_EQ(plan.segments[1].shape, EnvelopeGenerator::Shape::SCurve);
+        EXPECT_DOUBLE_EQ(plan.segments[1].startTime, 12.0);
+        EXPECT_DOUBLE_EQ(plan.segments[1].endTime, 16.0);
+        EXPECT_DOUBLE_EQ(plan.segments[1].startValue, 0.05);
+        EXPECT_DOUBLE_EQ(plan.segments[1].endValue, 0.80);
+    }
+}
+
 // Gate 9: inverted or zero-length windows must produce an empty plan, not a
 // crash or garbage; a valid window still plans.
 TEST(AutomationPreset, WindowValidationRejectsInverted)
@@ -197,7 +276,12 @@ TEST(AutomationPreset, PresetNameRoundTrip)
         AutomationPreset::Preset::OpenClose,
         AutomationPreset::Preset::Riser,
         AutomationPreset::Preset::Sine,
-        AutomationPreset::Preset::Square
+        AutomationPreset::Preset::Square,
+        AutomationPreset::Preset::SubtleLife,
+        AutomationPreset::Preset::RandomDrift,
+        AutomationPreset::Preset::SteppedGate,
+        AutomationPreset::Preset::PhaseSweep,
+        AutomationPreset::Preset::DelayThrow
     };
     for (const auto p : all)
     {
@@ -211,7 +295,7 @@ TEST(AutomationPreset, PresetNameRoundTrip)
     EXPECT_FALSE(AutomationPreset::presetFromName("").has_value());
     EXPECT_FALSE(AutomationPreset::presetFromName("Pump").has_value()); // exact names only
     // Documentation table covers every preset with a non-empty line.
-    EXPECT_EQ(AutomationPreset::kPresetDocumentationCount, 6u);
+    EXPECT_EQ(AutomationPreset::kPresetDocumentationCount, 11u);
     for (std::size_t i = 0; i < AutomationPreset::kPresetDocumentationCount; ++i)
     {
         EXPECT_TRUE(AutomationPreset::kPresetDocumentation[i].name != nullptr);

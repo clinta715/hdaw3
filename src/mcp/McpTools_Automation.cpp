@@ -245,7 +245,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                         const QString pName = obj.value("preset").toString(a.value("preset").toString());
                         if (pName.isEmpty())
                             return McpToolResult::text(
-                                "preset required (pump|macro|openClose|riser|sine|square)", true);
+                                "preset required (pump|macro|openClose|riser|sine|square|subtleLife|randomDrift|steppedGate|phaseSweep|delayThrow)", true);
                         const auto p = resolvePreset(pName);
                         if (!p)
                             return McpToolResult::text("unknown preset: " + pName, true);
@@ -271,7 +271,7 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                     const QString pName = a.value("preset").toString();
                     if (pName.isEmpty())
                         return McpToolResult::text(
-                            "preset required (pump|macro|openClose|riser|sine|square) "
+                            "preset required (pump|macro|openClose|riser|sine|square|subtleLife|randomDrift|steppedGate|phaseSweep|delayThrow) "
                             "when sections is absent", true);
                     const auto p = resolvePreset(pName);
                     if (!p)
@@ -312,6 +312,72 @@ void registerAutomationTools(McpServer& s, AudioEngine* e)
                         {"presets", applied},
                         {"pointsAdded", pointsAdded}}).toJson(QJsonDocument::Compact)));
             }});
+
+    s.registerTool({"apply_movement_plan",
+        "Batch 'movement plan' for the FX & Automation choreography pass: apply automation "
+        "presets across MULTIPLE tracks/sections in ONE undo unit. events: [{trackId (req), "
+        "preset (req), start, end, paramID, laneName, startValue, endValue, seed}]. Presets: "
+        "pump/macro/openClose/riser/sine/square/subtleLife/randomDrift/steppedGate/phaseSweep/"
+        "delayThrow. paramID default 1 (volume — reuses the built-in Volume lane); pass the "
+        "compound pid (100+slotIndex*100+paramIndex) for plugin FX params. Lane resolution "
+        "per event: an explicit laneName is reused or created; otherwise the lane already "
+        "bound to paramID is reused (never two lanes on one parameter), else a lane "
+        "'movement-<preset>' is created and bound. Existing points inside each window are "
+        "replaced and the lane enabled. Returns {okCount, failCount, events:[{laneName, "
+        "pointsWritten, ok, error?}]} — partial failure keeps the good events. After a plan, "
+        "audit_modulation_coverage should be green for the touched sounding tracks. NOTE: Volume "
+        "events (paramID 1 — the default) write and ENABLE the track's Volume lane, which makes "
+        "automation authoritative for that track: subsequent set_track_volume/fader writes are "
+        "overridden (audit_modulation_coverage reports faderOverriddenIds). Call "
+        "set_fader_authoritative before post-movement gain staging.",
+        objSchema({{"events", QJsonObject{{"type","array"}, {"items", QJsonObject{
+            {"type","object"},
+            {"properties", QJsonObject{
+                {"trackId",    QJsonObject{{"type","integer"}}},
+                {"preset",     QJsonObject{{"type","string"}}},
+                {"start",      QJsonObject{{"type","number"}}},
+                {"end",        QJsonObject{{"type","number"}}},
+                {"paramID",    QJsonObject{{"type","integer"}}},
+                {"laneName",   QJsonObject{{"type","string"}}},
+                {"startValue", QJsonObject{{"type","number"}}},
+                {"endValue",   QJsonObject{{"type","number"}}},
+                {"seed",       QJsonObject{{"type","integer"}}}}},
+            {"required", QJsonArray{"trackId","preset"}}}}}}}, {"events"}),
+        "automation",
+        [e](const QJsonObject& a) -> McpToolResult {
+            const auto eventsArr = a.value("events").toArray();
+            if (eventsArr.isEmpty())
+                return McpToolResult::text("events array required", true);
+            std::vector<ProjectCommands::MovementEvent> events;
+            for (const auto& ev : eventsArr)
+            {
+                const auto o = ev.toObject();
+                ProjectCommands::MovementEvent me;
+                me.trackIndex = o.value("trackId").toInt(-1);
+                me.startBeats = o.value("start").toDouble(0.0);
+                me.endBeats   = o.value("end").toDouble(16.0);
+                me.preset     = o.value("preset").toString().toStdString();
+                me.paramID    = o.value("paramID").toInt(-1);
+                me.laneName   = o.value("laneName").toString().toStdString();
+                if (o.contains("startValue")) me.startValue = o.value("startValue").toDouble();
+                if (o.contains("endValue"))   me.endValue   = o.value("endValue").toDouble();
+                me.seed = static_cast<uint64_t>(o.value("seed").toInt(12345));
+                events.push_back(me);
+            }
+            const auto res = e->getProjectCommands().applyMovementPlan(events);
+            QJsonArray arr;
+            for (const auto& r : res.events)
+            {
+                QJsonObject ro{ { "laneName", QString::fromStdString(r.laneName) },
+                                { "pointsWritten", r.pointsWritten },
+                                { "ok", r.ok } };
+                if (!r.error.empty()) ro["error"] = QString::fromStdString(r.error);
+                arr.append(ro);
+            }
+            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{
+                { "okCount", res.okCount }, { "failCount", res.failCount },
+                { "events", arr }}).toJson(QJsonDocument::Compact)));
+        }});
     }
 }
 

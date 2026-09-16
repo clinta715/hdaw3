@@ -61,6 +61,9 @@ struct SectionReport {
     double start = 0.0, end = 0.0;   // seconds, [start, end)
     double rms = 0.0;                // linear amplitude RMS
     double peak = 0.0;               // max |sample|
+    double boundaryPeak = 0.0;       // max |sample| in the first 0.1 s — the
+                                     // "drop entry" / section-start transient
+                                     // probe (fix 2026-09-16)
     double bandEnergy[kMixNumBands] = {};  // see MixReportAnalyzer docs
 };
 
@@ -74,7 +77,12 @@ struct MixReport {
     double pumpDepth = 0.0;
     double kickProminence = 0.0;
     std::vector<SectionReport> sections;
+    // True when the measurement returned all-zero on a >0.5s file (the wedged-
+    // instance zero-read state; see McpTools_AudioRead double-measure guard).
+    bool measurementSuspicious = false;
 };
+
+struct BlastReport;  // analyzeBlast output (defined after the class)
 
 class MixReportAnalyzer {
 public:
@@ -87,6 +95,12 @@ public:
                         double bpm,
                         MixReport& out,
                         juce::String& err);
+    // Windowed intro-blast diagnosis (see BlastReport below the class).
+    static bool analyzeBlast(const juce::File& wav,
+                             double introSeconds,
+                             double binSeconds,
+                             BlastReport& out,
+                             juce::String& err);
 private:
     static constexpr int kFftOrder = 12;        // 4096-point FFT
     static constexpr int kMinPumpBeats = 8;
@@ -235,10 +249,19 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
     out = MixReport();
 
     if (!wav.existsAsFile()) { err = "file not found"; return false; }
+    HDAW_LOG("MixReport", "analyze: " + wav.getFullPathName()
+        + " size=" + juce::String(juce::int64(wav.getSize())));
 
     juce::AudioFormatManager fmt;
     fmt.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader(fmt.createReaderFor(wav));
+
+    // Stream-based reader (NOT the File overload of createReaderFor, which
+    // memory-maps and can pin stale zero pages for a file that was first
+    // seen mid-write — the wedged-instance zero-measure mechanism).
+    auto stream = std::unique_ptr<juce::InputStream>(wav.createInputStream());
+    if (stream == nullptr) { err = "cannot open audio file"; return false; }
+    std::unique_ptr<juce::AudioFormatReader> reader(
+        juce::WavAudioFormat().createReaderFor(stream.release(), true));
     if (!reader) { err = "cannot open audio file"; return false; }
 
     const double sampleRate = reader->sampleRate;
@@ -283,6 +306,33 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
     const double kickDenom = whole.spectral.kick + whole.spectral.kickMid;
     out.kickProminence = kickDenom > 0.0 ? whole.spectral.kick / kickDenom : 0.0;
 
+    // Zero-result diagnostic: when the decoded audio is silent, read the file
+    // RAW (bypassing the audio decoder) at the midpoint and log its nonzero
+    // byte count. Discriminates "the file bytes are zero on the engine's view"
+    // from "the decoder returned zeros for non-zero bytes" (the wedged-instance
+    // state observed 2026-09-15).
+    if (whole.stats.peak <= 0.0f && whole.stats.count > 0)
+    {
+        juce::FileInputStream fis(wav);
+        if (fis.openedOk())
+        {
+            const int64_t mid = (wav.getSize() / 2) - 2048;
+            fis.setPosition(mid > 0 ? mid : 0);
+            char probe[2048] = {};
+            const int got = (int) fis.read(probe, 2048);
+            int nz = 0;
+            for (int i = 0; i < got; ++i) if (probe[i] != 0) ++nz;
+            HDAW_LOG("MixReport", "ZERO-result diag: raw mid bytes nonzero="
+                + juce::String(nz) + "/" + juce::String(got)
+                + " size=" + juce::String(juce::int64(wav.getSize()))
+                + " readerFrames=" + juce::String(juce::int64(totalSamples)));
+        }
+        else
+        {
+            HDAW_LOG("MixReport", "ZERO-result diag: FileInputStream failed to open");
+        }
+    }
+
     // Section pass: rms/peak/bands per section + per-beat RMS for pump depth.
     const double beatLenSamples = bpm > 0.0 ? sampleRate * 60.0 / bpm : 0.0;
     double pumpSum = 0.0;
@@ -299,6 +349,33 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
 
         RangeResult rr;
         streamRange(*reader, s0, s1, numChannels, sampleRate, beatLenSamples, rr);
+
+        // Boundary transient probe: max |sample| over the first 0.1 s of the
+        // section (a "drop entry" loudness gate — exposes builds/drops that
+        // slam in louder than their sustained level).
+        {
+            const int64_t boundSamples = std::min<int64_t>(
+                static_cast<int64_t>(std::llround(0.1 * sampleRate)), s1 - s0);
+            if (boundSamples > 0)
+            {
+                juce::AudioBuffer<float> bb(numChannels, 4096);
+                int64_t bp = s0;
+                const int64_t boundEnd = s0 + boundSamples;
+                while (bp < boundEnd)
+                {
+                    const int wantB = static_cast<int>(std::min<int64_t>(4096, boundEnd - bp));
+                    if (!reader->read(&bb, 0, wantB, bp, true, true)) break;
+                    for (int k = 0; k < wantB; ++k)
+                    {
+                        double m = 0.0;
+                        for (int c = 0; c < numChannels; ++c) m += bb.getSample(c, k);
+                        m /= static_cast<double>(numChannels);
+                        sr.boundaryPeak = std::max(sr.boundaryPeak, std::fabs(m));
+                    }
+                    bp += wantB;
+                }
+            }
+        }
         if (rr.stats.count > 0)
         {
             sr.rms = std::sqrt(rr.stats.sumSq / static_cast<double>(rr.stats.count));
@@ -328,6 +405,175 @@ inline bool MixReportAnalyzer::analyze(const juce::File& wav,
         out.hasPumpDepth = true;
         out.pumpDepth = pumpSum / static_cast<double>(pumpCount);
     }
+    return true;
+}
+
+// ── Intro-blast diagnosis (windowed) ──────────────────────────────────────
+// Locates the recurring "big loud discordant sound at the start" class of
+// problems in a rendered master: a per-bin peak/RMS/DC/clipping/non-finite
+// trace over the opening window, then a heuristic classification (clipping
+// blast, NaN/Inf poison, loud transient, saturation-then-silence, DC offset).
+// Pure streaming pass (no FFT); callers characterize a flagged window's
+// frequency content with the band analyzer (analyze() with a section window).
+struct BlastBin {
+    double start = 0.0, end = 0.0;  // seconds, [start, end)
+    double peak = 0.0;              // max |sample| in bin
+    double rms = 0.0;               // linear RMS
+    double mean = 0.0;              // mean value (DC offset probe)
+    double clippingRatio = 0.0;     // fraction of |x| >= 0.999
+    int nonFiniteSamples = 0;       // NaN/Inf samples (poisoned-FX signature)
+};
+
+struct BlastReport {
+    double duration = 0.0;          // analyzed intro length (seconds)
+    double binSeconds = 0.0;
+    std::vector<BlastBin> bins;
+    bool detected = false;
+    double blastStart = 0.0, blastEnd = 0.0;   // contiguous loud run, seconds
+    double blastPeak = 0.0, blastRms = 0.0;
+    double preBlastRms = 0.0, postBlastRms = 0.0;
+    bool clipping = false;          // any bin peak >= 0.999
+    bool nonFinite = false;         // any NaN/Inf sample
+    bool loudTransient = false;     // a loud contiguous run exists
+    bool silenceAfter = false;      // RMS collapses after the loud run
+    bool dcOffset = false;          // |mean| >= 0.05 in any bin
+};
+
+inline bool MixReportAnalyzer::analyzeBlast(const juce::File& wav,
+                                            double introSeconds,
+                                            double binSeconds,
+                                            BlastReport& out,
+                                            juce::String& err)
+{
+    out = BlastReport();
+    if (!wav.existsAsFile()) { err = "file not found"; return false; }
+
+    juce::AudioFormatManager fmt;
+    fmt.registerBasicFormats();
+    auto stream = std::unique_ptr<juce::InputStream>(wav.createInputStream());
+    if (stream == nullptr) { err = "cannot open audio file"; return false; }
+    std::unique_ptr<juce::AudioFormatReader> reader(
+        juce::WavAudioFormat().createReaderFor(stream.release(), true));
+    if (!reader) { err = "cannot open audio file"; return false; }
+
+    const double sr = reader->sampleRate;
+    const int64_t total = reader->lengthInSamples;
+    if (sr <= 0.0 || total <= 0) { err = "no audio data in file"; return false; }
+    const int ch = static_cast<int>(reader->numChannels);
+    if (ch < 1) { err = "no audio channels"; return false; }
+
+    const double duration = static_cast<double>(total) / sr;
+    if (binSeconds <= 0.0) binSeconds = 0.125;
+    if (introSeconds <= 0.0) introSeconds = duration;
+    introSeconds = std::min(introSeconds, duration);
+    const int64_t introSamples = static_cast<int64_t>(std::llround(introSeconds * sr));
+    const int64_t binSamples = std::max<int64_t>(1, static_cast<int64_t>(std::llround(binSeconds * sr)));
+    out.duration = introSeconds;
+    out.binSeconds = static_cast<double>(binSamples) / sr;
+
+    struct Acc { double sum = 0.0, sumSq = 0.0, peak = 0.0; long n = 0, clip = 0, nonFinite = 0; };
+    std::vector<Acc> accs;
+    accs.resize(static_cast<size_t>((introSamples + binSamples - 1) / binSamples));
+
+    juce::AudioBuffer<float> buf(ch, 4096);
+    int64_t pos = 0;
+    while (pos < introSamples)
+    {
+        const int want = static_cast<int>(std::min<int64_t>(4096, introSamples - pos));
+        if (!reader->read(&buf, 0, want, pos, true, true)) break;
+        for (int s = 0; s < want; ++s)
+        {
+            double mono = 0.0;
+            for (int c = 0; c < ch; ++c) mono += buf.getSample(c, s);
+            mono /= static_cast<double>(ch);
+            const int64_t g = pos + s;
+            auto& a = accs[static_cast<size_t>(g / binSamples)];
+            const double d = mono;
+            a.sum += d; a.sumSq += d * d;
+            const double ad = std::fabs(d);
+            a.peak = std::max(a.peak, ad);
+            ++a.n;
+            if (ad >= 0.999) ++a.clip;
+            if (!std::isfinite(d)) ++a.nonFinite;
+        }
+        pos += want;
+    }
+
+    double sumSqAll = 0.0;
+    long nAll = 0;
+    for (const auto& a : accs) { sumSqAll += a.sumSq; nAll += a.n; }
+    const double overallRms = nAll > 0 ? std::sqrt(sumSqAll / static_cast<double>(nAll)) : 0.0;
+    (void) overallRms;
+
+    bool anyClip = false, anyNonFinite = false, anyDc = false;
+    std::vector<int> loud;
+    for (std::size_t i = 0; i < accs.size(); ++i)
+    {
+        const auto& a = accs[i];
+        BlastBin b;
+        b.start = static_cast<double>(static_cast<int64_t>(i) * binSamples) / sr;
+        b.end = static_cast<double>(std::min<int64_t>(
+            (static_cast<int64_t>(i) + 1) * binSamples, introSamples)) / sr;
+        if (a.n > 0)
+        {
+            b.peak = a.peak;
+            b.rms = std::sqrt(a.sumSq / static_cast<double>(a.n));
+            b.mean = a.sum / static_cast<double>(a.n);
+            b.clippingRatio = static_cast<double>(a.clip) / static_cast<double>(a.n);
+            b.nonFiniteSamples = static_cast<int>(a.nonFinite);
+        }
+        out.bins.push_back(std::move(b));
+        if (b.peak >= 0.999)      anyClip = true;
+        if (b.nonFiniteSamples > 0) anyNonFinite = true;
+        if (std::fabs(b.mean) >= 0.05) anyDc = true;
+        if (b.peak >= 0.9 || b.rms >= 0.35) loud.push_back(static_cast<int>(i));
+    }
+    out.clipping = anyClip;
+    out.nonFinite = anyNonFinite;
+    out.dcOffset = anyDc;
+
+    // Contiguous loud run around the loudest loud bin.
+    if (!loud.empty())
+    {
+        int peakBin = loud[0];
+        double peakVal = -1.0;
+        for (const int i : loud)
+            if (out.bins[static_cast<std::size_t>(i)].peak > peakVal)
+            { peakVal = out.bins[static_cast<std::size_t>(i)].peak; peakBin = i; }
+        int first = peakBin, last = peakBin;
+        while (first > 0 && !loud.empty()
+               && std::find(loud.begin(), loud.end(), first - 1) != loud.end())
+            --first;
+        while (last + 1 < static_cast<int>(out.bins.size())
+               && std::find(loud.begin(), loud.end(), last + 1) != loud.end())
+            ++last;
+
+        out.loudTransient = true;
+        out.blastStart = out.bins[static_cast<std::size_t>(first)].start;
+        out.blastEnd = out.bins[static_cast<std::size_t>(last)].end;
+        double runSumSq = 0.0; long runN = 0;
+        double preSum = 0.0; long preN = 0;
+        double postSum = 0.0; long postN = 0;
+        for (std::size_t i = 0; i < out.bins.size(); ++i)
+        {
+            const auto& b = out.bins[i];
+            if (static_cast<int>(i) >= first && static_cast<int>(i) <= last)
+            {
+                runSumSq += b.rms * b.rms;   // bin rms aggregated over uniform bins
+                ++runN;
+            }
+            else if (static_cast<int>(i) < first) { preSum += b.rms; ++preN; }
+            else { postSum += b.rms; ++postN; }
+        }
+        out.blastRms = runN > 0 ? std::sqrt(runSumSq / runN) : 0.0;
+        out.blastPeak = peakVal;
+        out.preBlastRms = preN > 0 ? preSum / preN : 0.0;
+        out.postBlastRms = postN > 0 ? postSum / postN : 0.0;
+        if (postN > 0)
+            out.silenceAfter = (out.postBlastRms < 0.02 * std::max(out.blastRms, 1e-6));
+    }
+
+    out.detected = out.loudTransient || anyClip || anyNonFinite;
     return true;
 }
 

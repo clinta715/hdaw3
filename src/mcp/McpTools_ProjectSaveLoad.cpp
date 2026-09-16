@@ -2,6 +2,7 @@
 #include "McpTools_Private.h"
 #include "McpServer.h"
 #include "McpToolDef.h"
+#include "McpJobs.h"
 #include "../model/ProjectModel.h"
 #include "../engine/AudioEngine.h"
 #include "../engine/AudioEngineCommands_Helpers.h"
@@ -223,13 +224,47 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
             return McpToolResult::text(QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 
-    s.registerTool({"scan_plugins", "Scan for VST3/CLAP plugins (may take a minute).",
-        objSchema({}),
+    s.registerTool({"scan_plugins",
+        "Scan for VST3/CLAP plugins. ASYNC by default (wait=false): returns "
+        "{jobId,state:'running',pollWith:'poll_job'} immediately - the scan runs on a worker "
+        "thread and poll_job yields {scanned,durationMs} when it finishes; list_plugins reports "
+        "{scanning,scannedCount} meanwhile. wait=true keeps the legacy blocking behavior "
+        "(minutes). A scan already running is never duplicated (rejected with a status). NOTE: "
+        "the engine ALSO scans automatically at first launch when its cache is empty - calling "
+        "this while that scan is in flight is rejected, and killing the engine mid-scan loses "
+        "that scan (an incomplete scan is not cached).",
+        objSchema({ { "wait", QJsonObject{ { "type", "boolean" } } } }),
         "project",
-        [e](const QJsonObject&) {
-            e->getPluginManager().scanAll();
-            int count = static_cast<int>(e->getPluginManager().getPlugins().size());
-            return McpToolResult::text(QString("scanned %1 plugins").arg(count));
+        [e](const QJsonObject& a) {
+            auto& pm = e->getPluginManager();
+            // Never duplicate a scan (the startup background scan is often the
+            // one already running) - the old blocking call queued behind it and
+            // looked like a hang (fix 2026-09-16).
+            if (pm.isLoading())
+                return McpToolResult::text(
+                    QString("scan already in progress (%1 plugins so far; poll list_plugins)")
+                        .arg(static_cast<int>(pm.getPlugins().size())), true);
+            const bool wait = a.value("wait").toBool(false);
+            if (!wait)
+            {
+                // Worker-thread scan; poll_job carries the result. The engine
+                // pointer is app-lifetime, same contract as the tool lambdas.
+                const int id = McpJobs::instance().submit("scan_plugins", [e]() -> QJsonObject {
+                    const double t0 = juce::Time::getMillisecondCounterHiRes();
+                    e->getPluginManager().scanAll();
+                    const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+                    return QJsonObject{
+                        { "scanned", static_cast<int>(e->getPluginManager().getPlugins().size()) },
+                        { "durationMs", ms } };
+                });
+                QJsonObject payload{ { "jobId", id }, { "state", "running" },
+                                     { "pollWith", "poll_job" } };
+                return McpToolResult::text(QString::fromUtf8(
+                    QJsonDocument(payload).toJson(QJsonDocument::Compact)));
+            }
+            pm.scanAll();
+            return McpToolResult::text(QString("scanned %1 plugins")
+                .arg(static_cast<int>(pm.getPlugins().size())));
         }});
 
     s.registerTool({"list_plugins", "List scanned plugins. Optional kind filter: effect (audio FX) | instrument (synths/samplers) | all (default). Each entry reports its kind so agents can find installable effects without guessing.",
@@ -262,7 +297,13 @@ void registerProjectSaveLoadTools(McpServer& s, AudioEngine* e)
                 }
                 arr.append(o);
             }
-            return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject{{"plugins", arr}}).toJson(QJsonDocument::Compact)));
+            // Scan-state observability (fix 2026-09-16): an empty list must
+            // never be ambiguous about whether a scan is still running.
+            QJsonObject root{ { "plugins", arr },
+                              { "scanning", pm.isLoading() },
+                              { "scannedCount", static_cast<int>(pm.getPlugins().size()) } };
+            return McpToolResult::text(QString::fromUtf8(
+                QJsonDocument(root).toJson(QJsonDocument::Compact)));
         }});
 }
 
