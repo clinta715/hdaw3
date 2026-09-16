@@ -2667,6 +2667,82 @@ TEST(McpServer, SendFxMidiValidation) {
         bankFile.deleteFile();
     }
 
+
+
+    // load_je8086_preset: JP-8080 DT1 bank validation through the MCP surface
+    // (error paths only - no JE8086 plugin instance needed; delivery is covered
+    // by FxMidiInjection.Je8086LoaderValidatesBeforeQueueing).
+    {
+        const auto makeJpPage = [](const char* name) {
+            std::vector<uint8_t> p(256, 0);
+            for (size_t i = 0; name[i] != 0 && i < 16; ++i)
+                p[1 + i] = static_cast<uint8_t>(name[i]);
+            return p;
+        };
+        const auto makeJpDt1 = [](uint8_t a1, uint8_t a2, const std::vector<uint8_t>& data) {
+            std::vector<uint8_t> d { 0xF0, 0x41, 0x10, 0x00, 0x06, 0x12, 2, a1, a2 };
+            d.insert(d.end(), data.begin(), data.end());
+            uint32_t sum = 0;
+            for (size_t i = 6; i < d.size(); ++i)
+                sum += d[i];
+            d.push_back(static_cast<uint8_t>((128 - (sum % 128)) % 128));
+            d.push_back(0xF7);
+            return d;
+        };
+        std::vector<uint8_t> jpBank;
+        for (uint8_t pat = 0; pat < 2; ++pat) {
+            for (const auto& m : { makeJpDt1(0, static_cast<uint8_t>(pat * 2),
+                                             makeJpPage(pat == 0 ? "BASS" : "LEAD")),
+                                   makeJpDt1(0, static_cast<uint8_t>(pat * 2 + 1),
+                                             std::vector<uint8_t>(16, 0)) })
+                jpBank.insert(jpBank.end(), m.begin(), m.end());
+        }
+        const juce::File jpFile = juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getChildFile("hdaw_test_je8086_bank.syx");
+        jpFile.replaceWithData(jpBank.data(), static_cast<int>(jpBank.size()));
+
+        auto jpCorrupt = jpBank;
+        jpCorrupt[jpCorrupt.size() - 3] ^= 0x01;   // data byte of the last message
+        const juce::File jpBadFile = juce::File::getSpecialLocation(
+            juce::File::tempDirectory).getChildFile("hdaw_test_je8086_bad.syx");
+        jpBadFile.replaceWithData(jpCorrupt.data(), static_cast<int>(jpCorrupt.size()));
+
+        const std::string jpPath = jpFile.getFullPathName()
+                                       .replace("\\", "/").toStdString();
+        const std::string jpBadPath = jpBadFile.getFullPathName()
+                                          .replace("\\", "/").toStdString();
+        const auto jpArgs = [](const std::string& file, const std::string& extra) {
+            return std::string("{\"trackId\":0,\"slotIndex\":0,\"filePath\":\"")
+                 + file + "\"" + extra + "}";
+        };
+
+        // Missing file.
+        r = callTool(15, "load_je8086_preset",
+                     R"({"trackId":0,"slotIndex":0,"filePath":"Z:/definitely/missing.syx"})");
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("file not found"));
+
+        // Corrupt checksum anywhere in the bank rejects the WHOLE file.
+        r = callTool(16, "load_je8086_preset", jpArgs(jpBadPath, "").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("checksum")) << text(r).toStdString();
+
+        // Preset index beyond the file's two patch units.
+        r = callTool(17, "load_je8086_preset", jpArgs(jpPath, ",\"preset\":9").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("out of range")) << text(r).toStdString();
+
+        // Valid file + non-plugin slot: validation passes, the slot is refused
+        // (proves the file parsed and a patch was selected - the request reached
+        // the slot layer).
+        r = callTool(18, "load_je8086_preset", jpArgs(jpPath, "").c_str());
+        EXPECT_TRUE(isError(r));
+        EXPECT_TRUE(text(r).contains("slot is not a plugin slot")) << text(r).toStdString();
+
+        jpFile.deleteFile();
+        jpBadFile.deleteFile();
+    }
+
     s.stop();
     s.setTransport(nullptr);
 }
