@@ -32,6 +32,54 @@ the bank root is absent). Plan:
 All local. Toolchain: python 3.11 venv (torch cu128, transformers, librosa,
 scipy, llama-cpp-python CPU wheel), GGUF at ./Qwen2.5-3B-Instruct-Q4_K_M.gguf.
 
+## JE8086 patch decoder + sidecar sweep (Roland JP-8080)
+
+`je8086_patch.py` decodes the JP-8080 bank library (`D:\pdf\je8086`, 46 files:
+36 SMF-wrapped `.mid` banks + 10 raw `.syx` dumps) into per-patch records with
+named parameters and writes `<bank>.je8086.json` sidecars (schema
+`hdaw.je8086.bank.v1`, engine `je8086`) next to each bank.
+
+Format (verified against gearmulator 2.2.9 `jeLib/jemiditypes.h` + all 46 real
+files): Roland DT1 `F0 41 10 00 06 12 <a0 a1 a2> <data..> <checksum> F7`
+(model 0x0006, 7-bit address bytes, Roland checksum). One address unit = 256 B
+(one page) and a patch = 0x200 B = 2 pages, so a 64-patch bank spans 128 pages:
+patch area (base `02 00 00`) `bank = (v-base)//128`,
+`slot = ((v-base)%128)//2 + 1`; performance area (base `03 00 00`) strided 128
+pages with `PatchUpper`/`PatchLower` at pages 64/66. The dump carries ONE
+leading byte before the documented patch body, so the 16-char name is
+`data[1:17]` and `Patch.<Param> = 0xNN` lives at `data[1+0xNN]` (validated over
+3893 name-bearing messages: nine tight-range parameters in range for 99.9% at
+`off+1` versus 0.0% at `off`/`off-1`). 78 parameters are decoded (osc / filter /
+amp / LFO / FX / delay / portamento plus the CC-control depths), with the
+velocity/morph block 0x119-0x16C reported as `unmapped`.
+
+Usage:
+
+    py -3.14 timbre-lib/je8086_patch.py --dump "D:\pdf\je8086\Psytrance.syx"
+    py -3.14 timbre-lib/je8086_patch.py --survey "D:\pdf\je8086" --out je8086_survey.json
+    py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086"
+    py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --role bass --explode
+    py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --with-bytes
+
+The default sidecar is a compact metadata index (bank / role / params / labels /
+`paramDefs` / `patches[]`); `--with-bytes` embeds each patch's raw DT1 payload,
+and `--explode` writes a per-patch `.syx` (byte-identical DT1) + sidecar under
+`<DIR>/exploded/<bank>/`.
+
+Sweep results (2026-09-16): 46/46 files parsed, **6144 DT1 messages, 0 checksum
+failures**, 4276 entries (**2674 usable patches**, 383 performance names),
+45 sidecars, survey `je8086_survey.json`. Roles: 1345 lead, 1333 pluck, 560
+bass, 501 pad, 91 fx, 8 arp, 55 other. The three psy-named `.syx` banks carry
+only 1-2 usable patches each (the rest are `INIT PATCH` placeholders) -- the real
+psy content is `Kulshan Mystical Psytrance.mid` (100 usable) and
+`Techno 2.syx` (189). Tests: `test_je8086_patch.py` (15, incl. real-library
+spot checks). Plan: `docs/plans/2026-09-16-je8086-preset-pipeline.md`.
+
+Note: `FileLibraryManager::applyPatchSidecar` currently recognises
+`.virus.json` / `.dx7.json` only, so these `.je8086.json` sidecars (and the
+`.nl2x.json` ones from the NL2X sweep) need a two-line add to be searchable
+in-app.
+
 ## Analyze a folder
     ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
 (plain `python` on this WSL box has no ML toolchain; use ./analyze.sh, or set
