@@ -42,6 +42,21 @@ this box, ~95 plugins) its time to finish and persist the cache.
 (pid-attributed) with `list_plugins` still `{plugins:[]}` → the scan is simply still
 running, or a duplicate scan is queued behind it — not a broken install.
 
+## Never instantiate real firmware CLAPs inside the shared gtest process
+
+`GearmulatorParamsProbe.EnumerateHostParams` instantiates Osirus/OsTIrus/Vavra/Xenia
+etc. **in-process** to dump their host-visible parameter surface. It passes alone but
+killed the full suite: the run died with `0xC0000005` (access violation) after ~57
+flushed tests, and the *buffered* output made the visible tail point at an innocent
+suite — a red herring that cost a bisect. With the probe excluded the whole suite
+passes (1673 tests, 0 failures).
+
+**Rule:** a test that loads real firmware/plugin binaries into the process gets
+`GTEST_SKIP()`-gated behind an env var (`HDAW_RUN_GEARMULATOR_PROBE=1`) and stays
+opt-in; probes belong to manual sessions, not the default suite. When diagnosing a
+mid-suite crash, remember gtest's stdout is block-buffered — the last flushed line is
+**not** the crash site; bisect by `--gtest_filter` slices instead.
+
 ## MRT2 one-shots carry lead-in silence — a 43 ms note gate plays only silence (2026-09-16)
 
 The `tools/mrt2/sounds/` kit files are *rendered phrases*, not tight one-shots: measured
