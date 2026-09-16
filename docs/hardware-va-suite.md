@@ -117,7 +117,7 @@ effect whenever the device already has the effect onboard.
 - Cartridge injection is ignored; use the internal `fm_synth` (same engine family,
   fully parameterized) and its own envelopes/operator levels for FM movement.
 
-## 5. Modulation matrices (harvested from the emulators' own vocabularies)
+## 4. Modulation matrices (harvested from the emulators' own vocabularies)
 
 Extracted from the `parameterDescriptions_*.json` files named in §1 — these are the
 devices' real parameter names, not approximations.
@@ -184,7 +184,7 @@ Recipes: MOD ENV → filter (`FilterEnvAmount`) with sensitivity set for velocit
 plucks and stabs without any plugin; the Nord has **no onboard FX**, so HDAW internal
 chorus/delay is the correct layer here (§3).
 
-## 6. What to add next (evidence-gated)
+## 5. What to add next (evidence-gated)
 
 - **Xenia (Microwave XT)**: a patch pipeline like the others — its vocabulary is
   already available (`parameterDescriptions_xt.json`), only banks are missing.
@@ -195,7 +195,7 @@ chorus/delay is the correct layer here (§3).
   State does receive external dumps, unlike the JP-8080) — that is the one open check
   before a `load_vavra_preset` tool.
 
-## 4. Pipeline commands (one line each)
+## 6. Pipeline commands (one line each)
 
     py -3.14 timbre-lib/virus_patch.py  --sidecars "<Virus bank dir>"
     py -3.14 timbre-lib/nl2x_patch.py   --sidecars "D:\pdf\NL2x Banks"
