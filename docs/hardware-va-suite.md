@@ -195,6 +195,37 @@ chorus/delay is the correct layer here (§3).
   State does receive external dumps, unlike the JP-8080) — that is the one open check
   before a `load_vavra_preset` tool.
 
+
+## 7. Operations on the FX / modulation surfaces
+
+What HDAW can actually *do* with a device's onboard FX and modulation, cheapest layer
+first (see §2 for why this order):
+
+| # | Operation | Tooling | Works on |
+|---|---|---|---|
+| 1 | **Bake it into the patch** — set the device's own FX type/mix/depth and matrix routings | edit the patch (or the plugin's editor), then load/save | all devices; this is the preferred layer |
+| 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | devices that publish params: JE8086 (461), Virus, Xenia, Nord 2x. **Not Vavra (0 params)** |
+| 3 | **Automation / movement** — ramps, risers, throws, macro morphs on those parameters | track automation lanes and `apply_movement_plan` (macro events with start/end values) | same as #2 (e.g. the guide's JP-8080 delay-throw automates DelayLevel) |
+| 4 | **MIDI CC / program change** — drive the device's CC-mapped routings and switch ROM presets | `send_fx_midi` (CC, PC, notes) | all devices that respond to MIDI (Virus Modulation Wheel, CC74 brightness, CC0+PC preset select) |
+| 5 | **Remote-control SysEx** — page/index/value parameter writes for params the CLAP does not publish | `send_fx_midi` {kind:"sysEx"} with the emulation's own protocol: Waldorf header `F0 3E 10 <devId> <cmd>` plus page/index/value nibbles (`wLib/wSysexRemoteControl.h`, `mqLib/mqsysexremotecontrol.cpp`; the emulator also emits LCD/LED data back) | **the route for Vavra's FX/matrix** and a fallback for hidden params on other devices — structurally reachable (handled on the live MIDI path) but **unverified from HDAW** |
+| 6 | **State / preset operations** — snapshot, save, recall | `capture_fx_snapshot`, `save_fx_chain`, `load_plugin_preset`, `apply_preset`, `save_project` | all, subject to the isolation caveats in §1 (a plugin whose state does not round-trip its patch exports differently from what you audition) |
+
+### Onboard FX inventory (from each device's own parameter vocabulary)
+
+| Device | FX surface |
+|---|---|
+| microQ (Vavra) | `FX1Type`, `FX2Type`, `FX1Mix`, `FX2Mix` and the per-slot chorus/phaser/delay sub-parameters (`Fx1ChorusSpeed/Depth/Delay`, ...) — 165 FX-related parameters; plus per-filter pan modulation (`F1PanModSource`) |
+| Virus TI/C (OsTIrus/Osirus) | `Chorus/Type`, `Ringmodulator Volume`, and a full **Vocoder**: `Vocoder/Carrier` and `Modulator Center Frequency`/`Frequency Offset`/`Q Factor`/`Frequency Spread`, `Vocoder/Bands`, `Attack`/`Release`, `Spectral Balance`, `Vocoder/Balance` |
+| JP-8080 (JE8086) | `ChorusType`, `ChorusLevel`, `MultiEffectsLevel`, `DelayType`, `DelayTime`, `DelayFeedback`, `DelayLevel`, `RingModulatorSwitch`, `AmpPan`, `AutoPanManualPanSwitch` + the `Control*` depth parameters |
+| Microwave XT (Xenia) | `EffectType`, `EffectParamA/B/C`, `DelayTime`, `ChorusEnabled`, `MixRingMod`, `Pan`/`PanKeytrack`/`DePan`, `Lfo1Delay`/`Lfo2Delay`, `ModDelaySource`/`ModDelayTime` |
+| Nord Lead 2x (NodalRed2x) | **no onboard FX** (only `RingMod` and `Distortion`) — this is the device where HDAW internal FX is the correct layer |
+
+Practical consequence: for every device except the Nord, an effect that already exists
+onboard should be driven **there** (patch content, a parameter write, a CC, or a macro
+plan) rather than re-created with a plugin — and where the device hides the parameter
+from the host (Vavra), the honest options are patch-level editing or the
+remote-control SysEx route, not `set_fx_param`.
+
 ## 6. Pipeline commands (one line each)
 
     py -3.14 timbre-lib/virus_patch.py  --sidecars "<Virus bank dir>"

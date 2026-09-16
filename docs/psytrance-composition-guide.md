@@ -723,7 +723,7 @@ Live writes reach offline renders via the standard save snapshot.
 | Distortion gating | Osirus | `Ch 1 Distortion Curve`=275 (set 1-11), `Intensity`=276 | square preset on 276 per beat window |
 | Delay throw at a drop | JE8086 | `A DELAY TYPE`=184 (PANNING L->R…), TIME=185, FEEDBACK=186, LEVEL=187 (>0 enables) | delayThrow preset on 186 |
 | Vocal FX gating | JE8086 | `VOCAL MIX`=542, `EXT TO VOCAL SEND`=424 | pump on 542 |
-| FX slot switch + movement | Vavra (microQ) | `Ch 1 FX1Type`=191 (Bypass→Vocoder), FX2Type=192 (…5.1 Delay Clocked), FX1Mix=193, FX2Mix=194, Fx1/Fx2 Chorus/Phaser/Delay sub-params 195-123 | macro on 193/194 to bring FX in/out; clocked delays via FX2Type |
+| FX slot switch + movement | Vavra (microQ) | **device/LCD parameter indices** (FX1Type≈191, FX2Type≈192, FX1Mix≈193, FX2Mix≈194, Fx1/Fx2 chorus-phaser-delay sub-params) — these are NOT CLAP parameters: measured `list_fx_params` gives `{"params":[]}`, so they cannot be set with `set_fx_param` | reachable only via the emulation's remote-control SysEx (`SetParam`, page/index/value nibbles); **unverified from HDAW**. Practically: the microQ FX are patch content — set them inside the patch and load it, or audition them in the plugin's own editor |
 | Distortion accents | NodalRed2x | `A Distortion`=154 (0/1), `ChPrs Amount A`=444 (0-7 chor./pres.) | square/steppedGate on 154 for rhythmic grit |
 
 `list_fx_params` text gives real units (0-127, -64..+63, type enums like
