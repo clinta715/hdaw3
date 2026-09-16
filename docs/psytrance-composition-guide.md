@@ -744,6 +744,18 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   that drops (not queues) when busy. Sidecar pipeline:
   `timbre-lib/je8086_patch.py` writes `<bank>.je8086.json` over `D:\pdf\je8086`
   (45 sidecars, 4276 entries + role shortlist) — searchable by FileLibraryManager.
+  LIVE VERIFICATION (2026-09-16): delivery is verified (queued DT1 messages,
+  deferred capture receipt ok, unit index aligned with the sidecar survey —
+  survey unit 44 == loader "bank 15 slot 1" == Kulshan perf015/part1 DEEPSAW),
+  but the AUDIBLE patch does NOT change: `list_fx_params` was byte-identical
+  (104,535 chars) before/after an injection, and three different selections
+  (DEEPSAW, Novaline LUNA NL, and a CC0=2 ROM preset) rendered bit-identical
+  audio (peak 0.2455155849456787). jeLib/sysexRemoteControl.cpp only handles the
+  gearmulator LCD/button/param protocol, so DT1 patch writes are never applied by
+  the plugin. Treat JE8086 as an audition-only instrument for now (its own UI/ROM
+  preset selection is the only path that has produced sound); do not build a
+  workflow that depends on host-side JE8086 patch selection until the plugin's
+  patch-receive path is investigated.
 
 ### The audition workflow (inject → save → export → measure)
 1. `send_fx_midi` (CC0 + PC) on the plugin slot.

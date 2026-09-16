@@ -154,6 +154,47 @@ checking the decoder against the known census rather than by trusting the output
   NL2X and JP-8080 bank sidecars are searchable in-app — commit `0089bed`, tests
   `FileLibraryPatchTest.Je8086BankSidecarIngested` and
   `Nl2xBankSidecarIngestedWithoutEngineKey`.
+## Live E2E (2026-09-16) — what it verified, and what it disproved
+
+Ran the loader against a live engine with a real JE8086 instance (audition keepTrack
+-> 4-note lead part -> render -> inject -> render -> compare):
+
+**Verified**
+- Loader delivery: `queued N DT1 message(s) ... capturedToTree=0` then
+  `get_fx_capture_status` -> `status=ok stateBytes=233 hasPluginState=1`.
+- **Index alignment**: the loader's unit numbering now matches the survey's —
+  survey unit 44 == "performance bank 15 slot 1" == Kulshan perf015/part1 DEEPSAW
+  (both enumerate 192 units: 64 named performance commons + 128 parts).
+- Validation is atomic: a corrupt checksum, an out-of-range preset, a Clavia file
+  and a bogus path are all rejected before anything is queued.
+
+**Disproved (the important part)**
+- **The audible patch does not change.** `list_fx_params` before/after an
+  injection was byte-identical (104,535 chars), and three different selections
+  (perf-patch DEEPSAW, user-bank LUNA NL, and CC0=2+PC ROM preset 33) rendered
+  bit-identical audio (peak 0.2455155849456787). `jeLib/sysexRemoteControl.cpp`
+  implements only the gearmulator LCD/button/SetParam protocol, so DT1 patch
+  writes are never applied. Conclusion: JE8086 is currently **audition-only** for
+  host-driven patch selection; the loader is a verified *transport*, not a working
+  patch switch. (Same class as the documented Dexed "ignores injected state"
+  finding — document and steer around, don't build on it.)
+
+**Two real bugs the E2E cross-check caught** (both invisible to the unit tests)
+1. `mcp-launch.bat` aborted before launching the engine: unescaped parentheses in
+   an `echo` inside a parenthesized `if` block (the tool-surface sentinel message)
+   made cmd run the remainder as a command -> "- was unexpected at this time." ->
+   the launcher exited 255 -> every MCP call failed with "fetch failed", which
+   looks exactly like a missing-DLL/engine-startup fault. Fixed by escaping the
+   parens (commit f5f4cb9); found with a traced copy of the bat (echo on).
+2. `timbre-lib/je8086_patch.py` silently dropped **41%** of SMF-wrapped messages:
+   the varint length prefix was only stripped when its first byte had the high
+   bit set, so payloads under 128 bytes (one-byte prefix) failed the DT1 header
+   check and vanished. The C++ loader (320 SysEx events in Kulshan) vs the survey
+   (128) is what exposed it. Census corrected: **10368 messages / 4980 entries**
+   (was 6144/4276), 1087 performance names (was 383); usable patches unchanged at
+   2674. Fixed in commit 814f898 (retry with one byte stripped), regression test
+   added, survey + 46 sidecars regenerated.
+
 - (b) `load_je8086_preset {trackId, slotIndex, filePath, preset?, recall?}` —
   DT1 bank → validated atomically → ONE patch unit injected into a JE8086 slot +
   CC0(USER)+PC recall — commits `a9d2807` (loader) and `4573d0f` (MCP-surface
