@@ -347,7 +347,9 @@ def _is_printable_name(raw: bytes) -> bool:
     text = raw[:NAME_LEN].decode("latin-1")
     if not text.strip():
         return False
-    return all(32 <= ord(c) < 127 for c in text)
+    # Space and NUL are both used as name padding (real banks pad with spaces,
+    # some tools leave NULs); anything else non-printable means "not a name".
+    return all(32 <= ord(c) < 127 or c == "\x00" for c in text)
 
 
 # --------------------------------------------------------------------------- #

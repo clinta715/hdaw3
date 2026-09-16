@@ -374,6 +374,28 @@ inline int splitJp8080Syx(const uint8_t* bytes, size_t size, std::vector<Jp8080D
     return count;
 }
 
+/// True when a DT1 message carries a patch NAME: the dump's body starts after
+/// the 9-byte header and carries ONE leading byte, so the 16-char name lives at
+/// raw[10..25] (same rule timbre-lib/je8086_patch.py uses for the sidecar index).
+inline bool jp8080MessageHasName(const Jp8080Dump& d) noexcept
+{
+    constexpr size_t kNameStart = 10;   // 9-byte header + 1 leading byte
+    constexpr size_t kNameLen = 16;
+    if (d.raw.size() < kNameStart + kNameLen)
+        return false;
+    int printable = 0;
+    for (size_t i = kNameStart; i < kNameStart + kNameLen; ++i)
+    {
+        const auto c = d.raw[i];
+        if (c == 0x20 || c == 0x00)
+            continue;                   // space / NUL are name padding
+        if (c < 0x20 || c > 0x7E)
+            return false;
+        ++printable;
+    }
+    return printable > 0;
+}
+
 /// A patch unit = (area, bank, slot); performances also carry a common block.
 struct Jp8080Unit
 {
@@ -389,7 +411,12 @@ inline std::vector<Jp8080Unit> jp8080UnitsInFileOrder(const std::vector<Jp8080Du
     std::vector<Jp8080Unit> units;
     for (const auto& d : dumps)
     {
-        if (d.area == 0)
+        // Only NAME-BEARING page-0 groups are patch units. Page 1 is a
+        // continuation of its unit, and unnamed groups (a performance-common
+        // block, or the binary tail of a part) are not patches -- the sidecar
+        // survey counts units the same way, so preset indexes stay aligned
+        // (Kulshan: 128 named parts out of 192 DT1 groups).
+        if (d.area == 0 || d.pageInPatch != 0 || !jp8080MessageHasName(d))
             continue;
         bool seen = false;
         for (const auto& u : units)

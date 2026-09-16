@@ -327,10 +327,10 @@
   "PULSE": 437,
   "SAW": 1380,
   "SAW2": 183,
-  "SUPER SAW": 1184,
+  "SUPER SAW": 1186,
   "TRI": 188,
   "TWM": 209,
-  "n/a": 1087,
+  "n/a": 1088,
   "noise": 121
  },
  "paramHistograms": {
@@ -338,6 +338,8 @@
    "0": 87,
    "1": 160,
    "2": 2426,
+   "29": 1,
+   "82": 1,
    "127": 1
   },
   "MultiEffectsType": {
@@ -354,14 +356,14 @@
    "10": 45,
    "11": 25,
    "12": 161,
-   "64": 3,
+   "64": 5,
    "70": 1,
    "76": 1,
    "98": 1,
    "102": 1
   },
   "Osc1Waveform": {
-   "0": 1058,
+   "0": 1060,
    "1": 172,
    "2": 174,
    "3": 168,
@@ -972,18 +974,18 @@
   },
   {
    "area": "performance-common",
-   "entries": 189,
+   "entries": 192,
    "file": "Techno 2.syx",
    "messages": 320,
-   "nonInit": 189,
-   "nonInitPatches": 126,
+   "nonInit": 192,
+   "nonInitPatches": 128,
    "roles": {
     "arp": 1,
     "bass": 14,
     "lead": 46,
     "other": 2,
-    "pad": 26,
-    "performance": 63,
+    "pad": 28,
+    "performance": 64,
     "pluck": 37
    }
   },
@@ -1215,8 +1217,8 @@
   "fx": 91,
   "lead": 1345,
   "other": 55,
-  "pad": 501,
-  "performance": 1087,
+  "pad": 503,
+  "performance": 1088,
   "pluck": 1333
  },
  "roleShortlist": {
@@ -1849,13 +1851,13 @@
  "schema": "hdaw.je8086.survey.v1",
  "totals": {
   "checksumFailures": 0,
-  "entries": 4980,
+  "entries": 4983,
   "files": 46,
   "messages": 10368,
-  "nonInit": 3686,
-  "nonInitPatches": 2674,
-  "performanceNames": 1087,
-  "truncated": 2484
+  "nonInit": 3689,
+  "nonInitPatches": 2676,
+  "performanceNames": 1088,
+  "truncated": 2487
  },
  "unmapped": [
   "velocity/morph block 0x119-0x16C not decoded (page 2 of a 2-page patch)",
