@@ -263,3 +263,149 @@ TEST(PresetFileParser, NordMidUnwrapJoinsF0AndF7)
     EXPECT_TRUE(std::equal(dump.begin(), dump.end(), recovered.begin()));
     EXPECT_TRUE(mcp::validateNordDump(recovered.data(), recovered.size()).isEmpty());
 }
+
+// ---------------------------------------------------------------------------
+// Roland JP-8080 (JE8086) DT1 dumps
+// ---------------------------------------------------------------------------
+namespace {
+
+uint8_t jpChecksum(const std::vector<uint8_t>& addrData)
+{
+    uint32_t sum = 0;
+    for (auto b : addrData)
+        sum += b;
+    return static_cast<uint8_t>((128 - (sum % 128)) % 128);
+}
+
+std::vector<uint8_t> jpDt1(uint8_t a0, uint8_t a1, uint8_t a2, const std::vector<uint8_t>& data)
+{
+    std::vector<uint8_t> bytes { 0xF0, 0x41, 0x10, 0x00, 0x06, 0x12, a0, a1, a2 };
+    bytes.insert(bytes.end(), data.begin(), data.end());
+    std::vector<uint8_t> forCk { a0, a1, a2 };
+    forCk.insert(forCk.end(), data.begin(), data.end());
+    bytes.push_back(jpChecksum(forCk));
+    bytes.push_back(0xF7);
+    return bytes;
+}
+
+// 256-byte patch page whose name sits at data[1:17] (the dump's leading byte)
+std::vector<uint8_t> jpPage(const juce::String& name)
+{
+    std::vector<uint8_t> page(256, 0);
+    const auto text = name.paddedRight(' ', 16).substring(0, 16).toStdString();
+    for (size_t i = 0; i < text.size(); ++i)
+        page[1 + i] = static_cast<uint8_t>(text[i]);
+    return page;
+}
+
+std::vector<uint8_t> jpBankStream(int patches)
+{
+    std::vector<uint8_t> out;
+    for (int p = 0; p < patches; ++p)
+    {
+        const uint32_t rel = static_cast<uint32_t>(p) * 2;
+        const auto lo = static_cast<uint8_t>(rel % 128);
+        const auto hi = static_cast<uint8_t>((rel / 128) % 128);
+        const auto page0 = jpPage("PATCH " + juce::String(p + 1));
+        std::vector<uint8_t> page1(16, 0);
+        page1[0] = 0x2A;
+        for (const auto& m : { jpDt1(2, hi, lo, page0), jpDt1(2, hi, static_cast<uint8_t>(lo + 1), page1) })
+            out.insert(out.end(), m.begin(), m.end());
+    }
+    return out;
+}
+
+} // namespace
+
+TEST(PresetFileParser, Jp8080ValidatesHeaderChecksumAndSize)
+{
+    auto good = jpDt1(2, 0, 0, jpPage("BASS"));
+    ASSERT_EQ(mcp::validateJp8080Dump(good.data(), good.size()), juce::String());
+    EXPECT_TRUE(mcp::isJp8080Dt1Header(good.data(), good.size()));
+
+    auto badChecksum = good;
+    badChecksum[20] ^= 0x01;
+    EXPECT_TRUE(mcp::validateJp8080Dump(badChecksum.data(), badChecksum.size())
+                    .containsIgnoreCase("checksum"));
+
+    auto wrongModel = good;
+    wrongModel[4] = 0x05;
+    EXPECT_TRUE(mcp::validateJp8080Dump(wrongModel.data(), wrongModel.size())
+                    .containsIgnoreCase("not a JP-8080"));
+
+    auto unterminated = good;
+    unterminated.back() = 0x00;
+    EXPECT_TRUE(mcp::validateJp8080Dump(unterminated.data(), unterminated.size())
+                    .containsIgnoreCase("F7"));
+}
+
+TEST(PresetFileParser, Jp8080SplitAssignsBankAndSlot)
+{
+    const auto stream = jpBankStream(2);
+    std::vector<mcp::Jp8080Dump> dumps;
+    EXPECT_EQ(mcp::splitJp8080Syx(stream.data(), stream.size(), dumps), 4);
+    ASSERT_EQ(dumps.size(), 4u);
+    EXPECT_TRUE(dumps[0].checksumOk);
+    EXPECT_EQ(static_cast<int>(dumps[0].area), 2);
+    EXPECT_EQ(dumps[0].bank, 0);
+    EXPECT_EQ(dumps[0].slot, 1);
+    EXPECT_EQ(static_cast<int>(dumps[0].pageInPatch), 0);
+    EXPECT_EQ(dumps[1].slot, 1);
+    EXPECT_EQ(static_cast<int>(dumps[1].pageInPatch), 1);
+    EXPECT_EQ(dumps[2].slot, 2);
+    EXPECT_EQ(static_cast<int>(dumps[2].pageInPatch), 0);
+
+    const auto units = mcp::jp8080UnitsInFileOrder(dumps);
+    ASSERT_EQ(units.size(), 2u);
+    EXPECT_EQ(units[0].slot, 1);
+    EXPECT_EQ(units[1].slot, 2);
+
+    std::vector<const mcp::Jp8080Dump*> selected;
+    EXPECT_EQ(mcp::jp8080SelectUnit(dumps, units[1], selected), 2);
+    ASSERT_EQ(selected.size(), 2u);
+    EXPECT_EQ(selected[0]->slot, 2);
+    EXPECT_EQ(selected[1]->slot, 2);
+}
+
+TEST(PresetFileParser, Jp8080PerformanceUnitsAndCommonBlock)
+{
+    // performance 1: common block at pages 0..1, parts at pages 64 and 66
+    std::vector<uint8_t> stream;
+    for (const auto& m : { jpDt1(3, 0, 0, jpPage("PERF NAME")),
+                           jpDt1(3, 0, 64, jpPage("PART ONE")),
+                           jpDt1(3, 0, 65, std::vector<uint8_t>(16, 0)),
+                           jpDt1(3, 0, 66, jpPage("PART TWO")) })
+        stream.insert(stream.end(), m.begin(), m.end());
+
+    std::vector<mcp::Jp8080Dump> dumps;
+    ASSERT_EQ(mcp::splitJp8080Syx(stream.data(), stream.size(), dumps), 4);
+    const auto units = mcp::jp8080UnitsInFileOrder(dumps);
+    ASSERT_EQ(units.size(), 3u);
+    EXPECT_TRUE(units[0].performanceCommon);
+    EXPECT_EQ(units[0].slot, 0);
+    EXPECT_EQ(units[1].slot, 1);
+    EXPECT_EQ(units[2].slot, 2);
+    EXPECT_EQ(units[1].bank, 1);
+    EXPECT_EQ(static_cast<int>(units[1].area), 3);
+
+    std::vector<const mcp::Jp8080Dump*> partOne;
+    EXPECT_EQ(mcp::jp8080SelectUnit(dumps, units[1], partOne), 2);
+    std::vector<const mcp::Jp8080Dump*> common;
+    EXPECT_EQ(mcp::jp8080SelectUnit(dumps, units[0], common), 1);
+}
+
+TEST(PresetFileParser, Jp8080RejectsTruncatedAndSkipsForeignSysex)
+{
+    std::vector<uint8_t> truncated { 0xF0, 0x41, 0x10, 0x00, 0x06, 0x12, 2, 0, 0, 1, 2 };
+    std::vector<mcp::Jp8080Dump> dumps;
+    EXPECT_EQ(mcp::splitJp8080Syx(truncated.data(), truncated.size(), dumps), -1);
+
+    // a Clavia dump in the same stream is skipped, never mis-decoded as JP-8080
+    std::vector<uint8_t> mixed { 0xF0, 0x33, 0x00, 0x04, 0x01, 0x08, 0x00, 0xF7 };
+    const auto jp = jpDt1(2, 0, 2, jpPage("ONLY"));
+    mixed.insert(mixed.end(), jp.begin(), jp.end());
+    std::vector<mcp::Jp8080Dump> only;
+    EXPECT_EQ(mcp::splitJp8080Syx(mixed.data(), mixed.size(), only), 1);
+    ASSERT_EQ(only.size(), 1u);
+    EXPECT_EQ(only[0].slot, 2);
+}

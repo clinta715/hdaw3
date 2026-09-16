@@ -450,6 +450,23 @@ s.registerTool({"load_nord_bank",
             a.value("filePath").toString(), program,
             a.value("captureToTree").toBool(true));
     }});
+s.registerTool({"load_je8086_preset",
+    "Load ONE Roland JP-8080 patch from a bank file (.syx raw DT1 SysEx, or .mid SMF wrapping DT1 SysEx) into a JE8086 plugin slot via injected MIDI SysEx, then recall it (CC0=1 USER + program change) so it sounds immediately. preset is the 1-based patch unit in file order (default 1) - use the je8086 sidecar survey roleShortlist refs (perf016/part2, bank0/slot25) to choose one. ATOMIC: every DT1 message is validated (F0 41 10 00 06 12 header, F7-terminated, Roland checksum, <=32768B) BEFORE anything is queued, so a corrupt bank never half-loads. Per-patch by design: a 64-patch bank is 128 DT1 messages while the injection carries at most 64 events and the proxy forwards SysEx over a single lane that DROPS when busy rather than queueing. Realtime mutation: not undoable; capture via project save.",
+    objSchema({{"trackId",  QJsonObject{{"type","integer"}}},
+              {"slotIndex",QJsonObject{{"type","integer"}}},
+              {"filePath", QJsonObject{{"type","string"}}},
+              {"preset",   QJsonObject{{"type","integer"}}},
+              {"recall",   QJsonObject{{"type","boolean"}}}},
+              {"trackId","slotIndex","filePath"}),
+    "fx",
+    [e](const QJsonObject& a) -> McpToolResult {
+        return runJe8086PatchFile(*e,
+            a.value("trackId").toInt(), a.value("slotIndex").toInt(),
+            a.value("filePath").toString(),
+            a.value("preset").toInt(1),
+            a.value("recall").toBool(true),
+            a.value("captureToTree").toBool(true));
+    }});
 s.registerTool({"set_master_fx_param",
         "Set a MASTER-bus FX slot parameter (eq / compressor / limiter) by paramIndex or paramName (the name get_master_fx_params returns; case-insensitive, paramName wins when both are given). Master FX shapes the whole mix â€” e.g. enable the limiter (slot 1) and set threshold -6 for loudness without touching track faders. Values clamp to the param defs.\n\nSlot map (default project): 0=eq (param0=Frequency Hz, param1=Q, param2=Gain dB), 1=limiter (param0=Threshold dB [-24..0], param1=Release ms [1..500], param2=Ceiling linear [0.5..1.0] — post-limiter output clamp; 1.0 = full scale). A slot only processes when bypassed=false.",
         objSchema({{"slotIndex", QJsonObject{{"type","integer"}}},
@@ -737,6 +754,13 @@ s.registerTool({"apply_preset",
                 const int program = a.contains("program")
                     ? a.value("program").toInt(-1) : -1;
                 return runNordBankFile(*e, ti, si, path, program, capture);
+            }
+            case PresetRouteKind::Je8086Patch:
+            {
+                // program doubles as the 1-based patch unit for JP-8080 files
+                const int unit = a.contains("program") ? a.value("program").toInt(1) : 1;
+                return runJe8086PatchFile(*e, ti, si, path,
+                    unit > 0 ? unit : 1, true, capture);
             }
             case PresetRouteKind::VirusRom:
                 return runVirusRomPreset(*e, ti, si,

@@ -17,6 +17,7 @@
 #include "engine/Track.h"
 #include "engine/TrackFXSlot.h"
 #include "mcp/PresetFileParser.h"
+#include "mcp/PresetRoute.h"
 #include "model/ProjectModel.h"
 
 namespace {
@@ -530,4 +531,101 @@ TEST(FxMidiInjection, CaptureReceiptStampsFreshValues)
     EXPECT_EQ(static_cast<int>(slotTree.getProperty(IDs::captureBytes, -1)), 1234);
     // Invalid trees are a silent no-op (deferred timer vs rebuilt chain).
     AudioEngineCommands::writeFxCaptureReceipt(juce::ValueTree(), "ok", 1);
+}
+
+namespace {
+QString jeResultText(const mcp::McpToolResult& r)
+{
+    return r.content.at(0).toObject().value("text").toString();
+}
+} // namespace
+
+// JP-8080 (JE8086) loader: the bank file is validated ATOMICALLY before
+// anything is queued, so a bank with one corrupt DT1 message can never
+// half-load. Every path below returns before sendFxMidi, which is why the test
+// needs no plugin slot (and proves a bad bank never reaches the child).
+TEST(FxMidiInjection, Je8086LoaderValidatesBeforeQueueing)
+{
+    AudioEngine engine;
+    engine.initialize();
+
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("hdaw_je8086_loader_test");
+    dir.deleteRecursively();
+    dir.createDirectory();
+
+    auto writeFile = [&dir](const juce::String& name, const std::vector<uint8_t>& bytes)
+    {
+        const auto f = dir.getChildFile(name);
+        f.replaceWithData(bytes.data(), bytes.size());
+        return f;
+    };
+    auto asPath = [](const juce::File& f)
+    {
+        return QString::fromUtf8(f.getFullPathName().toRawUTF8());
+    };
+    auto dt1 = [](uint8_t a1, uint8_t a2, const std::vector<uint8_t>& data, bool corrupt)
+    {
+        std::vector<uint8_t> out { 0xF0, 0x41, 0x10, 0x00, 0x06, 0x12, 2, a1, a2 };
+        out.insert(out.end(), data.begin(), data.end());
+        uint32_t sum = 0;
+        for (size_t i = 6; i < out.size(); ++i)
+            sum += out[i];
+        auto ck = static_cast<uint8_t>((128 - (sum % 128)) % 128);
+        if (corrupt)
+            ck = static_cast<uint8_t>((ck + 1) % 128);
+        out.push_back(ck);
+        out.push_back(0xF7);
+        return out;
+    };
+    auto page = [](const char* name)
+    {
+        std::vector<uint8_t> p(256, 0);
+        for (size_t i = 0; name[i] != 0 && i < 16; ++i)
+            p[1 + i] = static_cast<uint8_t>(name[i]);
+        return p;
+    };
+
+    std::vector<uint8_t> bank;
+    for (uint8_t pat = 0; pat < 2; ++pat)
+    {
+        for (const auto& m : { dt1(0, static_cast<uint8_t>(pat * 2),
+                                   page(pat == 0 ? "BASS ONE" : "LEAD TWO"), false),
+                               dt1(0, static_cast<uint8_t>(pat * 2 + 1),
+                                   std::vector<uint8_t>(16, 0), false) })
+            bank.insert(bank.end(), m.begin(), m.end());
+    }
+    const auto goodFile = writeFile("good.syx", bank);
+
+    // 1. corrupt DT1 in the SECOND patch -> the whole file is rejected
+    auto corrupt = bank;
+    corrupt[corrupt.size() - 3] ^= 0x01;      // a data byte of the last message
+    const auto corruptFile = writeFile("corrupt.syx", corrupt);
+    const auto rCorrupt = mcp::runJe8086PatchFile(engine, 0, 0, asPath(corruptFile), 1, true, false);
+    EXPECT_TRUE(rCorrupt.isError) << "a bank with one corrupt message must not load";
+    EXPECT_NE(jeResultText(rCorrupt).toStdString().find("checksum"), std::string::npos)
+        << jeResultText(rCorrupt).toStdString();
+
+    // 2. preset index beyond the file's units
+    const auto rRange = mcp::runJe8086PatchFile(engine, 0, 0, asPath(goodFile), 5, true, false);
+    EXPECT_TRUE(rRange.isError);
+    EXPECT_NE(jeResultText(rRange).toStdString().find("out of range"), std::string::npos)
+        << jeResultText(rRange).toStdString();
+
+    // 3. a non-JP-8080 SysEx file (Clavia) is never mis-decoded
+    const std::vector<uint8_t> clavia { 0xF0, 0x33, 0x00, 0x04, 0x01, 0x08, 0x00, 0xF7 };
+    const auto rClavia = mcp::runJe8086PatchFile(engine, 0, 0,
+        asPath(writeFile("nord.syx", clavia)), 1, true, false);
+    EXPECT_TRUE(rClavia.isError);
+    EXPECT_NE(jeResultText(rClavia).toStdString().find("no JP-8080"), std::string::npos)
+        << jeResultText(rClavia).toStdString();
+
+    // 4. unsupported container + missing file
+    EXPECT_TRUE(mcp::runJe8086PatchFile(engine, 0, 0,
+        asPath(writeFile("bank.txt", bank)), 1, true, false).isError);
+    const auto rMissing = mcp::runJe8086PatchFile(engine, 0, 0, "Z:/nope/missing.syx", 1, true, false);
+    EXPECT_TRUE(rMissing.isError);
+    EXPECT_NE(jeResultText(rMissing).toStdString().find("file not found"), std::string::npos);
+
+    dir.deleteRecursively();
 }

@@ -222,4 +222,203 @@ inline int splitNordSyx(const uint8_t* bytes, size_t size,
     return count;
 }
 
+// ---------------------------------------------------------------------------
+// Roland JP-8080 (JE8086) patch dumps (D:/pdf/je8086, timbre-lib/je8086_patch.py)
+//
+// Wire format (gearmulator 2.2.9 source/ronaldo/je8086/jeLib/jemiditypes.h plus
+// all 46 files of the real bank library, verified 2026-09-16):
+//   F0 41 10 00 06 12 <a0 a1 a2> <data..> <checksum> F7
+//     - 0x41 = Roland, device 0x10, model 0x0006 (JP-8080), 0x12 = DT1 data set
+//     - the three address bytes are 7-bit and address 256-byte PAGES:
+//         pageValue = (a0 << 14) | (a1 << 7) | a2
+//     - checksum = (128 - (sum(addr) + sum(data)) % 128) % 128
+//   A patch occupies 0x200 B = 2 pages, so a 64-patch bank spans 128 pages:
+//     patch area (base 02 00 00 = 2 << 14):
+//       rel = page - base;  bank = rel / 128;  slot = (rel % 128) / 2 + 1;
+//       pageInPatch = (rel % 128) % 2
+//     performance area (base 03 00 00 = 3 << 14), 128 pages per performance:
+//       off = (page - base) % 128;  off < 64 -> performance common (page = off);
+//       else inner = off - 64;  part = inner / 2 + 1;  pageInPatch = inner % 2
+//   (PatchUpper = 0x4000 B = page 64, PatchLower = 0x4200 B = page 66.)
+//
+// The dump carries ONE leading byte before the documented patch body, so a
+// patch name is data[1:17] and Patch.<param> = 0xNN sits at data[1 + 0xNN]
+// (validated over 3893 real messages by timbre-lib/je8086_patch.py).
+// ---------------------------------------------------------------------------
+
+inline constexpr uint8_t kJp8080ModelHi = 0x00;
+inline constexpr uint8_t kJp8080ModelLo = 0x06;
+inline constexpr uint8_t kJp8080Dt1 = 0x12;
+inline constexpr uint32_t kJp8080PatchAreaBase = 2u << 14;   // address bytes 02 00 00
+inline constexpr uint32_t kJp8080PerfAreaBase  = 3u << 14;   // address bytes 03 00 00
+inline constexpr uint32_t kJp8080AreaPages = 128;            // pages per bank / performance
+inline constexpr uint32_t kJp8080PerfCommonPages = 64;
+inline constexpr size_t kJp8080MaxDumpSize = 32768;          // SHM midiIn sysex margin
+
+/// One JP-8080 DT1 message plus its bank/slot coordinates.
+struct Jp8080Dump
+{
+    std::vector<uint8_t> raw;       // complete F0..F7 message
+    uint32_t page = 0;
+    uint32_t pageInPatch = 0;
+    uint8_t area = 0;               // 2 = patch area, 3 = performance area
+    int bank = 0;                   // patch area: 0-based bank; perf: 1-based performance
+    int slot = 0;                   // patch area: 1..64; perf part 1..8; 0 = performance common
+    bool performanceCommon = false;
+    bool checksumOk = false;
+};
+
+inline uint32_t jp8080PageValue(uint8_t a0, uint8_t a1, uint8_t a2) noexcept
+{
+    return (static_cast<uint32_t>(a0) << 14) | (static_cast<uint32_t>(a1) << 7) | a2;
+}
+
+inline bool isJp8080Dt1Header(const uint8_t* bytes, size_t size) noexcept
+{
+    return size >= 9 && bytes[0] == 0xF0 && bytes[1] == 0x41
+        && bytes[3] == kJp8080ModelHi && bytes[4] == kJp8080ModelLo
+        && bytes[5] == kJp8080Dt1;
+}
+
+/// Fill in the bank/slot/page coordinates for a DT1 message (in place).
+inline void jp8080AssignUnit(Jp8080Dump& d) noexcept
+{
+    if (d.raw.size() < 9)
+        return;
+    d.page = jp8080PageValue(d.raw[6], d.raw[7], d.raw[8]);
+    if (d.page >= kJp8080PatchAreaBase && d.page < kJp8080PerfAreaBase)
+    {
+        const uint32_t rel = d.page - kJp8080PatchAreaBase;
+        d.area = 2;
+        d.bank = static_cast<int>(rel / kJp8080AreaPages);
+        const uint32_t within = rel % kJp8080AreaPages;
+        d.slot = static_cast<int>(within / 2) + 1;
+        d.pageInPatch = within % 2;
+        return;
+    }
+    if (d.page >= kJp8080PerfAreaBase)
+    {
+        const uint32_t rel = d.page - kJp8080PerfAreaBase;
+        d.area = 3;
+        d.bank = static_cast<int>(rel / kJp8080AreaPages) + 1;
+        const uint32_t off = rel % kJp8080AreaPages;
+        if (off < kJp8080PerfCommonPages)
+        {
+            d.performanceCommon = true;
+            d.slot = 0;
+            d.pageInPatch = off;
+            return;
+        }
+        const uint32_t inner = off - kJp8080PerfCommonPages;
+        d.slot = static_cast<int>(inner / 2) + 1;
+        d.pageInPatch = inner % 2;
+    }
+}
+
+/// Validate one complete JP-8080 DT1 message. Empty string = valid.
+inline juce::String validateJp8080Dump(const uint8_t* bytes, size_t size)
+{
+    if (size < 10)
+        return "dump too small (" + juce::String((int) size) + " bytes)";
+    if (bytes[0] != 0xF0 || bytes[1] != 0x41)
+        return "not a Roland SysEx dump (expected F0 41)";
+    if (bytes[3] != kJp8080ModelHi || bytes[4] != kJp8080ModelLo)
+        return "not a JP-8080 dump (expected model 00 06)";
+    if (bytes[5] != kJp8080Dt1)
+        return "not a DT1 data-set message (expected 0x12)";
+    if (bytes[size - 1] != 0xF7)
+        return "dump is not F7-terminated";
+    if (size > kJp8080MaxDumpSize)
+        return "dump too large (" + juce::String((int) size) + " bytes, max 32768)";
+    uint32_t sum = 0;
+    for (size_t i = 6; i + 2 < size; ++i)   // addr + data, excluding the checksum
+        sum += bytes[i];
+    const auto expected = static_cast<uint8_t>((128 - (sum % 128)) % 128);
+    if (bytes[size - 2] != expected)
+        return "checksum mismatch (expected " + juce::String((int) expected)
+             + ", got " + juce::String((int) bytes[size - 2]) + ")";
+    return {};
+}
+
+/// Split a raw SysEx byte run into JP-8080 DT1 messages (non-JP8080 SysEx is
+/// skipped). Returns the number appended, or -1 when a dump is not
+/// F7-terminated (truncated file) - partial trailing data is never queued.
+inline int splitJp8080Syx(const uint8_t* bytes, size_t size, std::vector<Jp8080Dump>& out)
+{
+    int count = 0;
+    size_t i = 0;
+    while (i < size)
+    {
+        if (bytes[i] != 0xF0)
+        {
+            ++i;
+            continue;
+        }
+        const size_t start = i;
+        size_t end = i + 1;
+        while (end < size && bytes[end] != 0xF7)
+            ++end;
+        if (end >= size)
+            return -1;                      // unterminated dump - reject the file
+        if (isJp8080Dt1Header(bytes + start, end + 1 - start))
+        {
+            Jp8080Dump d;
+            d.raw.assign(bytes + start, bytes + end + 1);
+            d.checksumOk = validateJp8080Dump(d.raw.data(), d.raw.size()).isEmpty();
+            jp8080AssignUnit(d);
+            out.push_back(std::move(d));
+            ++count;
+        }
+        i = end + 1;
+    }
+    return count;
+}
+
+/// A patch unit = (area, bank, slot); performances also carry a common block.
+struct Jp8080Unit
+{
+    uint8_t area = 0;
+    int bank = 0;
+    int slot = 0;
+    bool performanceCommon = false;
+};
+
+/// Distinct patch units in file order (what a caller counts with presetIndex).
+inline std::vector<Jp8080Unit> jp8080UnitsInFileOrder(const std::vector<Jp8080Dump>& dumps)
+{
+    std::vector<Jp8080Unit> units;
+    for (const auto& d : dumps)
+    {
+        if (d.area == 0)
+            continue;
+        bool seen = false;
+        for (const auto& u : units)
+            if (u.area == d.area && u.bank == d.bank && u.slot == d.slot
+                && u.performanceCommon == d.performanceCommon)
+            {
+                seen = true;
+                break;
+            }
+        if (!seen)
+            units.push_back({ d.area, d.bank, d.slot, d.performanceCommon });
+    }
+    return units;
+}
+
+/// Collect the dumps (page 0 and page 1) that belong to one unit.
+inline int jp8080SelectUnit(const std::vector<Jp8080Dump>& dumps,
+                            const Jp8080Unit& unit,
+                            std::vector<const Jp8080Dump*>& out)
+{
+    int count = 0;
+    for (const auto& d : dumps)
+        if (d.area == unit.area && d.bank == unit.bank && d.slot == unit.slot
+            && d.performanceCommon == unit.performanceCommon)
+        {
+            out.push_back(&d);
+            ++count;
+        }
+    return count;
+}
+
 } // namespace mcp

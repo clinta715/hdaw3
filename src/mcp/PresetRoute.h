@@ -36,6 +36,7 @@ namespace mcp {
 
 enum class PresetRouteKind {
     NordBank,         // Clavia dumps -> NodalRed2x slot (load_nord_bank path)
+    Je8086Patch,      // Roland JP-8080 DT1 dump -> JE8086 slot (load_je8086_preset path)
     VirusRom,         // CC0+PC ROM preset -> gearmulator Virus slot (load_virus_preset path)
     FmSysex,          // F0 43 SysEx -> internal fm_synth slot (fm_synth_import_sysex path)
     SubSynthVirus,    // Virus F0 00 20 33 -> internal sub_synth slot (sub_synth_import_sysex path)
@@ -64,6 +65,11 @@ inline bool isVirusGearmulatorPluginId(const std::string& pluginId)
 inline bool isNodalRed2xPluginId(const std::string& pluginId)
 {
     return containsCI(pluginId, "NodalRed2x");
+}
+
+inline bool isJe8086PluginId(const std::string& pluginId)
+{
+    return containsCI(pluginId, "JE8086");
 }
 
 inline bool isSubSynthSlot(const std::string& fxType, const std::string& pluginId)
@@ -97,6 +103,13 @@ inline PresetRoute resolvePresetRoute(const std::string& fxType,
             && bytes[0] == 0xF0 && bytes[1] == 0x00 && bytes[2] == 0x20
             && bytes[3] == 0x33)
             return { PresetRouteKind::SubSynthVirus, {} };
+
+        // Roland JP-8080 DT1 patch dumps (F0 41 <dev> 00 06 12 ...) into a
+        // JE8086 slot -- the only SysEx that plugin accepts.
+        if (fxType == "plugin" && isJe8086PluginId(pluginId)
+            && size >= 6 && bytes[0] == 0xF0 && bytes[1] == 0x41
+            && bytes[3] == 0x00 && bytes[4] == 0x06 && bytes[5] == 0x12)
+            return { PresetRouteKind::Je8086Patch, {} };
 
         if (fxType == "plugin" && isNodalRed2xPluginId(pluginId)
             && ((size >= 2 && bytes[0] == 0xF0 && bytes[1] == kNordIdClavia)
@@ -261,6 +274,127 @@ inline McpToolResult runNordBankFile(AudioEngine& e, int ti, int si,
         .arg(static_cast<int>(totalBytes))
         .arg(program >= 0 ? QString(" program=%1").arg(program) : QString())
         .arg(r.capturedToTree ? 1 : 0));
+}
+
+/// load_je8086_preset: Roland JP-8080 DT1 bank (.syx / .mid) -> validated dumps
+/// for ONE patch unit -> sendFxMidi (+ optional CC0 USER + PC recall).
+///
+/// Per-patch by design: a 64-patch bank is 128 DT1 messages, while
+/// FxMidiParams carries at most 64 events and the proxy forwards SysEx over a
+/// single lane (a busy lane DROPS, it does not queue) - so a whole-bank burst
+/// would be both over the cap and lossy. One patch = 2 messages.
+inline McpToolResult runJe8086PatchFile(AudioEngine& e, int ti, int si,
+                                        const QString& path, int presetIndex,
+                                        bool recallUserPatch, bool captureToTree)
+{
+    const juce::File f(juce::String::fromUTF8(path.toUtf8()));
+    if (!f.existsAsFile())
+        return McpToolResult::text("file not found: " + path, true);
+    juce::MemoryBlock block;
+    if (!f.loadFileAsData(block))
+        return McpToolResult::text("failed to read file", true);
+
+    std::vector<mcp::Jp8080Dump> dumps;
+    const auto suffix = f.getFileExtension().toLowerCase();
+    if (suffix == ".syx")
+    {
+        const auto* b = static_cast<const uint8_t*>(block.getData());
+        if (mcp::splitJp8080Syx(b, block.getSize(), dumps) < 0)
+            return McpToolResult::text("truncated SysEx (missing F7)", true);
+    }
+    else if (suffix == ".mid")
+    {
+        juce::MemoryInputStream in(block, false);
+        juce::MidiFile mf;
+        if (!mf.readFrom(in))
+            return McpToolResult::text("invalid .mid file", true);
+        std::vector<uint8_t> run;   // re-join the F0 events, then split normally
+        for (int t = 0; t < mf.getNumTracks(); ++t)
+        {
+            const auto* seq = mf.getTrack(t);
+            for (int ev = 0; ev < seq->getNumEvents(); ++ev)
+            {
+                const auto msg = seq->getEventPointer(ev)->message;
+                if (!msg.isSysEx())
+                    continue;
+                const auto* raw = msg.getRawData();
+                const auto n = static_cast<size_t>(msg.getRawDataSize());
+                run.insert(run.end(), raw, raw + n);
+            }
+        }
+        if (mcp::splitJp8080Syx(run.data(), run.size(), dumps) < 0)
+            return McpToolResult::text("truncated SysEx in .mid (missing F7)", true);
+    }
+    else
+        return McpToolResult::text("unsupported file type (use .syx or .mid)", true);
+
+    if (dumps.empty())
+        return McpToolResult::text("no JP-8080 DT1 data found in file", true);
+
+    // ATOMIC: validate EVERY message (header, size, checksum) before queueing
+    // anything -- a bank with one corrupt patch must not half-load.
+    for (const auto& d : dumps)
+    {
+        if (auto err = mcp::validateJp8080Dump(d.raw.data(), d.raw.size()); !err.isEmpty())
+            return McpToolResult::text("invalid JP-8080 dump: "
+                + QString::fromStdString(err.toStdString()), true);
+    }
+
+    const auto units = mcp::jp8080UnitsInFileOrder(dumps);
+    if (units.empty())
+        return McpToolResult::text("file carries no JP-8080 patch units", true);
+    if (presetIndex <= 0)
+        presetIndex = 1;
+    if (presetIndex > static_cast<int>(units.size()))
+        return McpToolResult::text(QString("preset %1 out of range: file has %2 patch unit(s)")
+                                       .arg(presetIndex).arg(static_cast<int>(units.size())), true);
+
+    const auto& unit = units[static_cast<size_t>(presetIndex - 1)];
+    std::vector<const mcp::Jp8080Dump*> selected;
+    if (mcp::jp8080SelectUnit(dumps, unit, selected) <= 0)
+        return McpToolResult::text("selected patch has no DT1 pages", true);
+
+    ProjectCommands::FxMidiParams p;
+    p.trackIndex = ti;
+    p.slotIndex = si;
+    p.captureToTree = captureToTree;
+    for (const auto* d : selected)
+    {
+        ProjectCommands::FxMidiEvent ev;
+        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+        ev.sysex = d->raw;
+        p.events.push_back(std::move(ev));
+    }
+    if (recallUserPatch && unit.area == 2)
+    {
+        // JP-8080 recall: CC0=1 selects the USER bank, then PC selects the
+        // patch (PC 0..127 spans banks A+B, 64 patches each).
+        ProjectCommands::FxMidiEvent cc;
+        cc.kind = ProjectCommands::FxMidiEvent::Kind::ControlChange;
+        cc.channel = 1;
+        cc.data1 = 0;
+        cc.data2 = 1;
+        p.events.push_back(std::move(cc));
+        ProjectCommands::FxMidiEvent pc;
+        pc.kind = ProjectCommands::FxMidiEvent::Kind::ProgramChange;
+        pc.channel = 1;
+        pc.data1 = juce::jlimit(0, 127, unit.bank * 64 + unit.slot - 1);
+        p.events.push_back(std::move(pc));
+    }
+    if (p.events.size() > 64)
+        return McpToolResult::text("too many MIDI events for one injection", true);
+
+    const auto r = e.getProjectCommands().sendFxMidi(p);
+    if (!r.ok)
+        return McpToolResult::text("sendFxMidi failed: " + QString::fromStdString(r.error), true);
+
+    return McpToolResult::text(QString("queued %1 DT1 message(s) for %2 bank %3 slot %4 (patch %5 of %6)%7 capturedToTree=%8")
+                                   .arg(static_cast<int>(selected.size()))
+                                   .arg(unit.area == 2 ? "patch-user" : "performance")
+                                   .arg(unit.bank).arg(unit.slot)
+                                   .arg(presetIndex).arg(static_cast<int>(units.size()))
+                                   .arg(recallUserPatch && unit.area == 2 ? " + CC0(USER)+PC recall" : QString())
+                                   .arg(r.capturedToTree ? 1 : 0));
 }
 
 /// fm_synth_import_sysex: DX7 .syx -> fmPatchData via ProjectCommands::setFmPatch.
