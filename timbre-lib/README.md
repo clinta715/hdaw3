@@ -66,9 +66,7 @@ The default sidecar is a compact metadata index (bank / role / params / labels /
 and `--explode` writes a per-patch `.syx` (byte-identical DT1) + sidecar under
 `<DIR>/exploded/<bank>/`.
 
-Sweep results (2026-09-16): 46/46 files parsed, **6144 DT1 messages, 0 checksum
-failures**, 4276 entries (**2674 usable patches**, 383 performance names),
-45 sidecars, survey `je8086_survey.json`. Roles: 1345 lead, 1333 pluck, 560
+PLACEHOLDER Roles: 1345 lead, 1333 pluck, 560
 bass, 501 pad, 91 fx, 8 arp, 55 other. The three psy-named `.syx` banks carry
 only 1-2 usable patches each (the rest are `INIT PATCH` placeholders) -- the real
 psy content is `Kulshan Mystical Psytrance.mid` (100 usable) and

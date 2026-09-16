@@ -56,6 +56,8 @@ Usage::
     py -3 timbre-lib/je8086_patch.py --sidecars D:/pdf/je8086
     py -3 timbre-lib/je8086_patch.py --sidecars D:/pdf/je8086 --role bass --explode
     py -3 timbre-lib/je8086_patch.py --sidecars D:/pdf/je8086 --with-bytes
+    py -3 timbre-lib/je8086_patch.py --sidecars D:/pdf/je8086 --explode
+    py -3 timbre-lib/je8086_patch.py --verify-exploded D:/pdf/je8086/exploded
 
 The default sidecar is a compact metadata index (bank/role/params/labels/paramDefs);
 --with-bytes additionally embeds each patch's raw DT1 payload, and --explode writes
@@ -76,6 +78,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 SCHEMA_BANK = "hdaw.je8086.bank.v1"
 SCHEMA_PATCH = "hdaw.je8086.patch.v1"
 SCHEMA_SURVEY = "hdaw.je8086.survey.v1"
+SCHEMA_EXPLODED = "hdaw.je8086.exploded.v1"
 ENGINE = "je8086"
 
 ROLAND_ID = 0x41
@@ -637,10 +640,19 @@ def build_patch_sidecar(entry: dict, bank_stem: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
-def _bank_files(root: str) -> List[str]:
+def _bank_files(root: str, exclude: Optional[Sequence[str]] = None) -> List[str]:
+    """Bank files under root, never descending into the explode output.
+
+    Without the prune, a second --explode run ingests its own per-patch files as
+    "banks" (3735 instead of 46, with nested output and unverifiable sidecars).
+    """
     exts = (".syx", ".mid")
+    excluded = [os.path.abspath(p).lower() for p in (exclude or []) if p]
     out = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames
+                       if d.lower() != "exploded"
+                       and os.path.abspath(os.path.join(dirpath, d)).lower() not in excluded]
         for fn in sorted(filenames):
             if fn.lower().endswith(exts):
                 out.append(os.path.join(dirpath, fn))
@@ -783,11 +795,28 @@ def survey(root: str) -> dict:
     }
 
 
-def run_sidecars(root: str, role: Optional[str], explode: bool, with_bytes: bool = False) -> int:
-    files = _bank_files(root)
+def entry_ref_filename(entry: dict) -> str:
+    """Filesystem-safe unique patch reference: bank0-slot25 / perf015-part1.
+
+    The survey's roleShortlist uses the slash form for reading; filenames need
+    the dash form, and the unique ref is what stops two performances that share
+    a patch name and slot from overwriting each other.
+    """
+    if entry["area"] == "patch":
+        return "bank%d-slot%02d" % (entry["bank"], entry["slot"])
+    return "perf%03d-part%d" % (entry["bank"], entry["slot"])
+
+
+def run_sidecars(root: str, role: Optional[str], explode: bool, with_bytes: bool = False,
+                 explode_dir: Optional[str] = None) -> int:
+    explode_root = explode_dir or os.path.join(root, "exploded")
+    files = _bank_files(root, exclude=[explode_root])
     written = 0
     entries_written = 0
     exploded = 0
+    collisions = 0
+    manifest = {"schema": SCHEMA_EXPLODED, "engine": ENGINE,
+                "root": os.path.basename(os.path.normpath(root)), "banks": []}
     for path in files:
         try:
             entries = build_entries(parse_file(path))
@@ -802,15 +831,24 @@ def run_sidecars(root: str, role: Optional[str], explode: bool, with_bytes: bool
         written += 1
         entries_written += len(selected)
         if explode:
-            folder = os.path.join(os.path.dirname(path), "exploded",
-                                  os.path.splitext(os.path.basename(path))[0])
-            os.makedirs(folder, exist_ok=True)
+            bank_dir = os.path.join(explode_root, os.path.splitext(os.path.basename(path))[0])
+            os.makedirs(bank_dir, exist_ok=True)
+            bank_patches = []
+            used = set()
             for e in selected:
                 if e["placeholder"]:
                     continue
-                safe = "".join(c if c.isalnum() or c in " -_()" else "_" for c in e["name"]).strip() or "patch"
-                stem = "%02d %s" % (e["slot"], safe)
-                syx_path = os.path.join(folder, stem + ".syx")
+                # filenames collapse runs of spaces (patch names are 16-char fields
+                # with internal padding); the sidecar keeps the true name
+                safe = " ".join("".join(c if c.isalnum() or c in " -_()" else "_"
+                                        for c in e["name"]).split()) or "patch"
+                ref = entry_ref_filename(e)
+                stem = ("%s %s" % (ref, safe)).strip()
+                if stem in used:
+                    collisions += 1
+                    stem = "%s %s (%s)" % (ref, safe, e["sha1"][:6])
+                used.add(stem)
+                syx_path = os.path.join(bank_dir, stem + ".syx")
                 base = unit_page_value(e)
                 with open(syx_path, "wb") as fh:
                     for page_key in sorted(e["pagesRaw"], key=int):
@@ -819,9 +857,69 @@ def run_sidecars(root: str, role: Optional[str], explode: bool, with_bytes: bool
                                           bytes.fromhex(e["pagesRaw"][page_key])))
                 _write_json(syx_path + SYSEX_SUFFIX, build_patch_sidecar(e, os.path.basename(path)))
                 exploded += 1
+                bank_patches.append({"file": os.path.basename(syx_path), "ref": ref,
+                                     "name": e["name"], "role": e["role"],
+                                     "family": e["family"], "sha1": e["sha1"]})
+            manifest["banks"].append({
+                "bank": os.path.basename(path),
+                "dir": os.path.relpath(bank_dir, explode_root).replace(os.sep, "/"),
+                "patches": bank_patches})
+    if explode:
+        manifest["patchCount"] = exploded
+        _write_json(os.path.join(explode_root, "index.json"), manifest)
     print("sidecars: %d banks, %d entries%s"
-          % (written, entries_written, (", %d exploded .syx" % exploded) if explode else ""))
+          % (written, entries_written,
+             (", %d exploded .syx in %s%s" % (exploded, explode_root,
+              (", %d collisions disambiguated" % collisions) if collisions else ""))
+             if explode else ""))
     return 0
+
+
+def verify_exploded(root: str) -> int:
+    """Round-trip check: every exploded .syx must re-parse to its sidecar's patch."""
+    ok = 0
+    bad = []
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for fn in sorted(filenames):
+            if not fn.lower().endswith(".syx"):
+                continue
+            syx_path = os.path.join(dirpath, fn)
+            with open(syx_path, "rb") as fh:
+                data = fh.read()
+            msgs = []
+            for body in iter_sysex_blocks(data):
+                msg = parse_dt1(body)
+                if msg is not None:
+                    msgs.append(msg)
+            if not msgs or not all(m["checksumOk"] for m in msgs):
+                bad.append((fn, "missing messages or checksum failure"))
+                continue
+            entries = build_entries(msgs)
+            if len(entries) != 1:
+                bad.append((fn, "expected 1 patch unit, parsed %d" % len(entries)))
+                continue
+            sidecar_path = syx_path + SYSEX_SUFFIX
+            if not os.path.isfile(sidecar_path):
+                bad.append((fn, "sidecar missing"))
+                continue
+            with open(sidecar_path, encoding="utf-8") as fh:
+                sidecar = json.load(fh)
+            e = entries[0]
+            if e["name"].strip() != str(sidecar.get("name", "")).strip():
+                bad.append((fn, "name mismatch (%r vs %r)" % (e["name"], sidecar.get("name"))))
+                continue
+            if e["sha1"] != sidecar.get("sha1"):
+                bad.append((fn, "sha1 mismatch"))
+                continue
+            side_params = {k: int(v) for k, v in (sidecar.get("mappedParams") or {}).items()}
+            if compact_params(e["params"]) != side_params:
+                bad.append((fn, "parameter mismatch"))
+                continue
+            ok += 1
+    print("verify-exploded: %d ok, %d bad (%s)" % (ok, len(bad), root))
+    for fn, why in bad[:20]:
+        print("   %-52s %s" % (fn, why))
+    return 0 if not bad else 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -833,7 +931,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--out", metavar="FILE", help="write the survey JSON here")
     ap.add_argument("--sidecars", metavar="DIR", help="write <bank>.je8086.json sidecars next to banks")
     ap.add_argument("--role", help="only sidecar patches whose role matches (bass/lead/pad/pluck/fx/arp/chord/other)")
-    ap.add_argument("--explode", action="store_true", help="also write per-patch .syx + sidecars into <DIR>/exploded/")
+    ap.add_argument("--explode", action="store_true",
+                    help="also write per-patch .syx + sidecars (one dir per bank, see --explode-dir)")
+    ap.add_argument("--explode-dir", metavar="PATH",
+                    help="where --explode writes the patch tree (default <DIR>/exploded)")
+    ap.add_argument("--verify-exploded", metavar="DIR",
+                    help="round-trip check every exploded .syx against its sidecar")
     ap.add_argument("--with-bytes", action="store_true",
                     help="embed each patch's raw DT1 payload (sysexHex) in the bank sidecar; "
                          "default is a compact metadata index (a loader re-parses the bank file)")
@@ -861,7 +964,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not os.path.isdir(args.sidecars):
             print("not a directory: %s" % args.sidecars, file=sys.stderr)
             return 2
-        return run_sidecars(args.sidecars, args.role, args.explode, args.with_bytes)
+        return run_sidecars(args.sidecars, args.role, args.explode, args.with_bytes,
+                            args.explode_dir)
+    if args.verify_exploded:
+        if not os.path.isdir(args.verify_exploded):
+            print("not a directory: %s" % args.verify_exploded, file=sys.stderr)
+            return 2
+        return verify_exploded(args.verify_exploded)
     ap.print_help()
     return 1
 

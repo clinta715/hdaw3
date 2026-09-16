@@ -299,3 +299,47 @@ def test_smf_one_byte_varint_messages_are_kept(tmp_path):
     assert ASSERT_COUNT == 2, "short SMF-wrapped DT1 messages must not be dropped"
     assert [m["value"] for m in msgs] == [j.page_value((2, 0, 0)), j.page_value((2, 0, 2))]
     assert all(m["checksumOk"] for m in msgs)
+
+
+def test_explode_writes_manifest_and_verifier_round_trips(tmp_path):
+    # a bank with two patches (one of them a placeholder): --explode skips the
+    # placeholder, names each file with its unique ref, writes a browsable
+    # manifest, and the verifier accepts the tree / rejects a corrupted file
+    stream = bank_stream([(0, patch_body("LUNA NL", {0x1E: 0})), (1, patch_body("INIT PATCH"))])
+    (tmp_path / "testbank.syx").write_bytes(stream)
+    assert j.run_sidecars(str(tmp_path), None, True, False) == 0
+
+    root = tmp_path / "exploded"
+    manifest = json.loads((root / "index.json").read_text())
+    assert manifest["schema"] == j.SCHEMA_EXPLODED
+    assert manifest["patchCount"] == 1
+    bank = manifest["banks"][0]
+    assert bank["bank"] == "testbank.syx"
+    assert bank["patches"][0]["ref"] == "bank0-slot01"
+    files = sorted(p.name for p in (root / "testbank").glob("*.syx"))
+    assert files == ["bank0-slot01 LUNA NL.syx"], files
+    assert j.verify_exploded(str(root)) == 0
+
+    corrupted = root / "testbank" / files[0]
+    data = bytearray(corrupted.read_bytes())
+    data[20] ^= 0x01
+    corrupted.write_bytes(bytes(data))
+    assert j.verify_exploded(str(root)) == 1
+
+
+def test_explode_is_idempotent_and_does_not_ingest_its_own_output(tmp_path):
+    # Regression: the first --explode wrote per-patch .syx files under
+    # <root>/exploded, and a second run walked into them and treated every patch
+    # as a bank (3735 "banks", nested output, unverifiable sidecars).
+    (tmp_path / "testbank.syx").write_bytes(bank_stream([(0, patch_body("LUNA NL", {0x1E: 0}))]))
+    assert j.run_sidecars(str(tmp_path), None, True, False) == 0
+    first = sorted(p.name for p in (tmp_path / "exploded").rglob("*.syx"))
+    assert len(first) == 1, first
+    assert j.verify_exploded(str(tmp_path / "exploded")) == 0
+
+    assert j.run_sidecars(str(tmp_path), None, True, False) == 0
+    second = sorted(p.name for p in (tmp_path / "exploded").rglob("*.syx"))
+    assert second == first, "a re-run must not add files from its own output"
+    assert j.verify_exploded(str(tmp_path / "exploded")) == 0
+    # and the survey must still see exactly one bank
+    assert j.survey(str(tmp_path))["totals"]["files"] == 1

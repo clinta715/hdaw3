@@ -210,6 +210,30 @@ aligned with the live instance; the engine-side follow-up is to capture after th
 child's slow ROM/DSP boot and to reject/flag an implausibly small state rather
 than restoring it.
 
+## --explode shipped (2026-09-16)
+
+`--explode` now writes a per-patch tree (one DT1 `.syx` per unit under
+`<DIR>/exploded/<bank>/`, `--explode-dir` to relocate, `<ref> <name>.syx` naming
+where the ref is `bank0-slot25`/`perf015-part1`), a `<file>.je8086.json` sidecar per
+patch, and a browsable `exploded/index.json` manifest; `--verify-exploded` is the
+round-trip gate. Sweep: **46 banks -> 3689 files, 3689 ok / 0 bad**; suite 109
+passed.
+
+Two things the first real run exposed (again by cross-checking, not by trusting it):
+1. **Self-ingestion**: `_bank_files` walked the root recursively, so the second run
+   treated every exploded patch as a bank (3735 "banks", nested output, 3625
+   verifier failures). Bank discovery now prunes `exploded/` (and any configured
+   explode dir); `test_explode_is_idempotent_and_does_not_ingest_its_own_output`
+   locks it down.
+2. **Filename collisions**: the original `"<slot> <name>"` names collide across
+   performances (every performance has a slot 1). The unique ref prefix removes the
+   whole class, and the ref also matches the loader's `preset` enumeration order.
+
+Verified in-app: the exploded tree registered as a **patch** library returns
+individual patch hits from `search_library` with `patchEngine=je8086`, the role
+verdict, tags and the parameter-derived description — i.e. the sidecar contract
+works end to end (decode -> sidecar -> scan -> search).
+
 **Two real bugs the E2E cross-check caught** (both invisible to the unit tests)
 1. `mcp-launch.bat` aborted before launching the engine: unescaped parentheses in
    an `echo` inside a parenthesized `if` block (the tool-surface sentinel message)
