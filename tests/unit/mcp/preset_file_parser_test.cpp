@@ -477,7 +477,11 @@ TEST(PresetFileParser, Jp8080RealKulshanBankUnitsMatchTheSidecarIndex)
                   << " pageInPatch=" << dumps[i].pageInPatch
                   << " size=" << dumps[i].raw.size()
                   << " named=" << (mcp::jp8080MessageHasName(dumps[i]) ? 1 : 0) << "\n";
-    EXPECT_EQ(sysexEvents, 128) << "the SMF holds 128 DT1 events (timbre-lib census)";
-    ASSERT_EQ(parsed, 128);
-    EXPECT_EQ(units, 128u);
+    // 320 SysEx events = 64 performances x (1 common block across 3 pages +
+    // part1 + part2). The pre-fix Python decoder reported 128 because it dropped
+    // every message whose SMF varint prefix was a single byte (payload < 128 B)
+    // - which is exactly the cross-check this test exists to guard.
+    EXPECT_EQ(sysexEvents, 320) << "SMF holds 320 DT1 events (verified 2026-09-16)";
+    ASSERT_EQ(parsed, 320);
+    EXPECT_EQ(units, 192u) << "64 named performance commons + 128 parts";
 }
