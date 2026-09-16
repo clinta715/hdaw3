@@ -77,17 +77,17 @@ def _sidecar_files(roots: Sequence[str]) -> List[Tuple[str, str]]:
     return out
 
 
-def _params_of(sidecar: dict) -> Dict[str, object]:
-    """Banks (je8086/xenia) keep per-patch params under 'params'; patch sidecars use
-    'mappedParams' with {param|name: value} or a flat {index: value} map."""
+def _param_sets(sidecar: dict) -> List[Dict[str, object]]:
+    """All parameter sets in a sidecar, one per patch.
+
+    Bank sidecars (je8086/xenia) keep one params dict PER PATCH under 'params' - using
+    only the first would collapse a 256-patch bank to a single data point. Patch
+    sidecars use 'mappedParams' with {param|name: value} or a flat {index: value} map.
+    """
     if isinstance(sidecar.get("params"), dict):
-        flat = {}
-        for patch_name, params in sidecar["params"].items():
-            if isinstance(params, dict):
-                for k, v in params.items():
-                    flat.setdefault(str(k), v)
-        if flat:
-            return flat
+        sets = [p for p in sidecar["params"].values() if isinstance(p, dict)]
+        if sets:
+            return [{str(k): v for k, v in s.items()} for s in sets]
     mp = sidecar.get("mappedParams")
     if isinstance(mp, dict):
         flat = {}
@@ -98,8 +98,8 @@ def _params_of(sidecar: dict) -> Dict[str, object]:
                 flat[str(name)] = raw
             else:
                 flat[str(key)] = value
-        return flat
-    return {}
+        return [flat]
+    return []
 
 
 def load_vocabulary(path: str) -> Dict[str, str]:
@@ -132,22 +132,22 @@ def harvest(roots: Sequence[str], example_limit: int = 5,
             continue
         scanned += 1
         patch_counts[engine] += 1
-        params = _params_of(sidecar)
         label = sidecar.get("name") or os.path.basename(path)
         table = (vocab or {}).get(engine) or {}
-        for name, raw in params.items():
-            if name in table:                      # numeric index -> device param name
-                name = table[name]
-            group = _group_for(name)
-            if group is None:
-                continue
-            try:
-                val = float(raw)
-            except (TypeError, ValueError):
-                continue
-            values[engine][name][val] += 1
-            if len(examples[engine][name][val]) < example_limit:
-                examples[engine][name][val].append(str(label))
+        for params in _param_sets(sidecar):
+            for name, raw in params.items():
+                if name in table:                  # numeric index -> device param name
+                    name = table[name]
+                group = _group_for(name)
+                if group is None:
+                    continue
+                try:
+                    val = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                values[engine][name][val] += 1
+                if len(examples[engine][name][val]) < example_limit:
+                    examples[engine][name][val].append(str(label))
     if vocab:
         for engine, table in vocab.items():
             if engine not in values:

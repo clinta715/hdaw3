@@ -1067,29 +1067,31 @@
   "xenia": {
    "ChorusEnabled": {
     "group": "chorus",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 3,
+      "count": 800,
       "examples": [
        "2000.\u00b5sb",
-       "u101.\u00b5sb",
-       "uDrums.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 3,
+      "count": 416,
       "examples": [
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb",
-       "uSynth.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 1.0
      },
      {
-      "count": 1,
+      "count": 235,
       "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
       "value": 64.0
@@ -1098,308 +1100,395 @@
    },
    "DePan": {
     "group": "pan",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 4,
+      "count": 831,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 2,
+      "count": 292,
       "examples": [
-       "uDrums.\u00b5sb",
-       "uSynth.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 127.0
      },
      {
-      "count": 1,
+      "count": 64,
       "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
        "boele_gerkes.mid"
       ],
-      "value": 30.0
+      "value": 32.0
      }
     ]
    },
    "DelayTime": {
     "group": "delay",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 4,
+      "count": 713,
       "examples": [
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb",
-       "u101.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 1,
+      "count": 117,
       "examples": [
-       "2000.\u00b5sb"
-      ],
-      "value": 118.0
-     },
-     {
-      "count": 1,
-      "examples": [
+       "2000.\u00b5sb",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
-      "value": 114.0
+      "value": 64.0
+     },
+     {
+      "count": 82,
+      "examples": [
+       "uSynth.\u00b5sb",
+       "uSynth.\u00b5sb",
+       "uSynth.\u00b5sb"
+      ],
+      "value": 53.0
      }
     ]
    },
    "EffectType": {
     "group": "fx-type",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 5,
+      "count": 1182,
       "examples": [
-       "Factory.\u00b5sb",
-       "boele_gerkes.mid",
-       "u101.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 1,
+      "count": 130,
       "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
        "2000.\u00b5sb"
       ],
-      "value": 32.0
+      "value": 1.0
      },
      {
-      "count": 1,
+      "count": 81,
       "examples": [
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
-      "value": 27.0
+      "value": 33.0
      }
     ]
    },
    "F1Cutoff": {
     "group": "filter",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 1,
+      "count": 159,
       "examples": [
-       "2000.\u00b5sb"
-      ],
-      "value": 56.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "Factory.\u00b5sb"
-      ],
-      "value": 23.0
-     },
-     {
-      "count": 1,
-      "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
       "value": 32.0
+     },
+     {
+      "count": 90,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "uDrums.\u00b5sb"
+      ],
+      "value": 39.0
+     },
+     {
+      "count": 68,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 0.0
      }
     ]
    },
    "F1EnvAmount": {
     "group": "mod-amount",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 2,
+      "count": 445,
       "examples": [
-       "u101.\u00b5sb",
-       "uDrums.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 119,
       "examples": [
-       "2000.\u00b5sb"
+       "Factory.\u00b5sb",
+       "boele_gerkes.mid",
+       "boele_gerkes.mid"
       ],
-      "value": 74.0
+      "value": 0.0
      },
      {
-      "count": 1,
+      "count": 77,
       "examples": [
-       "Factory.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
-      "value": 110.0
+      "value": 84.0
      }
     ]
    },
    "F1EnvVelAmount": {
     "group": "mod-amount",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 844,
       "examples": [
-       "Factory.\u00b5sb",
-       "boele_gerkes.mid",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 61,
       "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 74.0
+     },
+     {
+      "count": 46,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 94.0
+     }
+    ]
+   },
+   "F1Resonance": {
+    "group": "filter",
+    "patches": 1492,
+    "topValues": [
+     {
+      "count": 164,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 76,
+      "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
+       "boele_gerkes.mid"
+      ],
+      "value": 43.0
+     },
+     {
+      "count": 64,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 76.0
+     }
+    ]
+   },
+   "F2Cutoff": {
+    "group": "filter",
+    "patches": 1492,
+    "topValues": [
+     {
+      "count": 732,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 309,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 75,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
        "2000.\u00b5sb"
       ],
       "value": 90.0
      }
     ]
    },
-   "F1Resonance": {
-    "group": "filter",
-    "patches": 7,
-    "topValues": [
-     {
-      "count": 1,
-      "examples": [
-       "2000.\u00b5sb"
-      ],
-      "value": 100.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "Factory.\u00b5sb"
-      ],
-      "value": 74.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "boele_gerkes.mid"
-      ],
-      "value": 56.0
-     }
-    ]
-   },
-   "F2Cutoff": {
-    "group": "filter",
-    "patches": 7,
-    "topValues": [
-     {
-      "count": 5,
-      "examples": [
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb",
-       "u101.\u00b5sb"
-      ],
-      "value": 127.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "2000.\u00b5sb"
-      ],
-      "value": 56.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "boele_gerkes.mid"
-      ],
-      "value": 0.0
-     }
-    ]
-   },
    "MI7Pan": {
     "group": "pan",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 1235,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 1,
+      "count": 231,
       "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
       "value": 48.0
+     },
+     {
+      "count": 17,
+      "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
+       "boele_gerkes.mid"
+      ],
+      "value": 20.0
      }
     ]
    },
    "MI7PanMod": {
     "group": "pan",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 1236,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 178,
       "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
       "value": 0.0
+     },
+     {
+      "count": 10,
+      "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
+       "boele_gerkes.mid"
+      ],
+      "value": 127.0
      }
     ]
    },
    "ModDelayTime": {
     "group": "delay",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 1462,
       "examples": [
        "2000.\u00b5sb",
-       "boele_gerkes.mid",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 0.0
      },
      {
-      "count": 1,
+      "count": 8,
       "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 4,
+      "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
        "Factory.\u00b5sb"
       ],
-      "value": 46.0
+      "value": 11.0
      }
     ]
    },
    "Pan": {
     "group": "pan",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 1093,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 149,
       "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 107,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "Factory.\u00b5sb"
       ],
       "value": 0.0
      }
@@ -1407,52 +1496,67 @@
    },
    "W2EnvAmount": {
     "group": "mod-amount",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 5,
+      "count": 1022,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "u101.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 71,
       "examples": [
+       "2000.\u00b5sb",
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 64,
+      "examples": [
+       "Factory.\u00b5sb",
+       "boele_gerkes.mid",
        "boele_gerkes.mid"
       ],
       "value": 63.0
-     },
-     {
-      "count": 1,
-      "examples": [
-       "cobalt.\u00b5sb"
-      ],
-      "value": 59.0
      }
     ]
    },
    "W2EnvVelAmount": {
     "group": "mod-amount",
-    "patches": 7,
+    "patches": 1492,
     "topValues": [
      {
-      "count": 6,
+      "count": 1223,
       "examples": [
        "2000.\u00b5sb",
-       "Factory.\u00b5sb",
-       "cobalt.\u00b5sb"
+       "2000.\u00b5sb",
+       "2000.\u00b5sb"
       ],
       "value": 64.0
      },
      {
-      "count": 1,
+      "count": 162,
       "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
        "boele_gerkes.mid"
       ],
-      "value": 21.0
+      "value": 0.0
+     },
+     {
+      "count": 52,
+      "examples": [
+       "boele_gerkes.mid",
+       "boele_gerkes.mid",
+       "boele_gerkes.mid"
+      ],
+      "value": 1.0
      }
     ]
    },
