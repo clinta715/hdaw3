@@ -190,6 +190,47 @@ TEST(SongStructureAudit, DropThinnerThanBuildFlagged)
     EXPECT_FALSE(audit.ok);
 }
 
+// Boundary hygiene: segments are half-open and cell-filled clips share the exact
+// boundary values, so a clip ENDING at the next section's start must not count
+// there (float rounding used to leak it — buildC reported every project role).
+TEST(SongStructureAudit, ClipEndingAtNextSectionStartDoesNotLeak)
+{
+    SongPlanData p;
+    p.bpm = 120.0;                  // 1 bar = 2 s; 8 bars = 16 s
+    p.totalBars = 16;
+    p.sections = { { "intro", "intro", 8, 0.0, 32.0 },
+                   { "dropA", "mainA", 8, 32.0, 64.0 } };
+    auto list = juce::ValueTree(IDs::TRACK_LIST);
+    auto addClipTrack = [&list](const char* role, double start, double dur) {
+        auto t = juce::ValueTree(IDs::TRACK);
+        t.setProperty(IDs::name, role, nullptr);
+        t.setProperty(IDs::layerRole, role, nullptr);
+        auto cl = juce::ValueTree(IDs::CLIP_LIST);
+        auto c = juce::ValueTree(IDs::CLIP);
+        c.setProperty(IDs::startTime, start, nullptr);
+        c.setProperty(IDs::duration, dur, nullptr);
+        cl.addChild(c, -1, nullptr);
+        t.addChild(cl, -1, nullptr);
+        list.addChild(t, -1, nullptr);
+    };
+    // Intro-only clip ending EXACTLY at dropA's start (16 s), plus a drop clip
+    // starting exactly at 16 s (must be included there).
+    addClipTrack("pad", 0.0, 16.0);
+    addClipTrack("kick", 16.0, 16.0);
+
+    auto audit = HDAW::auditSongStructure(list, p, 0.0);
+    ASSERT_EQ(audit.sections.size(), 2u);
+    const auto introRoles = audit.sections[0].soundingRoles;
+    const auto dropRoles  = audit.sections[1].soundingRoles;
+    EXPECT_EQ(std::find(introRoles.begin(), introRoles.end(), "pad") != introRoles.end(), true);
+    EXPECT_EQ(std::find(introRoles.begin(), introRoles.end(), "kick") != introRoles.end(), false)
+        << "a clip starting at the section end must not count in the earlier section";
+    EXPECT_EQ(std::find(dropRoles.begin(), dropRoles.end(), "kick") != dropRoles.end(), true)
+        << "a clip starting exactly at the section start must count";
+    EXPECT_EQ(std::find(dropRoles.begin(), dropRoles.end(), "pad") != dropRoles.end(), false)
+        << "a clip ending exactly at the section start must NOT count";
+}
+
 TEST(SongStructureAudit, NoPlanIsReported)
 {
     auto audit = HDAW::auditSongStructure(trackListWith({ "kick" }), SongPlanData{}, 0.0);

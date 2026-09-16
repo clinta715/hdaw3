@@ -184,7 +184,14 @@ inline SongStructureAudit auditSongStructure(const juce::ValueTree& trackList,
                 const auto clip = clipList.getChild(c);
                 const double cs = static_cast<double>(clip.getProperty(IDs::startTime, 0.0));
                 const double ce = cs + static_cast<double>(clip.getProperty(IDs::duration, 0.0));
-                if (ce > s0 && cs < s1)
+                // Sections are half-open [s0, s1) and cell-filled clips share the
+                // EXACT boundary values, so a clip ending at s0 (or starting at s1)
+                // must NOT count. Plain `ce > s0` made that depend on float
+                // rounding: dropA's clips ending exactly at mini's start leaked into
+                // mini, and buildC/breakdown ended up reporting every role in the
+                // project (phantom dropsAtLeastBuildLoad failure, fix 2026-09-16).
+                constexpr double kBoundaryEps = 1e-6;
+                if (ce > s0 + kBoundaryEps && cs < s1 - kBoundaryEps)
                 {
                     soundingIdx[i].push_back(t);
                     break;
