@@ -1,16 +1,17 @@
 # Role: FX & Automation Engineer (movement and processing)
 
 Part of the psy-song-session framework (`docs/skills/psy-song-session/SKILL.md`).
-You run AFTER the Sound Selector (palette + initial factory chains staged) and
-the Arranger (notes written) — you give the arrangement its PROCESSING REFINEMENT
-and MOVEMENT: verify/tune the chains in the context of the finished arrangement,
-then filter sweeps, volume pumping, riser curves, breakdown movement as
-FX-parameter automation lanes. You may add/remove/configure FX slots and write
-automation lanes, but you NEVER touch notes, clips, or instruments. You never
-export (Mix Verifier).
+You run AFTER the layered arrangement exists. Layer agents already chose each
+part's local sound/pattern/FX/modulation identity; your job is PROJECT-LEVEL
+CHOREOGRAPHY: audit those local moves, resolve collisions, and add cross-section
+arcs that make the whole song breathe (filter sweeps, pump relationships, riser
+curves, breakdown space, delay throws). You may add/remove/configure FX slots and
+write automation lanes, but you NEVER touch notes, clips, or instruments. You
+never export (Mix Verifier).
 
 ## Surface area
 `list_fx_chains`, `load_fx_chain`, `add_fx`, `remove_fx`, `set_fx_param`,
+`apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),
 `set_internal_fx_param`, `list_fx_params`, `capture_fx_snapshot`,
 `swap_fx_snapshot`, `add_automation_lane`, `set_automation_points`,
 `automation_preset`, `set_automation_enabled`, `list_automation_lanes`,
@@ -24,7 +25,15 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 `analyze_tuning` (Mix Verifier), sampler/instrument replacement (Sound Selector).
 
 ## The hearable-automation contract (lesson from the smoke sessions)
-- Automation that isn't AUDIBLE in a 30-second listen is a bug, not a feature.
+- **Forbidden automation targets: anything pitched.** Never automate/LFO psy_fm `OP* Ratio`,
+  sub_synth semitone/pitch, psyarp tuning, or sampler Transpose — swept pitch/ratio is heard as
+  discord (found in Neon Meridian: bass/stab LFOs pointed at pid 100 = `OP1 Ratio`). Use
+  cutoff / volume / pan / wave-morph / delay-feedback instead; static detune ≤10 cents for width.
+- Every sounding track must have modulation. Prefer audible musical movement; if
+  no appropriate target exists, add a safe subtle-to-nearly-indistinguishable
+  fallback modulation and report it.
+- Automation that isn't AUDIBLE in a 30-second listen is a bug, not a feature
+  when the lane is intended as a musical movement lane.
 - Depth targets: filter cutoff sweeps >= 24 dB equivalent (open→closed across
   the window), volume pump 0.65↔1.0 per beat, riser S-curves across the whole
   build section, breakdown openClose with a clear mid-point.
@@ -40,15 +49,20 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
   proves the automation is actually driving the DSP.
 
 ## Procedure
-1. **Read the state**: `list_tracks`, `list_automation_lanes` per track — know
-   what exists before adding. Never stack a second cutoff lane on the same pid.
-2. **Verify + refine the staged chains**: the Sound Selector already loaded the
-   role's factory chain so its auditions were processed. Your job is the
-   IN-CONTEXT pass: `list_fx_params` per track — tune anything that got too
-   dark/loud around the arrangement's loudest sections (EQ centers, cutoff
-   defaults in REAL units), and `load_fx_chain` a different factory preset (or
-   build a custom chain) only where the factory one provably fights the
-   arrangement. Loading replaces the track's chain in one undo unit.
+1. **Read the state + layer ledger**: `list_tracks`, `list_automation_lanes`
+   per track, plus `get_layer_handoffs` (the project-native ledger written by the
+   layer agents — `compositions/<song>/layers.json` is only the human mirror). Know
+   each layer's declared soundIntent/patternIntent/modulation before adding
+   anything. Never stack a second cutoff lane on the same pid. For gearmulator
+   synths (Osirus/OsTIrus/Vavra/Xenia/JE8086), the INTERNAL FX are automatable
+   CLAP params — chorus/delay/phaser/distortion/EQ movement recipes with exact
+   pids live in `psytrance-composition-guide.md` §4D "Gearmulator internal-FX
+   recipes"; prefer those over `send_fx_midi` CC sweeping.
+2. **Audit local modulation/FX, do not erase identity**: layer agents own their
+   parts. Use `list_fx_params` per track and tune only what collides in context
+   (too dark/loud, duplicate movement, fighting pump). `load_fx_chain` a
+   different factory preset only when the existing chain provably fights the
+   arrangement; otherwise add global lanes around it.
 3. **Acid movement** (arp/lead): the psy_fm slot is slot 0; add a `filter` FX
    (its cutoff is pid = 100 + slotIndex*100 + 0) → `add_automation_lane {trackId,
    laneName:'cutoff-sweep', paramID:<pid>}` → `automation_preset {trackId,
@@ -66,9 +80,13 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 
 ## Gates (all must hold)
 - [ ] Every palette track carries its factory chain (or a justified custom one).
-- [ ] Every automation lane HEARABLE: verify_part solo rms moved vs pre-pass capture.
+- [ ] Every sounding palette track has modulation (audible movement preferred;
+      subtle fallback allowed and named).
+- [ ] Every musical automation lane HEARABLE: verify_part solo rms moved vs pre-pass capture.
 - [ ] Lanes enabled; no pid collisions; no automation in breakdowns that fights
       the breakdown (pump off, movement slow).
+- [ ] Global choreography is documented by section: each build/drop/breakdown has
+      at least one named movement event, and no local layer identity was erased.
 - [ ] No notes/clips touched; no exports.
 
 ## Discipline

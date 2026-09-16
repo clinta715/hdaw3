@@ -193,7 +193,9 @@ The key tools and their shapes, distilled from the composition sessions:
 | `set_lfo_param` | `{trackId, lfoIndex, param, value}` | `"ok"` | targetParamID: 1=Volume, 2=Pan, 100+=FX, 300+=FM (300–308). |
 | `add_automation_lane` | `{trackId, laneName, paramID}` | `"ok"` | **Disabled by default** — must `set_automation_enabled`. |
 | `set_automation_points` | `{trackId, lane, points[{time,value}], mode:"replace"}` | `"ok"` | Key is `time` (beats). |
-| `mix_report` | `{filePath, bpm, sections[{name,start,end}]}` | peak/RMS/bands/pumpDepth | Band cutoffs: sub<40, bass<300, body<2000, high>6000. |
+| `mix_report` | `{filePath, bpm, sections[{name,start,end}], fromPlan?}` | peak/RMS/bands/pumpDepth/boundaryPeak | Band cutoffs: sub<40, bass<300, body<2000, high>6000. `fromPlan` derives windows from the song plan and CLAMPS them to the file duration (short previews measure instead of hard-erroring; clamped section names return in `clampedSections`). Per-section `boundaryPeak` = first-0.1 s peak — the drop-entry transient gate. |
+| `set_track` | `{trackId, volume?, pan?, mute?, solo?, name?, color?}` | `"ok"` | **There is NO `set_track_volume` MCP tool** — track volume/pan/mute go through `set_track` (the RPC route is `setTrackVolume`, but the MCP surface uses `set_track`). A wrong name returns `Tool "..." not found`, which a lax success check can mistake for success — verify the readback via `list_tracks` before trusting a gain move. |
+| `scan_plugins` / `list_plugins` | `{wait?}` / `{kind: effect\|instrument\|all}` | `{jobId,…}` / `{plugins[], scanning, scannedCount}` | **Scan is async by default** (`wait:false` → poll `poll_job` for `{scanned,durationMs}`); `list_plugins` reports `scanning`/`scannedCount` so an empty catalog is never ambiguous. The engine also auto-scans at first launch when its cache is empty — never start a second scan or kill the engine mid-scan (an incomplete scan is not cached). |
 | `psy_fm_load_preset` | `{trackId, slotIndex, preset}` | `"loaded preset: ..."` | preset ∈ {growlBass, acidLead, metallicPluck, riser}. |
 | `psy_fm_get_analysis` | `{trackId, slotIndex}` | `{activeVoices, opEgLevels}` | Live audio-thread data (lock-free atomics). |
 | `psy_fm_set_mod_route` | `{trackId, slotIndex, source, dest, depth}` | `"ok"` | source ∈ {ratioSweepLFO, feedbackLFO, modWheel, velocity, barClock}; dest ∈ {op1Ratio..op6Ratio, op6Feedback}. |
@@ -202,7 +204,7 @@ The key tools and their shapes, distilled from the composition sessions:
 | `set_song_plan` | `{bpm, keyRoot, scaleMode, style, seed, totalBars, sections[{name,kind,bars}]}` | resolved plan JSON | Deterministic skeleton; syncs section-typed arranger regions in ONE undo unit; 4/4, totalBars must equal the bars sum; kinds: intro/build/mainA/mini/mainB/breakdown/finale/other. |
 | `get_song_plan` | `{}` | `{hasPlan, sections[…startBeat/endBeat]}` | Read the plan back — every other tool references sections by NAME. |
 | `apply_song_brief` / `export_song_brief` | `{brief}` / `{}` | plan echo / verbatim brief JSON | psy-song-session Brief ⇄ plan (peak→mainA, outro→finale, drop→mainB). |
-| `set_cell` / `get_cells` / `remove_cell` | `{section, role, trackId, source, params, seed, locked}` etc. | ok / cells JSON | Content recipes on the section×role matrix. source ∈ phrase/rhythm/break/pattern/harvest; seed 0 = derived from plan seed. |
+| `set_cell` / `set_cells` / `get_cells` / `remove_cell` | `{section, role, trackId, source, params, seed, locked}` etc. / `{cells:[…recipes]}` | ok / cells JSON | Content recipes on the section×role matrix. source ∈ phrase/rhythm/break/pattern/harvest; seed 0 = derived from plan seed. **`set_cells` is the batch form: N recipes in ONE undo unit and one round trip** (a 9-role × 10-section track is 55 cells); per-recipe failures are reported without aborting the batch. |
 | `fill_cells` | `{mode: all\|unfilled}` | `{filled, skippedLocked, failed, cells[{clipId, noteCount, seedUsed}]}` | ONE undo transaction; clips span exactly their section window; re-fill reuses the cell's clip; locked cells skipped. |
 | `reroll` / `get_clip_provenance` | `{section?, role?}` / `{clipId}` | batch JSON / `{found, tool, source, seed}` | Variation = lastSeed+1, deterministic; provenance answers "where did this clip come from". |
 | `slice_clip_at_playhead` | `{clipId}` | `"sliced clip N at playhead"` | Works for audio and MIDI clips. |
@@ -654,6 +656,9 @@ Progress ledger: each layer's handoff `{role, trackId, band, register,
 beforeRms, afterRms, verifyPart, ...}` is appended to
 `compositions/<song>/layers.json` by the orchestrator between layers — read it
 before you start; it is the contract input for your register/level gates.
+Persist the machine-readable handoff in-project with `set_layer_handoff` (read
+back with `get_layer_handoffs`; verified by `audit_modulation_coverage`) —
+layers.json is the human mirror.
 
 ## 4D. Hardware VA suite — the gearmulator CLAPs (verified 2026-09-11/12)
 
@@ -669,6 +674,47 @@ Real synth firmware running as isolated CLAP plugins — installed in
 | Osirus | Access Virus A/B/C | ✅ voices; state-apply on load rejected by the plugin (see durability rules) |
 | NodalRed2x | Clavia Nord Lead 2x | ✅ renders audibly since the multi-port fix (v0.34); banks load via `load_nord_bank` SysEx injection |
 | Dexed | Yamaha DX7 | ❌ preset pipeline removed 2026-09-14 (ignores injected state; probed silent) — use internal `fm_synth` for DX7 voices |
+
+### Internal FX are HOST-VISIBLE parameters (probe 2026-09-16)
+
+The gearmulator CLAPs expose their INTERNAL FX as fully-named, automatable CLAP
+params with real-unit text — the FX stage does NOT need MIDI for them:
+`list_fx_params` on the slot shows e.g. Osirus `Ch N Chorus Mix/Rate/Depth/Delay/`
+`Feedback/LfoShape`, `Ch N Delay/Reverb Mode` (0-26 types), `Ch N Phaser
+Mode/Mix/Depth/Frequency/Feedback/Spread`, `Ch N Distortion Curve (0-11)/`
+`Intensity`, per-channel EQ; JE8086 `A/B CHORUS TYPE/LEVEL`, `A/B DELAY
+TYPE/TIME/FEEDBACK/LEVEL/SYNC`, `VOCAL MIX`; NodalRed2x per-slot `Distortion`
++ `ChPrs Amount`; Dexed has none (DX7 architecture). All automatable with
+hasRange=true (real units via text; value space is normalized 0-1, matching
+`set_fx_param`). LFO/automation pids (100+slot*100+paramIndex) target them too.
+Persist for offline renders via the standard save snapshot (audition workflow).
+Also note the dedicated effect editions installed: **OsirusFX, OsTIrusFX,
+VavraFX, XeniaFX** (list_plugins kind=effect finds them; param surface identical
+to the instrument build).
+
+#### Gearmulator internal-FX recipes (probe-verified indices, 2026-09-16)
+
+Address any internal-FX param as a plugin param: `list_fx_params {trackId,
+slotIndex}` → `paramID` (formula `100 + slotIndex*100 + paramIndex`) → drive it
+with `set_fx_param` (normalized 0-1, by paramName or paramIndex), automation
+(`add_automation_lane` + `automation_preset` / `apply_movement_plan`), or an
+LFO (`add_lfo` targetParamID). Pids below assume **slot 0**; recompute per slot.
+Live writes reach offline renders via the standard save snapshot.
+
+| Goal | Synth | Params (slot 0 pids) | Move it with |
+| --- | --- | --- | --- |
+| Delay riser over a build | Osirus | base `Ch 1 Delay/Reverb Mode`=188 (set a delay type), ramp `Ch 1 Delay Time`=3156, feedback `Ch 1 Delay Feedback`=3157, clock `Ch 1 Delay Clock`=3165 | `automation_preset riser/macro` on 3156 over the build window (apply_movement_plan) |
+| Chorus sweep | Osirus | `Ch 1 Chorus Mix`=182, Rate=183, Depth=184, Feedback=186 | LFO sine on 183 (depth 0.3) or openClose on 182 |
+| Phaser movement | Osirus | `Ch 1 Phaser Mode`=260, Mix=261, Rate=262, Depth=263, Frequency=264, Feedback=265, Spread=266 | LFO on 263/264; band-pass character via 260 (0-6 stages) |
+| Distortion gating | Osirus | `Ch 1 Distortion Curve`=275 (set 1-11), `Intensity`=276 | square preset on 276 per beat window |
+| Delay throw at a drop | JE8086 | `A DELAY TYPE`=184 (PANNING L->R…), TIME=185, FEEDBACK=186, LEVEL=187 (>0 enables) | delayThrow preset on 186 |
+| Vocal FX gating | JE8086 | `VOCAL MIX`=542, `EXT TO VOCAL SEND`=424 | pump on 542 |
+| FX slot switch + movement | Vavra (microQ) | `Ch 1 FX1Type`=191 (Bypass→Vocoder), FX2Type=192 (…5.1 Delay Clocked), FX1Mix=193, FX2Mix=194, Fx1/Fx2 Chorus/Phaser/Delay sub-params 195-123 | macro on 193/194 to bring FX in/out; clocked delays via FX2Type |
+| Distortion accents | NodalRed2x | `A Distortion`=154 (0/1), `ChPrs Amount A`=444 (0-7 chor./pres.) | square/steppedGate on 154 for rhythmic grit |
+
+`list_fx_params` text gives real units (0-127, -64..+63, type enums like
+"SUPER CHORUS SLW" / "Pattern X+Y" / "5.1 Delay Clocked") — verify the value
+range before writing (lesson 23 discipline: no out-of-range writes).
 
 ### Injection tools (all verified end-to-end)
 - `send_fx_midi {trackId, slotIndex, messages[]}` — PC / CC / note / **sysEx**
@@ -834,7 +880,7 @@ deletable). `list_fx_chains` returns them with `source:"factory"` and ids
 | `delete_fx_chain` | user presets only; factory ids are refused and the file stays |
 | `list_plugin_presets` / `search_plugin_presets` / `load_plugin_preset` | host-enumerable plugin programs |
 | `load_plugin_preset_file` | load .fxp/.syx from disk |
-| `automation_preset` | lane shapes: `pump`, `macro`, `openClose`, `riser`, `sine`, `square` |
+| `automation_preset` | movement recipes: `pump`, `macro`, `openClose`, `riser`, `sine`, `square`, `subtleLife`, `randomDrift`, `steppedGate`, `phaseSweep`, `delayThrow` |
 | `fm_synth_load_preset` / `fm_synth_import_sysex` | DX7 voice bank load / SysEx import |
 | `list_cluster_presets` / `get_cluster_preset` | saved `cluster_library` presets |
 
@@ -1087,6 +1133,21 @@ final tone shaping.
   First renders were sub:high ≈ 300–1000:1 (kick+bass only). If bands are
   sub-dominant, it's usually rootNotes/velocities, not the master.
 - `set_master_gain` after faders; keep master ≤ ~0.9 pre-canary.
+- **The drop must be the loudest point (gate).** `mix_report {fromPlan:true}` returns
+  `loudnessGates`: each drop section's RMS against the build preceding it (pass at ≥ 0.9×, override
+  with `dropBuildRatio`). A build reading RMS-hotter than its drop FAILS — thin the build cells
+  (fewer arp notes / shorter riser, the musical fix) or lift the drop layers; never "fix" it with
+  master gain. `audit_song_structure` carries the structural proxy (`dropsThinnerThanBuild`).
+- **Never modulate pitch/ratio on melodic parts.** `psy_fm` param 0..5 are `OP1..OP6 Ratio` — an
+  LFO or lane on pid 100+0 sweeps the carrier off-integer and reads as discord. Same for sub_synth
+  semitone/pitch and sampler Transpose. Static detune ≈≤10 cents is fine; moving pitch is not.
+- **Volume-lane authority (fader writes can be ignored):** an ENABLED Volume
+  automation lane makes automation authoritative for that track, so `set_track_volume`
+  afterwards is overridden (this masked a whole round of gain corrections).
+  `audit_modulation_coverage` reports it per track (`faderOverridden`,
+  `volumeLanes.enabled`) and in `summary.faderOverriddenIds`; call
+  `set_fader_authoritative {trackId, authoritative:true}` before gain staging
+  when a movement plan (which writes/enables Volume lanes) has already run.
 
 **Verified canary numbers (2026-08-30 F-minor session, 140 BPM, 400 beats):**
 

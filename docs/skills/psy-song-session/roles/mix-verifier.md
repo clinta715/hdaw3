@@ -37,10 +37,32 @@ them, bounce back to the orchestrator for an Arranger pass.
 6. **Gain staging**: `auto_gain_to_target` per track toward the brief's RMS with
    `allowGlobalScale` for headroom. Gain goes to FADERS/bands — never by squashing:
    the master limiter is NOT transparent (measured ~-10 dB RMS; do not ship it as
-   a loudness fix; document its state if enabled).
-7. **Verdict**: PASS/FAIL per gate with numbers; on FAIL, name the FIX and the
-   owning role (Arranger: structure; Sound Selector: timbre; Curator: bad source).
-8. **Persist**: only after a PASS verdict — `save_project` to the variant file.
+   a loudness fix; document its state if enabled). **Check fader authority first:**
+   if `audit_modulation_coverage` lists the track in `faderOverriddenIds` (an
+   enabled Volume lane from the movement pass), `set_track_volume` writes are
+   overridden — call `set_fader_authoritative` before staging gain, then re-audit.
+7. **Boredom/static-span audit**: inspect the layer ledger and section reports.
+   Mechanical modulation gate: run `audit_modulation_coverage` — FAIL if any sounding
+   track (≥1 clip) has needsAttention=true, or if a layer handoff declares modulation
+   the audit cannot see. Structure gate: run `audit_song_structure` (also embedded as
+   the `structure` block of `mix_report` when fromPlan=true) — FAIL if it reports
+   boredom spans, drops missing backbeat, or no first-drop motif. Loudness gate:
+   `mix_report {fromPlan:true}` returns `loudnessGates` — FAIL if a drop is quieter than the
+   build before it (default threshold 0.9×, per-drop rows + issue strings). Fix by thinning
+   the build cells or lifting the drop layers, never with master gain; `audit_song_structure`
+   reports the structural companion (`gates.dropsAtLeastBuildLoad` / `dropsThinnerThanBuild`). Loud-intro
+   diagnosis: when the render opens with a "big loud weird sound", run
+   `diagnose_intro_blast` on the master — it classes the blast (clipping /
+   NaN-poison / loud-transient / DC / saturation-then-silence) and attributes the
+   window per track via solo renders. FAIL if any >8-bar musical
+   span is only hats or only bass+hat without an explicit tension marker, if a
+   main drop lacks audible clap/snare/backbeat, or if no lead/stab/motif appears
+   by the brief's first drop. Route local identity failures to the owning layer;
+   route section-arc failures to FX & Automation Engineer.
+8. **Verdict**: PASS/FAIL per gate with numbers; on FAIL, name the FIX and the
+   owning role (Layer Agent: local sound/pattern/modulation; FX Automation:
+   global movement choreography; Sound Selector: bad palette; Curator: bad source).
+9. **Persist**: only after a PASS verdict — `save_project` to the variant file.
 
 ## Surface gotchas (smoke-run feedback)
 - **Long analysis calls MUST be async (Bug 4 fix)**: the bridge kills the engine
@@ -66,4 +88,7 @@ them, bounce back to the orchestrator for an Arranger pass.
 - [ ] Async render verified (duration + nonzero RMS).
 - [ ] mix_report sections vs brief targets; ceiling %, kick prominence.
 - [ ] analyze_tuning per role pass/fail with suggestions.
+- [ ] Boredom/static-span audit passed: modulation on every sounding layer, no
+      unmarked >8-bar hat-only or bass+hat-only spans, audible backbeat in drops,
+      lead/stab/motif present by first drop.
 - [ ] Verdict + next action, bounded to 3 re-render loops.

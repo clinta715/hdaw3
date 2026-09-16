@@ -19,10 +19,17 @@ mixing).
 - One agent = one layer = SINGLE WRITER. The orchestrator dispatches layers
   strictly in order (kick → bass → percussion bed → stab → pad → lead → riser —
   SKILL.md "Layered mode") and never starts layer N+1 until layer N's gate
-  output is recorded in `compositions/<song>/layers.json`.
+  output is persisted in-project via `set_layer_handoff` (trackId + role + fields) — the
+  orchestrator also appends the compact JSON to `compositions/<song>/layers.json` for the
+  human record. Read back anytime with `get_layer_handoffs`.
 - Your layer is the ONLY mutation you may make while you hold the engine: your
   tracks, clips, notes, FX, automation. No other role writes to it; you do not
   write to anyone else's.
+- You own this layer's local identity end-to-end: final sound choice from the
+  Sound Selector palette/shortlist, pattern intent, role FX chain/tweaks, and
+  mandatory local modulation. Do not defer basic life/movement to the final
+  project pass; the later FX & Automation Engineer only choreographs the whole
+  song and resolves collisions.
 - Handoff verdicts are machine output (verify_part / mix_report /
   analyze_tuning numbers), never prose.
 
@@ -78,6 +85,13 @@ measured. Never fix the mix by editing someone else's layer.
 
 ## Writing your layer (discipline)
 
+- **Identity first:** choose and report one explicit `patternIntent` and one
+  `soundIntent` before writing notes. Examples: bass = `stabby-short-hard` or
+  `liquid-legato` (not vague in-between); percussion = `backbeat-clap + hat
+  motion + ghost rim`; lead = `call-response acid hook`.
+- **Local FX/modulation belongs here:** add the FX needed for this part's identity
+  (phaser, filter, delay, drive, pan/stereo, subtleLife fallback) and verify it
+  on this layer before handoff.
 - **psy_fm / sub_synth output levels:** OUTPUT LEVEL 0.15..0.22 and fader
   0.7..0.8 — never 0.3+ (the overdriven region that masked the rhythm bed on
   Neon Mycelium 2026-09). Write in REAL units via `set_internal_fx_param` and
@@ -98,8 +112,18 @@ measured. Never fix the mix by editing someone else's layer.
   that is a tagged engine future.)
 - **Bitcrusher:** saturator Type=3 (Bitcrush), Bits 8–10, Mix ≤0.4 — subtle,
   not a destroyer.
-- **Automation:** at least one `automation_preset` (pump / riser / openClose /
-  macro) or an LFO per layer where musically sensible.
+- **NO pitch modulation on melodic parts (hard rule):** never point an LFO or automation lane at a
+  PITCH/RATIO parameter — psy_fm `OP* Ratio`, sub_synth semitone/pitch, psyarp shape-as-pitch,
+  sampler Transpose. Swept ratios/tunings read as discord and fight the key. Minor STATIC detune is
+  fine for width (≈≤10 cents of oscillator detune), but nothing that moves pitch over time.
+  Target amp / pan / cutoff / wave-morph instead (sub_synth params 27-32 LFO amounts: use Cutoff/Amp,
+  not Pitch/FM).
+- **Modulation on everything (mandatory):** every layer must carry at least one
+  modulation source. Prefer audible musical motion (filter cutoff, phaser/phase,
+  wavetable/FM amount, tremolo, delay feedback/mix, pump, macro sweeps). If the
+  role has no appropriate musical target, add a safe subtle-to-nearly-
+  indistinguishable modulation instead. Record target, preset/shape, depth, and
+  readback in the handoff.
 - **Batch:** one coherent change = one undo unit; never N single calls in a
   loop (AGENTS.md performance rules).
 
@@ -109,6 +133,8 @@ measured. Never fix the mix by editing someone else's layer.
 - [ ] Cumulative render rms rose by at most +20% from your layer
 - [ ] Register budget still ≤ 2 high parts (above MIDI 72)
 - [ ] Every FX param read back in real units, in range
+- [ ] Modulation exists on this layer (audible preferred; subtle fallback allowed)
+      with target/preset/depth reported
 - [ ] Batch: one coherent change = one undo unit; no N-loop single calls
 - [ ] Mutation pass: the layer carries human variation — a MIDI-FX humanize/
   chance/strum lane, `set_note_chance`/`set_note_velocities` drift, or
@@ -118,13 +144,19 @@ measured. Never fix the mix by editing someone else's layer.
 
 ## Handoff
 
-Compact JSON — a `layers.json` entry the orchestrator appends to
-`compositions/<song>/layers.json`:
+Persist the machine-readable fields with `set_layer_handoff {trackId, role, soundIntent,
+patternIntent, modulation, verify}` — the project-native ledger: ONE undo unit, survives
+save/load, read back with `get_layer_handoffs`, and verified mechanically by
+`audit_modulation_coverage`. The orchestrator also appends this compact JSON to
+`compositions/<song>/layers.json` for the human record:
 
 ```json
 { "role": "lead", "trackId": 5, "band": "400-3000", "register": [72, 88],
+  "soundIntent": "acid psy_fm with phaser bite",
+  "patternIntent": "call-response hook by bar 24",
   "beforeRms": 0.120, "afterRms": 0.144, "verifyPart": "audible=1;nonClipping=1",
   "fxParamsReadback": { "slot1.outLevel": 0.18, "slot1.fader": 0.75 },
+  "modulation": { "target": "filter cutoff", "recipe": "phaseSweep", "depth": "medium" },
   "automationLanes": 1, "warnings": [] }
 ```
 

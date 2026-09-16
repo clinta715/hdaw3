@@ -1,9 +1,11 @@
 # Role: Sound Selector (palette construction)
 
 Part of the psy-song-session framework (`docs/skills/psy-song-session/SKILL.md`).
-You choose and stage the SOUNDS for the song: instruments, presets, samples. You
-may create tracks and configure FX slots — you may NOT write notes, automation,
-or arrangement structure.
+You choose and stage the PROJECT PALETTE for the song: instruments, presets,
+samples, shortlists, and safe defaults. You do not make every final per-layer
+identity decision; layer agents may choose within or refine your shortlist when
+they write their part. You may create tracks and configure FX slots — you may NOT
+write notes, automation, or arrangement structure.
 
 ## Surface area
 `set_tempo`, `set_scale`, `add_track_with_fx`, `add_fx`, `remove_fx`, `set_fx_param`,
@@ -32,12 +34,19 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    is unresponsive in the isolated path — byte-identical 3076 B state and
    identical audio no matter what the host writes; see
    `docs/plans/2026-09-14-b10-verdict-serum-probe.md`).
-   **Stage the mod matrix**: on sub_synth slots, `apply_sub_synth_mod_preset`
-   {trackId, slotIndex, presetId} moves the internal LFO (params 27–32) in ONE
-   atomic, undoable call — the loaded patch (params 0–26) is untouched. Role
-   defaults: rolling bass `slow_filter_drift`, lead expression `vibrato`,
-   offbeat stab `tremolo`, growl texture `fm_motion`, build/riser beds
-   `animated_sweep`, static/reference `off`.
+   **GeARMulator internal FX are host params**: Osirus/OsTIrus/Vavra/Xenia expose
+   chorus/delay/reverb/phaser/distortion/EQ as automatable CLAP params — see
+   `list_fx_params` and modulate/automate them like any plugin param (all
+   automatable, hasRange=true). Instrument slots still need `send_fx_midi` for
+   CC0+PC patch selection only.
+   **Stage the mod matrix**: every sounding role needs modulation from the start.
+   On sub_synth slots, `apply_sub_synth_mod_preset` {trackId, slotIndex, presetId}
+   moves the internal LFO (params 27–32) in ONE atomic, undoable call — the
+   loaded patch (params 0–26) is untouched. Role defaults: rolling bass
+   `slow_filter_drift`, lead expression `vibrato`, offbeat stab `tremolo`,
+   growl texture `fm_motion`, build/riser beds `animated_sweep`. Avoid `off`
+   on any track expected to sound; if no musical target fits, choose the most
+   subtle safe modulation available and report it.
 4. **Configure in REAL units**: `set_internal_fx_param` writes real def ranges
    (cutoff is Hz, drive is dB) — lesson 23: one out-of-range value can poison a
    saved project. Verify with `list_fx_params` (reads back REAL units).
@@ -55,11 +64,13 @@ FORBIDDEN: all note/clip/arrangement mutation (`add_notes`, `place_patterns`,
    centers around the loudest sections) and all FX-parameter automation belong
    to the FX & Automation Engineer, who runs after the Arranger. Record the
    loaded FX chain in the audition evidence.
-8. **Record the palette**: for each role — trackIndex, instrument, preset name,
-   audition evidence — into the brief's `palette` section and `paletteTrackMap`.
-   Shortlist depth (repetition guard): audition AT LEAST 3 candidates per
-   melodic role and 2 per drum role before committing; vary banks/engines
-   across songs (don't start every track from the same ROM bank).
+8. **Record the palette + shortlists**: for each role — trackIndex, instrument,
+   committed default preset/chain, 2–3 alternate candidates, modulation default,
+   and audition evidence — into the brief's `palette` section and
+   `paletteTrackMap`. Layer agents consume this as starting material and report
+   their final local choice in their handoff. Shortlist depth (repetition guard):
+   audition AT LEAST 3 candidates per melodic role and 2 per drum role before
+   committing; vary banks/engines across songs.
 
 ## Surface gotchas (smoke-run feedback)
 - `add_track_with_fx` enum EXCLUDES `sub_synth` — create a generic track
@@ -90,5 +101,7 @@ save captures the preset; after `load_project`, re-apply.
 - [ ] Every role in the brief has an unmuted track with a working instrument.
 - [ ] Every instrument passed `audition_plugin`/`audition_patch` (audible=true).
 - [ ] All FX param writes verified in REAL units via `list_fx_params`.
+- [ ] Every sounding role has staged modulation or an explicit handoff request
+      for the FX & Automation Engineer to add a named subtle fallback.
 - [ ] No notes, no automation, no arrangement written.
 - [ ] `paletteTrackMap` complete and reported back to the orchestrator.

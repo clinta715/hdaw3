@@ -22,6 +22,55 @@ The relevant code path in `scanAll()` (`src/engine/PluginManager.cpp:174-198`):
 
 If a user manually fixes the scanner/plugin setup, they can un-blacklist via `PluginManager::unblacklistPlugin` or by editing the `plugin_blacklist.xml` file in the HDAW app data directory.
 
+## Concurrent scans and mid-scan kills lose the plugin cache (2026-09-16)
+
+`scanAll()` takes minutes and is **not** re-entrant. The engine already scans on a
+**background thread at first launch** when the plugin cache is empty; an agent that
+calls the MCP `scan_plugins` tool on top of that starts a *second* scan (same
+`PluginManager`), and because the handler blocked, `list_plugins` returned an empty
+catalog that looked exactly like "no plugins installed". Killing the engine mid-scan
+made it permanent: **an incomplete scan is never cached**, so every fresh launch
+started from zero and rescanned, which regenerated the same confusing state.
+
+**Rules:** (1) `list_plugins` now returns `{scanning, scannedCount}` — always read
+those before concluding the catalog is empty; (2) `scan_plugins` is async by default
+(`wait:false` → `poll_job`) and **rejects** a call while a scan is already running;
+(3) never kill the engine during a scan, and give the first-launch scan (2–4 min on
+this box, ~95 plugins) its time to finish and persist the cache.
+
+**Diagnostic signature:** per-file `PluginManager: scanning <path>` log lines
+(pid-attributed) with `list_plugins` still `{plugins:[]}` → the scan is simply still
+running, or a duplicate scan is queued behind it — not a broken install.
+
+## MRT2 one-shots carry lead-in silence — a 43 ms note gate plays only silence (2026-09-16)
+
+The `tools/mrt2/sounds/` kit files are *rendered phrases*, not tight one-shots: measured
+per-window RMS shows kick.wav silent for its first ~0.17 s (RMS 0.0001 at 0-50 ms, peak at
+**0.561 s**), hat.wav ~0.10 s (peak 0.350 s). Rhythm cells gate drum notes at **0.1 beat
+(~43 ms at 138 BPM)**, so the sampler played the silence and the track measured peak 0.0002 —
+indistinguishable from a broken sampler/chain/automation. clap.wav escaped because its transient
+is at t=0 (RMS 0.059 at 0-50 ms).
+
+**Diagnose:** per-window RMS of the sample itself (first 50/100/200 ms) plus a **solo stem
+render** (`export_audio {trackIds:[t]}` measured with `mix_report`). Note `verify_part` can
+report `audible=1` at RMS 1e-5 — trust the stem. Also: render a window that actually CONTAINS
+notes (clap clips exist only in drops from beat 96 ≈ 41.7 s; a 0-32 s probe reads peak 0 and looks
+like a bug that isn't one).
+
+**Fix:** trim the lead-in (`tools/mrt2/sounds/*_trim.wav` are generated with a 40 ms pre-roll:
+kick from 0.125 s, hat from 0.100 s) and/or set `one-shot` mode on the sampler slot. Post-fix
+kick stem: peak 0.0002 → **0.387**, RMS 0.00003 → **0.056**, sub band 7870.
+
+## "Subtle fallback modulation" on the Volume param halves the track and steals the fader
+
+Writing a fallback movement lane on **Volume** (`pid 1`) with the `subtleLife`/`randomDrift`
+presets sets the level to ~0.5 AND makes automation authoritative (`set_fader_authoritative`
+territory), so the track is quietly halved and later `set_track_volume` writes are ignored —
+measured: hats/clap dropped to RMS 0.002/0.005. **Prefer pan / cutoff / wave-morph lanes for fallback
+modulation**; if a Volume lane is genuinely wanted, call `set_fader_authoritative` before gain
+staging (and re-check `audit_modulation_coverage` → `faderOverriddenIds`). After swapping hats/clap
+to a pan LFO: clap peak 0.166 → 0.279, hats high band 6.5 → 18.7, coverage still 9/9.
+
 ## Default project should not reference non-existent sample files
 
 `ProjectModel::createDefaultProject` historically created audio clips

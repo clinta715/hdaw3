@@ -74,6 +74,45 @@ Each dispatch prompt contains:
 4. The handoff format expected back.
 Subagents read `docs/psytrance-composition-guide.md` for recipes when needed.
 
+## Global modulation rule
+
+Every sounding track/layer MUST carry modulation. Prefer musically audible
+movement (filter cutoff, phase, wavetable/FM amount, tremolo, delay feedback/mix,
+pump, macro sweeps). If no appropriate musical modulation target exists for a
+role, add a subtle-to-nearly-indistinguishable safe modulation instead; the rule
+is presence of life on every layer, not theatrical movement everywhere. Handoff
+evidence must name the modulation target/preset/depth for each layer.
+
+## Ownership model: local identity + global choreography
+
+The workflow is HYBRID, not one giant project pass and not one subagent per
+note. A layer agent owns the local identity of its layer: final sound choice
+from the palette/shortlist, pattern/musical behavior, role FX, and mandatory
+local modulation. The project-level roles own constraints and coordination:
+Sound Selector prepares the palette/shortlists/default chains; FX & Automation
+Engineer choreographs cross-section movement after layers exist; Mix Verifier
+rejects static/boring spans and routes fixes back to the owning layer or the
+global choreography pass.
+
+Rule of thumb: **layer agent = what this part is; FX Automation = how the song
+moves as a whole**.
+
+**Project-native ledger (tools):** handoffs persist IN THE PROJECT, not only in
+files — `set_layer_handoff` (role/soundIntent/patternIntent/modulation/verify per
+track, ONE undo unit, survives save/load), `get_layer_handoffs`, `clear_layer_handoff`,
+and the mechanical gate `audit_modulation_coverage` (flags any sounding track with
+no enabled LFO, no movable automation lane, and no sub_synth internal LFO), plus
+`apply_movement_plan` (batch build/drop/breakdown automation arcs across tracks
+in ONE undo unit; lanes are auto-created/reused by paramID, never stacked), and
+`audit_song_structure` (boredom/static-span gates: ≥8 bars of no-melodic/no-backbeat
+spans, drop backbeat presence, first-drop motif — embedded in `mix_report` as the
+`structure` block when fromPlan=true), plus
+`diagnose_intro_blast` (windowed intro analysis of a rendered master: clipping /
+loud-transient / NaN-poison / DC-offset / saturation-then-silence classification,
+with per-track solo-render attribution of the blast window — the recurring loud
+intro bug class). Agents verify handoff evidence with the audit tools, not by
+parsing JSON files.
+
 ## Phase order and the single-writer rule
 1. **Parallel offline**: Curator and Pattern Researcher run concurrently — they
    never touch the engine's project state, so they parallelize freely.
@@ -82,11 +121,11 @@ Subagents read `docs/psytrance-composition-guide.md` for recipes when needed.
 3. **Arranger** (single writer): writes the song against the palette. No other
    role may hold the engine concurrently — the harness enforces this by only
    dispatching the Arranger while nothing else mutates.
-4. **FX & Automation Engineer** (movement pass): runs over the FINISHED
-   arrangement — verifies/refines the chains Sound Selector staged in context,
-   then adds the movement layer (cutoff sweeps, pump, riser curves) as
-   FX-parameter automation lanes. Single writer while dispatched; never notes,
-   clips, or instruments; no exports.
+4. **FX & Automation Engineer** (global choreography pass): runs over the
+   FINISHED layered arrangement — audits the per-layer modulation/FX that layer
+   agents already wrote, resolves collisions, and adds cross-section movement
+   arcs (cutoff sweeps, pump, riser curves, delay throws, space changes). Single
+   writer while dispatched; never notes, clips, or instruments; no exports.
 5. **Mix Verifier**: renders + measures async; on FAIL it names the fix and the
    owning role; bounded to 3 render/rework loops before reporting to the user.
 6. **Persist** only on a PASS verdict (`save_project`), then stop.
@@ -100,9 +139,11 @@ auditioning). Any mutation => one writer at a time.
 Layered mode is the PREFERRED path for FINAL tracks: one element at a time, each
 written by a dedicated layer-agent that MEASURES the cumulative mix (the four
 gates in `roles/layer-agent.md`) BEFORE writing, so every voice lands in a
-register/band the mix has left open. Bulk cell fill (the plan/cell workflow of
-`fill_cells`) remains the FALLBACK for SKETCH mode — fast seeded structure to
-capture the shape, then rebuilt layer by layer when the track goes final.
+register/band the mix has left open. Each layer-agent owns that layer's final
+sound/pattern/FX/local modulation decision, using the Sound Selector's palette
+as starting material rather than a cage. Bulk cell fill (the plan/cell workflow
+of `fill_cells`) remains the FALLBACK for SKETCH mode — fast seeded structure
+to capture the shape, then rebuilt layer by layer when the track goes final.
 
 **Fixed layer order** — each layer is a SEPARATE dispatch, strictly sequential,
 single writer, never overlapping. Two modes:
