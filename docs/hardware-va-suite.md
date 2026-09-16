@@ -303,6 +303,34 @@ trick is knowing which lever each device exposes and which one HDAW can drive.
    scriptable.
 3. **Xenia patch pipeline** once Microwave banks exist (vocabulary already harvested).
 
+## 7b. Harvesting FX / matrix recipes from the patch libraries
+
+The patches *contain* the effect and modulation recipes, so the libraries are a corpus:
+`timbre-lib/harvest_fx_presets.py` mines the sidecars and emits
+`timbre-lib/harvested_fx_presets.json` - per engine and per FX/modulation parameter, the
+value distribution, how many patches carry it, and example patches that use the most
+common value (so a human can audition the source of a recipe).
+
+    py -3 timbre-lib/harvest_fx_presets.py --out timbre-lib/harvested_fx_presets.json \
+        --vocab vavra=<...>/parameterDescriptions_mq.json \
+        --vocab xenia=<...>/parameterDescriptions_xt.json \
+        "D:/pdf/je8086" "D:/pdf/rhythm-lab.com_waldorf_micro_q" "D:/pdf/microwave" "D:/pdf/NL2x Banks"
+
+Sweep 2026-09-16: **11,111 sidecars** (je8086 3735, vavra 528, xenia 7, nodalred2x 6841)
+yielding, per engine, the FX/modulation vocabulary actually in use - e.g. 35 named
+FX/mod parameters for JE8086 (its `AmpLfo1Depth`, `AutoPanManualPanSwitch`,
+`ControlCutoffFrequency` groups), 16 for Xenia (`W2EnvAmount`, `ModDelayTime`, `Depan`)
+and 4 for the Nord (`cutoff`, `resonance`, `mix`, `sync_distortion`).
+
+Why this is useful: these recipes can be **re-created on HDAW's internal FX and
+movement planes** (the modulation-first policy), which is the only way to use them on
+the devices that publish no host parameters. Two honest limits: (a) the harvested values
+live in each device's own parameter space, so reproducing them is an approximation, not
+a byte-exact transfer; (b) microQ parameters in its sidecars are stored as **dump
+offsets**, not device parameter indices, so `vavra` currently yields no named recipes -
+mapping the dump layout onto the device vocabulary is the open task (the vocabulary is
+harvested already, `866` names).
+
 ## 6. Pipeline commands (one line each)
 
     py -3.14 timbre-lib/virus_patch.py  --sidecars "<Virus bank dir>"

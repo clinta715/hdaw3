@@ -1,0 +1,1486 @@
+{
+ "engines": {
+  "je8086": {
+   "AmpLfo1Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2066,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 45,
+      "examples": [
+       "Old Rhodes",
+       "Wave stack 2  JL",
+       "Wave storia   JL"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 34,
+      "examples": [
+       "BS Eighties SA",
+       "BS EuroBass SA",
+       "FILTERPLUCK BS"
+      ],
+      "value": 62.0
+     }
+    ]
+   },
+   "AmpLfo2Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2223,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 138,
+      "examples": [
+       "BA Gut Blow",
+       "BA Sub Puncher",
+       "LD PCI Link"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 48,
+      "examples": [
+       "LD SawOfLegand 6",
+       "LD Trancy Arp",
+       "PD Into The Sun"
+      ],
+      "value": 52.0
+     }
+    ]
+   },
+   "AutoPanManualPanSwitch": {
+    "group": "pan",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1991,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 516,
+      "examples": [
+       "PD Phased",
+       "PD Poly Strings",
+       "PD Terminator"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 161,
+      "examples": [
+       "PD Ionic Storm",
+       "PD Ionic Storm",
+       "FX ALERT      AZ"
+      ],
+      "value": 2.0
+     }
+    ]
+   },
+   "ControlAmpLfo1Depth": {
+    "group": "mod-amount",
+    "patches": 1544,
+    "topValues": [
+     {
+      "count": 1525,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 19,
+      "examples": [
+       "LS Melotron",
+       "LS Vintage St7",
+       "LS Poly Fate"
+      ],
+      "value": 1.0
+     }
+    ]
+   },
+   "ControlCutoffFrequency": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1985,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA Chubby Kitten"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 680,
+      "examples": [
+       "BA BarelyTonal",
+       "LD AdjustLFORate",
+       "LD StrangeThings"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 11,
+      "examples": [
+       "Metalic Arp    L",
+       "\u0000Mystery Split",
+       "\u0000Mystery Split"
+      ],
+      "value": 127.0
+     }
+    ]
+   },
+   "ControlResonance": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2229,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 436,
+      "examples": [
+       "BA Jupiter Res",
+       "BA MassivFatness",
+       "BA Moogtastic"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 4,
+      "examples": [
+       "\u0000Mystery Split",
+       "Curious Dance  L",
+       "Pears of Gaia  L"
+      ],
+      "value": 127.0
+     }
+    ]
+   },
+   "Cutoff        JL": {
+    "group": "filter",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Dreamwork Vol 1.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "CutoffFrequency": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 545,
+      "examples": [
+       "LD The Hero",
+       "LD The Hero",
+       "BA THICK SQ   AZ"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 406,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 37,
+      "examples": [
+       "PD Poly Strings",
+       "PD Terminator",
+       "PD Poly Strings"
+      ],
+      "value": 63.0
+     }
+    ]
+   },
+   "CutoffFrequencyKeyFollow": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1480,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 84,
+      "examples": [
+       "FX BURBLES    AZ",
+       "PD SPHERICAL  AZ",
+       "PD SPHERICAL  AZ"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 57,
+      "examples": [
+       "BS EuroBass SA",
+       "DNB KILLAH BS",
+       "DST HiBass 2 BS"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "CutoffSlope": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1686,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA Chubby Kitten",
+       "BA Cpt Krunch"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 986,
+      "examples": [
+       "BA AlmostDubstep",
+       "BA BarelyTonal",
+       "BA Gut Blow"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 4,
+      "examples": [
+       "\u0000Mystery Split",
+       "\u0000Mystery Split",
+       "EuroPercussion1U"
+      ],
+      "value": 2.0
+     }
+    ]
+   },
+   "DST 3Drives PL": {
+    "group": "distortion",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Dustons Trance Classics Vol 1.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "DelayFeedback": {
+    "group": "delay",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 691,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 368,
+      "examples": [
+       "LD Hit Maekr",
+       "LD SawOfLegand 5",
+       "LD SawOfLegand 7"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 65,
+      "examples": [
+       "Bass 01       OS",
+       "BS TranceBass",
+       "LS Deckard Dream"
+      ],
+      "value": 103.0
+     }
+    ]
+   },
+   "DelayLevel": {
+    "group": "delay",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 864,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 193,
+      "examples": [
+       "SY VEL ACID   AZ",
+       "OctaveMe Bass GK",
+       "rb2k1 bassland"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 52,
+      "examples": [
+       "rb2k1 scan bass",
+       "LS Vintage St3",
+       "LS Vintage St3"
+      ],
+      "value": 108.0
+     }
+    ]
+   },
+   "DelayTime": {
+    "group": "delay",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 540,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 413,
+      "examples": [
+       "LD SawOfLegand 5",
+       "LD SawOfLegand 7",
+       "LD SawOfLegand 5"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 174,
+      "examples": [
+       "BA Sub Puncher",
+       "LD FM Bell",
+       "LD Hard 80s Sync"
+      ],
+      "value": 127.0
+     }
+    ]
+   },
+   "DelayType": {
+    "group": "fx-type",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2346,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 168,
+      "examples": [
+       "DST A&B Mid BS",
+       "DNB KILLAH BS",
+       "FILTERPLUCK BS"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 73,
+      "examples": [
+       "LD JULY       AZ",
+       "DST JP Bass 2 BS",
+       "DST JP Bass 3 BS"
+      ],
+      "value": 4.0
+     }
+    ]
+   },
+   "Distortion    JL": {
+    "group": "distortion",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Dreamwork Vol 1.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "Distortion X  JL": {
+    "group": "distortion",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Dreamwork Vol 1.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "FilterEnvelopeDepth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 436,
+      "examples": [
+       "LD StrangeThings",
+       "PD CouldBeJP8",
+       "PD Human"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 228,
+      "examples": [
+       "LD AdjustLFORate",
+       "LD Porta SprSaw",
+       "LD Pulse Horns"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 117,
+      "examples": [
+       "BA Maor Levi",
+       "BA MassivFatness",
+       "BA Moogtastic"
+      ],
+      "value": 113.0
+     }
+    ]
+   },
+   "FilterLfo1Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2137,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 36,
+      "examples": [
+       "LS Complex Sync",
+       "LS Complex Sync",
+       "LS Complex Sync"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 30,
+      "examples": [
+       "LS Vintage St10",
+       "LS Vintage St10",
+       "LS Vintage St10"
+      ],
+      "value": 62.0
+     }
+    ]
+   },
+   "FilterLfo2Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1933,
+      "examples": [
+       "BA Chubby Kitten",
+       "BA Cpt Krunch",
+       "BA Feedback FX"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 127,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 88,
+      "examples": [
+       "PD Banded String",
+       "PD LazerPhazer",
+       "PD Banded String"
+      ],
+      "value": 63.0
+     }
+    ]
+   },
+   "FilterType": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2426,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA Chubby Kitten"
+      ],
+      "value": 2.0
+     },
+     {
+      "count": 160,
+      "examples": [
+       "LD AdjustLFORate",
+       "LD BPF Saw",
+       "LD Mod For FM"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 87,
+      "examples": [
+       "BA BarelyTonal",
+       "PD HPF Pulse",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "FlangerPike   KW": {
+    "group": "chorus",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Seraphic Music Alpha Centauri.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "Hyperdrive    KW": {
+    "group": "distortion",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Seraphic Music Alpha Centauri.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "LD ChorusStab JK": {
+    "group": "chorus",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Mystery Islands EDM Vol 1.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "LS Chorus Lead": {
+    "group": "chorus",
+    "patches": 2,
+    "topValues": [
+     {
+      "count": 2,
+      "examples": [
+       "Cinematica Patches.mid",
+       "Cinematica Performances.syx"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "Lfo2DepthSelect": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 2316,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA Chubby Kitten"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 248,
+      "examples": [
+       "BA BarelyTonal",
+       "BA Dubstep Bass",
+       "BA Gut Blow"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 109,
+      "examples": [
+       "LD Hard 80s Sync",
+       "LD PCI Link",
+       "PD HPF Pulse"
+      ],
+      "value": 2.0
+     }
+    ]
+   },
+   "MultiEffectsLevel": {
+    "group": "fx-mix",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 747,
+      "examples": [
+       "BA Moorish",
+       "BA SpeakerKiller",
+       "BA Super Bass"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 273,
+      "examples": [
+       "LD FM Bell",
+       "LD FM Bell",
+       "PD ORGANIC    AZ"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 48,
+      "examples": [
+       "LD 1999 Trance",
+       "LD gAtari",
+       "LD HereComesUFO"
+      ],
+      "value": 64.0
+     }
+    ]
+   },
+   "MultiEffectsType": {
+    "group": "fx-type",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1506,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 287,
+      "examples": [
+       "BA Feedback FX",
+       "LD In Harmony",
+       "LD The Fall"
+      ],
+      "value": 3.0
+     },
+     {
+      "count": 173,
+      "examples": [
+       "LD Hard 80s Sync",
+       "LD JP8 Brass",
+       "PD CouldBeJP8"
+      ],
+      "value": 1.0
+     }
+    ]
+   },
+   "OscLfo1Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1363,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 212,
+      "examples": [
+       "LD Morphing FX",
+       "LD StrangeThings",
+       "PD Human"
+      ],
+      "value": 67.0
+     },
+     {
+      "count": 138,
+      "examples": [
+       "LD Analogz",
+       "LD Dirty Boy",
+       "LD Funny Face"
+      ],
+      "value": 69.0
+     }
+    ]
+   },
+   "PitchEnvelopeDepth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1933,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 74,
+      "examples": [
+       "Swell Bass",
+       "Legato TB-303 2",
+       "Blipper Bass"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 59,
+      "examples": [
+       "LS Sharp Lead",
+       "LS Vintage St3",
+       "LS Vintage St5"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "PitchLfo2Depth": {
+    "group": "mod-amount",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 862,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 79.0
+     },
+     {
+      "count": 394,
+      "examples": [
+       "LD Morphing FX",
+       "LD PulseBackbone",
+       "LD QueenOfBlades"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 163,
+      "examples": [
+       "BA Gut Blow",
+       "LD The Hero",
+       "PD Abner"
+      ],
+      "value": 72.0
+     }
+    ]
+   },
+   "Resonance": {
+    "group": "filter",
+    "patches": 2676,
+    "topValues": [
+     {
+      "count": 1323,
+      "examples": [
+       "BA ActuallySkrlx",
+       "BA AlmostDubstep",
+       "BA BarelyTonal"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 45,
+      "examples": [
+       "BA Searing",
+       "LD JP8 Brass",
+       "BA Searing"
+      ],
+      "value": 26.0
+     },
+     {
+      "count": 44,
+      "examples": [
+       "BA SpeakerKiller",
+       "BA SpeakerKiller",
+       "Bass Frog     JL"
+      ],
+      "value": 21.0
+     }
+    ]
+   },
+   "Vocoder Inside": {
+    "group": "vocoder",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "SOR Revolution Vol 1 Performances.MID"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "Vocodering    GK": {
+    "group": "vocoder",
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "Quarantine Vol 2.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "rb2k1 movecutoff": {
+    "group": "filter",
+    "patches": 2,
+    "topValues": [
+     {
+      "count": 2,
+      "examples": [
+       "RB2K1 Trance Vol 1.mid",
+       "jp-8080 trance bank.syx"
+      ],
+      "value": 0.0
+     }
+    ]
+   }
+  },
+  "nodalred2x": {
+   "cutoff": {
+    "group": "filter",
+    "patches": 6841,
+    "topValues": [
+     {
+      "count": 865,
+      "examples": [
+       "Nord Lead 2 - POWER OF THE NIGHT",
+       "vax nord bank 1",
+       "Discovery Pro Fonzie"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 161,
+      "examples": [
+       "Discovery Pro Lib 3 Bank 2",
+       "Discovery Pro Pad 1",
+       "n2lib4b1"
+      ],
+      "value": 0.267717
+     },
+     {
+      "count": 160,
+      "examples": [
+       "Discovery Pro Lib 3 Bank 1",
+       "Discovery Pro Stab 2",
+       "0014FMMetallic"
+      ],
+      "value": 0.330709
+     }
+    ]
+   },
+   "mix": {
+    "group": "fx-mix",
+    "patches": 6841,
+    "topValues": [
+     {
+      "count": 1097,
+      "examples": [
+       "Nord Lead 2 - LADY IN RED",
+       "Nord Lead 2 - SYNTH HIT WONDERS",
+       "vax nord bank 1"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 474,
+      "examples": [
+       "Discovery Pro FX 1",
+       "Discovery Pro House Presets Vol. 1",
+       "Discovery Pro Key 3"
+      ],
+      "value": 0.503937
+     },
+     {
+      "count": 359,
+      "examples": [
+       "DubStep Nord 2_2x",
+       "Martian Soundset G Cha 5 Fixed",
+       "Martian Soundset G Cha 5 Fixed"
+      ],
+      "value": 1.0
+     }
+    ]
+   },
+   "resonance": {
+    "group": "filter",
+    "patches": 6841,
+    "topValues": [
+     {
+      "count": 1970,
+      "examples": [
+       "Nord Lead 2 - LADY IN RED",
+       "Nord Lead 2 - SYNTH HIT WONDERS",
+       "vax nord bank 1"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 188,
+      "examples": [
+       "Hemiflange(Hold)",
+       "Discovery Pro Alexander One",
+       "Discovery Pro Lead 7"
+      ],
+      "value": 0.102362
+     },
+     {
+      "count": 169,
+      "examples": [
+       "Mystery Islands - Northern Lights",
+       "Discovery Pro Key 2",
+       "dump_Performances"
+      ],
+      "value": 0.110236
+     }
+    ]
+   },
+   "sync_distortion": {
+    "group": "distortion",
+    "patches": 6841,
+    "topValues": [
+     {
+      "count": 5586,
+      "examples": [
+       "Martian Soundset G Cha 5 Fixed",
+       "Martian Soundset G Cha 5 Fixed",
+       "Mystery Islands - Northern Lights"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 801,
+      "examples": [
+       "dump_patches_3",
+       "dump_patches_300",
+       "300"
+      ],
+      "value": 0.007874
+     },
+     {
+      "count": 162,
+      "examples": [
+       "DubStep Nord 2_2x",
+       "vax nord bank 1",
+       "dump_Performances"
+      ],
+      "value": 0.125984
+     }
+    ]
+   }
+  },
+  "xenia": {
+   "ChorusEnabled": {
+    "group": "chorus",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 3,
+      "examples": [
+       "2000.\u00b5sb",
+       "u101.\u00b5sb",
+       "uDrums.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 3,
+      "examples": [
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb",
+       "uSynth.\u00b5sb"
+      ],
+      "value": 1.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 64.0
+     }
+    ]
+   },
+   "DePan": {
+    "group": "pan",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 4,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 2,
+      "examples": [
+       "uDrums.\u00b5sb",
+       "uSynth.\u00b5sb"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 30.0
+     }
+    ]
+   },
+   "DelayTime": {
+    "group": "delay",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 4,
+      "examples": [
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb",
+       "u101.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 118.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 114.0
+     }
+    ]
+   },
+   "EffectType": {
+    "group": "fx-type",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 5,
+      "examples": [
+       "Factory.\u00b5sb",
+       "boele_gerkes.mid",
+       "u101.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 32.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "cobalt.\u00b5sb"
+      ],
+      "value": 27.0
+     }
+    ]
+   },
+   "F1Cutoff": {
+    "group": "filter",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 56.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "Factory.\u00b5sb"
+      ],
+      "value": 23.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 32.0
+     }
+    ]
+   },
+   "F1EnvAmount": {
+    "group": "mod-amount",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 2,
+      "examples": [
+       "u101.\u00b5sb",
+       "uDrums.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 74.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "Factory.\u00b5sb"
+      ],
+      "value": 110.0
+     }
+    ]
+   },
+   "F1EnvVelAmount": {
+    "group": "mod-amount",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "Factory.\u00b5sb",
+       "boele_gerkes.mid",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 90.0
+     }
+    ]
+   },
+   "F1Resonance": {
+    "group": "filter",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 100.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "Factory.\u00b5sb"
+      ],
+      "value": 74.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 56.0
+     }
+    ]
+   },
+   "F2Cutoff": {
+    "group": "filter",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 5,
+      "examples": [
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb",
+       "u101.\u00b5sb"
+      ],
+      "value": 127.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "2000.\u00b5sb"
+      ],
+      "value": 56.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "MI7Pan": {
+    "group": "pan",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 48.0
+     }
+    ]
+   },
+   "MI7PanMod": {
+    "group": "pan",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "ModDelayTime": {
+    "group": "delay",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "2000.\u00b5sb",
+       "boele_gerkes.mid",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 0.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "Factory.\u00b5sb"
+      ],
+      "value": 46.0
+     }
+    ]
+   },
+   "Pan": {
+    "group": "pan",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 0.0
+     }
+    ]
+   },
+   "W2EnvAmount": {
+    "group": "mod-amount",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 5,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "u101.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 63.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "cobalt.\u00b5sb"
+      ],
+      "value": 59.0
+     }
+    ]
+   },
+   "W2EnvVelAmount": {
+    "group": "mod-amount",
+    "patches": 7,
+    "topValues": [
+     {
+      "count": 6,
+      "examples": [
+       "2000.\u00b5sb",
+       "Factory.\u00b5sb",
+       "cobalt.\u00b5sb"
+      ],
+      "value": 64.0
+     },
+     {
+      "count": 1,
+      "examples": [
+       "boele_gerkes.mid"
+      ],
+      "value": 21.0
+     }
+    ]
+   },
+   "__vocabulary_params_mapped__": {
+    "group": null,
+    "patches": 1,
+    "topValues": [
+     {
+      "count": 1,
+      "examples": [],
+      "value": 229.0
+     }
+    ]
+   }
+  }
+ },
+ "patchCounts": {
+  "je8086": 3735,
+  "nodalred2x": 6841,
+  "vavra": 528,
+  "xenia": 7
+ },
+ "roots": [
+  "je8086",
+  "rhythm-lab.com_waldorf_micro_q",
+  "microwave",
+  "NL2x Banks"
+ ],
+ "scannedSidecars": 11111,
+ "schema": "hdaw.harvested.fx.presets.v1"
+}
