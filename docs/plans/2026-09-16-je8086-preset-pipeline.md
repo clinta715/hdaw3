@@ -234,6 +234,48 @@ individual patch hits from `search_library` with `patchEngine=je8086`, the role
 verdict, tags and the parameter-derived description — i.e. the sidecar contract
 works end to end (decode -> sidecar -> scan -> search).
 
+
+## Proposal: the isolated state capture must not persist a boot-time stub (NEEDS SIGN-OFF)
+
+Per AGENTS.md this touches plugin isolation + the render/export restore path, so it
+is written up rather than implemented.
+
+**Mechanism (pinned 2026-09-16, three-way measurement).** `Track.cpp` rebuild path:
+for each plugin slot it calls `instance->getStateInformation(state)` and, when
+`state.getSize() > 0`, writes `IDs::pluginState` (the "empty state must not clobber
+last-good" guard passes a 233-byte stub). Slot creation then reads `pluginState` and
+calls `setStateInformation(...)`, and the export builds its own graph — so the
+render's fresh instance receives the stub. Measured with a real JE8086: isolation ON
+with no capture -> renders follow the live plugin (peak 0.2063); after a capture ->
+frozen at the plugin's default patch (peak 0.2455155849456787) even with MASTER
+VOLUME = 0; in-process -> always follows the live plugin (stateBytes=0).
+
+**Options**
+
+| Option | Effort | Risk | What it changes |
+|---|---|---|---|
+| **C** diagnostic only | `45 min | low | receipt gains a "state equals the post-boot baseline" flag; no behaviour change; docs keep the `captureToTree:false` recipe |
+| **D-lite** wait-for-change capture (recommended next) | `2-3 h | medium | deferred capture polls the child (bounded) and persists only a state that *changed* from the post-boot baseline; otherwise leaves `pluginState` unset and says so in the receipt |
+| **D-full** explicit child readiness | `1 d | medium-high | new proxy message type + child hook; capture gated on "ROM/DSP boot finished" instead of a baseline diff |
+| **A** document only | 0 | none | keep the recipe: `captureToTree:false` (or in-process) for emulations whose state does not round-trip |
+
+**Why D-lite is the right shape**: a state identical to the fresh-boot state carries no
+information, and restoring it demonstrably *resets* the plugin to a default patch
+(rather than being a harmless no-op), so skipping both the persist and the restore is
+strictly better. It needs no per-plugin size magic numbers: the baseline comes from
+the child itself.
+
+**Verification plan**: capture before/after injecting into real OsTIrus / NodalRed2x /
+JE8086 slots; assert (a) the receipt reports the unchanged-baseline case, (b) the
+rendered window follows the live instance (the same A/B harness used here in
+`compositions/je8086-e2e`), (c) existing FX state save/load tests stay green
+(`fx_midi_injection_test.cpp`, `plugin_state_save_load_test.cpp`, export suites).
+
+**Open question for the user**: is JE8086 worth pursuing at all given DT1 dumps cannot
+apply in this emulation (parameter writes work live but are not in the 233-byte state)?
+If JE8086 parts are audition-only by decision, D-lite is still worth doing for the other
+emulations (any slow-booting child captured early has the same hazard).
+
 **Two real bugs the E2E cross-check caught** (both invisible to the unit tests)
 1. `mcp-launch.bat` aborted before launching the engine: unescaped parentheses in
    an `echo` inside a parenthesized `if` block (the tool-surface sentinel message)

@@ -2746,3 +2746,76 @@ TEST(McpServer, SendFxMidiValidation) {
     s.stop();
     s.setTransport(nullptr);
 }
+
+// The MCP surface is the contract the frontend, the agentic workflows and the
+// launcher sentinel rely on: a curated must-have set must stay registered. The
+// launcher (mcp-launch.bat) string-checks for audit_song_structure as a stale-build
+// sentinel, so a rename here must fail loudly rather than silently vanish.
+TEST(McpServer, ToolSurfaceRegistersCuratedTools) {
+    AudioEngine engine;
+    engine.initialize();
+
+    mcp::TransportLoopback tp;
+    mcp::McpServer s; s.setEngine(&engine); mcp::registerAllTools(s);
+    tp.start(&s); s.setTransport(&tp); s.start();
+    tp.drainOutgoing();
+    tp.pumpIncoming(QString(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})").toUtf8());
+    QByteArray out;
+    ASSERT_TRUE(tp.waitForOutgoing(5000, &out));
+    const auto r = parseOne(out);
+    const auto tools = r.value("result").toObject().value("tools").toArray();
+
+    QStringList names;
+    for (const auto& t : tools)
+        names << t.toObject().value("name").toString();
+    EXPECT_GT(names.size(), 200) << "the full surface should register";
+
+    const QStringList required = {
+        "new_project",
+        "load_project",
+        "save_project",
+        "export_audio",
+        "mix_report",
+        "add_track",
+        "add_instrument_part",
+        "add_midi_clip",
+        "add_notes",
+        "set_fx_param",
+        "list_fx_params",
+        "send_fx_midi",
+        "get_fx_capture_status",
+        "capture_fx_snapshot",
+        "audition_plugin",
+        "audition_patch",
+        "add_fx",
+        "apply_preset",
+        "load_virus_preset",
+        "load_nord_bank",
+        "load_je8086_preset",
+        "load_plugin_preset_file",
+        "fm_synth_import_sysex",
+        "audit_modulation_coverage",
+        "apply_movement_plan",
+        "set_track",
+        "add_library",
+        "scan_library",
+        "search_library",
+        "generate_phrase",
+        "generate_rhythm_pattern",
+        "audit_song_structure",
+        "set_song_plan",
+        "fill_cells",
+        "apply_song_brief",
+        "set_cell",
+        "reroll",
+    };
+    QStringList missing;
+    for (const auto& req : required)
+        if (!names.contains(req))
+            missing << req;
+    EXPECT_TRUE(missing.isEmpty())
+        << "missing MCP tools: " << missing.join(", ").toStdString();
+
+    s.stop();
+    s.setTransport(nullptr);
+}
