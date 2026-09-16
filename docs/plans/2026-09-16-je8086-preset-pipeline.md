@@ -71,19 +71,85 @@ Sources: `D:\pdf\retromulator-main\source\ronaldo\je8086\jeLib\`
    patch can be injected into a JE8086 slot and rendered.
 
 ## Success Gates
-- [ ] G1: `pytest timbre-lib/test_je8086_patch.py` green (incl. real-library
-      spot checks when the bank dir is mounted).
-- [ ] G2: sweep parses **46/46 files**, 0 checksum failures, ≥4200 named
-      entries; every sidecar's `engine`/`schema`/`mappedParams`/
-      `roleCheck`/`unmapped` present.
-- [ ] G3: survey reports per-bank counts, role histogram, placeholder (INIT)
-      share, duplicate-name cross-bank matches, and the psy-relevant shortlist.
-- [ ] G4: byte-stable re-run (same inputs → identical JSON) and no absolute
-      path leakage in committed artifacts.
-- [ ] G5: `git status` shows only `timbre-lib/` + docs additions.
+- [x] G1: `pytest timbre-lib/test_je8086_patch.py` → **15 passed** (incl.
+      real-library spot checks: 6144 messages, 0 checksum failures); full
+      timbre-lib suite **106 passed** (no virus/nl2x regression).
+- [x] G2: sweep parses **46/46 files**, 6144 messages, **0 checksum failures**,
+      4276 named entries; all 45 sidecars validated for `engine`/`schema`/
+      `mappedParams`/`roleCheck`/`unmapped` + no absolute-path leakage.
+- [x] G3: survey reports per-bank counts, role + family histograms, placeholder
+      share, cross-bank duplicate names, the psy-relevance ranking and a per-role
+      `roleShortlist` (see Analysis below).
+- [x] G4: byte-stable re-run (asserted in
+      `test_bank_sidecar_contract_and_stability`) and zero path leakage
+      (asserted in the survey + sidecar tests).
+- [x] G5: committed as `e6006c5` + the analysis commit, touching only
+      `timbre-lib/` and `docs/`.
 
 ## Effort/risk
 ~0.5d. **Risk LOW** — pure Python tooling + JSON artifacts; no engine, DSP,
 RPC, or ValueTree surface is touched. The only HDAW-side change is the
 1-line sidecar-extension add (deliverable 5), which lives in the file-library
 scan path, not the audio graph.
+
+## Analysis results (2026-09-16 sweep)
+
+**Inventory** — 46/46 files parsed, 6144 DT1 messages, **0 checksum failures**,
+4276 named entries: **2674 usable patches**, 383 performance names, the rest
+`INIT PATCH` padding (these are 64/128-slot ROM-style containers). 3572 entries
+are single-page dumps, so the 0x100+ `Control*` params are unavailable for them
+while every core parameter (0x00-0x0FE) still decodes.
+
+**Role histogram** — lead 1345, pluck 1333, bass 560, pad 501, performance 383,
+fx 91, arp 8, other 55; SUPER SAW is the dominant family.
+
+**Banks worth mining (usable patches)** —
+
+| Bank | Usable | Top roles |
+|---|---|---|
+| Cinematica Performances.syx | 128 | 75 pad, 34 lead, 14 bass |
+| Mystery Islands EDM Vol 1.mid | 128 | 91 lead, 17 pluck |
+| Techno 2.syx | 126 | 46 lead, 37 pluck, 26 pad |
+| Mystery Islands - Always Alive.syx | 107 | 81 lead, 19 pluck |
+| Kulshan Altitude.mid | 100 | 58 lead, 39 pluck, 18 fx |
+| Kulshan Mystical Psytrance.mid | 100 | 45 pluck, 40 lead, 30 bass, 9 fx |
+| JayB_JP-8080.MID | 66 | 67 pluck, 44 lead |
+
+**The placeholder trap (the finding that matters for curation)** — the three
+banks whose *names* shout psytrance carry almost no patches: `Goa Psytrance.syx`,
+`Spectro Senses Goa Psytrance.syx` and `Psytrance.syx` each hold 64 genuine
+performance names but their patch bodies are `INIT PATCH` (1-2 usable patches
+each). Name-based selection would have picked exactly the emptiest banks; the
+survey's `nonInitPatches` counter is what exposes it. The psy content that does
+exist is in `Kulshan Mystical Psytrance.mid` (100 usable: 30 bass, 9 noise-family
+fx) and `Techno 2.syx`.
+
+**Per-role picks** (survey `roleShortlist`: bank psy-score, then classification
+confidence; `ref` is unambiguous for patch banks and performances):
+
+- bass — `Kulshan Mystical Psytrance.mid` perf016/part2 LITTLEDIRT,
+  perf026/part1 WARBLY, perf001/part1 SQUISH2
+- lead — Kulshan perf015/part2 DEEPSAW, perf007/part2 SQUISH4, perf037/part1
+  SEARCHING (all SUPER SAW)
+- pluck — Kulshan perf005/part2 SQUISH2, perf014/part2 UNIVERSE, perf009/part2
+  DARK2
+- pad — `Goa Psytrance.syx` perf001/part1 GOA 80, Kulshan perf035/part1 DEEP3
+- fx (noise) — Kulshan perf023/part1 ZAP3, perf031/part1 DIVINE, perf041/part1
+  MORNING
+- arp — `Alan Marcero - Trance Soundset B.mid` bank0/slot25 LD Trance Maker,
+  `Techno 2.syx` Metalic Arp
+
+**Two bugs found and fixed while building this** (both would have shipped a
+plausible-looking but wrong pipeline): (1) the area bases were written in
+absolute-byte space while `page_value` packs the three 7-bit address bytes, so
+the first pass decoded **0 entries** from all 46 files; (2) a performance
+*common* block was decoded as a patch body, inventing parameters and roles for
+performance names (now `role: performance`, no params). Both were caught by
+checking the decoder against the known census rather than by trusting the output.
+
+**Follow-ups** — (a) `FileLibraryManager::applyPatchSidecar` recognises
+`.virus.json`/`.dx7.json` only; adding `.je8086.json` (and `.nl2x.json`) is a
+two-line change to make these sidecars searchable in-app; (b) `load_je8086_bank`
+MCP tool mirroring `load_nord_bank` (DT1 bank -> JE8086 slot via `sendFxMidi`)
+to actually inject a curated patch and render it.
+

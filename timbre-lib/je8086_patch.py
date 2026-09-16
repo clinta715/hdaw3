@@ -673,6 +673,7 @@ def survey(root: str) -> dict:
     role_hist: Dict[str, int] = {}
     family_hist: Dict[str, int] = {}
     name_index: Dict[str, List[str]] = {}
+    shortlist: Dict[str, List[dict]] = {}
     param_hist: Dict[str, Dict[int, int]] = {"Osc1Waveform": {}, "FilterType": {}, "MultiEffectsType": {}}
     for path in files:
         try:
@@ -702,6 +703,15 @@ def survey(root: str) -> dict:
                 totals["performanceNames"] += 1
             elif not e["placeholder"]:
                 totals["nonInitPatches"] += 1
+            if not e["placeholder"] and e["role"] not in ("performance", "other"):
+                # concrete picks for the Sound Selector role (ranked per bank below)
+                ref = (("bank%d/slot%02d" % (e["bank"], e["slot"])) if e["area"] == "patch"
+                       else ("perf%03d/part%d" % (e["bank"], e["slot"])))
+                shortlist.setdefault(e["role"], []).append({
+                    "bank": os.path.basename(path), "area": e["area"], "ref": ref,
+                    "slot": e["slot"], "name": e["name"], "family": e["family"],
+                    "confidence": e["roleConfidence"],
+                })
             if not e["placeholder"]:
                 totals["nonInit"] += 1
                 slot = name_index.setdefault(e["name"].lower(), {"name": e["name"], "banks": []})
@@ -738,6 +748,11 @@ def survey(root: str) -> dict:
                            "nonInitPatches": bank.get("nonInitPatches", 0),
                            "roles": bank.get("roles", {})})
     psy_ranked.sort(key=lambda b: -b["score"])
+    bank_rank = {b["file"]: i for i, b in enumerate(psy_ranked)}
+    role_shortlist: Dict[str, List[dict]] = {}
+    for role, items in shortlist.items():
+        items.sort(key=lambda it: (bank_rank.get(it["bank"], 999), -float(it["confidence"]), it["slot"]))
+        role_shortlist[role] = items[:12]
     return {
         "schema": SCHEMA_SURVEY,
         "engine": ENGINE,
@@ -749,6 +764,9 @@ def survey(root: str) -> dict:
         "perBank": per_bank,
         "duplicateNames": duplicates[:40],
         "psyRelevant": psy_ranked[:12],
+        # per-role concrete picks (bank/slot/name), ranked by bank psy-score then
+        # classification confidence -- the curation surface for a Sound Selector
+        "roleShortlist": {r: role_shortlist[r] for r in sorted(role_shortlist)},
         "unmapped": list(UNMAPPED_BANK_FEATURES),
     }
 
