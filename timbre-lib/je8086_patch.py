@@ -348,7 +348,8 @@ def _is_printable_name(raw: bytes) -> bool:
     if len(raw) < NAME_LEN:
         return False
     text = raw[:NAME_LEN].decode("latin-1")
-    if not text.strip():
+    # require at least one real printable character (str.strip() does not remove NULs)
+    if not any(32 <= ord(c) < 127 for c in text):
         return False
     # Space and NUL are both used as name padding (real banks pad with spaces,
     # some tools leave NULs); anything else non-printable means "not a name".

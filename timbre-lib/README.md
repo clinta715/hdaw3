@@ -11,6 +11,7 @@ Pipeline: DSP descriptors -> CLAP captions + AudioSet tags -> Qwen2.5-3B prose.
 | `nl2x_patch.py` | `nodalred2x` | `D:\pdf\NL2x Banks` | `<patch>.nl2x.json` | 6841 sidecars; `load_nord_bank` verified |
 | `je8086_patch.py` | `je8086` | `D:\pdf\je8086` | `<bank>.je8086.json` | + exploded per-patch tree; DT1 dumps do not apply |
 | `microq_patch.py` | `vavra` | `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `<patch>.vavra.json` | categories from the dump; no host params |
+| `microwave_patch.py` | `xenia` | `D:\pdf\microwave` | `<bank>.xenia.json` | .usb bank images (256x256 B) + SMF SingleDumps; 1791 patches; no host params |
 
 All four suffixes are ingested by `FileLibraryManager` (register the folder as a
 *patch* library), so the presets become searchable with engine, role and tags. Device

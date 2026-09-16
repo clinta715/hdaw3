@@ -1,0 +1,411 @@
+{
+ "containers": {
+  "sysex-single-dump": 255,
+  "usb-record": 1536
+ },
+ "duplicateNames": [
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid",
+    "uDrums.µsb"
+   ],
+   "name": "init sound v1.1"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "phase lock 1 w&w"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "ping pad     wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "ppg plucked  wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "sbrass        gb"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "talking arp    t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "da mals      wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "ongaku         t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "problems ???   t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "warp         wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "jx10p stringswmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "synconie 2   wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "solina       wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "stenzel's chor s"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "saw keys     wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "big pylo     wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "fm keys      wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "doi!          dn"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "18db acid    wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "hollow bass  wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "moog 1        dn"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "moog's bass  wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "pulse bass   wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "primitive pad  s"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "single trig pads"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "warmpad       dn"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "wave choir   wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "fat pad      wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "oxy rhythm   wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "reverbed     wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "polysynth2   wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "phunk that !   t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "phase swell  wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "overdrive plkwmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "syndicat     wmf"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "chaosc         t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "deep spaces   dn"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "mcp            t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "into cpu       t"
+  },
+  {
+   "files": [
+    "2000.µsb",
+    "Factory.µsb",
+    "boele_gerkes.mid"
+   ],
+   "name": "west ground    t"
+  }
+ ],
+ "engine": "xenia",
+ "perFile": [
+  {
+   "error": "",
+   "file": "2000.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  },
+  {
+   "error": "",
+   "file": "Factory.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  },
+  {
+   "error": "",
+   "file": "boele_gerkes.mid",
+   "messageTypes": {
+    "MultiDump": 128,
+    "SingleDump": 255,
+    "WaveCtlDump": 32,
+    "WaveDump": 250
+   },
+   "patches": 255
+  },
+  {
+   "error": "",
+   "file": "cobalt.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  },
+  {
+   "error": "",
+   "file": "u101.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  },
+  {
+   "error": "",
+   "file": "uDrums.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  },
+  {
+   "error": "",
+   "file": "uSynth.µsb",
+   "messageTypes": {
+    "SingleDump": 256
+   },
+   "patches": 256
+  }
+ ],
+ "roles": {
+  "bass": 107,
+  "fx": 39,
+  "keys": 28,
+  "lead": 70,
+  "other": 1415,
+  "pad": 71,
+  "pluck": 61
+ },
+ "root": "microwave",
+ "schema": "hdaw.microwave.survey.v1",
+ "totals": {
+  "empty": 0,
+  "files": 7,
+  "patches": 1791
+ },
+ "unmapped": [
+  "parameter semantics not decoded (the XT parameter vocabulary is available via gearmulator parameterDescriptions_xt.json; only names are used here)",
+  "the .mid bank also carries WaveDump/MultiDump/WaveCtlDump messages, which are counted but not indexed as patches"
+ ]
+}

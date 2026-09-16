@@ -968,12 +968,14 @@ void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File
     auto nl2xSidecar = juce::File(patchFile.getFullPathName() + ".nl2x.json");
     auto je8086Sidecar = juce::File(patchFile.getFullPathName() + ".je8086.json");
     auto vavraSidecar = juce::File(patchFile.getFullPathName() + ".vavra.json");
+    auto xeniaSidecar = juce::File(patchFile.getFullPathName() + ".xenia.json");
     juce::File sidecar;
     if (virusSidecar.existsAsFile()) sidecar = virusSidecar;
     else if (dx7Sidecar.existsAsFile()) sidecar = dx7Sidecar;
     else if (nl2xSidecar.existsAsFile()) sidecar = nl2xSidecar;
     else if (je8086Sidecar.existsAsFile()) sidecar = je8086Sidecar;
     else if (vavraSidecar.existsAsFile()) sidecar = vavraSidecar;
+    else if (xeniaSidecar.existsAsFile()) sidecar = xeniaSidecar;
     if (!sidecar.existsAsFile()) return;
 
     juce::var json;
@@ -994,6 +996,7 @@ void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File
                : sidecar.getFileName().contains(".nl2x.")  ? "nodalred2x"
                : sidecar.getFileName().contains(".je8086.") ? "je8086"
                : sidecar.getFileName().contains(".vavra.") ? "vavra"
+               : sidecar.getFileName().contains(".xenia.") ? "xenia"
                : juce::String();
     entry.patchEngine = engine;
     entry.description = obj->getProperty("description").toString();
