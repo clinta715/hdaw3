@@ -5,6 +5,13 @@ Access Virus, Clavia Nord Lead 2x, Waldorf Microwave XT, Yamaha DX7) and the pre
 pipelines behind them. Everything here is either **verified** (with the evidence
 named) or explicitly marked **unverified**.
 
+**Authoritative parameter vocabulary:** every emulation ships a
+`parameterDescriptions_*.json` next to its plugin wrapper — `je` (JP-8080),
+`mq` (microQ), `TI` and `C` (Virus), `n2x` (Nord Lead 2x), `xt` (Microwave XT) —
+under `gearmulator-2.2.9/source/{jeJucePlugin|mqJucePlugin|osTIrusJucePlugin|osirusJucePlugin|nord/n2x/n2xJucePlugin|xtJucePlugin}/`.
+Use these (not guesses) when a recipe needs the device's own parameter or modulation
+names; the microQ entry above is derived from `parameterDescriptions_mq.json`.
+
 Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numbers),
 `timbre-lib/README.md` (decoder usage), `docs/plans/2026-09-16-*.md` (pipeline plans).
 
@@ -13,8 +20,8 @@ Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numb
 | Device | Emulation (CLAP) | Patches + pipeline | Loader status | Host params | Internal modulation | HDAW control |
 |---|---|---|---|---|---|---|
 | Roland JP-8000 | **JE8086** | 46 banks / 4983 entries / 2676 usable patches; `timbre-lib/je8086_patch.py` -> `<bank>.je8086.json` + exploded per-patch `.syx` (3689 files, verified 3689/0) | **DT1 dumps are NOT applied** (param cache byte-identical after injection; `jeLib/device.cpp` routes live MIDI to the DSP thread, the DT1 patch State is not on that path). Param writes DO work. | **461** (`list_fx_params`) | patch-level LFO1/LFO2 + ENV with destination switches (LFO1 dest: OSC1+2 / OSC2 / X-MOD), supersaw detune, onboard multi-FX + delay + tone | `set_fx_param` (works, verified), `send_fx_midi` CC/PC, SysEx dumps (queued, unverified) |
-| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | Injection queues and captures (440 B state) but **no audible change measured** and no way to observe it | **0** (`{"params":[]}`) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a full **ModMatrix** page (`mqLib/leds.h`), onboard FX | `send_fx_midi` SysEx only (unverified); no params to automate |
-| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0 bank + PC) works; SysEx unverified | exposed (the OsTIrus probe watches its param cache) | full modulation matrix + 2 LFOs, onboard chorus/delay/reverb, unison | `set_fx_param`, `send_fx_midi` CC/PC (works) |
+| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | Injection queues and captures (440 B state) but **no audible change measured** and no way to observe it | **0** (`{"params":[]}`) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (unverified); no params to automate |
+| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0 bank + PC) works; SysEx unverified | exposed (the OsTIrus probe watches its param cache) | modulation vocabulary available via `parameterDescriptions_TI.json` / `_C.json` (matrix + LFO/FX/unison parameters) — **not yet enumerated** in a matrix table | `set_fx_param`, `send_fx_midi` CC/PC (works) |
 | Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader | exposed | MOD ENV + LFO2 with mod-wheel/velocity amounts (`parameterDescriptions_n2x.json`, id `mod`); NO onboard FX | `load_nord_bank`, `set_fx_param`, CC/PC |
 | Waldorf Microwave XT | **Xenia** | none yet (banks not in the library) | ROM preset only | exposed (untested here) | matrix + its own FX | `load_virus_preset` CC/PC |
 | Yamaha DX7 | **Dexed** | DX7 .syx import path exists | **cartridge injection ignored** (probed: peak 0, state byte-identical) -> use the internal `fm_synth` instead | n/a | FM operators/envelopes via `fm_synth` | internal `fm_synth` params |
@@ -75,9 +82,14 @@ effect whenever the device already has the effect onboard.
   export (see §1).
 
 ### Waldorf microQ / Vavra (no host params — matrix only)
-- **In-device motion**: the ModMatrix page routes LFO1-3 / Env1-4 / velocity / aftertouch /
-  keytrack to pitch, filter, amp, pan and FX parameters; use it for per-voice pan motion
-  and envelope-driven filter shape rather than automating anything from HDAW.
+- **In-device motion** (structure verified in `parameterDescriptions_mq.json`): the
+  microQ gives every destination its own **source + amount** pair rather than a fixed
+  LFO — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`,
+  `F1PanModSource`/`F1PanMod` (and F2), so per-voice pitch drift, filter sweep and pan
+  motion are all patch-level settings. Add `RingModLevel`/`RingModBalance` and
+  `NoiseModeF1/F2` for texture. Use the **ModMatrix** page (and `leds.h`'s page list:
+  Osc1-3, Filters1-2, Env1-4, LFOs) for the extra routing slots. Nothing here is
+  HDAW-automatable, which is exactly why it belongs in the patch.
 - **Onboard FX** (chorus / flanger / phaser / delay / reverb) belong to the patch: set
   them inside the patch, since HDAW cannot reach them.
 - **Practical limit**: HDAW cannot automate or even observe this device; the only
