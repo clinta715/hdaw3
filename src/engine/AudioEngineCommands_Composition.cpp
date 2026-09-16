@@ -602,6 +602,7 @@ bool applyPluginProgram(AudioEngine& engine, int trackIndex, int slotIndex,
     auto* inst = slot->getPluginInstance();
     juce::MemoryBlock state;
     inst->getStateInformation(state);
+    slot->noteStateSample(state);
     if (state.getSize() == 0)
     {
         error = "plugin produced empty state";

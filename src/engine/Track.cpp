@@ -106,6 +106,9 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
             auto* instance = slot->getPluginInstance();
             juce::MemoryBlock state;
             instance->getStateInformation(state);
+            // D-lite baseline: the first sample of a fresh instance is its boot
+            // state (an isolated child answers before its ROM/DSP boot finished).
+            slot->noteStateSample(state);
 
             // Find matching FX_SLOT in the tree by pluginID
             if (fxChainTree.isValid())
@@ -119,7 +122,12 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                     {
                         matched[static_cast<size_t>(i)] = 1;
                         // empty state (dead plugin process) would clobber the last-good saved state
-                        if (state.getSize() > 0)
+                        // D-lite: a state identical to the fresh-instance baseline carries no
+                        // information, and restoring it in a later graph build (including the
+                        // offline render) overrides the live patch with the plugin's default
+                        // (measured on JE8086: peak 0.2455 default vs 0.2063 live). Never skip
+                        // a state we restored from the tree - see markStateRestoredFromTree.
+                        if (state.getSize() > 0 && !slot->stateLooksUnchangedSinceBoot(state))
                             child.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                         break;
                     }
@@ -195,6 +203,8 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                 juce::String stateStr = slotTree.getProperty(IDs::pluginState).toString();
                 if (stateStr.isNotEmpty())
                 {
+                    // a restored state must never be skipped as "unchanged"
+                    slot->markStateRestoredFromTree();
                     juce::MemoryBlock state;
                     const bool decOk = state.fromBase64Encoding(stateStr);
                     if (decOk)

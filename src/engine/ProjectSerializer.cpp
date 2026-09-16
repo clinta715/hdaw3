@@ -70,6 +70,7 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                     auto* instance = slot->getPluginInstance();
                     juce::MemoryBlock state;
                     instance->getStateInformation(state);
+                    slot->noteStateSample(state);
 
                     // Match by pluginID (same pattern as Track::rebuildFXChain)
                     if (static_cast<int>(si) < fxChainTree.getNumChildren())
@@ -83,7 +84,11 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                             // shrank 177KB states to 262B stubs this way.
                             const juce::String existing = slotTree.getProperty(IDs::pluginState, "").toString();
                             const long long existingBytes = static_cast<long long>(existing.length()) * 3 / 4;
-                            if (HDAW::shouldReplacePluginState(existingBytes, state.getSize()))
+                            // D-lite composes with FIX-1: the size-ratio guard cannot see
+                            // a boot stub when the property is still empty (existing = 0), so
+                            // also refuse a state identical to the fresh-instance baseline.
+                            if (HDAW::shouldReplacePluginState(existingBytes, state.getSize())
+                                && !slot->stateLooksUnchangedSinceBoot(state))
                                 slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                             else
                                 juce::Logger::writeToLog("HDAW: pluginState size regression kept (track "

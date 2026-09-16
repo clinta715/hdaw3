@@ -443,11 +443,21 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
                 }
                 juce::MemoryBlock mb;
                 inst->getStateInformation(mb);
+                slot->noteStateSample(mb);
                 // Never clobber last-good state with an empty snapshot (dead
                 // child) — same guard as Track::rebuildFXChain / save.
                 if (mb.getSize() == 0)
                 {
                     writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
+                    return;
+                }
+                // D-lite: nothing changed since the instance was created, so there
+                // is no state worth persisting. Writing this boot stub would make
+                // every later graph build restore it and play the plugin's default
+                // patch instead of the live one (measured on JE8086). Report it.
+                if (slot->stateLooksUnchangedSinceBoot(mb))
+                {
+                    writeFxCaptureReceipt(slotTree, "unchanged", 0);
                     return;
                 }
                 if (slotTree.isValid())
@@ -476,6 +486,7 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
             juce::MemoryBlock mb;
             if (inst != nullptr)
                 inst->getStateInformation(mb);
+            slot->noteStateSample(mb);          // D-lite: baseline = first sample
             auto slotTree = engine_.getProjectModel().getTrackListTree()
                                 .getChild(params.trackIndex)
                                 .getChildWithName(IDs::FX_CHAIN)
@@ -1024,6 +1035,7 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
 
                     juce::MemoryBlock state;
                     slot->getPluginInstance()->getStateInformation(state);
+                    slot->noteStateSample(state);
 
                     // Match by pluginID (same pattern as Track::rebuildFXChain).
                     if (static_cast<int>(si) < fxChainTree.getNumChildren())
@@ -1031,7 +1043,7 @@ HDAW::ChainPreset AudioEngineCommands::exportFxChain(int trackIndex)
                         auto slotTree = fxChainTree.getChild(static_cast<int>(si));
                         if (slotTree.getProperty(IDs::pluginID).toString() == slot->getPluginID())
                         {
-                            if (state.getSize() > 0)
+                            if (state.getSize() > 0 && !slot->stateLooksUnchangedSinceBoot(state))
                                 slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                         }
                     }

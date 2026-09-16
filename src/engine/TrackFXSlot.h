@@ -28,6 +28,26 @@
 
 namespace HDAW {
 
+// D-lite (isolated state-transfer guard), pure so it can be tested without a
+// child process. An isolated child answers getStateInformation() before its
+// ROM/DSP boot completes, returning a tiny stub (measured: 233 B for the JP-8080
+// emulation). Persisting that stub makes every later graph build - including the
+// offline render - restore it and play the plugin's DEFAULT patch, overriding the
+// live instance (measured: peak 0.2455 default vs 0.2063 live). A state identical
+// to the one a *fresh* instance reported carries no information, so it must not be
+// persisted. Composes with FIX-1 (HDAW::shouldReplacePluginState), which cannot see
+// this case because the tree property is still empty when the stub arrives.
+// In-process slots are never skipped, so their durability semantics are unchanged.
+inline bool shouldPersistStateCapture(bool isolated, bool restoredFromTree,
+                                      bool hasBaseline,
+                                      const juce::MemoryBlock& baseline,
+                                      const juce::MemoryBlock& sample)
+{
+    if (!isolated || restoredFromTree || !hasBaseline || sample.getSize() == 0)
+        return true;
+    return !(sample.getSize() == baseline.getSize() && sample == baseline);
+}
+
 class TrackFXSlot
 {
 public:
@@ -394,6 +414,38 @@ public:
     void setTempo(double bpm) { tempoBpm.store(static_cast<float>(bpm), std::memory_order_relaxed); }
 
     juce::AudioPluginInstance* getPluginInstance() const { return pluginInstance.get(); }
+
+    // --- Boot-state baseline (D-lite: isolated state-transfer guard) ---------
+    // An isolated child answers getStateInformation() before its ROM/DSP boot
+    // completes, returning a tiny stub (measured: 233 B for the JP-8080
+    // emulation). Persisting that stub makes every later graph build - including
+    // the offline render - restore it and play the plugin's DEFAULT patch,
+    // overriding the live instance (measured: peak 0.2455 default vs 0.2063
+    // live). A state identical to the one a *fresh* instance reported carries no
+    // information, so it must not be persisted. Composes with FIX-1
+    // (HDAW::shouldReplacePluginState), which cannot see this case because the
+    // tree property is still empty when the stub arrives.
+    void noteStateSample(const juce::MemoryBlock& s)
+    {
+        if (isolated && !hasStateBaseline_ && !stateRestoredFromTree_ && s.getSize() > 0)
+        {
+            stateBaseline_ = s;
+            hasStateBaseline_ = true;
+        }
+    }
+
+    /// True when a capture merely echoes the boot baseline: skip persisting it.
+    /// Only isolated slots are eligible - an in-process plugin answers with its real
+    /// state immediately, and its capture semantics (and therefore the save/load
+    /// durability contract) must stay exactly as they were.
+    bool stateLooksUnchangedSinceBoot(const juce::MemoryBlock& s) const
+    {
+        return !shouldPersistStateCapture(isolated, stateRestoredFromTree_,
+                                          hasStateBaseline_, stateBaseline_, s);
+    }
+
+    /// A state restored from IDs::pluginState is never "just the boot state".
+    void markStateRestoredFromTree() { stateRestoredFromTree_ = true; }
 
     // --- Command-thread MIDI injection (program change / CC / note) ---------
     // Queue a short MIDI message for delivery to the plugin starting with
@@ -1474,6 +1526,9 @@ public:
     }
 
 private:
+    juce::MemoryBlock stateBaseline_;
+    bool hasStateBaseline_ = false;
+    bool stateRestoredFromTree_ = false;
     enum class ActiveType { None, EQ, Compressor, Reverb, Delay, Chorus, Flanger, Phaser, Filter, Plugin, Sampler, FmSynth, GrowlBass, PsyArp, PsyFm, SubSynth, Saturator };
     ActiveType activeType = ActiveType::None;
     juce::String slotType;

@@ -629,3 +629,39 @@ TEST(FxMidiInjection, Je8086LoaderValidatesBeforeQueueing)
 
     dir.deleteRecursively();
 }
+
+
+// D-lite: a state identical to the fresh-instance baseline is a boot stub, not a
+// capture. Persisting it makes later graph builds (including the offline render)
+// restore it and play the plugin's default patch instead of the live one.
+TEST(FxMidiInjection, BootStateBaselineGuard)
+{
+    juce::MemoryBlock boot("boot-stub", 9);
+    juce::MemoryBlock changed("boot-stub-plus-patch", 19);
+
+    using HDAW::shouldPersistStateCapture;
+    const bool iso = true, inproc = false, restored = true, noRestore = false;
+    const bool baseline = true, noBaseline = false;
+
+    // in-process slots keep the old semantics (save/load durability contract)
+    EXPECT_TRUE(shouldPersistStateCapture(inproc, noRestore, baseline, boot, boot));
+    EXPECT_TRUE(shouldPersistStateCapture(inproc, noRestore, baseline, boot, changed));
+
+    // isolated slot: before the first sample we cannot know, so we persist
+    EXPECT_TRUE(shouldPersistStateCapture(iso, noRestore, noBaseline, boot, boot));
+    // ...an echo of the boot baseline is a stub, not a capture
+    EXPECT_FALSE(shouldPersistStateCapture(iso, noRestore, baseline, boot, boot));
+    // ...a changed state is the real thing
+    EXPECT_TRUE(shouldPersistStateCapture(iso, noRestore, baseline, boot, changed));
+    // ...an empty read is left to the empty-state guard
+    juce::MemoryBlock empty;
+    EXPECT_TRUE(shouldPersistStateCapture(iso, noRestore, baseline, boot, empty));
+    // ...a state restored from the tree is never dropped as a stub
+    EXPECT_TRUE(shouldPersistStateCapture(iso, restored, baseline, boot, boot));
+
+    // the baseline itself is never moved by a later sample (it is the BOOT state)
+    HDAW::TrackFXSlot slot(std::make_unique<RecordingPlugin>(), "fake-baseline", false);
+    slot.noteStateSample(boot);
+    slot.noteStateSample(changed);
+    EXPECT_FALSE(slot.stateLooksUnchangedSinceBoot(boot)) << "in-process: never skipped";
+}
