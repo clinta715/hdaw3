@@ -60,23 +60,53 @@ Usage:
     py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086"
     py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --role bass --explode
     py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --with-bytes
+    py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --explode
+    py -3.14 timbre-lib/je8086_patch.py --verify-exploded "D:\pdf\je8086\exploded"
 
 The default sidecar is a compact metadata index (bank / role / params / labels /
 `paramDefs` / `patches[]`); `--with-bytes` embeds each patch's raw DT1 payload,
 and `--explode` writes a per-patch `.syx` (byte-identical DT1) + sidecar under
 `<DIR>/exploded/<bank>/`.
 
-PLACEHOLDER Roles: 1345 lead, 1333 pluck, 560
-bass, 501 pad, 91 fx, 8 arp, 55 other. The three psy-named `.syx` banks carry
+Sweep results (2026-09-16, after the SMF-varint fix): 46/46 files parsed,
+**10368 DT1 messages, 0 checksum failures**, 4983 entries (**2676 usable
+patches**, 1086 performance names), 46 sidecars, 3689 exploded patch files,
+survey `je8086_survey.json`. Roles: 1345 lead, 1333 pluck, 560 bass, 501 pad,
+1088 performance, 91 fx, 8 arp, 55 other. The three psy-named `.syx` banks carry
 only 1-2 usable patches each (the rest are `INIT PATCH` placeholders) -- the real
 psy content is `Kulshan Mystical Psytrance.mid` (100 usable) and
-`Techno 2.syx` (189). Tests: `test_je8086_patch.py` (15, incl. real-library
-spot checks). Plan: `docs/plans/2026-09-16-je8086-preset-pipeline.md`.
+`Techno 2.syx` (189). Tests: `test_je8086_patch.py`. Plan:
+`docs/plans/2026-09-16-je8086-preset-pipeline.md`.
 
-Note: `FileLibraryManager::applyPatchSidecar` currently recognises
-`.virus.json` / `.dx7.json` only, so these `.je8086.json` sidecars (and the
-`.nl2x.json` ones from the NL2X sweep) need a two-line add to be searchable
-in-app.
+### Exploded per-patch tree (`--explode`)
+
+    py -3.14 timbre-lib/je8086_patch.py --sidecars "D:\pdf\je8086" --explode
+    py -3.14 timbre-lib/je8086_patch.py --verify-exploded "D:\pdf\je8086\exploded"
+
+`--explode` writes one DT1 `.syx` per patch unit under `<DIR>/exploded/<bank>/`
+(relocate with `--explode-dir`), named "`<ref> <name>.syx`" where the ref is
+`bank0-slot25` / `perf015-part1`. The ref makes the filename unique - two
+performances that share a patch name and slot can never overwrite each other - and
+it encodes the same unit order the loader's `preset` index uses. Each `.syx` gets a
+`<file>.je8086.json` sidecar (schema `hdaw.je8086.patch.v1`) and the run writes a
+browsable `exploded/index.json` manifest. Re-runs are idempotent: bank discovery
+prunes the explode tree, otherwise a second run ingests its own per-patch files as
+banks (observed: 3735 "banks" instead of 46, with 3625 verification failures).
+
+`--verify-exploded` round-trips every file (parses to exactly one unit; name, sha1
+and parameters equal its sidecar; checksums valid). Sweep 2026-09-16: 46 banks ->
+**3689 files, 3689 ok / 0 bad**.
+
+In-app: register `<DIR>/exploded` as a **patch** library and patches become
+individually searchable -- searching "LITTLEDIRT" returns
+`perf016-part1 LITTLEDIRT.syx` with `patchEngine=je8086`, `roleVerdict=bass` and the
+description "JP-8080 bass patch: saw osc, cutoff 20, res 47, amp A 1, amp R 26, filt
+env 105, delay 75, fx DISTORTION". `load_je8086_preset` accepts a bank file plus a
+1-based `preset` index, or one of these exploded single-patch files directly.
+
+Note: `FileLibraryManager::applyPatchSidecar` now also reads `.nl2x.json` and
+`.je8086.json` (engine fallback nodalred2x / je8086), so these sidecars are
+searchable in-app.
 
 ## Analyze a folder
     ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
