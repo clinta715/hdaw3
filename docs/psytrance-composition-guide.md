@@ -746,6 +746,21 @@ range before writing (lesson 23 discipline: no out-of-range writes).
   (45 sidecars, 4276 entries + role shortlist) — searchable by FileLibraryManager.
   LIVE VERIFICATION (2026-09-16) — DT1 dumps DO NOT apply, but the PARAMETER
   API does, and the plugin's saved state is a 233-byte stub:
+  - **Which tools isolate (RESOLVED 2026-09-16).** `add_fx {pluginId}` and
+    `audition_plugin` BOTH create isolated slots while
+    `pluginManager->isolationEnabled` is on (the default; the `--mcp-http` launcher
+    does not change it). Verified two ways: a `hdaw_plugin_host.exe` child exists after
+    each (`spawnPluginHost: slotId=1/2/3 plugin=C:/Program...` in the log), and the
+    code path is shared - `add_fx` -> `ProjectCommands::addFxSlot` -> ValueTree change
+    -> routing rebuild -> `Track::rebuildFXChain` sets
+    `wantIsolated = pluginManager && pluginManager->isolationEnabled`. An earlier note
+    that `add_fx` produced an in-process slot was wrong (it was inferred from a saved
+    `pluginState`, which is written in both modes).
+    This matters because isolation decides the capture/render semantics: an isolated
+    render restores `pluginState` into a FRESH child, so a plugin whose state does not
+    round-trip its patch will export differently from what you audition; an in-process
+    slot (isolation off) renders from the live instance.
+
   - **Parameter writes work live.** `set_fx_param` on `A OSC WAVEFORM` (index 30)
     and `A OSC1 HARMONICS` (39) changed the plugin's own parameter list exactly as
     commanded (verified by diffing `list_fx_params` before/after). This is the

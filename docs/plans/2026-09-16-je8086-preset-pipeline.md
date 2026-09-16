@@ -200,6 +200,16 @@ earlier poison readings compared an in-process slot against an isolated one. Wha
 remains true: an isolated render restores the plugin's own state into a FRESH child,
 so an export matches the live sound only if that plugin's `getStateInformation`
 round-trips its patch - the JP-8080 emulation's 233-byte state does not (plugin-side).
+**RESOLVED (2026-09-16): the suspected add_fx/audition isolation difference does
+not exist.** Both tools isolate while `isolationEnabled` is on (default): a
+`hdaw_plugin_host.exe` child exists after each, `add_fx` routes through
+`ProjectCommands::addFxSlot` into the same `Track::rebuildFXChain` decision
+(`wantIsolated = pluginManager && pluginManager->isolationEnabled`), and the
+in-process-slot reading came from a saved `pluginState`, which is written in both
+modes. No code change; the guide now states which tools isolate and why it matters
+(an isolated render restores `pluginState` into a fresh child, so a plugin whose state
+does not round-trip its patch exports differently from what you audition).
+
 D-lite shipped as hygiene only (skip a capture unchanged since the instance appeared;
 report `captureStatus="unchanged"`). The per-plugin boot-baseline registry (item b)
 was NOT built, because this measurement removed its premise.
