@@ -425,3 +425,69 @@ TEST_F(FileLibraryPatchTest, PatchLibraryClusterableByDsp) {
     EXPECT_TRUE(inUnassigned) << "entry without a dsp sidecar is excluded (unassigned) for method dsp";
     EXPECT_EQ(clusterWithMember(outcome, "patch_d.syx"), nullptr);
 }
+
+// Hardware-VA bank sidecars (<bank>.je8086.json, <bank>.nl2x.json) carry the
+// same contract as the Virus/DX7 patch sidecars with the engine in the
+// extension. The timbre-lib sweeps write one next to every bank file, so
+// FileLibraryManager must ingest them - otherwise the JP-8080 and NL2X banks
+// stay invisible to search_library.
+TEST_F(FileLibraryPatchTest, Je8086BankSidecarIngested) {
+    auto dir = makePatchDir();
+    auto patchFile = dir.getChildFile("bcsingle.syx");
+    juce::File(patchFile.getFullPathName() + ".je8086.json").replaceWithText(juce::String(R"({
+      "schema": "hdaw.je8086.bank.v1",
+      "engine": "je8086",
+      "name": "Kulshan Mystical Psytrance.mid",
+      "description": "JP-8080 bank: 128 entries (100 non-init) -- 45 pluck, 40 lead, 30 bass",
+      "roleCheck": {"verdict": "pluck", "counts": {"pluck": 45, "lead": 40}},
+      "unmapped": ["velocity/morph block 0x119-0x16C not decoded"],
+      "mappedParams": {"perf016_part2": {"param": "LITTLEDIRT", "name": "LITTLEDIRT", "role": "bass"}},
+      "patches": [{"name": "LITTLEDIRT", "role": "bass", "slot": 2}]
+    })"));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("JE8086 Banks", dir.getFullPathName(), "patch");
+    ASSERT_FALSE(id.isEmpty());
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+
+    auto results = mgr.search("", "patch");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].patchEngine, "je8086");
+    EXPECT_EQ(results[0].roleVerdict, "pluck");
+    EXPECT_TRUE(results[0].description.contains("JP-8080 bank"))
+        << "sidecar description must reach the entry (search/labels rely on it)";
+    EXPECT_TRUE(results[0].unmapped.contains("velocity/morph"));
+    EXPECT_TRUE(results[0].tags.contains("LITTLEDIRT"))
+        << "mappedParams param names must become search tags";
+
+    auto bassHits = mgr.search("bass", "patch");
+    EXPECT_EQ(bassHits.size(), 1u) << "sidecar description must be searchable";
+}
+
+// A sidecar without an engine key falls back to the filename extension - the
+// derivation must know the hardware-VA names too, not just virus/dx7.
+TEST_F(FileLibraryPatchTest, Nl2xBankSidecarIngestedWithoutEngineKey) {
+    auto dir = makePatchDir();
+    auto patchFile = dir.getChildFile("bcsingle.syx");
+    juce::File(patchFile.getFullPathName() + ".nl2x.json").replaceWithText(juce::String(R"({
+      "schema": "hdaw.nl2x.patch.v1",
+      "name": "BoBSwanS",
+      "description": "Nord Lead 2x single dump: 66 params",
+      "roleCheck": {"verdict": "pass"},
+      "unmapped": ["ArpRange"],
+      "mappedParams": {"17": {"param": "Gain", "value": 0.5}}
+    })"));
+
+    HDAW::FileLibraryManager mgr(tempDir);
+    auto id = mgr.addLibrary("NL2X Banks", dir.getFullPathName(), "patch");
+    ASSERT_FALSE(id.isEmpty());
+    mgr.scanLibrary(id);
+    waitForScan(mgr);
+
+    auto results = mgr.search("", "patch");
+    ASSERT_EQ(results.size(), 1u);
+    EXPECT_EQ(results[0].patchEngine, "nodalred2x");
+    EXPECT_EQ(results[0].roleVerdict, "pass");
+    EXPECT_TRUE(results[0].description.contains("Nord Lead 2x"));
+}

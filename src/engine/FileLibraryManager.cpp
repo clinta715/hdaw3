@@ -939,8 +939,9 @@ LibraryEntry FileLibraryManager::extractPatchMetadata(const juce::File& file) {
 }
 
 // Reads a patch sidecar next to the patch file — `<patch>.virus.json` first,
-// else `<patch>.dx7.json` (chosen by whichever exists; the sidecar's `engine`
-// key is honored on top of the naming). Populates:
+// else `.dx7.json`, `.nl2x.json` or `.je8086.json` (chosen by whichever
+// exists; the sidecar's `engine` key is honored on top of the naming).
+// Populates:
 //   tags        — unmapped feature names + "role:<verdict>" + up to 2 mapped
 //                 param names (comma-joined, so search_library finds patches)
 //   description — the sidecar `description`
@@ -961,9 +962,16 @@ LibraryEntry FileLibraryManager::extractPatchMetadata(const juce::File& file) {
 void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File& patchFile) {
     auto virusSidecar = juce::File(patchFile.getFullPathName() + ".virus.json");
     auto dx7Sidecar = juce::File(patchFile.getFullPathName() + ".dx7.json");
+    // Hardware-VA bank sweeps write the same sidecar contract next to each BANK
+    // file with the engine in the extension: nl2x_patch.py -> <bank>.nl2x.json
+    // (engine nodalred2x), je8086_patch.py -> <bank>.je8086.json (engine je8086).
+    auto nl2xSidecar = juce::File(patchFile.getFullPathName() + ".nl2x.json");
+    auto je8086Sidecar = juce::File(patchFile.getFullPathName() + ".je8086.json");
     juce::File sidecar;
     if (virusSidecar.existsAsFile()) sidecar = virusSidecar;
     else if (dx7Sidecar.existsAsFile()) sidecar = dx7Sidecar;
+    else if (nl2xSidecar.existsAsFile()) sidecar = nl2xSidecar;
+    else if (je8086Sidecar.existsAsFile()) sidecar = je8086Sidecar;
     if (!sidecar.existsAsFile()) return;
 
     juce::var json;
@@ -981,6 +989,8 @@ void FileLibraryManager::applyPatchSidecar(LibraryEntry& entry, const juce::File
     if (engine.isEmpty())
         engine = sidecar.getFileName().contains(".virus.") ? "sub_synth"
                : sidecar.getFileName().contains(".dx7.")   ? "fm_synth"
+               : sidecar.getFileName().contains(".nl2x.")  ? "nodalred2x"
+               : sidecar.getFileName().contains(".je8086.") ? "je8086"
                : juce::String();
     entry.patchEngine = engine;
     entry.description = obj->getProperty("description").toString();
