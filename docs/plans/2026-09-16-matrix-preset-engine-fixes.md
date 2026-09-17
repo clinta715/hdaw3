@@ -140,3 +140,75 @@ Live A/B (fresh NodalRed2x slot, pair 34:39 d=0.096, injected via load_nord_bank
 - after step 4 (100%): soloRms 0.02561, soloPeak 0.2192  (parent 39's quieter voice)
 Each step loads as 3 Clavia messages and audibly reshapes the patch — the Nord morph
 chains are performable: write .syx -> load_nord_bank -> play the chain.
+
+
+## Virus writer + R3 tools: shipped, with three new findings (2026-09-17)
+
+Shipped: virus_dump.py (TI 524B + B/C 267B program writer, checksum recomputed,
+byte-fidelity, round-trip tested — 81 tests); virus_morphs.json upgraded to injectable
+per-step SysEx (4 B/C pairs + 1 TI pair, B/C-preferred base resolution since OsTIrus is
+not installed here); R3 MCP tools list_matrix_presets + apply_matrix_preset
+(McpTools_Matrix.cpp; fixture gtest 7/7; McpCoverage 102/102; McpServer+Workflow 43/43).
+Live: list_matrix_presets {engine:'virus'} returns all 40 presets + 5 morphs;
+apply_matrix_preset dispatched a virus morph step (queued=1 via the SysEx path).
+
+NEW FINDINGS (open):
+- F-A: The Osirus slot renders BIT-IDENTICAL digital silence (soloRms 2.18844e-06) under
+  EVERY ROM program and every injected dump — it has been inaudible in every session
+  today. Engine log shows TWO spawnPluginHost/ctor pairs for Osirus slotId=1 ~500ms apart
+  (double child instantiation?) — list/params may target one instance while audio plays
+  (nothing) through another. Needs: slot-instance audit for add_instrument_part on Osirus.
+- F-B: set_fx_param name resolution diverges from list_fx_params on Osirus: the list
+  shows 'Chorus Mix' (x16, per-part), set_fx_param 'Chorus Mix' -> 'unknown paramName'
+  although both call PluginParamService::getParams(trackId, pluginId). Repro on the live
+  engine; cause unclear (possibly name formatting via getName(128) vs snapshot name, or
+  the divergence is a symptom of F-A's double instance).
+- F-C: Virus C/TI program dumps: format-verified but live audibility UNRESOLVED pending
+  F-A (the A/B cannot run against a silent slot). The writer itself is trusted (checksum +
+  round-trip + byte-fidelity tests).
+
+
+## F-A investigation complete: root-cause chain + probe results (2026-09-17)
+
+READ-ONLY investigation (osirus-silence-investigation agent, full report in session log)
++ two live probes. Summary of the confirmed chain:
+
+1. Every verify_part / export builds a FRESH offline plugin domain and spawns fresh
+   isolated children (confirmed: 3 Osirus spawns inside one second during one verify;
+   createPluginInstance result: ok at sr=48000 — the old fix-offline-clap-render
+   identifier bug is NOT this).
+2. The Virus emulator's ctor only completes the DSP boot gate (dspHasBooted, unbounded
+   wait for model C); the emulated OS's post-boot bring-up AND its MIDI consumption
+   advance ONLY when the host pulls audio (virusLib/device.cpp:598-600), and the isolated
+   child paces render-mode blocks at 1x real time (PluginHost.cpp:1444-1465).
+3. verify_part schedules the part's notes at the FIRST block of the fresh child's life —
+   the 4s window contains at most 4s of OS bring-up with notes queued at the moment the
+   OS is least ready.
+4. JE8086 differs structurally: its H8S core runs on a dedicated background thread in
+   WALL time (jeLib/jeThread.h:29), reaching its held-MIDI flush (~12.8M cycles) in wall
+   milliseconds — so its notes play.
+5. PROBE RESULT: a 30-second solo export of the Osirus part is EXACT digital zeros
+   (every sample) — the OS never turns on. This rules out pure bring-up timing and
+   indicates a HARD DROP of the notes. Primary suspect: the Single-mode channel filter
+   (virusLib/microcontroller.cpp:431-434: non-SysEx MIDI on channel !=
+   m_globalSettings[GLOBAL_CHANNEL] is silently dropped; boot sets GLOBAL_CHANNEL=0x0,
+   microcontroller.cpp:230). Secondary suspects: external-MIDI not routed to the OS in
+   render mode, or per-note channel mismatch (phrase notes' JUCE channel -> status
+   nibble vs the boot global channel).
+
+NEXT PROBE (runtime, cheap): emit phrase notes across several channels (or inject
+noteOn sweeps during a live capture) to find a channel the OS accepts; if none, the
+drop is upstream of the OS (child MIDI-in routing) — emulator-level, out of HDAW's
+hands except via a warmup/ready workaround.
+
+FIX OPTIONS (from the investigation, for the standing stability discussion):
+(a) child-local warmup pump after PREPARE (S-M effort, M risk, contained in
+    PluginHost.cpp PREPARE case; env knob HDAW_NO_CHILD_WARMUP escape) — fixes bring-up
+    timing for all emulated devices but NOT the hard drop;
+(b) child->host ready-signal extension (M-L, M — IPC contract churn, low value: no true
+    plugin-side readiness exists);
+(c) warm-instance reuse across renders (L, HIGH — contradicts the offline-domain design;
+    not recommended);
+(d) lead-in/retry heuristics at the composition layer (S, S — buys bring-up time,
+    cannot fix the hard drop).
+Ranked: probe the channel question first (cheap), then (a) if timing-dominated.
