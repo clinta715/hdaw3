@@ -275,3 +275,34 @@ slots; pair 22:39 is TI; more TI-parented pairs can be emitted — the earlier B
 preference was based on a wrong 'OsTIrus not installed' reading).
 Osirus (C) remediation = emulator-level (virusLib C path), outside HDAW's control
 surface; documented for the gearmulator project.
+
+
+## DEFINITIVE ROOT CAUSE: deviceless live graph never clocks — param ring never drains (2026-09-17)
+
+The last measurement closes the loop: apply_matrix_preset (applied=44, captureToTree,
+binary md5-verified current) -> deferred capture fires at +800ms -> captured state is
+BIT-IDENTICAL to boot (status=unchanged, stateBytes=0). The 44 setParam writes are
+queued into the isolated child's param ring, and the ring is drained per processed
+audio block — but on a deviceless engine the LIVE graph never processes a single block
+(no device -> no audio callback). So live-side writes (params, queued MIDI) sit in the
+ring forever, the child's serialized state stays at boot, captures report 'unchanged',
+and offline renders boot at init.
+
+This unifies ALL of today's observations:
+- je8086 param applies -> offline renders identical (ring never drained; capture reads
+  boot state).
+- xenia/nord sysex kits -> offline renders DID vary: send_fx_midi has a NO-DEVICE
+  FALLBACK that drives scratch blocks synchronously through the slot (prepare 44100/512
+  + scratch buffer) BEFORE capturing — messages get delivered and the state reflects
+  them even deviceless. captureFxSlotState (the factored param-path trigger) LACKS
+  that fallback: it defers assuming a device will clock (deviceOpen=true here because
+  the saved-device restore reports a device even though none actually runs).
+- Osirus digital silence: same family — nothing clocks its live child; offline
+  renders boot at init (plus the model-C boot-state specifics on top).
+
+THE FIX (small, for the next session, render-path adjacent -> needs the standing
+discussion): give captureFxSlotState the same no-device scratch-drive fallback
+sendFxMidi has (prepare slot 44100/512/2 + drive N scratch blocks before capturing),
+or route apply_matrix_preset's capture through sendFxMidi's scratch path. Then:
+apply -> capture(ok, real state) -> offline renders reflect presets -> the JE8086
+(and virus-param) ear passes work end to end.
