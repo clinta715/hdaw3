@@ -120,3 +120,23 @@ reads the program, not the edit buffer, so tree-capture does not reflect edits; 
 ~50% of .mid-derived named values in xenia.json are off-by-2 (harvest labeled mid keys
 directly with vocab names) — xenia_morphs_injectable.json records per-pair provenance
 ('verified' vs 'vocab-shifted'); fixing the labeling is a follow-up to the harvester.
+
+
+## Nord morph performance: VERIFIED AUDIBLE (2026-09-16, live engine)
+
+The Nord Lead 2x writer shipped with decisive map validation: 5,350 files re-parsed by
+an independent strict parser — 353,100 sidecar values byte-matched, 0 mismatches.
+Packing: `dump[6+2i]` lo-nibble + `dump[7+2i]`<<4 (payload at 5+2i); byte 52 is a packed
+flag byte (Sync bit0 / RingMod bit1 / Distortion bit4); no checksum anywhere.
+
+Deliverables: nord-offset-map.md (17-param offset table + 66-entry json map),
+nord_dump.py (load/patch/write, byte-fidelity outside overrides, bit-RMW for byte 52),
+nord_morphs/ (5 pairs x 4 steps as 139-byte .syx) + nord_morphs.json. Tests: 24 new +
+decoder suite = 37 passed.
+
+Live A/B (fresh NodalRed2x slot, pair 34:39 d=0.096, injected via load_nord_bank):
+- baseline (boot):     soloRms 0.02517, soloPeak 0.2177
+- after step 1 (25%):  soloRms 0.02827, soloPeak 0.6205  (2.9x — resonant character)
+- after step 4 (100%): soloRms 0.02561, soloPeak 0.2192  (parent 39's quieter voice)
+Each step loads as 3 Clavia messages and audibly reshapes the patch — the Nord morph
+chains are performable: write .syx -> load_nord_bank -> play the chain.

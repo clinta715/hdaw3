@@ -1,0 +1,613 @@
+{
+  "_meta": {
+    "doc": "timbre-lib/matrix_presets/nord-offset-map.md",
+    "engine": "nodalred2x",
+    "rule": "value = (dump[6+2i] & 0xF) | (dump[7+2i] << 4); offset = 5+2i in the unpacked payload (no F0), dumpOffset = 6+2i in the full sysex",
+    "schema": "hdaw.nord.offset.map.v1",
+    "sheetKeys": [
+      "filter_env_amount",
+      "filter_env_attack",
+      "filter_env_decay",
+      "filter_env_release",
+      "filter_env_sustain",
+      "fm_depth",
+      "lfo1_dest",
+      "lfo1_level",
+      "lfo1_rate",
+      "lfo1_waveform",
+      "lfo2_dest",
+      "lfo2_rate",
+      "mod_env_attack",
+      "mod_env_decay",
+      "mod_env_dest",
+      "mod_env_level",
+      "sync_distortion"
+    ]
+  },
+  "params": {
+    "amp_env_a_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 80,
+      "index": 37,
+      "name": "amp_env_a_sens",
+      "offset": 79,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "amp_env_attack": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 30,
+      "index": 12,
+      "offset": 29,
+      "sheet": false
+    },
+    "amp_env_d_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 82,
+      "index": 38,
+      "name": "amp_env_d_sens",
+      "offset": 81,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "amp_env_decay": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 32,
+      "index": 13,
+      "offset": 31,
+      "sheet": false
+    },
+    "amp_env_r_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 86,
+      "index": 40,
+      "name": "amp_env_r_sens",
+      "offset": 85,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "amp_env_release": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 36,
+      "index": 15,
+      "offset": 35,
+      "sheet": false
+    },
+    "amp_env_s_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 84,
+      "index": 39,
+      "name": "amp_env_s_sens",
+      "offset": 83,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "amp_env_sustain": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 34,
+      "index": 14,
+      "offset": 33,
+      "sheet": false
+    },
+    "arp_range": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 54,
+      "index": 24,
+      "offset": 53,
+      "sheet": false
+    },
+    "arp_range_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 104,
+      "index": 49,
+      "name": "arp_range_sens",
+      "offset": 103,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "auto": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 130,
+      "index": 62,
+      "offset": 129,
+      "sheet": false
+    },
+    "cutoff": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 12,
+      "index": 3,
+      "offset": 11,
+      "sheet": false
+    },
+    "cutoff_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 62,
+      "index": 28,
+      "name": "cutoff_sens",
+      "offset": 61,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_a_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 72,
+      "index": 33,
+      "name": "filter_env_a_sens",
+      "offset": 71,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_amount": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 16,
+      "index": 5,
+      "offset": 15,
+      "sheet": true
+    },
+    "filter_env_amount_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 66,
+      "index": 30,
+      "name": "filter_env_amount_sens",
+      "offset": 65,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_attack": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 22,
+      "index": 8,
+      "offset": 21,
+      "sheet": true
+    },
+    "filter_env_d_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 74,
+      "index": 34,
+      "name": "filter_env_d_sens",
+      "offset": 73,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_decay": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 24,
+      "index": 9,
+      "offset": 23,
+      "sheet": true
+    },
+    "filter_env_r_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 78,
+      "index": 36,
+      "name": "filter_env_r_sens",
+      "offset": 77,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_release": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 28,
+      "index": 11,
+      "offset": 27,
+      "sheet": true
+    },
+    "filter_env_s_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 76,
+      "index": 35,
+      "name": "filter_env_s_sens",
+      "offset": 75,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "filter_env_sustain": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 26,
+      "index": 10,
+      "offset": 25,
+      "sheet": true
+    },
+    "filter_keytrack": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 116,
+      "index": 55,
+      "offset": 115,
+      "sheet": false
+    },
+    "filter_type": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 112,
+      "index": 53,
+      "offset": 111,
+      "sheet": false
+    },
+    "filter_velocity": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 132,
+      "index": 63,
+      "offset": 131,
+      "sheet": false
+    },
+    "fm_depth": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 20,
+      "index": 7,
+      "offset": 19,
+      "sheet": true
+    },
+    "fm_depth_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 70,
+      "index": 32,
+      "name": "fm_depth_sens",
+      "offset": 69,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "gain": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 40,
+      "index": 17,
+      "offset": 39,
+      "sheet": false
+    },
+    "gain_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 90,
+      "index": 42,
+      "name": "gain_sens",
+      "offset": 89,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "lfo1_dest": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 120,
+      "index": 57,
+      "offset": 119,
+      "sheet": true
+    },
+    "lfo1_level": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 50,
+      "index": 22,
+      "offset": 49,
+      "sheet": true
+    },
+    "lfo1_level_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 100,
+      "index": 47,
+      "name": "lfo1_level_sens",
+      "offset": 99,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "lfo1_rate": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 48,
+      "index": 21,
+      "offset": 47,
+      "sheet": true
+    },
+    "lfo1_rate_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 98,
+      "index": 46,
+      "name": "lfo1_rate_sens",
+      "offset": 97,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "lfo1_waveform": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 118,
+      "index": 56,
+      "offset": 117,
+      "sheet": true
+    },
+    "lfo2_dest": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 136,
+      "index": 65,
+      "offset": 135,
+      "sheet": true
+    },
+    "lfo2_rate": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 52,
+      "index": 23,
+      "offset": 51,
+      "sheet": true
+    },
+    "lfo2_rate_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 102,
+      "index": 48,
+      "name": "lfo2_rate_sens",
+      "offset": 101,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "mix": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 10,
+      "index": 2,
+      "offset": 9,
+      "sheet": false
+    },
+    "mix_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 60,
+      "index": 27,
+      "name": "mix_sens",
+      "offset": 59,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "mod_env_a_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 92,
+      "index": 43,
+      "name": "mod_env_a_sens",
+      "offset": 91,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "mod_env_attack": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 42,
+      "index": 18,
+      "offset": 41,
+      "sheet": true
+    },
+    "mod_env_d_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 94,
+      "index": 44,
+      "name": "mod_env_d_sens",
+      "offset": 93,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "mod_env_decay": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 44,
+      "index": 19,
+      "offset": 43,
+      "sheet": true
+    },
+    "mod_env_dest": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 128,
+      "index": 61,
+      "offset": 127,
+      "sheet": true
+    },
+    "mod_env_level": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 46,
+      "index": 20,
+      "offset": 45,
+      "sheet": true
+    },
+    "mod_env_level_sens": {
+      "access": "byte",
+      "continuous": true,
+      "dumpOffset": 96,
+      "index": 45,
+      "name": "mod_env_level_sens",
+      "offset": 95,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "mod_wheel_dest": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 124,
+      "index": 59,
+      "offset": 123,
+      "sheet": false
+    },
+    "o1_waveform": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 106,
+      "index": 50,
+      "offset": 105,
+      "sheet": false
+    },
+    "o2_keytrack": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 114,
+      "index": 54,
+      "offset": 113,
+      "sheet": false
+    },
+    "o2_pitch": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 6,
+      "index": 0,
+      "offset": 5,
+      "sheet": false
+    },
+    "o2_pitch_fine": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 8,
+      "index": 1,
+      "offset": 7,
+      "sheet": false
+    },
+    "o2_pitch_fine_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 58,
+      "index": 26,
+      "name": "o2_pitch_fine_sens",
+      "offset": 57,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "o2_pitch_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 56,
+      "index": 25,
+      "name": "o2_pitch_sens",
+      "offset": 55,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "o2_waveform": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 108,
+      "index": 51,
+      "offset": 107,
+      "sheet": false
+    },
+    "octave_shift": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 134,
+      "index": 64,
+      "offset": 133,
+      "sheet": false
+    },
+    "portamento": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 38,
+      "index": 16,
+      "offset": 37,
+      "sheet": false
+    },
+    "portamento_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 88,
+      "index": 41,
+      "name": "portamento_sens",
+      "offset": 87,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "pw": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 18,
+      "index": 6,
+      "offset": 17,
+      "sheet": false
+    },
+    "pw_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 68,
+      "index": 31,
+      "name": "pw_sens",
+      "offset": 67,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "resonance": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 14,
+      "index": 4,
+      "offset": 13,
+      "sheet": false
+    },
+    "resonance_sens": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 64,
+      "index": 29,
+      "name": "resonance_sens",
+      "offset": 63,
+      "sheet": false,
+      "source": "parameterDescriptions_n2x.json (min -128, signed256; unnamed in SingleParam enum)"
+    },
+    "sync_distortion": {
+      "access": "bits",
+      "bitNote": "packed; bits 2-3,5-7 unallocated (junk observed in real files)",
+      "bits": {
+        "distortion": 4,
+        "ringmod": 1,
+        "sync": 0
+      },
+      "continuous": false,
+      "dumpOffset": 110,
+      "index": 52,
+      "offset": 109,
+      "sheet": true
+    },
+    "unison": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 126,
+      "index": 60,
+      "offset": 125,
+      "sheet": false
+    },
+    "voice_mode": {
+      "access": "byte",
+      "continuous": false,
+      "dumpOffset": 122,
+      "index": 58,
+      "offset": 121,
+      "sheet": false
+    }
+  }
+}

@@ -1,0 +1,2007 @@
+{
+  "banksRootBasename": "NL2x Banks",
+  "engine": "nodalred2x",
+  "pairs": [
+    {
+      "base": {
+        "file": "Not Sorted/Categories Archive made by Sven Saur/Arpeggio/XYLO 001.syx",
+        "id": "126b49c23788b176",
+        "name": "LFO2 + mod env routed + LFO1 routed (3)",
+        "preset": 29
+      },
+      "distance": 0.063918,
+      "pair": "29:32",
+      "parents": [
+        {
+          "id": "126b49c23788b176",
+          "name": "LFO2 + mod env routed + LFO1 routed (3)"
+        },
+        {
+          "id": "ed00255b08305f16",
+          "name": "LFO2 + mod env routed + LFO1 routed (4)"
+        }
+      ],
+      "steps": [
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Arpeggio/XYLO 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 126b49c23788b176 and ed00255b08305f16; discrete keys anchored to 126b49c23788b176; .syx written from byte-verified base XYLO 001.syx",
+            "file": "step1.syx",
+            "id": "b0f344227bb04b06",
+            "interp": {
+              "filter_env_amount": [
+                56,
+                63
+              ],
+              "filter_env_decay": [
+                58,
+                68
+              ],
+              "filter_env_release": [
+                44,
+                30
+              ],
+              "filter_env_sustain": [
+                22,
+                0
+              ],
+              "lfo1_rate": [
+                85,
+                42
+              ],
+              "lfo2_rate": [
+                98,
+                105
+              ],
+              "mod_env_decay": [
+                25,
+                10
+              ],
+              "mod_env_level": [
+                83,
+                66
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "lfo2_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (3) -> LFO2 + mod env routed + LFO1 routed (4) (step 1/5)",
+            "params": {
+              "filter_env_amount": 57.4,
+              "filter_env_attack": 0,
+              "filter_env_decay": 60.0,
+              "filter_env_release": 41.2,
+              "filter_env_sustain": 17.6,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 76.4,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 99.4,
+              "mod_env_attack": 0,
+              "mod_env_decay": 22.0,
+              "mod_env_dest": 1,
+              "mod_env_level": 79.6,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "126b49c23788b176",
+              "ed00255b08305f16"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 57,
+              "filter_env_attack": 0,
+              "filter_env_decay": 60,
+              "filter_env_release": 41,
+              "filter_env_sustain": 18,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 76,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 99,
+              "mod_env_attack": 0,
+              "mod_env_decay": 22,
+              "mod_env_dest": 1,
+              "mod_env_level": 80,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Arpeggio/XYLO 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 126b49c23788b176 and ed00255b08305f16; discrete keys anchored to 126b49c23788b176; .syx written from byte-verified base XYLO 001.syx",
+            "file": "step2.syx",
+            "id": "6536548e46774be4",
+            "interp": {
+              "filter_env_amount": [
+                56,
+                63
+              ],
+              "filter_env_decay": [
+                58,
+                68
+              ],
+              "filter_env_release": [
+                44,
+                30
+              ],
+              "filter_env_sustain": [
+                22,
+                0
+              ],
+              "lfo1_rate": [
+                85,
+                42
+              ],
+              "lfo2_rate": [
+                98,
+                105
+              ],
+              "mod_env_decay": [
+                25,
+                10
+              ],
+              "mod_env_level": [
+                83,
+                66
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "lfo2_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (3) -> LFO2 + mod env routed + LFO1 routed (4) (step 2/5)",
+            "params": {
+              "filter_env_amount": 58.8,
+              "filter_env_attack": 0,
+              "filter_env_decay": 62.0,
+              "filter_env_release": 38.4,
+              "filter_env_sustain": 13.2,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 67.8,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 100.8,
+              "mod_env_attack": 0,
+              "mod_env_decay": 19.0,
+              "mod_env_dest": 1,
+              "mod_env_level": 76.2,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "126b49c23788b176",
+              "ed00255b08305f16"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 59,
+              "filter_env_attack": 0,
+              "filter_env_decay": 62,
+              "filter_env_release": 38,
+              "filter_env_sustain": 13,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 68,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 101,
+              "mod_env_attack": 0,
+              "mod_env_decay": 19,
+              "mod_env_dest": 1,
+              "mod_env_level": 76,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Arpeggio/XYLO 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 126b49c23788b176 and ed00255b08305f16; discrete keys anchored to 126b49c23788b176; .syx written from byte-verified base XYLO 001.syx",
+            "file": "step3.syx",
+            "id": "95cea5a340e8d91c",
+            "interp": {
+              "filter_env_amount": [
+                56,
+                63
+              ],
+              "filter_env_decay": [
+                58,
+                68
+              ],
+              "filter_env_release": [
+                44,
+                30
+              ],
+              "filter_env_sustain": [
+                22,
+                0
+              ],
+              "lfo1_rate": [
+                85,
+                42
+              ],
+              "lfo2_rate": [
+                98,
+                105
+              ],
+              "mod_env_decay": [
+                25,
+                10
+              ],
+              "mod_env_level": [
+                83,
+                66
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "lfo2_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (3) -> LFO2 + mod env routed + LFO1 routed (4) (step 3/5)",
+            "params": {
+              "filter_env_amount": 60.2,
+              "filter_env_attack": 0,
+              "filter_env_decay": 64.0,
+              "filter_env_release": 35.6,
+              "filter_env_sustain": 8.8,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 59.2,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 102.2,
+              "mod_env_attack": 0,
+              "mod_env_decay": 16.0,
+              "mod_env_dest": 1,
+              "mod_env_level": 72.8,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "126b49c23788b176",
+              "ed00255b08305f16"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 60,
+              "filter_env_attack": 0,
+              "filter_env_decay": 64,
+              "filter_env_release": 36,
+              "filter_env_sustain": 9,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 59,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 102,
+              "mod_env_attack": 0,
+              "mod_env_decay": 16,
+              "mod_env_dest": 1,
+              "mod_env_level": 73,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Arpeggio/XYLO 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 126b49c23788b176 and ed00255b08305f16; discrete keys anchored to 126b49c23788b176; .syx written from byte-verified base XYLO 001.syx",
+            "file": "step4.syx",
+            "id": "c7971f1f83b08827",
+            "interp": {
+              "filter_env_amount": [
+                56,
+                63
+              ],
+              "filter_env_decay": [
+                58,
+                68
+              ],
+              "filter_env_release": [
+                44,
+                30
+              ],
+              "filter_env_sustain": [
+                22,
+                0
+              ],
+              "lfo1_rate": [
+                85,
+                42
+              ],
+              "lfo2_rate": [
+                98,
+                105
+              ],
+              "mod_env_decay": [
+                25,
+                10
+              ],
+              "mod_env_level": [
+                83,
+                66
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "lfo2_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (3) -> LFO2 + mod env routed + LFO1 routed (4) (step 4/5)",
+            "params": {
+              "filter_env_amount": 61.6,
+              "filter_env_attack": 0,
+              "filter_env_decay": 66.0,
+              "filter_env_release": 32.8,
+              "filter_env_sustain": 4.4,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 50.6,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 103.6,
+              "mod_env_attack": 0,
+              "mod_env_decay": 13.0,
+              "mod_env_dest": 1,
+              "mod_env_level": 69.4,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "126b49c23788b176",
+              "ed00255b08305f16"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 62,
+              "filter_env_attack": 0,
+              "filter_env_decay": 66,
+              "filter_env_release": 33,
+              "filter_env_sustain": 4,
+              "fm_depth": 0,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 51,
+              "lfo1_waveform": 1,
+              "lfo2_dest": 2,
+              "lfo2_rate": 104,
+              "mod_env_attack": 0,
+              "mod_env_decay": 13,
+              "mod_env_dest": 1,
+              "mod_env_level": 69,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "base": {
+        "file": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/CLAV 008.syx",
+        "id": "8719577a5f8b52db",
+        "name": "LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2)",
+        "preset": 16
+      },
+      "distance": 0.065771,
+      "pair": "16:23",
+      "parents": [
+        {
+          "id": "8719577a5f8b52db",
+          "name": "LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2)"
+        },
+        {
+          "id": "c9b743373886e809",
+          "name": "LFO2 + mod env routed + FM + LFO1 routed"
+        }
+      ],
+      "steps": [
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/CLAV 008.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8719577a5f8b52db and c9b743373886e809; discrete keys anchored to 8719577a5f8b52db; .syx written from byte-verified base CLAV 008.syx",
+            "file": "step1.syx",
+            "id": "ff76ff2f90e10de4",
+            "interp": {
+              "filter_env_amount": [
+                17,
+                31
+              ],
+              "filter_env_decay": [
+                106,
+                78
+              ],
+              "filter_env_release": [
+                82,
+                66
+              ],
+              "fm_depth": [
+                99,
+                32
+              ],
+              "lfo2_rate": [
+                68,
+                72
+              ],
+              "mod_env_decay": [
+                69,
+                70
+              ],
+              "mod_env_level": [
+                63,
+                75
+              ]
+            },
+            "jumps": [],
+            "name": "MORPH LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2) -> LFO2 + mod env routed + FM + LFO1 routed (step 1/5)",
+            "params": {
+              "filter_env_amount": 19.8,
+              "filter_env_attack": 0,
+              "filter_env_decay": 100.4,
+              "filter_env_release": 78.8,
+              "filter_env_sustain": 0,
+              "fm_depth": 85.6,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 68.8,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69.2,
+              "mod_env_dest": 1,
+              "mod_env_level": 65.4,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8719577a5f8b52db",
+              "c9b743373886e809"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 20,
+              "filter_env_attack": 0,
+              "filter_env_decay": 100,
+              "filter_env_release": 79,
+              "filter_env_sustain": 0,
+              "fm_depth": 86,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 69,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69,
+              "mod_env_dest": 1,
+              "mod_env_level": 65,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/CLAV 008.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8719577a5f8b52db and c9b743373886e809; discrete keys anchored to 8719577a5f8b52db; .syx written from byte-verified base CLAV 008.syx",
+            "file": "step2.syx",
+            "id": "4ac474b243ff9841",
+            "interp": {
+              "filter_env_amount": [
+                17,
+                31
+              ],
+              "filter_env_decay": [
+                106,
+                78
+              ],
+              "filter_env_release": [
+                82,
+                66
+              ],
+              "fm_depth": [
+                99,
+                32
+              ],
+              "lfo2_rate": [
+                68,
+                72
+              ],
+              "mod_env_decay": [
+                69,
+                70
+              ],
+              "mod_env_level": [
+                63,
+                75
+              ]
+            },
+            "jumps": [],
+            "name": "MORPH LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2) -> LFO2 + mod env routed + FM + LFO1 routed (step 2/5)",
+            "params": {
+              "filter_env_amount": 22.6,
+              "filter_env_attack": 0,
+              "filter_env_decay": 94.8,
+              "filter_env_release": 75.6,
+              "filter_env_sustain": 0,
+              "fm_depth": 72.2,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 69.6,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69.4,
+              "mod_env_dest": 1,
+              "mod_env_level": 67.8,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8719577a5f8b52db",
+              "c9b743373886e809"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 23,
+              "filter_env_attack": 0,
+              "filter_env_decay": 95,
+              "filter_env_release": 76,
+              "filter_env_sustain": 0,
+              "fm_depth": 72,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 70,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69,
+              "mod_env_dest": 1,
+              "mod_env_level": 68,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/CLAV 008.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8719577a5f8b52db and c9b743373886e809; discrete keys anchored to 8719577a5f8b52db; .syx written from byte-verified base CLAV 008.syx",
+            "file": "step3.syx",
+            "id": "cda755cd7eebc153",
+            "interp": {
+              "filter_env_amount": [
+                17,
+                31
+              ],
+              "filter_env_decay": [
+                106,
+                78
+              ],
+              "filter_env_release": [
+                82,
+                66
+              ],
+              "fm_depth": [
+                99,
+                32
+              ],
+              "lfo2_rate": [
+                68,
+                72
+              ],
+              "mod_env_decay": [
+                69,
+                70
+              ],
+              "mod_env_level": [
+                63,
+                75
+              ]
+            },
+            "jumps": [],
+            "name": "MORPH LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2) -> LFO2 + mod env routed + FM + LFO1 routed (step 3/5)",
+            "params": {
+              "filter_env_amount": 25.4,
+              "filter_env_attack": 0,
+              "filter_env_decay": 89.2,
+              "filter_env_release": 72.4,
+              "filter_env_sustain": 0,
+              "fm_depth": 58.8,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 70.4,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69.6,
+              "mod_env_dest": 1,
+              "mod_env_level": 70.2,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8719577a5f8b52db",
+              "c9b743373886e809"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 25,
+              "filter_env_attack": 0,
+              "filter_env_decay": 89,
+              "filter_env_release": 72,
+              "filter_env_sustain": 0,
+              "fm_depth": 59,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 70,
+              "mod_env_attack": 0,
+              "mod_env_decay": 70,
+              "mod_env_dest": 1,
+              "mod_env_level": 70,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/CLAV 008.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8719577a5f8b52db and c9b743373886e809; discrete keys anchored to 8719577a5f8b52db; .syx written from byte-verified base CLAV 008.syx",
+            "file": "step4.syx",
+            "id": "05403861f4a43ec9",
+            "interp": {
+              "filter_env_amount": [
+                17,
+                31
+              ],
+              "filter_env_decay": [
+                106,
+                78
+              ],
+              "filter_env_release": [
+                82,
+                66
+              ],
+              "fm_depth": [
+                99,
+                32
+              ],
+              "lfo2_rate": [
+                68,
+                72
+              ],
+              "mod_env_decay": [
+                69,
+                70
+              ],
+              "mod_env_level": [
+                63,
+                75
+              ]
+            },
+            "jumps": [],
+            "name": "MORPH LFO2 + closed filter env + mod env routed + FM + LFO1 routed (2) -> LFO2 + mod env routed + FM + LFO1 routed (step 4/5)",
+            "params": {
+              "filter_env_amount": 28.2,
+              "filter_env_attack": 0,
+              "filter_env_decay": 83.6,
+              "filter_env_release": 69.2,
+              "filter_env_sustain": 0,
+              "fm_depth": 45.4,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 71.2,
+              "mod_env_attack": 0,
+              "mod_env_decay": 69.8,
+              "mod_env_dest": 1,
+              "mod_env_level": 72.6,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8719577a5f8b52db",
+              "c9b743373886e809"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 28,
+              "filter_env_attack": 0,
+              "filter_env_decay": 84,
+              "filter_env_release": 69,
+              "filter_env_sustain": 0,
+              "fm_depth": 45,
+              "lfo1_dest": 1,
+              "lfo1_level": 0,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 71,
+              "mod_env_attack": 0,
+              "mod_env_decay": 70,
+              "mod_env_dest": 1,
+              "mod_env_level": 73,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "base": {
+        "file": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+        "id": "8a1bf00ed7480158",
+        "name": "LFO2 + mod env routed + LFO1 routed (5)",
+        "preset": 34
+      },
+      "distance": 0.088004,
+      "pair": "34:35",
+      "parents": [
+        {
+          "id": "8a1bf00ed7480158",
+          "name": "LFO2 + mod env routed + LFO1 routed (5)"
+        },
+        {
+          "id": "e06ec6d68b11964d",
+          "name": "LFO2 + mod env routed + LFO1 routed (6)"
+        }
+      ],
+      "steps": [
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and e06ec6d68b11964d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step1.syx",
+            "id": "22ea1c1fe6090372",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                90
+              ],
+              "filter_env_decay": [
+                44,
+                72
+              ],
+              "filter_env_release": [
+                18,
+                100
+              ],
+              "filter_env_sustain": [
+                60,
+                56
+              ],
+              "lfo1_rate": [
+                42,
+                71
+              ],
+              "lfo2_rate": [
+                81,
+                75
+              ],
+              "mod_env_decay": [
+                78,
+                77
+              ],
+              "mod_env_level": [
+                110,
+                108
+              ]
+            },
+            "jumps": [
+              "lfo1_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO2 + mod env routed + LFO1 routed (6) (step 1/5)",
+            "params": {
+              "filter_env_amount": 60.4,
+              "filter_env_attack": 0,
+              "filter_env_decay": 49.6,
+              "filter_env_release": 34.4,
+              "filter_env_sustain": 59.2,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 47.8,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 79.8,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77.8,
+              "mod_env_dest": 1,
+              "mod_env_level": 109.6,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "e06ec6d68b11964d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 60,
+              "filter_env_attack": 0,
+              "filter_env_decay": 50,
+              "filter_env_release": 34,
+              "filter_env_sustain": 59,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 48,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 80,
+              "mod_env_attack": 0,
+              "mod_env_decay": 78,
+              "mod_env_dest": 1,
+              "mod_env_level": 110,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and e06ec6d68b11964d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step2.syx",
+            "id": "d403c55cd032beb2",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                90
+              ],
+              "filter_env_decay": [
+                44,
+                72
+              ],
+              "filter_env_release": [
+                18,
+                100
+              ],
+              "filter_env_sustain": [
+                60,
+                56
+              ],
+              "lfo1_rate": [
+                42,
+                71
+              ],
+              "lfo2_rate": [
+                81,
+                75
+              ],
+              "mod_env_decay": [
+                78,
+                77
+              ],
+              "mod_env_level": [
+                110,
+                108
+              ]
+            },
+            "jumps": [
+              "lfo1_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO2 + mod env routed + LFO1 routed (6) (step 2/5)",
+            "params": {
+              "filter_env_amount": 67.8,
+              "filter_env_attack": 0,
+              "filter_env_decay": 55.2,
+              "filter_env_release": 50.8,
+              "filter_env_sustain": 58.4,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 53.6,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 78.6,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77.6,
+              "mod_env_dest": 1,
+              "mod_env_level": 109.2,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "e06ec6d68b11964d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 68,
+              "filter_env_attack": 0,
+              "filter_env_decay": 55,
+              "filter_env_release": 51,
+              "filter_env_sustain": 58,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 54,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 79,
+              "mod_env_attack": 0,
+              "mod_env_decay": 78,
+              "mod_env_dest": 1,
+              "mod_env_level": 109,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and e06ec6d68b11964d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step3.syx",
+            "id": "14a0f99539fb7c4a",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                90
+              ],
+              "filter_env_decay": [
+                44,
+                72
+              ],
+              "filter_env_release": [
+                18,
+                100
+              ],
+              "filter_env_sustain": [
+                60,
+                56
+              ],
+              "lfo1_rate": [
+                42,
+                71
+              ],
+              "lfo2_rate": [
+                81,
+                75
+              ],
+              "mod_env_decay": [
+                78,
+                77
+              ],
+              "mod_env_level": [
+                110,
+                108
+              ]
+            },
+            "jumps": [
+              "lfo1_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO2 + mod env routed + LFO1 routed (6) (step 3/5)",
+            "params": {
+              "filter_env_amount": 75.2,
+              "filter_env_attack": 0,
+              "filter_env_decay": 60.8,
+              "filter_env_release": 67.2,
+              "filter_env_sustain": 57.6,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 59.4,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 77.4,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77.4,
+              "mod_env_dest": 1,
+              "mod_env_level": 108.8,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "e06ec6d68b11964d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 75,
+              "filter_env_attack": 0,
+              "filter_env_decay": 61,
+              "filter_env_release": 67,
+              "filter_env_sustain": 58,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 59,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 77,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77,
+              "mod_env_dest": 1,
+              "mod_env_level": 109,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and e06ec6d68b11964d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step4.syx",
+            "id": "6e78cf57a1bd1a72",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                90
+              ],
+              "filter_env_decay": [
+                44,
+                72
+              ],
+              "filter_env_release": [
+                18,
+                100
+              ],
+              "filter_env_sustain": [
+                60,
+                56
+              ],
+              "lfo1_rate": [
+                42,
+                71
+              ],
+              "lfo2_rate": [
+                81,
+                75
+              ],
+              "mod_env_decay": [
+                78,
+                77
+              ],
+              "mod_env_level": [
+                110,
+                108
+              ]
+            },
+            "jumps": [
+              "lfo1_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO2 + mod env routed + LFO1 routed (6) (step 4/5)",
+            "params": {
+              "filter_env_amount": 82.6,
+              "filter_env_attack": 0,
+              "filter_env_decay": 66.4,
+              "filter_env_release": 83.6,
+              "filter_env_sustain": 56.8,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 65.2,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 76.2,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77.2,
+              "mod_env_dest": 1,
+              "mod_env_level": 108.4,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "e06ec6d68b11964d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 83,
+              "filter_env_attack": 0,
+              "filter_env_decay": 66,
+              "filter_env_release": 84,
+              "filter_env_sustain": 57,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 0,
+              "lfo1_rate": 65,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 76,
+              "mod_env_attack": 0,
+              "mod_env_decay": 77,
+              "mod_env_dest": 1,
+              "mod_env_level": 108,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "base": {
+        "file": "Not Sorted/Categories Archive made by Sven Saur/Brass/DETUNED BRASS 001.syx",
+        "id": "8b838ebd9aa708c4",
+        "name": "LFO1 moving + LFO2 + mod env routed",
+        "preset": 1
+      },
+      "distance": 0.094025,
+      "pair": "1:22",
+      "parents": [
+        {
+          "id": "8b838ebd9aa708c4",
+          "name": "LFO1 moving + LFO2 + mod env routed"
+        },
+        {
+          "id": "7f22a467466f3f57",
+          "name": "LFO1 moving + LFO2 + closed filter env + mod env routed (3)"
+        }
+      ],
+      "steps": [
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Brass/DETUNED BRASS 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8b838ebd9aa708c4 and 7f22a467466f3f57; discrete keys anchored to 8b838ebd9aa708c4; .syx written from byte-verified base DETUNED BRASS 001.syx",
+            "file": "step1.syx",
+            "id": "4f75ffd454a95b27",
+            "interp": {
+              "filter_env_amount": [
+                59,
+                25
+              ],
+              "filter_env_attack": [
+                58,
+                60
+              ],
+              "filter_env_decay": [
+                66,
+                98
+              ],
+              "filter_env_release": [
+                20,
+                30
+              ],
+              "filter_env_sustain": [
+                20,
+                22
+              ],
+              "lfo1_level": [
+                95,
+                88
+              ],
+              "lfo1_rate": [
+                62,
+                55
+              ],
+              "lfo2_rate": [
+                75,
+                72
+              ],
+              "mod_env_attack": [
+                66,
+                0
+              ],
+              "mod_env_decay": [
+                62,
+                39
+              ],
+              "mod_env_level": [
+                69,
+                53
+              ]
+            },
+            "jumps": [
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO1 moving + LFO2 + mod env routed -> LFO1 moving + LFO2 + closed filter env + mod env routed (3) (step 1/5)",
+            "params": {
+              "filter_env_amount": 52.2,
+              "filter_env_attack": 58.4,
+              "filter_env_decay": 72.4,
+              "filter_env_release": 22.0,
+              "filter_env_sustain": 20.4,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 93.6,
+              "lfo1_rate": 60.6,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 74.4,
+              "mod_env_attack": 52.8,
+              "mod_env_decay": 57.4,
+              "mod_env_dest": 1,
+              "mod_env_level": 65.8,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8b838ebd9aa708c4",
+              "7f22a467466f3f57"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 52,
+              "filter_env_attack": 58,
+              "filter_env_decay": 72,
+              "filter_env_release": 22,
+              "filter_env_sustain": 20,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 94,
+              "lfo1_rate": 61,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 74,
+              "mod_env_attack": 53,
+              "mod_env_decay": 57,
+              "mod_env_dest": 1,
+              "mod_env_level": 66,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Brass/DETUNED BRASS 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8b838ebd9aa708c4 and 7f22a467466f3f57; discrete keys anchored to 8b838ebd9aa708c4; .syx written from byte-verified base DETUNED BRASS 001.syx",
+            "file": "step2.syx",
+            "id": "7b523efe0ab22a89",
+            "interp": {
+              "filter_env_amount": [
+                59,
+                25
+              ],
+              "filter_env_attack": [
+                58,
+                60
+              ],
+              "filter_env_decay": [
+                66,
+                98
+              ],
+              "filter_env_release": [
+                20,
+                30
+              ],
+              "filter_env_sustain": [
+                20,
+                22
+              ],
+              "lfo1_level": [
+                95,
+                88
+              ],
+              "lfo1_rate": [
+                62,
+                55
+              ],
+              "lfo2_rate": [
+                75,
+                72
+              ],
+              "mod_env_attack": [
+                66,
+                0
+              ],
+              "mod_env_decay": [
+                62,
+                39
+              ],
+              "mod_env_level": [
+                69,
+                53
+              ]
+            },
+            "jumps": [
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO1 moving + LFO2 + mod env routed -> LFO1 moving + LFO2 + closed filter env + mod env routed (3) (step 2/5)",
+            "params": {
+              "filter_env_amount": 45.4,
+              "filter_env_attack": 58.8,
+              "filter_env_decay": 78.8,
+              "filter_env_release": 24.0,
+              "filter_env_sustain": 20.8,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 92.2,
+              "lfo1_rate": 59.2,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 73.8,
+              "mod_env_attack": 39.6,
+              "mod_env_decay": 52.8,
+              "mod_env_dest": 1,
+              "mod_env_level": 62.6,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8b838ebd9aa708c4",
+              "7f22a467466f3f57"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 45,
+              "filter_env_attack": 59,
+              "filter_env_decay": 79,
+              "filter_env_release": 24,
+              "filter_env_sustain": 21,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 92,
+              "lfo1_rate": 59,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 74,
+              "mod_env_attack": 40,
+              "mod_env_decay": 53,
+              "mod_env_dest": 1,
+              "mod_env_level": 63,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Brass/DETUNED BRASS 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8b838ebd9aa708c4 and 7f22a467466f3f57; discrete keys anchored to 8b838ebd9aa708c4; .syx written from byte-verified base DETUNED BRASS 001.syx",
+            "file": "step3.syx",
+            "id": "273b73ed48d7c236",
+            "interp": {
+              "filter_env_amount": [
+                59,
+                25
+              ],
+              "filter_env_attack": [
+                58,
+                60
+              ],
+              "filter_env_decay": [
+                66,
+                98
+              ],
+              "filter_env_release": [
+                20,
+                30
+              ],
+              "filter_env_sustain": [
+                20,
+                22
+              ],
+              "lfo1_level": [
+                95,
+                88
+              ],
+              "lfo1_rate": [
+                62,
+                55
+              ],
+              "lfo2_rate": [
+                75,
+                72
+              ],
+              "mod_env_attack": [
+                66,
+                0
+              ],
+              "mod_env_decay": [
+                62,
+                39
+              ],
+              "mod_env_level": [
+                69,
+                53
+              ]
+            },
+            "jumps": [
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO1 moving + LFO2 + mod env routed -> LFO1 moving + LFO2 + closed filter env + mod env routed (3) (step 3/5)",
+            "params": {
+              "filter_env_amount": 38.6,
+              "filter_env_attack": 59.2,
+              "filter_env_decay": 85.2,
+              "filter_env_release": 26.0,
+              "filter_env_sustain": 21.2,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 90.8,
+              "lfo1_rate": 57.8,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 73.2,
+              "mod_env_attack": 26.4,
+              "mod_env_decay": 48.2,
+              "mod_env_dest": 1,
+              "mod_env_level": 59.4,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8b838ebd9aa708c4",
+              "7f22a467466f3f57"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 39,
+              "filter_env_attack": 59,
+              "filter_env_decay": 85,
+              "filter_env_release": 26,
+              "filter_env_sustain": 21,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 91,
+              "lfo1_rate": 58,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 73,
+              "mod_env_attack": 26,
+              "mod_env_decay": 48,
+              "mod_env_dest": 1,
+              "mod_env_level": 59,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Brass/DETUNED BRASS 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8b838ebd9aa708c4 and 7f22a467466f3f57; discrete keys anchored to 8b838ebd9aa708c4; .syx written from byte-verified base DETUNED BRASS 001.syx",
+            "file": "step4.syx",
+            "id": "c63ffec351f82cd8",
+            "interp": {
+              "filter_env_amount": [
+                59,
+                25
+              ],
+              "filter_env_attack": [
+                58,
+                60
+              ],
+              "filter_env_decay": [
+                66,
+                98
+              ],
+              "filter_env_release": [
+                20,
+                30
+              ],
+              "filter_env_sustain": [
+                20,
+                22
+              ],
+              "lfo1_level": [
+                95,
+                88
+              ],
+              "lfo1_rate": [
+                62,
+                55
+              ],
+              "lfo2_rate": [
+                75,
+                72
+              ],
+              "mod_env_attack": [
+                66,
+                0
+              ],
+              "mod_env_decay": [
+                62,
+                39
+              ],
+              "mod_env_level": [
+                69,
+                53
+              ]
+            },
+            "jumps": [
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO1 moving + LFO2 + mod env routed -> LFO1 moving + LFO2 + closed filter env + mod env routed (3) (step 4/5)",
+            "params": {
+              "filter_env_amount": 31.8,
+              "filter_env_attack": 59.6,
+              "filter_env_decay": 91.6,
+              "filter_env_release": 28.0,
+              "filter_env_sustain": 21.6,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 89.4,
+              "lfo1_rate": 56.4,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 72.6,
+              "mod_env_attack": 13.2,
+              "mod_env_decay": 43.6,
+              "mod_env_dest": 1,
+              "mod_env_level": 56.2,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8b838ebd9aa708c4",
+              "7f22a467466f3f57"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 32,
+              "filter_env_attack": 60,
+              "filter_env_decay": 92,
+              "filter_env_release": 28,
+              "filter_env_sustain": 22,
+              "fm_depth": 0,
+              "lfo1_dest": 0,
+              "lfo1_level": 89,
+              "lfo1_rate": 56,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 73,
+              "mod_env_attack": 13,
+              "mod_env_decay": 44,
+              "mod_env_dest": 1,
+              "mod_env_level": 56,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "base": {
+        "file": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+        "id": "8a1bf00ed7480158",
+        "name": "LFO2 + mod env routed + LFO1 routed (5)",
+        "preset": 34
+      },
+      "distance": 0.096341,
+      "pair": "34:39",
+      "parents": [
+        {
+          "id": "8a1bf00ed7480158",
+          "name": "LFO2 + mod env routed + LFO1 routed (5)"
+        },
+        {
+          "id": "3a883480fc55c71d",
+          "name": "LFO1 moving + LFO2 + mod env routed + LFO1 routed"
+        }
+      ],
+      "steps": [
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and 3a883480fc55c71d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step1.syx",
+            "id": "860b317474d9ba35",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                67
+              ],
+              "filter_env_attack": [
+                0,
+                8
+              ],
+              "filter_env_release": [
+                18,
+                32
+              ],
+              "filter_env_sustain": [
+                60,
+                72
+              ],
+              "lfo1_level": [
+                0,
+                60
+              ],
+              "lfo1_rate": [
+                42,
+                45
+              ],
+              "lfo2_rate": [
+                81,
+                36
+              ],
+              "mod_env_decay": [
+                78,
+                69
+              ],
+              "mod_env_level": [
+                110,
+                69
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO1 moving + LFO2 + mod env routed + LFO1 routed (step 1/5)",
+            "params": {
+              "filter_env_amount": 55.8,
+              "filter_env_attack": 1.6,
+              "filter_env_decay": 44,
+              "filter_env_release": 20.8,
+              "filter_env_sustain": 62.4,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 12.0,
+              "lfo1_rate": 42.6,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 72.0,
+              "mod_env_attack": 0,
+              "mod_env_decay": 76.2,
+              "mod_env_dest": 1,
+              "mod_env_level": 101.8,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "3a883480fc55c71d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 56,
+              "filter_env_attack": 2,
+              "filter_env_decay": 44,
+              "filter_env_release": 21,
+              "filter_env_sustain": 62,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 12,
+              "lfo1_rate": 43,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 72,
+              "mod_env_attack": 0,
+              "mod_env_decay": 76,
+              "mod_env_dest": 1,
+              "mod_env_level": 102,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and 3a883480fc55c71d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step2.syx",
+            "id": "a8494bfb237f304b",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                67
+              ],
+              "filter_env_attack": [
+                0,
+                8
+              ],
+              "filter_env_release": [
+                18,
+                32
+              ],
+              "filter_env_sustain": [
+                60,
+                72
+              ],
+              "lfo1_level": [
+                0,
+                60
+              ],
+              "lfo1_rate": [
+                42,
+                45
+              ],
+              "lfo2_rate": [
+                81,
+                36
+              ],
+              "mod_env_decay": [
+                78,
+                69
+              ],
+              "mod_env_level": [
+                110,
+                69
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO1 moving + LFO2 + mod env routed + LFO1 routed (step 2/5)",
+            "params": {
+              "filter_env_amount": 58.6,
+              "filter_env_attack": 3.2,
+              "filter_env_decay": 44,
+              "filter_env_release": 23.6,
+              "filter_env_sustain": 64.8,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 24.0,
+              "lfo1_rate": 43.2,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 63.0,
+              "mod_env_attack": 0,
+              "mod_env_decay": 74.4,
+              "mod_env_dest": 1,
+              "mod_env_level": 93.6,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "3a883480fc55c71d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 59,
+              "filter_env_attack": 3,
+              "filter_env_decay": 44,
+              "filter_env_release": 24,
+              "filter_env_sustain": 65,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 24,
+              "lfo1_rate": 43,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 63,
+              "mod_env_attack": 0,
+              "mod_env_decay": 74,
+              "mod_env_dest": 1,
+              "mod_env_level": 94,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and 3a883480fc55c71d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step3.syx",
+            "id": "3bd67c25953b3131",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                67
+              ],
+              "filter_env_attack": [
+                0,
+                8
+              ],
+              "filter_env_release": [
+                18,
+                32
+              ],
+              "filter_env_sustain": [
+                60,
+                72
+              ],
+              "lfo1_level": [
+                0,
+                60
+              ],
+              "lfo1_rate": [
+                42,
+                45
+              ],
+              "lfo2_rate": [
+                81,
+                36
+              ],
+              "mod_env_decay": [
+                78,
+                69
+              ],
+              "mod_env_level": [
+                110,
+                69
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO1 moving + LFO2 + mod env routed + LFO1 routed (step 3/5)",
+            "params": {
+              "filter_env_amount": 61.4,
+              "filter_env_attack": 4.8,
+              "filter_env_decay": 44,
+              "filter_env_release": 26.4,
+              "filter_env_sustain": 67.2,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 36.0,
+              "lfo1_rate": 43.8,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 54.0,
+              "mod_env_attack": 0,
+              "mod_env_decay": 72.6,
+              "mod_env_dest": 1,
+              "mod_env_level": 85.4,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "3a883480fc55c71d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 61,
+              "filter_env_attack": 5,
+              "filter_env_decay": 44,
+              "filter_env_release": 26,
+              "filter_env_sustain": 67,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 36,
+              "lfo1_rate": 44,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 54,
+              "mod_env_attack": 0,
+              "mod_env_decay": 73,
+              "mod_env_dest": 1,
+              "mod_env_level": 85,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "baseFile": "Not Sorted/Categories Archive made by Sven Saur/Piano-Organ/12 STRING CLAV 001.syx",
+          "preset": {
+            "appliesVia": "load_nord_bank",
+            "evidence": "synthetic: linear interpolation of continuous params between 8a1bf00ed7480158 and 3a883480fc55c71d; discrete keys anchored to 8a1bf00ed7480158; .syx written from byte-verified base 12 STRING CLAV 001.syx",
+            "file": "step4.syx",
+            "id": "7cbdbcff87870ca6",
+            "interp": {
+              "filter_env_amount": [
+                53,
+                67
+              ],
+              "filter_env_attack": [
+                0,
+                8
+              ],
+              "filter_env_release": [
+                18,
+                32
+              ],
+              "filter_env_sustain": [
+                60,
+                72
+              ],
+              "lfo1_level": [
+                0,
+                60
+              ],
+              "lfo1_rate": [
+                42,
+                45
+              ],
+              "lfo2_rate": [
+                81,
+                36
+              ],
+              "mod_env_decay": [
+                78,
+                69
+              ],
+              "mod_env_level": [
+                110,
+                69
+              ]
+            },
+            "jumps": [
+              "lfo1_dest",
+              "mod_env_dest"
+            ],
+            "name": "MORPH LFO2 + mod env routed + LFO1 routed (5) -> LFO1 moving + LFO2 + mod env routed + LFO1 routed (step 4/5)",
+            "params": {
+              "filter_env_amount": 64.2,
+              "filter_env_attack": 6.4,
+              "filter_env_decay": 44,
+              "filter_env_release": 29.2,
+              "filter_env_sustain": 69.6,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 48.0,
+              "lfo1_rate": 44.4,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 45.0,
+              "mod_env_attack": 0,
+              "mod_env_decay": 70.8,
+              "mod_env_dest": 1,
+              "mod_env_level": 77.2,
+              "sync_distortion": 0
+            },
+            "parents": [
+              "8a1bf00ed7480158",
+              "3a883480fc55c71d"
+            ],
+            "role": "lfo",
+            "syxParams": {
+              "filter_env_amount": 64,
+              "filter_env_attack": 6,
+              "filter_env_decay": 44,
+              "filter_env_release": 29,
+              "filter_env_sustain": 70,
+              "fm_depth": 0,
+              "lfo1_dest": 2,
+              "lfo1_level": 48,
+              "lfo1_rate": 44,
+              "lfo1_waveform": 2,
+              "lfo2_dest": 3,
+              "lfo2_rate": 45,
+              "mod_env_attack": 0,
+              "mod_env_decay": 71,
+              "mod_env_dest": 1,
+              "mod_env_level": 77,
+              "sync_distortion": 0
+            },
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    }
+  ],
+  "schema": "hdaw.matrix.preset.morph.v1",
+  "sourceSheet": "timbre-lib/matrix_presets/nodalred2x.json",
+  "unverified": true
+}
