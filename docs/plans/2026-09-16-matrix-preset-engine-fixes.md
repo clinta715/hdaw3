@@ -257,3 +257,21 @@ to 0 — so the '10 combos silent' result is UNRELIABLE and must be re-run in a 
 live engine session (parse failures reported separately from true silence) before any
 conclusion is drawn from it. The channel-filter exclusion stands (source-verified:
 MidiClipProcessor emits JUCE channel 1 = nibble 0 = boot GLOBAL_CHANNEL).
+
+
+## F-A refined: MODEL-SPECIFIC — OsTIrus (TI) works, Osirus (C) silent (2026-09-17)
+
+Controlled A/B on the live engine (same bass phrase, same engine, back to back):
+- OsTIrus (TI): boot/init patch AUDIBLE (soloRms 0.0630, peak 0.509); injected TI morph
+  step (pair 22:39 step 4, 524-byte SysEx via apply_matrix_preset) AUDIBLY RESHAPED the
+  render (rms 0.0630->0.0585, peak 0.509->0.344); ROM program load responds too.
+- Osirus (C): bit-identical digital silence (2.18844e-06) under init, all ROM programs,
+  and both written-program dumps (earlier probes).
+
+Conclusion: F-A is a virusLib MODEL-C issue (C-path boot/bring-up or MIDI-in handling),
+not an HDAW defect. HDAW-side write format, injection path, and the R3 tools all work
+against the TI emulation. Virus TI morph chains are PERFORMABLE today (use OsTIrus
+slots; pair 22:39 is TI; more TI-parented pairs can be emitted — the earlier B/C
+preference was based on a wrong 'OsTIrus not installed' reading).
+Osirus (C) remediation = emulator-level (virusLib C path), outside HDAW's control
+surface; documented for the gearmulator project.
