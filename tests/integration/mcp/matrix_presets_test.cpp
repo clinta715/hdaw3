@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "engine/AudioEngine.h"
+#include "engine/MainAudioProcessor.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpTools.h"
 #include "mcp/McpTransportLoopback.h"
@@ -377,6 +378,122 @@ TEST_F(MatrixPresetsTest, MorphSysexAndFileDispatch)
                                  { "trackId", 0 }, { "slotIndex", 1 } };
     r = call("apply_matrix_preset", byStepId);
     EXPECT_FALSE(callText("apply_matrix_preset", byStepId).isEmpty());
+}
+
+// G5 (offline-render propagation): the param-apply path must trigger the SAME
+// deferred plugin-state capture send_fx_midi performs (ProjectCommands::
+// captureFxSlotState) — PluginParamService::setParam reaches the LIVE child
+// only, while offline renders boot a FRESH plugin domain from IDs::
+// pluginState. The fixture has no real plugin instance, so the assertion
+// lands on the receipt/status seam: a default apply (captureToTree defaults
+// true) stamps the slot's capture receipt (never stale "none") and the
+// response carries the send_fx_midi capture info; captureToTree:false skips
+// the trigger entirely (receipt stays virgin).
+TEST_F(MatrixPresetsTest, ParamApplyTriggersDeferredStateCapture)
+{
+    addPluginSlot();
+    // Settle the deferred live-graph projection ONCE up front (lesson 9) so
+    // the environment classification below is stable — otherwise the async
+    // rebuild can land BETWEEN the capture and the probe and flip the branch.
+    if (engine->getMainProcessor() != nullptr
+        && engine->getMainProcessor()->getTrack(0) == nullptr)
+        engine->ensureLiveRouting(0);
+    const QJsonObject args { { "engine", "fixture" }, { "id", "fx00000000000001" },
+                             { "trackId", 0 }, { "slotIndex", 0 } };
+
+    // Opt-out first (receipt still virgin): the flag must skip the trigger —
+    // no capture object in the response, no receipt stamp.
+    QJsonObject off = args;
+    off["captureToTree"] = false;
+    const auto o2 = callJson("apply_matrix_preset", off);
+    ASSERT_FALSE(o2.isEmpty());
+    EXPECT_EQ(o2.value("applied").toInt(), 1);
+    EXPECT_FALSE(o2.value("captureToTree").toBool(true));
+    EXPECT_TRUE(o2.value("capture").toObject().isEmpty());
+    EXPECT_TRUE(callText("get_fx_capture_status",
+                         { { "trackId", 0 }, { "slotIndex", 0 } }).contains("status=none"));
+
+    // Default: the capture trigger fires — the response carries the
+    // send_fx_midi capture info either way: a synchronous outcome ("ok" /
+    // "unchanged" / "failed: empty state") when the capture completes
+    // in-call, "pending" when it is deferred, or the CLEAN validation
+    // failure "failed: track not found" when the LIVE projection is
+    // unavailable (deviceless runs: rebuildRoutingGraph no-ops without a
+    // RoutingManager — lessons 9/17).
+    const auto o = callJson("apply_matrix_preset", args);
+    ASSERT_FALSE(o.isEmpty());
+    EXPECT_EQ(o.value("applied").toInt(), 1);
+    EXPECT_TRUE(o.value("captureToTree").toBool(false));
+    const auto cap = o.value("capture").toObject();
+    ASSERT_FALSE(cap.isEmpty()) << "capture receipt info missing from response";
+    EXPECT_FALSE(cap.value("status").toString().isEmpty());
+
+    const auto statusText = callText("get_fx_capture_status",
+                                     { { "trackId", 0 }, { "slotIndex", 0 } });
+    if (cap.value("status").toString().startsWith("failed:"))
+    {
+        // Validation refused the trigger (this fixture's bogus plugin id is
+        // not a plugin slot in the LIVE chain; deviceless runs cannot settle
+        // the track at all) — matching sendFxMidi, whose validation also
+        // precedes the stamp, no receipt is written.
+        EXPECT_TRUE(statusText.contains("status=none")) << statusText.toStdString();
+    }
+    else
+    {
+        // Trigger accepted: the receipt is stamped synchronously ("pending"
+        // while a deferred capture is in flight, otherwise the synchronous
+        // outcome) — never the stale "none".
+        EXPECT_FALSE(statusText.contains("status=none")) << statusText.toStdString();
+    }
+}
+
+// G5 (engine seam): the factored trigger is reachable through the
+// ProjectCommands interface — the same dispatch apply_matrix_preset uses —
+// and validates track/slot exactly like sendFxMidi.
+TEST_F(MatrixPresetsTest, CaptureFxSlotStateEngineSeam)
+{
+    addPluginSlot();
+    // Settle the deferred live-graph projection ONCE up front (lesson 9) so
+    // the environment classification below is stable (see the sibling test).
+    if (engine->getMainProcessor() != nullptr
+        && engine->getMainProcessor()->getTrack(0) == nullptr)
+        engine->ensureLiveRouting(0);
+    auto& pc = engine->getProjectCommands();
+
+    // Validation contract (environment-independent): bad indexes/tracks fail
+    // CLEAN with an error, never a crash.
+    const auto badIdx = pc.captureFxSlotState(-1, 0);
+    EXPECT_FALSE(badIdx.ok);
+    EXPECT_FALSE(badIdx.error.empty());
+    const auto badTrack = pc.captureFxSlotState(99, 0);
+    EXPECT_FALSE(badTrack.ok);
+    EXPECT_TRUE(QString::fromStdString(badTrack.error).contains("track not found"))
+        << badTrack.error;
+    EXPECT_TRUE(callText("get_fx_capture_status",
+                         { { "trackId", 99 }, { "slotIndex", 0 } }).contains("slot not found in tree"));
+
+    // SEAM EQUIVALENCE: for the SAME slot, the factored trigger's verdict
+    // matches sendFxMidi's own validation — ok=true where a real plugin
+    // instance serves the slot, otherwise the SAME clean validation string
+    // ("slot is not a plugin slot" here: the fixture's bogus plugin id never
+    // instantiates, so its live TrackFXSlot is not plugin-typed). This is the
+    // fixture-constrained proxy for the capture machinery (pending receipt ->
+    // live getStateInformation -> IDs::pluginState), which IS sendFxMidi's
+    // own code path — reused verbatim, not reinvented (lesson 16).
+    ProjectCommands::FxMidiParams midi;
+    midi.trackIndex = 0;
+    midi.slotIndex = 0;
+    midi.captureToTree = false;   // compare the pure validation verdicts
+    ProjectCommands::FxMidiEvent ev;
+    ev.kind = ProjectCommands::FxMidiEvent::Kind::NoteOn;
+    midi.events.push_back(ev);
+    const auto viaMidi = pc.sendFxMidi(midi);
+    const auto cap = pc.captureFxSlotState(0, 0);
+    EXPECT_EQ(cap.ok, viaMidi.ok) << cap.error << " | " << viaMidi.error;
+    if (!viaMidi.ok)
+        EXPECT_EQ(cap.error, viaMidi.error) << cap.error;
+    else
+        EXPECT_FALSE(cap.status.empty());
 }
 
 } // namespace

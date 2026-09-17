@@ -3,7 +3,9 @@
 // list_matrix_presets / apply_matrix_preset — MCP parity for the per-plugin
 // matrix-preset pipeline. Engine surface ONLY: sheet parsing + dispatch onto
 // EXISTING engine entry points — PluginParamService::setParam (the set_fx_param
-// path), ProjectCommands::sendFxMidi (the send_fx_midi path), and
+// path), ProjectCommands::sendFxMidi (the send_fx_midi path),
+// ProjectCommands::captureFxSlotState (sendFxMidi's deferred plugin-state
+// capture, so param applies reach offline renders), and
 // runNordBankFile (the load_nord_bank path, PresetRoute.h). No DSP, no
 // audio-thread code, no ValueTree schema changes.
 //
@@ -292,6 +294,14 @@ struct ParamApplyResult
     int applied = 0;
     int skipped = 0;
     QJsonArray unmapped;
+    // Deferred plugin-state capture (send_fx_midi's receipt contract, NB4):
+    // setParam reaches the LIVE child only; the capture snapshots the applied
+    // state into IDs::pluginState so offline renders see the preset.
+    bool captureToTree = false;
+    bool capturedToTree = false;   // sync capture wrote IDs::pluginState
+    QString captureStatus;         // "pending" | "ok" | "unchanged" | "failed: ..."
+    QString captureNote;           // e.g. the deferred-capture note (device running)
+    int captureStateBytes = 0;
 };
 
 ParamApplyResult applyParamsToSlot(AudioEngine& e, int ti, const QString& pluginId,
@@ -329,9 +339,47 @@ ParamApplyResult applyParamsToSlot(AudioEngine& e, int ti, const QString& plugin
 
 McpToolResult paramApplyResultText(const ParamApplyResult& r)
 {
-    return McpToolResult::text(QString::fromUtf8(QJsonDocument(QJsonObject {
-        { "applied", r.applied }, { "skipped", r.skipped }, { "unmapped", r.unmapped }
-    }).toJson(QJsonDocument::Compact)));
+    QJsonObject o {
+        { "applied", r.applied }, { "skipped", r.skipped }, { "unmapped", r.unmapped },
+        { "captureToTree", r.captureToTree } };
+    if (r.captureToTree)
+    {
+        // send_fx_midi's receipt contract: status is "pending" while a
+        // deferred capture is in flight (poll get_fx_capture_status), or the
+        // synchronous outcome ("ok" / "unchanged" / "failed: ...").
+        QJsonObject cap { { "status", r.captureStatus } };
+        if (r.capturedToTree)
+            cap["capturedToTree"] = true;
+        if (r.captureStateBytes > 0)
+            cap["stateBytes"] = r.captureStateBytes;
+        if (!r.captureNote.isEmpty())
+            cap["note"] = r.captureNote;
+        o["capture"] = cap;
+    }
+    return McpToolResult::text(QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)));
+}
+
+// Deferred plugin-state capture for the param-apply path — the SAME trigger
+// sendFxMidi performs after queueing (ProjectCommands::captureFxSlotState:
+// pending receipt -> live getStateInformation -> IDs::pluginState).
+// PluginParamService::setParam reaches the LIVE isolated child only, while
+// export_audio / verify_part build a FRESH offline plugin domain that boots
+// at init state — without this capture, applied presets render as the init
+// patch (measured 2026-09-17: 40/40 ear-pass renders bit-identical init
+// audio). captureToTree=false (the send_fx_midi flag) skips the trigger.
+// applied <= 0 means nothing was written, so there is no state to capture.
+void captureAfterParamApply(AudioEngine& e, int ti, int si, int applied,
+                            bool captureToTree, ParamApplyResult& r)
+{
+    r.captureToTree = captureToTree;
+    if (!captureToTree || applied <= 0)
+        return;
+    const auto cap = e.getProjectCommands().captureFxSlotState(ti, si);
+    r.captureStatus = QString::fromStdString(cap.ok ? cap.status : "failed: " + cap.error);
+    r.capturedToTree = cap.capturedToTree;
+    r.captureStateBytes = cap.stateBytes;
+    if (!cap.note.empty())
+        r.captureNote = QString::fromStdString(cap.note);
 }
 
 } // namespace
@@ -407,8 +455,12 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
         "Apply ONE matrix preset or morph step (ids from list_matrix_presets) to a plugin FX"
         " slot. Dispatch: parameter-level ids (je8086 presets / param-carrying morph steps) go"
         " through the set_fx_param engine path, resolving decoder names to live param indexes"
-        " via <engine>_param_index_map.json, and return {applied,skipped,unmapped}; morph steps"
-        " carrying SysEx queue through the send_fx_midi path and return"
+        " via <engine>_param_index_map.json, and return {applied,skipped,unmapped} plus the"
+        " deferred plugin-state capture info (captureToTree, default true — the send_fx_midi"
+        " trigger that snapshots the applied params into the tree for offline renders; poll"
+        " get_fx_capture_status to confirm; captureToTree:false skips) — param writes reach the"
+        " LIVE child only, so without the capture offline renders boot the init patch; morph"
+        " steps carrying SysEx queue through the send_fx_midi path and return"
         " {queued,captureDeferred:true}; nodalred2x morph steps load their .syx file through the"
         " load_nord_bank path. Realtime mutation: not undoable; capture via project save.",
         objSchema({ { "engine", QJsonObject{ { "type", "string" } } },
@@ -473,8 +525,10 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
                         return McpToolResult::text(merr, true);
                     engineMap = mdoc.object();
                 }
-                const auto r = applyParamsToSlot(*e, ti, slot.pluginId,
-                                                 preset.value("params").toObject(), {}, engineMap);
+                auto r = applyParamsToSlot(*e, ti, slot.pluginId,
+                                           preset.value("params").toObject(), {}, engineMap);
+                captureAfterParamApply(*e, ti, si, r.applied,
+                                       a.value("captureToTree").toBool(true), r);
                 return paramApplyResultText(r);
             }
 
@@ -592,8 +646,10 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
                         return McpToolResult::text(merr, true);
                     engineMap = mdoc.object();
                 }
-                const auto r = applyParamsToSlot(*e, ti, slot.pluginId, stepParams,
-                                                 step.value("paramIndex").toObject(), engineMap);
+                auto r = applyParamsToSlot(*e, ti, slot.pluginId, stepParams,
+                                           step.value("paramIndex").toObject(), engineMap);
+                captureAfterParamApply(*e, ti, si, r.applied,
+                                       a.value("captureToTree").toBool(true), r);
                 return paramApplyResultText(r);
             }
 

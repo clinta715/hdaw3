@@ -102,6 +102,14 @@ public:
     /// ok=false + error on invalid track/slot or malformed batch.
     FxMidiResult sendFxMidi(const FxMidiParams& params) override;
 
+    /// Trigger the deferred plugin-state capture (NB4) behind sendFxMidi's
+    /// capture-to-tree, reusable by the apply_matrix_preset param-apply path:
+    /// pending receipt -> live getStateInformation -> IDs::pluginState (the
+    /// property offline exports / rebuilds restore from). ok=false only on
+    /// validation failure; the capture outcome travels in status/capturedToTree.
+    FxStateCaptureResult captureFxSlotState(int trackIndex, int slotIndex,
+                                            int sysexCount = 0) override;
+
     /// Write the deferred-capture receipt onto an FX_SLOT tree (NB4): status
     /// "pending" | "ok" | "failed: ...", byte count, timestamp. Shared by the
     /// realtime-deferred and headless-synchronous capture paths; static for tests.

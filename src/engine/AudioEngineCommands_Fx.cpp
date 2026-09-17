@@ -338,6 +338,151 @@ void AudioEngineCommands::writeFxCaptureReceipt(juce::ValueTree slotTree,
                          juce::Time::getCurrentTime().toMilliseconds(), nullptr);
 }
 
+// NB4 deferred plugin-state capture — the shared trigger behind sendFxMidi's
+// capture-to-tree and the apply_matrix_preset param-apply path: any engine
+// writer whose writes reach ONLY the live plugin child (queueMidiForNextBlock,
+// PluginParamService::setParam) snapshots the child's CURRENT state into
+// IDs::pluginState so offline exports / rebuilds / save-load all see it
+// (Track.cpp restore path reads exactly this property). Stamps a "pending"
+// receipt synchronously so get_fx_capture_status never reports a STALE
+// receipt from a previous load; the deferred/headless capture overwrites it
+// with "ok" (+bytes) or "failed: ...". ok=false only on validation failure —
+// the capture outcome travels in status/capturedToTree, exactly like the
+// sendFxMidi receipt contract.
+ProjectCommands::FxStateCaptureResult
+AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysexCount)
+{
+    ProjectCommands::FxStateCaptureResult r;
+    auto fail = [&r](const std::string& m) { r.error = m; return r; };
+    if (trackIndex < 0 || slotIndex < 0)
+        return fail("invalid track/slot index");
+    auto* proc = engine_.getMainProcessor();
+    if (proc == nullptr)
+        return fail("audio processor unavailable");
+    auto* track = proc->getTrack(trackIndex);
+    if (track == nullptr)
+    {
+        // Same live-routing seam sendFxMidi settles (plan 2026-09-16): MCP
+        // applies can arrive right after add_track / add_instrument_part,
+        // which defer the live graph update.
+        engine_.ensureLiveRouting(trackIndex);
+        proc = engine_.getMainProcessor();
+        track = proc != nullptr ? proc->getTrack(trackIndex) : nullptr;
+    }
+    if (track == nullptr)
+        return fail("track not found: " + std::to_string(trackIndex));
+    auto& chain = track->getFXChain();
+    if (static_cast<size_t>(slotIndex) >= chain.size())
+        return fail("slot not found: " + std::to_string(slotIndex));
+    auto* slot = chain[static_cast<size_t>(slotIndex)].get();
+    if (slot == nullptr || !slot->isPlugin())
+        return fail("slot is not a plugin slot");
+
+    writeFxCaptureReceipt(engine_.getProjectModel().getTrackListTree()
+                              .getChild(trackIndex)
+                              .getChildWithName(IDs::FX_CHAIN)
+                              .getChild(slotIndex),
+                          "pending", 0);
+    // One SysEx per block through the metered drain: give the child a
+    // block per dump plus the base window before snapshotting (D3).
+    const int captureDelayMs = 800 + 30 * sysexCount;
+    const bool deviceOpen = engine_.getDeviceManager().getCurrentAudioDevice() != nullptr;
+    if (deviceOpen)
+    {
+        // Realtime callbacks are clocking the graph — a manual drive here
+        // would race them. Defer the capture to the message thread: by
+        // then the child has processed the queued messages, and the state
+        // request is the same control path the save flow uses mid-playback.
+        const int ti = trackIndex;
+        const int si = slotIndex;
+        juce::Timer::callAfterDelay(captureDelayMs, [this, ti, si]() {
+            auto slotTree = engine_.getProjectModel().getTrackListTree()
+                                .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
+            auto* proc = engine_.getMainProcessor();
+            auto* tr = proc ? proc->getTrack(ti) : nullptr;
+            auto* slot = (tr != nullptr && si >= 0
+                              && static_cast<size_t>(si) < tr->getFXChain().size())
+                ? tr->getFXChain()[static_cast<size_t>(si)].get()
+                : nullptr;
+            auto* inst = (slot != nullptr) ? slot->getPluginInstance() : nullptr;
+            if (inst == nullptr)
+            {
+                writeFxCaptureReceipt(slotTree, "failed: no plugin instance", 0);
+                return;
+            }
+            juce::MemoryBlock mb;
+            inst->getStateInformation(mb);
+            slot->noteStateSample(mb);
+            // Never clobber last-good state with an empty snapshot (dead
+            // child) — same guard as Track::rebuildFXChain / save.
+            if (mb.getSize() == 0)
+            {
+                writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
+                return;
+            }
+            // D-lite: nothing changed since the instance was created, so there
+            // is no state worth persisting. Writing this boot stub would make
+            // every later graph build restore it and play the plugin's default
+            // patch instead of the live one (measured on JE8086). Report it.
+            if (slot->stateLooksUnchangedSinceBoot(mb))
+            {
+                writeFxCaptureReceipt(slotTree, "unchanged", 0);
+                return;
+            }
+            if (slotTree.isValid())
+                slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+            writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
+        });
+        r.status = "pending";
+        r.note = "state capture deferred ~" + std::to_string(captureDelayMs)
+            + "ms (audio device running); poll get_fx_capture_status to confirm";
+    }
+    else
+    {
+        // No device (headless/tests): nothing else clocks the live graph,
+        // so drive a few scratch blocks through the slot to deliver the
+        // queued messages, then capture synchronously. Prepare
+        // unconditionally: in this environment the live slot is unprepared
+        // (no device spec ever reached it), and prepare is idempotent
+        // (re-issues PREPARE to the child, resizes buffers).
+        slot->prepare(juce::dsp::ProcessSpec{ 44100.0, 512u, 2u });
+        juce::AudioBuffer<float> scratch(2, 512);
+        scratch.clear();
+        juce::MidiBuffer scratchMidi;
+        for (int i = 0; i < 24; ++i)
+            slot->process(scratch, scratchMidi);
+        auto* inst = slot->getPluginInstance();
+        juce::MemoryBlock mb;
+        if (inst != nullptr)
+            inst->getStateInformation(mb);
+        slot->noteStateSample(mb);          // D-lite: baseline = first sample
+        auto slotTree = engine_.getProjectModel().getTrackListTree()
+                            .getChild(trackIndex)
+                            .getChildWithName(IDs::FX_CHAIN)
+                            .getChild(slotIndex);
+        if (mb.getSize() == 0)
+        {
+            writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
+            r.status = "failed: empty state";
+        }
+        else if (slotTree.isValid())
+        {
+            slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+            r.stateBytes = static_cast<int>(mb.getSize());
+            writeFxCaptureReceipt(slotTree, "ok", r.stateBytes);
+            r.status = "ok";
+            r.capturedToTree = true;
+        }
+        else
+        {
+            writeFxCaptureReceipt(slotTree, "failed: slot not in tree", 0);
+            r.status = "failed: slot not in tree";
+        }
+    }
+    r.ok = true;
+    return r;
+}
+
 ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectCommands::FxMidiParams& params)
 {
     ProjectCommands::FxMidiResult r;
@@ -409,113 +554,29 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
     // Capture-to-tree (plan item #3): once the child has processed the queued
     // messages, snapshot the plugin state into IDs::pluginState so offline
     // exports / rebuilds / save-load all see the injected preset (Track.cpp
-    // restore path reads exactly this property). Mirrors the applyPluginProgram
-    // snapshot (non-undoable, nullptr um). A "pending" receipt is stamped
+    // restore path reads exactly this property). A "pending" receipt is stamped
     // synchronously so get_fx_capture_status never reports a STALE receipt
     // from a previous load (NB4); the deferred/headless capture overwrites
-    // it with "ok" (+bytes) or "failed: ...".
+    // it with "ok" (+bytes) or "failed: ...". The trigger lives in
+    // captureFxSlotState — shared verbatim with the apply_matrix_preset
+    // param-apply path (ProjectCommands interface).
     if (params.captureToTree)
     {
         int sysexCount = 0;
         for (const auto& ev : params.events)
             if (ev.kind == ProjectCommands::FxMidiEvent::Kind::SysEx)
                 ++sysexCount;
-        writeFxCaptureReceipt(engine_.getProjectModel().getTrackListTree()
-                                  .getChild(params.trackIndex)
-                                  .getChildWithName(IDs::FX_CHAIN)
-                                  .getChild(params.slotIndex),
-                              "pending", 0);
-        // One SysEx per block through the metered drain: give the child a
-        // block per dump plus the base window before snapshotting (D3).
-        const int captureDelayMs = 800 + 30 * sysexCount;
-        const bool deviceOpen = engine_.getDeviceManager().getCurrentAudioDevice() != nullptr;
-        if (deviceOpen)
+        const auto cap = captureFxSlotState(params.trackIndex, params.slotIndex, sysexCount);
+        if (cap.ok)
         {
-            // Realtime callbacks are clocking the graph — a manual drive here
-            // would race them. Defer the capture to the message thread: by
-            // then the child has processed the queued messages, and the state
-            // request is the same control path the save flow uses mid-playback.
-            const int ti = params.trackIndex;
-            const int si = params.slotIndex;
-            juce::Timer::callAfterDelay(captureDelayMs, [this, ti, si]() {
-                auto slotTree = engine_.getProjectModel().getTrackListTree()
-                                    .getChild(ti).getChildWithName(IDs::FX_CHAIN).getChild(si);
-                auto* proc = engine_.getMainProcessor();
-                auto* tr = proc ? proc->getTrack(ti) : nullptr;
-                auto* slot = (tr != nullptr && si >= 0
-                                  && static_cast<size_t>(si) < tr->getFXChain().size())
-                    ? tr->getFXChain()[static_cast<size_t>(si)].get()
-                    : nullptr;
-                auto* inst = (slot != nullptr) ? slot->getPluginInstance() : nullptr;
-                if (inst == nullptr)
-                {
-                    writeFxCaptureReceipt(slotTree, "failed: no plugin instance", 0);
-                    return;
-                }
-                juce::MemoryBlock mb;
-                inst->getStateInformation(mb);
-                slot->noteStateSample(mb);
-                // Never clobber last-good state with an empty snapshot (dead
-                // child) — same guard as Track::rebuildFXChain / save.
-                if (mb.getSize() == 0)
-                {
-                    writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
-                    return;
-                }
-                // D-lite: nothing changed since the instance was created, so there
-                // is no state worth persisting. Writing this boot stub would make
-                // every later graph build restore it and play the plugin's default
-                // patch instead of the live one (measured on JE8086). Report it.
-                if (slot->stateLooksUnchangedSinceBoot(mb))
-                {
-                    writeFxCaptureReceipt(slotTree, "unchanged", 0);
-                    return;
-                }
-                if (slotTree.isValid())
-                    slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
-                writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
-            });
-            r.note = "state capture deferred ~" + std::to_string(captureDelayMs)
-                + "ms (audio device running); poll get_fx_capture_status to confirm";
+            r.note = cap.note;
+            r.capturedToTree = cap.capturedToTree;
         }
         else
         {
-            // No device (headless/tests): nothing else clocks the live graph,
-            // so drive a few scratch blocks through the slot to deliver the
-            // queued messages, then capture synchronously. Prepare first — in
-            // this environment the live slot is unprepared (no device spec).
-            // Prepare unconditionally: in this environment the live slot is
-            // unprepared (no device spec ever reached it), and prepare is
-            // idempotent (re-issues PREPARE to the child, resizes buffers).
-            slot->prepare(juce::dsp::ProcessSpec{ 44100.0, 512u, 2u });
-            juce::AudioBuffer<float> scratch(2, 512);
-            scratch.clear();
-            juce::MidiBuffer scratchMidi;
-            for (int i = 0; i < 24; ++i)
-                slot->process(scratch, scratchMidi);
-            auto* inst = slot->getPluginInstance();
-            juce::MemoryBlock mb;
-            if (inst != nullptr)
-                inst->getStateInformation(mb);
-            slot->noteStateSample(mb);          // D-lite: baseline = first sample
-            auto slotTree = engine_.getProjectModel().getTrackListTree()
-                                .getChild(params.trackIndex)
-                                .getChildWithName(IDs::FX_CHAIN)
-                                .getChild(params.slotIndex);
-            if (mb.getSize() == 0)
-            {
-                writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
-            }
-            else if (slotTree.isValid())
-            {
-                slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
-                writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
-                r.capturedToTree = true;
-            }
-            else
-            {
-                writeFxCaptureReceipt(slotTree, "failed: slot not in tree", 0);
-            }
+            // Unreachable in practice (the slot was validated above on this
+            // same thread); surface it instead of failing the queueing result.
+            r.note = "state capture skipped: " + cap.error;
         }
     }
 

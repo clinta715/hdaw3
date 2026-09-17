@@ -804,6 +804,28 @@ public:
     virtual AuditionResult auditionPlugin(const AuditionParams& params) = 0;
     virtual FxMidiResult sendFxMidi(const FxMidiParams& params) = 0;
 
+    // --- Deferred plugin-state capture (NB4) ---------------------------------
+    // Shared trigger for the sendFxMidi capture machinery, reusable by any
+    // engine-surface writer whose writes reach ONLY the live plugin child
+    // (apply_matrix_preset's PluginParamService::setParam path). Stamps a
+    // "pending" receipt synchronously, then snapshots the LIVE slot's current
+    // state into IDs::pluginState (deferred on the message thread when the
+    // audio device runs; synchronous after scratch blocks when it does not).
+    // Offline exports / rebuilds / save-load restore from IDs::pluginState, so
+    // without this trigger applied presets render as the init patch.
+    // sysexCount paces the deferred capture (one SysEx per block, D3).
+    // Lesson-16-compliant: reuses the existing capture paths verbatim.
+    struct FxStateCaptureResult {
+        bool ok = false;               // false ONLY on validation failure (error set)
+        bool capturedToTree = false;   // true when the capture completed synchronously
+        int stateBytes = 0;            // captured state size (sync path only)
+        std::string status;            // "pending" | "ok" | "unchanged" | "failed: ..."
+        std::string note;              // e.g. "state capture deferred ~800ms (audio device running)"
+        std::string error;
+    };
+    virtual FxStateCaptureResult captureFxSlotState(int trackIndex, int slotIndex,
+                                                    int sysexCount = 0) = 0;
+
     // ── Part verification ──
     // Self-verification for composed parts: solo-renders the track's window AND
     // renders the full mix at the same window (both via the shared
