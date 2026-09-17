@@ -191,8 +191,9 @@ Shipped 2026-09-16: je8086 40 (`set_fx_param`), nodalred2x 40
 recorded `presetsShortfall` on 2026-09-16 (sidecars were tone-param-only);
 the fx-pages decode below removed the shortfall on 2026-09-17: virus now
 ships **40** (`midi_cc_pc`, 148 rev-2 sidecars over 5,425 dumps) plus
-`virus_morphs.json` (5 pairs x 4 steps, `program_writer_pending`,
-unverified).
+`virus_morphs.json` (5 pairs x 4 steps; `program_writer_pending` superseded
+2026-09-17 by `virus_dump.py` — it now carries per-step injectable SysEx,
+TI/BC model-tagged).
 
 Vavra naming provenance: `matrix_presets/vavra-offset-map.md` (+ the
 machine-readable `vavra_offset_map.json`) verifies **dump byte = 7 + linear
@@ -206,6 +207,45 @@ environment; recreate with `pip install --target /tmp/hdawpylib pytest` if
 missing):
 
     PYTHONPATH=/tmp/hdawpylib python3 -m pytest timbre-lib/test_harvest_matrix_presets.py -q
+
+## Matrix-preset toolchain — writers, morphs, artifacts, live status
+
+All tools around the harvested sheets live in `timbre-lib/`:
+
+| Tool | Role |
+| --- | --- |
+| `harvest_matrix_presets.py` | clusters sidecar FX/mod-matrix tuples into the `<engine>.json` sheets (section above) |
+| `morph_presets.py` | interpolates two sheet presets into a morph chain (`--sheet/--pairs/--steps/--out/--index-map`); per-engine continuous-vs-discrete classification (je8086 classifies by decoder name); discrete hops recorded per step in `jumps` |
+| `virus_fx_pages.py` | Virus TI / B/C FX+mod-matrix page decoder (sidecarRev 2); its byte-match sweep closed the virus shortfall (R7, 2026-09-17: 1.78M values, 0 mismatches) |
+| `xenia_dump.py` | Microwave XT 265-byte single-dump writer + injectable morph emitter (checksum holds 3823/3823 real dumps; the emulation validates size only) |
+| `nord_dump.py` | Nord Lead 2x writer (66 params x 2 nibbles; packed byte 52 via named read-modify-write; no checksum) + morph emitter |
+| `virus_dump.py` | Virus TI 524 B + B/C 267 B program writer; checksum recomputed per the dump-defs rule; byte-fidelity + round-trip tested |
+| `vavra_dump.py` | microQ 392-byte single-dump writer (parent checksum byte preserved) + blueprint morph emitter |
+
+MCP front door (R3, `McpTools_Matrix.cpp`): `list_matrix_presets {engine}` and
+`apply_matrix_preset {engine, id, trackId, slotIndex}` — they resolve the index
+maps and emit/inject the SysEx for you.
+
+Artifacts in `timbre-lib/matrix_presets/`: five 40-preset sheets
+(`<engine>.json`); `je8086_morphs.json` (20 steps, paramIndex embedded);
+`xenia_morphs.json` + `xenia_morphs_injectable.json` (per-step SysEx, off-by-2
+fixed, per-pair provenance); `nord_morphs/` (20 `.syx`) + `nord_morphs.json`;
+`virus_morphs.json` (per-step SysEx, TI/BC model-tagged); `vavra_morphs.json`
+(blueprint-only); offset maps `{nord,xenia,vavra}_offset_map.json` +
+`*-offset-map.md`; `je8086_param_index_map.json` (display-name → index);
+`xenia_roles_morphs.md` (post-fix roles + morph parents).
+
+Live apply status (measured 2026-09-16/17; evidence:
+`docs/plans/2026-09-16-matrix-presets.md`,
+`docs/plans/2026-09-16-matrix-preset-engine-fixes.md`):
+
+| Engine | Sheet | Morphs | Live apply (measured) |
+| --- | --- | --- | --- |
+| je8086 | 40 | 20 steps, paramIndex embedded | **VERIFIED** — 46/46 `set_fx_param` of preset b44052f76c82a7a7, audible A/B; plugin publishes display names ('A FLT CUTOFF FREQ') → use `je8086_param_index_map.json` |
+| xenia | 40 | injectable SysEx | **VERIFIED AUDIBLE** — SysEx → edit buffer (bank 0x20); offset map 1,166,386 values, 0 mismatches |
+| nodalred2x | 40 | 20 `.syx` + json | **VERIFIED AUDIBLE** — morph `.syx` via `load_nord_bank`; map 5,350 files / 353,100 values / 0 mismatches |
+| virus | 40 (R7) | SysEx, TI/BC-tagged | writer format-verified (checksum rule cited + validated); live A/B **BLOCKED — finding F-A** (Osirus slot renders bit-identical silence under all programs/dumps); parameter path possible (3,086 exposed params) pending finding F-B |
+| vavra | 40 | blueprint-only | **MEASURED NOT APPLYING** — queued=1 but captureStatus=unchanged, render identical; puppetry not pursued |
 
 ## Analyze a folder
     ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
@@ -348,8 +388,9 @@ to rev 2 (every rev-1 FileLibraryManager key preserved + `sidecarRev`,
 - Morph blueprints follow the repo convention: CONTINUOUS keys
   (amounts/levels/volumes/depths/rates/frequencies) interpolate, DISCRETE
   keys (types/sources/destinations/modes) anchor to A and are listed in
-  `jumps`; every step is `appliesVia: program_writer_pending`,
-  `unverified: true` (virus apply needs a future SysEx writer).
+  `jumps`; steps shipped as `appliesVia: program_writer_pending` and were
+  upgraded 2026-09-17 to per-step injectable SysEx by `virus_dump.py`
+  (live A/B still blocked — finding F-A, see the toolchain section above).
 - Tests: `python -m pytest test_virus_fx_pages.py -q` (anchors, checksum
   rule, byte-match, SMF regressions, sidecar contract, determinism, CLI,
   morph builder).

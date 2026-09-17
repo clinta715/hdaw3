@@ -20,29 +20,34 @@ device-internal modulation costs nothing and is saved inside the patch.
 
 Encoders per device (verified where stated): JP-8080 → `set_fx_param` (461
 parameters; DT1 dumps do NOT apply), Virus → `load_virus_preset` and CC via
-`send_fx_midi`, Nord 2x → `load_nord_bank` (verified render change) and HDAW FX for
-the effects it lacks, microQ/Vavra → no host parameters (matrix only), Dexed → use
-the internal `fm_synth`. Full recipes: `docs/hardware-va-suite.md` §3.
+`send_fx_midi` (currently queued-but-silent on Osirus — finding F-A), Nord 2x →
+`load_nord_bank` (verified render change; morph chains performable) and HDAW FX
+for the effects it lacks, microQ/Vavra → no host parameters (injection measured
+NOT applying — matrix presets are blueprints only), Dexed → use the internal
+`fm_synth`. Full recipes: `docs/hardware-va-suite.md` §3.
 
 ## Matrix presets first (step 0 of the modulation-first rule)
 
 Before inventing an FX chain or reaching for plugin FX on a core synth, look up
 `timbre-lib/matrix_presets/<engine>.json` — named FX/mod-matrix configs harvested
 from that plugin's own patch corpus (schema `hdaw.matrix.preset.v1`; 40 presets
-per engine, virus 1 + a recorded shortfall). Every sheet ships `unverified: true`
-until the live apply/ear pass, so apply → audition → re-verify. Use the engine's
-verified apply path and fall through the modulation-first order only for what the
-preset does not cover:
+per engine across all five devices). The live apply/ear pass ran 2026-09-16/17:
+je8086/xenia/nodalred2x **verified live**, vavra measured NOT applying, virus
+blocked by finding F-A (status table below). Mechanical front door:
+`list_matrix_presets {engine}` / `apply_matrix_preset {engine, id, trackId,
+slotIndex}` — they resolve index maps and emit/inject SysEx for you. Use the
+engine's verified apply path and fall through the modulation-first order only for
+what the preset does not cover:
 
 | Engine | Apply (`appliesVia`) | Verify |
 |---|---|---|
-| je8086 | `set_fx_param` by **name** — never dump offsets; DT1 dumps do not apply | `list_fx_params` readback + ear; **hear != export** (its state does not carry the patch) |
-| nodalred2x | `load_nord_bank` | render assertion (the verified bank loader) |
-| virus | `load_virus_preset` (CC0+PC) + CC matrix | state change + ear |
-| xenia | patch or SysEx (unverified) | state-blob round-trip first |
-| vavra | patch bake / front-panel puppetry (no host params; offset-keyed params, named via the verified offset map) | state-blob round-trip first |
+| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets; DT1 dumps do not apply) — `apply_matrix_preset` resolves this | **VERIFIED live**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; **hear != export** (its state does not carry the patch) |
+| nodalred2x | `load_nord_bank` (morph chains: `nord_morphs/*.syx`) | **VERIFIED AUDIBLE live** (map 5,350 files / 353,100 values / 0 mismatches); render assertion |
+| virus | `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders (preset-load ext absent — finding F-A); `virus_dump.py` writer format-verified; parameter path pending F-B | live A/B **blocked** by F-A (Osirus renders bit-identical silence) — do not budget time here |
+| xenia | SysEx single-dump → **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` (`xenia_dump.py` emits) | **VERIFIED AUDIBLE live** (offset map 1,166,386 values / 0 mismatches); `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |
+| vavra | **no working apply path** — single-dump injection MEASURED NOT APPLYING (queued=1, captureStatus=unchanged, render identical); `vavra_morphs.json` blueprint-only | none — documented emulator limitation; puppetry not pursued |
 
-Format, shortfall and Phase D checklist: `docs/hardware-va-suite.md` §9.
+Format and Phase D checklist: `docs/hardware-va-suite.md` §9.
 
 ## Surface area
 `list_fx_chains`, `load_fx_chain`, `add_fx`, `remove_fx`, `set_fx_param`,
@@ -86,9 +91,9 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
 ## Procedure
 0. **Matrix presets first**: for a core-synth track, read
    `timbre-lib/matrix_presets/<engine>.json` before inventing chains or adding
-   plugin FX; pick a harvested preset, apply it via its `appliesVia` path, then
-   audition and re-verify (sheets ship `unverified: true` — "Matrix presets
-   first" above).
+   plugin FX; pick a harvested preset, apply it via its `appliesVia` path (or
+   `apply_matrix_preset`), then audition and re-verify (live status per engine:
+   "Matrix presets first" table above).
 1. **Read the state + layer ledger**: `list_tracks`, `list_automation_lanes`
    per track, plus `get_layer_handoffs` (the project-native ledger written by the
    layer agents — `compositions/<song>/layers.json` is only the human mirror). Know

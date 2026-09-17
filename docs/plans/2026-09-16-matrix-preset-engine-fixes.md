@@ -1,5 +1,20 @@
 # Plan: live-routing seam fix (matrix-preset session, 2026-09-16)
 
+## STATUS TL;DR (2026-09-17 — all deliverables done; per-engine live status)
+
+| Engine | Sheet (`timbre-lib/matrix_presets/`) | Morphs | Live apply | Evidence (below) |
+| --- | --- | --- | --- | --- |
+| je8086 | `je8086.json` (40) | `je8086_morphs.json` (20 steps, paramIndex embedded) | **VERIFIED** — 46/46 `set_fx_param` of preset b44052f76c82a7a7, audible A/B (display names → `je8086_param_index_map.json`) | "Live verification" |
+| xenia | `xenia.json` (40) | `xenia_morphs_injectable.json` (per-step SysEx, off-by-2 fixed) | **VERIFIED AUDIBLE** — SysEx → edit buffer bank 0x20 (map: 1,166,386 values, 0 mismatches) | "Xenia injectability: MEASURED POSITIVE" |
+| nodalred2x | `nodalred2x.json` (40) | `nord_morphs/` (20 `.syx`) + `nord_morphs.json` | **VERIFIED AUDIBLE** — morph `.syx` via `load_nord_bank` (map: 5,350 files / 353,100 values / 0 mismatches) | "Nord morph performance: VERIFIED AUDIBLE" |
+| virus | `virus.json` (40, R7 via `virus_fx_pages.py`) | `virus_morphs.json` (per-step SysEx, TI/BC-tagged) | writer **format-verified** (checksum rule cited + validated); live A/B **BLOCKED — F-A** (Osirus renders bit-identical silence; preset-load ext absent); parameter path pending **F-B** | "Virus writer + R3 tools" / "F-A investigation complete" |
+| vavra | `vavra.json` (40) | `vavra_morphs.json` (blueprint-only) | **MEASURED NOT APPLYING** — queued=1, captureStatus=unchanged, render identical; puppetry not pursued | "Vavra injectability: MEASURED NEGATIVE" |
+
+Engine fix: `ensureLiveRouting` (deviceless seam) — fixed empty isolated-CLAP params
++ loader "track not found". MCP front door: `list_matrix_presets` /
+`apply_matrix_preset` (McpTools_Matrix.cpp). Full narrative:
+`docs/plans/2026-09-16-matrix-presets.md`.
+
 ## Goal
 Make every live-graph consumer (send_fx_midi family incl. load_nord_bank / load_virus_preset;
 PluginParamService getParams/getParamText/setParam) resilient to an unbuilt live routing

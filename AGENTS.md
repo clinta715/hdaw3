@@ -545,7 +545,11 @@ product pillar and should be reached for wherever it fits:
   NodalRed2x (Nord Lead 2x), Dexed (DX7) run as isolated CLAPs with their real
   firmware (installed in `C:\Program Files\Common Files\CLAP\` with ROMs).
   Injection tools: `send_fx_midi` (PC/CC/note/sysEx), `load_virus_preset`
-  (CC0 bank + PC), `load_dexed_cartridge` (.syx). Audition workflow:
+  (CC0 bank + PC), `load_dexed_cartridge` (.syx). Per-plugin **matrix presets + morph chains** exist
+  for all five devices (`timbre-lib/matrix_presets/`); apply them via the
+  `list_matrix_presets` / `apply_matrix_preset` MCP tools (xenia/nord/je8086
+  verified live; per-engine measured status in `docs/hardware-va-suite.md` §9).
+  Audition workflow:
   inject → `save_project` → `export_audio` → measure — the preset lives in the
   live plugin state; the save persists it into the tree for offline renders.
   Constraint: the serializer's size-regression guard protects plugin states
@@ -555,9 +559,13 @@ product pillar and should be reached for wherever it fits:
   (`.nl2x.json`), `je8086_patch.py` (`.je8086.json` + an exploded per-patch tree),
   `microq_patch.py` (`.vavra.json`); FileLibraryManager ingests all four (register
   the folder as a *patch* library). **Loaders are evidence-gated:** `load_nord_bank`
-  verified to change the render, `load_virus_preset` (CC0+PC) works, JE8086 DT1 dumps
+  verified to change the render, `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders on the
+  current build (preset-load ext absent; finding F-A — under investigation),
+  JE8086 DT1 dumps
   do NOT apply (its 461 parameters do), Vavra exposes no host parameters and its
-  SysEx injection is unverified. **Prefer the device over a plugin for movement:**
+  SysEx injection is MEASURED NOT APPLYING (2026-09-16/17: queued but state
+  unchanged; channel filter excluded — see
+  docs/plans/2026-09-16-matrix-preset-engine-fixes.md). **Prefer the device over a plugin for movement:**
   own modulation matrix → onboard FX → HDAW automation/track LFO → HDAW internal FX →
   third-party plugin last (plugin FX add CPU, latency, isolation and state-round-trip
   risk). Device matrix, per-device FX recipes and caveats:

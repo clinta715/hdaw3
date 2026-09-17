@@ -1,3 +1,5 @@
+EXECUTED 2026-09-16/17 — see docs/plans/2026-09-16-matrix-presets.md and docs/plans/2026-09-16-matrix-preset-engine-fixes.md (all deliverables done; virus R7 closed; live apply verified for je8086/xenia/nord; vavra/virus injectability documented as emulator limitations).
+
 # Handoff: per-core-plugin MATRIX PRESETS (harvest → curate → apply on the same plugin)
 
 Written 2026-09-16 to be executed from a **fresh context**. Self-contained: everything

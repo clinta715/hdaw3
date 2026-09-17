@@ -20,10 +20,10 @@ Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numb
 | Device | Emulation (CLAP) | Patches + pipeline | Loader status | Host params | Internal modulation | HDAW control |
 |---|---|---|---|---|---|---|
 | Roland JP-8000 | **JE8086** | 46 banks / 4983 entries / 2676 usable patches; `timbre-lib/je8086_patch.py` -> `<bank>.je8086.json` + exploded per-patch `.syx` (3689 files, verified 3689/0) | **DT1 dumps are NOT applied** (param cache byte-identical after injection; `jeLib/device.cpp` routes live MIDI to the DSP thread, the DT1 patch State is not on that path). Param writes DO work. | **461** (`list_fx_params`) | patch-level LFO1/LFO2 + ENV with destination switches (LFO1 dest: OSC1+2 / OSC2 / X-MOD), supersaw detune, onboard multi-FX + delay + tone | `set_fx_param` (works, verified), `send_fx_midi` CC/PC, SysEx dumps (queued, unverified) |
-| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | Injection queues and captures (440 B state) but **no audible change measured** and no way to observe it | **0** (`{"params":[]}`) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (unverified); no params to automate |
-| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0 bank + PC) works; SysEx unverified | **0** (measured: `list_fx_params` -> `{"params":[]}`, same as Vavra) — the out-of-band *probe* path can read them, the CLAP does not publish them | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | `load_virus_preset` + `send_fx_midi` CC/PC (works); **no param automation** |
+| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | Injection queues but **MEASURED NOT APPLYING** (2026-09-16: `captureStatus=unchanged`, renders identical — emulator limitation; see §9) | **0** (`{"params":[]}`) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (measured NOT applying); no params to automate |
+| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0+PC) queues but does NOT change renders — finding F-A, silent Osirus slot (see §9); dump writer `virus_dump.py` format-verified | **3,086** exposed on Osirus post-`ensureLiveRouting`, but `set_fx_param` name resolution diverges from `list_fx_params` — finding F-B (see §9) | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | `load_virus_preset` + `send_fx_midi` CC/PC (queue; renders currently silent — F-A); **no param automation** |
 | Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader; morph .syx chains VERIFIED AUDIBLE 2026-09-16 (`matrix_presets/nord_morphs/`, written by `nord_dump.py`: 5 pairs x 4 performable steps) | **none exposed** (the same pattern; its verified control path is the bank load) | MOD ENV + LFOs with per-parameter sensitivity dials (`parameterDescriptions_n2x.json`); NO onboard FX | `load_nord_bank` + CC/PC; HDAW internal FX |
-| Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | ROM preset only | **not exposed** (same pattern; not measured live) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | `load_virus_preset` CC/PC |
+| Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | edit-buffer SysEx **VERIFIED AUDIBLE** 2026-09-16 (bank 0x20, `xenia_dump.py` — see §9); patch-level unproven | **not exposed** (same pattern; not measured live) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | SysEx edit-buffer dumps via `send_fx_midi`; no host params |
 | Yamaha DX7 | **Dexed** | DX7 .syx import path exists | **cartridge injection ignored** (probed: peak 0, state byte-identical) -> use the internal `fm_synth` instead | n/a | FM operators/envelopes via `fm_synth` | internal `fm_synth` params |
 
 Grid-wide facts worth knowing before choosing a device:
@@ -93,12 +93,14 @@ effect whenever the device already has the effect onboard.
 - **Onboard FX** (chorus / flanger / phaser / delay / reverb) belong to the patch: set
   them inside the patch, since HDAW cannot reach them.
 - **Practical limit**: HDAW cannot automate or even observe this device; the only
-  host lever is a SysEx dump, which is unverified. Use it for texture and audition,
-  and prefer a device that exposes parameters when a part needs automation.
+  host lever is a SysEx dump, which is MEASURED NOT APPLYING (queued but state
+  unchanged — §9). Use it for texture and audition, and prefer a device that
+  exposes parameters when a part needs automation.
 
 ### Access Virus / OsTIrus, Osirus (params + CC)
 - **Preset selection** is CC0+PC (`load_virus_preset`) — the cheapest way to switch
-  character between sections.
+  character between sections (currently queues but does not change renders —
+  finding F-A, see §9).
 - **CC modulation**: automate brightness (CC74) and mod wheel (CC1) with
   `send_fx_midi` to drive the Virus's own matrix routings; this needs no parameters
   and survives as MIDI.
@@ -339,10 +341,13 @@ device-applicable configs — one sheet per engine at
 `timbre-lib/matrix_presets/<engine>.json`, schema `hdaw.matrix.preset.v1`.
 Shipped 2026-09-16: **je8086 40, nodalred2x 40, xenia 40, vavra 40** (vavra named
 for the 86-key FX/matrix subset via the verified offset map below; its other
-dump slots stay raw `off_<N>` keys) and **virus 1 + a recorded shortfall**
-(its sidecars are tone-param-only — see below). **Every sheet carries
-`"unverified": true`** until the live apply/ear pass (Phase D): the presets are
-corpus-derived candidates, not verified sounds.
+dump slots stay raw `off_<N>` keys); the **virus shortfall was removed
+2026-09-17 (R7)** — `virus_fx_pages.py` decodes the TI/B/C FX+mod pages, so
+virus ships **40** too (1.78M-value byte-match gate; see below). Sheets still
+carry the corpus flag `"unverified": true`, but the live apply/ear pass
+(Phase D) has since RUN — je8086/xenia/nodalred2x **verified live**, vavra
+**measured not applying**, virus **blocked by finding F-A**: see the status in
+the apply-path table below.
 
 ### File format
 
@@ -359,17 +364,19 @@ invented without a corpus citation.
 When FX/modulation work starts for a core plugin, look up
 `timbre-lib/matrix_presets/<engine>.json` **before** inventing chains or reaching
 for plugin FX — this is step 0 of the §2 policy. Apply the preset through its
-`appliesVia` path, then fall through §2's order only for what it does not cover.
+`appliesVia` path — or just use the `list_matrix_presets` / `apply_matrix_preset`
+MCP tools, the mechanical front door that resolves index maps and emits/injects
+SysEx — then fall through §2's order only for what it does not cover.
 
 ### Apply paths + Phase D verification checklist
 
 | Engine | `appliesVia` | Apply | Verify (Phase D) |
 |---|---|---|---|
-| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply) | `list_fx_params` readback before/after + ear; **hear != export** (its 233-byte state does not carry the patch, §1) |
-| NodalRed2x | `load_nord_bank` | load the preset as a bank/patch file | render assertion (the one verified bank loader) |
-| Virus | `midi_cc_pc` | `load_virus_preset` (CC0 + PC), then CC matrix writes via `send_fx_midi` | audible state change + ear |
-| Xenia | `sysex_edit_buffer_VERIFIED_AUDIBLE_2026-09-16 (single-dump to bank 0x20; morph chains performable via send_fx_midi; see xenia-offset-map.md); patch-level remaining` | patch-level or SysEx | single-dump SysEx injection MEASURED NOT APPLYING (2026-09-16: queued=1 but captureStatus=unchanged, render identical — only front-panel puppetry remains untested); D-lite state-blob round-trip first (below) |
-| Vavra | state blob or patch (no host params) | bake into the patch or front-panel puppetry (§7 row 5); params named where the verified offset map covers them, `off_<N>` otherwise | D-lite state-blob round-trip first (below) |
+| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply); names need `je8086_param_index_map.json` (the plugin publishes display names like 'A FLT CUTOFF FREQ') | **VERIFIED live** — 46/46 writes of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback before/after + ear; **hear != export** (its 233-byte state does not carry the patch, §1) |
+| NodalRed2x | `load_nord_bank` | load the preset as a bank/patch file; morph chains (`nord_morphs/`, 20 `.syx` written by `nord_dump.py`) load the same way | **VERIFIED AUDIBLE live** (morph-chain A/B; map 5,350 files / 353,100 values / 0 mismatches) — render assertion |
+| Virus | `midi_cc_pc` | writer `virus_dump.py` is format-verified (TI 524 B / B/C 267 B; checksum rule cited + validated); `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders on the current build (preset-load ext absent — finding F-A); parameter path possible (3,086 exposed params) pending F-B (`set_fx_param` name resolution diverges from `list_fx_params`) | live A/B **BLOCKED by F-A** — the Osirus slot renders bit-identical digital silence under all programs/dumps (root-cause chain + probe results in `docs/plans/2026-09-16-matrix-preset-engine-fixes.md`) |
+| Xenia | `sysex_edit_buffer_VERIFIED_AUDIBLE_2026-09-16` | single-dump SysEx to the **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` — dumps built by `xenia_dump.py`; morph chains performable; patch-level writes remain unproven | **VERIFIED AUDIBLE live** (pair A/B 2026-09-16; offset map 1,166,386 values, 0 mismatches); note `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |
+| Vavra | state blob or patch (no host params) | **NO working apply path** — single-dump injection MEASURED NOT APPLYING (2026-09-16: `queued=1` but `captureStatus=unchanged`, renders identical); `vavra_dump.py` + `vavra_morphs.json` remain blueprints; front-panel puppetry not pursued | none — documented emulator limitation (the child's state never moves); do not budget injection time here |
 
 **D-lite round-trip check** (any state-blob route: Vavra, Xenia): apply →
 `capture_fx_snapshot` → diff the captured state → render A/B. A capture that merely
@@ -379,11 +386,13 @@ means the state was a no-op.
 
 ### Virus shortfall + unblock
 
-The virus sidecars are tone-param-only — there are no per-patch FX/matrix values to
-cluster, so the sheet holds one feature-presence preset and records
-`presetsShortfall`. The unblock is a raw Virus dump decoder (the JP-8080-style
-work): once dumps decode to parameters, re-run the harvester and the
-matrix/vocoder/LFO configs cluster like the other engines'.
+Closed 2026-09-17 (R7): `virus_fx_pages.py` decodes the FX / modulation-matrix
+pages of every single dump (byte-match stop-gate: 5,425 dumps, 1,782,572 values,
+0 mismatches), the sidecars were re-swept to rev 2, and the re-run harvester
+shipped the full **40-preset** virus sheet plus `virus_morphs.json` (per-step
+SysEx, TI/BC model-tagged, written by `virus_dump.py`). What remains is live
+audibility only: finding F-A (the silent Osirus slot) blocks the A/B — see the
+apply-path table above.
 
 ### Vavra naming — the verified offset map
 
