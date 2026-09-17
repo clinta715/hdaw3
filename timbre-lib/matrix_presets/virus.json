@@ -1,0 +1,37 @@
+{
+ "engine": "virus",
+ "patchCount": 117,
+ "presets": [
+  {
+   "appliesVia": "midi_cc_pc",
+   "evidence": "117 patches carry this config",
+   "examples": [
+    " 3Up&3Down",
+    " Broke CRT",
+    " Eyes Wide",
+    " W tits W",
+    "#TEXTURES#"
+   ],
+   "id": "ba7a566b642e95f9",
+   "name": "chorus FX + delay FX + reverb FX + LFO1 + LFO2 + mod matrix + osc2 FM + ring mod",
+   "params": {
+    "fx_chorus": 1,
+    "fx_delay": 1,
+    "fx_reverb": 1,
+    "lfo1": 1,
+    "lfo2": 1,
+    "mod_matrix": 1,
+    "osc2_fm_amount": 1,
+    "ring_mod": 1
+   },
+   "role": "feature-presence"
+  }
+ ],
+ "presetsShortfall": "1 preset(s) < 10: the virus sidecar corpus carries no per-patch FX/matrix parameter values to cluster (see the module docstring); deferred until a richer sidecar pass or dump decoder exists.",
+ "scannedSidecars": 145,
+ "schema": "hdaw.matrix.preset.v1",
+ "sourceRoots": [
+  "Virus Presets"
+ ],
+ "unverified": true
+}

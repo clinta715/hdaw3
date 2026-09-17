@@ -150,6 +150,9 @@ parsing JSON files.
    agents already wrote, resolves collisions, and adds cross-section movement
    arcs (cutoff sweeps, pump, riser curves, delay throws, space changes). Single
    writer while dispatched; never notes, clips, or instruments; no exports.
+   Before FX work on a core synth, the FX role first looks up that plugin's
+   harvested matrix presets (`timbre-lib/matrix_presets/<engine>.json`,
+   `docs/hardware-va-suite.md` §9).
 5. **Mix Verifier**: renders + measures async; on FAIL it names the fix and the
    owning role; bounded to 3 render/rework loops before reporting to the user.
 6. **Persist** only on a PASS verdict (`save_project`), then stop.

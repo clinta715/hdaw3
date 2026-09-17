@@ -708,6 +708,10 @@ to the instrument build).
 
 #### Gearmulator internal-FX recipes (probe-verified indices, 2026-09-16)
 
+Before hand-picking a chain below, check the device's harvested matrix presets
+first (`timbre-lib/matrix_presets/<engine>.json`, `docs/hardware-va-suite.md` §9)
+— they are corpus-derived device-native configs.
+
 Address any internal-FX param as a plugin param: `list_fx_params {trackId,
 slotIndex}` → `paramID` (formula `100 + slotIndex*100 + paramIndex`) → drive it
 with `set_fx_param` (normalized 0-1, by paramName or paramIndex), automation

@@ -162,6 +162,47 @@ the patch applied. The emulation's own State does receive external dumps
 so the remaining check is interactive: open Vavra's editor and watch its LCD after
 injecting. No loader tool is shipped until that check passes.
 
+## Matrix preset harvester (named FX/mod-matrix presets per engine)
+
+`harvest_matrix_presets.py` clusters the FX / modulation-matrix parameter
+tuples found in the patch sidecars into named, device-applicable presets and
+writes one sheet per engine to `matrix_presets/<engine>.json` (schema
+`hdaw.matrix.preset.v1`, `unverified: true` until the live apply/ear pass).
+Unlike `harvest_fx_presets.py` (which harvests FX value *distributions* for
+re-creation with HDAW's internal FX), one preset here is the full matrix/FX
+tuple of one canonical patch config. Lookup rule + apply-path table:
+`docs/hardware-va-suite.md` §9. Plan: `docs/plans/2026-09-16-matrix-presets.md`.
+
+Usage (roots default to the known engine libraries; stdlib only):
+
+    py -3 timbre-lib/harvest_matrix_presets.py                  # real roots
+    py -3 timbre-lib/harvest_matrix_presets.py --out-dir DIR ROOT... \
+        --vocab xenia=<parameterDescriptions_xt.json> \
+        --offset-map vavra=timbre-lib/matrix_presets/vavra_offset_map.json
+
+`--vocab ENGINE=PATH` overrides an index→name vocabulary, `--offset-map
+ENGINE=PATH` a dump-offset→name map (auto-detected for vavra); optional
+`--max-presets N` (default 40) and repeatable `--engine`.
+
+Shipped 2026-09-16: je8086 40 (`set_fx_param`), nodalred2x 40
+(`load_nord_bank`), xenia 40 (`patch_or_sysex_unverified`), vavra 40
+(`state_blob_or_patch_unverified`), virus 1 (`midi_cc_pc`) + a recorded
+`presetsShortfall` — the Virus sidecars are tone-param-only, so there are no
+per-patch FX/matrix values to cluster until a raw dump decoder exists.
+
+Vavra naming provenance: `matrix_presets/vavra-offset-map.md` (+ the
+machine-readable `vavra_offset_map.json`) verifies **dump byte = 7 + linear
+parameterDescriptions index** against the mqLib sources and 305 real
+sidecar/syx pairs; the map covers the 86-key FX/matrix subset, so vavra
+presets carry those names and keep raw `off_<N>` keys for the other dump
+slots.
+
+Tests (pytest 9.1.1 lives in the /tmp/hdawpylib scratch dir in this WSL
+environment; recreate with `pip install --target /tmp/hdawpylib pytest` if
+missing):
+
+    PYTHONPATH=/tmp/hdawpylib python3 -m pytest timbre-lib/test_harvest_matrix_presets.py -q
+
 ## Analyze a folder
     ./analyze.sh <folder> [--limit N] [--no-llm] [--sidecars]
 (plain `python` on this WSL box has no ML toolchain; use ./analyze.sh, or set

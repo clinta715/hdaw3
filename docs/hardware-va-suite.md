@@ -327,9 +327,75 @@ movement planes** (the modulation-first policy), which is the only way to use th
 the devices that publish no host parameters. Two honest limits: (a) the harvested values
 live in each device's own parameter space, so reproducing them is an approximation, not
 a byte-exact transfer; (b) microQ parameters in its sidecars are stored as **dump
-offsets**, not device parameter indices, so `vavra` currently yields no named recipes -
-mapping the dump layout onto the device vocabulary is the open task (the vocabulary is
-harvested already, `866` names).
+offsets**, not device parameter indices; the dump layout is now MAPPED (dump byte = 7 +
+linear parameter-descriptions index, verified over 305 sidecar/syx pairs), so `vavra`
+ships named matrix presets for the 86-key FX/matrix subset — see section 9 (every other
+dump slot stays a raw `off_<N>` key; naming the full 363-param block remains open).
+
+## 9. Per-plugin matrix presets (harvested)
+
+`timbre-lib/harvest_matrix_presets.py` turns the §7b mining into concrete, named,
+device-applicable configs — one sheet per engine at
+`timbre-lib/matrix_presets/<engine>.json`, schema `hdaw.matrix.preset.v1`.
+Shipped 2026-09-16: **je8086 40, nodalred2x 40, xenia 40, vavra 40** (vavra named
+for the 86-key FX/matrix subset via the verified offset map below; its other
+dump slots stay raw `off_<N>` keys) and **virus 1 + a recorded shortfall**
+(its sidecars are tone-param-only — see below). **Every sheet carries
+`"unverified": true`** until the live apply/ear pass (Phase D): the presets are
+corpus-derived candidates, not verified sounds.
+
+### File format
+
+A sheet is `{schema, engine, patchCount, scannedSidecars, sourceRoots, presets,
+unverified}` (plus `presetsShortfall` when an engine yields fewer than 10). Each
+preset is `{id, name, role, params, appliesVia, examples, evidence}` — `params`
+carry the device's own parameter names (JE8086 `FilterLfo1Depth`, Virus
+`mod_matrix`, ...), `examples` name the corpus patches the config came from, and
+`evidence` is the count trail ("943 patches carry this config"). No preset is
+invented without a corpus citation.
+
+### Lookup-first workflow rule
+
+When FX/modulation work starts for a core plugin, look up
+`timbre-lib/matrix_presets/<engine>.json` **before** inventing chains or reaching
+for plugin FX — this is step 0 of the §2 policy. Apply the preset through its
+`appliesVia` path, then fall through §2's order only for what it does not cover.
+
+### Apply paths + Phase D verification checklist
+
+| Engine | `appliesVia` | Apply | Verify (Phase D) |
+|---|---|---|---|
+| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply) | `list_fx_params` readback before/after + ear; **hear != export** (its 233-byte state does not carry the patch, §1) |
+| NodalRed2x | `load_nord_bank` | load the preset as a bank/patch file | render assertion (the one verified bank loader) |
+| Virus | `midi_cc_pc` | `load_virus_preset` (CC0 + PC), then CC matrix writes via `send_fx_midi` | audible state change + ear |
+| Xenia | `sysex_edit_buffer_VERIFIED_AUDIBLE_2026-09-16 (single-dump to bank 0x20; morph chains performable via send_fx_midi; see xenia-offset-map.md); patch-level remaining` | patch-level or SysEx | single-dump SysEx injection MEASURED NOT APPLYING (2026-09-16: queued=1 but captureStatus=unchanged, render identical — only front-panel puppetry remains untested); D-lite state-blob round-trip first (below) |
+| Vavra | state blob or patch (no host params) | bake into the patch or front-panel puppetry (§7 row 5); params named where the verified offset map covers them, `off_<N>` otherwise | D-lite state-blob round-trip first (below) |
+
+**D-lite round-trip check** (any state-blob route: Vavra, Xenia): apply →
+`capture_fx_snapshot` → diff the captured state → render A/B. A capture that merely
+echoes the boot state is not persisted (`captureStatus="unchanged"` — read that
+field before assuming a capture happened), and a render peak identical to 16 digits
+means the state was a no-op.
+
+### Virus shortfall + unblock
+
+The virus sidecars are tone-param-only — there are no per-patch FX/matrix values to
+cluster, so the sheet holds one feature-presence preset and records
+`presetsShortfall`. The unblock is a raw Virus dump decoder (the JP-8080-style
+work): once dumps decode to parameters, re-run the harvester and the
+matrix/vocoder/LFO configs cluster like the other engines'.
+
+### Vavra naming — the verified offset map
+
+microQ sidecars store single-program **dump offsets** (bytes 7..369), not device
+parameter names. `timbre-lib/matrix_presets/vavra-offset-map.md` (+ the
+machine-readable `vavra_offset_map.json`) verifies the rule **dump byte = 7 +
+linear parameterDescriptions index** (one 7-bit byte per parameter, no packing;
+single programs only) against the `mqLib` sources and 305 real sidecar/syx pairs.
+Applying the map to the vavra sheet's offset keys yields device names
+(`F2ModSource`, `FX1Type`, ...) for the 86-key FX/matrix subset; the shipped
+sheet carries those names and keeps raw `off_<N>` keys for every other dump
+slot — this closes the vavra gap named in §7b.
 
 ## 6. Pipeline commands (one line each)
 

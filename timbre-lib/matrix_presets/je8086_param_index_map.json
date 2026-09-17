@@ -1,0 +1,287 @@
+{
+ "schema": "hdaw.je8086.param.index.map.v1",
+ "note": "decoder-name -> live plugin param index (token-fold match, extra<=2); regenerated 2026-09-16 against the 461-param table",
+ "matched": 46,
+ "unmatched": [
+  "AutoPanManualPanSwitch",
+  "MultiEffectsType"
+ ],
+ "map": {
+  "AmpEnvelopeAttackTime": {
+   "index": 73,
+   "plugin": "A AMP ENV ATTACK",
+   "extra": 0,
+   "ties": 1
+  },
+  "AmpEnvelopeDecayTime": {
+   "index": 74,
+   "plugin": "A AMP ENV DECAY",
+   "extra": 0,
+   "ties": 1
+  },
+  "AmpEnvelopeReleaseTime": {
+   "index": 76,
+   "plugin": "A AMP ENV RELEASE",
+   "extra": 0,
+   "ties": 1
+  },
+  "AmpEnvelopeSustainLevel": {
+   "index": 75,
+   "plugin": "A AMP ENV SUSTAIN",
+   "extra": 0,
+   "ties": 1
+  },
+  "AmpLfo1Depth": {
+   "index": 70,
+   "plugin": "A AMP LFO1 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "AmpLfo2Depth": {
+   "index": 72,
+   "plugin": "A AMP LFO2 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlAmpEnvAttackTime": {
+   "index": 124,
+   "plugin": "A C.AMP ENV ATTACK",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlAmpLevel": {
+   "index": 121,
+   "plugin": "A C.AMP LEVEL",
+   "extra": 1,
+   "ties": 1
+  },
+  "ControlAmpLfo1Depth": {
+   "index": 122,
+   "plugin": "A C.AMP LFO1 DPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlCrossModulationDepth": {
+   "index": 98,
+   "plugin": "A C.CROSS MOD DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlCutoffFrequency": {
+   "index": 111,
+   "plugin": "A C.CUTOFF FREQ",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlFilterEnvDepth": {
+   "index": 116,
+   "plugin": "A C.FIT ENV DPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlLfo1Rate": {
+   "index": 95,
+   "plugin": "A CTRL LFO1 RATE",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlLfo2Rate": {
+   "index": 97,
+   "plugin": "A CTRL LFO2 RATE",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlOsc2FineWide": {
+   "index": 108,
+   "plugin": "A C.OSC2 FINE WIDE",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlOsc2Range": {
+   "index": 107,
+   "plugin": "A C.OSC2 RANGE",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlOscillatorBalance": {
+   "index": 99,
+   "plugin": "A C.OSC BALANCE",
+   "extra": 0,
+   "ties": 1
+  },
+  "ControlResonance": {
+   "index": 112,
+   "plugin": "A C.RESONANCE",
+   "extra": 0,
+   "ties": 1
+  },
+  "CrossModulationDepth": {
+   "index": 22,
+   "plugin": "A CROSS MOD DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "CutoffFrequency": {
+   "index": 59,
+   "plugin": "A FLT CUTOFF FREQ",
+   "extra": 1,
+   "ties": 3
+  },
+  "CutoffSlope": {
+   "index": 58,
+   "plugin": "A CUTOFF SLOPE",
+   "extra": 0,
+   "ties": 1
+  },
+  "DelayFeedback": {
+   "index": 86,
+   "plugin": "A DELAY FEEDBACK",
+   "extra": 0,
+   "ties": 2
+  },
+  "DelayLevel": {
+   "index": 84,
+   "plugin": "A DELAY TYPE",
+   "extra": 1,
+   "ties": 10
+  },
+  "DelayTime": {
+   "index": 84,
+   "plugin": "A DELAY TYPE",
+   "extra": 1,
+   "ties": 10
+  },
+  "DelayType": {
+   "index": 84,
+   "plugin": "A DELAY TYPE",
+   "extra": 0,
+   "ties": 2
+  },
+  "FilterEnvelopeAttackTime": {
+   "index": 65,
+   "plugin": "A FLT ENV ATTACK",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterEnvelopeDecayTime": {
+   "index": 66,
+   "plugin": "A FLT ENV DECAY",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterEnvelopeDepth": {
+   "index": 64,
+   "plugin": "A FLT ENV DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterEnvelopeReleaseTime": {
+   "index": 68,
+   "plugin": "A FLT ENV RELEASE",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterEnvelopeSustainLevel": {
+   "index": 67,
+   "plugin": "A FLT ENV SUSTAIN",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterLfo1Depth": {
+   "index": 62,
+   "plugin": "A FLT LFO1 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "FilterLfo2Depth": {
+   "index": 63,
+   "plugin": "A FLT LFO2 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "Lfo1AndEnvelopeDestination": {
+   "index": 24,
+   "plugin": "A LFO1 & ENV DEST",
+   "extra": 0,
+   "ties": 1
+  },
+  "Lfo1Fade": {
+   "index": 18,
+   "plugin": "A LFO1 FADE",
+   "extra": 0,
+   "ties": 1
+  },
+  "Lfo1Rate": {
+   "index": 17,
+   "plugin": "A LFO1 RATE",
+   "extra": 0,
+   "ties": 1
+  },
+  "Lfo1Waveform": {
+   "index": 16,
+   "plugin": "A LFO1 Waveform",
+   "extra": 0,
+   "ties": 1
+  },
+  "Lfo2DepthSelect": {
+   "index": 26,
+   "plugin": "A PITCH LFO2 DEPTH",
+   "extra": 1,
+   "ties": 3
+  },
+  "Lfo2Rate": {
+   "index": 19,
+   "plugin": "A LFO2 RATE",
+   "extra": 0,
+   "ties": 1
+  },
+  "MultiEffectsLevel": {
+   "index": 83,
+   "plugin": "A MULTI-FX LEVEL",
+   "extra": 1,
+   "ties": 1
+  },
+  "OscLfo1Depth": {
+   "index": 25,
+   "plugin": "A OSC LFO1 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "PitchEnvelopeAttackTime": {
+   "index": 28,
+   "plugin": "A PITCH ENV ATTACK",
+   "extra": 0,
+   "ties": 1
+  },
+  "PitchEnvelopeDecayTime": {
+   "index": 29,
+   "plugin": "A PITCH ENV DECAY",
+   "extra": 0,
+   "ties": 1
+  },
+  "PitchEnvelopeDepth": {
+   "index": 27,
+   "plugin": "A PITCH ENV DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "PitchLfo2Depth": {
+   "index": 26,
+   "plugin": "A PITCH LFO2 DEPTH",
+   "extra": 0,
+   "ties": 1
+  },
+  "Resonance": {
+   "index": 444,
+   "plugin": " RESONANCE",
+   "extra": 0,
+   "ties": 1
+  },
+  "RingModulatorSwitch": {
+   "index": 21,
+   "plugin": "A RING MODULATOR",
+   "extra": 0,
+   "ties": 1
+  }
+ }
+}

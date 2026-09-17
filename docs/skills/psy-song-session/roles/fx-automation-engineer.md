@@ -24,6 +24,26 @@ parameters; DT1 dumps do NOT apply), Virus → `load_virus_preset` and CC via
 the effects it lacks, microQ/Vavra → no host parameters (matrix only), Dexed → use
 the internal `fm_synth`. Full recipes: `docs/hardware-va-suite.md` §3.
 
+## Matrix presets first (step 0 of the modulation-first rule)
+
+Before inventing an FX chain or reaching for plugin FX on a core synth, look up
+`timbre-lib/matrix_presets/<engine>.json` — named FX/mod-matrix configs harvested
+from that plugin's own patch corpus (schema `hdaw.matrix.preset.v1`; 40 presets
+per engine, virus 1 + a recorded shortfall). Every sheet ships `unverified: true`
+until the live apply/ear pass, so apply → audition → re-verify. Use the engine's
+verified apply path and fall through the modulation-first order only for what the
+preset does not cover:
+
+| Engine | Apply (`appliesVia`) | Verify |
+|---|---|---|
+| je8086 | `set_fx_param` by **name** — never dump offsets; DT1 dumps do not apply | `list_fx_params` readback + ear; **hear != export** (its state does not carry the patch) |
+| nodalred2x | `load_nord_bank` | render assertion (the verified bank loader) |
+| virus | `load_virus_preset` (CC0+PC) + CC matrix | state change + ear |
+| xenia | patch or SysEx (unverified) | state-blob round-trip first |
+| vavra | patch bake / front-panel puppetry (no host params; offset-keyed params, named via the verified offset map) | state-blob round-trip first |
+
+Format, shortfall and Phase D checklist: `docs/hardware-va-suite.md` §9.
+
 ## Surface area
 `list_fx_chains`, `load_fx_chain`, `add_fx`, `remove_fx`, `set_fx_param`,
 `apply_movement_plan` (batch section-aware movement across tracks in ONE undo unit),
@@ -64,6 +84,11 @@ FORBIDDEN: all note/clip generators and mutators (`add_notes`, `place_patterns`,
   proves the automation is actually driving the DSP.
 
 ## Procedure
+0. **Matrix presets first**: for a core-synth track, read
+   `timbre-lib/matrix_presets/<engine>.json` before inventing chains or adding
+   plugin FX; pick a harvested preset, apply it via its `appliesVia` path, then
+   audition and re-verify (sheets ship `unverified: true` — "Matrix presets
+   first" above).
 1. **Read the state + layer ledger**: `list_tracks`, `list_automation_lanes`
    per track, plus `get_layer_handoffs` (the project-native ledger written by the
    layer agents — `compositions/<song>/layers.json` is only the human mirror). Know
