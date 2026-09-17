@@ -306,3 +306,47 @@ sendFxMidi has (prepare slot 44100/512/2 + drive N scratch blocks before capturi
 or route apply_matrix_preset's capture through sendFxMidi's scratch path. Then:
 apply -> capture(ok, real state) -> offline renders reflect presets -> the JE8086
 (and virus-param) ear passes work end to end.
+
+
+## F-A INTERMITTENCY CHARACTERIZED (2026-09-17, final state of remote probing)
+
+The param-apply -> offline-render transfer is INTERMITTENT across engine boots, and
+the boot-time device/clock state is the variable. Evidence across sessions:
+
+- Session A (worked): 46/46 set_fx_param writes -> verify_part offline render MOVED
+  (0.0704 -> 0.0521). Init renders elsewhere were deterministic, so this delta was the
+  preset reaching the render.
+- Session B (failed): the 40-preset ear pass with identical calls -> all renders
+  bit-identical init audio; captureToTree polls never reached ok (capOther=40).
+- Session C (worked): captureToTree canary -> cap_02/cap_03 md5s differ from 00/01 —
+  capture + transfer worked again.
+- Session D (failed): single apply + 6x poll (900ms apart) -> deferred capture FIRED
+  (callAfterDelay worked, message thread alive) but read state BIT-IDENTICAL to boot
+  ('unchanged') — i.e. the live child never drained the param ring despite the device
+  object reporting present ('Windows Audio (Low Latency Mode)' restored; deviceOpen=true
+  takes the deferred branch).
+
+CONSTANTS across all sessions: isolated children spawn/create fine; offline renders
+work; deferred capture fires; the D-lite unchanged guard is what reports the miss.
+VARIABLE: whether the live graph actually clocks after 'saved audio device restored'
+(driver=Windows Audio (Low Latency Mode), out="" in="" — a restore that may or may not
+yield real audio callbacks on this RDP box).
+
+WHY SYSEX KITS (xenia/nord) WORKED ANYWAY: uncertain — either those sessions had
+clocking live graphs, or the metered SysEx drain + scratch paths differ. Marked
+UNCERTAIN; the engine-side instrumentation below resolves it.
+
+NEXT STEP (requires a Windows-side interactive session, not remote probing):
+instrument the live clock — log every processBlock entry of MainAudioProcessor (or
+toggle a counter via get_fx_capture_status) and watch across a device restore:
+1. does getCurrentAudioDevice()->isRunning() ever become true after restore?
+2. do MainAudioProcessor::processBlock callbacks fire?
+3. does the param ring drain count advance on setParam?
+If the live graph never clocks deviceless, the durable fix is one of:
+(a) captureFxSlotState: prefer the SYNCHRONOUS scratch-drive path whenever the live
+clock is not actually running (check a processBlock counter, not just device presence) —
+same shape sendFxMidi already has; or
+(b) a headless scratch-clock timer that pumps the live graph at N ms intervals when
+no device is running (makes ALL live-side writes work headless; bigger blast radius).
+Both fix the class: param applies, queued MIDI, and any future live-side state writes
+would reach offline renders on deviceless/boxless sessions.
