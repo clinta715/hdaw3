@@ -8,6 +8,7 @@ namespace mcp {
 void registerFxTools(McpServer& s, AudioEngine* e)
 {
     registerFxSlotTools(s, e);
+    registerMatrixTools(s, e);
     registerFxPresetTools(s, e);
     registerFxChainTools(s, e);
     registerSamplerTools(s, e);

@@ -256,6 +256,7 @@ src/engine/StretchRenderer.cpp
     src/mcp/McpTools_Engine.cpp
     src/mcp/McpTools_Tuning.cpp
     src/mcp/McpTools_Rave.cpp
+    src/mcp/McpTools_Matrix.cpp
     src/mcp/McpTransportLoopback.cpp
     src/mcp/McpTransportStdio.cpp
     src/mcp/McpTransportHttp.cpp
