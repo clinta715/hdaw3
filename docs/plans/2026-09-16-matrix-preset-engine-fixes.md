@@ -212,3 +212,24 @@ FIX OPTIONS (from the investigation, for the standing stability discussion):
 (d) lead-in/retry heuristics at the composition layer (S, S — buys bring-up time,
     cannot fix the hard drop).
 Ranked: probe the channel question first (cheap), then (a) if timing-dominated.
+
+
+## Channel probe: filter EXCLUDED; ROM sweep negative (2026-09-17)
+
+- Channel filter ruled OUT as the note-drop cause: MidiClipProcessor emits notes on
+  JUCE channel 1 (nibble 0; setMidiChannel default 1, nothing overrides it in these
+  sessions) and the Virus filter drops only channel != GLOBAL_CHANNEL (boot = 0x0) —
+  our notes PASS the filter. The silence must come from the OS not playing its current
+  (boot) patch for the phrase, or from MIDI-in not reaching the OS at all.
+- ROM sweep: load_virus_preset over banks 0-1 x programs {0,1,32,64,96} (10 combos,
+  fresh Osirus slot, bass phrase) -> zero audible results. Consistent with: the RAM
+  banks boot as init-silent patches AND/OR the OS not yet consuming selects at probe
+  time (bring-up in emulated time), and/or m_singles content state.
+- Conclusion: the remaining cause is emulator-internal (OS boot/bring-up state or
+  MIDI-in wiring in the CLAP wrapper), beyond what HDAW-side tooling can observe.
+  The decisive next step is INTERACTIVE: open the Osirus editor and watch the LCD
+  while notes play (same procedure the microQ pipeline prescribed), or debug the
+  emulation itself.
+- HDAW-side status is final for now: all five engines have complete, validated,
+  committed morph/preset pipelines; Virus + Vavra live-injectability are emulator
+  limitations (documented), JE8086/Xenia/Nord are live-performable.
