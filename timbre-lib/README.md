@@ -8,6 +8,7 @@ Pipeline: DSP descriptors -> CLAP captions + AudioSet tags -> Qwen2.5-3B prose.
 | Decoder | Engine (sidecar) | Library | Sidecar name | Notes |
 | --- | --- | --- | --- | --- |
 | `virus_patch.py` | `sub_synth` | Virus patch library | `<patch>.virus.json` | mapped onto the internal sub_synth |
+| `virus_fx_pages.py` | (enriches `sub_synth`) | Virus patch library | `<patch>.virus.json` rev 2 | FX/mod-matrix page decode; byte-match stop-gate; `harvest_matrix_presets` clusters it |
 | `nl2x_patch.py` | `nodalred2x` | `D:\pdf\NL2x Banks` | `<patch>.nl2x.json` | 6841 sidecars; `load_nord_bank` verified |
 | `je8086_patch.py` | `je8086` | `D:\pdf\je8086` | `<bank>.je8086.json` | + exploded per-patch tree; DT1 dumps do not apply |
 | `microq_patch.py` | `vavra` | `D:\pdf\rhythm-lab.com_waldorf_micro_q` | `<patch>.vavra.json` | categories from the dump; no host params |
@@ -186,9 +187,12 @@ ENGINE=PATH` a dump-offset→name map (auto-detected for vavra); optional
 
 Shipped 2026-09-16: je8086 40 (`set_fx_param`), nodalred2x 40
 (`load_nord_bank`), xenia 40 (`patch_or_sysex_unverified`), vavra 40
-(`state_blob_or_patch_unverified`), virus 1 (`midi_cc_pc`) + a recorded
-`presetsShortfall` — the Virus sidecars are tone-param-only, so there are no
-per-patch FX/matrix values to cluster until a raw dump decoder exists.
+(`state_blob_or_patch_unverified`). Virus shipped 1 (`midi_cc_pc`) + a
+recorded `presetsShortfall` on 2026-09-16 (sidecars were tone-param-only);
+the fx-pages decode below removed the shortfall on 2026-09-17: virus now
+ships **40** (`midi_cc_pc`, 148 rev-2 sidecars over 5,425 dumps) plus
+`virus_morphs.json` (5 pairs x 4 steps, `program_writer_pending`,
+unverified).
 
 Vavra naming provenance: `matrix_presets/vavra-offset-map.md` (+ the
 machine-readable `vavra_offset_map.json`) verifies **dump byte = 7 + linear
@@ -295,9 +299,60 @@ library. Survey output goes to the `--out` path only.
   name_ok, mapped_params: {avg,min,max}, top_unmapped}}, totals}`.
 - Stable output: identical inputs produce byte-identical
   `json.dumps(report, sort_keys=True)`.
-- Tests: `python -m pytest test_virus_patch.py -q` (34 tests: per-format
-  parsing on real fixtures, mapping contract, stable JSON, error paths,
-  survey invariants).
+- Tests: `python -m pytest test_virus_patch.py -q` (per-format parsing on
+  real fixtures, mapping contract, stable JSON, error paths, survey
+  invariants, fx-pages CLI wiring).
+
+## Virus FX / modulation-matrix page decoder (sidecarRev 2)
+
+`virus_fx_pages.py` decodes the FX / mod-matrix bytes of every Access Virus
+single dump into NAMED values using the gearmulator vocabularies
+(`osTIrusJucePlugin/parameterDescriptions_TI.json` for TI pages 112-115,
+`osirusJucePlugin/parameterDescriptions_C.json` for B/C pages 112-113;
+payload offset = `(page - 112) * 128 + index`), and re-sweeps the sidecars
+to rev 2 (every rev-1 FileLibraryManager key preserved + `sidecarRev`,
+`fxModel`, `fxParams`, `fxCoverage`).
+
+    python virus_fx_pages.py --sweep "D:\pdf\Virus Presets" [--role bass] [--verify-only]
+    python virus_fx_pages.py --dump <file.syx|.mid|.vhc|tdm-chunk>
+    python virus_patch.py --fx-pages "D:\pdf\Virus Presets" [--fx-verify-only]
+    python virus_fx_pages.py --morphs --sheet matrix_presets/virus.json \
+        --pairs 16:26,9:20,22:39,12:34,0:30 --steps 4 \
+        --out matrix_presets/virus_morphs.json
+
+- STOP-GATE (byte-match): every dump is parsed twice (virus_patch and this
+  module's own container walker) and the payloads must agree; the vocab
+  decode is then rebuilt into a payload and compared byte-for-byte. Corpus
+  run 2026-09-17: 5,425 dumps (4,597 TI + 828 B/C), 1,782,572 values
+  verified, 0 mismatches, 0 cross-parse disagreements -> PASS. The sweep
+  exits 1 on any mismatch.
+- Checksum rule, cited from the dump definitions in both vocab files
+  (`{"type": "checksum", "first": 5, "last": ...}`):
+  `(dev + 0x10 + bank + prog + sum(payload)) & 0x7F` at byte 265 (B/C) /
+  522 (TI). 4,950/5,425 dumps carry ok checksums, 104 TDM chunks are
+  checksum-NA, and 3 vendor banks (AZS Dream State .syx/.mid, Best Analog
+  B/C .mid) store bytes matching no consistent formula while still decoding
+  byte-exactly - reported, never gating.
+- Anchors (handoff 2026-09-16): Assign1 Source/Destination = page 113 idx
+  64/65, Assign2 Source 67, Assign3 Source 72, Assign1 Amount 66;
+  Chorus/Type = TI page 112 idx 103; Ringmodulator Volume = B/C 112/38 and
+  TI 112/50; Vocoder Mode = 113/39 (both), Vocoder/Carrier Center Frequency
+  = TI 112/40. All asserted in `test_virus_fx_pages.py`.
+- Coverage is honest: slots with no vocabulary entry stay unnamed holes
+  (never invented); the sweep counts them and flags any nonzero hole byte
+  (mainly TI pages 114/115 - real data, no public name in the json).
+- The SMF walker is deliberately independent of virus_patch's
+  `parse_stdmidi`; two real bugs it exposed are regression-tested (MThd
+  length lives at offset 4; the 0xFF meta-TYPE byte precedes the length
+  VLQ - files with an early port meta lost every message before the fix).
+- Morph blueprints follow the repo convention: CONTINUOUS keys
+  (amounts/levels/volumes/depths/rates/frequencies) interpolate, DISCRETE
+  keys (types/sources/destinations/modes) anchor to A and are listed in
+  `jumps`; every step is `appliesVia: program_writer_pending`,
+  `unverified: true` (virus apply needs a future SysEx writer).
+- Tests: `python -m pytest test_virus_fx_pages.py -q` (anchors, checksum
+  rule, byte-match, SMF regressions, sidecar contract, determinism, CLI,
+  morph builder).
 
 ## Use in HDAW (MCP tools)
     1. add_library  {name, path: "D:\\...\\samples", type: "audio"}

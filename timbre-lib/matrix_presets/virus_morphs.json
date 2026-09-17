@@ -1,0 +1,4387 @@
+{
+  "pairs": [
+    {
+      "distance": 0.477944,
+      "pair": "16:26",
+      "parents": [
+        {
+          "id": "d118fccc202e56e4",
+          "name": "3-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed"
+        },
+        {
+          "id": "8f220b39ff354755",
+          "name": "4-slot matrix + chorus + delay + ring mod + phaser + eq + LFO routed"
+        }
+      ],
+      "steps": [
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between d118fccc202e56e4 and 8f220b39ff354755; discrete keys anchored to d118fccc202e56e4",
+            "id": "319a1a0c239f2350",
+            "interp": {
+              "Assign 4 Amount": [
+                64,
+                60
+              ],
+              "Assign 5 Amount": [
+                64,
+                0
+              ],
+              "Assign1 Amount": [
+                64,
+                79
+              ],
+              "Assign2 Amount1": [
+                64,
+                127
+              ],
+              "Assign3 Amount1": [
+                64,
+                0
+              ],
+              "Assign3 Amount2": [
+                64,
+                0
+              ],
+              "Assign3 Amount3": [
+                64,
+                0
+              ],
+              "Bass Intensity": [
+                100,
+                62
+              ],
+              "Chorus Depth": [
+                127,
+                85
+              ],
+              "Chorus Mix": [
+                16,
+                65
+              ],
+              "Distortion Intensity": [
+                127,
+                0
+              ],
+              "HighEQ Frequency": [
+                85,
+                0
+              ],
+              "HighEQ Gain": [
+                64,
+                127
+              ],
+              "LFO1 Assign Amount": [
+                76,
+                66
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                61
+              ],
+              "Lfo3 Fade-In Time": [
+                16,
+                0
+              ],
+              "LowEQ Frequency": [
+                43,
+                44
+              ],
+              "LowEQ Gain": [
+                64,
+                105
+              ],
+              "MidEQ Frequency": [
+                71,
+                14
+              ],
+              "MidEQ Gain": [
+                64,
+                92
+              ],
+              "Phaser Depth": [
+                112,
+                0
+              ],
+              "Phaser Feedback": [
+                16,
+                44
+              ],
+              "Phaser Frequency": [
+                48,
+                40
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ],
+              "Phaser Spread": [
+                64,
+                35
+              ],
+              "Ringmodulator Volume": [
+                127,
+                46
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Destination",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Bass Tune",
+              "Chorus Delay",
+              "Chorus Lfo Shape",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "LFO2 Assign Dest",
+              "Lfo1 Env Mode",
+              "Lfo2 Clock",
+              "Lfo2 Env Mode",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 3-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + ring mod + phaser + eq + LFO routed (step 1/5)",
+            "params": {
+              "Assign 4 Amount": 63.2,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 51.2,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 67.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 76.6,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 51.2,
+              "Assign3 Amount2": 51.2,
+              "Assign3 Amount3": 51.2,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 92.4,
+              "Bass Tune": 32,
+              "Chorus Delay": 36,
+              "Chorus Depth": 118.6,
+              "Chorus Feedback": 34,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 25.8,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 7,
+              "Distortion Intensity": 101.6,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 68.0,
+              "HighEQ Gain": 76.6,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 74.0,
+              "LFO1 Assign Dest": 9,
+              "LFO2 Assign Amount": 92.2,
+              "LFO2 Assign Dest": 102,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 5,
+              "Lfo2 Env Mode": 127,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 5,
+              "Lfo3 Fade-In Time": 12.8,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43.2,
+              "LowEQ Gain": 72.2,
+              "MidEQ Frequency": 59.6,
+              "MidEQ Gain": 69.6,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 89.6,
+              "Phaser Feedback": 21.6,
+              "Phaser Frequency": 46.4,
+              "Phaser Mix": 0,
+              "Phaser Mode": 5,
+              "Phaser Rate": 28.8,
+              "Phaser Spread": 58.2,
+              "Ringmodulator Volume": 110.8,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "d118fccc202e56e4",
+              "8f220b39ff354755"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between d118fccc202e56e4 and 8f220b39ff354755; discrete keys anchored to d118fccc202e56e4",
+            "id": "2cce17383ed4e982",
+            "interp": {
+              "Assign 4 Amount": [
+                64,
+                60
+              ],
+              "Assign 5 Amount": [
+                64,
+                0
+              ],
+              "Assign1 Amount": [
+                64,
+                79
+              ],
+              "Assign2 Amount1": [
+                64,
+                127
+              ],
+              "Assign3 Amount1": [
+                64,
+                0
+              ],
+              "Assign3 Amount2": [
+                64,
+                0
+              ],
+              "Assign3 Amount3": [
+                64,
+                0
+              ],
+              "Bass Intensity": [
+                100,
+                62
+              ],
+              "Chorus Depth": [
+                127,
+                85
+              ],
+              "Chorus Mix": [
+                16,
+                65
+              ],
+              "Distortion Intensity": [
+                127,
+                0
+              ],
+              "HighEQ Frequency": [
+                85,
+                0
+              ],
+              "HighEQ Gain": [
+                64,
+                127
+              ],
+              "LFO1 Assign Amount": [
+                76,
+                66
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                61
+              ],
+              "Lfo3 Fade-In Time": [
+                16,
+                0
+              ],
+              "LowEQ Frequency": [
+                43,
+                44
+              ],
+              "LowEQ Gain": [
+                64,
+                105
+              ],
+              "MidEQ Frequency": [
+                71,
+                14
+              ],
+              "MidEQ Gain": [
+                64,
+                92
+              ],
+              "Phaser Depth": [
+                112,
+                0
+              ],
+              "Phaser Feedback": [
+                16,
+                44
+              ],
+              "Phaser Frequency": [
+                48,
+                40
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ],
+              "Phaser Spread": [
+                64,
+                35
+              ],
+              "Ringmodulator Volume": [
+                127,
+                46
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Destination",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Bass Tune",
+              "Chorus Delay",
+              "Chorus Lfo Shape",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "LFO2 Assign Dest",
+              "Lfo1 Env Mode",
+              "Lfo2 Clock",
+              "Lfo2 Env Mode",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 3-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + ring mod + phaser + eq + LFO routed (step 2/5)",
+            "params": {
+              "Assign 4 Amount": 62.4,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 38.4,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 70.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 89.2,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 38.4,
+              "Assign3 Amount2": 38.4,
+              "Assign3 Amount3": 38.4,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 84.8,
+              "Bass Tune": 32,
+              "Chorus Delay": 36,
+              "Chorus Depth": 110.2,
+              "Chorus Feedback": 34,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 35.6,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 7,
+              "Distortion Intensity": 76.2,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 51.0,
+              "HighEQ Gain": 89.2,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 72.0,
+              "LFO1 Assign Dest": 9,
+              "LFO2 Assign Amount": 84.4,
+              "LFO2 Assign Dest": 102,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 5,
+              "Lfo2 Env Mode": 127,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 5,
+              "Lfo3 Fade-In Time": 9.6,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43.4,
+              "LowEQ Gain": 80.4,
+              "MidEQ Frequency": 48.2,
+              "MidEQ Gain": 75.2,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 67.2,
+              "Phaser Feedback": 27.2,
+              "Phaser Frequency": 44.8,
+              "Phaser Mix": 0,
+              "Phaser Mode": 5,
+              "Phaser Rate": 21.6,
+              "Phaser Spread": 52.4,
+              "Ringmodulator Volume": 94.6,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "d118fccc202e56e4",
+              "8f220b39ff354755"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between d118fccc202e56e4 and 8f220b39ff354755; discrete keys anchored to d118fccc202e56e4",
+            "id": "7b04ca602e9bfbdd",
+            "interp": {
+              "Assign 4 Amount": [
+                64,
+                60
+              ],
+              "Assign 5 Amount": [
+                64,
+                0
+              ],
+              "Assign1 Amount": [
+                64,
+                79
+              ],
+              "Assign2 Amount1": [
+                64,
+                127
+              ],
+              "Assign3 Amount1": [
+                64,
+                0
+              ],
+              "Assign3 Amount2": [
+                64,
+                0
+              ],
+              "Assign3 Amount3": [
+                64,
+                0
+              ],
+              "Bass Intensity": [
+                100,
+                62
+              ],
+              "Chorus Depth": [
+                127,
+                85
+              ],
+              "Chorus Mix": [
+                16,
+                65
+              ],
+              "Distortion Intensity": [
+                127,
+                0
+              ],
+              "HighEQ Frequency": [
+                85,
+                0
+              ],
+              "HighEQ Gain": [
+                64,
+                127
+              ],
+              "LFO1 Assign Amount": [
+                76,
+                66
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                61
+              ],
+              "Lfo3 Fade-In Time": [
+                16,
+                0
+              ],
+              "LowEQ Frequency": [
+                43,
+                44
+              ],
+              "LowEQ Gain": [
+                64,
+                105
+              ],
+              "MidEQ Frequency": [
+                71,
+                14
+              ],
+              "MidEQ Gain": [
+                64,
+                92
+              ],
+              "Phaser Depth": [
+                112,
+                0
+              ],
+              "Phaser Feedback": [
+                16,
+                44
+              ],
+              "Phaser Frequency": [
+                48,
+                40
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ],
+              "Phaser Spread": [
+                64,
+                35
+              ],
+              "Ringmodulator Volume": [
+                127,
+                46
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Destination",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Bass Tune",
+              "Chorus Delay",
+              "Chorus Lfo Shape",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "LFO2 Assign Dest",
+              "Lfo1 Env Mode",
+              "Lfo2 Clock",
+              "Lfo2 Env Mode",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 3-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + ring mod + phaser + eq + LFO routed (step 3/5)",
+            "params": {
+              "Assign 4 Amount": 61.6,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 25.6,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 73.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 101.8,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 25.6,
+              "Assign3 Amount2": 25.6,
+              "Assign3 Amount3": 25.6,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 77.2,
+              "Bass Tune": 32,
+              "Chorus Delay": 36,
+              "Chorus Depth": 101.8,
+              "Chorus Feedback": 34,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 45.4,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 7,
+              "Distortion Intensity": 50.8,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 34.0,
+              "HighEQ Gain": 101.8,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 70.0,
+              "LFO1 Assign Dest": 9,
+              "LFO2 Assign Amount": 76.6,
+              "LFO2 Assign Dest": 102,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 5,
+              "Lfo2 Env Mode": 127,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 5,
+              "Lfo3 Fade-In Time": 6.4,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43.6,
+              "LowEQ Gain": 88.6,
+              "MidEQ Frequency": 36.8,
+              "MidEQ Gain": 80.8,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 44.8,
+              "Phaser Feedback": 32.8,
+              "Phaser Frequency": 43.2,
+              "Phaser Mix": 0,
+              "Phaser Mode": 5,
+              "Phaser Rate": 14.4,
+              "Phaser Spread": 46.6,
+              "Ringmodulator Volume": 78.4,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "d118fccc202e56e4",
+              "8f220b39ff354755"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between d118fccc202e56e4 and 8f220b39ff354755; discrete keys anchored to d118fccc202e56e4",
+            "id": "93aaee05de15f9ba",
+            "interp": {
+              "Assign 4 Amount": [
+                64,
+                60
+              ],
+              "Assign 5 Amount": [
+                64,
+                0
+              ],
+              "Assign1 Amount": [
+                64,
+                79
+              ],
+              "Assign2 Amount1": [
+                64,
+                127
+              ],
+              "Assign3 Amount1": [
+                64,
+                0
+              ],
+              "Assign3 Amount2": [
+                64,
+                0
+              ],
+              "Assign3 Amount3": [
+                64,
+                0
+              ],
+              "Bass Intensity": [
+                100,
+                62
+              ],
+              "Chorus Depth": [
+                127,
+                85
+              ],
+              "Chorus Mix": [
+                16,
+                65
+              ],
+              "Distortion Intensity": [
+                127,
+                0
+              ],
+              "HighEQ Frequency": [
+                85,
+                0
+              ],
+              "HighEQ Gain": [
+                64,
+                127
+              ],
+              "LFO1 Assign Amount": [
+                76,
+                66
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                61
+              ],
+              "Lfo3 Fade-In Time": [
+                16,
+                0
+              ],
+              "LowEQ Frequency": [
+                43,
+                44
+              ],
+              "LowEQ Gain": [
+                64,
+                105
+              ],
+              "MidEQ Frequency": [
+                71,
+                14
+              ],
+              "MidEQ Gain": [
+                64,
+                92
+              ],
+              "Phaser Depth": [
+                112,
+                0
+              ],
+              "Phaser Feedback": [
+                16,
+                44
+              ],
+              "Phaser Frequency": [
+                48,
+                40
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ],
+              "Phaser Spread": [
+                64,
+                35
+              ],
+              "Ringmodulator Volume": [
+                127,
+                46
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Destination",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Bass Tune",
+              "Chorus Delay",
+              "Chorus Lfo Shape",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "LFO2 Assign Dest",
+              "Lfo1 Env Mode",
+              "Lfo2 Clock",
+              "Lfo2 Env Mode",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 3-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + ring mod + phaser + eq + LFO routed (step 4/5)",
+            "params": {
+              "Assign 4 Amount": 60.8,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 12.8,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 76.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 114.4,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 12.8,
+              "Assign3 Amount2": 12.8,
+              "Assign3 Amount3": 12.8,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 69.6,
+              "Bass Tune": 32,
+              "Chorus Delay": 36,
+              "Chorus Depth": 93.4,
+              "Chorus Feedback": 34,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 55.2,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 7,
+              "Distortion Intensity": 25.4,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 17.0,
+              "HighEQ Gain": 114.4,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 68.0,
+              "LFO1 Assign Dest": 9,
+              "LFO2 Assign Amount": 68.8,
+              "LFO2 Assign Dest": 102,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 5,
+              "Lfo2 Env Mode": 127,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 5,
+              "Lfo3 Fade-In Time": 3.2,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43.8,
+              "LowEQ Gain": 96.8,
+              "MidEQ Frequency": 25.4,
+              "MidEQ Gain": 86.4,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 22.4,
+              "Phaser Feedback": 38.4,
+              "Phaser Frequency": 41.6,
+              "Phaser Mix": 0,
+              "Phaser Mode": 5,
+              "Phaser Rate": 7.2,
+              "Phaser Spread": 40.8,
+              "Ringmodulator Volume": 62.2,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "d118fccc202e56e4",
+              "8f220b39ff354755"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "distance": 0.445094,
+      "pair": "9:20",
+      "parents": [
+        {
+          "id": "e64474677484f852",
+          "name": "4-slot matrix + ring mod + phaser + distortion + eq + LFO routed (2)"
+        },
+        {
+          "id": "f56de057a08186e9",
+          "name": "6-slot matrix + chorus + delay + phaser + distortion + eq + LFO routed"
+        }
+      ],
+      "steps": [
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between e64474677484f852 and f56de057a08186e9; discrete keys anchored to e64474677484f852",
+            "id": "2cbb29d98c2f9071",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                100
+              ],
+              "Assign2 Amount1": [
+                64,
+                62
+              ],
+              "Assign3 Amount1": [
+                64,
+                53
+              ],
+              "Bass Intensity": [
+                99,
+                40
+              ],
+              "Chorus Depth": [
+                127,
+                31
+              ],
+              "Chorus Mix": [
+                0,
+                75
+              ],
+              "Distortion Intensity": [
+                45,
+                105
+              ],
+              "HighEQ Frequency": [
+                85,
+                105
+              ],
+              "HighEQ Gain": [
+                64,
+                111
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                64
+              ],
+              "Lfo3 Fade-In Time": [
+                0,
+                81
+              ],
+              "LowEQ Frequency": [
+                43,
+                127
+              ],
+              "LowEQ Gain": [
+                64,
+                42
+              ],
+              "MidEQ Frequency": [
+                71,
+                107
+              ],
+              "MidEQ Gain": [
+                64,
+                84
+              ],
+              "Phaser Depth": [
+                64,
+                112
+              ],
+              "Phaser Feedback": [
+                0,
+                110
+              ],
+              "Phaser Frequency": [
+                64,
+                48
+              ],
+              "Phaser Mix": [
+                36,
+                0
+              ],
+              "Phaser Rate": [
+                24,
+                36
+              ],
+              "Phaser Spread": [
+                0,
+                127
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO2 Assign Dest",
+              "Lfo2 Clock",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + ring mod + phaser + distortion + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq + LFO routed (step 1/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 121.6,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 63.6,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 61.8,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 87.2,
+              "Bass Tune": 32,
+              "Chorus Delay": 6,
+              "Chorus Depth": 107.8,
+              "Chorus Feedback": 113,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 15.0,
+              "Chorus Rate": 30,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 8,
+              "Distortion Intensity": 57.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 89.0,
+              "HighEQ Gain": 73.4,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 92.8,
+              "LFO2 Assign Dest": 54,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 20,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 16.2,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 59.8,
+              "LowEQ Gain": 59.6,
+              "MidEQ Frequency": 78.2,
+              "MidEQ Gain": 68.0,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 73.6,
+              "Phaser Feedback": 22.0,
+              "Phaser Frequency": 60.8,
+              "Phaser Mix": 28.8,
+              "Phaser Mode": 5,
+              "Phaser Rate": 26.4,
+              "Phaser Spread": 25.4,
+              "Ringmodulator Volume": 101.6,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "e64474677484f852",
+              "f56de057a08186e9"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between e64474677484f852 and f56de057a08186e9; discrete keys anchored to e64474677484f852",
+            "id": "84aacdae79efa4e6",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                100
+              ],
+              "Assign2 Amount1": [
+                64,
+                62
+              ],
+              "Assign3 Amount1": [
+                64,
+                53
+              ],
+              "Bass Intensity": [
+                99,
+                40
+              ],
+              "Chorus Depth": [
+                127,
+                31
+              ],
+              "Chorus Mix": [
+                0,
+                75
+              ],
+              "Distortion Intensity": [
+                45,
+                105
+              ],
+              "HighEQ Frequency": [
+                85,
+                105
+              ],
+              "HighEQ Gain": [
+                64,
+                111
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                64
+              ],
+              "Lfo3 Fade-In Time": [
+                0,
+                81
+              ],
+              "LowEQ Frequency": [
+                43,
+                127
+              ],
+              "LowEQ Gain": [
+                64,
+                42
+              ],
+              "MidEQ Frequency": [
+                71,
+                107
+              ],
+              "MidEQ Gain": [
+                64,
+                84
+              ],
+              "Phaser Depth": [
+                64,
+                112
+              ],
+              "Phaser Feedback": [
+                0,
+                110
+              ],
+              "Phaser Frequency": [
+                64,
+                48
+              ],
+              "Phaser Mix": [
+                36,
+                0
+              ],
+              "Phaser Rate": [
+                24,
+                36
+              ],
+              "Phaser Spread": [
+                0,
+                127
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO2 Assign Dest",
+              "Lfo2 Clock",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + ring mod + phaser + distortion + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq + LFO routed (step 2/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 116.2,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 63.2,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 59.6,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 75.4,
+              "Bass Tune": 32,
+              "Chorus Delay": 6,
+              "Chorus Depth": 88.6,
+              "Chorus Feedback": 113,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 30.0,
+              "Chorus Rate": 30,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 8,
+              "Distortion Intensity": 69.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 93.0,
+              "HighEQ Gain": 82.8,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 85.6,
+              "LFO2 Assign Dest": 54,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 20,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 32.4,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 76.6,
+              "LowEQ Gain": 55.2,
+              "MidEQ Frequency": 85.4,
+              "MidEQ Gain": 72.0,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 83.2,
+              "Phaser Feedback": 44.0,
+              "Phaser Frequency": 57.6,
+              "Phaser Mix": 21.6,
+              "Phaser Mode": 5,
+              "Phaser Rate": 28.8,
+              "Phaser Spread": 50.8,
+              "Ringmodulator Volume": 76.2,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "e64474677484f852",
+              "f56de057a08186e9"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between e64474677484f852 and f56de057a08186e9; discrete keys anchored to e64474677484f852",
+            "id": "b881845ce34a9d43",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                100
+              ],
+              "Assign2 Amount1": [
+                64,
+                62
+              ],
+              "Assign3 Amount1": [
+                64,
+                53
+              ],
+              "Bass Intensity": [
+                99,
+                40
+              ],
+              "Chorus Depth": [
+                127,
+                31
+              ],
+              "Chorus Mix": [
+                0,
+                75
+              ],
+              "Distortion Intensity": [
+                45,
+                105
+              ],
+              "HighEQ Frequency": [
+                85,
+                105
+              ],
+              "HighEQ Gain": [
+                64,
+                111
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                64
+              ],
+              "Lfo3 Fade-In Time": [
+                0,
+                81
+              ],
+              "LowEQ Frequency": [
+                43,
+                127
+              ],
+              "LowEQ Gain": [
+                64,
+                42
+              ],
+              "MidEQ Frequency": [
+                71,
+                107
+              ],
+              "MidEQ Gain": [
+                64,
+                84
+              ],
+              "Phaser Depth": [
+                64,
+                112
+              ],
+              "Phaser Feedback": [
+                0,
+                110
+              ],
+              "Phaser Frequency": [
+                64,
+                48
+              ],
+              "Phaser Mix": [
+                36,
+                0
+              ],
+              "Phaser Rate": [
+                24,
+                36
+              ],
+              "Phaser Spread": [
+                0,
+                127
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO2 Assign Dest",
+              "Lfo2 Clock",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + ring mod + phaser + distortion + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq + LFO routed (step 3/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 110.8,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 62.8,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 57.4,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 63.6,
+              "Bass Tune": 32,
+              "Chorus Delay": 6,
+              "Chorus Depth": 69.4,
+              "Chorus Feedback": 113,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 45.0,
+              "Chorus Rate": 30,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 8,
+              "Distortion Intensity": 81.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 97.0,
+              "HighEQ Gain": 92.2,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 78.4,
+              "LFO2 Assign Dest": 54,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 20,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 48.6,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 93.4,
+              "LowEQ Gain": 50.8,
+              "MidEQ Frequency": 92.6,
+              "MidEQ Gain": 76.0,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 92.8,
+              "Phaser Feedback": 66.0,
+              "Phaser Frequency": 54.4,
+              "Phaser Mix": 14.4,
+              "Phaser Mode": 5,
+              "Phaser Rate": 31.2,
+              "Phaser Spread": 76.2,
+              "Ringmodulator Volume": 50.8,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "e64474677484f852",
+              "f56de057a08186e9"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between e64474677484f852 and f56de057a08186e9; discrete keys anchored to e64474677484f852",
+            "id": "4402ff969f553d7c",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                100
+              ],
+              "Assign2 Amount1": [
+                64,
+                62
+              ],
+              "Assign3 Amount1": [
+                64,
+                53
+              ],
+              "Bass Intensity": [
+                99,
+                40
+              ],
+              "Chorus Depth": [
+                127,
+                31
+              ],
+              "Chorus Mix": [
+                0,
+                75
+              ],
+              "Distortion Intensity": [
+                45,
+                105
+              ],
+              "HighEQ Frequency": [
+                85,
+                105
+              ],
+              "HighEQ Gain": [
+                64,
+                111
+              ],
+              "LFO2 Assign Amount": [
+                100,
+                64
+              ],
+              "Lfo3 Fade-In Time": [
+                0,
+                81
+              ],
+              "LowEQ Frequency": [
+                43,
+                127
+              ],
+              "LowEQ Gain": [
+                64,
+                42
+              ],
+              "MidEQ Frequency": [
+                71,
+                107
+              ],
+              "MidEQ Gain": [
+                64,
+                84
+              ],
+              "Phaser Depth": [
+                64,
+                112
+              ],
+              "Phaser Feedback": [
+                0,
+                110
+              ],
+              "Phaser Frequency": [
+                64,
+                48
+              ],
+              "Phaser Mix": [
+                36,
+                0
+              ],
+              "Phaser Rate": [
+                24,
+                36
+              ],
+              "Phaser Spread": [
+                0,
+                127
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO2 Assign Dest",
+              "Lfo2 Clock",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + ring mod + phaser + distortion + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq + LFO routed (step 4/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 105.4,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 62.4,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 55.2,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 51.8,
+              "Bass Tune": 32,
+              "Chorus Delay": 6,
+              "Chorus Depth": 50.2,
+              "Chorus Feedback": 113,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 60.0,
+              "Chorus Rate": 30,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 8,
+              "Distortion Intensity": 93.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 101.0,
+              "HighEQ Gain": 101.6,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 71.2,
+              "LFO2 Assign Dest": 54,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 20,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 64.8,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 110.2,
+              "LowEQ Gain": 46.4,
+              "MidEQ Frequency": 99.8,
+              "MidEQ Gain": 80.0,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 102.4,
+              "Phaser Feedback": 88.0,
+              "Phaser Frequency": 51.2,
+              "Phaser Mix": 7.2,
+              "Phaser Mode": 5,
+              "Phaser Rate": 33.6,
+              "Phaser Spread": 101.6,
+              "Ringmodulator Volume": 25.4,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "e64474677484f852",
+              "f56de057a08186e9"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "distance": 0.420879,
+      "pair": "22:39",
+      "parents": [
+        {
+          "id": "a4a4ce8de271b593",
+          "name": "1-slot matrix + delay + phaser + eq + LFO routed"
+        },
+        {
+          "id": "b802702b748656ad",
+          "name": "6-slot matrix + chorus + phaser + distortion + eq + LFO routed (4)"
+        }
+      ],
+      "steps": [
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between a4a4ce8de271b593 and b802702b748656ad; discrete keys anchored to a4a4ce8de271b593",
+            "id": "9fac97d93d16b43d",
+            "interp": {
+              "Assign 4 Amount": [
+                17,
+                64
+              ],
+              "Assign1 Amount": [
+                76,
+                100
+              ],
+              "Bass Intensity": [
+                85,
+                54
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                0,
+                16
+              ],
+              "Distortion Intensity": [
+                0,
+                127
+              ],
+              "HighEQ Frequency": [
+                21,
+                85
+              ],
+              "HighEQ Gain": [
+                103,
+                64
+              ],
+              "LFO1 Assign Amount": [
+                64,
+                87
+              ],
+              "Lfo3 Fade-In Time": [
+                25,
+                63
+              ],
+              "LowEQ Frequency": [
+                110,
+                43
+              ],
+              "LowEQ Gain": [
+                83,
+                64
+              ],
+              "MidEQ Frequency": [
+                78,
+                71
+              ],
+              "MidEQ Gain": [
+                91,
+                64
+              ],
+              "Phaser Depth": [
+                112,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                22
+              ],
+              "Phaser Frequency": [
+                48,
+                127
+              ],
+              "Phaser Mix": [
+                0,
+                36
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "Lfo2 Clock",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 1-slot matrix + delay + phaser + eq + LFO routed -> 6-slot matrix + chorus + phaser + distortion + eq + LFO routed (4) (step 1/5)",
+            "params": {
+              "Assign 4 Amount": 26.4,
+              "Assign 4 Destination": 24,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 0,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 0,
+              "Assign1 Amount": 80.8,
+              "Assign1 Destination": 9,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 64,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 78.8,
+              "Bass Tune": 32,
+              "Chorus Delay": null,
+              "Chorus Depth": 25.4,
+              "Chorus Feedback": null,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 3.2,
+              "Chorus Rate": null,
+              "Chorus/LowHigh Bal": 0,
+              "Chorus/Mic Angle": 0,
+              "Chorus/Mix2": 0,
+              "Chorus/Speed": 0,
+              "Chorus/Type": 0,
+              "Chorus/X Over": 6,
+              "Delay Clock": 13,
+              "Delay Lfo Shape": 1,
+              "Delay Mode": 2,
+              "Delay Send": 68,
+              "Delay Time": 0,
+              "Delay/Tape Delay Center Frequency": 102,
+              "Delay/Tape Delay Feedback": 41,
+              "Delay/Tape Delay Modulation": 12,
+              "Distortion Curve": 12,
+              "Distortion Intensity": 25.4,
+              "Dly Rate / Rev Decay": 16,
+              "HighEQ Frequency": 33.8,
+              "HighEQ Gain": 95.2,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": 0,
+              "Input Follower/Level": 30,
+              "Input Follower/Release": 44,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 68.6,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 32.6,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 96.6,
+              "LowEQ Gain": 79.2,
+              "MidEQ Frequency": 76.6,
+              "MidEQ Gain": 85.6,
+              "MidEQ Q-Factor": 52,
+              "Phaser Depth": 102.4,
+              "Phaser Feedback": 55.6,
+              "Phaser Frequency": 63.8,
+              "Phaser Mix": 7.2,
+              "Phaser Mode": 3,
+              "Phaser Rate": 28.8,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": 100,
+              "Switches/Delay Enable": 1,
+              "Vocoder Link": 0,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": 13,
+              "Vocoder/Carrier Center Frequency": 127,
+              "Vocoder/Carrier Q Factor": 0,
+              "Vocoder/Modulator Frequency Spread": 64,
+              "Vocoder/Modulator Q Factor": 0,
+              "Vocoder/Release": 40
+            },
+            "parents": [
+              "a4a4ce8de271b593",
+              "b802702b748656ad"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between a4a4ce8de271b593 and b802702b748656ad; discrete keys anchored to a4a4ce8de271b593",
+            "id": "c9baf6f840eb9564",
+            "interp": {
+              "Assign 4 Amount": [
+                17,
+                64
+              ],
+              "Assign1 Amount": [
+                76,
+                100
+              ],
+              "Bass Intensity": [
+                85,
+                54
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                0,
+                16
+              ],
+              "Distortion Intensity": [
+                0,
+                127
+              ],
+              "HighEQ Frequency": [
+                21,
+                85
+              ],
+              "HighEQ Gain": [
+                103,
+                64
+              ],
+              "LFO1 Assign Amount": [
+                64,
+                87
+              ],
+              "Lfo3 Fade-In Time": [
+                25,
+                63
+              ],
+              "LowEQ Frequency": [
+                110,
+                43
+              ],
+              "LowEQ Gain": [
+                83,
+                64
+              ],
+              "MidEQ Frequency": [
+                78,
+                71
+              ],
+              "MidEQ Gain": [
+                91,
+                64
+              ],
+              "Phaser Depth": [
+                112,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                22
+              ],
+              "Phaser Frequency": [
+                48,
+                127
+              ],
+              "Phaser Mix": [
+                0,
+                36
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "Lfo2 Clock",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 1-slot matrix + delay + phaser + eq + LFO routed -> 6-slot matrix + chorus + phaser + distortion + eq + LFO routed (4) (step 2/5)",
+            "params": {
+              "Assign 4 Amount": 35.8,
+              "Assign 4 Destination": 24,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 0,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 0,
+              "Assign1 Amount": 85.6,
+              "Assign1 Destination": 9,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 64,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 72.6,
+              "Bass Tune": 32,
+              "Chorus Delay": null,
+              "Chorus Depth": 50.8,
+              "Chorus Feedback": null,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 6.4,
+              "Chorus Rate": null,
+              "Chorus/LowHigh Bal": 0,
+              "Chorus/Mic Angle": 0,
+              "Chorus/Mix2": 0,
+              "Chorus/Speed": 0,
+              "Chorus/Type": 0,
+              "Chorus/X Over": 6,
+              "Delay Clock": 13,
+              "Delay Lfo Shape": 1,
+              "Delay Mode": 2,
+              "Delay Send": 68,
+              "Delay Time": 0,
+              "Delay/Tape Delay Center Frequency": 102,
+              "Delay/Tape Delay Feedback": 41,
+              "Delay/Tape Delay Modulation": 12,
+              "Distortion Curve": 12,
+              "Distortion Intensity": 50.8,
+              "Dly Rate / Rev Decay": 16,
+              "HighEQ Frequency": 46.6,
+              "HighEQ Gain": 87.4,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": 0,
+              "Input Follower/Level": 30,
+              "Input Follower/Release": 44,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 73.2,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 40.2,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 83.2,
+              "LowEQ Gain": 75.4,
+              "MidEQ Frequency": 75.2,
+              "MidEQ Gain": 80.2,
+              "MidEQ Q-Factor": 52,
+              "Phaser Depth": 92.8,
+              "Phaser Feedback": 47.2,
+              "Phaser Frequency": 79.6,
+              "Phaser Mix": 14.4,
+              "Phaser Mode": 3,
+              "Phaser Rate": 21.6,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": 100,
+              "Switches/Delay Enable": 1,
+              "Vocoder Link": 0,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": 13,
+              "Vocoder/Carrier Center Frequency": 127,
+              "Vocoder/Carrier Q Factor": 0,
+              "Vocoder/Modulator Frequency Spread": 64,
+              "Vocoder/Modulator Q Factor": 0,
+              "Vocoder/Release": 40
+            },
+            "parents": [
+              "a4a4ce8de271b593",
+              "b802702b748656ad"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between a4a4ce8de271b593 and b802702b748656ad; discrete keys anchored to a4a4ce8de271b593",
+            "id": "0dad3aa7b2ffa00a",
+            "interp": {
+              "Assign 4 Amount": [
+                17,
+                64
+              ],
+              "Assign1 Amount": [
+                76,
+                100
+              ],
+              "Bass Intensity": [
+                85,
+                54
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                0,
+                16
+              ],
+              "Distortion Intensity": [
+                0,
+                127
+              ],
+              "HighEQ Frequency": [
+                21,
+                85
+              ],
+              "HighEQ Gain": [
+                103,
+                64
+              ],
+              "LFO1 Assign Amount": [
+                64,
+                87
+              ],
+              "Lfo3 Fade-In Time": [
+                25,
+                63
+              ],
+              "LowEQ Frequency": [
+                110,
+                43
+              ],
+              "LowEQ Gain": [
+                83,
+                64
+              ],
+              "MidEQ Frequency": [
+                78,
+                71
+              ],
+              "MidEQ Gain": [
+                91,
+                64
+              ],
+              "Phaser Depth": [
+                112,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                22
+              ],
+              "Phaser Frequency": [
+                48,
+                127
+              ],
+              "Phaser Mix": [
+                0,
+                36
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "Lfo2 Clock",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 1-slot matrix + delay + phaser + eq + LFO routed -> 6-slot matrix + chorus + phaser + distortion + eq + LFO routed (4) (step 3/5)",
+            "params": {
+              "Assign 4 Amount": 45.2,
+              "Assign 4 Destination": 24,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 0,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 0,
+              "Assign1 Amount": 90.4,
+              "Assign1 Destination": 9,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 64,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 66.4,
+              "Bass Tune": 32,
+              "Chorus Delay": null,
+              "Chorus Depth": 76.2,
+              "Chorus Feedback": null,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 9.6,
+              "Chorus Rate": null,
+              "Chorus/LowHigh Bal": 0,
+              "Chorus/Mic Angle": 0,
+              "Chorus/Mix2": 0,
+              "Chorus/Speed": 0,
+              "Chorus/Type": 0,
+              "Chorus/X Over": 6,
+              "Delay Clock": 13,
+              "Delay Lfo Shape": 1,
+              "Delay Mode": 2,
+              "Delay Send": 68,
+              "Delay Time": 0,
+              "Delay/Tape Delay Center Frequency": 102,
+              "Delay/Tape Delay Feedback": 41,
+              "Delay/Tape Delay Modulation": 12,
+              "Distortion Curve": 12,
+              "Distortion Intensity": 76.2,
+              "Dly Rate / Rev Decay": 16,
+              "HighEQ Frequency": 59.4,
+              "HighEQ Gain": 79.6,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": 0,
+              "Input Follower/Level": 30,
+              "Input Follower/Release": 44,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 77.8,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 47.8,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 69.8,
+              "LowEQ Gain": 71.6,
+              "MidEQ Frequency": 73.8,
+              "MidEQ Gain": 74.8,
+              "MidEQ Q-Factor": 52,
+              "Phaser Depth": 83.2,
+              "Phaser Feedback": 38.8,
+              "Phaser Frequency": 95.4,
+              "Phaser Mix": 21.6,
+              "Phaser Mode": 3,
+              "Phaser Rate": 14.4,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": 100,
+              "Switches/Delay Enable": 1,
+              "Vocoder Link": 0,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": 13,
+              "Vocoder/Carrier Center Frequency": 127,
+              "Vocoder/Carrier Q Factor": 0,
+              "Vocoder/Modulator Frequency Spread": 64,
+              "Vocoder/Modulator Q Factor": 0,
+              "Vocoder/Release": 40
+            },
+            "parents": [
+              "a4a4ce8de271b593",
+              "b802702b748656ad"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between a4a4ce8de271b593 and b802702b748656ad; discrete keys anchored to a4a4ce8de271b593",
+            "id": "a1a04cf9fa0cc8ca",
+            "interp": {
+              "Assign 4 Amount": [
+                17,
+                64
+              ],
+              "Assign1 Amount": [
+                76,
+                100
+              ],
+              "Bass Intensity": [
+                85,
+                54
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                0,
+                16
+              ],
+              "Distortion Intensity": [
+                0,
+                127
+              ],
+              "HighEQ Frequency": [
+                21,
+                85
+              ],
+              "HighEQ Gain": [
+                103,
+                64
+              ],
+              "LFO1 Assign Amount": [
+                64,
+                87
+              ],
+              "Lfo3 Fade-In Time": [
+                25,
+                63
+              ],
+              "LowEQ Frequency": [
+                110,
+                43
+              ],
+              "LowEQ Gain": [
+                83,
+                64
+              ],
+              "MidEQ Frequency": [
+                78,
+                71
+              ],
+              "MidEQ Gain": [
+                91,
+                64
+              ],
+              "Phaser Depth": [
+                112,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                22
+              ],
+              "Phaser Frequency": [
+                48,
+                127
+              ],
+              "Phaser Mix": [
+                0,
+                36
+              ],
+              "Phaser Rate": [
+                36,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign 4 Destination",
+              "Assign 4 Source",
+              "Assign 5 Source",
+              "Assign 6 Source",
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Source",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "LFO1 Assign Dest",
+              "Lfo2 Clock",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 1-slot matrix + delay + phaser + eq + LFO routed -> 6-slot matrix + chorus + phaser + distortion + eq + LFO routed (4) (step 4/5)",
+            "params": {
+              "Assign 4 Amount": 54.6,
+              "Assign 4 Destination": 24,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 0,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 0,
+              "Assign1 Amount": 95.2,
+              "Assign1 Destination": 9,
+              "Assign1 Source": 0,
+              "Assign2 Amount1": 64,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 0,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 0,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 60.2,
+              "Bass Tune": 32,
+              "Chorus Delay": null,
+              "Chorus Depth": 101.6,
+              "Chorus Feedback": null,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 12.8,
+              "Chorus Rate": null,
+              "Chorus/LowHigh Bal": 0,
+              "Chorus/Mic Angle": 0,
+              "Chorus/Mix2": 0,
+              "Chorus/Speed": 0,
+              "Chorus/Type": 0,
+              "Chorus/X Over": 6,
+              "Delay Clock": 13,
+              "Delay Lfo Shape": 1,
+              "Delay Mode": 2,
+              "Delay Send": 68,
+              "Delay Time": 0,
+              "Delay/Tape Delay Center Frequency": 102,
+              "Delay/Tape Delay Feedback": 41,
+              "Delay/Tape Delay Modulation": 12,
+              "Distortion Curve": 12,
+              "Distortion Intensity": 101.6,
+              "Dly Rate / Rev Decay": 16,
+              "HighEQ Frequency": 72.2,
+              "HighEQ Gain": 71.8,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": 0,
+              "Input Follower/Level": 30,
+              "Input Follower/Release": 44,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 82.4,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 55.4,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 56.4,
+              "LowEQ Gain": 67.8,
+              "MidEQ Frequency": 72.4,
+              "MidEQ Gain": 69.4,
+              "MidEQ Q-Factor": 52,
+              "Phaser Depth": 73.6,
+              "Phaser Feedback": 30.4,
+              "Phaser Frequency": 111.2,
+              "Phaser Mix": 28.8,
+              "Phaser Mode": 3,
+              "Phaser Rate": 7.2,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": 100,
+              "Switches/Delay Enable": 1,
+              "Vocoder Link": 0,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": 13,
+              "Vocoder/Carrier Center Frequency": 127,
+              "Vocoder/Carrier Q Factor": 0,
+              "Vocoder/Modulator Frequency Spread": 64,
+              "Vocoder/Modulator Q Factor": 0,
+              "Vocoder/Release": 40
+            },
+            "parents": [
+              "a4a4ce8de271b593",
+              "b802702b748656ad"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "distance": 0.410803,
+      "pair": "12:34",
+      "parents": [
+        {
+          "id": "ffb15021a598ed12",
+          "name": "4-slot matrix + chorus + phaser + eq + LFO routed (2)"
+        },
+        {
+          "id": "6d9e24a062116c96",
+          "name": "6-slot matrix + chorus + delay + phaser + distortion + eq"
+        }
+      ],
+      "steps": [
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between ffb15021a598ed12 and 6d9e24a062116c96; discrete keys anchored to ffb15021a598ed12",
+            "id": "df4cdde72725d03f",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                64
+              ],
+              "Assign2 Amount1": [
+                118,
+                64
+              ],
+              "Assign3 Amount1": [
+                96,
+                64
+              ],
+              "Bass Intensity": [
+                43,
+                40
+              ],
+              "Chorus Depth": [
+                32,
+                31
+              ],
+              "Chorus Mix": [
+                32,
+                0
+              ],
+              "Distortion Intensity": [
+                0,
+                105
+              ],
+              "HighEQ Frequency": [
+                0,
+                105
+              ],
+              "HighEQ Gain": [
+                79,
+                104
+              ],
+              "LowEQ Frequency": [
+                85,
+                43
+              ],
+              "MidEQ Frequency": [
+                49,
+                71
+              ],
+              "MidEQ Gain": [
+                0,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                110
+              ],
+              "Phaser Frequency": [
+                21,
+                48
+              ],
+              "Phaser Rate": [
+                0,
+                36
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "LFO2 Assign Dest",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + chorus + phaser + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq (step 1/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 114.4,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 107.2,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 20,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 89.6,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 102,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 42.4,
+              "Bass Tune": 32,
+              "Chorus Delay": 127,
+              "Chorus Depth": 31.8,
+              "Chorus Feedback": 64,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 25.6,
+              "Chorus Rate": 69,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 0,
+              "Distortion Intensity": 21.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 21.0,
+              "HighEQ Gain": 84.0,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 98,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 76.6,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 53.4,
+              "MidEQ Gain": 12.8,
+              "MidEQ Q-Factor": 127,
+              "Phaser Depth": 112,
+              "Phaser Feedback": 73.2,
+              "Phaser Frequency": 26.4,
+              "Phaser Mix": 0,
+              "Phaser Mode": 2,
+              "Phaser Rate": 7.2,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "ffb15021a598ed12",
+              "6d9e24a062116c96"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between ffb15021a598ed12 and 6d9e24a062116c96; discrete keys anchored to ffb15021a598ed12",
+            "id": "1cd889cf3860351b",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                64
+              ],
+              "Assign2 Amount1": [
+                118,
+                64
+              ],
+              "Assign3 Amount1": [
+                96,
+                64
+              ],
+              "Bass Intensity": [
+                43,
+                40
+              ],
+              "Chorus Depth": [
+                32,
+                31
+              ],
+              "Chorus Mix": [
+                32,
+                0
+              ],
+              "Distortion Intensity": [
+                0,
+                105
+              ],
+              "HighEQ Frequency": [
+                0,
+                105
+              ],
+              "HighEQ Gain": [
+                79,
+                104
+              ],
+              "LowEQ Frequency": [
+                85,
+                43
+              ],
+              "MidEQ Frequency": [
+                49,
+                71
+              ],
+              "MidEQ Gain": [
+                0,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                110
+              ],
+              "Phaser Frequency": [
+                21,
+                48
+              ],
+              "Phaser Rate": [
+                0,
+                36
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "LFO2 Assign Dest",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + chorus + phaser + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq (step 2/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 101.8,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 96.4,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 20,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 83.2,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 102,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 41.8,
+              "Bass Tune": 32,
+              "Chorus Delay": 127,
+              "Chorus Depth": 31.6,
+              "Chorus Feedback": 64,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 19.2,
+              "Chorus Rate": 69,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 0,
+              "Distortion Intensity": 42.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 42.0,
+              "HighEQ Gain": 89.0,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 98,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 68.2,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 57.8,
+              "MidEQ Gain": 25.6,
+              "MidEQ Q-Factor": 127,
+              "Phaser Depth": 112,
+              "Phaser Feedback": 82.4,
+              "Phaser Frequency": 31.8,
+              "Phaser Mix": 0,
+              "Phaser Mode": 2,
+              "Phaser Rate": 14.4,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "ffb15021a598ed12",
+              "6d9e24a062116c96"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between ffb15021a598ed12 and 6d9e24a062116c96; discrete keys anchored to ffb15021a598ed12",
+            "id": "afa6ab1c4eabeb9c",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                64
+              ],
+              "Assign2 Amount1": [
+                118,
+                64
+              ],
+              "Assign3 Amount1": [
+                96,
+                64
+              ],
+              "Bass Intensity": [
+                43,
+                40
+              ],
+              "Chorus Depth": [
+                32,
+                31
+              ],
+              "Chorus Mix": [
+                32,
+                0
+              ],
+              "Distortion Intensity": [
+                0,
+                105
+              ],
+              "HighEQ Frequency": [
+                0,
+                105
+              ],
+              "HighEQ Gain": [
+                79,
+                104
+              ],
+              "LowEQ Frequency": [
+                85,
+                43
+              ],
+              "MidEQ Frequency": [
+                49,
+                71
+              ],
+              "MidEQ Gain": [
+                0,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                110
+              ],
+              "Phaser Frequency": [
+                21,
+                48
+              ],
+              "Phaser Rate": [
+                0,
+                36
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "LFO2 Assign Dest",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + chorus + phaser + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq (step 3/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 89.2,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 85.6,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 20,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 76.8,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 102,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 41.2,
+              "Bass Tune": 32,
+              "Chorus Delay": 127,
+              "Chorus Depth": 31.4,
+              "Chorus Feedback": 64,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 12.8,
+              "Chorus Rate": 69,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 0,
+              "Distortion Intensity": 63.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 63.0,
+              "HighEQ Gain": 94.0,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 98,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 59.8,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 62.2,
+              "MidEQ Gain": 38.4,
+              "MidEQ Q-Factor": 127,
+              "Phaser Depth": 112,
+              "Phaser Feedback": 91.6,
+              "Phaser Frequency": 37.2,
+              "Phaser Mix": 0,
+              "Phaser Mode": 2,
+              "Phaser Rate": 21.6,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "ffb15021a598ed12",
+              "6d9e24a062116c96"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between ffb15021a598ed12 and 6d9e24a062116c96; discrete keys anchored to ffb15021a598ed12",
+            "id": "2d5282eb88108735",
+            "interp": {
+              "Assign1 Amount": [
+                127,
+                64
+              ],
+              "Assign2 Amount1": [
+                118,
+                64
+              ],
+              "Assign3 Amount1": [
+                96,
+                64
+              ],
+              "Bass Intensity": [
+                43,
+                40
+              ],
+              "Chorus Depth": [
+                32,
+                31
+              ],
+              "Chorus Mix": [
+                32,
+                0
+              ],
+              "Distortion Intensity": [
+                0,
+                105
+              ],
+              "HighEQ Frequency": [
+                0,
+                105
+              ],
+              "HighEQ Gain": [
+                79,
+                104
+              ],
+              "LowEQ Frequency": [
+                85,
+                43
+              ],
+              "MidEQ Frequency": [
+                49,
+                71
+              ],
+              "MidEQ Gain": [
+                0,
+                64
+              ],
+              "Phaser Feedback": [
+                64,
+                110
+              ],
+              "Phaser Frequency": [
+                21,
+                48
+              ],
+              "Phaser Rate": [
+                0,
+                36
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "LFO2 Assign Dest",
+              "Lfo3 Destination",
+              "MidEQ Q-Factor",
+              "Phaser Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 4-slot matrix + chorus + phaser + eq + LFO routed (2) -> 6-slot matrix + chorus + delay + phaser + distortion + eq (step 4/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 76.6,
+              "Assign1 Destination": 24,
+              "Assign1 Source": 3,
+              "Assign2 Amount1": 74.8,
+              "Assign2 Amount2": 64,
+              "Assign2 Destination1": 20,
+              "Assign2 Destination2": 0,
+              "Assign2 Source": 0,
+              "Assign3 Amount1": 70.4,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 64,
+              "Assign3 Destination1": 102,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 0,
+              "Bass Intensity": 40.6,
+              "Bass Tune": 32,
+              "Chorus Delay": 127,
+              "Chorus Depth": 31.2,
+              "Chorus Feedback": 64,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 6.4,
+              "Chorus Rate": 69,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 0,
+              "Distortion Intensity": 84.0,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 84.0,
+              "HighEQ Gain": 99.0,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 98,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 0,
+              "Lfo1 Mode": 0,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 51.4,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 66.6,
+              "MidEQ Gain": 51.2,
+              "MidEQ Q-Factor": 127,
+              "Phaser Depth": 112,
+              "Phaser Feedback": 100.8,
+              "Phaser Frequency": 42.6,
+              "Phaser Mix": 0,
+              "Phaser Mode": 2,
+              "Phaser Rate": 28.8,
+              "Phaser Spread": 127,
+              "Ringmodulator Volume": 0,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "ffb15021a598ed12",
+              "6d9e24a062116c96"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    },
+    {
+      "distance": 0.406316,
+      "pair": "0:30",
+      "parents": [
+        {
+          "id": "154ad7551428ffb0",
+          "name": "6-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed"
+        },
+        {
+          "id": "449ce795e591cb1a",
+          "name": "4-slot matrix + chorus + delay + phaser + eq + LFO routed"
+        }
+      ],
+      "steps": [
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between 154ad7551428ffb0 and 449ce795e591cb1a; discrete keys anchored to 154ad7551428ffb0",
+            "id": "537496b5f58531e7",
+            "interp": {
+              "Assign1 Amount": [
+                64,
+                104
+              ],
+              "Assign2 Amount1": [
+                106,
+                64
+              ],
+              "Assign2 Amount2": [
+                113,
+                64
+              ],
+              "Assign3 Amount3": [
+                78,
+                64
+              ],
+              "Bass Intensity": [
+                58,
+                36
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                4,
+                64
+              ],
+              "Distortion Intensity": [
+                74,
+                0
+              ],
+              "Phaser Depth": [
+                112,
+                71
+              ],
+              "Phaser Feedback": [
+                64,
+                36
+              ],
+              "Phaser Frequency": [
+                48,
+                78
+              ],
+              "Phaser Spread": [
+                127,
+                112
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Destination2",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "Lfo1 Env Mode",
+              "Lfo1 Mode",
+              "Lfo2 Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 6-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + phaser + eq + LFO routed (step 1/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 72.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 21,
+              "Assign2 Amount1": 97.6,
+              "Assign2 Amount2": 103.2,
+              "Assign2 Destination1": 42,
+              "Assign2 Destination2": 37,
+              "Assign2 Source": 3,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 75.2,
+              "Assign3 Destination1": 24,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 3,
+              "Bass Intensity": 53.6,
+              "Bass Tune": 32,
+              "Chorus Delay": 0,
+              "Chorus Depth": 25.4,
+              "Chorus Feedback": 112,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 16.0,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 6,
+              "Distortion Intensity": 59.2,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 85,
+              "HighEQ Gain": 64,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 1,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 71,
+              "MidEQ Gain": 64,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 103.8,
+              "Phaser Feedback": 58.4,
+              "Phaser Frequency": 54.0,
+              "Phaser Mix": 0,
+              "Phaser Mode": 3,
+              "Phaser Rate": 36,
+              "Phaser Spread": 124.0,
+              "Ringmodulator Volume": 101.6,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "154ad7551428ffb0",
+              "449ce795e591cb1a"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 1
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between 154ad7551428ffb0 and 449ce795e591cb1a; discrete keys anchored to 154ad7551428ffb0",
+            "id": "680955025bef919e",
+            "interp": {
+              "Assign1 Amount": [
+                64,
+                104
+              ],
+              "Assign2 Amount1": [
+                106,
+                64
+              ],
+              "Assign2 Amount2": [
+                113,
+                64
+              ],
+              "Assign3 Amount3": [
+                78,
+                64
+              ],
+              "Bass Intensity": [
+                58,
+                36
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                4,
+                64
+              ],
+              "Distortion Intensity": [
+                74,
+                0
+              ],
+              "Phaser Depth": [
+                112,
+                71
+              ],
+              "Phaser Feedback": [
+                64,
+                36
+              ],
+              "Phaser Frequency": [
+                48,
+                78
+              ],
+              "Phaser Spread": [
+                127,
+                112
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Destination2",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "Lfo1 Env Mode",
+              "Lfo1 Mode",
+              "Lfo2 Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 6-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + phaser + eq + LFO routed (step 2/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 80.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 21,
+              "Assign2 Amount1": 89.2,
+              "Assign2 Amount2": 93.4,
+              "Assign2 Destination1": 42,
+              "Assign2 Destination2": 37,
+              "Assign2 Source": 3,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 72.4,
+              "Assign3 Destination1": 24,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 3,
+              "Bass Intensity": 49.2,
+              "Bass Tune": 32,
+              "Chorus Delay": 0,
+              "Chorus Depth": 50.8,
+              "Chorus Feedback": 112,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 28.0,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 6,
+              "Distortion Intensity": 44.4,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 85,
+              "HighEQ Gain": 64,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 1,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 71,
+              "MidEQ Gain": 64,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 95.6,
+              "Phaser Feedback": 52.8,
+              "Phaser Frequency": 60.0,
+              "Phaser Mix": 0,
+              "Phaser Mode": 3,
+              "Phaser Rate": 36,
+              "Phaser Spread": 121.0,
+              "Ringmodulator Volume": 76.2,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "154ad7551428ffb0",
+              "449ce795e591cb1a"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 2
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between 154ad7551428ffb0 and 449ce795e591cb1a; discrete keys anchored to 154ad7551428ffb0",
+            "id": "c113bcc2b7536163",
+            "interp": {
+              "Assign1 Amount": [
+                64,
+                104
+              ],
+              "Assign2 Amount1": [
+                106,
+                64
+              ],
+              "Assign2 Amount2": [
+                113,
+                64
+              ],
+              "Assign3 Amount3": [
+                78,
+                64
+              ],
+              "Bass Intensity": [
+                58,
+                36
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                4,
+                64
+              ],
+              "Distortion Intensity": [
+                74,
+                0
+              ],
+              "Phaser Depth": [
+                112,
+                71
+              ],
+              "Phaser Feedback": [
+                64,
+                36
+              ],
+              "Phaser Frequency": [
+                48,
+                78
+              ],
+              "Phaser Spread": [
+                127,
+                112
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Destination2",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "Lfo1 Env Mode",
+              "Lfo1 Mode",
+              "Lfo2 Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 6-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + phaser + eq + LFO routed (step 3/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 88.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 21,
+              "Assign2 Amount1": 80.8,
+              "Assign2 Amount2": 83.6,
+              "Assign2 Destination1": 42,
+              "Assign2 Destination2": 37,
+              "Assign2 Source": 3,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 69.6,
+              "Assign3 Destination1": 24,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 3,
+              "Bass Intensity": 44.8,
+              "Bass Tune": 32,
+              "Chorus Delay": 0,
+              "Chorus Depth": 76.2,
+              "Chorus Feedback": 112,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 40.0,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 6,
+              "Distortion Intensity": 29.6,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 85,
+              "HighEQ Gain": 64,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 1,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 71,
+              "MidEQ Gain": 64,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 87.4,
+              "Phaser Feedback": 47.2,
+              "Phaser Frequency": 66.0,
+              "Phaser Mix": 0,
+              "Phaser Mode": 3,
+              "Phaser Rate": 36,
+              "Phaser Spread": 118.0,
+              "Ringmodulator Volume": 50.8,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "154ad7551428ffb0",
+              "449ce795e591cb1a"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 3
+        },
+        {
+          "preset": {
+            "appliesVia": "program_writer_pending",
+            "evidence": "synthetic: linear interpolation of continuous params between 154ad7551428ffb0 and 449ce795e591cb1a; discrete keys anchored to 154ad7551428ffb0",
+            "id": "5b349683962c22cf",
+            "interp": {
+              "Assign1 Amount": [
+                64,
+                104
+              ],
+              "Assign2 Amount1": [
+                106,
+                64
+              ],
+              "Assign2 Amount2": [
+                113,
+                64
+              ],
+              "Assign3 Amount3": [
+                78,
+                64
+              ],
+              "Bass Intensity": [
+                58,
+                36
+              ],
+              "Chorus Depth": [
+                0,
+                127
+              ],
+              "Chorus Mix": [
+                4,
+                64
+              ],
+              "Distortion Intensity": [
+                74,
+                0
+              ],
+              "Phaser Depth": [
+                112,
+                71
+              ],
+              "Phaser Feedback": [
+                64,
+                36
+              ],
+              "Phaser Frequency": [
+                48,
+                78
+              ],
+              "Phaser Spread": [
+                127,
+                112
+              ],
+              "Ringmodulator Volume": [
+                127,
+                0
+              ]
+            },
+            "jumps": [
+              "Assign1 Destination",
+              "Assign1 Source",
+              "Assign2 Destination1",
+              "Assign2 Destination2",
+              "Assign2 Source",
+              "Assign3 Destination1",
+              "Assign3 Source",
+              "Chorus Delay",
+              "Chorus/LowHigh Bal",
+              "Chorus/Mic Angle",
+              "Chorus/Type",
+              "Chorus/X Over",
+              "Delay Clock",
+              "Delay Lfo Shape",
+              "Delay Mode",
+              "Delay Send",
+              "Delay/Tape Delay Modulation",
+              "Distortion Curve",
+              "Lfo1 Env Mode",
+              "Lfo1 Mode",
+              "Lfo2 Mode",
+              "Switches/Delay Enable",
+              "Vocoder Link"
+            ],
+            "name": "MORPH 6-slot matrix + chorus + ring mod + phaser + distortion + eq + LFO routed -> 4-slot matrix + chorus + delay + phaser + eq + LFO routed (step 4/5)",
+            "params": {
+              "Assign 4 Amount": 64,
+              "Assign 4 Destination": 0,
+              "Assign 4 Source": 3,
+              "Assign 5 Amount": 64,
+              "Assign 5 Destination": 0,
+              "Assign 5 Source": 3,
+              "Assign 6 Amount": 64,
+              "Assign 6 Destination": 0,
+              "Assign 6 Source": 3,
+              "Assign1 Amount": 96.0,
+              "Assign1 Destination": 0,
+              "Assign1 Source": 21,
+              "Assign2 Amount1": 72.4,
+              "Assign2 Amount2": 73.8,
+              "Assign2 Destination1": 42,
+              "Assign2 Destination2": 37,
+              "Assign2 Source": 3,
+              "Assign3 Amount1": 64,
+              "Assign3 Amount2": 64,
+              "Assign3 Amount3": 66.8,
+              "Assign3 Destination1": 24,
+              "Assign3 Destination2": 0,
+              "Assign3 Destination3": 0,
+              "Assign3 Source": 3,
+              "Bass Intensity": 40.4,
+              "Bass Tune": 32,
+              "Chorus Delay": 0,
+              "Chorus Depth": 101.6,
+              "Chorus Feedback": 112,
+              "Chorus Lfo Shape": 1,
+              "Chorus Mix": 52.0,
+              "Chorus Rate": 0,
+              "Chorus/LowHigh Bal": null,
+              "Chorus/Mic Angle": null,
+              "Chorus/Mix2": null,
+              "Chorus/Speed": null,
+              "Chorus/Type": null,
+              "Chorus/X Over": null,
+              "Delay Clock": null,
+              "Delay Lfo Shape": null,
+              "Delay Mode": null,
+              "Delay Send": null,
+              "Delay Time": null,
+              "Delay/Tape Delay Center Frequency": null,
+              "Delay/Tape Delay Feedback": null,
+              "Delay/Tape Delay Modulation": null,
+              "Distortion Curve": 6,
+              "Distortion Intensity": 14.8,
+              "Dly Rate / Rev Decay": null,
+              "HighEQ Frequency": 85,
+              "HighEQ Gain": 64,
+              "Input Follower Mode": 0,
+              "Input Follower/Attack": null,
+              "Input Follower/Level": null,
+              "Input Follower/Release": null,
+              "Input Ringmodulator": 0,
+              "LFO1 Assign Amount": 64,
+              "LFO1 Assign Dest": 0,
+              "LFO2 Assign Amount": 64,
+              "LFO2 Assign Dest": 0,
+              "Lfo1 Clock": 0,
+              "Lfo1 Env Mode": 127,
+              "Lfo1 Mode": 1,
+              "Lfo2 Clock": 0,
+              "Lfo2 Env Mode": 0,
+              "Lfo2 Mode": 0,
+              "Lfo3 Clock": 0,
+              "Lfo3 Destination": 1,
+              "Lfo3 Fade-In Time": 0,
+              "Lfo3 Mode": 0,
+              "LowEQ Frequency": 43,
+              "LowEQ Gain": 64,
+              "MidEQ Frequency": 71,
+              "MidEQ Gain": 64,
+              "MidEQ Q-Factor": 51,
+              "Phaser Depth": 79.2,
+              "Phaser Feedback": 41.6,
+              "Phaser Frequency": 72.0,
+              "Phaser Mix": 0,
+              "Phaser Mode": 3,
+              "Phaser Rate": 36,
+              "Phaser Spread": 115.0,
+              "Ringmodulator Volume": 25.4,
+              "Settings/ValueKeys Repeat Delay": null,
+              "Switches/Delay Enable": null,
+              "Vocoder Link": null,
+              "Vocoder Mode": 0,
+              "Vocoder/Balance": null,
+              "Vocoder/Carrier Center Frequency": null,
+              "Vocoder/Carrier Q Factor": null,
+              "Vocoder/Modulator Frequency Spread": null,
+              "Vocoder/Modulator Q Factor": null,
+              "Vocoder/Release": null
+            },
+            "parents": [
+              "154ad7551428ffb0",
+              "449ce795e591cb1a"
+            ],
+            "role": "mod-matrix",
+            "unverified": true
+          },
+          "step": 4
+        }
+      ]
+    }
+  ],
+  "schema": "hdaw.matrix.preset.morph.v1",
+  "sourceSheet": "matrix_presets/virus.json",
+  "unverified": true
+}

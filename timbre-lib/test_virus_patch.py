@@ -358,3 +358,44 @@ def test_survey_totals_shape(tmp_path):
     assert report["totals"]["parsed"] >= 1
     assert "unmapped_any" in report["totals"]
     assert set(report["formats"].keys()) == set(vp.SUPPORTED_FORMATS)
+
+
+# ---------------------------------------------------------------------------
+# fx-pages sweep wiring (virus_fx_pages; sidecarRev 2)
+# ---------------------------------------------------------------------------
+
+def test_fx_pages_verify_only_wiring(tmp_path):
+    import shutil
+    shutil.copy(BC_FIXTURE, tmp_path / "one.syx")
+    rc = vp.main(["--fx-pages", str(tmp_path), "--fx-verify-only"])
+    assert rc == 0
+    assert not list(tmp_path.glob("*.virus.json"))
+
+
+def test_fx_pages_write_mode_writes_rev2_sidecars(tmp_path):
+    import json
+    import shutil
+    shutil.copy(BC_FIXTURE, tmp_path / "one.syx")
+    shutil.copy(TI_BLOCK_FIXTURE, tmp_path / "ti.syx")
+    rc = vp.main(["--fx-pages", str(tmp_path)])
+    assert rc == 0
+    sides = sorted(tmp_path.glob("*.virus.json"))
+    assert [s.name for s in sides] == ["one.syx.virus.json", "ti.syx.virus.json"]
+    side = json.loads(sides[0].read_text("utf-8"))
+    for key in ("schema", "name", "engine", "format", "mappedParams",
+                "unmapped", "description", "sidecarRev", "fxModel",
+                "fxParams", "fxCoverage"):
+        assert key in side, key
+    assert side["sidecarRev"] == 2
+    assert side["fxCoverage"]["byteMatch"] == "pass"
+
+
+def test_fx_pages_unsupported_role_is_rejected(tmp_path):
+    import shutil
+    shutil.copy(BC_FIXTURE, tmp_path / "one.syx")
+    assert vp.main(["--fx-pages", str(tmp_path), "--role",
+                    "not-a-role"]) == 1
+
+
+def test_fx_pages_missing_root_is_rejected(tmp_path):
+    assert vp.main(["--fx-pages", str(tmp_path / "nope")]) == 1

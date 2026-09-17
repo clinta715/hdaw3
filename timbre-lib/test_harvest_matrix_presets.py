@@ -241,6 +241,88 @@ def test_virus_varying_presence_yields_distinct_presets(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Virus sidecarRev >= 2: dump-decoded fxParams cluster like every engine
+# ---------------------------------------------------------------------------
+
+def make_virus_rev2(path, name, fx_params):
+    """fx-pages sidecar: named FX/matrix values under fxParams (rev 2)."""
+    mp = {"0": {"param": "osc1_wave", "raw": 0, "value": 0.0}}
+    _write(path, {"engine": "sub_synth", "format": "stdmidi", "name": name,
+                  "mappedParams": mp, "unmapped": ["fx_delay"],
+                  "sidecarRev": 2, "fxModel": "TI",
+                  "fxParams": dict(fx_params),
+                  "fxCoverage": {"payloadBytes": 512, "covered": 344,
+                                 "verifiedValues": 344, "holes": 168,
+                                 "holesNonZero": 73, "checksum": "ok",
+                                 "byteMatch": "pass"}})
+
+
+def test_virus_rev2_fxparams_cluster_as_named_tuples(tmp_path):
+    for i, name in enumerate(("a", "b")):
+        make_virus_rev2(tmp_path / ("%s.virus.json" % name),
+                        name, {"Assign1 Source": 21 + i,
+                               "Assign1 Destination": 9,
+                               "Assign1 Amount": 64})
+    sheet = hmp.harvest_engine("virus", [str(tmp_path)], None)
+    # two distinct configs -> two named presets, NOT a presence-list merge
+    assert sheet["patchCount"] == 2
+    assert len(sheet["presets"]) == 2
+    params = sheet["presets"][0]["params"]
+    assert "Assign1 Source" in params          # device names, not presence
+    assert "fx_delay" not in params
+
+
+def test_virus_rev2_and_legacy_sidecars_coexist(tmp_path):
+    make_virus_rev2(tmp_path / "rev2.virus.json", "rev2",
+                    {"Assign1 Source": 21, "Assign1 Destination": 9,
+                     "Chorus/Type": 1})
+    make_virus(tmp_path / "legacy.virus.json", "legacy",
+               ["fx_delay", "mod_matrix"])
+    sheet = hmp.harvest_engine("virus", [str(tmp_path)], None)
+    assert sheet["patchCount"] == 2
+    assert len(sheet["presets"]) == 2
+    roles = {p["role"] for p in sheet["presets"]}
+    assert roles == {"mod-matrix", "feature-presence"}
+
+
+def test_virus_gate_at_least_ten_presets_from_fxparams(tmp_path):
+    for i in range(12):
+        make_virus_rev2(tmp_path / ("p%02d.virus.json" % i), "p%02d" % i,
+                        {"Assign1 Source": 21,
+                         "Assign1 Amount": 40 + i,          # varies
+                         "Chorus Mix": (i * 7) % 128})      # varies
+    sheet = hmp.harvest_engine("virus", [str(tmp_path)], None)
+    assert len(sheet["presets"]) >= hmp.VOCAB_SHORTFALL_MIN_PRESETS
+    assert "presetsShortfall" not in sheet
+
+
+def test_virus_describe_named_fragments():
+    role, name = hmp._describe_virus_named({
+        "Assign1 Source": 21, "Assign1 Destination": 9,
+        "Assign1 Amount": 64, "Chorus/Type": 1, "Chorus Mix": 40,
+        "Ringmodulator Volume": 10, "Lfo3 Destination": 5,
+    })
+    assert role == "mod-matrix"
+    assert "1-slot matrix" in name
+    assert "chorus" in name and "ring mod" in name and "LFO routed" in name
+
+
+def test_virus_describe_fx_only_role():
+    role, name = hmp._describe_virus_named({
+        "Delay Mode": 1, "Delay Send": 64,
+    })
+    assert role == "fx"
+    assert "delay" in name
+
+
+def test_virus_matrix_slots_counts_used_sources():
+    cfg = {"Assign1 Source": 21, "Assign2 Source": 0, "Assign3 Source": 5,
+           "Assign1 Amount": 64}
+    assert hmp._virus_matrix_slots(cfg) == 2    # source != 0; amount ignored
+
+
+
+# ---------------------------------------------------------------------------
 # Clustering, naming, determinism, contracts
 # ---------------------------------------------------------------------------
 
@@ -631,9 +713,14 @@ def test_real_library_spot_check(engine):
                 assert preset["appliesVia"] == "unmapped-pending-offset-map"
                 assert all(k.isdigit() for k in preset["params"])
     if engine == "virus":
-        # honest shortfall: sidecars carry no per-patch matrix values
-        assert len(sheet["presets"]) < 10
-        assert "presetsShortfall" in sheet
+        # sidecarRev >= 2 sidecars (virus_fx_pages) carry dump-decoded
+        # FX/matrix values: the corpus clears the >= 10 gate and every
+        # preset names device params (never the legacy presence list).
+        assert len(sheet["presets"]) >= hmp.VOCAB_SHORTFALL_MIN_PRESETS
+        assert "presetsShortfall" not in sheet
+        for preset in sheet["presets"]:
+            assert preset["appliesVia"] == "midi_cc_pc"
+            assert all(not k.isdigit() for k in preset["params"])
 
 
 def test_committed_xenia_sheet_mid_banks_byte_match():

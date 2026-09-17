@@ -59,11 +59,13 @@ Per-engine sidecar shapes (verified 2026-09-16 against the real libraries):
               the APPLY path stays unverified until the live-engine pass);
               without a map the raw-offset behavior
               (appliesVia=unmapped-pending-offset-map) is unchanged.
-  virus       sidecars are sub_synth-normalized: 23 params, no FX/matrix
-              values; FX/mod-matrix features appear only as a CONSTANT
-              presence list (unmapped).  The harvester therefore emits the
-              universal feature-presence config plus a shortfall note
-              instead of pretending per-patch tuples exist.
+  virus       sidecarRev >= 2 sidecars (timbre-lib/virus_fx_pages.py) carry
+              named, dump-decoded FX/matrix values under fxParams -- those
+              per-patch tuples are clustered like every other engine.
+              Legacy (rev 1) sidecars are sub_synth-normalized: 23 params,
+              no FX/matrix values; features appear only as a CONSTANT
+              presence list (unmapped), which still yields the universal
+              feature-presence config plus a shortfall note.
 
 Presets are marked ``"unverified": true``: cluster frequency is not musical
 quality -- the listening/apply pass (handoff Phase D) is the quality gate.
@@ -382,7 +384,13 @@ def iter_patch_configs(engine: str, sidecar: dict,
     256-patch bank is 256 data points, not one).
     """
     if engine == "virus":
-        # Feature-presence config (constant across the current corpus).
+        # sidecarRev >= 2: per-patch FX/matrix tuples decoded from the raw
+        # dump pages (timbre-lib/virus_fx_pages.py) -- cluster them named.
+        fx = sidecar.get("fxParams")
+        if isinstance(fx, dict) and fx:
+            yield str(sidecar.get("name") or "unnamed"), dict(fx)
+            return
+        # Legacy (rev 1) feature-presence config.
         features = [f for f in VIRUS_MATRIX_FEATURES
                     if f in (sidecar.get("unmapped") or [])]
         yield str(sidecar.get("name") or "unnamed"), {f: 1 for f in features}
@@ -703,6 +711,8 @@ def describe_vavra(cfg: Dict[str, object]) -> Tuple[str, str]:
 
 
 def describe_virus(cfg: Dict[str, object]) -> Tuple[str, str]:
+    if not set(cfg) <= set(VIRUS_MATRIX_FEATURES):
+        return _describe_virus_named(cfg)
     feats = sorted(k for k, v in cfg.items() if v)
     label = {"fx_delay": "delay FX", "fx_chorus": "chorus FX",
              "fx_reverb": "reverb FX", "mod_matrix": "mod matrix",
@@ -710,6 +720,57 @@ def describe_virus(cfg: Dict[str, object]) -> Tuple[str, str]:
              "osc2_fm_amount": "osc2 FM"}
     named = " + ".join(label.get(f, f) for f in feats)
     return "feature-presence", named or "no matrix features flagged"
+
+
+def _virus_matrix_slots(cfg: Dict[str, object]) -> int:
+    """Used mod-matrix slots: an Assign Source byte != 0 (0 = Off)."""
+    return sum(1 for key, value in cfg.items()
+               if str(key).lower().startswith("assign")
+               and "source" in str(key).lower() and value)
+
+
+def _describe_virus_named(cfg: Dict[str, object]) -> Tuple[str, str]:
+    """Role + human name for a dump-decoded FX/matrix config (rev >= 2)."""
+    frags: List[str] = []
+    slots = _virus_matrix_slots(cfg)
+    if slots:
+        frags.append("%d-slot matrix" % slots)
+    lowered = {str(k).lower(): (str(k), v) for k, v in cfg.items()}
+
+    def first(*preds):
+        for low in sorted(lowered):
+            key, value = lowered[low]
+            if value and any(pred(low) for pred in preds):
+                return key
+        return None
+
+    if first(lambda low: "vocoder" in low and "mode" in low):
+        frags.append("vocoder")
+    if first(lambda low: "chorus" in low and ("type" in low or "mix" in low)):
+        frags.append("chorus")
+    if first(lambda low: low.startswith("delay")
+             and low.endswith(("mode", "send"))):
+        frags.append("delay")
+    if first(lambda low: "ringmod" in low):
+        frags.append("ring mod")
+    if first(lambda low: "phaser" in low and "mode" in low):
+        frags.append("phaser")
+    if first(lambda low: "distortion" in low and "intensity" in low):
+        frags.append("distortion")
+    if first(lambda low: ("loweq" in low or "higheq" in low or "mideq" in low)
+             and "gain" in low):
+        frags.append("eq")
+    if (first(lambda low: low.startswith("lfo")
+              and low.endswith("assign dest"))
+            or first(lambda low: "lfo3" in low and "destination" in low)):
+        frags.append("LFO routed")
+    role = ("mod-matrix" if slots
+            else "fx" if any(f in ("chorus", "delay", "vocoder", "ring mod",
+                                   "phaser", "distortion", "eq")
+                             for f in frags)
+            else "lfo" if "LFO routed" in frags
+            else "baseline")
+    return role, (" + ".join(frags) if frags else "baseline patch config")
 
 
 _DESCRIBERS = {

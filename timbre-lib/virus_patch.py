@@ -988,9 +988,39 @@ def main(argv=None):
     ap.add_argument("--role", metavar="R",
                     help="role to check against SUPPORTED_ROLES (bass, lead, "
                          "pad, ...) -- adds a roleCheck block to each sidecar")
+    ap.add_argument("--fx-pages", metavar="DIR", action="append", default=[],
+                    help="re-sweep <patch>.virus.json sidecars under DIR with "
+                         "decoded FX/mod-matrix params (virus_fx_pages; "
+                         "combine with --role)")
+    ap.add_argument("--fx-verify-only", action="store_true",
+                    help="with --fx-pages: verify byte-match/checksums, "
+                         "write nothing")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+
+    if args.fx_pages:
+        import virus_fx_pages as vfp
+
+        role = args.role
+        if role is not None:
+            norm = RT.normalize_role(role)
+            if norm not in RT.SUPPORTED_ROLES:
+                sys.stderr.write(
+                    f"unsupported role '{role}' (supported: "
+                    f"{', '.join(RT.SUPPORTED_ROLES)})\n")
+                return 1
+        rc = 0
+        for fx_root in args.fx_pages:
+            if not os.path.isdir(fx_root):
+                sys.stderr.write(f"fx-pages root not found: {fx_root}\n")
+                return 1
+            stats = vfp.sweep_virus_fx(fx_root, role=role,
+                                       verify_only=args.fx_verify_only)
+            vfp.print_fx_summary(stats)
+            if not stats["ok"]:
+                rc = 1
+        return rc
 
     if args.sidecars:
         if not os.path.isdir(args.sidecars):
