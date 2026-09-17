@@ -233,3 +233,12 @@ Ranked: probe the channel question first (cheap), then (a) if timing-dominated.
 - HDAW-side status is final for now: all five engines have complete, validated,
   committed morph/preset pipelines; Virus + Vavra live-injectability are emulator
   limitations (documented), JE8086/Xenia/Nord are live-performable.
+
+
+### RELIABILITY CAVEAT on the ROM sweep above
+The engine restarted mid-sweep (observed: verify_part then returned 'trackIndex out of
+range' on a fresh empty project), and the sweep's rms parser defaulted missing matches
+to 0 — so the '10 combos silent' result is UNRELIABLE and must be re-run in a single
+live engine session (parse failures reported separately from true silence) before any
+conclusion is drawn from it. The channel-filter exclusion stands (source-verified:
+MidiClipProcessor emits JUCE channel 1 = nibble 0 = boot GLOBAL_CHANNEL).
