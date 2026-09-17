@@ -353,6 +353,17 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
         return fail("audio processor unavailable");
     auto* track = proc->getTrack(params.trackIndex);
     if (track == nullptr)
+    {
+        // Live-routing seam (plan 2026-09-16): settle the live projection on
+        // demand (drain + bounded full rebuild) and refetch. Used by the
+        // preset loaders (load_nord_bank / load_virus_preset via PresetRoute)
+        // right after add_track / add_instrument_part, which defer the live
+        // graph update. Error text unchanged if it still fails.
+        engine_.ensureLiveRouting(params.trackIndex);
+        proc = engine_.getMainProcessor();
+        track = proc != nullptr ? proc->getTrack(params.trackIndex) : nullptr;
+    }
+    if (track == nullptr)
         return fail("track not found: " + std::to_string(params.trackIndex));
     auto& chain = track->getFXChain();
     if (params.slotIndex < 0 || static_cast<size_t>(params.slotIndex) >= chain.size())

@@ -1,6 +1,7 @@
 #pragma once
 #include "../common/PluginParamService.h"
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -9,7 +10,13 @@ class MainAudioProcessor;
 
 class PluginParamServiceImpl : public PluginParamService {
 public:
-    explicit PluginParamServiceImpl(MainAudioProcessor& proc);
+    // `ensureLive` settles the live routing projection on demand
+    // (AudioEngine::ensureLiveRouting: drain + bounded full rebuild) when a
+    // lookup hits a null track. Empty (default) = no-op, so bare
+    // construction keeps its previous behavior.
+    using EnsureLiveRoutingFn = std::function<bool(int)>;
+    explicit PluginParamServiceImpl(MainAudioProcessor& proc,
+                                    EnsureLiveRoutingFn ensureLive = {});
     ~PluginParamServiceImpl() override;
 
     std::vector<PluginParamSnapshot> getParams(int trackIndex, const std::string& pluginID) override;
@@ -28,6 +35,7 @@ private:
     void clearCallback(int trackIndex, const std::string& pluginID);
 
     MainAudioProcessor& proc_;
+    EnsureLiveRoutingFn ensureLive_;
 
     struct InternalListener : public juce::AudioProcessorListener {
         ParamChangeCallback onChanged;

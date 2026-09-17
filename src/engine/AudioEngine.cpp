@@ -313,7 +313,8 @@ void AudioEngine::initialize()
     static_cast<ReadModelImpl*>(readModel.get())->setEngine(this);
 
     pluginService = std::make_unique<PluginServiceImpl>(pluginManager);
-    paramService = std::make_unique<PluginParamServiceImpl>(*mainProcessor);
+    paramService = std::make_unique<PluginParamServiceImpl>(*mainProcessor,
+        [this](int trackIndex) { return ensureLiveRouting(trackIndex); });
     midiService = std::make_unique<MidiServiceImpl>(midiInputManager);
 
     // Wiring that previously lived in MainWindow
@@ -1789,6 +1790,40 @@ void AudioEngine::drainPendingRoutingRebuild()
             return nullptr;
         },
         &ctx);
+}
+
+bool AudioEngine::ensureLiveRouting(int trackIndex)
+{
+    if (trackIndex < 0)
+        return false;
+    auto* proc = getMainProcessor();
+    if (proc == nullptr)
+        return false;
+
+    // (a) Immediate check — the common case: projection already settled.
+    if (proc->getTrack(trackIndex) != nullptr)
+        return true;
+
+    // (b) Settle the coalesced async rebuild (exactly-once, message-thread
+    // safe) and retry. Covers the ordinary lesson-9 deferral window: tests
+    // and commands that added a track/clip without draining.
+    drainPendingRoutingRebuild();
+    if (proc->getTrack(trackIndex) != nullptr)
+        return true;
+
+    // (c) Bounded fallback. The pending rebuild state can already have been
+    // consumed while the projection was still null (deviceless sessions:
+    // rebuildRoutingGraph no-ops without a RoutingManager — lessons 9/17),
+    // so the drain alone cannot recover the seam. Fire ONE full rebuild
+    // through the existing serialized path — MainAudioProcessor::
+    // rebuildRoutingGraph, the exact mechanism the AudioEngineCommands::
+    // rebuildRoutingGraph wrapper calls (pump-park + two-phase prebuild live
+    // inside it; no new graph-mutation code here) — then final-check.
+    HDAW_LOG("LiveRouting", "track " + std::to_string(trackIndex)
+        + " unresolved after drain - firing one bounded full routing rebuild");
+    liveRoutingRebuilds_.fetch_add(1, std::memory_order_relaxed);
+    proc->rebuildRoutingGraph();
+    return proc->getTrack(trackIndex) != nullptr;
 }
 
 void AudioEngine::timerCallback()

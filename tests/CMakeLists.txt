@@ -145,6 +145,7 @@ add_executable(hdaw_tests
     unit/engine/clap_program_test.cpp
     unit/engine/clap_param_metadata_test.cpp
     unit/engine/fx_midi_injection_test.cpp
+    unit/engine/live_routing_seam_test.cpp
     unit/engine/envelope_generation_test.cpp
     unit/engine/session_test.cpp
     unit/engine/meter_test.cpp

@@ -4,14 +4,21 @@
 #include "CLAPPluginInstance.h"
 #include "../proxy/PluginProxySlot.h"
 
-PluginParamServiceImpl::PluginParamServiceImpl(MainAudioProcessor& proc)
-    : proc_(proc) {}
+PluginParamServiceImpl::PluginParamServiceImpl(MainAudioProcessor& proc,
+                                               EnsureLiveRoutingFn ensureLive)
+    : proc_(proc), ensureLive_(std::move(ensureLive)) {}
 
 PluginParamServiceImpl::~PluginParamServiceImpl() = default;
 
 juce::AudioPluginInstance* PluginParamServiceImpl::resolveInstance(int trackIndex, const std::string& pluginID) const
 {
     auto* track = proc_.getTrack(trackIndex);
+    // Live-routing seam (plan 2026-09-16): the ValueTree can already carry
+    // the track while the live projection is still unset (deferred
+    // incremental rebuild, or a pending state consumed deviceless). Settle
+    // on demand ONCE, then retry the lookup. No-op when no callback wired.
+    if (track == nullptr && ensureLive_ != nullptr && ensureLive_(trackIndex))
+        track = proc_.getTrack(trackIndex);
     if (track == nullptr) return nullptr;
     auto& fxChain = track->getFXChain();
     for (const auto& slot : fxChain)

@@ -161,6 +161,22 @@ public:
     // Calling on the message thread flushes inline (allowed, harmless).
     void drainPendingRoutingRebuild();
 
+    // Live-routing seam (plan 2026-09-16): settle the live graph projection
+    // on demand and report whether the track now exists on the LIVE
+    // processor. Sequence: (a) immediate check, (b) exactly-once
+    // drainPendingRoutingRebuild() + retry, (c) when the projection is STILL
+    // unresolved, ONE full rebuild through the existing serialized path
+    // (MainAudioProcessor::rebuildRoutingGraph — the same mechanism
+    // AudioEngineCommands::rebuildRoutingGraph wraps; the pump-park /
+    // two-phase idioms live inside it) + final check. Bounded: at most one
+    // full rebuild per call, ever. Needed because a deviceless session can
+    // consume the pending rebuild while the projection is still null
+    // (rebuildRoutingGraph no-ops without a RoutingManager — lessons 9/17),
+    // after which the drain alone can never recover the seam. No new
+    // graph-mutation logic: it only re-drives existing paths. Never touches
+    // processBlock / audio-thread code.
+    bool ensureLiveRouting(int trackIndex);
+
     // Incremental-routing mode (Task 3): ON when HDAW_FORCE_INCREMENTAL_ROUTING
     // was non-zero/non-'f' at engine startup (read once in initialize()).
     // Exposed so tests can prove the flag plumbing (T3-G4).
@@ -174,6 +190,9 @@ public:
     // is visible as a zero delta on both counters.
     uint64_t debugIncrementalOpsApplied() const { return incrementalOpsApplied_; }
     uint64_t debugFullRebuilds() const { return fullRebuilds_; }
+    // Live-routing seam test seam (see ensureLiveRouting): how many times the
+    // bounded full-rebuild fallback actually fired.
+    uint64_t debugLiveRoutingRebuilds() const { return liveRoutingRebuilds_.load(std::memory_order_relaxed); }
     int debugPendingClipOpCount() const
     {
         std::lock_guard<std::mutex> lock(pendingOpsMutex_);
@@ -235,6 +254,9 @@ private:
     // Test seams (see debug* getters above).
     uint64_t incrementalOpsApplied_ = 0;
     uint64_t fullRebuilds_ = 0;
+    // Live-routing seam fallback counter (atomic: ensureLiveRouting may be
+    // reached from MCP/command worker threads via the param service).
+    std::atomic<uint64_t> liveRoutingRebuilds_{ 0 };
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;
