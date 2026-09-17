@@ -1828,6 +1828,23 @@ bool AudioEngine::ensureLiveRouting(int trackIndex)
 
 void AudioEngine::timerCallback()
 {
+    // LiveClockDiag (F-A instrumentation): throttled 5s evidence for whether
+    // the live graph clocks on deviceless/RDP sessions. Cheap relaxed atomic
+    // read on the message thread; never touches the audio path.
+    const auto nowMs = juce::Time::currentTimeMillis();
+    if (nowMs - lastLiveClockLogMs_ >= 5000)
+    {
+        lastLiveClockLogMs_ = nowMs;
+        auto* mainProc = getMainProcessor();
+        auto* dev = deviceManager.getCurrentAudioDevice();
+        const auto blocks = mainProc ? mainProc->debugProcessBlockCount() : 0;
+        const auto dBlocks = blocks - lastBlocksDiag_;
+        lastBlocksDiag_ = blocks;
+        HDAW_LOG("LiveClockDiag", (juce::String("blocks=") + juce::String((juce::uint64)blocks)
+            + " dBlocks=" + juce::String((juce::uint64)dBlocks)
+            + " devState=" + (dev != nullptr ? (dev->isOpen() ? "open" : "closed") : "none")
+            + " sr=" + juce::String(mainProc ? mainProc->getSampleRate() : 0.0, 1)).toStdString().c_str());
+    }
     if (transportManager.consumeAutoStopRequested())
     {
         // The audio thread stopped playback because position exceeded the

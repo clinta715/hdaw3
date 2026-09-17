@@ -257,6 +257,9 @@ private:
     // Live-routing seam fallback counter (atomic: ensureLiveRouting may be
     // reached from MCP/command worker threads via the param service).
     std::atomic<uint64_t> liveRoutingRebuilds_{ 0 };
+    // LiveClockDiag (F-A) throttle + last-seen processBlock count.
+    int64_t lastLiveClockLogMs_ = 0;
+    uint64_t lastBlocksDiag_ = 0;
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioProcessorPlayer processorPlayer;

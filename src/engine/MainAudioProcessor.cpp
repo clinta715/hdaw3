@@ -182,6 +182,7 @@ void MainAudioProcessor::releaseResources()
 
 void MainAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    processBlockCount_.fetch_add(1, std::memory_order_relaxed); // LiveClockDiag (F-A)
     juce::ScopedNoDenormals noDenormals;
 
     // NOTE: this is the audio thread. Per AGENTS.md "Realtime / Audio-Thread

@@ -66,6 +66,11 @@ public:
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
+    // LiveClockDiag (F-A): processBlock invocations since prepareToPlay.
+    // Relaxed atomic increment on the audio thread (no allocation/lock);
+    // read from the message thread by the engine timer.
+    uint64_t debugProcessBlockCount() const { return processBlockCount_.load(std::memory_order_relaxed); }
+
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     // Accept any layout where the main input/output buses have equal channel
     // counts (stereo↔stereo, mono↔mono, etc.). Without this override JUCE
@@ -120,6 +125,8 @@ private:
     int64_t recordingStartSample = 0;
     int64_t pendingRecordStartSample = -1;
     std::atomic<bool> countInActive{ false };
+    // LiveClockDiag (F-A): processBlock call counter (audio-thread safe).
+    std::atomic<uint64_t> processBlockCount_{ 0 };
     std::atomic<bool> recordStartPending{ false };
     bool countInEnabled = false;
     int countInBars = 1;

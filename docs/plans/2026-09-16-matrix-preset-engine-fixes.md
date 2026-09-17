@@ -350,3 +350,28 @@ same shape sendFxMidi already has; or
 no device is running (makes ALL live-side writes work headless; bigger blast radius).
 Both fix the class: param applies, queued MIDI, and any future live-side state writes
 would reach offline renders on deviceless/boxless sessions.
+
+
+## INSTRUMENTED CHECK RESULT: live graph clocks — the JE8086 ear-pass root cause is the plugin's own getStateInformation (2026-09-17)
+
+Added LiveClockDiag instrumentation (processBlockCount relaxed atomic + throttled
+engine-timer log; the ONLY audio-thread touch is a relaxed atomic fetch_add —
+Gate-3 clean). Instrumented build verified running (binary md5 match).
+
+MEASUREMENT: the live graph clocks CONTINUOUSLY on the deviceless box — dBlocks ~500
+per 5s poll (~100 blocks/s at 44100), devState=open, sr=44100. The earlier 'live graph
+never clocks' hypothesis is REFUTED.
+
+REVISED ROOT CAUSE (JE8086 ear-pass identical renders): the 44 applied CLAP parameter
+writes reach the live child's DSP (audible live), but the plugin's
+getStateInformation() does NOT serialize param-driven state — the captured state is
+bit-identical to boot (status=unchanged), so the offline domain (which restores from
+IDs::pluginState) boots at init for every render. This is the handoff's known 'hear !=
+export (state does not carry the patch)' JE8086 trap, now understood mechanically:
+NOT a save-flow bug — the plugin cannot serialize param-driven state at all.
+Consequence: no tree-capture route can fix the JE8086 offline ear pass; options are
+(a) render through the live children (engine change), or (b) live listening in the app.
+The Osirus (model-C) digital silence is a SEPARATE model-specific offline issue.
+
+Instrumentation retained (useful long-term): MainAudioProcessor::
+debugProcessBlockCount() + AudioEngine LiveClockDiag log (throttled 5s).
