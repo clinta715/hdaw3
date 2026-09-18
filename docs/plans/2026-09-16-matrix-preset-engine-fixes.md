@@ -407,3 +407,23 @@ preset and audition in real time (live path verified audible repeatedly). Offlin
 JE8086 preset rendering is emulator-blocked, same category as Vavra injection and the
 Osirus model-C silence; all three documented for the gearmulator project.
 Xenia + Nord ear-pass kits remain fully valid offline (compositions/earpass/).
+
+## EAR-PASS RESULT (by ear, 2026-09-18): NO engine's delivered patches were audible
+
+The human listening pass over the rebuilt real-corpus-patch kits:
+- Xenia: 14 real single-program dumps (edit buffer, bank 0x20) — ALL sound like the
+  same patch (minor playback length/speed differences only).
+- NodalRed2x: 14 real .syx patches via load_nord_bank (Discovery Pro pads etc.) —
+  same result.
+- JE8086: 40 offline renders bit-identical init audio (params apply live only).
+- Osirus: offline renders digital silence (model-C).
+- Vavra: injection measured not applying.
+
+UNIFIED ROOT CAUSE: HDAW's proxy delivers MIDI to the CLAPs through the
+clap-juce-extensions bridge (MidiBuffer -> CLAP events). CLAP 1.x has NO SysEx event
+type — SysEx dumps are dropped at the bridge. CC0 + program-change events DO cross,
+but every wrapper advertises program-list=false (no programs exposed) so program
+change is a structural no-op. Notes and CCs cross fine (phrases play audibly).
+Therefore: complete-patch delivery (SysEx dumps) is structurally impossible with the
+current wrappers for ALL FIVE devices, and the ear-pass kits built on it could never
+have worked. Path 2 (modify the wrappers, build our own CLAPs) is the only route.
