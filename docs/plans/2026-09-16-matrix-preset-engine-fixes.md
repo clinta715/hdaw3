@@ -388,3 +388,22 @@ All other 8 matrix-preset tests pass; the ledger-bearing replay path is verified
 Next: dump the copied clean tree XML and locate the surviving ledger (suspect: a second
 write location or a tree copy aliasing subtlety). Test currently GTEST_SKIPped with the
 reason inline — do not flip the expectation.
+
+
+## JE8086 OFFLINE EAR-PASS: CLOSED as emulation-blocked (2026-09-18, final)
+
+After the capture-fix + replay build (binary verified current, md5 312f8efa both sides):
+- 40/40 ear-pass renders completed; all 40 loud (rms ~0.48 — params now DO shape the
+  offline child via the state-restore path), but 26/40 bit-identical and rms spread
+  0.48169-0.48328 — sequential applies converge to ONE shared live state instead of
+  per-preset sounds. get_fx_capture_status never reached ok (capOk=0/40).
+- Root cause (consistent with every measurement): the JE8086 emulation's CLAP parameter
+  writes do not round-trip into its serialized patch state (the known 'state does not
+  carry the patch' trap), so per-preset differentiation cannot survive into offline
+  renders. The engine-side capture/replay machinery works; the emulation bridge does not.
+
+RESOLUTION: the JE8086 ear pass is a LIVE, IN-APP activity — apply_matrix_preset each
+preset and audition in real time (live path verified audible repeatedly). Offline
+JE8086 preset rendering is emulator-blocked, same category as Vavra injection and the
+Osirus model-C silence; all three documented for the gearmulator project.
+Xenia + Nord ear-pass kits remain fully valid offline (compositions/earpass/).
