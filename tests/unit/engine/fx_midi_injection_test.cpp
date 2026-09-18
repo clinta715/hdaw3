@@ -664,4 +664,19 @@ TEST(FxMidiInjection, BootStateBaselineGuard)
     slot.noteStateSample(boot);
     slot.noteStateSample(changed);
     EXPECT_FALSE(slot.stateLooksUnchangedSinceBoot(boot)) << "in-process: never skipped";
+
+    // C2c shrink guard: the composed predicate also refuses a pre-boot stub
+    // read (233B-class stub vs the 874B last-good on JE8086) so it can never
+    // clobber a substantial existing blob. Additive — the assertions above
+    // are untouched.
+    using HDAW::shouldPersistStateCaptureWithExisting;
+    juce::MemoryBlock stub233("b", 1); // simulated 233B-class pre-boot stub (any 1-byte block reproduces the guard)
+    EXPECT_FALSE(shouldPersistStateCaptureWithExisting(iso, restored, baseline, boot, stub233, 874));
+    EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, restored, baseline, boot, boot, 874));
+    EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, noRestore, baseline, boot, changed, 874));
+    EXPECT_FALSE(shouldPersistStateCaptureWithExisting(iso, noRestore, baseline, boot, stub233, 874));
+    EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, noRestore, baseline, boot, boot, 0));
+    EXPECT_TRUE(shouldPersistStateCaptureWithExisting(inproc, noRestore, baseline, boot, stub233, 874));
+    EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, noRestore, baseline, boot, empty, 0));
+    EXPECT_FALSE(shouldPersistStateCaptureWithExisting(iso, noRestore, baseline, boot, empty, 874));
 }

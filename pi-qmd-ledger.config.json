@@ -44,7 +44,11 @@
   },
   "extensionCompatibility": {
     "pi-context": {
-      "enabled": true
+      "tagPatterns": [],
+      "enhanceInjectors": false,
+      "autoEnableAcm": true,
+      "indexContextEvents": true,
+      "enabled": false
     }
   }
 }

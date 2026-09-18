@@ -566,3 +566,14 @@ if(HDAW_TIME_SYNC_HOOK AND WIN32)
         VERBATIM
     )
 endif()
+
+# --- Fast dev links (F-A build perf, 2026-09-18) ---
+# Full links of hdaw_tests (59s) / HDAW_headless (61s) dominated incremental
+# builds. /INCREMENTAL cuts relinks to seconds; it changes binary layout only,
+# never codegen, so runtime behavior is identical. Toggle off for pristine
+# release packaging (HDAW_INCREMENTAL_DEV_LINK=OFF).
+option(HDAW_INCREMENTAL_DEV_LINK "Use /INCREMENTAL for hdaw_tests + HDAW_headless dev links" ON)
+if(HDAW_INCREMENTAL_DEV_LINK AND MSVC)
+    set_property(TARGET hdaw_tests APPEND_STRING PROPERTY LINK_FLAGS " /INCREMENTAL")
+    set_property(TARGET HDAW_headless APPEND_STRING PROPERTY LINK_FLAGS " /INCREMENTAL")
+endif()

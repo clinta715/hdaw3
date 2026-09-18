@@ -88,7 +88,7 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                             // a boot stub when the property is still empty (existing = 0), so
                             // also refuse a state identical to the fresh-instance baseline.
                             if (HDAW::shouldReplacePluginState(existingBytes, state.getSize())
-                                && !slot->stateLooksUnchangedSinceBoot(state))
+                                && !slot->stateLooksUnchangedOrShrunkSinceBoot(state, existingBytes))
                                 slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                             else
                                 juce::Logger::writeToLog("HDAW: pluginState size regression kept (track "

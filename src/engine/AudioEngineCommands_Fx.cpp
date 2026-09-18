@@ -429,6 +429,15 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
                 writeFxCaptureReceipt(slotTree, "unchanged", 0);
                 return;
             }
+            // C2c shrink guard — a pre-boot stub read must not clobber the
+            // last-good blob; report ok.
+            const juce::String existingStr = slotTree.getProperty(IDs::pluginState, "").toString();
+            const long long existingBytes = static_cast<long long>(existingStr.length()) * 3 / 4;
+            if (existingBytes > 0 && static_cast<long long>(mb.getSize()) < existingBytes)
+            {
+                writeFxCaptureReceipt(slotTree, "ok", 0);
+                return;
+            }
             if (slotTree.isValid())
                 slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
             writeFxCaptureReceipt(slotTree, "ok", static_cast<int>(mb.getSize()));
@@ -467,11 +476,28 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
         }
         else if (slotTree.isValid())
         {
-            slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
-            r.stateBytes = static_cast<int>(mb.getSize());
-            writeFxCaptureReceipt(slotTree, "ok", r.stateBytes);
-            r.status = "ok";
-            r.capturedToTree = true;
+            // C2c: an unchanged (boot echo) or shrunk (pre-boot stub) read
+            // reports ok without persisting.
+            const juce::String existingStr = slotTree.getProperty(IDs::pluginState, "").toString();
+            const long long existingBytes = static_cast<long long>(existingStr.length()) * 3 / 4;
+            if (slot->stateLooksUnchangedSinceBoot(mb))
+            {
+                writeFxCaptureReceipt(slotTree, "unchanged", 0);
+                r.status = "unchanged";
+            }
+            else if (existingBytes > 0 && static_cast<long long>(mb.getSize()) < existingBytes)
+            {
+                writeFxCaptureReceipt(slotTree, "ok", 0);
+                r.status = "ok";
+            }
+            else
+            {
+                slotTree.setProperty(IDs::pluginState, mb.toBase64Encoding(), nullptr);
+                r.stateBytes = static_cast<int>(mb.getSize());
+                writeFxCaptureReceipt(slotTree, "ok", r.stateBytes);
+                r.status = "ok";
+                r.capturedToTree = true;
+            }
         }
         else
         {

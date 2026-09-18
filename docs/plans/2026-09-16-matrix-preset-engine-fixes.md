@@ -427,3 +427,26 @@ change is a structural no-op. Notes and CCs cross fine (phrases play audibly).
 Therefore: complete-patch delivery (SysEx dumps) is structurally impossible with the
 current wrappers for ALL FIVE devices, and the ear-pass kits built on it could never
 have worked. Path 2 (modify the wrappers, build our own CLAPs) is the only route.
+
+
+## BUILD PERF (2026-09-18): links dominated; fixes applied — measurement partially complete
+
+.ninja_log analysis (correct columns): the long poles are LINKS — HDAW.exe 114s,
+HDAW_headless 61s, hdaw_tests 59s, plugin_scanner 54s, plugin_host 43s — plus 30-48s
+JUCE mega-TU compiles (juce_gui_basics, juce_graphics+Harfbuzz, main.cpp). sccache is
+configured (CMake launcher) but weak: 16% hit rate, 188/293 calls 'non-cacheable'
+(reasons not yet captured — SCCACHE_ERROR_LOG probe pending).
+
+APPLIED:
+1. HDAW_INCREMENTAL_DEV_LINK (CMake option, default ON): /INCREMENTAL for hdaw_tests +
+   HDAW_headless RelWithDebInfo links. Layout-only change; codegen/runtime identical.
+   Toggle OFF for pristine release packaging.
+2. Build discipline: use targeted builds in dev loops — build-fast test (hdaw_tests),
+   build-fast HDAW_headless (the MCP engine) — NOT build-fast all (which also links
+   the 114s HDAW.exe GUI binary + scanner + host).
+3. LiveClockDiag retained (throttled 5s engine-timer log: blocks/dBlocks/devState/sr).
+
+PARTIALLY VERIFIED: the first post-flag hdaw_tests link completed (up-to-date
+afterwards) and MatrixPresetsTest passed 12/12; the incremental RELINK speedup
+(seconds vs 59s) still needs one timed touch+rebuild to confirm — next session.
+sccache non-cacheable diagnosis also pending (SCCACHE_ERROR_LOG probe).

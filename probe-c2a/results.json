@@ -1,0 +1,731 @@
+{
+ "plugin": "CLAP-JE8086-3429505-0",
+ "trackIndex": 0,
+ "params": [
+  [
+   17,
+   0.787402,
+   "Lfo1Rate"
+  ],
+  [
+   21,
+   1.0,
+   "RingModulatorSwitch"
+  ],
+  [
+   22,
+   0.708661,
+   "CrossModulationDepth"
+  ],
+  [
+   59,
+   0.07874,
+   "CutoffFrequency"
+  ],
+  [
+   73,
+   1.0,
+   "AmpEnvelopeAttackTime"
+  ],
+  [
+   76,
+   0.944882,
+   "AmpEnvelopeReleaseTime"
+  ]
+ ],
+ "a_boot_capture": {
+  "polls": [
+   {
+    "atMs": 0.2,
+    "status": "pending",
+    "stateBytes": "0",
+    "capturedAtMs": "1789765583201",
+    "hasPluginState": "0"
+   },
+   {
+    "atMs": 1.0,
+    "status": "unchanged",
+    "stateBytes": "0",
+    "capturedAtMs": "1789765584001",
+    "hasPluginState": "0"
+   }
+  ],
+  "settled": {
+   "status": "unchanged",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765584001",
+   "hasPluginState": "0"
+  }
+ },
+ "a_boot_state": {
+  "md5": null,
+  "bytes": null,
+  "blobs": 0
+ },
+ "a_apply": [
+  {
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "ok": true,
+   "resp": "ok"
+  }
+ ],
+ "a_post_capture": {
+  "polls": [
+   {
+    "atMs": 0.2,
+    "status": "pending",
+    "stateBytes": "0",
+    "capturedAtMs": "1789765590554",
+    "hasPluginState": "0"
+   },
+   {
+    "atMs": 1.0,
+    "status": "ok",
+    "stateBytes": "874",
+    "capturedAtMs": "1789765591341",
+    "hasPluginState": "1"
+   }
+  ],
+  "settled": {
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765591341",
+   "hasPluginState": "1"
+  }
+ },
+ "a_post_state": {
+  "md5": "c041aa5f4c74039186a8fa1784e78839 (b64)",
+  "bytes": 579,
+  "blobs": 0
+ },
+ "b_apply": [
+  {
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "ok": true,
+   "resp": "ok"
+  }
+ ],
+ "b_post_capture": {
+  "polls": [
+   {
+    "atMs": 0.2,
+    "status": "pending",
+    "stateBytes": "0",
+    "capturedAtMs": "1789765594628",
+    "hasPluginState": "1"
+   },
+   {
+    "atMs": 1.0,
+    "status": "ok",
+    "stateBytes": "874",
+    "capturedAtMs": "1789765595405",
+    "hasPluginState": "1"
+   }
+  ],
+  "settled": {
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765595405",
+   "hasPluginState": "1"
+  }
+ },
+ "b_post_state": {
+  "md5": "539b0b7aeea16365b7ca0053b0a2d7fa",
+  "bytes": 874,
+  "blobs": 0
+ },
+ "c_apply": [
+  {
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "ok": true,
+   "resp": "ok"
+  },
+  {
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "ok": true,
+   "resp": "ok"
+  }
+ ],
+ "c_post_capture": {
+  "polls": [
+   {
+    "atMs": 0.2,
+    "status": "pending",
+    "stateBytes": "0",
+    "capturedAtMs": "1789765598701",
+    "hasPluginState": "1"
+   },
+   {
+    "atMs": 1.0,
+    "status": "ok",
+    "stateBytes": "874",
+    "capturedAtMs": "1789765599506",
+    "hasPluginState": "1"
+   }
+  ],
+  "settled": {
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765599506",
+   "hasPluginState": "1"
+  }
+ },
+ "c_pre_state": {
+  "md5": "539b0b7aeea16365b7ca0053b0a2d7fa",
+  "bytes": 874,
+  "blobs": 0
+ },
+ "c_export": {
+  "path": "C:\\temp\\c2a_c.wav",
+  "md5": "792ba898772a3bfb377d3d1875622e42",
+  "bytes": 1728104,
+  "rms": 0.0,
+  "peak": 0.0,
+  "resp": "export complete: C:\\temp\\c2a_c.wav"
+ },
+ "wall": [
+  {
+   "t": 1789765579.3,
+   "tag": "ping"
+  },
+  {
+   "t": 1789765579.525,
+   "tag": "engine_info",
+   "resp": "{\"exporting\":false,\"runningBinaryPath\":\"D:/pdf/roo projects/hdaw3/build/HDAW_headless.exe\",\"runningMtime\":1789764443,\"runningSize\":26621952,\"version\":\"0.36.0\"}",
+   "isError": false
+  },
+  {
+   "t": 1789765579.527,
+   "tag": "plugin",
+   "pid": "CLAP-JE8086-3429505-0"
+  },
+  {
+   "t": 1789765579.529,
+   "tag": "new_project",
+   "resp": "ok"
+  },
+  {
+   "t": 1789765579.867,
+   "tag": "add_instrument_part",
+   "resp": "trackIndex=0 clips=3 notes=3",
+   "isError": false
+  },
+  {
+   "t": 1789765579.867,
+   "tag": "track",
+   "ti": 0
+  },
+  {
+   "t": 1789765582.868,
+   "tag": "list_fx",
+   "resp": "[{\"bypassed\":false,\"paramCount\":0,\"pluginFormat\":\"CLAP\",\"pluginId\":\"CLAP-JE8086-3429505-0\",\"slot\":0,\"type\":\"plugin\"}]",
+   "isError": false
+  },
+  {
+   "t": 1789765582.878,
+   "tag": "list_fx_params",
+   "len": 104535,
+   "head": "{\"params\":[{\"automatable\":true,\"defaultText\":\"\",\"defaultVal\":1,\"hasRange\":true,\"index\":0,\"maxText\":\"\",\"maxVal\":1,\"minText\":\"\",\"minVal\":0,\"name\":\"A PatchName1\",\"paramID\":100,\"plainValue\":1,\"stepped\":false,\"text\":\"\",\"value\":1},{\"automatable\":true,\"defaultText\":\"\",\"defaultVal\":1,\"hasRange\":true,\"index\":1,\"maxText\":\"\",\"maxVal\":1,\"minText\":\"\",\"minVal\":0,\"name\":\"A PatchName2\",\"paramID\":101,\"plainValue\":1,\"stepped\":false,\"text\":\"\",\"value\":1},{\"automatable\":true,\"defaultText\":\"\",\"defaultVal\":1,\"hasRange",
+   "isError": false
+  },
+  {
+   "t": 1789765582.878,
+   "tag": "param-name-check",
+   "n17": [],
+   "idx21": [],
+   "head_ok": true
+  },
+  {
+   "t": 1789765582.878,
+   "tag": "scenario",
+   "s": "a_stopped"
+  },
+  {
+   "t": 1789765582.879,
+   "tag": "capture_trigger:a_boot",
+   "resp": "queued=1 capturedToTree=0 note=state capture deferred ~800ms (audio device running); poll get_fx_capture_status to confirm",
+   "isError": false
+  },
+  {
+   "t": 1789765583.08,
+   "tag": "capture.poll:a_boot",
+   "at": 0.2,
+   "status": "pending",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765583201",
+   "hasPluginState": "0"
+  },
+  {
+   "t": 1789765584.081,
+   "tag": "capture.poll:a_boot",
+   "at": 1.0,
+   "status": "unchanged",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765584001",
+   "hasPluginState": "0"
+  },
+  {
+   "t": 1789765585.283,
+   "tag": "capture.settled:a_boot",
+   "status": "unchanged",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765584001",
+   "hasPluginState": "0"
+  },
+  {
+   "t": 1789765585.288,
+   "tag": "save:a_boot",
+   "resp": "saved",
+   "isError": false
+  },
+  {
+   "t": 1789765585.298,
+   "tag": "state:a_boot",
+   "md5": null,
+   "bytes": null
+  },
+  {
+   "t": 1789765586.3,
+   "tag": "set_fx_param",
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765586.351,
+   "tag": "set_fx_param",
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765586.402,
+   "tag": "set_fx_param",
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765586.454,
+   "tag": "set_fx_param",
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765586.505,
+   "tag": "set_fx_param",
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765586.556,
+   "tag": "set_fx_param",
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765589.608,
+   "tag": "capture_trigger:a_post",
+   "resp": "queued=1 capturedToTree=0 note=state capture deferred ~800ms (audio device running); poll get_fx_capture_status to confirm",
+   "isError": false
+  },
+  {
+   "t": 1789765589.809,
+   "tag": "capture.poll:a_post",
+   "at": 0.2,
+   "status": "pending",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765590554",
+   "hasPluginState": "0"
+  },
+  {
+   "t": 1789765593.796,
+   "tag": "capture.poll:a_post",
+   "at": 1.0,
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765591341",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765594.997,
+   "tag": "capture.settled:a_post",
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765591341",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765595.003,
+   "tag": "save:a_post",
+   "resp": "saved",
+   "isError": false
+  },
+  {
+   "t": 1789765595.013,
+   "tag": "state:a_post",
+   "md5": "c041aa5f4c74039186a8fa1784e78839 (b64)",
+   "bytes": 579
+  },
+  {
+   "t": 1789765595.014,
+   "tag": "scenario",
+   "s": "b_playing"
+  },
+  {
+   "t": 1789765595.015,
+   "tag": "transport",
+   "action": "play",
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.016,
+   "tag": "summary",
+   "resp": "name=New Project\ntempo=120\ntracks=1\nclips=3\nposition=0\nisPlaying=1"
+  },
+  {
+   "t": 1789765596.017,
+   "tag": "set_fx_param",
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.068,
+   "tag": "set_fx_param",
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.12,
+   "tag": "set_fx_param",
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.171,
+   "tag": "set_fx_param",
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.222,
+   "tag": "set_fx_param",
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.273,
+   "tag": "set_fx_param",
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765596.324,
+   "tag": "capture_trigger:b_post",
+   "resp": "queued=1 capturedToTree=0 note=state capture deferred ~800ms (audio device running); poll get_fx_capture_status to confirm",
+   "isError": false
+  },
+  {
+   "t": 1789765596.525,
+   "tag": "capture.poll:b_post",
+   "at": 0.2,
+   "status": "pending",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765594628",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765597.526,
+   "tag": "capture.poll:b_post",
+   "at": 1.0,
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765595405",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765598.728,
+   "tag": "capture.settled:b_post",
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765595405",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765598.733,
+   "tag": "save:b_post",
+   "resp": "saved",
+   "isError": false
+  },
+  {
+   "t": 1789765598.743,
+   "tag": "state:b_post",
+   "md5": "539b0b7aeea16365b7ca0053b0a2d7fa",
+   "bytes": 874
+  },
+  {
+   "t": 1789765599.744,
+   "tag": "transport",
+   "action": "pause",
+   "resp": "ok"
+  },
+  {
+   "t": 1789765599.744,
+   "tag": "scenario",
+   "s": "c_offline"
+  },
+  {
+   "t": 1789765599.745,
+   "tag": "set_fx_param",
+   "idx": 17,
+   "name": "Lfo1Rate",
+   "val": 0.787402,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765599.797,
+   "tag": "set_fx_param",
+   "idx": 21,
+   "name": "RingModulatorSwitch",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765599.848,
+   "tag": "set_fx_param",
+   "idx": 22,
+   "name": "CrossModulationDepth",
+   "val": 0.708661,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765599.899,
+   "tag": "set_fx_param",
+   "idx": 59,
+   "name": "CutoffFrequency",
+   "val": 0.07874,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765599.95,
+   "tag": "set_fx_param",
+   "idx": 73,
+   "name": "AmpEnvelopeAttackTime",
+   "val": 1.0,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765600.001,
+   "tag": "set_fx_param",
+   "idx": 76,
+   "name": "AmpEnvelopeReleaseTime",
+   "val": 0.944882,
+   "resp": "ok",
+   "isError": false
+  },
+  {
+   "t": 1789765600.052,
+   "tag": "capture_trigger:c_post",
+   "resp": "queued=1 capturedToTree=0 note=state capture deferred ~800ms (audio device running); poll get_fx_capture_status to confirm",
+   "isError": false
+  },
+  {
+   "t": 1789765600.253,
+   "tag": "capture.poll:c_post",
+   "at": 0.2,
+   "status": "pending",
+   "stateBytes": "0",
+   "capturedAtMs": "1789765598701",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765601.254,
+   "tag": "capture.poll:c_post",
+   "at": 1.0,
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765599506",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765602.456,
+   "tag": "capture.settled:c_post",
+   "status": "ok",
+   "stateBytes": "874",
+   "capturedAtMs": "1789765599506",
+   "hasPluginState": "1"
+  },
+  {
+   "t": 1789765602.461,
+   "tag": "save:c_pre",
+   "resp": "saved",
+   "isError": false
+  },
+  {
+   "t": 1789765602.47,
+   "tag": "state:c_pre",
+   "md5": "539b0b7aeea16365b7ca0053b0a2d7fa",
+   "bytes": 874
+  },
+  {
+   "t": 1789765606.358,
+   "tag": "export",
+   "resp": "export complete: C:\\temp\\c2a_c.wav",
+   "isError": false
+  },
+  {
+   "t": 1789765606.398,
+   "tag": "wav",
+   "path": "C:\\temp\\c2a_c.wav",
+   "md5": "792ba898772a3bfb377d3d1875622e42",
+   "bytes": 1728104,
+   "rms": 0.0,
+   "peak": 0.0
+  }
+ ]
+}

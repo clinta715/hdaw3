@@ -217,6 +217,11 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                     if (sid >= 0) pluginManager->registerSlotTrackIndex(static_cast<uint32_t>(sid), trackIndex);
                 }
 
+                // C2c: seed the boot-state baseline BEFORE any user capture can
+                // run (restored slots skip internally via markStateRestoredFromTree).
+                if (wantIsolated)
+                    slot->captureBootBaseline();
+
                 fxChain.push_back(std::move(slot));
             }
             else

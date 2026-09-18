@@ -48,6 +48,24 @@ inline bool shouldPersistStateCapture(bool isolated, bool restoredFromTree,
     return !(sample.getSize() == baseline.getSize() && sample == baseline);
 }
 
+// C2c shrink guard: an isolated slot's last-good blob must never be shrunk —
+// pre-boot children answer a tiny stub (measured 233 B vs the 874 B last-good
+// on JE8086) which would otherwise clobber the saved state. Non-isolated slots
+// and an empty existing blob keep the legacy semantics.
+inline bool shouldPersistStateCaptureWithExisting(bool isolated, bool restoredFromTree,
+                                                  bool hasBaseline,
+                                                  const juce::MemoryBlock& baseline,
+                                                  const juce::MemoryBlock& sample,
+                                                  long long existingDecodedBytes)
+{
+    if (sample.getSize() == 0)
+        return false;
+    if (isolated && existingDecodedBytes > 0
+        && static_cast<long long>(sample.getSize()) < existingDecodedBytes)
+        return false;
+    return shouldPersistStateCapture(isolated, restoredFromTree, hasBaseline, baseline, sample);
+}
+
 class TrackFXSlot
 {
 public:
@@ -432,6 +450,31 @@ public:
             stateBaseline_ = s;
             hasStateBaseline_ = true;
         }
+    }
+
+    // C2c: seed the baseline at slot creation so 'unchanged' == fresh-instance
+    // boot state regardless of first-capture order; restored slots are already
+    // skipped via markStateRestoredFromTree.
+    void captureBootBaseline()
+    {
+        if (!isolated)
+            return;
+        auto* inst = pluginInstance.get();
+        if (inst == nullptr)
+            return;
+        juce::MemoryBlock mb;
+        inst->getStateInformation(mb);
+        noteStateSample(mb);
+    }
+
+    /// True when a capture echoes the boot baseline or would shrink the
+    /// last-good blob (C2c): skip persisting it.
+    bool stateLooksUnchangedOrShrunkSinceBoot(const juce::MemoryBlock& s,
+                                              long long existingDecodedBytes) const
+    {
+        return !shouldPersistStateCaptureWithExisting(isolated, stateRestoredFromTree_,
+                                                      hasStateBaseline_, stateBaseline_, s,
+                                                      existingDecodedBytes);
     }
 
     /// True when a capture merely echoes the boot baseline: skip persisting it.
