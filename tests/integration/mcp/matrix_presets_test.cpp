@@ -551,14 +551,8 @@ TEST_F(MatrixPresetsTest, ParamApplyWritesOverrideLedger)
 // skipped-beyond-cache instead of silently no-oping (guard-path proof). The
 // applied>0 audible proof is the JE8086 ear-pass re-render (plan G2 live
 // clause); real plugins stay out of the unit tier.
-// OPEN (F-D): the clean-tree segment below counts slotsWithOverrides=1 where the
-// removal pass expects 0 (remainingLedgers=1 after removal — see diagnostics in
-// docs/plans/2026-09-16-matrix-preset-engine-fixes.md). The ledger-bearing replay
-// path is verified by ParamApplyWritesOverrideLedger + SurvivesSaveLoad. Skipped
-// until root-caused; do not flip the expectation.
 TEST_F(MatrixPresetsTest, ParamOverrideLedgerReplaySeam)
 {
-    GTEST_SKIP() << "open F-D: clean-tree replay count — see docs/plans/2026-09-16-matrix-preset-engine-fixes.md";
     addPluginSlot();
     const QJsonObject args { { "engine", "fixture" }, { "id", "fx00000000000001" },
                              { "trackId", 0 }, { "slotIndex", 0 }, { "captureToTree", false } };
@@ -605,10 +599,20 @@ TEST_F(MatrixPresetsTest, ParamOverrideLedgerReplaySeam)
         for (int i = 0; i < src.getNumChildren(); ++i)
         {
             auto child = src.getChild(i).createCopy();
-            auto chain = child.getChildWithName(IDs::FX_CHAIN);
-            if (chain.isValid())
-                for (int s = 0; s < chain.getNumChildren(); ++s)
-                    chain.getChild(s).removeProperty(IDs::appliedParamOverrides, nullptr);
+            // Strip ledgers at the CORRECT depth: root -> TRACK_LIST -> track ->
+            // FX_CHAIN -> slot. (The first draft looked for FX_CHAIN directly
+            // under root children and silently no-oped — F-D.)
+            // child may BE the TRACK_LIST node (root child) or contain it.
+            auto trackList = child.hasType(IDs::TRACK_LIST)
+                                 ? child
+                                 : child.getChildWithName(IDs::TRACK_LIST);
+            if (trackList.isValid())
+                for (int t = 0; t < trackList.getNumChildren(); ++t)
+                {
+                    auto chain = trackList.getChild(t).getChildWithName(IDs::FX_CHAIN);
+                    for (int s = 0; s < chain.getNumChildren(); ++s)
+                        chain.getChild(s).removeProperty(IDs::appliedParamOverrides, nullptr);
+                }
             cleanModel.getTree().addChild(child, -1, nullptr);
         }
     }
