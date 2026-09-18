@@ -245,6 +245,14 @@ void CLAPParameter::setValue(float newValue)
     double plain = info.min_value + static_cast<double>(newValue) * range;
     currentPlain.store(plain);
 
+    // C2b-rev: register the value for delivery to the plugin as a CLAP
+    // param-value event in the next process() input list — the only
+    // mechanism the gearmulator clap-juce-extensions wrapper consumes to run
+    // the wrapped JUCE/pluginLib parameter setValue. The off-thread branch
+    // below (flushParameter) only ever updated our cache and never reached
+    // the plugin.
+    owner.queueParamSet(info.id, plain);
+
     if (juce::MessageManager::getInstance()->isThisTheMessageThread())
     {
         if (params != nullptr)
@@ -902,6 +910,43 @@ void CLAPPluginInstance::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
+    // C2b-rev: deliver host param sets as CLAP param-value events. These
+    // are the spec-blessed host→plugin param channel (the gearmulator
+    // clap-juce-extensions wrapper handles CLAP_EVENT_PARAM_VALUE in
+    // processEvent/paramsFlush and runs the wrapped JUCE parameter setValue;
+    // L1 in the instrumented wrapper). Value = plain value in the plugin
+    // range (equals the normalized value for RANGES_OFF wrappers). cookie is
+    // left null — the wrapper falls back to its param-id lookup.
+    {
+        PendingParamSet pending[kMaxPendingParamSets];
+        uint32_t np = 0;
+        {
+            std::unique_lock<std::mutex> lk(pendingParamMutex, std::try_to_lock);
+            if (lk.owns_lock())
+            {
+                np = pendingParamCount;
+                for (uint32_t i = 0; i < np; ++i)
+                    pending[i] = pendingParamSets[i];
+                pendingParamCount = 0;
+            }
+        }
+        for (uint32_t i = 0; i < np; ++i)
+        {
+            clap_event_param_value ev{};
+            ev.header.size = sizeof(ev);
+            ev.header.time = 0;
+            ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            ev.header.type = CLAP_EVENT_PARAM_VALUE;
+            ev.param_id = pending[i].paramId;
+            ev.note_id = -1;
+            ev.port_index = -1;
+            ev.channel = -1;
+            ev.key = -1;
+            ev.value = pending[i].plainValue;
+            inEvents.push(ev.header);
+        }
+    }
+
     process.in_events = inEvents.getInterface();
 
     // Output events
@@ -1047,6 +1092,24 @@ void CLAPPluginInstance::fillInPluginDescription(
             ++features;
         }
     }
+}
+
+void CLAPPluginInstance::queueParamSet(clap_id paramId, double plainValue)
+{
+    std::lock_guard<std::mutex> lk(pendingParamMutex);
+    // Last-value-wins per param id: a later set supersedes a still-undelivered one.
+    for (uint32_t i = 0; i < pendingParamCount; ++i)
+    {
+        if (pendingParamSets[i].paramId == paramId)
+        {
+            pendingParamSets[i].plainValue = plainValue;
+            return;
+        }
+    }
+    if (pendingParamCount < kMaxPendingParamSets)
+        pendingParamSets[pendingParamCount++] = { paramId, plainValue };
+    else
+        pendingParamSets[pendingParamCount - 1] = { paramId, plainValue }; // full: keep newest
 }
 
 void CLAPPluginInstance::flushParameter(clap_id paramId, double value)

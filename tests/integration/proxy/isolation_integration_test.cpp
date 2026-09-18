@@ -1897,6 +1897,189 @@ TEST(PluginIsolation, ParamBridgeThroughProxy) {
     mgr.killPluginHost(slotId, KillMode::KillHard);
 }
 
+// ========================================================================
+// C2b regression: staged params reach the child WITHOUT processBlock
+// ========================================================================
+//
+// Root cause (Phase C2b): the ONLY flush site for staged params was inside
+// PluginProxySlot::processBlock, but MainAudioProcessor's transport-stopped
+// buzz-guard (transport stopped && !recording && !countIn -> clear + return)
+// early-outs the whole audio graph while the transport is stopped, so the
+// flush never ran: staged params stayed dirty forever and the child kept its
+// boot state. The flush now runs on the slot's 100ms message-thread timer
+// (flushStagedParams - the sole paramSet-ring writer, transport-independent),
+// and the child drains its own audioLoop regardless of audio input. This
+// test proves delivery with NO processBlock call whatsoever.
+
+TEST(PluginIsolation, StagedParamsReachChildWithoutProcessBlock) {
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9140;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__stateecho__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slotId;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    PluginProxySlot slot(mgr, slotId, "StateEcho");
+
+    auto& params = slot.getParameters();
+    ASSERT_EQ(params.size(), 3);
+
+    // Stage a param value via the message path. NEVER call slot.processBlock:
+    // the C2b fix must deliver this through the 100ms message-thread timer
+    // flush (the JUCE message pump started by test_main dispatches timerCallback).
+    params[1]->setValue(0.85f);
+
+    auto* hdr = mgr.getShm(slotId)->getHeader();
+    ASSERT_NE(hdr, nullptr);
+
+    bool ringWritten = false;
+    bool roundTrip = false;
+    float echoed = 0.f;
+    const int kMaxPolls = 300;
+    for (int i = 0; i < kMaxPolls && !(ringWritten && roundTrip); ++i) {
+        if (hdr->paramSetWritePos.load(std::memory_order_relaxed) > 0)
+            ringWritten = true;
+
+        // GET_PARAM pipe round-trip: the child's GET_PARAM handler reports the
+        // value currently applied to its (previously drained) param, so a
+        // result of ~0.85 proves the flushed ring entry reached the child.
+        ProxyMessage getMsg{};
+        getMsg.type = MessageType::GET_PARAM;
+        getMsg.slotId = slotId;
+        uint32_t idx = 1;
+        std::memcpy(getMsg.data, &idx, sizeof(uint32_t));
+        getMsg.dataSize = sizeof(uint32_t);
+        static constexpr DWORD kPollTimeoutMs = 200;
+        if (pipe->sendMsgBounded(getMsg, kPollTimeoutMs)) {
+            ProxyResponse resp{};
+            if (pipe->receiveRespBounded(resp, kPollTimeoutMs)
+                && resp.type == MessageType::GET_PARAM_RESULT
+                && resp.result == 1
+                && resp.dataSize >= sizeof(float)) {
+                std::memcpy(&echoed, resp.data, sizeof(float));
+                if (std::abs(echoed - 0.85f) < 1e-3f)
+                    roundTrip = true;
+            }
+        }
+
+        if (!(ringWritten && roundTrip))
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(ringWritten)
+        << "paramSet ring was never written: the message-thread timer flush did not run";
+    EXPECT_TRUE(roundTrip)
+        << "GET_PARAM never returned the flushed 0.85 (child still reports "
+        << echoed << ")";
+    EXPECT_NEAR(params[1]->getValue(), 0.85f, 1e-4f);
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
+
+TEST(PluginIsolation, StagedParamsBakeIntoChildStateWithoutParentProcessBlock) {
+    // C2b-rev: transport-stopped params must not only REACH the child (that is
+    // StagedParamsReachChildWithoutProcessBlock) -- they must BAKE into the
+    // plugin's state once the child audio loop clocks processBlock (the idle
+    // clock / ring drain, exactly like the gearmulator wrapper's param
+    // pipeline). __paramstate__ bakes its current parameter values into
+    // getStateInformation() at audio time, so the persisted state readback
+    // must DIFFER from boot after staged params, with the staged values, and
+    // no parent-side processBlock was ever called.
+    ProxyProcessManager mgr;
+    const uint32_t slotId = 9150;
+
+    ASSERT_TRUE(mgr.spawnPluginHost("__paramstate__", slotId));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    ASSERT_TRUE(mgr.isAlive(slotId));
+
+    auto* pipe = mgr.getPipe(slotId);
+    ASSERT_NE(pipe, nullptr);
+
+    ProxyMessage prepareMsg{};
+    prepareMsg.type = MessageType::PREPARE;
+    prepareMsg.slotId = slotId;
+    struct { double sr; int32_t bs; int32_t ch; } pd{44100.0, 512, 2};
+    std::memcpy(prepareMsg.data, &pd, sizeof(pd));
+    prepareMsg.dataSize = sizeof(pd);
+    pipe->sendMsg(prepareMsg);
+
+    ProxyResponse prepareResp{};
+    ASSERT_TRUE(pipe->receiveResp(prepareResp));
+    EXPECT_EQ(prepareResp.result, 1u);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    PluginProxySlot slot(mgr, slotId, "ParamState");
+    auto& params = slot.getParameters();
+    ASSERT_EQ(params.size(), 3);
+
+    // Boot state readback (before any param staging; nothing has clocked
+    // processBlock yet, so the baked values are the zero-initialised defaults).
+    juce::MemoryBlock boot;
+    slot.getStateInformation(boot);
+    ASSERT_GE(boot.getSize(), 4u);
+
+    // Stage params via the parent proxy (=> ring drain => child param
+    // application). NEVER call slot.processBlock: delivery + bake must be
+    // transport-stopped via the message-thread flush and the child idle clock.
+    params[0]->setValue(0.2f);
+    params[1]->setValue(0.85f);
+
+    bool sawBaked = false;
+    float v0 = 0.f, v1 = 0.f;
+    const int kMaxPolls = 400;
+    for (int i = 0; i < kMaxPolls && !sawBaked; ++i)
+    {
+        juce::MemoryBlock blob;
+        slot.getStateInformation(blob);
+        if (blob.getSize() == boot.getSize())
+        {
+            if (blob != boot)
+            {
+                // PStateBlob magic + 3 floats
+                if (blob.getSize() >= sizeof(uint32_t) + 3 * sizeof(float))
+                {
+                    const auto* b = static_cast<const uint8_t*>(blob.getData());
+                    uint32_t magic = 0;
+                    std::memcpy(&magic, b, sizeof(magic));
+                    std::memcpy(&v0, b + sizeof(uint32_t), sizeof(float));
+                    std::memcpy(&v1, b + sizeof(uint32_t) + sizeof(float), sizeof(float));
+                    if (magic == 0x50535a41u
+                        && std::abs(v0 - 0.2f) < 1e-3f
+                        && std::abs(v1 - 0.85f) < 1e-3f)
+                        sawBaked = true;
+                }
+            }
+        }
+        if (!sawBaked)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(sawBaked)
+        << "child state never baked the staged params (boot vs post: v0="
+        << v0 << " v1=" << v1 << ") — ring/drain/idle-clock chain broken";
+
+    mgr.killPluginHost(slotId, KillMode::KillHard);
+}
+
 TEST(PluginIsolation, ProgramBridgeThroughProxy) {
     ProxyProcessManager mgr;
     const uint32_t slotId = 9152;

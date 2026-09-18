@@ -243,6 +243,17 @@ public:
     int getNumInputChannels() const { return numInputs; }
     int getNumOutputChannels() const { return numOutputs; }
 
+    // C2b-rev: CLAPParameter::setValue only caches its plain value; the
+    // ONLY spec-blessed way a host makes a CLAP plugin apply a parameter is a
+    // CLAP_EVENT_PARAM_VALUE event in a process() input list (the gearmulator
+    // clap-juce-extensions wrapper consumes them in processEvent/paramsFlush).
+    // setValue (any thread) enqueues; processBlock (audio thread) drains into
+    // inEvents before plugin->process(). Bounded fixed array, try-lock drain
+    // (never block the audio thread), last-value-wins per param id.
+    struct PendingParamSet { clap_id paramId = 0; double plainValue = 0.0; };
+    static constexpr size_t kMaxPendingParamSets = 512; // > any plugin param count
+    void queueParamSet(clap_id paramId, double plainValue);
+
     void flushParameter(clap_id paramId, double value);
     void addCLAPParameter(std::unique_ptr<CLAPParameter> param);
 
@@ -281,6 +292,12 @@ private:
 
     // Parameters (raw pointers — JUCE owns via addHostedParameter)
     std::vector<CLAPParameter*> parameters;
+
+    // Host param sets awaiting delivery to the plugin (C2b-rev). Guarded by
+    // pendingParamMutex; count/array only touched under the lock.
+    mutable std::mutex pendingParamMutex;
+    std::array<PendingParamSet, kMaxPendingParamSets> pendingParamSets{};
+    uint32_t pendingParamCount = 0;
 
     // Audio config
     int numInputs = 0;

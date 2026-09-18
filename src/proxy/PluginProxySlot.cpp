@@ -2,6 +2,7 @@
 #include "ProxyEditor.h"
 #include "CrashDialog.h"
 #include "../common/DebugLog.h"
+#include "ParamTrace.h"
 #include <algorithm>
 #include <cstring>
 #include <chrono>
@@ -138,7 +139,11 @@ juce::String ProxiedParameter::getName(int maxLen) const {
 // and marks it dirty; processBlock (audio thread, single writer) flushes it
 // into the shm paramSet ring.
 void PluginProxySlot::stageParam(uint32_t index, float value) {
-    if (index >= paramCacheSize_ || !stagedParams_) return;
+    if (index >= paramCacheSize_ || !stagedParams_) {
+        PARAM_TRACE("P1 stageParam idx=%u cache=%u staged=%d STORE=0", index, paramCacheSize_, stagedParams_?1:0);
+        return;
+    }
+    PARAM_TRACE("P1 stageParam idx=%u cache=%u staged=%d STORE=1", index, paramCacheSize_, 1);
     stagedParams_[index].store(value, std::memory_order_relaxed);
     paramDirty_[index].store(1, std::memory_order_relaxed);
 }
@@ -150,22 +155,40 @@ void PluginProxySlot::stageParam(uint32_t index, float value) {
 // leaving 0 params â€” never hangs.
 void PluginProxySlot::fetchParamMetadata() {
     auto* pipe = processManager.getPipe(slotId);
-    if (!pipe) return;
+    PARAM_TRACE("P2 begin pipe=%d", pipe != nullptr ? 1 : 0);
+    if (!pipe) {
+        PARAM_TRACE("P2 fail pipe-null");
+        return;
+    }
 
     static constexpr DWORD kMetaTimeoutMs = 3000;
 
     ProxyMessage countMsg{};
     countMsg.type = MessageType::GET_PARAM_COUNT;
     countMsg.slotId = slotId;
-    if (!pipe->sendMsgBounded(countMsg, kMetaTimeoutMs)) return;
-    ProxyResponse countResp{};
-    if (!pipe->receiveRespBounded(countResp, kMetaTimeoutMs)) return;
-    if (countResp.type != MessageType::GET_PARAM_COUNT_RESULT || countResp.result != 1)
+    if (!pipe->sendMsgBounded(countMsg, kMetaTimeoutMs)) {
+        PARAM_TRACE("P2 fail send-count");
         return;
-    if (countResp.dataSize < sizeof(uint32_t)) return;
+    }
+    ProxyResponse countResp{};
+    if (!pipe->receiveRespBounded(countResp, kMetaTimeoutMs)) {
+        PARAM_TRACE("P2 fail recv-count");
+        return;
+    }
+    if (countResp.type != MessageType::GET_PARAM_COUNT_RESULT || countResp.result != 1) {
+        PARAM_TRACE("P2 fail count-type");
+        return;
+    }
+    if (countResp.dataSize < sizeof(uint32_t)) {
+        PARAM_TRACE("P2 fail count-size");
+        return;
+    }
     uint32_t n = 0;
     std::memcpy(&n, countResp.data, sizeof(uint32_t));
-    if (n == 0 || n > 4096) return;
+    if (n == 0 || n > 4096) {
+        PARAM_TRACE("P2 fail count-n");
+        return;
+    }
 
     stagedParams_ = std::unique_ptr<std::atomic<float>[]>(new std::atomic<float>[n]);
     paramDirty_ = std::unique_ptr<std::atomic<uint32_t>[]>(new std::atomic<uint32_t>[n]);
@@ -174,6 +197,7 @@ void PluginProxySlot::fetchParamMetadata() {
         paramDirty_[i].store(0, std::memory_order_relaxed);
     }
     paramCacheSize_ = n;
+    PARAM_TRACE("P2 ok n=%u", n);
 
     for (uint32_t i = 0; i < n; ++i) {
         ProxyMessage infoMsg{};
@@ -181,10 +205,10 @@ void PluginProxySlot::fetchParamMetadata() {
         infoMsg.slotId = slotId;
         std::memcpy(infoMsg.data, &i, sizeof(uint32_t));
         infoMsg.dataSize = sizeof(uint32_t);
-        if (!pipe->sendMsgBounded(infoMsg, kMetaTimeoutMs)) { paramCacheSize_ = 0; return; }
+        if (!pipe->sendMsgBounded(infoMsg, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-send i=%u", i); paramCacheSize_ = 0; return; }
         ProxyResponse infoResp{};
-        if (!pipe->receiveRespBounded(infoResp, kMetaTimeoutMs)) { paramCacheSize_ = 0; return; }
-        if (infoResp.type != MessageType::GET_PARAM_INFO_RESULT || infoResp.result != 1) { paramCacheSize_ = 0; return; }
+        if (!pipe->receiveRespBounded(infoResp, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail info-recv i=%u", i); paramCacheSize_ = 0; return; }
+        if (infoResp.type != MessageType::GET_PARAM_INFO_RESULT || infoResp.result != 1) { PARAM_TRACE("P2 fail info-type i=%u", i); paramCacheSize_ = 0; return; }
 
         float defaultValue = 0.f;
         uint8_t automatable = 0u;
@@ -194,7 +218,7 @@ void PluginProxySlot::fetchParamMetadata() {
         uint32_t headerBytes = sizeof(float) + sizeof(uint8_t)
             + 3 * sizeof(double) + sizeof(uint8_t) + sizeof(uint8_t)
             + sizeof(uint32_t);
-        if (infoResp.dataSize < headerBytes) { paramCacheSize_ = 0; return; }
+        if (infoResp.dataSize < headerBytes) { PARAM_TRACE("P2 fail info-header i=%u", i); paramCacheSize_ = 0; return; }
         uint32_t off = 0;
         std::memcpy(&defaultValue, infoResp.data + off, sizeof(float)); off += sizeof(float);
         std::memcpy(&automatable, infoResp.data + off, sizeof(uint8_t)); off += sizeof(uint8_t);
@@ -213,8 +237,8 @@ void PluginProxySlot::fetchParamMetadata() {
         uint32_t got = inFirst;
         while (got < nameLen) {
             ProxyResponse chunk{};
-            if (!pipe->receiveRespBounded(chunk, kMetaTimeoutMs)) { paramCacheSize_ = 0; return; }
-            if (chunk.type != MessageType::STATE_CHUNK) { paramCacheSize_ = 0; return; }
+            if (!pipe->receiveRespBounded(chunk, kMetaTimeoutMs)) { PARAM_TRACE("P2 fail name-recv i=%u", i); paramCacheSize_ = 0; return; }
+            if (chunk.type != MessageType::STATE_CHUNK) { PARAM_TRACE("P2 fail name-type i=%u", i); paramCacheSize_ = 0; return; }
             uint32_t take = std::min<uint32_t>(chunk.dataSize, nameLen - got);
             take = std::min<uint32_t>(take, sizeof(chunk.data));
             nameBuf.insert(nameBuf.end(),
@@ -333,6 +357,56 @@ const juce::String PluginProxySlot::getProgramName(int index) {
 }
 
 // ---------------------------------------------------------------------------
+// flushStagedParams -- message-thread timer (100ms). The SOLE writer of the
+// shm paramSet ring (SPSC parent->child). The flush previously ran inside
+// processBlock, but MainAudioProcessor's transport-stopped buzz-guard
+// early-outs that callback (audio.clear + return), so staged params never
+// reached the child while the transport was stopped (C2b regression). The
+// child drains this ring in its own audioLoop, transport-independently.
+// Only ever called from timerCallback.
+void PluginProxySlot::flushStagedParams() {
+    auto shm = shmHandle;
+    if (!shm || !shm->getHeader())
+        return;
+    auto* hdr = shm->getHeader();
+    if (paramCacheSize_ == 0 || !stagedParams_ || !paramDirty_)
+        return;
+    auto* setRing = shm->getParamSetRing();
+    if (!setRing)
+        return;
+
+    static std::atomic<uint32_t> s_flushCalls{0};
+    const uint32_t tick = s_flushCalls.fetch_add(1, std::memory_order_relaxed) + 1;
+
+    uint32_t sw = hdr->paramSetWritePos.load(std::memory_order_relaxed);
+    uint32_t sr = hdr->paramSetReadPos.load(std::memory_order_acquire);
+    uint32_t writes = 0;
+    for (uint32_t i = 0; i < paramCacheSize_; ++i) {
+        if (!paramDirty_[i].load(std::memory_order_relaxed)) continue;
+        if (sw - sr >= PARAM_RING_SIZE) break;
+        float v = stagedParams_[i].load(std::memory_order_relaxed);
+        uint64_t packed = (uint64_t(i) << 32)
+                          | uint64_t(*reinterpret_cast<const uint32_t*>(&v));
+        setRing[sw & (PARAM_RING_SIZE - 1)].store(packed, std::memory_order_relaxed);
+        ++sw;
+        paramDirty_[i].store(0, std::memory_order_relaxed);
+        ++writes;
+    }
+    if (writes > 0) {
+        hdr->paramSetWritePos.store(sw, std::memory_order_release);
+        PARAM_TRACE("P3F FLUSHED tick=%u wrote=%u sw=%u sr=%u", tick, writes, sw, sr);
+    } else if (tick % 50 == 0) {
+        uint32_t dirtyCount = 0;
+        if (paramCacheSize_ > 0 && paramDirty_)
+            for (uint32_t di = 0; di < paramCacheSize_; ++di)
+                if (paramDirty_[di].load(std::memory_order_relaxed)) ++dirtyCount;
+        PARAM_TRACE("P3F tick=%u cache=%u staged=%d dirtyPtr=%d ring=%d dirty=%u sw=%u sr=%u",
+                    tick, paramCacheSize_, stagedParams_ ? 1 : 0, paramDirty_ ? 1 : 0,
+                    setRing ? 1 : 0, dirtyCount, sw, sr);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // drainParamNotifications â€” message thread. Pops the local notification queue
 // (filled by processBlock from the paramNotify shm ring) and forwards each to
 // the AudioProcessor listeners of the matching ProxiedParameter.
@@ -356,6 +430,20 @@ void PluginProxySlot::drainParamNotifications() {
 }
 void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
                                     juce::MidiBuffer& midiMessages) {
+    // C2a instrumentation: processBlock entry line. Correlates with the
+    // MainAudioProcessor buzz-guard early-out — when the transport is stopped
+    // and not recording, the audio graph (and this function) never runs, so
+    // staged params cannot be flushed to the shm paramSet ring.
+    static std::atomic<uint32_t> s_pbCounter{0};
+    const uint32_t pb = s_pbCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (pb == 1 || pb % 200 == 0)
+    {
+        bool pPlaying = false;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                pPlaying = pos->getIsPlaying() ? true : false;
+        PARAM_TRACE("P3E processBlock seq=%u playing=%d", pb, pPlaying ? 1 : 0);
+    }
 
     if (crashed.load())
         return;
@@ -550,27 +638,13 @@ void PluginProxySlot::processBlock(juce::AudioBuffer<float>& buffer,
         hdr->midiOutReadPos.store(or_mr + toRead, std::memory_order_release);
     }
 
-    // Param bridge â€” single audio-thread writer. Flush parent-local staged
-    // params into the shm paramSet ring; if the ring is full leave the dirty
-    // flag set for the next block.
-    if (paramCacheSize_ > 0 && stagedParams_ && paramDirty_) {
-        auto* setRing = shm->getParamSetRing();
-        if (setRing) {
-            uint32_t sw = hdr->paramSetWritePos.load(std::memory_order_relaxed);
-            uint32_t sr = hdr->paramSetReadPos.load(std::memory_order_acquire);
-            for (uint32_t i = 0; i < paramCacheSize_; ++i) {
-                if (!paramDirty_[i].load(std::memory_order_relaxed)) continue;
-                if (sw - sr >= PARAM_RING_SIZE) break;
-                float v = stagedParams_[i].load(std::memory_order_relaxed);
-                uint64_t packed = (uint64_t(i) << 32)
-                                  | uint64_t(*reinterpret_cast<const uint32_t*>(&v));
-                setRing[sw & (PARAM_RING_SIZE - 1)].store(packed, std::memory_order_relaxed);
-                ++sw;
-                paramDirty_[i].store(0, std::memory_order_relaxed);
-            }
-            hdr->paramSetWritePos.store(sw, std::memory_order_release);
-        }
-    }
+    // Param bridge (parent-side). The staged-param flush MOVED to the
+    // message-thread timer (flushStagedParams): the old audio-thread flush
+    // here never ran while the transport was stopped, because
+    // MainAudioProcessor's buzz-guard early-outs processBlock before this
+    // point, leaving staged params dirty forever. The message thread is now
+    // the SOLE paramSet-ring writer (SPSC); the child drains its own
+    // audioLoop transport-independently.
 
     // Param bridge â€” drain child->parent notify ring into the parent-local
     // bounded queue (consumed by drainParamNotifications on the message thread).
@@ -922,6 +996,7 @@ void PluginProxySlot::pollProgramCount() {
 }
 
 void PluginProxySlot::timerCallback() {
+    flushStagedParams();
     drainParamNotifications();
     pollProgramCount();
     static uint32_t tick = 0;

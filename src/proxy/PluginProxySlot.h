@@ -146,8 +146,9 @@ public:
     ProxyProcessManager& getProcessManager() { return processManager; }
     uint32_t getSlotId() const { return slotId; }
 
-    // Message-thread hook for the parent to forward staged param values into
-    // the shm paramSet ring on the next audio block.
+    // Message-thread hook for the parent to stage param values; they are
+    // forwarded into the shm paramSet ring on the next message-thread timer
+    // tick (flushStagedParams) — delivery is transport-independent.
     void stageParam(uint32_t index, float value);
 
     // Pull pending child->parent param notifications off the local atomic
@@ -226,6 +227,11 @@ private:
     // take ~10s, far beyond the 3s bounded pipe exchanges); refresh the
     // program count until the child reports more than the default program.
     void pollProgramCount();
+    // Flush parent-local staged params into the shm paramSet ring. Runs on
+    // the 100ms message-thread timer — the SOLE writer of the paramSet ring
+    // (the old audio-thread flush inside processBlock was removed because the
+    // transport-stopped buzz-guard early-outs that callback).
+    void flushStagedParams();
     void timerCallback() override;
 
     EditorClosedCallback editorClosedCb;
@@ -238,9 +244,12 @@ private:
     void waitForEditorClosed();
 
     // Param bridge state. stagedParams_/paramDirty_ are written by stageParam
-    // (any thread) and flushed by processBlock (single audio-thread writer).
-    // Built once during construction (null pipe ⇒ empty). Atomics are not
-    // copy/movable, so use a plain dynamic array via unique_ptr.
+    // (any thread) and flushed by flushStagedParams on the 100ms message-thread
+    // timer — the sole writer of the paramSet ring, transport-independent
+    // (processBlock's flush was removed: the buzz-guard early-outs it while
+    // the transport is stopped). Built once during construction (null pipe ⇒
+    // empty). Atomics are not copy/movable, so use a plain dynamic array via
+    // unique_ptr.
     std::unique_ptr<std::atomic<float>[]> stagedParams_;
     std::unique_ptr<std::atomic<uint32_t>[]> paramDirty_;
     uint32_t paramCacheSize_ = 0;

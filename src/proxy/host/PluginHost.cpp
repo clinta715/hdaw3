@@ -2,6 +2,7 @@
 #include "engine/CLAPPluginFormat.h"
 #include "engine/CLAPPluginInstance.h"
 #include "common/DebugLog.h"
+#include "../ParamTrace.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
 #include <cstdlib>
@@ -334,6 +335,83 @@ public:
 private:
     juce::MemoryBlock state;
     int currentProgram_ = 0;
+};
+
+
+// C2b-rev test seam (PluginIsolation.StagedParamsBakeIntoChildState): a
+// minimal plugin that bakes its CURRENT parameter values into getState() at
+// AUDIO time (processBlock) -- mirroring the gearmulator pattern where a host
+// param only changes the captured state once processBlock clocks the plugin.
+class ParamStateProcessor : public juce::AudioPluginInstance
+{
+public:
+    ParamStateProcessor()
+        : AudioPluginInstance(BusesProperties()
+              .withInput("Input", juce::AudioChannelSet::stereo(), true)
+              .withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
+        addHostedParameter(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{ "ps_a", 1 }, "PS A",
+            juce::NormalisableRange<float>(0.f, 1.f), 0.25f));
+        addHostedParameter(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{ "ps_b", 1 }, "PS B",
+            juce::NormalisableRange<float>(0.f, 1.f), 0.5f));
+        addHostedParameter(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{ "ps_c", 1 }, "PS C",
+            juce::NormalisableRange<float>(0.f, 1.f), 0.75f));
+    }
+
+    static constexpr size_t kNumParams = 3;
+    static constexpr uint32_t kMagic = 0x50535a41u; // "AZSP" marker
+
+    const juce::String getName() const override { return "ParamState"; }
+    void prepareToPlay(double, int) override {}
+    void releaseResources() override {}
+    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        (void)buffer;
+        // Bake at audio time (audioLoop thread) -- param values only reach
+        // getStateInformation via this clock.
+        for (size_t i = 0; i < kNumParams; ++i)
+        {
+            const float v = getParameters()[static_cast<int>(i)]->getValue();
+            uint32_t bits = 0;
+            std::memcpy(&bits, &v, sizeof(bits));
+            baked[i].store(bits, std::memory_order_relaxed);
+        }
+    }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    double getTailLengthSeconds() const override { return 0; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram(int) override {}
+    const juce::String getProgramName(int) override { return "Init"; }
+    void changeProgramName(int, const juce::String&) override {}
+    void getStateInformation(juce::MemoryBlock& dest) override
+    {
+        struct PStateBlob { uint32_t magic; float v[kNumParams]; };
+        PStateBlob b{};
+        b.magic = kMagic;
+        for (size_t i = 0; i < kNumParams; ++i)
+        {
+            const uint32_t bits = baked[i].load(std::memory_order_relaxed);
+            std::memcpy(&b.v[i], &bits, sizeof(bits));
+        }
+        dest.setSize(sizeof(b), false);
+        std::memcpy(dest.getData(), &b, sizeof(b));
+    }
+    void setStateInformation(const void*, int) override {}
+    void fillInPluginDescription(juce::PluginDescription& d) const override
+    {
+        d.name = "ParamState";
+        d.pluginFormatName = "Internal";
+        d.fileOrIdentifier = "__paramstate__";
+    }
+
+private:
+    std::array<std::atomic<uint32_t>, kNumParams> baked{};
 };
 
 class MidiEchoProcessor : public juce::AudioPluginInstance
@@ -1346,6 +1424,23 @@ void PluginHost::audioLoop()
     timeBeginPeriod(1);
 #endif
 
+    // C2b idle clock state: when the parent stages params while the
+    // transport is stopped, the param drain applies them but a CLAP plugin
+    // only bakes them into state/render when processBlock clocks it — see
+    // the no-input else branch below.
+    bool idleClockRequested = false;
+    int idleClockBlocks = 0;
+    constexpr int kIdleClockMaxBlocks = 1500; // ~1.5-2.5s at 1ms pacing
+    // C2b-rev: whether the plugin has been clocked at least once since spawn
+    // (either by real input or by the pre-param warm clock below). The
+    // gearmulator wrapper skips the FIRST host change per parameter while its
+    // internal m_lastValue == -1 (initial-value guard); that seed only arrives
+    // when the emulation boots and syncs defaults (device->host) during
+    // processBlock. Applying staged params before the first clock therefore
+    // silently drops every value.
+    bool pluginWarmed = false;
+    constexpr int kIdleWarmBlocks = 800; // ~0.8-1.6s wall; > emu boot gate (~0.3-0.8s audio)
+
     while (running.load()) {
         // Parent tells us (per PREPARE) whether this slot belongs to an
         // export render graph; only then do we Sleep-pace the loop. Live
@@ -1359,11 +1454,18 @@ void PluginHost::audioLoop()
         // count.
         if (plugin) {
             auto* paramRing = shm.getParamSetRing();
+            static std::atomic<uint32_t> s_drainCounter{0};
+            uint32_t dn = s_drainCounter.fetch_add(1, std::memory_order_relaxed);
+            uint32_t pr = 0, pw = 0;
+            int n = 0;
             if (paramRing) {
-                uint32_t pr = hdr->paramSetReadPos.load(std::memory_order_relaxed);
-                uint32_t pw = hdr->paramSetWritePos.load(std::memory_order_acquire);
+                pr = hdr->paramSetReadPos.load(std::memory_order_relaxed);
+                pw = hdr->paramSetWritePos.load(std::memory_order_acquire);
                 auto& params = plugin->getParameters();
-                int n = params.size();
+                n = params.size();
+                struct SettledParam { uint32_t index; float value; };
+                SettledParam settled[256];
+                uint32_t setCalls = 0;
                 while (pr != pw) {
                     uint64_t packed = paramRing[pr & (proxy::PARAM_RING_SIZE - 1)]
                                           .load(std::memory_order_relaxed);
@@ -1371,12 +1473,57 @@ void PluginHost::audioLoop()
                     uint32_t bits = static_cast<uint32_t>(packed & 0xFFFFFFFFull);
                     float value;
                     std::memcpy(&value, &bits, sizeof(float));
-                    if (idx < static_cast<uint32_t>(n))
-                        params[static_cast<int>(idx)]->setValue(value);
+                    if (idx < static_cast<uint32_t>(n) && setCalls < 256)
+                        settled[setCalls++] = { idx, value };
                     ++pr;
+                    if (setCalls <= 4)
+                        PARAM_TRACE("C1 SET idx=%u v=%.6f", idx, (double)value);
+                    else if (setCalls == 5)
+                        PARAM_TRACE("C1 SET ... (%u more)", setCalls);
+                }
+                if (setCalls > 0) {
+                    // Apply only after the first clock: pre-param warm boot.
+                    if (!pluginWarmed) {
+                        pluginWarmed = true;
+                        PARAM_TRACE("C1 WARM begin blocks=%d", kIdleWarmBlocks);
+                        inputBuffer.clear();
+                        midiBuffer.clear();
+                        for (int wb = 0; wb < kIdleWarmBlocks; ++wb) {
+                            if (pluginFailed.load(std::memory_order_relaxed)) break;
+#if JUCE_WINDOWS
+                            static thread_local bool s_noChildSeh =
+                                juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
+                            if (!s_noChildSeh) {
+                                auto oldTranslator = _set_se_translator(sehProcessBlockCrashTranslator);
+                                processBlockActive.store(true, std::memory_order_release);
+                                try {
+                                    plugin->processBlock(inputBuffer, midiBuffer);
+                                } catch (const std::runtime_error&) {
+                                    inputBuffer.clear();
+                                }
+                                processBlockActive.store(false, std::memory_order_release);
+                                _set_se_translator(oldTranslator);
+                            } else {
+                                plugin->processBlock(inputBuffer, midiBuffer);
+                            }
+#else
+                            plugin->processBlock(inputBuffer, midiBuffer);
+#endif
+                            midiBuffer.clear();
+                            Sleep(1);
+                        }
+                        PARAM_TRACE("C1 WARM done blocks=%d", kIdleWarmBlocks);
+                    }
+                    for (uint32_t i = 0; i < setCalls; ++i)
+                        params[static_cast<int>(settled[i].index)]->setValue(settled[i].value);
+                    PARAM_TRACE("C1 DRAINED calls=%u pr=%u pw=%u", setCalls, pr, pw);
+                    idleClockRequested = true;  // applied: plugin needs clocking to bake them
+                    PARAM_TRACE("C1 IDLE arm calls=%u", setCalls);
                 }
                 hdr->paramSetReadPos.store(pr, std::memory_order_release);
             }
+            if (dn % 200 == 0)
+                PARAM_TRACE("C1 pb=%u ring=%d n=%d pr=%u pw=%u", dn, paramRing ? 1 : 0, n, pr, pw);
         }
         // The PREPARE message can arrive after this thread started (when
         // preparedBlockSize was still the constructor default). Ensure the
@@ -1398,6 +1545,13 @@ void PluginHost::audioLoop()
         uint32_t w = hdr->inputWritePos.load(std::memory_order_acquire);
 
         if (w - r >= static_cast<uint32_t>(preparedBlockSize * preparedNumChannels)) {
+            // NOTE: do NOT mark pluginWarmed here. Real input may clock the
+            // plugin without completing the emu boot -> default-param sync the
+            // gearmulator wrapper needs to seed m_lastValue before the first
+            // host param change (C2b-rev: first-change guard drops values while
+            // m_lastValue == -1). The pre-param warm clock on the FIRST drain
+            // is the deterministic seed point.
+            idleClockRequested = false; idleClockBlocks = 0; // input present: the plugin clocks this iteration; no idle clock needed
             float* inRing = shm.getInputRing();
             float* outRing = shm.getOutputRing();
 
@@ -1609,11 +1763,61 @@ uint32_t avail = (mw >= mr) ? (mw - mr) : 0;
             // AsyncUpdate → on_main_thread) can starve without this.
             Sleep(0);
         } else {
-            static thread_local int spinCount = 0;
-            if ((++spinCount & 63) == 0)
-                Sleep(0);
-            else
-                std::this_thread::yield();
+            // C2b idle clock: the parent can stage params while the
+            // transport is stopped (its message-thread flush writes the
+            // paramSet ring). CLAP plugins whose param pipeline is
+            // audio-thread-driven (gearmulator wrappers: host param ->
+            // rate-limited message timer -> sysex -> Device::process) only
+            // bake a setValue into getState()/render when processBlock
+            // clocks them; with no input the loop would otherwise just
+            // yield forever. Run a bounded zero-input clock so staged
+            // params land before a capture. Ring/transport untouched.
+            if (idleClockRequested
+                && !pluginFailed.load(std::memory_order_relaxed)) {
+                inputBuffer.clear();
+                midiBuffer.clear();
+                // First pass of a burst: log once so the trace can prove the
+                // idle clock ran for this param-staging arm.
+                if (idleClockBlocks == 0)
+                    PARAM_TRACE("C1 IDLE clock begin blocks=%d", idleClockBlocks + 1);
+#if JUCE_WINDOWS
+                static thread_local bool s_noChildSeh =
+                    juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
+                if (!s_noChildSeh) {
+                    static thread_local int s_idleCrashCount = 0;
+                    auto oldTranslator = _set_se_translator(sehProcessBlockCrashTranslator);
+                    processBlockActive.store(true, std::memory_order_release);
+                    try {
+                        plugin->processBlock(inputBuffer, midiBuffer);
+                        s_idleCrashCount = 0;
+                    } catch (const std::runtime_error&) {
+                        ++s_idleCrashCount;
+                        if (s_idleCrashCount < 5 || (s_idleCrashCount % 25) == 0)
+                            HDAW_LOG("SIL", "CRASH (idle clock) count=" + juce::String(s_idleCrashCount));
+                        inputBuffer.clear();
+                    }
+                    processBlockActive.store(false, std::memory_order_release);
+                    _set_se_translator(oldTranslator);
+                } else {
+                    plugin->processBlock(inputBuffer, midiBuffer);
+                }
+#else
+                plugin->processBlock(inputBuffer, midiBuffer);
+#endif
+                if (++idleClockBlocks >= kIdleClockMaxBlocks) {
+                    idleClockRequested = false;
+                    idleClockBlocks = 0;
+                    PARAM_TRACE("C1 IDLE clock done blocks=%d", kIdleClockMaxBlocks);
+                }
+                Sleep(1); // pace ~real-time so the wrapper's message-thread param delivery keeps up
+            } else {
+                idleClockBlocks = 0;
+                static thread_local int spinCount = 0;
+                if ((++spinCount & 63) == 0)
+                    Sleep(0);
+                else
+                    std::this_thread::yield();
+            }
         }
     }
 
@@ -1695,6 +1899,13 @@ bool PluginHost::loadPluginByPath(const juce::String& path) {
 
     if (path == "__stateecho__") {
         plugin = std::make_unique<StateEchoProcessor>();
+        pluginLoaded.store(true);
+        return true;
+    }
+
+
+    if (path == "__paramstate__") {
+        plugin = std::make_unique<ParamStateProcessor>();
         pluginLoaded.store(true);
         return true;
     }
