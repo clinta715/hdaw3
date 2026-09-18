@@ -234,6 +234,16 @@ namespace IDs {
     DECLARE_ID(pluginFormat)
     DECLARE_ID(pluginState)
     DECLARE_ID(pluginPath)
+    // Offline param-override replay ledger (matrix-preset apply, McpTools_
+    // Matrix.cpp): compact JSON {"<liveParamIndex>": <normalized 0..1>} of the
+    // overrides RESOLVED at apply time. Persists free via the whole-tree
+    // toXmlString save (ProjectSerializer has no FX_SLOT whitelist); replayed
+    // onto the OFFLINE FX slots by ExportManager::replayAppliedParamOverrides
+    // after the render bake wait, because the pluginState-capture route is a
+    // dead end for plugins whose getStateInformation does not serialize
+    // param-driven state (JE8086, docs/plans/2026-09-16-matrix-preset-engine-
+    // fixes.md).
+    DECLARE_ID(appliedParamOverrides)
 
     // Deferred FX-MIDI capture receipt (NB4): sendFxMidi stamps "pending"
     // synchronously, then the deferred/headless capture overwrites with "ok"

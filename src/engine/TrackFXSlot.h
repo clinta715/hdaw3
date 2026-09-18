@@ -497,6 +497,20 @@ public:
         return cachedParams;
     }
 
+    // True when setAutomationParam(paramIndex, ...) would actually reach this
+    // slot's param cache (the cache covers the index). The offline export
+    // replay (ExportManager::replayAppliedParamOverrides) counts indexes
+    // beyond the cache instead of relying on setAutomationParam's silent
+    // no-op. Realtime-safe: relaxed atomic load / size reads only.
+    bool hasAutomationParam(int paramIndex) const
+    {
+        if (isExternal)
+            return paramIndex >= 0 && paramIndex < numParams.load(std::memory_order_relaxed);
+        return paramIndex >= 0
+                   && paramIndex < static_cast<int>(internalParamValues.size())
+                   && paramIndex < static_cast<int>(getParamDefsForType(slotType).size());
+    }
+
     // Set an FX parameter by normalized value (0..1).
     // For external plugins: stores in the atomic param cache for
     // applyAutomation() to push to the plugin.

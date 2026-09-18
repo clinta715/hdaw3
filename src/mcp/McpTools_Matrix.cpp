@@ -294,6 +294,15 @@ struct ParamApplyResult
     int applied = 0;
     int skipped = 0;
     QJsonArray unmapped;
+    // RESOLVED param overrides (live param index -> normalized 0..1) —
+    // exactly the pairs this loop dispatched to setParam. The caller
+    // persists them as the FX_SLOT offline-replay ledger
+    // (IDs::appliedParamOverrides), because the deferred state capture is a
+    // dead end for plugins whose getStateInformation does not serialize
+    // param-driven state (JE8086, measured 2026-09-16). Keys are decimal
+    // index strings; a repeated live index (ties) keeps the LAST value —
+    // the ledger mirrors the plugin's final param state.
+    QJsonObject overrides;
     // Deferred plugin-state capture (send_fx_midi's receipt contract, NB4):
     // setParam reaches the LIVE child only; the capture snapshots the applied
     // state into IDs::pluginState so offline renders see the preset.
@@ -332,6 +341,7 @@ ParamApplyResult applyParamsToSlot(AudioEngine& e, int ti, const QString& plugin
         const double raw = v.toDouble();
         const float normalized = static_cast<float>(std::clamp(raw, 0.0, 127.0) / 127.0);
         e.getPluginParamService().setParam(ti, pluginId.toStdString(), idx, normalized);
+        r.overrides[QString::number(idx)] = static_cast<double>(normalized);
         ++r.applied;
     }
     return r;
@@ -342,6 +352,8 @@ McpToolResult paramApplyResultText(const ParamApplyResult& r)
     QJsonObject o {
         { "applied", r.applied }, { "skipped", r.skipped }, { "unmapped", r.unmapped },
         { "captureToTree", r.captureToTree } };
+    if (!r.overrides.isEmpty())
+        o["paramOverrides"] = r.overrides.size(); // offline replay ledger size (IDs::appliedParamOverrides)
     if (r.captureToTree)
     {
         // send_fx_midi's receipt contract: status is "pending" while a
@@ -380,6 +392,43 @@ void captureAfterParamApply(AudioEngine& e, int ti, int si, int applied,
     r.captureStateBytes = cap.stateBytes;
     if (!cap.note.empty())
         r.captureNote = QString::fromStdString(cap.note);
+}
+
+// Persist the resolved overrides as the FX_SLOT offline-replay ledger:
+// IDs::appliedParamOverrides = compact JSON {"<liveParamIndex>": <normalized>,
+// ...} (juce::var JSON, debuggable in the saved XML). The export render thread
+// replays it via ExportManager::replayAppliedParamOverrides after the bake
+// wait — PluginParamService::setParam reaches the LIVE child only, and the
+// pluginState capture is a dead end for plugins whose getStateInformation
+// does not serialize param-driven state (JE8086, measured 2026-09-16: 44
+// params applied, captured state bit-identical to boot). Written REGARDLESS
+// of captureToTree — the ledger is orthogonal to the state capture. Empty
+// overrides write NOTHING, so slots without the property keep their exact
+// prior offline behavior (G5). nullptr undo: matches the pluginState
+// volatile-cache convention in AudioEngineCommands_Fx.cpp. The ledger
+// reflects the MOST RECENT apply_matrix_preset call (replace semantics —
+// the ear-pass contract is one preset per render).
+void writeAppliedParamOverrides(AudioEngine& e, int ti, int si,
+                                const ParamApplyResult& r)
+{
+    if (r.overrides.isEmpty())
+        return;
+    auto slotTree = e.getProjectModel().getTrackListTree().getChild(ti)
+                        .getChildWithName(IDs::FX_CHAIN).getChild(si);
+    if (!slotTree.isValid())
+        return;
+    // Plain "idx=val;idx=val" ledger — deliberately NOT juce::var/JSON: the
+    // var(DynamicObject*) -> JSON::toString round-trip produced an empty object
+    // in this JUCE build (measured 2026-09-18: stored ledger was just "{").
+    juce::String ledger;
+    for (auto it = r.overrides.begin(); it != r.overrides.end(); ++it)
+    {
+        const double v = it.value().toDouble();
+        ledger += (ledger.isEmpty() ? juce::String() : juce::String(";"))
+                + juce::String(it.key().toStdString()) + "=" + juce::String(v, 6);
+    }
+    if (!ledger.isEmpty())
+        slotTree.setProperty(IDs::appliedParamOverrides, ledger, nullptr);
 }
 
 } // namespace
@@ -527,6 +576,7 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
                 }
                 auto r = applyParamsToSlot(*e, ti, slot.pluginId,
                                            preset.value("params").toObject(), {}, engineMap);
+                writeAppliedParamOverrides(*e, ti, si, r);
                 captureAfterParamApply(*e, ti, si, r.applied,
                                        a.value("captureToTree").toBool(true), r);
                 return paramApplyResultText(r);
@@ -648,6 +698,7 @@ void registerMatrixTools(McpServer& s, AudioEngine* e)
                 }
                 auto r = applyParamsToSlot(*e, ti, slot.pluginId, stepParams,
                                            step.value("paramIndex").toObject(), engineMap);
+                writeAppliedParamOverrides(*e, ti, si, r);
                 captureAfterParamApply(*e, ti, si, r.applied,
                                        a.value("captureToTree").toBool(true), r);
                 return paramApplyResultText(r);

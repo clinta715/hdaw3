@@ -135,6 +135,102 @@ uint32_t ExportManager::computeBakeWaitMs(const juce::ValueTree& projectTree)
     return static_cast<uint32_t>((std::max)(15000u, (std::min)(120000u, scaled)));
 }
 
+std::vector<std::pair<int, float>>
+ExportManager::parseAppliedParamOverrides(const juce::ValueTree& slotTree)
+{
+    std::vector<std::pair<int, float>> pairs;
+    if (!slotTree.isValid())
+        return pairs;
+    // Ledger format written by McpTools_Matrix: "idx=val;idx=val" (normalized 0..1).
+    const juce::String ledgerStr = slotTree.getProperty(IDs::appliedParamOverrides, "").toString();
+    if (ledgerStr.isEmpty())
+        return pairs;
+    for (const auto& tok : juce::StringArray::fromTokens(ledgerStr, ";", ""))
+    {
+        const int eq = tok.indexOf("=");
+        if (eq <= 0)
+            continue; // malformed token — the writer only emits idx=val pairs
+        const int index = tok.upToFirstOccurrenceOf("=", false, false).getIntValue();
+        if (index < 0)
+            continue;
+        pairs.emplace_back(index, static_cast<float>(tok.fromFirstOccurrenceOf("=", false, false).getDoubleValue()));
+    }
+    return pairs;
+}
+
+ExportManager::ParamReplayStats
+ExportManager::replayAppliedParamOverrides(const juce::ValueTree& projectTree,
+                                           RoutingManager& routing)
+{
+    ParamReplayStats stats;
+    const auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
+    if (!trackList.isValid())
+        return stats;
+
+    for (int ti = 0; ti < trackList.getNumChildren(); ++ti)
+    {
+        const auto fxChainTree = trackList.getChild(ti).getChildWithName(IDs::FX_CHAIN);
+        if (!fxChainTree.isValid())
+            continue;
+        auto* track = routing.getTrackNode(ti);
+        if (track == nullptr)
+            continue;
+        auto& fxChain = track->getFXChain();
+
+        for (int si = 0; si < fxChainTree.getNumChildren(); ++si)
+        {
+            const auto slotTree = fxChainTree.getChild(si);
+            if (!slotTree.hasProperty(IDs::appliedParamOverrides))
+                continue; // G5: slots without the ledger behave exactly as before
+
+            ++stats.slotsWithOverrides;
+            HDAW_LOG("ParamReplayDbg", "counted track " + juce::String(ti) + " slot "
+                + juce::String(si) + " ledgerLen=" + juce::String(slotTree.getProperty(IDs::appliedParamOverrides).toString().length()));
+            auto* slot = si < static_cast<int>(fxChain.size())
+                             ? fxChain[static_cast<size_t>(si)].get()
+                             : nullptr;
+            if (slot == nullptr)
+            {
+                HDAW_LOG("ParamReplay", "offline replay: track " + juce::String(ti)
+                            + " slot " + juce::String(si) + " has a ledger but no processor");
+                continue;
+            }
+
+            // fxChain is built in fxChainTree child order (Track::rebuildFXChain),
+            // so the positional mapping is exact — no pluginID cross-check.
+            const auto pairs = parseAppliedParamOverrides(slotTree);
+            int applied = 0;
+            for (const auto& [index, value] : pairs)
+            {
+                // Per-index guard: the bake wait exists to let isolated
+                // children boot + publish their params, but a param list that
+                // has not reached the cache yet must not silently no-op.
+                if (!slot->hasAutomationParam(index))
+                {
+                    ++stats.skippedBeyondCache;
+                    continue;
+                }
+                slot->setAutomationParam(index, value);
+                ++applied;
+            }
+            stats.applied += applied;
+            juce::String line = "offline replay: track " + juce::String(ti)
+                + " slot " + juce::String(si) + ": applied " + juce::String(applied)
+                + "/" + juce::String(static_cast<int>(pairs.size())) + " ledger params";
+            if (stats.skippedBeyondCache > 0)
+                line += " (skipped beyond cache: " + juce::String(stats.skippedBeyondCache) + ")";
+            HDAW_LOG("ParamReplay", line);
+        }
+    }
+
+    if (stats.slotsWithOverrides > 0)
+        HDAW_LOG("ParamReplay", "offline param-override replay done: slots="
+            + juce::String(stats.slotsWithOverrides) + " applied="
+            + juce::String(stats.applied) + " skippedBeyondCache="
+            + juce::String(stats.skippedBeyondCache));
+    return stats;
+}
+
 void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                                      juce::AudioFormatManager* formatManager,
                                      PluginManager* pluginManager, juce::File outputPath,
@@ -406,6 +502,19 @@ void ExportManager::renderThreadFunc(juce::ValueTree treeCopy,
                 }
             }
     
+            // Offline param-override replay (matrix-preset apply ledger,
+            // IDs::appliedParamOverrides): AFTER the bake wait — isolated
+            // children have booted and published their param lists by now —
+            // and BEFORE the first rendered block, so the overrides ride the
+            // normal applyAutomation dirty-flag push from block 0. Realtime-
+            // safe: relaxed atomic stores, no locks, no allocation after the
+            // parse (parse happens here, pre-render). Slots without the
+            // ledger are untouched (zero behavior change).
+            {
+                const auto replayStats = replayAppliedParamOverrides(treeCopy, routingManager);
+                (void) replayStats; // accounting logged under "ParamReplay"
+            }
+
             HDAW_LOG("Export", "render graph nodes=" + juce::String(renderGraph.getNumNodes()));
 
     int64_t totalSamples = static_cast<int64_t>(duration * sampleRate);

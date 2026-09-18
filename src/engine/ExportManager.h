@@ -9,6 +9,8 @@
 #include <functional>
 #include <mutex>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace HDAW {
 
@@ -63,6 +65,38 @@ public:
     // clip count: floor 15s, 50ms per clip, cap 120s. The env override
     // HDAW_EXPORT_BAKE_TIMEOUT_MS takes precedence at the call site.
     static uint32_t computeBakeWaitMs(const juce::ValueTree& projectTree);
+
+    // Offline param-override replay (matrix-preset apply ledger,
+    // IDs::appliedParamOverrides — McpTools_Matrix.cpp writes it, the render
+    // thread replays it). The pluginState capture is a dead end for plugins
+    // whose getStateInformation does not serialize param-driven state
+    // (JE8086, measured 2026-09-16), so the RESOLVED {liveParamIndex,
+    // normalizedValue} pairs travel on the FX_SLOT tree instead.
+    struct ParamReplayStats
+    {
+        int slotsWithOverrides = 0;
+        int applied = 0;
+        int skippedBeyondCache = 0;
+    };
+
+    // Parses ONE FX_SLOT's ledger into (liveParamIndex, normalizedValue)
+    // pairs. Absent/empty/malformed property -> empty. Test seam for the
+    // replay dispatch: the pairs feed setAutomationParam verbatim.
+    static std::vector<std::pair<int, float>>
+    parseAppliedParamOverrides(const juce::ValueTree& slotTree);
+
+    // Replays the ledger for every OFFLINE FX slot that carries one: seeds
+    // the slot's atomic param cache (TrackFXSlot::setAutomationParam) so the
+    // applyAutomation dirty-flag push delivers the overrides starting with
+    // the FIRST rendered block. Must run after the render-sequence bake wait
+    // (isolated children boot + publish their param lists there) and before
+    // the block loop. Slots without the ledger are untouched (zero behavior
+    // change); indexes beyond a slot's param cache are counted in
+    // skippedBeyondCache. Realtime-safe: runs on the render thread BEFORE any
+    // processBlock; setAutomationParam is a relaxed atomic store. Logs under
+    // "ParamReplay".
+    static ParamReplayStats replayAppliedParamOverrides(const juce::ValueTree& projectTree,
+                                                        RoutingManager& routing);
 
 private:
     void renderThreadFunc(juce::ValueTree projectTree, juce::AudioFormatManager* formatManager,

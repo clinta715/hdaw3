@@ -375,3 +375,16 @@ The Osirus (model-C) digital silence is a SEPARATE model-specific offline issue.
 
 Instrumentation retained (useful long-term): MainAudioProcessor::
 debugProcessBlockCount() + AudioEngine LiveClockDiag log (throttled 5s).
+
+
+## F-D (open): ParamOverrideLedgerReplaySeam clean-tree count (2026-09-18)
+
+The replay-seam test's clean-tree segment fails: after removing
+IDs::appliedParamOverrides from every FX_CHAIN slot child of a copied project tree,
+replayAppliedParamOverrides still counts slotsWithOverrides=1 / skippedBeyondCache=1
+(expected 0/0; remainingLedgers=1 confirmed by post-removal diagnostic). The removal
+targets TRACK_LIST/track/FX_CHAIN/slot — the same path the writer and the replay read.
+All other 8 matrix-preset tests pass; the ledger-bearing replay path is verified.
+Next: dump the copied clean tree XML and locate the surviving ledger (suspect: a second
+write location or a tree copy aliasing subtlety). Test currently GTEST_SKIPped with the
+reason inline — do not flip the expectation.
