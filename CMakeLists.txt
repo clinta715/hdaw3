@@ -215,6 +215,7 @@ src/engine/StretchRenderer.cpp
     src/engine/ClusterPresetStore.cpp
     src/common/MessagePumpThread.cpp
     src/common/DeviceParamMap.cpp
+    src/common/PsyFmModMatrixView.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp

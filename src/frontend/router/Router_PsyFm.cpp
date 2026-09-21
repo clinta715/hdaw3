@@ -8,6 +8,8 @@
 #include "../../engine/PsyFmEngine.h"
 #include "../../engine/PsyFmState.h"
 
+#include "../../common/PsyFmModMatrixView.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -71,6 +73,52 @@ DispatchResult dispatchPsyFm(AudioEngine& engine, const QString& m, const QJsonV
         if (!ok)
             return makeError(-32602, "unknown preset: " + QString::fromStdString(preset));
         return { false, QJsonValue::Null };
+    }
+
+    if (m == "setModRoute") {
+        int ti, si;
+        std::string src, dst;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr)
+            || !requireString(o, "source", src, nullptr) || !requireString(o, "dest", dst, nullptr))
+            return makeError(-32602, "trackIndex, slotIndex, source and dest required");
+        if (!o.contains("depth") || !o.value("depth").isDouble())
+            return makeError(-32602, "depth (number) required");
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
+            return makeError(-32602, "slot is not a psy_fm synth");
+
+        engine.getAudioEngineCommands().setFxSlotPsyFmModRoute(
+            ti, si, src, dst, static_cast<float>(o.value("depth").toDouble()));
+        return { false, QJsonValue::Null };
+    }
+
+    if (m == "clearModMatrix") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
+            return makeError(-32602, "slot is not a psy_fm synth");
+
+        engine.getAudioEngineCommands().clearFxSlotPsyFmModRoutes(ti, si);
+        return { false, QJsonValue::Null };
+    }
+
+    // Same payload as the MCP tool psy_fm_mod_matrix_debug: both delegate to
+    // src/common/PsyFmModMatrixView.cpp so they cannot drift.
+    if (m == "modMatrixDebug") {
+        int ti, si;
+        if (!requireInt(o, "trackIndex", ti, nullptr) || !requireInt(o, "slotIndex", si, nullptr))
+            return makeError(-32602, "trackIndex and slotIndex required");
+        auto fxSlots = engine.getReadModel().getFxSlots(ti);
+        if (si < 0 || si >= static_cast<int>(fxSlots.size()) || fxSlots[si].fxType != "psy_fm")
+            return makeError(-32602, "slot is not a psy_fm synth");
+
+        auto view = HDAW::buildPsyFmModMatrixView(
+            engine.getProjectModel(), engine.getMainProcessor(), ti, si);
+        if (view.isEmpty())
+            return makeError(-32602, "slot tree not found");
+        return { false, view };
     }
 
     return makeError(-32601, "unknown psy_fm method: " + m);

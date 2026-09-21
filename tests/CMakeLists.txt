@@ -170,6 +170,7 @@ add_executable(hdaw_tests
     unit/frontend/rhythm_generation_rpc_test.cpp
     unit/frontend/rave_rpc_test.cpp
     unit/frontend/device_params_rpc_test.cpp
+    unit/frontend/psy_fm_rpc_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
     integration/proxy/namespace_collision_test.cpp
