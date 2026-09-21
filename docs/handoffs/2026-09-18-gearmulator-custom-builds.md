@@ -290,6 +290,18 @@ Virus apply/ear pass. Full writeup: `docs/hardware-va-suite.md` §9.
   only ring writer). Gate now prints `VERDICT: preset load CHANGED the offline
   render` + `PHASE2 VERDICT: host-param write ROUND-TRIPS`; OsirusBootPatchAwakening
   still green. Full writeup: `docs/hardware-va-suite.md` §9.
+- **Matrix-preset A/B closed (2026-09-21)**: `apply_matrix_preset` refused every
+  virus/vavra preset (`appliesVia` was `midi_cc_pc` /
+  `state_blob_or_patch_unverified`, and the tool rejects anything but
+  `set_fx_param`) and the param path had no name resolution for their vocabulary
+  (no `virus_param_index_map.json`). Fixed: the sheets are relabelled
+  `set_fx_param` (40+40 presets) and `applyParamsToSlot` resolves sheet names
+  against the LIVE slot's own exposed params (normalised, part-prefix tolerant).
+  New noise-floor-aware gate `FxMidiInjection.MatrixPresetAudibilityVirusVavra`:
+  virus **66/66 params applied**, render delta **0.00152** (noise 0); vavra
+  **86/363 applied**, delta **0.00088** (noise 2.14e-05). Stale rows corrected in
+  `docs/hardware-va-suite.md` (§7 "JE8086 only", §9 Phase-D status, Dexed marked
+  not-core — `fm_synth`/PsyFm is the FM engine).
 - **Session close (2026-09-20) — the FxMidiInjection suite is green.** Two more
   test-instrument retargets closed the last reds:
   `OsTIrusPresetChangeReflectsInChildParams` now asserts the child's serialized

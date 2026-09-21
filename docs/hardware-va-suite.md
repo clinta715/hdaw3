@@ -24,7 +24,7 @@ Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numb
 | Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0+PC) **FIXED 2026-09-19** — state now round-trips to offline renders (see §9); dump writer `virus_dump.py` format-verified | **OsTIrus: 6939; Osirus: 3086** exposed. **OsTIrus WORKS offline** (renders audio, gate 2026-09-19). **Osirus (C) FIXED 2026-09-19** — renders audio offline (rms 0.047); gearmulator boot-patch fix, see §9 | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | **OsTIrus and Osirus both render audio offline** (gates 2026-09-19). CC0+PC + send_fx_midi for patch selection; set_fx_param reaches the cache but the OS ignores host writes |
 | Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader; morph .syx chains VERIFIED AUDIBLE 2026-09-16 (`matrix_presets/nord_morphs/`, written by `nord_dump.py`: 5 pairs x 4 performable steps) | **362 host params since 2026-09-19** (33 curated sound params made `isPublic` in `parameterDescriptions_n2x.json` + rebuilt; HDAW proxy cap already raised). `set_fx_param`/automation verified: `FxMidiInjection.NodalRed2xHostParamsChangeRender` (Cutoff set → same-child render Δ0.00039) | MOD ENV + LFOs with per-parameter sensitivity dials (`parameterDescriptions_n2x.json`); NO onboard FX | `load_nord_bank` + `set_fx_param` (Cutoff, Resonance, FilterEnvAmount, AmpEnv A/D/S/R, ModEnvLevel, Lfo1Rate/Level, Distortion...) + CC/PC; HDAW internal FX |
 | Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | edit-buffer SysEx **VERIFIED AUDIBLE** 2026-09-16 (bank 0x20, `xenia_dump.py` — see §9); `apply_preset` WaldorfSysex route added 2026-09-18 (F0 3E 0E: validate+split+queue, tested); patch-level unproven | **2151 host params since 2026-09-19** (66 curated sound/FX params made `isPublic` in `parameterDescriptions_xt.json` + rebuilt). `set_fx_param`/automation verified: `FxMidiInjection.XeniaHostParamsChangeRender` (F1Cutoff 1.0→0.1 via the OS, same-child render Δ>1e-5) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | `apply_preset` (F0 3E 0E .syx -> validated SysEx) / `send_fx_midi` edit-buffer dumps; no host params |
-| Yamaha DX7 | **Dexed** | DX7 .syx import path exists | **cartridge injection ignored** (probed: peak 0, state byte-identical) -> use the internal `fm_synth` instead | n/a | FM operators/envelopes via `fm_synth` | internal `fm_synth` params |
+| Yamaha DX7 | ~~Dexed~~ **not core** | — | Dexed is retired from the suite: **`fm_synth` / PsyFm is the FM engine** (its own params, presets and modulation targets 300-308); the DX7 .syx cartridge route was never a core path (probed: peak 0, state byte-identical) | n/a | FM operators/envelopes via `fm_synth` | internal `fm_synth` params |
 
 Grid-wide facts worth knowing before choosing a device:
 
@@ -213,7 +213,7 @@ first (see §2 for why this order):
 | # | Operation | Tooling | Works on |
 |---|---|---|---|
 | 1 | **Bake it into the patch** — set the device's own FX type/mix/depth and matrix routings | edit the patch (or the plugin's editor), then load/save | all devices; this is the preferred layer |
-| 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | **JE8086 only** (461 params, measured). OsTIrus/Osirus, Vavra, Xenia and NodalRed2x all report `{"params":[]}` or the equivalent — measured for JE8086, OsTIrus and Vavra |
+| 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | **all five param-bearing engines since 2026-09-19/20**: JE8086 461, Vavra 7557 (96 curated sound/FX x 16 parts), OsTIrus 6939 / Osirus 3086, Xenia 2151, NodalRed2x 362 — all made `isPublic` and rebuilt (the old `{"params":[]}` reading predates that). Gates: `Vavra/Xenia/NodalRed2xHostParamsChangeRender` pass; the Virus param path round-trips to offline renders (F-A phase 2). Dexed exposes none — not core (use `fm_synth`/PsyFm) |
 | 3 | **Automation / movement** — ramps, risers, throws, macro morphs on those parameters | track automation lanes and `apply_movement_plan` (macro events with start/end values) | **JE8086 only** (e.g. the guide's delay-throw automates its DelayLevel). For every other device, "movement over time" must come from CC ramps, patch/bank loads, or the device's own envelopes/LFOs |
 | 4 | **MIDI CC / program change** — drive the device's CC-mapped routings and switch ROM presets | `send_fx_midi` (CC, PC, notes) | all devices that respond to MIDI (Virus Modulation Wheel, CC74 brightness, CC0+PC preset select) |
 | 5 | **Front-panel puppetry (remote-control SysEx)** — press the device's buttons and turn its encoders, i.e. drive it the way a human does | `send_fx_midi` {kind:"sysEx"} with the emulation's protocol. microQ (verified in source): header `F0 3E 10 00 <cmd>`, then `EmuButtons` = `52 <buttonIdx> <state>` or `EmuRotaries` = `53 <encoderIdx> <amount+64>` (`mqLib/mqsysexremotecontrol.cpp`); the device streams `EmuLCD` / `EmuLEDs` / `EmuLCDCGRata` back for verification. There is **no parameter-address write** — a `SetParam` message is ignored (probed: state byte-identical) | **the only HDAW route into Vavra's FX and matrix pages** (navigate with `EmuButtons`, adjust with `EmuRotaries`), and a fallback for hidden params elsewhere. Unverified from HDAW; verify by watching the plugin editor's LCD |
@@ -348,9 +348,17 @@ dump slots stay raw `off_<N>` keys); the **virus shortfall was removed
 2026-09-17 (R7)** — `virus_fx_pages.py` decodes the TI/B/C FX+mod pages, so
 virus ships **40** too (1.78M-value byte-match gate; see below). Sheets still
 carry the corpus flag `"unverified": true`, but the live apply/ear pass
-(Phase D) has since RUN — je8086/xenia/nodalred2x **verified live**, vavra
-**measured not applying**, virus **re-opened** (F-A was measured against a silent slot — see §9 boot-patch fix): see the status in
-the apply-path table below.
+(Phase D) has since RUN and the last two engines were closed 2026-09-21:
+je8086/xenia/nodalred2x **verified live**; **vavra and virus now verified live**
+too — their sheets declared `appliesVia` values the tool refuses
+(`state_blob_or_patch_unverified` / `midi_cc_pc`) and the param path had no
+name resolution for their vocabulary, so they were relabelled `set_fx_param`
+and the tool now resolves sheet names against the LIVE slot's own params.
+A/B (gate `FxMidiInjection.MatrixPresetAudibilityVirusVavra`, noise-floor aware):
+virus preset0 **66/66 params applied**, render delta **0.00152** (measured noise
+0); vavra preset0 **86/363 applied**, delta **0.00088** (noise 2.14e-05). The
+vavra remainder is the un-published slice of its 363-param patch — the FX/sound
+subset that is public drives the sound.
 
 ### File format
 
@@ -619,7 +627,8 @@ patch RAM the bank dumps land in, so the D-lite guard honestly reports
 replay — mirroring the Xenia/Vavra gates: `[NordBank] captureStatus=unchanged
 pluginStateLen=0 presetSysexLen=33114` with `EXPECT_GT(presetSysexLen, 0)`, a
 settled (non-`pending`, non-`failed`) receipt, and the offline-render delta
-(which passes). **The whole `FxMidiInjection` suite is now 19/19.**
+(which passes). **The whole `FxMidiInjection` suite is green** — 20 gates since
+`FxMidiInjection.MatrixPresetAudibilityVirusVavra` was added (2026-09-21).
 Note: run alone, the audibility test can still stall — several heavy TI children
 plus the real-time-paced warmup saturate the CPU.
 

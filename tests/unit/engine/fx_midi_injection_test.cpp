@@ -1933,3 +1933,161 @@ TEST(FxMidiInjection, BootStateBaselineGuard)
     EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, restored, baseline, boot, boot, 0));
     EXPECT_TRUE(shouldPersistStateCaptureWithExisting(iso, restored, baseline, boot, changed, 0));
 }
+
+// Matrix-preset A/B for the two engines whose presets were previously
+// un-runnable: `apply_matrix_preset` refuses any sheet preset whose
+// `appliesVia` is not `set_fx_param`, and virus.json/vavra.json declared
+// `midi_cc_pc` / `state_blob_or_patch_unverified` (their values ARE parameter
+// values — the labels predate the param-publishing work), while the param path
+// had no name resolution for their vocabulary (no virus_param_index_map.json).
+// Both sheets are now `set_fx_param` and the tool resolves sheet names against
+// the LIVE slot's own exposed params, so this drives real parameters through the
+// same route and requires them to reach the offline render.
+//
+// The render threshold is NOISE-FLOOR aware: two identical baseline renders
+// measure the run-to-run jitter and the applied delta must beat 3x that (and an
+// absolute 1e-4 floor) — the fixed thresholds elsewhere in this file range from
+// 1e-5 to 1e-4 against jitter of ~1e-6..1e-4, which is what makes them flaky.
+TEST(FxMidiInjection, MatrixPresetAudibilityVirusVavra)
+{
+    if (!realPluginTestsEnabled())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set";
+
+    const juce::File here(__FILE__);
+    // __FILE__ = <repo>/tests/unit/engine/fx_midi_injection_test.cpp
+    const auto sheetDir = here.getParentDirectory().getParentDirectory()
+                              .getParentDirectory().getParentDirectory()
+                              .getChildFile("timbre-lib").getChildFile("matrix_presets");
+    if (!sheetDir.isDirectory())
+        GTEST_SKIP() << "matrix preset sheets not found at " << sheetDir.getFullPathName();
+
+    struct Eng { const char* id; const char* clap; };
+    const Eng engs[] = {
+        { "virus", "C:\\Program Files\\Common Files\\CLAP\\Osirus.clap" },
+        { "vavra", "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap" } };
+
+    for (const auto& en : engs)
+    {
+        if (!juce::File(en.clap).existsAsFile())
+        {
+            std::cout << "[MatrixAB] " << en.id << ": clap missing\n";
+            continue;
+        }
+
+        AudioEngine engine;
+        engine.initialize();
+        auto& cmds = engine.getProjectCommands();
+        auto& paramSvc = engine.getPluginParamService();
+
+        ProjectCommands::AuditionParams probe;
+        probe.pluginId = en.clap;
+        probe.trackIndex = -1;
+        probe.keepTrack = true;
+        probe.lengthBeats = 2.0;
+        probe.windowSeconds = 2.0;
+        probe.seed = 21;
+        auto a1 = cmds.auditionPlugin(probe);
+        ASSERT_TRUE(a1.ok) << en.id << ": baseline audition failed: " << a1.error;
+
+        auto render = [&]() {
+            ProjectCommands::AuditionParams rp;
+            rp.trackIndex = a1.trackIndex;
+            rp.slotIndex = a1.slotIndex;
+            rp.lengthBeats = 2.0;
+            rp.windowSeconds = 2.0;
+            rp.seed = 21;
+            return cmds.auditionPlugin(rp);
+        };
+
+        // Noise floor: an unchanged state rendered twice.
+        auto a2 = render();
+        ASSERT_TRUE(a2.ok) << en.id << ": repeat baseline failed: " << a2.error;
+        const float noise = std::abs(a2.rms - a1.rms);
+
+        const auto fxSlots = engine.getReadModel().getFxSlots(a1.trackIndex);
+        ASSERT_LT(static_cast<size_t>(a1.slotIndex), fxSlots.size());
+        const std::string pluginId = fxSlots[static_cast<size_t>(a1.slotIndex)].pluginId;
+
+        // Sheet preset 0's params, resolved exactly like apply_matrix_preset now
+        // does: sheet vocabulary -> live param index (normalised, part-prefix and
+        // spacing tolerant), value 0..127 -> normalised.
+        const auto sheetText = sheetDir.getChildFile(en.id).withFileExtension(".json").loadFileAsString();
+        const auto sheet = juce::JSON::parse(sheetText);
+        const auto* presets = sheet.getProperty("presets", juce::var()).getArray();
+        ASSERT_TRUE(presets != nullptr && !presets->isEmpty()) << en.id << ": sheet has no presets";
+        const auto params = (*presets)[0].getProperty("params", juce::var());
+        const auto* obj = params.getDynamicObject();
+        ASSERT_TRUE(obj != nullptr) << en.id << ": preset 0 has no params";
+
+        const auto norm = [](juce::String s) {
+            s = s.toLowerCase();
+            for (const auto c : juce::String(" _-/"))
+                s = s.replaceCharacter(c, ' ');
+            s = s.removeCharacters(" ");
+            if (s.startsWith("ch"))
+            {
+                int k = 2;
+                while (k < s.length() && juce::CharacterFunctions::isDigit(s[k])) ++k;
+                if (k > 2) s = s.substring(k);
+            }
+            else if (s.startsWith("part"))
+            {
+                int k = 4;
+                while (k < s.length() && juce::CharacterFunctions::isDigit(s[k])) ++k;
+                if (k > 4) s = s.substring(k);
+            }
+            return s;
+        };
+
+        const auto live = paramSvc.getParams(a1.trackIndex, pluginId);
+        int applied = 0, unmapped = 0;
+        for (const auto& kv : obj->getProperties())
+        {
+            const auto want = norm(kv.name.toString());
+            if (want.isEmpty())
+                continue;
+            int idx = -1;
+            for (const auto& p : live)
+                if (norm(juce::String(p.name)) == want) { idx = p.index; break; }
+            if (idx < 0)
+                for (const auto& p : live)
+                    if (norm(juce::String(p.name)).endsWith(want)) { idx = p.index; break; }
+            if (idx < 0) { ++unmapped; continue; }
+            const double raw = kv.value.toString().getDoubleValue();
+            paramSvc.setParam(a1.trackIndex, pluginId, idx,
+                              static_cast<float>(juce::jlimit(0.0, 127.0, raw) / 127.0));
+            ++applied;
+        }
+        std::cout << "[MatrixAB] " << en.id << " preset0 applied=" << applied
+                  << " unmapped=" << unmapped << " of " << obj->getProperties().size()
+                  << " params (live params=" << live.size() << ")\n";
+
+        // Snapshot the applied params into the tree so the offline render sees
+        // them (the same capture trigger apply_matrix_preset uses).
+        {
+            ProjectCommands::FxMidiParams cp;
+            cp.trackIndex = a1.trackIndex;
+            cp.slotIndex = a1.slotIndex;
+            cp.captureToTree = true;
+            cp.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 125, 0});
+            const auto cr = cmds.sendFxMidi(cp);
+            EXPECT_TRUE(cr.ok) << en.id << ": capture trigger failed: " << cr.error;
+            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+                mm->runDispatchLoopUntil(3000);
+        }
+
+        auto r = render();
+        ASSERT_TRUE(r.ok) << en.id << ": post-apply render failed: " << r.error;
+        const float delta = std::abs(r.rms - a1.rms);
+        const float floorAbs = (std::max)(1e-4f, 3.0f * noise);
+        std::cout << "[MatrixAB] " << en.id << " rms base=" << a1.rms
+                  << " repeat=" << a2.rms << " noise=" << noise
+                  << " applied=" << r.rms << " delta=" << delta
+                  << " threshold=" << floorAbs << "\n";
+
+        EXPECT_GT(applied, 0) << en.id << ": no sheet param resolved against the live params";
+        EXPECT_GT(delta, floorAbs)
+            << en.id << ": applied matrix preset did not change the offline render"
+            << " (delta=" << delta << " noise=" << noise << ")";
+    }
+}

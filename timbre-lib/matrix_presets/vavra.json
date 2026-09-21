@@ -4,7 +4,7 @@
  "patchCount": 527,
  "presets": [
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Technodoodah  CJ"
@@ -379,7 +379,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "The Fog       CJ"
@@ -754,7 +754,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Sewer rats    CJ"
@@ -1129,7 +1129,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Ohnonotagain  CJ"
@@ -1504,7 +1504,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Whistler      CJ"
@@ -1879,7 +1879,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Plasma        CJ"
@@ -2254,7 +2254,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Cold fusion   CJ"
@@ -2629,7 +2629,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "onyx          CJ"
@@ -3004,7 +3004,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "DeathStepDnB2 CJ"
@@ -3379,7 +3379,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Soda Stream 2 CJ"
@@ -3754,7 +3754,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "La`la         CJ"
@@ -4129,7 +4129,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Silverfish    CJ"
@@ -4504,7 +4504,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Silk pulse    CJ"
@@ -4879,7 +4879,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Running man   CJ"
@@ -5254,7 +5254,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Noseblead     CJ"
@@ -5629,7 +5629,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "AnotherAcidarpCJ"
@@ -6004,7 +6004,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Overlord      CJ"
@@ -6379,7 +6379,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Lava fools    CJ"
@@ -6754,7 +6754,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "ForgetTheTB 4 CJ"
@@ -7129,7 +7129,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Biffa Bass    CJ"
@@ -7504,7 +7504,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Soggy lobon   CJ"
@@ -7879,7 +7879,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Ultra Pad     CJ"
@@ -8254,7 +8254,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Bring it on   CJ"
@@ -8629,7 +8629,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Ana Bass      CJ"
@@ -9004,7 +9004,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Whirlygig 2   CJ"
@@ -9379,7 +9379,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Prowler 2     CJ"
@@ -9754,7 +9754,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Legacy bass   CJ"
@@ -10129,7 +10129,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Space Feeder  CJ"
@@ -10504,7 +10504,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Terminator    CJ"
@@ -10879,7 +10879,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Rumble Bros   CJ"
@@ -11254,7 +11254,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Gimme five    CJ"
@@ -11629,7 +11629,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Amber Tide    CJ"
@@ -12004,7 +12004,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Prowler       CJ"
@@ -12379,7 +12379,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Toasting      CJ"
@@ -12754,7 +12754,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Twange        CJ"
@@ -13129,7 +13129,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Exscape       CJ"
@@ -13504,7 +13504,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "DeathStepDnB  CJ"
@@ -13879,7 +13879,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Gieger        CJ"
@@ -14254,7 +14254,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Squelch Bass  CJ"
@@ -14629,7 +14629,7 @@
    "role": "fx"
   },
   {
-   "appliesVia": "state_blob_or_patch_unverified",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Sparks        CJ"

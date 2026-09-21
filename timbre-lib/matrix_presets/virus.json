@@ -3,7 +3,7 @@
  "patchCount": 127,
  "presets": [
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "3 patches carry this config",
    "examples": [
     "An Special",
@@ -83,7 +83,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "1997 RAVE",
@@ -162,7 +162,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     " 3Up&3Down",
@@ -241,7 +241,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "AuraField2",
@@ -320,7 +320,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "Nuns Arse",
@@ -399,7 +399,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "Y2K Dance2",
@@ -478,7 +478,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "BassIt Up1",
@@ -557,7 +557,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "2 patches carry this config",
    "examples": [
     "Yarco Town",
@@ -636,7 +636,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "FM fuck me"
@@ -714,7 +714,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "TimeTravel"
@@ -792,7 +792,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "HappyTimes"
@@ -870,7 +870,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Alpha NK"
@@ -947,7 +947,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "On VHS Pad"
@@ -1025,7 +1025,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Analog 3O3"
@@ -1103,7 +1103,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "NowOrNever"
@@ -1181,7 +1181,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Dizzy Days"
@@ -1259,7 +1259,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "KeepGoing3"
@@ -1337,7 +1337,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "AuraField1"
@@ -1415,7 +1415,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "1979 Gangs"
@@ -1493,7 +1493,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "7am Digger"
@@ -1571,7 +1571,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "WCOG"
@@ -1673,7 +1673,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Ambitious!"
@@ -1751,7 +1751,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "L-Lead 1"
@@ -1853,7 +1853,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "~WELCOME"
@@ -1931,7 +1931,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "ACID WARS"
@@ -2009,7 +2009,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Tb303Clone"
@@ -2087,7 +2087,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "LAB X 2020"
@@ -2189,7 +2189,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Nyel's 303"
@@ -2267,7 +2267,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "FunnyDream"
@@ -2345,7 +2345,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Combat All"
@@ -2423,7 +2423,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Grandur NK"
@@ -2525,7 +2525,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "----------"
@@ -2627,7 +2627,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Sway&Dance"
@@ -2705,7 +2705,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Twil&Dril"
@@ -2783,7 +2783,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "WCOG"
@@ -2885,7 +2885,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "BootFloppy"
@@ -2963,7 +2963,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Enemy Scum"
@@ -3041,7 +3041,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "AuraField4"
@@ -3119,7 +3119,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "Holy Grail"
@@ -3197,7 +3197,7 @@
    "role": "mod-matrix"
   },
   {
-   "appliesVia": "midi_cc_pc",
+   "appliesVia": "set_fx_param",
    "evidence": "1 patches carry this config",
    "examples": [
     "AstralAcid"

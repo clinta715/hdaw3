@@ -313,6 +313,51 @@ struct ParamApplyResult
     int captureStateBytes = 0;
 };
 
+// Normalised live-name resolution: the harvest sheets carry the device's own
+// vocabulary ("Assign 4 Amount", "F1Cutoff") while the live plugin exposes
+// part-prefixed names ("Ch 1 Assign 4 Amount"), so a static
+// <engine>_param_index_map.json was previously the only route. Resolve against
+// the slot's actual param list first — it is authoritative and self-maintaining
+// (Virus 3086/6939, Vavra 7557, Xenia 2151, NodalRed2x 362 params are exposed).
+int resolveLiveParamIndex(AudioEngine& e, int ti, const QString& pluginId, const QString& name)
+{
+    const auto norm = [](QString s) {
+        s = s.toLower();
+        s.remove(' ');
+        s.remove('_');
+        s.remove('-');
+        s.remove('/');
+        // strip a leading part/channel prefix: "ch1...", "ch12...", "part3..."
+        if (s.startsWith("ch"))
+        {
+            int k = 2;
+            while (k < s.size() && s[k].isDigit()) ++k;
+            if (k > 2) s = s.mid(k);
+        }
+        else if (s.startsWith("part"))
+        {
+            int k = 4;
+            while (k < s.size() && s[k].isDigit()) ++k;
+            if (k > 4) s = s.mid(k);
+        }
+        return s;
+    };
+    const auto want = norm(name);
+    if (want.isEmpty())
+        return -1;
+    const auto live = e.getPluginParamService().getParams(ti, pluginId.toStdString());
+    // exact (normalised) match first
+    for (const auto& p : live)
+        if (norm(QString::fromStdString(p.name)) == want)
+            return p.index;
+    // then suffix match (sheet name without the part prefix); first hit wins,
+    // which is the lowest part — the sheets describe single-part configs
+    for (const auto& p : live)
+        if (norm(QString::fromStdString(p.name)).endsWith(want))
+            return p.index;
+    return -1;
+}
+
 ParamApplyResult applyParamsToSlot(AudioEngine& e, int ti, const QString& pluginId,
                                    const QJsonObject& params,
                                    const QJsonObject& stepIndex,
@@ -332,6 +377,8 @@ ParamApplyResult applyParamsToSlot(AudioEngine& e, int ti, const QString& plugin
         int idx = stepIndex.value(name).toInt(-1);
         if (idx < 0)
             idx = mapped.value(name).toObject().value("index").toInt(-1);
+        if (idx < 0)
+            idx = resolveLiveParamIndex(e, ti, pluginId, name);
         if (idx < 0)
         {
             r.unmapped.append(name);
