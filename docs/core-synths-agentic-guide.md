@@ -36,7 +36,7 @@ plugin FX add CPU, latency, isolation and state-round-trip risk.
 | **Vavra** | Waldorf microQ | **7557** (96 curated sound/FX × 16 parts) | FX1/FX2 chorus, flanger, phaser, delay, overdrive, vocoder, ring mod | `microq_patch.py` (528 sidecars); `vavra.json` matrix sheet (40, **dump-bearing**) | **device dump (392 B)** via `apply_matrix_preset` · type-level params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`) for automation |
 | **Xenia** | Waldorf Microwave XT | **2151** (66 curated) | `EffectType` + A/B/C, delay, chorus, ring mod, pan, LFO delays | `microwave_patch.py` (1791 patches); `xenia.json` matrix sheet (40, **dump-bearing**) | **device dump (265 B, bank 0x20)** via `apply_matrix_preset` · `set_fx_param` for the decoded subset |
 | **NodalRed2x** | Clavia Nord Lead 2x | **362** (33 curated) | **none** (only RingMod + Distortion) | `nl2x_patch.py` (6841 sidecars); `nord_morphs` | `load_nord_bank` (banks + morph chains) · `set_fx_param`; use HDAW internal FX for effects |
-| **JE8086** | Roland JP-8080 | **461** | Chorus, Multi-Effects, Delay, RingMod, Pan/AutoPan | `je8086_patch.py` (3689 `.syx`); `je8086.json` (40) | `set_fx_param` **by name** (`je8086_param_index_map.json`) · `apply_matrix_preset`. **DT1 dumps do NOT apply** |
+| **JE8086** | Roland JP-8080 | **461** | Chorus, Multi-Effects, Delay, RingMod, Pan/AutoPan | `je8086_patch.py` (3689 `.syx`); `je8086.json` (40) | `set_fx_param` **by name** (`je8086_param_index_map.json`) · `apply_matrix_preset` · `load_je8086_preset` (DT1 dumps — **applied since 2026-09-20** via the wrapper's UserPatch→temp-performance retarget) |
 | **fm_synth / PsyFm** | internal FM | its own params + **modulation targets 300–308** | internal | `fm_synth_load_preset` / `psy_fm_load_preset` | `set_fx_param`/automation. **Dexed is NOT core** — `fm_synth`/PsyFm is the FM engine |
 | **sub_synth** | internal | its own params + internal LFO | internal | `apply_sub_synth_mod_preset` (6 factory mod presets) | params / automation |
 | **sampler · drum machine** | internal | own params | internal FX chain | file library | `set_fx_param`, sample load |
@@ -61,12 +61,12 @@ wrapper's `parameterDescriptions_*.json` and rebuilt):
 | Device | Params | Proof gate |
 | --- | --- | --- |
 | JE8086 | 461 | `list_fx_params` (measured) |
-| Vavra | 7557 | `VavraHostParamsChangeRender` |
+| Vavra | 7557 | `VavraHostParamsLiveReachability` (live write lands; **render does NOT move**) + `VavraHostParamOfflineReplayAffectsExport` (offline replay DOES move it) |
 | Xenia | 2151 | `XeniaHostParamsChangeRender` |
 | Osirus / OsTIrus | 3086 / 6939 | `OsirusPresetChangeReflectsInRender` (phase 2) |
 | NodalRed2x | 362 | `NodalRed2xHostParamsChangeRender` |
 
-### Two structural limits (learned 2026-09-21 — do not fight them)
+### Three structural limits (learned 2026-09-21 — do not fight them)
 
 1. **Values that are not parameters are not automatable.** A whole patch or a ROM
    program selection lives in the device, not in the host parameter model — use the
@@ -80,6 +80,18 @@ wrapper's `parameterDescriptions_*.json` and rebuilt):
    `Fx2Type`), so they **cannot** become separate host parameters — publishing them
    was measured to change nothing (live param count stayed 7557). Automate the
    *type-level* parameters instead, or apply a whole dump.
+3. **Vavra live host-param writes are inaudible (2026-09-21).** The 7557 microQ
+   host params reach the plugin and land in the cache, but a live
+   `set_fx_param`/automation write does **not** move the render
+   (`VavraHostParamsLiveReachability`; the old "Δ>1e-5" gate was under the child's
+   own ~8e-3 mode-flip noise — Xenia/NodalRed2x move on the same harness, so the
+   null is Vavra-specific). The same params **do** move a replayed/offline render
+   (`VavraHostParamOfflineReplayAffectsExport`, monotonic). So for live movement
+   put it in the patch and `waldorf_dump`; for a param override that must render,
+   rely on the `appliedParamOverrides` replay. The wrapper source is structurally
+   correct (`mqLib/mqstate.cpp` SingleParameterChange → 0x20 edit buffer, packet
+   indices match), so this is a **live-path** gap (patchable), not a missing
+   feature.
 
 ### The automatable FX surface, per device
 
@@ -135,7 +147,7 @@ a *patch* library and the file browser surfaces them.
 | Virus | `load_virus_preset` (CC0 bank + PC) | **works** — state round-trips to offline renders (F-A fixed 2026-09-20) |
 | Vavra / Xenia | `apply_preset` (Waldorf SysEx) | **works** — Vavra dumps retargeted to the 0x20 edit buffer; Xenia framed to bank 0x20 |
 | NodalRed2x | `load_nord_bank` (.syx / .mid) | **works** (render verified); per-patch *character* still wants an ear pass |
-| JE8086 | `load_je8086_preset` (DT1 SysEx) | DT1 **does not apply**; use `set_fx_param` by name |
+| JE8086 | `load_je8086_preset` (DT1 SysEx) | **applies since 2026-09-20** — the wrapper retargets UserPatch dumps onto the sounding temp performance, and no `CC0=1 USER+PC` recall is sent any more (a JP-8080 PC *loads* the bank program and overwrote the dump); `set_fx_param` by name also works |
 | DX7/Dexed | — | not core — use `fm_synth`/`PsyFm` presets |
 
 **The three persistence mechanisms** that make an offline render / save hear what
@@ -220,15 +232,23 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
    free-running state, so two renders of the same boot patch can differ by ~1e-2 RMS
    (measured 0.0129 / 0.0154). For those, assert **effect only** (`delta > 1e-4`) and
    say so; do not pretend a floor-based test resolved it.
-4. **Delivery ≠ audibility.** `get_fx_capture_status` receipts and a LIVE state
-   probe (does the child's serialized state carry the change?) are separate evidence
-   from the render.
+4. **Delivery ≠ audibility, and the host param list is not a receipt.**
+   `poll_fx_capture` + a render A/B are the evidence. SysEx/PC patch loads do **not**
+   echo into the host param cache for these emulations (JE8086's 461-param cache stayed
+   byte-identical across an audibly-applied `.syx`; same finding for OsTIrus). The live
+   child state blob (`GET_STATE`) is *usually* a good delivery probe (the
+   `Osirus…childState…` / `OsTIrusPresetChangeReflectsInChildParams` gates) **but not for
+   JE8086** — it stayed constant across the load (2026-09-21). For JE8086 the durable
+   readback is the persisted `IDs::presetSysex` dump replay: `Track.cpp` replays the raw
+   DT1s into every fresh child, so a rebuilt child reproduces the patch exactly. Verify a
+   load with `poll_fx_capture` + render.
 5. **Name the gate when you claim a capability.** `FxMidiInjection.*` is the
    contract: `OsirusBootPatchAwakening`, `OsirusPresetChangeReflectsInRender`,
    `OsTIrusRenderAudibility`, `OsTIrusInjectionCapturesToTreeAndSurvivesRebuild`,
    `Xenia/Vavra/NodalRed2x HostParamsChangeRender`,
    `Xenia/VavraEditBufferDumpChangesOfflineRender`,
-   `NordBankLoadChangesNodalRed2xRender`, `MatrixPresetAudibilityVirusVavra`.
+   `NordBankLoadChangesNodalRed2xRender`, `MatrixPresetAudibilityVirusVavra`,
+   `Je8086UserPatchDumpChangesOfflineRender`.
    Run them with `scripts/run-tests-parallel.sh [N] [suite]` or `run_fast_tests.bat`.
 6. **"The source says X" is not evidence.** Two incidents: an unclamped internal FX
    parameter that silenced every export at exactly 0.6 s, and a truncated
@@ -247,7 +267,10 @@ host parameters) → `get_fx_capture_status` → `audition_plugin` (reference de
 * **NodalRed2x** bank loads are render-verified, but 14 real patches sounded
   near-identical in the 2026-09-18 ear pass — treat patch *delivery* as proven and
   patch *voice selection* as needing a listen.
-* **JE8086** DT1 dumps do not apply; parameters do (461, by name).
+* **JE8086** DT1 dumps *and* parameters apply: dumps via the 2026-09-20 wrapper retarget
+  (`load_je8086_preset`), parameters via `set_fx_param` by name (461). A loaded patch is
+  **not** visible in the param list or the live state blob — confirm via
+  `poll_fx_capture` + render (see §7 item 4).
 * **Per-sub-parameter automation of polymorphic FX slots** is impossible by design
   (derived-parameter collapse) — use type-level params or a whole-patch dump.
 * **Vavra's non-public params** cannot be published (measured); the remaining 277

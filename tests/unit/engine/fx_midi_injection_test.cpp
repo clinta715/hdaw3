@@ -954,7 +954,46 @@ TEST(FxMidiInjection, XeniaHostParamsChangeRender)
 // now marks the curated sound/FX params public (96); same proof as the Xenia
 // gate: host exposure, setParam round trip into the microQ OS, and a same-child
 // render A/B attributable to the param.
-TEST(FxMidiInjection, VavraHostParamsChangeRender)
+// Vavra (microQ) host-parameter gate — LIVE REACHABILITY ONLY (2026-09-21).
+//
+// History: this gate used to assert `|Δrms| > 1e-5` as proof that host params move
+// the render. That was a FALSE PASS — 1e-5 sits inside the noise of a live Vavra
+// child. Measured 2026-09-21 (real Vavra.clap, HDAW_REAL_PLUGIN_TESTS=1):
+//   * two renders of the UNCHANGED patch (same child) land in one of two modes:
+//     rms ~0.0169 / peak ~0.0451  OR  rms ~0.0086 / peak ~0.0316 — a ~2x swing
+//     with NO param write. Within a mode the render is near-deterministic (floor
+//     down to 5e-7); the flip is param-independent (observed on consecutive
+//     no-write renders). 1e-5 is inside that, so a live audibility threshold
+//     cannot separate a param effect from the mode flip.
+//   * writing a param to both EXTREMES and rendering each twice showed NO live
+//     param effect — F1Cutoff on all 32 matches: lo-vs-hi 8e-6..8e-5, i.e. <=
+//     the within-pair spread; likewise for a broad level/volume set.
+//   * the SAME live harness DOES move the render for sibling engines — Xenia
+//     |Δ|=6.1e-3, NodalRed2x |Δ|=2.7e-4, Osirus rms 0 -> 0.047 — so the harness
+//     is sound and the null result is Vavra-specific.
+//
+// IMPORTANT — the params are NOT dead. See
+// FxMidiInjection.VavraHostParamOfflineReplayAffectsExport: replayed from the
+// `appliedParamOverrides` ledger into a FRESH export child they ARE audible and
+// monotonic (baseline export rms 0.00630; every `Ch N AmpVolume` -> 0.0 gives
+// 0.00237, -> 1.0 gives 0.00674). So the gap is the LIVE write path, not the
+// parameter and not the emulation.
+//
+// Wrapper source localization (gearmulator-git, 2026-09-21): the emulation
+// implements the path (`mqLib/mqstate.cpp` SingleParameterChange -> modifyDump
+// (Single) -> modifySingle -> getSingleParameter, targeting the single-mode EDIT
+// BUFFER the OS plays), the wrapper's `singleparameterchange` packet layout matches
+// the emulator's byte constants (`IdxBuffer=5`, index H/L=6/7, value=8; index =
+// 7 + ((page<<7)|index)), and the param names match the packet definitions. The
+// break is downstream of the encoding — delivery/apply timing of the live write
+// inside the isolated child — and is patchable, not a missing feature.
+//
+// This gate asserts only what the live harness can prove:
+//   1. the write reaches the live child (the param cache reports the new value);
+//   2. the slot still renders after the write.
+// Live audibility is not asserted (unmeasurable on this child); effectiveness is
+// asserted by the offline replay gate.
+TEST(FxMidiInjection, VavraHostParamsLiveReachability)
 {
     constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
     if (!realPluginTestsEnabled() || !juce::File(kVavraClap).existsAsFile())
@@ -1008,6 +1047,7 @@ TEST(FxMidiInjection, VavraHostParamsChangeRender)
 
     int cutoffIdx = -1;
     double cutoffBefore = -1.0;
+    std::vector<int> cutoffIdxs;
     for (const auto& p : all)
     {
         std::string low = p.name;
@@ -1016,11 +1056,39 @@ TEST(FxMidiInjection, VavraHostParamsChangeRender)
         {
             cutoffIdx = p.index;
             cutoffBefore = p.value;
+            cutoffIdxs.push_back(p.index);
             std::cout << "[VavraParams] F1Cutoff idx=" << p.index
                       << " text='" << p.text << "' value=" << p.value << "\n";
         }
     }
+    std::cout << "[VavraParams] F1Cutoff matches=" << cutoffIdxs.size() << "\n";
     ASSERT_GE(cutoffIdx, 0) << "F1Cutoff not exposed";
+
+    // Diagnostic: find an in-path level/volume/amp param as a POSITIVE CONTROL —
+    // a param that MUST move the render if host params reach the microQ audio at
+    // all. Without this, "F1Cutoff does nothing" could just mean F1 is out of the
+    // boot patch's signal path.
+    std::vector<int> volIdxs;
+    for (const auto& p : all)
+    {
+        std::string low = p.name;
+        for (auto& ch : low) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+        const bool levelish = low.find("volume") != std::string::npos
+                           || low.find("level") != std::string::npos
+                           || low.find("amp") != std::string::npos
+                           || low.find("gain") != std::string::npos;
+        const bool modish = low.find("mod") != std::string::npos
+                         || low.find("vel") != std::string::npos
+                         || low.find("key") != std::string::npos;
+        if (levelish && !modish)
+        {
+            if (volIdxs.size() < 64) volIdxs.push_back(p.index);
+            if (volIdxs.size() <= 24)
+                std::cout << "[VavraParams] level-ish idx=" << p.index << " name='"
+                          << p.name << "' value=" << p.value << "\n";
+        }
+    }
+    std::cout << "[VavraParams] level-ish count=" << volIdxs.size() << "\n";
 
     ProjectCommands::AuditionResult r0;
     ProjectCommands::AuditionParams rp;
@@ -1031,6 +1099,13 @@ TEST(FxMidiInjection, VavraHostParamsChangeRender)
     rp.seed = 29;
     r0 = cmds.auditionPlugin(rp);
     ASSERT_TRUE(r0.ok) << r0.error;
+
+    const ProjectCommands::AuditionResult r0b = cmds.auditionPlugin(rp);
+    ASSERT_TRUE(r0b.ok) << r0b.error;
+    std::cout << "[VavraParams] repeat-render r0 rms=" << r0.rms << " peak=" << r0.peak
+              << " | r0b rms=" << r0b.rms << " peak=" << r0b.peak
+              << " |floor|=" << std::abs(r0b.rms - r0.rms)
+              << " (a ~8e-3 jump means a mode flip, not a param effect)\n";
 
     paramSvc.setParam(a.trackIndex, pluginId, cutoffIdx, 0.05f);
     bool changed = false;
@@ -1048,16 +1123,163 @@ TEST(FxMidiInjection, VavraHostParamsChangeRender)
         if (!changed && attempt % 5 == 4)
             std::cout << "[VavraParams] ...still polling (" << (attempt + 1) << ")\n";
     }
+    // (1) REACHABILITY — the write lands on the live child.
     EXPECT_TRUE(changed) << "setParam did not reach the live Vavra child (F1Cutoff unchanged)";
 
-    ProjectCommands::AuditionResult r1;
-    r1 = cmds.auditionPlugin(rp);
+    const ProjectCommands::AuditionResult r1 = cmds.auditionPlugin(rp);
     ASSERT_TRUE(r1.ok) << r1.error;
-    std::cout << "[VavraParams] same-child rms before=" << r0.rms
-              << " after=" << r1.rms
-              << " |delta|=" << std::abs(r1.rms - r0.rms) << "\n";
-    EXPECT_GT(std::abs(r1.rms - r0.rms), 1e-5f)
-        << "closing F1Cutoff did not audibly change the live Vavra render";
+    // (2) the slot still renders after the write (Vavra's float-dust floor on a
+    // dead slot is ~3e-6).
+    EXPECT_GT(r1.rms, 1e-4f) << "the Vavra slot went silent after the F1Cutoff write";
+
+    // Live audibility is deliberately NOT asserted here: the ~2x mode flip swamps
+    // any param effect on this child (see the header note). Effectiveness is
+    // asserted by FxMidiInjection.VavraHostParamOfflineReplayAffectsExport, where
+    // the override is applied at fresh-child build time and the measurement is
+    // clean and monotonic.
+    std::cout << "[VavraParams] live write verified: reachable + still rendering; "
+                 "effectiveness is covered by the offline replay gate\n";
+}
+
+// Vavra host-param OFFLINE REPLAY probe (2026-09-21).
+//
+// The live gate above proves Vavra host params do not move the LIVE render. This
+// probe answers the durability question, and the answer REVERSES the naive "dead
+// parameter" reading: an override persisted into the slot's
+// `appliedParamOverrides` ledger and replayed into a FRESH child by
+// ExportManager::replayAppliedParamOverrides -> TrackFXSlot::setAutomationParam
+// DOES reach the microQ audio. Measured 2026-09-21: baseline export rms 0.00630,
+// and with every `Ch N AmpVolume` replayed to 0.0 the export drops to
+// 0.00076/0.00198 (~12-31% of base), while 1.0 is not quieter. So the Vavra
+// host-param gap is a LIVE-path gap, not a dead parameter: automation during
+// playback is inaudible, but a replayed/offline render is affected. Baseline
+// non-silence is asserted first so a silent render cannot manufacture a vacuous
+// pass (lesson 25).
+TEST(FxMidiInjection, VavraHostParamOfflineReplayAffectsExport)
+{
+    constexpr const char* kVavraClap = "C:\\Program Files\\Common Files\\CLAP\\Vavra.clap";
+    if (!realPluginTestsEnabled() || !juce::File(kVavraClap).existsAsFile())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or Vavra.clap missing";
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ProjectCommands::AuditionParams probe;
+    probe.pluginId = kVavraClap;
+    probe.trackIndex = -1;
+    probe.keepTrack = true;
+    probe.lengthBeats = 2.0;
+    probe.windowSeconds = 2.0;
+    probe.seed = 31;
+    auto a = cmds.auditionPlugin(probe);
+    ASSERT_TRUE(a.ok) << a.error;
+    ASSERT_GE(a.trackIndex, 0);
+
+    const auto fxSlots = engine.getReadModel().getFxSlots(a.trackIndex);
+    ASSERT_LT(static_cast<size_t>(a.slotIndex), fxSlots.size());
+    const std::string pluginId = fxSlots[static_cast<size_t>(a.slotIndex)].pluginId;
+    auto& paramSvc = engine.getPluginParamService();
+
+    auto all = paramSvc.getParams(a.trackIndex, pluginId);
+    for (int i = 0; i < 24 && all.empty(); ++i)
+    {
+        juce::Thread::sleep(500);
+        all = paramSvc.getParams(a.trackIndex, pluginId);
+    }
+    ASSERT_GT(all.size(), 20u) << "Vavra exposes no host params";
+
+    // `Ch N AmpVolume` (one per part) — the final VCA gain, so 0.0 must silence
+    // the slot and 1.0 must not. Unambiguous positive control for the replay.
+    std::vector<int> levelIdxs;
+    for (const auto& p : all)
+    {
+        std::string low = p.name;
+        for (auto& ch : low) ch = static_cast<char>(::tolower(static_cast<unsigned char>(ch)));
+        if (low.find("ampvolume") != std::string::npos)
+            levelIdxs.push_back(p.index);
+    }
+    ASSERT_FALSE(levelIdxs.empty()) << "no AmpVolume params exposed";
+
+    auto exportRms = [&](const juce::File& out) -> float
+    {
+        out.deleteFile();
+        juce::AudioFormatManager fm;
+        fm.registerBasicFormats();
+        auto* proc = engine.getMainProcessor();
+        EXPECT_NE(proc, nullptr);
+        if (proc == nullptr)
+            return 0.0f;
+        auto& em = proc->getExportManager();
+        EXPECT_FALSE(em.isExporting());
+        const double dur = std::max(4.0, HDAW::ExportManager::calculateProjectDuration(
+                                             engine.getProjectModel()));
+        EXPECT_TRUE(em.startExport(engine.getProjectModel().getTree(), fm,
+                                   &engine.getPluginManager(), out, 48000.0, 0.0,
+                                   dur, HDAW::ExportManager::WAV, 24));
+        for (int i = 0; i < 900 && em.isExporting(); ++i)
+        {
+            if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+                mm->runDispatchLoopUntil(20);
+        }
+        EXPECT_FALSE(em.isExporting()) << "offline export did not finish";
+        if (!out.existsAsFile())
+            return 0.0f;
+        juce::AudioFormatManager fm2;
+        fm2.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> rd(fm2.createReaderFor(out));
+        if (rd == nullptr)
+            return 0.0f;
+        const int n = static_cast<int>(rd->lengthInSamples);
+        juce::AudioBuffer<float> buf(2, n);
+        rd->read(&buf, 0, n, 0, true, true);
+        double acc = 0.0;
+        for (int s = 0; s < n; ++s)
+        {
+            const float v = buf.getSample(0, s);
+            acc += static_cast<double>(v) * v;
+        }
+        out.deleteFile();
+        return static_cast<float>(std::sqrt(acc / std::max(1, n)));
+    };
+
+    const auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    const float base = exportRms(dir.getChildFile("hdaw_vavra_replay_base.wav"));
+    ASSERT_GT(base, 1e-4f) << "baseline offline export is silent — cannot judge a delta";
+
+    auto writeLedger = [&](float v)
+    {
+        juce::String ledger;
+        for (size_t i = 0; i < levelIdxs.size(); ++i)
+        {
+            if (i) ledger += ";";
+            ledger += juce::String(levelIdxs[i]) + "=" + juce::String(v, 3);
+        }
+        auto slotTree = engine.getProjectModel().getTrackListTree()
+                            .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN)
+                            .getChild(a.slotIndex);
+        EXPECT_TRUE(slotTree.isValid());
+        if (slotTree.isValid())
+            slotTree.setProperty(IDs::appliedParamOverrides, ledger, nullptr);
+    };
+
+    // Persist a ledger that drives every `Ch N AmpVolume` to 0.0, exactly as
+    // McpTools_Matrix writes it after a captureToTree param apply.
+    writeLedger(0.0f);
+    std::cout << "[VavraReplay] ledger entries=" << static_cast<int>(levelIdxs.size())
+              << " (AmpVolume -> 0.0)\n";
+    const float levels0 = exportRms(dir.getChildFile("hdaw_vavra_replay_levels0.wav"));
+
+    // Monotonicity control: the same ledger at 1.0 must not be quieter.
+    writeLedger(1.0f);
+    const float levels1 = exportRms(dir.getChildFile("hdaw_vavra_replay_levels1.wav"));
+
+    std::cout << "[VavraReplay] offline export base=" << base << " AmpVolume=0 -> " << levels0
+              << " AmpVolume=1 -> " << levels1
+              << " (AmpVolume=0 << base proves the offline replay reaches the microQ audio)\n";
+    EXPECT_LT(levels0, 0.5f * base)
+        << "the replayed AmpVolume=0 no longer affects the export — update this gate";
+    EXPECT_GT(levels1, levels0) << "offline AmpVolume replay is not monotonic";
 }
 
 // Osirus boot-patch awakening gate (2026-09-19, diagnostic): the Virus C OS
@@ -1838,13 +2060,13 @@ TEST(FxMidiInjection, Je8086LoaderValidatesBeforeQueueing)
     auto corrupt = bank;
     corrupt[corrupt.size() - 3] ^= 0x01;      // a data byte of the last message
     const auto corruptFile = writeFile("corrupt.syx", corrupt);
-    const auto rCorrupt = mcp::runJe8086PatchFile(engine, 0, 0, asPath(corruptFile), 1, true, false);
+    const auto rCorrupt = mcp::runJe8086PatchFile(engine, 0, 0, asPath(corruptFile), 1, false);
     EXPECT_TRUE(rCorrupt.isError) << "a bank with one corrupt message must not load";
     EXPECT_NE(jeResultText(rCorrupt).toStdString().find("checksum"), std::string::npos)
         << jeResultText(rCorrupt).toStdString();
 
     // 2. preset index beyond the file's units
-    const auto rRange = mcp::runJe8086PatchFile(engine, 0, 0, asPath(goodFile), 5, true, false);
+    const auto rRange = mcp::runJe8086PatchFile(engine, 0, 0, asPath(goodFile), 5, false);
     EXPECT_TRUE(rRange.isError);
     EXPECT_NE(jeResultText(rRange).toStdString().find("out of range"), std::string::npos)
         << jeResultText(rRange).toStdString();
@@ -1852,15 +2074,15 @@ TEST(FxMidiInjection, Je8086LoaderValidatesBeforeQueueing)
     // 3. a non-JP-8080 SysEx file (Clavia) is never mis-decoded
     const std::vector<uint8_t> clavia { 0xF0, 0x33, 0x00, 0x04, 0x01, 0x08, 0x00, 0xF7 };
     const auto rClavia = mcp::runJe8086PatchFile(engine, 0, 0,
-        asPath(writeFile("nord.syx", clavia)), 1, true, false);
+        asPath(writeFile("nord.syx", clavia)), 1, false);
     EXPECT_TRUE(rClavia.isError);
     EXPECT_NE(jeResultText(rClavia).toStdString().find("no JP-8080"), std::string::npos)
         << jeResultText(rClavia).toStdString();
 
     // 4. unsupported container + missing file
     EXPECT_TRUE(mcp::runJe8086PatchFile(engine, 0, 0,
-        asPath(writeFile("bank.txt", bank)), 1, true, false).isError);
-    const auto rMissing = mcp::runJe8086PatchFile(engine, 0, 0, "Z:/nope/missing.syx", 1, true, false);
+        asPath(writeFile("bank.txt", bank)), 1, false).isError);
+    const auto rMissing = mcp::runJe8086PatchFile(engine, 0, 0, "Z:/nope/missing.syx", 1, false);
     EXPECT_TRUE(rMissing.isError);
     EXPECT_NE(jeResultText(rMissing).toStdString().find("file not found"), std::string::npos);
 
@@ -2139,5 +2361,239 @@ TEST(FxMidiInjection, MatrixPresetAudibilityVirusVavra)
         EXPECT_GT(delta, floorAbs)
             << en.id << ": applied matrix preset did not change the offline render"
             << " (delta=" << delta << " noise=" << noise << ")";
+    }
+}
+
+// JE8086 (Roland JP-8080) UserPatch DT1 retarget gate (2026-09-20).
+//
+// Root cause (device probe, docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md):
+// a real JP-8080 patch file addresses the UserPatch BANK (0x02000000). Neither
+// the emulated OS nor the host state mirror applies a bank write to the
+// sounding temp-performance patch, so a verbatim injected dump was an inaudible
+// no-op (probe: verbatim=NOCHANGE, delta within the 3x baseline drift floor).
+// JE8086.clap now retargets host-sourced UserPatch DT1s onto
+// PerformanceTemp | PatchUpper - the transform the plugin's own patch browser
+// has always used (Controller::sendSingle) - so the file's actual patch sounds.
+//
+// runJe8086PatchFile also no longer appends a `CC0=1 USER + PC` recall: a
+// JP-8080 program change LOADS the bank program into the current patch, so it
+// overwrote the applied dump (probe run6: the recall alone moved rms
+// 0.0043 -> 0.0133, and a recall after the retarget landed back on that
+// recall-only sound - delta vs the retargeted patch 0.00765, delta vs
+// recall-only 0.0000245).
+//
+// Gates: (1) the route changes the LIVE render vs a fresh-boot instance,
+// (2) two different patch units render differently (content, not just "some
+// injection happened"), (3) a child rebuilt from the tree replays the LAST
+// loaded patch exactly (the persisted-state readback an agent actually has),
+// (4) the capture landed in the tree (presetSysex/pluginState non-empty).
+// The host param cache and the live getStateInformation blob do NOT track
+// SysEx patch loads for these devices (diagnostics only; identical contract to
+// OsTIrusPresetChangeReflectsInChildParams).
+TEST(FxMidiInjection, Je8086UserPatchDumpChangesOfflineRender)
+{
+    constexpr const char* kJe8086Clap = "C:\\Program Files\\Common Files\\CLAP\\JE8086.clap";
+    if (!realPluginTestsEnabled() || !juce::File(kJe8086Clap).existsAsFile())
+        GTEST_SKIP() << "HDAW_REAL_PLUGIN_TESTS not set or JE8086.clap missing";
+
+    // Real JP-8080 user bank; patch 1 = 'rb2k1 themystery' is the exact patch
+    // the jeLib device probe used.
+    const juce::File bank("D:/pdf/je8086/jp-8080 trance bank.syx");
+    if (!bank.existsAsFile())
+        GTEST_SKIP() << "D:/pdf/je8086 JP-8080 bank not mounted";
+    const auto bankPath = QString::fromUtf8(bank.getFullPathName().toRawUTF8());
+
+    AudioEngine engine;
+    engine.initialize();
+    auto& cmds = engine.getProjectCommands();
+
+    ProjectCommands::AuditionParams probe;
+    probe.pluginId = kJe8086Clap;
+    probe.trackIndex = -1;
+    probe.keepTrack = true;
+    probe.lengthBeats = 2.0;
+    probe.windowSeconds = 2.0;
+    probe.seed = 23;
+    auto a = cmds.auditionPlugin(probe);
+    ASSERT_TRUE(a.ok) << a.error;
+    ASSERT_GE(a.trackIndex, 0);
+
+    ProjectCommands::AuditionParams rp;
+    rp.trackIndex = a.trackIndex;
+    rp.slotIndex = a.slotIndex;
+    rp.lengthBeats = 2.0;
+    rp.windowSeconds = 2.0;
+    rp.seed = 23;
+
+    // Settle live routing so the probes below have a live child to read.
+    {
+        ProjectCommands::FxMidiParams s;
+        s.trackIndex = a.trackIndex;
+        s.slotIndex = a.slotIndex;
+        s.captureToTree = false;
+        s.events.push_back({ProjectCommands::FxMidiEvent::Kind::ControlChange, 1, 125, 0});
+        const auto sr = cmds.sendFxMidi(s);
+        ASSERT_TRUE(sr.ok) << sr.error;
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+            mm->runDispatchLoopUntil(2000);
+    }
+    const auto fxSlots = engine.getReadModel().getFxSlots(a.trackIndex);
+    ASSERT_LT(static_cast<size_t>(a.slotIndex), fxSlots.size());
+    const std::string livePluginId = fxSlots[static_cast<size_t>(a.slotIndex)].pluginId;
+    auto& paramSvc = engine.getPluginParamService();
+
+    // Readback probes. NEITHER of these is a valid readback route for these
+    // devices, so both stay DIAGNOSTICS:
+    //  - the host param cache never echoes SysEx-loaded patch parameters
+    //    (identical finding to OsTIrusPresetChangeReflectsInChildParams;
+    //    docs/hardware-va-suite.md lists it for every VA loader), and
+    //  - the live getStateInformation blob can stay byte-identical across the
+    //    load within this poll window (observed 2026-09-21: constant 5320-byte
+    //    blob, hostParamsChanged=0 childStateChanged=0) even though the render
+    //    changes AND the deferred capture stores a state that replays the
+    //    patch. So the live blob is not a readback route either.
+    // The assertion uses the captured slot state plus a rebuilt child (below):
+    // the captured pluginState must reproduce the exact last-loaded patch.
+    // This mirrors the capture path's own decision (stateLooksUnchangedSinceBoot).
+    auto rawState = [&]() -> juce::MemoryBlock {
+        juce::MemoryBlock mb;
+        auto* proc = engine.getMainProcessor();
+        auto* tr = proc ? proc->getTrack(a.trackIndex) : nullptr;
+        auto* slot = (tr && a.slotIndex >= 0
+                      && static_cast<size_t>(a.slotIndex) < tr->getFXChain().size())
+            ? tr->getFXChain()[static_cast<size_t>(a.slotIndex)].get() : nullptr;
+        auto* inst = slot ? slot->getPluginInstance() : nullptr;
+        if (inst)
+            inst->getStateInformation(mb);
+        return mb;
+    };
+    const auto paramsBefore = paramSvc.getParams(a.trackIndex, livePluginId);
+    const auto stateBefore = rawState();
+    const auto hashHex = [](const juce::MemoryBlock& mb) -> std::string {
+        if (mb.getSize() == 0) return "<empty>";
+        const auto* d = static_cast<const uint8_t*>(mb.getData());
+        uint64_t h = 1469598103934665603ull;
+        for (size_t i = 0; i < mb.getSize(); ++i) { h ^= d[i]; h *= 1099511628211ull; }
+        return std::to_string(h);
+    };
+    std::cout << "[Je8086AB] hostParams=" << paramsBefore.size()
+              << " stateBefore=" << stateBefore.getSize() << " bytes hash=" << hashHex(stateBefore) << "\n";
+
+    const auto loadPatch = [&](int unit)
+    {
+        const auto rr = mcp::runJe8086PatchFile(engine, a.trackIndex, a.slotIndex,
+                                                bankPath, unit, true);
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+            mm->runDispatchLoopUntil(4000);
+        return rr;
+    };
+
+    const auto r1 = loadPatch(1);
+    ASSERT_FALSE(r1.isError) << jeResultText(r1).toStdString();
+    std::cout << "[Je8086AB] route: " << jeResultText(r1).toStdString() << "\n";
+
+    // Diagnostic param-cache probe + authoritative child-state probe (see the
+    // comment on rawState above).
+    int paramDelta = 0;
+    bool stateChanged = false;
+    for (int attempt = 0; attempt < 20 && !stateChanged; ++attempt)
+    {
+        const auto now = paramSvc.getParams(a.trackIndex, livePluginId);
+        paramDelta = 0;
+        for (const auto& p : now)
+            for (const auto& q : paramsBefore)
+                if (p.index == q.index)
+                {
+                    if (std::abs(p.value - q.value) > 1e-6 || p.text != q.text)
+                        ++paramDelta;
+                    break;
+                }
+        const auto nowState = rawState();
+        std::cout << "[Je8086AB]   poll " << attempt << " size=" << nowState.getSize()
+                  << " md5=" << hashHex(nowState) << "\n";
+        if (stateBefore.getSize() > 0 && nowState.getSize() > 0
+            && !(nowState == stateBefore))
+            stateChanged = true;
+        if (!stateChanged)
+            juce::Thread::sleep(500);
+    }
+    std::cout << "[Je8086AB] hostParamsChanged=" << paramDelta
+              << " childStateChanged=" << (stateChanged ? 1 : 0)
+              << " (both DIAGNOSTIC - see the readback note above; the"
+                 " authoritative readback is the captured slot state below,"
+                 " asserted via the rebuilt-from-tree render)\n";
+
+    const auto slotTree = engine.getProjectModel().getTrackListTree()
+        .getChild(a.trackIndex).getChildWithName(IDs::FX_CHAIN).getChild(a.slotIndex);
+    ASSERT_TRUE(slotTree.isValid());
+    const auto syxStr = slotTree.getProperty(IDs::presetSysex, "").toString();
+    const auto stateStr = slotTree.getProperty(IDs::pluginState, "").toString();
+    const auto syxLen = syxStr.length();
+    const auto stateLen = stateStr.length();
+    std::cout << "[Je8086AB] presetSysexLen=" << syxLen
+              << " head='" << syxStr.substring(0, 24).toStdString() << "'\n";
+    std::cout << "[Je8086AB] pluginStateLen=" << stateLen
+              << " head='" << stateStr.substring(0, 24).toStdString() << "'\n";
+    EXPECT_GT(syxLen + stateLen, 0)
+        << "no JE8086 slot state captured; the patch cannot survive a rebuild";
+
+    // Same live child, patch 1 applied.
+    const auto b = cmds.auditionPlugin(rp);
+    ASSERT_TRUE(b.ok) << b.error;
+
+    // Fresh (no dump) live control -> the factory boot sound.
+    ProjectCommands::AuditionParams fresh;
+    fresh.pluginId = kJe8086Clap;
+    fresh.trackIndex = -1;
+    fresh.keepTrack = false;
+    fresh.lengthBeats = 2.0;
+    fresh.windowSeconds = 2.0;
+    fresh.seed = 23;
+    const auto f = cmds.auditionPlugin(fresh);
+    ASSERT_TRUE(f.ok) << f.error;
+
+    // Second, far-apart patch unit in the SAME child: proves the DUMP CONTENT
+    // reaches the sound (with the old wrapper both would be inaudible no-ops;
+    // with the destructive recall both would instead play the bank program).
+    const auto r2 = loadPatch(33);
+    ASSERT_FALSE(r2.isError) << jeResultText(r2).toStdString();
+    const auto c = cmds.auditionPlugin(rp);
+    ASSERT_TRUE(c.ok) << c.error;
+
+    std::cout << "[Je8086AB] fresh-boot(rms)=" << f.rms
+              << " patch1(rms)=" << b.rms << " peak=" << b.peak
+              << " patch33(rms)=" << c.rms << " peak=" << c.peak << "\n";
+    EXPECT_GT(std::abs(b.rms - f.rms), 1e-5f)
+        << "injected JP-8080 patch did not change the live JE8086 render "
+           "(UserPatch retarget not active?)";
+    EXPECT_GT(std::abs(c.rms - f.rms), 1e-5f)
+        << "second JP-8080 patch did not change the live JE8086 render";
+    EXPECT_GT(std::abs(c.rms - b.rms), 1e-5f)
+        << "patch 1 and patch 33 rendered identically - dump content is not applied";
+
+    // Rebuild from the tree -- the fresh child must replay the persisted patch,
+    // not just "some state". The persisted slot pluginState came from the
+    // deferred capture (same getStateInformation path, written only because it
+    // differed from the boot baseline); replaying it must reproduce the LAST
+    // loaded patch's render (deterministic: same seed/window as `c`). This is
+    // the agent readback contract: captured state, not the param cache.
+    {
+        auto* mp = engine.getMainProcessor();
+        ASSERT_NE(mp, nullptr);
+        mp->rebuildRoutingGraph();
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+            mm->runDispatchLoopUntil(6000);
+        const auto rd = cmds.auditionPlugin(rp);
+        ASSERT_TRUE(rd.ok) << rd.error;
+        std::cout << "[Je8086AB] rebuilt-from-tree rms=" << rd.rms
+                  << " vs fresh-boot=" << f.rms
+                  << " |delta|=" << std::abs(rd.rms - f.rms)
+                  << " vs patch33=" << c.rms
+                  << " |delta|=" << std::abs(rd.rms - c.rms) << "\n";
+        EXPECT_GT(std::abs(rd.rms - f.rms), 1e-5f)
+            << "fresh child rebuilt from the tree did not hear the persisted patch";
+        EXPECT_LT(std::abs(rd.rms - c.rms), 1e-5f)
+            << "rebuilt-from-tree render does not reproduce the last loaded patch "
+               "(captured pluginState does not carry the applied DT1 dump)";
     }
 }

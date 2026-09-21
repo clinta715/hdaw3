@@ -162,6 +162,11 @@ Modify the five gearmulator emulation CLAPs (build our own from source) so that:
    F1Cutoff set + same-child render D>1e-5. Binaries: Xenia.clap md5
    237ab777..., Vavra.clap md5 10849d42... (backups
    gearmulator-git/{Xenia,Vavra}.clap.bak-2026-09-19).
+   **SUPERSEDED (2026-09-21):** the Vavra line's `D>1e-5` was a false pass — it is
+   below the live child's own ~8e-3 mode-flip noise. The gate is now
+   `VavraHostParamsLiveReachability` (reachability only) plus
+   `VavraHostParamOfflineReplayAffectsExport` (the same params DO move a replayed
+   export). The Xenia line above still holds.
 5. **Build provenance**: build our CLAPs via the gearmulator CMake (Windows/MSVC;
    build_win64.bat or cmake preset + CLAP targets), install to
    C:\Program Files\Common Files\CLAP\ (backup originals first), record per-binary

@@ -21,8 +21,8 @@ Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numb
 
 | Device | Emulation (CLAP) | Patches + pipeline | Loader status | Host params | Internal modulation | HDAW control |
 |---|---|---|---|---|---|---|
-| Roland JP-8000 | **JE8086** | 46 banks / 4983 entries / 2676 usable patches; `timbre-lib/je8086_patch.py` -> `<bank>.je8086.json` + exploded per-patch `.syx` (3689 files, verified 3689/0) | **DT1 dumps are NOT applied** (param cache byte-identical after injection; `jeLib/device.cpp` routes live MIDI to the DSP thread, the DT1 patch State is not on that path). Param writes DO work. | **461** (`list_fx_params`) | patch-level LFO1/LFO2 + ENV with destination switches (LFO1 dest: OSC1+2 / OSC2 / X-MOD), supersaw detune, onboard multi-FX + delay + tone | `set_fx_param` (works, verified), `send_fx_midi` CC/PC, SysEx dumps (queued, unverified) |
-| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | DUMP APPLICATION FIXED 2026-09-19: the 09-16 "NOT APPLYING" was buffer targeting (dumps carried 0x30/0x40+ buffer bytes; the OS plays the single-mode edit buffer 0x20) — `apply_preset` now retargets 392 B dumps to 0x20 + fixes the Waldorf checksum; gate `FxMidiInjection.VavraEditBufferDumpChangesOfflineRender` (live render 0.0094→0.0157, replay Δ0.0057) | **7557 host params since 2026-09-19** (96 curated sound/FX params × 16 parts made `isPublic` in `parameterDescriptions_mq.json` + rebuilt; HDAW proxy cap raised 4096→16384). `set_fx_param`/automation verified: `FxMidiInjection.VavraHostParamsChangeRender` (F1Cutoff set → OS applied, same-child render Δ>1e-5) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (measured NOT applying); no params to automate |
+| Roland JP-8000 | **JE8086** | 46 banks / 4983 entries / 2676 usable patches; `timbre-lib/je8086_patch.py` -> `<bank>.je8086.json` + exploded per-patch `.syx` (3689 files, verified 3689/0) | **DT1 dumps APPLY since 2026-09-20.** A real patch file addresses the UserPatch **bank** (`0x02000000`); neither the emulated OS nor the host state mirror folds a bank write into the sounding temp-performance patch, so injected dumps were inaudible no-ops (the wrapper's `jeController::parseSysexMessage` had an empty `case AddressArea::UserPatch`). `JE8086.clap` now retargets host-sourced DT1s to `PerformanceTemp | PatchUpper` — the transform the plugin's own browser always used (`Controller::sendSingle`) — and `load_je8086_preset` no longer appends a `CC0=1 USER + PC` recall (a JP-8080 PC **loads** the bank program into the current patch and overwrote the applied dump). Gate `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`. Param writes work too. **Readback:** confirm a load via `poll_fx_capture` + a render A/B — the host param list and the live child state blob do **not** move (§9). | **461** (`list_fx_params`) | patch-level LFO1/LFO2 + ENV with destination switches (LFO1 dest: OSC1+2 / OSC2 / X-MOD), supersaw detune, onboard multi-FX + delay + tone | `set_fx_param` (works, verified), `send_fx_midi` CC/PC, SysEx dumps (**verified audible 2026-09-20**, §9) |
+| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | DUMP APPLICATION FIXED 2026-09-19: the 09-16 "NOT APPLYING" was buffer targeting (dumps carried 0x30/0x40+ buffer bytes; the OS plays the single-mode edit buffer 0x20) — `apply_preset` now retargets 392 B dumps to 0x20 + fixes the Waldorf checksum; gate `FxMidiInjection.VavraEditBufferDumpChangesOfflineRender` (live render 0.0094→0.0157, replay Δ0.0057) | **7557 host params since 2026-09-19** (96 curated sound/FX params × 16 parts made `isPublic` in `parameterDescriptions_mq.json` + rebuilt; HDAW proxy cap raised 4096→16384). `set_fx_param`/automation: **LIVE writes are a NO-OP on the render** (2026-09-21) — the old `FxMidiInjection.VavraHostParamsChangeRender` "F1Cutoff set → same-child render Δ>1e-5" was below the live child's own ~8e-3 mode-flip noise (a false pass). `FxMidiInjection.VavraHostParamsLiveReachability` (renamed) now asserts only that the write lands in the param cache and the slot keeps rendering. The params are **not dead**: `FxMidiInjection.VavraHostParamOfflineReplayAffectsExport` replays the `appliedParamOverrides` ledger into a fresh export child and gets base rms 0.00631 vs `Ch N AmpVolume`→0 = 0.0023, →1 = 0.0086 (audible, monotonic). So the gap is the **LIVE write path**, not the parameter or the emulation (wrapper source verified: `mqstate.cpp` SingleParameterChange → 0x20 edit buffer, packet indices match) — use `waldorf_dump` for live sound | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `waldorf_dump` single-dump SysEx into the 0x20 edit buffer (retarget 2026-09-19, now applying) + 7557 host params (§9); `send_fx_midi` `EmuButtons`/`EmuRotaries` puppetry remains the route into pages with no host param |
 | Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0+PC) **FIXED 2026-09-19** — state now round-trips to offline renders (see §9); dump writer `virus_dump.py` format-verified | **OsTIrus: 6939; Osirus: 3086** exposed. **OsTIrus WORKS offline** (renders audio, gate 2026-09-19). **Osirus (C) FIXED 2026-09-19** — renders audio offline (rms 0.047); gearmulator boot-patch fix, see §9 | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | **OsTIrus and Osirus both render audio offline** (gates 2026-09-19). CC0+PC + send_fx_midi for patch selection; set_fx_param reaches the cache but the OS ignores host writes |
 | Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader; morph .syx chains VERIFIED AUDIBLE 2026-09-16 (`matrix_presets/nord_morphs/`, written by `nord_dump.py`: 5 pairs x 4 performable steps) | **362 host params since 2026-09-19** (33 curated sound params made `isPublic` in `parameterDescriptions_n2x.json` + rebuilt; HDAW proxy cap already raised). `set_fx_param`/automation verified: `FxMidiInjection.NodalRed2xHostParamsChangeRender` (Cutoff set → same-child render Δ0.00039) | MOD ENV + LFOs with per-parameter sensitivity dials (`parameterDescriptions_n2x.json`); NO onboard FX | `load_nord_bank` + `set_fx_param` (Cutoff, Resonance, FilterEnvAmount, AmpEnv A/D/S/R, ModEnvLevel, Lfo1Rate/Level, Distortion...) + CC/PC; HDAW internal FX |
 | Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | edit-buffer SysEx **VERIFIED AUDIBLE** 2026-09-16 (bank 0x20, `xenia_dump.py` — see §9); `apply_preset` WaldorfSysex route added 2026-09-18 (F0 3E 0E: validate+split+queue, tested); patch-level unproven | **2151 host params since 2026-09-19** (66 curated sound/FX params made `isPublic` in `parameterDescriptions_xt.json` + rebuilt). `set_fx_param`/automation verified: `FxMidiInjection.XeniaHostParamsChangeRender` (F1Cutoff 1.0→0.1 via the OS, same-child render Δ>1e-5) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | `apply_preset` (F0 3E 0E .syx -> validated SysEx) / `send_fx_midi` edit-buffer dumps; no host params |
@@ -32,17 +32,23 @@ Grid-wide facts worth knowing before choosing a device:
 
 - **Isolation and state.** The whole suite runs as isolated CLAPs (child process). An
   offline export instantiates a **fresh child** and restores `IDs::pluginState` into
-  it, so an export matches what you audition **only if that plugin's
-  `getStateInformation` round-trips its patch**. The JP-8080's 233-byte state does
-  not (hear != export); the Nord's bank load does (its test asserts a render change).
-  Measured: restoring a captured state is a no-op for the render (peak identical to
-  16 digits), so the earlier "capture poisons the render" reading was wrong.
+  it, so an export matches what you audition **only if** the patch round-trips
+  through the plugin's `getStateInformation` **or** the loader persisted the raw dumps
+  in `IDs::presetSysex` (replayed into the fresh child by `Track.cpp` — how JE8086 DT1
+  dumps and Xenia/Vavra edit-buffer dumps survive). The Nord's bank load round-trips
+  through state (its test asserts a render change). Measured on the 2026-08 build
+  (before the `JPAR` state chunk): restoring a captured state was a no-op for the
+  render (peak identical to 16 digits), so the earlier "capture poisons the render"
+  reading was wrong.
 - **Engine hygiene (D-lite).** A capture that merely echoes the state an instance
   reported when it appeared is no longer persisted, and the deferred capture reports
   `captureStatus="unchanged"` instead of a fake `ok`. Nothing about that fixes
   hear-not-equal-export; it only stops meaningless state being written.
-- **Params or nothing.** If a device exposes no host parameters (Vavra: zero), HDAW
-  cannot automate or even verify it — only MIDI/SysEx can reach it.
+- **Params or nothing.** Every core engine now publishes host parameters (since
+  2026-09-19/20): JE8086 461, Vavra 7557, OsTIrus 6939 / Osirus 3086, Xenia 2151,
+  NodalRed2x 362. But a published parameter is not automatically automatable — check
+  route + durability with `list_device_params` first. What is still not host-exposed
+  (ROM-program selection, non-parameter state) needs MIDI/SysEx.
 
 ## 2. Modulation-first policy (prefer the device over a plugin)
 
@@ -70,7 +76,7 @@ effect whenever the device already has the effect onboard.
 
 ## 3. FX recipes per device (device-internal first)
 
-### JP-8000 / JE8086 (parameter writes verified, dumps not)
+### JP-8000 / JE8086 (parameter writes + DT1 dumps both verified)
 - **Filter movement**: automate cutoff/resonance (params 0x29/0x2A in the dump layout;
   `set_fx_param` by index) instead of adding a plugin filter; pair with LFO2 ->
   FILTER (`Lfo2DepthSelect`) for hands-free motion.
@@ -80,29 +86,42 @@ effect whenever the device already has the effect onboard.
   plus the onboard MULTI-FX "SUPER CHORUS SLW"; automate `MultiEffectsLevel`.
 - **Throws**: automate the onboard delay (type/time/feedback/level) instead of
   inserting a delay plugin; the guide's §4D param numbers (184-187) are the recipe.
-- **Caveat**: this device's state does not round-trip, so verify by audition, not by
-  export (see §1).
+- **State round-trips** (2026-09-18 `JPAR` param chunk + 2026-09-20 DT1 retarget): the
+  slot carries both `pluginState` (~7 KB JPAR, the 461 params) and `presetSysex` (the raw
+  DT1 pages), and a child rebuilt from the tree replays the applied patch — gate
+  `FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender` (rebuilt-from-tree rms equals
+  the applied patch to 6 digits). Verify by audition **and** export; the 2026-08-era
+  "JE8086 state does not carry the patch" caveat is superseded.
 
-### Waldorf microQ / Vavra (no host params — matrix only)
+### Waldorf microQ / Vavra (7557 host params + dumps — §9)
 - **In-device motion** (structure verified in `parameterDescriptions_mq.json`): the
   microQ gives every destination its own **source + amount** pair rather than a fixed
   LFO — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`,
   `F1PanModSource`/`F1PanMod` (and F2), so per-voice pitch drift, filter sweep and pan
   motion are all patch-level settings. Add `RingModLevel`/`RingModBalance` and
   `NoiseModeF1/F2` for texture. Use the **ModMatrix** page (and `leds.h`'s page list:
-  Osc1-3, Filters1-2, Env1-4, LFOs) for the extra routing slots. Nothing here is
-  HDAW-automatable, which is exactly why it belongs in the patch.
-- **Onboard FX** (chorus / flanger / phaser / delay / reverb) belong to the patch: set
-  them inside the patch, since HDAW cannot reach them.
-- **Practical limit**: HDAW cannot automate or even observe this device; the only
-  host lever is a SysEx dump, which is MEASURED NOT APPLYING (queued but state
-  unchanged — §9). Use it for texture and audition, and prefer a device that
-  exposes parameters when a part needs automation.
+  Osc1-3, Filters1-2, Env1-4, LFOs) for the extra routing slots. The exposed
+  counterparts (`F1CutoffMod`, `F1EnvMod`, ...) are host-writable, but prefer the
+  patch when the movement must survive a reload.
+- **Onboard FX** (chorus / flanger / phaser / delay / reverb): only the type-level
+  params (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`) are host-exposed — the sub-params
+  are **bit-aliases** (derived-parameter collapse, §9), so set the character inside
+  the patch or via a `waldorf_dump`.
+- **Practical limit**: 7557 params are reachable and dumps apply (0x20 retarget,
+  2026-09-19). **LIVE** single-param writes do NOT move the render (2026-09-21,
+  `VavraHostParamsLiveReachability`: the cache updates and the slot keeps
+  rendering, but the audio is unchanged — the old "Δ>1e-5" pass was under the
+  child's mode-flip noise). Replayed from the `appliedParamOverrides` ledger into
+  a fresh export child the same params ARE audible and monotonic
+  (`VavraHostParamOfflineReplayAffectsExport`), so the gap is the live write path:
+  prefer dump-level edits for live movement, offline/replayed renders for a param
+  override.
 
 ### Access Virus / OsTIrus, Osirus (params + CC)
 - **Preset selection** is CC0+PC (`load_virus_preset`) — the cheapest way to switch
-  character between sections (currently queues but does not change renders —
-  finding F-A — NOTE: F-A was measured while the Osirus slot was SILENT, so every A/B was 0-vs-0; the slot now renders audio, re-test, see §9).
+  character between sections. **F-A RESOLVED 2026-09-20** (boot-patch fix for the
+  silent Osirus slot + the `stateSet` SHM ring, §9): the state now round-trips and
+  the slot renders audio. Confirm a param→rebuilt-render A/B per build.
 - **CC modulation**: automate brightness (CC74) and mod wheel (CC1) with
   `send_fx_midi` to drive the Virus's own matrix routings; this needs no parameters
   and survives as MIDI.
@@ -170,7 +189,8 @@ vocoder is needed.
 Note: the plugin's parameter list is **not** the SysEx patch layout (it contains
 parameters such as `Osc1Control2LFO1Depth` that have no dump offset), so map by NAME
 against `list_fx_params`, never by patch offset. These are HDAW-automatable with
-`set_fx_param`, which is the practical route for JP-8080 movement (dumps do not apply).
+`set_fx_param`, which is the practical route for JP-8080 movement. DT1 patch dumps
+apply too since 2026-09-20 (`load_je8086_preset`, wrapper retarget; §9).
 
 ### Waldorf Microwave XT (Xenia) — env amounts + velocity sensitivity
 `W1EnvAmount`/`W1EnvVelAmount`, `W2EnvAmount`/`W2EnvVelAmount`, `F1EnvAmount`,
@@ -215,8 +235,8 @@ first (see §2 for why this order):
 | # | Operation | Tooling | Works on |
 |---|---|---|---|
 | 1 | **Bake it into the patch** — set the device's own FX type/mix/depth and matrix routings | edit the patch (or the plugin's editor), then load/save | all devices; this is the preferred layer |
-| 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | **all five param-bearing engines since 2026-09-19/20**: JE8086 461, Vavra 7557 (96 curated sound/FX x 16 parts), OsTIrus 6939 / Osirus 3086, Xenia 2151, NodalRed2x 362 — all made `isPublic` and rebuilt (the old `{"params":[]}` reading predates that). Gates: `Vavra/Xenia/NodalRed2xHostParamsChangeRender` pass; the Virus param path round-trips to offline renders (F-A phase 2). Dexed exposes none — not core (use `fm_synth`/PsyFm) |
-| 3 | **Automation / movement** — ramps, risers, throws, macro morphs on those parameters | track automation lanes and `apply_movement_plan` (macro events with start/end values) | **JE8086 only** (e.g. the guide's delay-throw automates its DelayLevel). For every other device, "movement over time" must come from CC ramps, patch/bank loads, or the device's own envelopes/LFOs |
+| 2 | **Live parameter writes** | `set_fx_param {trackId, slotIndex, paramIndex, value}` | **all five param-bearing engines since 2026-09-19/20**: JE8086 461, Vavra 7557 (96 curated sound/FX x 16 parts), OsTIrus 6939 / Osirus 3086, Xenia 2151, NodalRed2x 362 — all made `isPublic` and rebuilt (the old `{"params":[]}` reading predates that). Gates: `Xenia/NodalRed2xHostParamsChangeRender` pass; the Virus param path round-trips to offline renders (F-A phase 2). **Vavra LIVE writes do not move the render** (`VavraHostParamsLiveReachability`) though its replayed overwrites do (`VavraHostParamOfflineReplayAffectsExport`) — see §9. Dexed exposes none — not core (use `fm_synth`/PsyFm) |
+| 3 | **Automation / movement** — ramps, risers, throws, macro morphs on those parameters | track automation lanes and `apply_movement_plan` (macro events with start/end values) | **any param-bearing engine** — row 2 lists the exposed host params, and HDAW automation lanes / `apply_movement_plan` macros drive them the same way (JE8086 delay-throw = `DelayLevel`, Nord `FilterEnvAmount`, Xenia `F1Cutoff`; Vavra `F1Cutoff` responds only in offline/replayed renders, §9). Verified: `Xenia`/`NodalRed2xHostParamsChangeRender`; JE8086 param writes live+offline (2026-09-18, §7). Vavra is deliberately NOT in the live-verified list. The pre-2026-09-19 "**JE8086 only**" note predated the `isPublic` param publishing. Where the device's own LFO/matrix can make the movement, prefer that (patch-level → survives reload) |
 | 4 | **MIDI CC / program change** — drive the device's CC-mapped routings and switch ROM presets | `send_fx_midi` (CC, PC, notes) | all devices that respond to MIDI (Virus Modulation Wheel, CC74 brightness, CC0+PC preset select) |
 | 5 | **Front-panel puppetry (remote-control SysEx)** — press the device's buttons and turn its encoders, i.e. drive it the way a human does | `send_fx_midi` {kind:"sysEx"} with the emulation's protocol. microQ (verified in source): header `F0 3E 10 00 <cmd>`, then `EmuButtons` = `52 <buttonIdx> <state>` or `EmuRotaries` = `53 <encoderIdx> <amount+64>` (`mqLib/mqsysexremotecontrol.cpp`); the device streams `EmuLCD` / `EmuLEDs` / `EmuLCDCGRata` back for verification. There is **no parameter-address write** — a `SetParam` message is ignored (probed: state byte-identical) | **the only HDAW route into Vavra's FX and matrix pages** (navigate with `EmuButtons`, adjust with `EmuRotaries`), and a fallback for hidden params elsewhere. Unverified from HDAW; verify by watching the plugin editor's LCD |
 | 6 | **State / preset operations** — snapshot, save, recall | `capture_fx_snapshot`, `save_fx_chain`, `load_plugin_preset`, `apply_preset`, `save_project` | all, subject to the isolation caveats in §1 (a plugin whose state does not round-trip its patch exports differently from what you audition) |
@@ -282,10 +302,11 @@ trick is knowing which lever each device exposes and which one HDAW can drive.
   tremolo; the psy "sidechain" pump is a *bus* behaviour, so use HDAW's master/track
   compressor or an amplitude automation lane for that instead.
 - **Verify on the right instrument.** A render reflects the device only when its state
-  round-trips (Nord: verified via `load_nord_bank`; JE8086: state does not carry the
-  patch, so verify by audition or by rendering the Nord-style path). For microQ there is
-  no host-visible surface at all — its transitions must be baked into the patch or sent
-  over the remote-control SysEx.
+  round-trips (Nord: verified via `load_nord_bank`; JE8086: verified via the 2026-09-20
+  DT1 retarget + `pluginState`/`presetSysex` — the rebuilt child replays the patch). For
+  microQ, the FX **sub**-parameters share indexes and collapse into their type-level
+  parents (`FX1Type`/`FX2Type`/`FX1Mix`/`FX2Mix`), so per-sub-param automation is
+  impossible by design — bake those transitions into the patch/dump or send SysEx.
 - **Keep the transition in the project file.** Device-internal movement is saved inside
   the patch (via the plugin state); HDAW automation is saved in the ValueTree. Anything
   driven by hand (SysEx pokes, live CC) disappears on reload — prefer the two durable
@@ -330,8 +351,8 @@ FX/mod parameters for JE8086 (its `AmpLfo1Depth`, `AutoPanManualPanSwitch`,
 and 4 for the Nord (`cutoff`, `resonance`, `mix`, `sync_distortion`).
 
 Why this is useful: these recipes can be **re-created on HDAW's internal FX and
-movement planes** (the modulation-first policy), which is the only way to use them on
-the devices that publish no host parameters. Two honest limits: (a) the harvested values
+movement planes** (the modulation-first policy) on every device — including those
+whose FX/matrix pages are dump- or panel-only. Two honest limits: (a) the harvested values
 live in each device's own parameter space, so reproducing them is an approximation, not
 a byte-exact transfer; (b) microQ parameters in its sidecars are stored as **dump
 offsets**, not device parameter indices; the dump layout is now MAPPED (dump byte = 7 +
@@ -385,7 +406,7 @@ SysEx — then fall through §2's order only for what it does not cover.
 
 | Engine | `appliesVia` | Apply | Verify (Phase D) |
 |---|---|---|---|
-| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply); names need `je8086_param_index_map.json` (the plugin publishes display names like 'A FLT CUTOFF FREQ') | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)** — 46/46 writes of preset b44052f76c82a7a7, `list_fx_params` readback + ear; custom JE8086 state chunk now carries param presets into offline export/save-load (see provenance below). |
+| JE8086 | `set_fx_param`, `load_je8086_preset` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout); DT1 patch dumps now apply as well (2026-09-20 wrapper retarget, §9); names need `je8086_param_index_map.json` (the plugin publishes display names like 'A FLT CUTOFF FREQ') | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)** — 46/46 writes of preset b44052f76c82a7a7, `list_fx_params` readback + ear; custom JE8086 state chunk now carries param presets into offline export/save-load (see provenance below). |
 | NodalRed2x | `load_nord_bank` | load the preset as a bank/patch file; morph chains (`nord_morphs/`, 20 `.syx` written by `nord_dump.py`) load the same way | **VERIFIED AUDIBLE live** (morph-chain A/B; map 5,350 files / 353,100 values / 0 mismatches) — render assertion |
 | Virus | `midi_cc_pc` | writer `virus_dump.py` is format-verified (TI 524 B / B/C 267 B; checksum rule cited + validated); `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders on the current build (preset-load ext absent — finding F-A); parameter path possible (3,086 exposed params) pending F-B (`set_fx_param` name resolution diverges from `list_fx_params`) | **BOTH AUDIBLE 2026-09-19**: OsTIrus (TI) renders audio offline (rms 0.042, gate OsTIrusRenderAudibility); Osirus (C) **FIXED** — the emulator booted from an all-zeros edit buffer, so gearmulator `virusLib/device.cpp` now loads ROM factory patch A-0 at boot and Osirus renders **rms 0.047** (was exact 0 / 3.09e-06 dust; gate OsirusBootPatchAwakening). F-A (preset load does not change renders) was measured against that silent slot and must be re-tested.
 | Xenia | `apply_preset` WaldorfSysex (added 2026-09-18) + **preset-sysex replay (2026-09-18)** | `.syx` of F0 3E 0E dumps -> validated + queued via `send_fx_midi`; dumps built by `xenia_dump.py` (265 B, bank 0x20 edit buffer, checksummed); morph chains performable | **FULL GATE GREEN 2026-09-18** (`FxMidiInjection.XeniaEditBufferDumpChangesOfflineRender`, real Xenia.clap md5 71687993… + real cobalt-bank dumps): LIVE application verified (boot→dumpA Δ0.0058 rms; dumpA→dumpB Δ0.0057), dumps persisted on the slot (`presetSysex`), and **fresh children rebuilt from the tree REPLAY the dumps** (Δ0.0067 vs factory) + offline export differs (Δ0.0013) — save/load/rebuild/export all hear the injected patch. The XT single cache is editor-request-driven, so the plugin-state capture route stays a boot stub (`captureStatus=unchanged`, `pluginStateLen=0` by design); the raw dumps are replayed instead (Track.cpp restore; works for any sysex-loadable plugin, incl. Vavra once its emulator applies dumps) |
@@ -397,7 +418,7 @@ echoes the boot state is not persisted (`captureStatus="unchanged"` — read tha
 field before assuming a capture happened), and a render peak identical to 16 digits
 means the state was a no-op.
 
-**JE8086 custom CLAP provenance + validation (2026-09-18):** installed patched `JE8086.clap` from `/mnt/d/pdf/gearmulator-git` commit `6ff5ef3b` (Release target `jeJucePlugin_CLAP`) with wrapper `JPAR` v1 parameter-state chunk. Installed md5 `15001c1fe9139f5fa83f4edcff5d7750`; previous binary backed up under `C:\Program Files\Common Files\CLAP\backup-hdaw-20260918-je8086\` (md5 `f4a19cd63f0963a30238829a69fc80dc`). HDAW MCP HTTP validation: 461 params exposed; preset b44052f76c82a7a7 applied 46 params, capture `status=ok stateBytes=5419`; offline init vs applied vs save/load renders are distinct (`1dc838f6...` rms 0.03215 -> `d2615e25...` rms 0.01587 -> `1de2d97a...` rms 0.01890), and second preset 47e01d5cf2091704 rendered distinct (`d425fefe...`, rms 0.009998). Artifacts: `compositions/je8086-jpar/`.
+**JE8086 custom CLAP provenance + validation (2026-09-18):** installed patched `JE8086.clap` from `/mnt/d/pdf/gearmulator-git` commit `6ff5ef3b` (Release target `jeJucePlugin_CLAP`) with wrapper `JPAR` v1 parameter-state chunk. Installed md5 `15001c1fe9139f5fa83f4edcff5d7750`; previous binary backed up under `C:\Program Files\Common Files\CLAP\backup-hdaw-20260918-je8086\` (md5 `f4a19cd63f0963a30238829a69fc80dc`). HDAW MCP HTTP validation: 461 params exposed; preset b44052f76c82a7a7 applied 46 params, capture `status=ok stateBytes=5419`; offline init vs applied vs save/load renders are distinct (`1dc838f6...` rms 0.03215 -> `d2615e25...` rms 0.01587 -> `1de2d97a...` rms 0.01890), and second preset 47e01d5cf2091704 rendered distinct (`d425fefe...`, rms 0.009998). Artifacts: `compositions/je8086-jpar/`. **Superseded for DT1 patch dumps 2026-09-20** — that build still had the empty `case AddressArea::UserPatch`, so patch files did not apply; the now-installed binary is md5 `84427AEA4EE5F95E7E8CA8639C90DD20` (§9).
 
 ### Virus shortfall + unblock
 
@@ -701,6 +722,61 @@ noise-floor-based A/B cannot resolve a patch change there, so the gate falls bac
 to an **effect-only** assertion (`delta > 1e-4`) and prints
 `(JITTERY engine: effect-only assertion)`. The virus path (deterministic, noise
 0) keeps the strict 3x-floor check.
+
+### JE8086 UserPatch DT1 dumps — FIXED 2026-09-20 (wrapper retarget + route recall removal)
+
+**Symptom.** `load_je8086_preset` / `send_fx_midi` with a real JP-8080 `.syx` queued and
+validated, but the render stayed at the boot patch — the old note blamed
+"`jeLib/device.cpp` routes live MIDI to the DSP thread, the DT1 patch State is not on
+that path". **Wrong:** the dump *is* parsed, but a real patch file carries the
+**UserPatch bank** address (`0x02000000`), and `jeController::parseSysexMessage` had an
+empty `case AddressArea::UserPatch` — the write went nowhere and the sounding
+temp-performance patch was untouched.
+
+**Evidence (additive jeLib console probe `jeUserPatchProbe`, deterministic, repeated).**
+`jp-8080 trance bank.syx` patch 1 = 2 DT1 messages (`0x02000000` len 254,
+`0x02000172` len 18). A1→A3 baselines give the drift floor (rms 0.00340–0.00432, peak
+0.01180–0.01303):
+
+| Window | rms | verdict |
+|---|---|---|
+| B verbatim dump | 0.00405 | **NOCHANGE** (Δ 0.000267, below drift; state mirror byte-identical, 641 B) |
+| C dump retargeted to `PerformanceTemp\|PatchUpper` | 0.00578 | **CHANGE** (Δ 0.00146 rms / 0.01350 peak ≈ 11× drift; mirror now 661 B) |
+| E `CC0=1 USER + PC` recall only | 0.01329 | **CHANGE from boot** — the recall alone loads a different (louder) bank program |
+| D recall *after* the retarget | 0.01326 | Δ vs C 0.00765, Δ vs E **0.0000245** → lands back on E: the recall **discards the applied dump** |
+| F retarget re-applied | 0.00552 | rms restored to C (last write wins) |
+
+**Fixes (both shipped).**
+1. **Wrapper** (`D:\pdf\gearmulator-git`, `jeController.cpp`): the empty
+   `case AddressArea::UserPatch` now retargets host-sourced DT1s through the existing
+   `sendSingle(_sysex, part)` path (split → `PerformanceTemp|PatchUpper` with the
+   intra-block offset preserved → checksum → `sendTempPerformanceRequest`) — exactly what
+   the plugin's own patch browser has always done. Device-origin output is excluded
+   (`_source != Device`) and only `CommandIdDataSet1` (0x12) is retargeted; RQ1 passes
+   through untouched. Built via `temp/cmake_vs2026` (target `jeJucePlugin_CLAP`,
+   Release). Installed `JE8086.clap` md5 `84427AEA4EE5F95E7E8CA8639C90DD20`; pre-fix
+   backup `backup-hdaw-20260920-je8086-userpatch\` (md5 `15001C1FE9139F5FA83F4EDCFF5D7750`).
+2. **HDAW route** (`src/mcp/PresetRoute.h` + `McpTools_FxSlot.cpp`): the
+   `CC0=1 USER + PC` recall is **removed** (and the `recall` tool arg deleted). Per the
+   probe it overwrote the dump, and it would also have made the persisted capture store
+   the recalled bank program instead of the imported patch.
+
+**Verified (HDAW integration, 2026-09-20/21).**
+`FxMidiInjection.Je8086UserPatchDumpChangesOfflineRender`: fresh-boot rms 0.00257 vs
+patch 1 0.00384 (peak 0.0757) vs patch 33 0.00131 — i.e. the dump *content* drives the
+sound; the route reports `presetSysexLen=383 pluginStateLen=7099`; and a child rebuilt
+from the tree re-renders patch 33 to `|Δrms| = 5.8e-08` (asserted). Full
+`FxMidiInjection.*` suite: 20 OK / 1 pre-existing Xenia SKIP / 0 FAILED.
+
+**Readback caveat (2026-09-21).** Confirming a JE8086 patch load is **not** possible
+through the host param list (`get_plugin_params` shows no change) nor through the live
+child state blob (`GET_STATE` stayed constant across the load) — neither is JE8086
+specific, the param cache never echoes SysEx patch loads for these emulations (same
+note in `OsTIrusPresetChangeReflectsInChildParams`). The durable readback is the
+persisted slot state: `sendFxMidi` stores the raw DT1 dumps in `IDs::presetSysex` and
+`Track.cpp` **replays** them into every fresh child at rebuild/restore, so the patch
+survives export/save-load. Confirm with `poll_fx_capture` then a render A/B. Probe plan
++ full evidence: `docs/plans/2026-09-20-je8086-userpatch-dt1-probe.md`.
 
 ## 6. Pipeline commands (one line each)
 
