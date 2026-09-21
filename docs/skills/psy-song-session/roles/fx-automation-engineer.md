@@ -41,7 +41,7 @@ what the preset does not cover:
 
 | Engine | Apply (`appliesVia`) | Verify |
 |---|---|---|
-| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets; DT1 dumps do not apply) — `apply_matrix_preset` resolves this | **VERIFIED live**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; **hear != export** (its state does not carry the patch) |
+| je8086 | `set_fx_param` via `je8086_param_index_map.json` (the plugin publishes display names; never dump offsets; DT1 dumps do not apply) — `apply_matrix_preset` resolves this | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)**: 46/46 params of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback + ear; offline export/save-load now carries the parameter preset (`compositions/je8086-jpar/`). |
 | nodalred2x | `load_nord_bank` (morph chains: `nord_morphs/*.syx`) | **VERIFIED AUDIBLE live** (map 5,350 files / 353,100 values / 0 mismatches); render assertion |
 | virus | `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders (preset-load ext absent — finding F-A); `virus_dump.py` writer format-verified; parameter path pending F-B | live A/B **blocked** by F-A (Osirus renders bit-identical silence) — do not budget time here |
 | xenia | SysEx single-dump → **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` (`xenia_dump.py` emits) | **VERIFIED AUDIBLE live** (offset map 1,166,386 values / 0 mismatches); `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |

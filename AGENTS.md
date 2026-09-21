@@ -444,6 +444,57 @@ imports must set `timelineAligned:true` (or `sourceOffsetBeats`) for
 full-timeline rendered stems — offset 0 plays the stem's silent first segment.
 See `docs/handoffs/2026-09-09-rave-virus-engine-bugs.md` (Resolution).
 
+25. **A silent render makes every A/B comparison equal — prove audibility, then
+    compare.** The Osirus (Virus C) slot rendered exact silence for an entire
+    investigation (`rms == 0`, sometimes `3.09e-06` float dust) because the
+    emulator booted from an all-zeros edit buffer: `virusLib`'s
+    `createDefaultState()` dumps the value-initialized `m_singleEditBuffer{}`
+    (512 zero bytes) into the OS edit buffer, so oscillator levels, envelopes and
+    channel volume all sat at 0. Every "X does not change the render" result
+    measured against that slot was 0-vs-0 — including documented finding **F-A**
+    (`load_virus_preset` "queues but does not change renders"), which was a
+    **false conclusion manufactured by the silence**; the same trap invalidated a
+    "parameter awakening" experiment (the param cache moved 0 -> 1, the render
+    could not). Fix (gearmulator `virusLib/device.cpp`): load ROM factory patch
+    A-0 into the edit buffer at boot, guarded by `if (!m_rom.isTIFamily())`;
+    Osirus went `0` -> `rms 0.047` (gate
+    `FxMidiInjection.OsirusBootPatchAwakening`). Cross-lib audit: `n2xLib` builds
+    real defaults (`State::createDefaultSingle`), `xtLib`/`mqLib` keep no zeroed
+    edit buffer — virusLib was the only offender. **Rules:** (a) before
+    concluding "this input does not affect the output", assert the baseline
+    output is non-silent (`rms > 0`) — silence masks every delta; (b) when a
+    device produces nothing, inspect the **boot patch / edit buffer** before
+    blaming DSP timing, the OS, or the host wrapper; (c) never value-initialize a
+    patch buffer that is dumped to a device verbatim — seed it from a real patch.
+    F-A was subsequently RESOLVED (2026-09-20) — see lesson 26 for the decisive
+    fix (`docs/hardware-va-suite.md` §9 CORRECTION).
+
+26. **Isolated-child plugin state must not travel over the control pipe — the
+    child's control thread blocks during the OS warmup.** F-A's last blocker:
+    `PluginProxySlot::setStateInformation` chunked the state into ~140 (34 KB) to
+    ~600 (146 KB) pipe messages with a 3 s bounded send. The child's control
+    thread — the pipe reader — was blocked by the **12 s real-time-paced Virus OS
+    warmup** (`PluginHost` PREPARE handler: `virus warmup: 1200 blocks`) and
+    starved by the CPU-bound offline render, so `sendStateInternal` timed out,
+    the retry worker died with the render domain, and the restored state never
+    reached the plugin — the render silently played the boot patch. Signature:
+    the parent logs `SET_STATE … bytes=N` with **neither** `verified` nor
+    `verify mismatch` (the early-return branch is unlogged), and the wrapper's
+    `setState`/`loadChunkData` never run. **Fix:** the `stateSet` SHM ring
+    (`STATE_RING_SIZE` 1 MiB, `SHM_MAGIC` bumped) — the parent publishes
+    `[uint32 size][bytes]` lock-free and the child applies it from its **audio
+    loop**, marshaled to its message thread (lesson 16), deferred while
+    `warmupActive`. Delivery went from timing out to ~30 ms. **Rules:** (a) never
+    move bulk state (or anything the child must apply promptly) over the control
+    pipe — the control thread is not guaranteed to be reading (warmups, heavy
+    processBlock, lifecycle marshals); use an SHM ring like `paramSet`; (b) log
+    the FAILURE branch of every bounded send — a silent early return is
+    indistinguishable from success in the logs; (c) verify a state transfer
+    against the CHILD's reported state, never assume it. Wrapper trap found
+    alongside: `setCurrentPartPreset()` ends with `requestSingle(EditBuffer)`,
+    which makes the host push its stale cached edit buffer over a just-selected
+    ROM program — re-assert selections with the selection-only path.
+
 ## Performance rules: batch RPCs, walk the tree incrementally
 
 Standing rules for any code that mutates or reads the project. These are what

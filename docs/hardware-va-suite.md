@@ -20,10 +20,10 @@ Companion docs: `docs/psytrance-composition-guide.md` §4D (recipes + param numb
 | Device | Emulation (CLAP) | Patches + pipeline | Loader status | Host params | Internal modulation | HDAW control |
 |---|---|---|---|---|---|---|
 | Roland JP-8000 | **JE8086** | 46 banks / 4983 entries / 2676 usable patches; `timbre-lib/je8086_patch.py` -> `<bank>.je8086.json` + exploded per-patch `.syx` (3689 files, verified 3689/0) | **DT1 dumps are NOT applied** (param cache byte-identical after injection; `jeLib/device.cpp` routes live MIDI to the DSP thread, the DT1 patch State is not on that path). Param writes DO work. | **461** (`list_fx_params`) | patch-level LFO1/LFO2 + ENV with destination switches (LFO1 dest: OSC1+2 / OSC2 / X-MOD), supersaw detune, onboard multi-FX + delay + tone | `set_fx_param` (works, verified), `send_fx_midi` CC/PC, SysEx dumps (queued, unverified) |
-| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | Injection queues but **MEASURED NOT APPLYING** (2026-09-16: `captureStatus=unchanged`, renders identical — emulator limitation; see §9) | **0** (`{"params":[]}`) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (measured NOT applying); no params to automate |
-| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0+PC) queues but does NOT change renders — finding F-A, silent Osirus slot (see §9); dump writer `virus_dump.py` format-verified | **3,086** exposed on Osirus post-`ensureLiveRouting`, but `set_fx_param` name resolution diverges from `list_fx_params` — finding F-B (see §9) | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | `load_virus_preset` + `send_fx_midi` CC/PC (queue; renders currently silent — F-A); **no param automation** |
-| Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader; morph .syx chains VERIFIED AUDIBLE 2026-09-16 (`matrix_presets/nord_morphs/`, written by `nord_dump.py`: 5 pairs x 4 performable steps) | **none exposed** (the same pattern; its verified control path is the bank load) | MOD ENV + LFOs with per-parameter sensitivity dials (`parameterDescriptions_n2x.json`); NO onboard FX | `load_nord_bank` + CC/PC; HDAW internal FX |
-| Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | edit-buffer SysEx **VERIFIED AUDIBLE** 2026-09-16 (bank 0x20, `xenia_dump.py` — see §9); patch-level unproven | **not exposed** (same pattern; not measured live) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | SysEx edit-buffer dumps via `send_fx_midi`; no host params |
+| Waldorf microQ | **Vavra** | 528 single-sound dumps; `timbre-lib/microq_patch.py` -> `<patch>.vavra.json` (528 sidecars, verify 528/0) | DUMP APPLICATION FIXED 2026-09-19: the 09-16 "NOT APPLYING" was buffer targeting (dumps carried 0x30/0x40+ buffer bytes; the OS plays the single-mode edit buffer 0x20) — `apply_preset` now retargets 392 B dumps to 0x20 + fixes the Waldorf checksum; gate `FxMidiInjection.VavraEditBufferDumpChangesOfflineRender` (live render 0.0094→0.0157, replay Δ0.0057) | **7557 host params since 2026-09-19** (96 curated sound/FX params × 16 parts made `isPublic` in `parameterDescriptions_mq.json` + rebuilt; HDAW proxy cap raised 4096→16384). `set_fx_param`/automation verified: `FxMidiInjection.VavraHostParamsChangeRender` (F1Cutoff set → OS applied, same-child render Δ>1e-5) | 3 oscillators, 2 filters, 4 envelopes, LFOs and a **ModMatrix** page (`mqLib/leds.h` pinpoints the pages: Osc1-3, Filters1-2, Env1-4, LFOs, ModMatrix). Verified structure from `mqJucePlugin/parameterDescriptions_mq.json`: **per-destination source+amount pairs** — `PitchModSrc`/`PitchModAmount`, `F1ModSource`/`F1CutoffMod`/`F1EnvMod`/`F1VelMod`/`F1PanModSource`/`F1PanMod` (and F2), plus `RingModLevel`/`RingModBalance`, `NoiseModeF1/F2`, `GlideMode`, `VoiceMode`. Onboard FX pages exist in the same file | `send_fx_midi` SysEx only (measured NOT applying); no params to automate |
+| Access Virus | **OsTIrus / Osirus** | `timbre-lib/virus_patch.py` -> `<patch>.virus.json` + `virus_survey.json` (shipped earlier) | `load_virus_preset` (CC0+PC) **FIXED 2026-09-19** — state now round-trips to offline renders (see §9); dump writer `virus_dump.py` format-verified | **OsTIrus: 6939; Osirus: 3086** exposed. **OsTIrus WORKS offline** (renders audio, gate 2026-09-19). **Osirus (C) FIXED 2026-09-19** — renders audio offline (rms 0.047); gearmulator boot-patch fix, see §9 | matrix at **page 113** (`Assign1 Source`=64, `Assign1 Destination`=65, `Assign2 Source`=67, ...) plus `Lfo1/2/3 Mode`, `Lfo3 Destination`, `LfoN Env Mode`, Vocoder parameters; `Modulation Wheel` is `isPublic:false` (`parameterDescriptions_TI.json`/`_C.json`) | **OsTIrus and Osirus both render audio offline** (gates 2026-09-19). CC0+PC + send_fx_midi for patch selection; set_fx_param reaches the cache but the OS ignores host writes |
+| Clavia Nord Lead 2x | **NodalRed2x** | `timbre-lib/nl2x_patch.py` -> `<patch>.nl2x.json` (6841 sidecars) | `load_nord_bank` **works and changes the render** (asserted by `FxMidiInjection.NordBankLoadChangesNodalRed2xRender`) — the one verified bank loader; morph .syx chains VERIFIED AUDIBLE 2026-09-16 (`matrix_presets/nord_morphs/`, written by `nord_dump.py`: 5 pairs x 4 performable steps) | **362 host params since 2026-09-19** (33 curated sound params made `isPublic` in `parameterDescriptions_n2x.json` + rebuilt; HDAW proxy cap already raised). `set_fx_param`/automation verified: `FxMidiInjection.NodalRed2xHostParamsChangeRender` (Cutoff set → same-child render Δ0.00039) | MOD ENV + LFOs with per-parameter sensitivity dials (`parameterDescriptions_n2x.json`); NO onboard FX | `load_nord_bank` + `set_fx_param` (Cutoff, Resonance, FilterEnvAmount, AmpEnv A/D/S/R, ModEnvLevel, Lfo1Rate/Level, Distortion...) + CC/PC; HDAW internal FX |
+| Waldorf Microwave XT | **Xenia** | `D:\pdf\microwave` (6 `.µsb` bank images of 256x256 B + 1 SMF bank); `timbre-lib/microwave_patch.py` -> `<bank>.xenia.json` — **1791 patches, verify 7 ok / 0 bad** | edit-buffer SysEx **VERIFIED AUDIBLE** 2026-09-16 (bank 0x20, `xenia_dump.py` — see §9); `apply_preset` WaldorfSysex route added 2026-09-18 (F0 3E 0E: validate+split+queue, tested); patch-level unproven | **2151 host params since 2026-09-19** (66 curated sound/FX params made `isPublic` in `parameterDescriptions_xt.json` + rebuilt). `set_fx_param`/automation verified: `FxMidiInjection.XeniaHostParamsChangeRender` (F1Cutoff 1.0→0.1 via the OS, same-child render Δ>1e-5) | wave-envelope amounts (`W1/W2EnvAmount`), `F1EnvAmount`, `MixRingMod`, `EffectType`/`EffectParamA-C`, own arp | `apply_preset` (F0 3E 0E .syx -> validated SysEx) / `send_fx_midi` edit-buffer dumps; no host params |
 | Yamaha DX7 | **Dexed** | DX7 .syx import path exists | **cartridge injection ignored** (probed: peak 0, state byte-identical) -> use the internal `fm_synth` instead | n/a | FM operators/envelopes via `fm_synth` | internal `fm_synth` params |
 
 Grid-wide facts worth knowing before choosing a device:
@@ -100,7 +100,7 @@ effect whenever the device already has the effect onboard.
 ### Access Virus / OsTIrus, Osirus (params + CC)
 - **Preset selection** is CC0+PC (`load_virus_preset`) — the cheapest way to switch
   character between sections (currently queues but does not change renders —
-  finding F-A, see §9).
+  finding F-A — NOTE: F-A was measured while the Osirus slot was SILENT, so every A/B was 0-vs-0; the slot now renders audio, re-test, see §9).
 - **CC modulation**: automate brightness (CC74) and mod wheel (CC1) with
   `send_fx_midi` to drive the Virus's own matrix routings; this needs no parameters
   and survives as MIDI.
@@ -192,8 +192,11 @@ chorus/delay is the correct layer here (§3).
 
 ## 5. What to add next (evidence-gated)
 
-- **Xenia (Microwave XT)**: a patch pipeline like the others — its vocabulary is
-  already available (`parameterDescriptions_xt.json`), only banks are missing.
+- **Xenia (Microwave XT)**: patch DELIVERY works live (verified 2026-09-18 via the
+  apply_preset WaldorfSysex route against the real plugin) — the remaining gap is
+  the state CAPTURE: make the child serialized state include the edit-buffer
+  single so offline exports / save-load / rebuild route (Track.cpp
+  reads IDs::pluginState).
 - **Virus TI/C**: enumerate the "X > Y" routings into a matrix table (the JSON has
   them; `157`/`106` mod-related names) and check whether SysEx bank loading works the
   way CC0+PC does.
@@ -346,7 +349,7 @@ dump slots stay raw `off_<N>` keys); the **virus shortfall was removed
 virus ships **40** too (1.78M-value byte-match gate; see below). Sheets still
 carry the corpus flag `"unverified": true`, but the live apply/ear pass
 (Phase D) has since RUN — je8086/xenia/nodalred2x **verified live**, vavra
-**measured not applying**, virus **blocked by finding F-A**: see the status in
+**measured not applying**, virus **re-opened** (F-A was measured against a silent slot — see §9 boot-patch fix): see the status in
 the apply-path table below.
 
 ### File format
@@ -372,17 +375,19 @@ SysEx — then fall through §2's order only for what it does not cover.
 
 | Engine | `appliesVia` | Apply | Verify (Phase D) |
 |---|---|---|---|
-| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply); names need `je8086_param_index_map.json` (the plugin publishes display names like 'A FLT CUTOFF FREQ') | **VERIFIED live** — 46/46 writes of preset b44052f76c82a7a7, audible A/B; `list_fx_params` readback before/after + ear; **hear != export** (its 233-byte state does not carry the patch, §1) |
+| JE8086 | `set_fx_param` | parameter writes by **name → index** against `list_fx_params` — never by dump offset (the 461-param list is not the SysEx layout) and never as DT1 dumps (they do not apply); names need `je8086_param_index_map.json` (the plugin publishes display names like 'A FLT CUTOFF FREQ') | **VERIFIED live + offline with custom JPAR CLAP (2026-09-18)** — 46/46 writes of preset b44052f76c82a7a7, `list_fx_params` readback + ear; custom JE8086 state chunk now carries param presets into offline export/save-load (see provenance below). |
 | NodalRed2x | `load_nord_bank` | load the preset as a bank/patch file; morph chains (`nord_morphs/`, 20 `.syx` written by `nord_dump.py`) load the same way | **VERIFIED AUDIBLE live** (morph-chain A/B; map 5,350 files / 353,100 values / 0 mismatches) — render assertion |
-| Virus | `midi_cc_pc` | writer `virus_dump.py` is format-verified (TI 524 B / B/C 267 B; checksum rule cited + validated); `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders on the current build (preset-load ext absent — finding F-A); parameter path possible (3,086 exposed params) pending F-B (`set_fx_param` name resolution diverges from `list_fx_params`) | live A/B **BLOCKED by F-A** — the Osirus slot renders bit-identical digital silence under all programs/dumps (root-cause chain + probe results in `docs/plans/2026-09-16-matrix-preset-engine-fixes.md`) |
-| Xenia | `sysex_edit_buffer_VERIFIED_AUDIBLE_2026-09-16` | single-dump SysEx to the **edit buffer** (bank 0x20) via `send_fx_midi` / `apply_matrix_preset` — dumps built by `xenia_dump.py`; morph chains performable; patch-level writes remain unproven | **VERIFIED AUDIBLE live** (pair A/B 2026-09-16; offset map 1,166,386 values, 0 mismatches); note `get_fx_capture_status` stays `unchanged` — the capture reads the program, not the edit buffer |
-| Vavra | state blob or patch (no host params) | **NO working apply path** — single-dump injection MEASURED NOT APPLYING (2026-09-16: `queued=1` but `captureStatus=unchanged`, renders identical); `vavra_dump.py` + `vavra_morphs.json` remain blueprints; front-panel puppetry not pursued | none — documented emulator limitation (the child's state never moves); do not budget injection time here |
+| Virus | `midi_cc_pc` | writer `virus_dump.py` is format-verified (TI 524 B / B/C 267 B; checksum rule cited + validated); `load_virus_preset` (CC0+PC) queues but does NOT change Osirus renders on the current build (preset-load ext absent — finding F-A); parameter path possible (3,086 exposed params) pending F-B (`set_fx_param` name resolution diverges from `list_fx_params`) | **BOTH AUDIBLE 2026-09-19**: OsTIrus (TI) renders audio offline (rms 0.042, gate OsTIrusRenderAudibility); Osirus (C) **FIXED** — the emulator booted from an all-zeros edit buffer, so gearmulator `virusLib/device.cpp` now loads ROM factory patch A-0 at boot and Osirus renders **rms 0.047** (was exact 0 / 3.09e-06 dust; gate OsirusBootPatchAwakening). F-A (preset load does not change renders) was measured against that silent slot and must be re-tested.
+| Xenia | `apply_preset` WaldorfSysex (added 2026-09-18) + **preset-sysex replay (2026-09-18)** | `.syx` of F0 3E 0E dumps -> validated + queued via `send_fx_midi`; dumps built by `xenia_dump.py` (265 B, bank 0x20 edit buffer, checksummed); morph chains performable | **FULL GATE GREEN 2026-09-18** (`FxMidiInjection.XeniaEditBufferDumpChangesOfflineRender`, real Xenia.clap md5 71687993… + real cobalt-bank dumps): LIVE application verified (boot→dumpA Δ0.0058 rms; dumpA→dumpB Δ0.0057), dumps persisted on the slot (`presetSysex`), and **fresh children rebuilt from the tree REPLAY the dumps** (Δ0.0067 vs factory) + offline export differs (Δ0.0013) — save/load/rebuild/export all hear the injected patch. The XT single cache is editor-request-driven, so the plugin-state capture route stays a boot stub (`captureStatus=unchanged`, `pluginStateLen=0` by design); the raw dumps are replayed instead (Track.cpp restore; works for any sysex-loadable plugin, incl. Vavra once its emulator applies dumps) |
+| Vavra | `apply_preset` WaldorfSysex + **edit-buffer retarget (2026-09-18)** | `.syx` of F0 3E 10 dumps -> validated + **retargeted to the single-mode edit buffer (0x20/0x00, Waldorf checksum fixed)** + queued via `send_fx_midi`; microQ single = 392 B (`mqstate.h Dumps`), params at [7..369], name at [370..385] | **NOW APPLYING — GATE GREEN 2026-09-18** (`FxMidiInjection.VavraEditBufferDumpChangesOfflineRender`, real Vavra.clap + real rhythm-lab dump): the 2026-09-16 "NOT APPLYING" was a **buffer-targeting bug, not an emulator limitation** — real bank dumps carry 0x30 (multi-edit) or 0x40+ (bank) buffer bytes the single-mode OS never plays; retargeting to 0x20 makes the OS load the edit buffer (same as mqController::sendSingle). live injected rms 0.00945→0.01512 (D0.0057), presetSysex persisted, rebuilt-from-tree replay D0.0054 vs boot |
 
 **D-lite round-trip check** (any state-blob route: Vavra, Xenia): apply →
 `capture_fx_snapshot` → diff the captured state → render A/B. A capture that merely
 echoes the boot state is not persisted (`captureStatus="unchanged"` — read that
 field before assuming a capture happened), and a render peak identical to 16 digits
 means the state was a no-op.
+
+**JE8086 custom CLAP provenance + validation (2026-09-18):** installed patched `JE8086.clap` from `/mnt/d/pdf/gearmulator-git` commit `6ff5ef3b` (Release target `jeJucePlugin_CLAP`) with wrapper `JPAR` v1 parameter-state chunk. Installed md5 `15001c1fe9139f5fa83f4edcff5d7750`; previous binary backed up under `C:\Program Files\Common Files\CLAP\backup-hdaw-20260918-je8086\` (md5 `f4a19cd63f0963a30238829a69fc80dc`). HDAW MCP HTTP validation: 461 params exposed; preset b44052f76c82a7a7 applied 46 params, capture `status=ok stateBytes=5419`; offline init vs applied vs save/load renders are distinct (`1dc838f6...` rms 0.03215 -> `d2615e25...` rms 0.01587 -> `1de2d97a...` rms 0.01890), and second preset 47e01d5cf2091704 rendered distinct (`d425fefe...`, rms 0.009998). Artifacts: `compositions/je8086-jpar/`.
 
 ### Virus shortfall + unblock
 
@@ -391,7 +396,7 @@ pages of every single dump (byte-match stop-gate: 5,425 dumps, 1,782,572 values,
 0 mismatches), the sidecars were re-swept to rev 2, and the re-run harvester
 shipped the full **40-preset** virus sheet plus `virus_morphs.json` (per-step
 SysEx, TI/BC model-tagged, written by `virus_dump.py`). What remains is live
-audibility only: finding F-A (the silent Osirus slot) blocks the A/B — see the
+audibility only: the silent Osirus slot that made F-A unmeasurable is FIXED (§9), so the A/B can now be re-run — see the
 apply-path table above.
 
 ### Vavra naming — the verified offset map
@@ -405,6 +410,218 @@ Applying the map to the vavra sheet's offset keys yields device names
 (`F2ModSource`, `FX1Type`, ...) for the 86-key FX/matrix subset; the shipped
 sheet carries those names and keeps raw `off_<N>` keys for every other dump
 slot — this closes the vavra gap named in §7b.
+
+### Osirus (Virus C) offline silence — FIXED 2026-09-19 (gearmulator boot-patch fix)
+
+**Symptom.** The Osirus (Virus C) slot rendered exact digital silence offline
+(`rms == 0`, or `3.09e-06` float dust) regardless of MIDI note, patch or
+parameter writes, while OsTIrus (TI) rendered `rms 0.042` through the same
+wrapper.
+
+**Root cause (dsp56300 / emulator boot state).** `virusLib/microcontroller.cpp`
+`createDefaultState()` writes the boot patch by dumping `m_singleEditBuffer`
+verbatim to the OS edit buffer, and that member is *value-initialized*
+(`TPreset m_singleEditBuffer{}` — `microcontroller.h:118`), i.e. **512 zero
+bytes**. The OS therefore boots on an all-zeros patch: every oscillator level,
+envelope level, filter cutoff and channel volume is 0, so the DSP runs and
+produces silence. This also explains the earlier "parameter awakening" failure
+(setting `Ch 1 Channel Volume` to max changed the param cache but not the
+render): unmuting one channel cannot make sound from oscillators at level 0. It
+further explains why *every* comparison returned delta 0 — silence equals
+silence, which is what made finding F-A look like a preset-load fault.
+
+**Cross-lib audit (why only the Virus was hit).**
+`nord/n2x/n2xLib/n2xstate.cpp` builds real defaults
+(`State::createDefaultSingle()` copies `g_singleDefault` into the dump;
+`createDefaultMulti()` likewise), which is why NodalRed2x boots audible. `xtLib`
+(Xenia) and `mqLib` (Vavra) have no value-initialized edit buffer at all.
+virusLib was the **only** lib booting from zeroed state.
+
+**Fix** (`gearmulator-git/source/virusLib/device.cpp`, Device ctor, after
+`createDefaultState()`): load a real factory patch from the ROM into the edit
+buffer — `m_rom.getSingle(0, 0, romPatch)`, then
+`m_mc->writeSingle(BankNumber::EditBuffer, SINGLE, romPatch)`. Guarded by
+`if (!m_rom.isTIFamily())` so the TI boot path stays byte-identical (TI already
+boots audible via its own init sequence — minimal blast radius).
+
+**Evidence (A/B, gate `FxMidiInjection.OsirusBootPatchAwakening`).**
+
+| build | offline render RMS |
+| --- | --- |
+| pre-fix (gates 1-2) | `3.09492e-06` (float dust) |
+| pre-fix (gates 3-6) | `0` (exact silence) |
+| post-fix (gate 7, final) | **`0.0471329`** (audible) |
+
+Installed CLAP md5 `60ad7cf8c3bf50d867d60dd37194f437`
+(`C:\Program Files\Common Files\CLAP\Osirus.clap`). Gate result:
+`[ OK ] FxMidiInjection.OsirusBootPatchAwakening` and
+`[ OK ] FxMidiInjection.BootStateBaselineGuard`.
+
+**Follow-on.** Because the former comparisons were 0-vs-0, finding F-A
+(`load_virus_preset` does not change renders) is **no longer a valid
+conclusion** and must be re-measured on the now-audible build.
+
+### F-A re-test (2026-09-19, audible build) — REPRODUCED, mechanism identified
+
+With the slot audible the A/B became meaningful, and finding F-A is confirmed
+with a precise mechanism. Gate
+`FxMidiInjection.OsirusPresetChangeReflectsInRender` (diagnostic; prints a capture
+receipt timeline and a phase-2 param probe):
+
+| probe | child param cache | serialized state | offline render |
+| --- | --- | --- | --- |
+| CC0 bank A + PC 40 (`load_virus_preset`) | no change | `status=unchanged`, 0 B | `rms 0.0468474` -> identical |
+| `set_fx_param` `Ch 1 Cutoff` 1.0 -> 0.0 | `1 -> 0` (reached the cache) | `status=unchanged`, 0 B | `rms 0.0468474` -> identical |
+
+`status=unchanged` is the boot-echo guard firing: the child's serialized state is
+byte-identical to the boot baseline, so nothing is persisted into
+`IDs::pluginState` and the offline domain re-renders the boot patch. Note the
+phase-2 row: even a param write that visibly reaches the cache leaves the
+serialized state untouched.
+
+**Mechanism (source level).** Every gearmulator wrapper inherits
+`jucePluginLib/Processor::getStateInformation`, which serializes
+`g_saveMagic` + `g_saveVersion` + `saveCustomData()`. The JE8086 wrapper overrides
+that with a **`JPAR` v1 chunk carrying every exposed parameter's unnormalized
+value** (`jePluginProcessor.cpp:118` save / `:142` load, replayed with
+`Parameter::Origin::PresetChange`) — which is exactly why JE8086 param applies
+round-trip to offline renders and saves. The Virus wrapper has **no equivalent
+chunk**, so neither host-param writes nor OS-side ROM program changes appear in
+`getStateInformation`: the state never differs from boot, so **no injection can
+round-trip to an offline render or a save**. Same defect class the JE8086 `JPAR`
+fix closed.
+
+**Also confirmed:** there is no SysEx-file route into the gearmulator Virus
+plugins — `PresetRouteKind` offers only `VirusRom` (CC0+PC) for them, while
+`SubSynthVirus` targets HDAW's *internal* `sub_synth`. So the `IDs::presetSysex`
+persist/replay path that rescues Xenia/Vavra (Xenia/Vavra edit-buffer dumps) is
+not reachable for Virus today. The on-disk Virus dump library is TI-only
+(524 B, `timbre-lib/demo_libs/virus/`), i.e. OsTIrus material — there is no
+model-C (267 B) dump set.
+
+### F-A RESOLVED (2026-09-19) — Virus preset/param state round-trips offline
+
+**Superseded by the CORRECTION at the end of this section:** the deltas quoted
+here (0.000176) were **render jitter** (the boot render varies ~6e-4 run-to-run,
+so the gate's 1e-4 threshold was below the noise). The wrapper chunks and the
+HDAW capture fixes below are all still required, but they were not the blocker.
+
+1. **Wrapper state chunks** (`virusJucePlugin/VirusProcessor`): serialized state
+   is now `ROM` + `OBST` (OS arrangement, ~4.8 KB via `getState(CurrentProgram)`)
+   + `PRGS` (active ROM program selection per part, from a new
+   `Processor::addMidiEvent` override that taps the raw CC0+PC the host sends —
+   the controller's catalog name-lookup can miss in an isolated host) + `JPAR`
+   (all exposed parameter values, 141 KB total) + the base MIDI/routing chunks.
+   Restore replays OBST into the OS, re-selects PRGS via
+   `setCurrentPartPreset`, and syncs JPAR into the host model — bypassing the
+   param pipeline's initial-value guard (`sendToSynth` absorbs the first value
+   per param while `m_lastValue == -1`) and its timer-paced sends.
+2. **HDAW capture/save self-baselining fix**: `noteStateSample` used to adopt the
+   very sample being judged, so the first capture/save always reported
+   "unchanged" and discarded the state. `hasBootBaseline()` + guards in the
+   deferred + deviceless capture paths and in `ProjectSerializer` persist real
+   state; `TrackFXSlot::prepare` seeds the true boot baseline for slots built
+   outside `rebuildFXChain`; the deferred capture retries over a warm-clock
+   budget (~5 s) and tolerates a mid-boot/restart empty snapshot.
+3. **Stopped-transport MIDI flush** (`AudioEngineCommands::sendFxMidi`): the
+   queued CC0+PC sat in the slot's pending queue forever while the transport was
+   stopped (the audio graph's buzz-guard early-outs before the proxy slot, so
+   `PluginProxySlot::processBlock` — the only writer of the SHM `midiIn` ring —
+   never ran). `sendFxMidi` now drives 24 scratch blocks (command thread, sole
+   producer while stopped) to flush the events into the ring; the child's audio
+   loop delivers them to the wrapper (the tap fires) and the OS.
+
+Installed CLAPs: Osirus `73cbacc6…` (md5; `backup-hdaw-20260919-virustap` has
+all prior iterations). Regression: `OsirusBootPatchAwakening` still green
+(rms 0.0471). Note: the host-param *value* still only reaches the OS if the
+live child's param pipeline applied it first (C2b warm clock + timer sends);
+PRGS/OBST carry the ROM-program + arrangement truth, JPAR keeps the model in
+sync.
+
+### CORRECTION (2026-09-20) — the real blocker: plugin state never reached the isolated child
+
+The `0.000176` deltas above were jitter. Instrumenting the child (its logs go to
+OutputDebugString, invisible to stderr) proved the real chain:
+
+| Stage | Evidence |
+| --- | --- |
+| Tap + chunks | `flushstate PRGS=1 OBST=1 JPAR=1`; capture persists (`receipt ok bytes=34245/146495`) |
+| Rebuild restore call | `[Track] rebuild slot … stateLen=45666 / 195334 isolated=1` |
+| **State reaching the plugin** | wrapper traces `[FA] setState recv=` / `[FA] loadChunkData entered` — **zero occurrences** |
+| Parent pipe send | `SET_STATE slot=1 bytes=N` logged, then **neither** `verified` nor `verify mismatch` → `sendStateInternal()` returned false (a 3 s `sendMsgBounded` timed out) |
+
+**Root cause:** the state travelled as ~140 (34 KB) to ~600 (146 KB) chunked
+**pipe** messages, and the child's control thread — the pipe reader — is blocked
+by the **12 s real-time-paced Virus OS warmup** (`PluginHost.cpp` PREPARE
+handler: `virus warmup: 1200 blocks (12s audio)`), then starved further by the
+CPU-bound offline render. The pipe filled, the bounded send timed out, and the
+background retry worker died with the render domain — so the render played the
+boot patch.
+
+**Fix — the `stateSet` SHM ring** (mirror of the C2b `paramSet` ring):
+`STATE_RING_SIZE` (1 MiB) byte ring after the param rings, `SHM_MAGIC` bumped to
+`0x4844415D`. The parent publishes a length-prefixed record
+(`[uint32 size][bytes]`, `PluginProxySlot::publishStateToRing`) — lock-free, no
+pipe; the child polls it from its **audio loop**
+(`PluginHost::applyPendingRingState`, deferred while `warmupActive`) and applies
+it marshaled to its message thread (lesson 16). The pipe path remains the
+fallback. Wrapper correctness fix alongside it: the deferred re-assert uses
+`Controller::reassertPresetSelection` (bank/program select **only**), because
+`setCurrentPartPreset()` ends with `requestSingle(EditBuffer)`, which makes the
+host push its stale cached edit buffer over the just-selected ROM program.
+
+**Verified (deterministic, 3/3 runs):** `SET_STATE published to shm ring` →
+`state ring applied` in ~30 ms; wrapper `[FA] setState recv` →
+`loadChunkData entered` → `PRGS stash` / `OBST stash`; gate deltas
+`0.0192275 / 0.019202 / 0.0192869` (≈40 % level change: boot 0.0468 → restored
+0.0276) with `VERDICT: preset load CHANGED` + `PHASE2 VERDICT: … ROUND-TRIPS`.
+`FxMidiInjection` suite **16/19** (the ring also fixed
+`OsTIrusInjectionCapturesToTreeAndSurvivesRebuild`); the remaining 3 are the
+pre-existing OsTIrus pair, `OsTIrusRenderAudibility` (reproduces with the
+pristine pre-session `OsTIrus.clap`) and `NordBankLoadChangesNodalRed2xRender`
+(receipt now honestly reports `unchanged` for n2x states that do not change).
+
+### Virus warmup vs the render budget — FIXED 2026-09-20
+
+`OsTIrusRenderAudibility` failed with `render timed out`: the first audition
+rendered audio (rms 0.0423) but the third (`fresh` probe) was cancelled while
+its newly spawned TI child was still in the mandatory **12 s real-time OS
+warmup**. The render-window watchdog waited only
+`computeBakeWaitMs(tree) + windowSeconds*1000 + 5000` (= bake + 7 s), which is
+shorter than one warmup even before CPU contention from the other TI children.
+
+**Fix:** `ExportManager::computeBakeWaitMs` now adds a warmup allowance —
+`HDAW_CHILD_WARMUP_SECONDS` (default 12) × the number of virus-family slots in
+the tree (matched on the slot `pluginID`: osirus/ostirus/virus), added **after**
+the 120 s cap so it is never clipped, and skipped entirely when
+`HDAW_NO_CHILD_WARMUP=1`. It is a ceiling, not a delay: both waiters
+(`renderTrackWindow` and the export's internal `kMaxBakeWaitMs`) still exit as
+soon as the export completes.
+
+**Verified:** `FxMidiInjection.OsTIrusRenderAudibility` now **PASSES**
+(219 s), with `OsTIrusInjectionCapturesToTreeAndSurvivesRebuild`,
+`OsirusBootPatchAwakening`, `OsirusPresetChangeReflectsInRender` and
+`BootStateBaselineGuard` all green in the same run. **Test-instrument fix (2026-09-20):**
+`OsTIrusPresetChangeReflectsInChildParams` used to assert a change in the child's
+**param cache** after CC0+PC. The TI's OS does not echo PC-loaded patch
+parameters back to the host, so that probe is invalid for this plugin — the
+diagnostic prints `paramCacheChanged=0 stateChanged=1 (state 263387 -> 263406)`
+(the +19 B is the `PRGS` chunk). The test now asserts the child's **serialized
+state** (the authoritative observable) and keeps the cache as a diagnostic; it
+PASSES.
+
+**Nord gate retarget (2026-09-20):** `NordBankLoadChangesNodalRed2xRender`
+asserted `pluginState` non-empty + `captureStatus == "ok"`. For the n2x that is
+the wrong surface: its serialized child state does not reflect the volatile
+patch RAM the bank dumps land in, so the D-lite guard honestly reports
+`unchanged` and persists no state blob. The test now asserts what the
+`load_nord_bank` pipeline actually relies on — the injected dumps persisted for
+replay — mirroring the Xenia/Vavra gates: `[NordBank] captureStatus=unchanged
+pluginStateLen=0 presetSysexLen=33114` with `EXPECT_GT(presetSysexLen, 0)`, a
+settled (non-`pending`, non-`failed`) receipt, and the offline-render delta
+(which passes). **The whole `FxMidiInjection` suite is now 19/19.**
+Note: run alone, the audibility test can still stall — several heavy TI children
+plus the real-time-paced warmup saturate the CPU.
 
 ## 6. Pipeline commands (one line each)
 
