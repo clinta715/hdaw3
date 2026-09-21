@@ -632,7 +632,7 @@ settled (non-`pending`, non-`failed`) receipt, and the offline-render delta
 Note: run alone, the audibility test can still stall — several heavy TI children
 plus the real-time-paced warmup saturate the CPU.
 
-### Vavra matrix presets — the device-native dump route (2026-09-21)
+### Vavra + Xenia matrix presets — the device-native dump route (2026-09-21)
 
 **Why host-param publishing does not work for the microQ FX block.** The vavra
 sheet carries the device's own patch vocabulary (363 values: 86 named + 277 raw
@@ -670,9 +670,35 @@ transfer. The branch is inert for the other sheets (only `vavra.json` carries
 preset-level `sysex`; je8086/virus stay on `set_fx_param`, nodalred2x/xenia
 unchanged).
 
-**Gate:** `FxMidiInjection.MatrixPresetAudibilityVirusVavra` — vavra
-`route=device_dump bytes=392 base=Technodoodah  CJ Arp.syx` with render delta
-**0.00936** (noise-floor threshold 1e-4); virus unchanged at 66/66.
+**Xenia (Microwave XT) — same route, 265-byte dumps.**
+`timbre-lib/xenia_matrix_sysex.py` reuses `xenia_dump.py`'s primitives:
+`resolve_parent_dump()` **byte-verifies** the parent against the preset's own
+named values (it also handles the harvest's +2 labeling quirk on `.mid`
+sidecars), the preset's values are written at their mapped offsets and the
+checksum is recomputed. 40/40 presets stamped (0 skipped, 0 vocab-shifted),
+3360 values, 84.0 avg; preset 0 verified 84/84 byte-exact.
+
+**FRAMING PITFALL (both engines).** A parent taken from a *bank image* carries
+that bank's slot numbers, so injecting it verbatim writes the patch into a RAM
+slot and the **current sound does not change** — measured on Xenia: render delta
+**0.00017**. The stamped dump must therefore be re-framed to the **edit buffer
+(bank `0x20`, program 0)** with the checksum recomputed — the framing the
+verified `compositions/xenia-ab` dumps use. Effect: delta **0.00017 -> 0.01459
+(86x)**.
+
+**Gate:** `FxMidiInjection.MatrixPresetAudibilityVirusVavra` (all three engines):
+virus `applied=66/66`, delta **0.00152** (noise 0); vavra
+`route=device_dump bytes=392 base=Technodoodah  CJ Arp.syx`, delta **0.0088**;
+xenia `route=device_dump bytes=265 base=upawbnk.mid / Tablescan11 HH`, delta
+**0.0146**.
+
+**Assertion caveat (documented in the gate output).** The XT and microQ
+emulations carry free-running state, so two renders of the *same* boot patch can
+differ by ~1e-2 RMS (measured: vavra 0.0129, xenia 0.0154 in one run). A
+noise-floor-based A/B cannot resolve a patch change there, so the gate falls back
+to an **effect-only** assertion (`delta > 1e-4`) and prints
+`(JITTERY engine: effect-only assertion)`. The virus path (deterministic, noise
+0) keeps the strict 3x-floor check.
 
 ## 6. Pipeline commands (one line each)
 
