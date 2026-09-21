@@ -1,6 +1,10 @@
 # MCP ↔ RPC parity retrofit (2026-09-21)
 
-**Status:** in progress — slice 1 (PsyFm, the first confirmed semantic gap) shipped.
+**Status:** audit complete — **every confirmed gap is closed**. Shipped: slice 0
+(`device`, `src/common/DeviceParamMap`), slice 1 (`psy_fm`), slice 2 (`matrix`,
+`MatrixPresetService`) + the namespace-coverage gate, slice 3 (song plan / cells + fx
+capture receipt, `SongPlanView` + `FxCaptureStatus`), slice 4 (`tuning`,
+`TuningAnalysis`). Remaining: the ratchet (item 3) and the follow-ups (items 4–6).
 **Owner:** agent session 2026-09-21. **Risk:** low (no engine/DSP/render/playback code).
 **Related:** `docs/plans/2026-09-21-device-param-map.md` (same parity rule, worked
 example `src/common/DeviceParamMap.cpp`).
@@ -246,6 +250,71 @@ Evidence: `SongPlanRpcTest.*` 6/6 (new), and the combined sweep 216/216 across
 `PsyFmRpcTest*`, `MatrixPresetsTest*`, `ApplyPreset*`, `workflow_pack*`, `SongPlan*`,
 `SongStructureAudit*`, `SongPlanRpcTest*`.
 
+## Slice 4 — Tuning (SHIPPED 2026-09-21) — the last confirmed RPC gap
+
+`analyze_tuning` was the only tool in the domain, and it was implemented as **static
+helpers inside `src/mcp/McpTools_Tuning.cpp`** (role tables, descriptors, check/suggestion,
+the Python-sidecar invocation and the C++ fallback) with **no `tuning` namespace at all** —
+so the whole domain was MCP-only.
+
+### Implementation
+
+- **`src/common/TuningAnalysis.{h,cpp}`** (new) — the extracted analysis, with a result type
+  that carries BOTH representations: `object` (the structured payload the RPC returns) and
+  `rawJson` (the exact text the analysis produced, which the MCP tool keeps emitting, so its
+  pretty-printed output is preserved byte-for-byte, including the Python sidecar's key order).
+- **`src/mcp/McpTools_Tuning.cpp`** — reduced to the tool registration; same description and
+  schema, now delegating to the shared function (plus an RPC-twin hint in the description).
+- **`src/frontend/router/Router_Tuning.{h,cpp}`** (new) — `tuning.analyze` and
+  `tuning.jobStatus`; `method::Tuning` added to `FrontendRpc.h` (+ to
+  `allMethodNamespaces()`, so `RpcNamespaceCoverage` now requires this namespace to have a
+  dispatch branch — it would fail if the wiring were forgotten).
+
+### The async decision (this plan's open question)
+
+The MCP tool's `wait:false` mode submits to the process-wide job registry (`McpJobs`) and
+tells the caller to `poll_job`. **Decision: the RPC exposes the registry as
+`tuning.jobStatus`, not as a generic `audio.pollJob`** — matching the per-domain status
+convention already used by `rave.jobStatus` / `rave.trainingJobStatus`, and keeping the
+generic `poll_job` an MCP-side convenience rather than promoting the MCP job registry to a
+cross-domain RPC concept. The registry is process-wide, so a job submitted by either
+surface is readable by either (asserted in the parity test). The frontend already depends
+on the mcp layer for its JSON-RPC envelope (`FrontendServer.cpp` includes
+`mcp/McpJsonRpc.h`), so this is an existing boundary.
+
+### Success gates
+
+| # | Gate | Status |
+| --- | --- | --- |
+| U1 | `tuning.analyze` payload identical to `analyze_tuning` — known role, unknown role (`skipped:true`) and the no-role form | **PASS** |
+| U2 | Async: `wait:false` returns `{jobId,state:'running',pollWith:'tuning.jobStatus'}`; the finished job's `result` equals the synchronous payload; the MCP `poll_job` sees the same job | **PASS** |
+| U3 | Argument failures are clean `-32602` (`wavPath` missing, `wav not found`, unknown `jobId`) and unknown sub-method is `-32601` | **PASS** |
+| U4 | Namespace-coverage gate now includes `tuning` (dispatch branch required) | **PASS** |
+| U5 | MCP behaviour unchanged — `McpJobs.*` (the sync/async `analyze_tuning` contract) and `McpCoverageTest.*` (the unknown-role `skipped:true` assertion) | **PASS** |
+| U6 | Registry/RPC-surface sweep unaffected | **PASS** (186 tests in the combined run) |
+| U7 | Build graph — the new files present in `build.ninja` after an explicit reconfigure | **PASS** |
+| U8 | Blast radius — no `processBlock` / DSP / `RoutingManager` / render / playback / plugin-isolation file touched | **PASS** |
+
+Evidence: `TuningRpcTest.*` 3/3 (new) and the combined sweep 186/186 across
+`ToolRegistry*`, `McpCoverage*`, `RpcSurface*`, `McpServer*`, `DeviceParams*`,
+`PsyFmRpcTest*`, `TuningRpcTest*`, `McpJobs*`, `MatrixPresetsTest*`, `SongPlanRpcTest*`.
+
+### Findings recorded while doing this (not fixed here)
+
+1. **The two analysis paths answer differently for the no-role form.** With a role, the
+   Python sidecar and the C++ fallback both emit `{check, pass, suggestion}`; with **no**
+   role the sidecar emits `{wav, descriptors, summary}` while the fallback adds per-role
+   `checks` (+`loop`). That asymmetry is **pre-existing** (the extraction preserves both
+   paths verbatim rather than silently unifying them), and the parity test asserts only what
+   both share. Unifying the shapes is a small follow-up if anything consumes `checks`.
+2. **`audio.mixReport` has no async route.** `Router_Audio`'s `mixReport` is synchronous
+   only, while the MCP `mix_report` tool supports `wait:false` + `poll_job` (see
+   `McpTools_AudioRead.cpp`). Same class of gap as this slice, one domain over — recorded as
+   backlog item 5.
+3. **The fallback descriptor math is deliberately approximate** (centroid hardcoded to
+   1000 Hz, mel bands 1/3 each, with an in-code note that the Python sidecar is exact).
+   Worth knowing before trusting a `pass:false` from a run where Python is unavailable.
+
 ## Remaining backlog
 
 1. **Semantic pass over the remaining domains.** For each `Router_*.cpp`, list its
@@ -267,13 +336,10 @@ Evidence: `SongPlanRpcTest.*` 6/6 (new), and the combined sweep 216/216 across
    * **Song plan / cells + fx capture receipt** — done (slice 3): the batch
      `set_cells`, `audit_song_structure`, `get_layer_handoffs` and
      `get_fx_capture_status` now have RPC routes.
-   * **Tuning** — the one remaining confirmed gap: `analyze_tuning` has no route and
-     there is no `tuning` namespace. It needs `analyzeTuningText` / `analyzeTuningObject`
-     (~140 lines of spectral analysis) extracted from `McpTools_Tuning.cpp` into
-     `src/common/`, and it participates in the async job registry (`wait:false` +
-     `poll_job`) — so that slice must also decide whether to expose a generic
-     `audio.pollJob` or to document that each async domain has its own status route
-     (`rave.jobStatus`, `rave.trainingJobStatus`). `poll_job` is MCP-only today.
+   * **Tuning** — DONE (slice 4). `analyze_tuning` now has `tuning.analyze` +
+     `tuning.jobStatus`, with the analysis extracted to `src/common/TuningAnalysis.cpp`. The
+     async decision (domain-scoped status over a generic poller) is recorded in the slice 4
+     section below. This was the **last confirmed RPC gap**.
    * **Untouched domains** (no gap found by the symbol join, no separate slice needed):
      Clip/Note/Cc/Track/Transport/Read/Settings/Automation/Modulation/Send/Envelope/
      Sampler/FmSynth/MidiFx/FxSlot/FxChain/FxPreset/Library/Session/AudioRead/Arranger/
@@ -293,6 +359,12 @@ Evidence: `SongPlanRpcTest.*` 6/6 (new), and the combined sweep 216/216 across
    serves `load_nord_bank` with the same parsing/validation. One of them should delegate:
    move the loader core next to the pure parser (`src/mcp/PresetFileParser.h` is
    engine-surface only) and let each caller format its own output.
+5. **`audio.mixReport` has no async route** (found in slice 4): the RPC method is
+   synchronous while the MCP `mix_report` tool supports `wait:false` + `poll_job`. Either
+   add `wait`/`audio.jobStatus` (mirroring `tuning.jobStatus`) or document the asymmetry.
+6. **Unify the tuning no-role shapes** (found in slice 4): the Python sidecar returns
+   `{wav, descriptors, summary}` for the no-role form while the C++ fallback adds
+   `checks` + `loop`.
 
 ## Deviation / process notes
 

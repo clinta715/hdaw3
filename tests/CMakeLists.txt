@@ -175,6 +175,7 @@ add_executable(hdaw_tests
     unit/frontend/device_params_rpc_test.cpp
     unit/frontend/psy_fm_rpc_test.cpp
     unit/frontend/song_plan_rpc_test.cpp
+    unit/frontend/tuning_rpc_test.cpp
     unit/frontend/rpc_namespace_coverage_test.cpp
     unit/frontend/tree_delta_accumulator_test.cpp
     integration/proxy/isolation_integration_test.cpp
