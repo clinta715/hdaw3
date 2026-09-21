@@ -89,6 +89,23 @@ TEST(ApplyPresetResolver, NordMidIntoNodalRed2x)
     EXPECT_EQ(r.kind, mcp::PresetRouteKind::NordBank);
 }
 
+TEST(ApplyPresetResolver, WaldorfSyxIntoXeniaAndVavra)
+{
+    const std::vector<uint8_t> xeniaDump { 0xF0, 0x3E, 0x0E, 0x7F, 0x10, 0x00, 0xF7 };
+    auto xr = mcp::resolvePresetRoute("plugin", "Xenia.clap",
+        xeniaDump.data(), xeniaDump.size(), ".syx", false);
+    EXPECT_EQ(xr.kind, mcp::PresetRouteKind::WaldorfSysex);
+
+    const std::vector<uint8_t> vavraDump { 0xF0, 0x3E, 0x10, 0x7F, 0x10, 0x00, 0xF7 };
+    auto vr = mcp::resolvePresetRoute("plugin", "Vavra.clap",
+        vavraDump.data(), vavraDump.size(), ".syx", false);
+    EXPECT_EQ(vr.kind, mcp::PresetRouteKind::WaldorfSysex);
+
+    auto wrongMachine = mcp::resolvePresetRoute("plugin", "Xenia.clap",
+        vavraDump.data(), vavraDump.size(), ".syx", false);
+    EXPECT_EQ(wrongMachine.kind, mcp::PresetRouteKind::None);
+}
+
 TEST(ApplyPresetResolver, VirusRomPresetNeedsNoFile)
 {
     auto r = mcp::resolvePresetRoute("plugin", "OsTIrus.clap",

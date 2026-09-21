@@ -141,6 +141,50 @@ TEST(PresetFileParser, RejectsMalformedSerumPresetWithoutPayload)
     EXPECT_TRUE(parsed.error.contains("payload"));
 }
 
+
+// ---------------------------------------------------------------------------
+// Waldorf Microwave XT / microQ dumps (apply_preset Xenia/Vavra route).
+// ---------------------------------------------------------------------------
+
+TEST(PresetFileParser, SplitsConcatenatedWaldorfXeniaDumps)
+{
+    const std::vector<uint8_t> a { 0xF0, mcp::kWaldorfId, mcp::kWaldorfMachineMw2,
+                                   0x7F, 0x10, 0x00, 0xF7 };
+    const std::vector<uint8_t> b { 0xF0, mcp::kWaldorfId, mcp::kWaldorfMachineMw2,
+                                   0x7F, 0x20, 0x01, 0x02, 0xF7 };
+    std::vector<uint8_t> raw;
+    raw.insert(raw.end(), a.begin(), a.end());
+    raw.insert(raw.end(), b.begin(), b.end());
+
+    std::vector<std::vector<uint8_t>> dumps;
+    EXPECT_EQ(mcp::splitWaldorfSyx(raw.data(), raw.size(),
+        mcp::kWaldorfMachineMw2, dumps), 2);
+    ASSERT_EQ(dumps.size(), 2u);
+    EXPECT_EQ(dumps[0], a);
+    EXPECT_EQ(dumps[1], b);
+    EXPECT_TRUE(mcp::isWaldorfDumpHeader(dumps[0].data(), dumps[0].size(),
+        mcp::kWaldorfMachineMw2));
+    EXPECT_TRUE(mcp::validateWaldorfDump(dumps[0].data(), dumps[0].size(),
+        mcp::kWaldorfMachineMw2, "Microwave XT/Xenia").isEmpty());
+}
+
+TEST(PresetFileParser, WaldorfValidationRejectsWrongMachineAndTruncatedDump)
+{
+    const std::vector<uint8_t> microQ { 0xF0, mcp::kWaldorfId,
+        mcp::kWaldorfMachineMicroQ, 0x7F, 0x10, 0x00, 0xF7 };
+    EXPECT_TRUE(mcp::validateWaldorfDump(microQ.data(), microQ.size(),
+        mcp::kWaldorfMachineMw2, "Microwave XT/Xenia").contains("Microwave XT/Xenia"));
+
+    std::vector<std::vector<uint8_t>> dumps;
+    const std::vector<uint8_t> truncated { 0xF0, mcp::kWaldorfId,
+        mcp::kWaldorfMachineMw2, 0x7F, 0x10, 0x00 };
+    EXPECT_EQ(mcp::splitWaldorfSyx(truncated.data(), truncated.size(),
+        mcp::kWaldorfMachineMw2, dumps), -1);
+
+    EXPECT_EQ(mcp::splitWaldorfSyx(microQ.data(), microQ.size(),
+        mcp::kWaldorfMachineMw2, dumps), -2);
+}
+
 // ---------------------------------------------------------------------------
 // Nord Lead 2x bank dumps (load_nord_bank) — wire format verified against
 // gearmulator n2xmiditypes.h + the real D:\pdf\NL2x Banks library.
