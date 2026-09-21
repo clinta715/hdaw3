@@ -386,6 +386,11 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
     // One SysEx per block through the metered drain: give the child a
     // block per dump plus the base window before snapshotting (D3).
     const int captureDelayMs = 800 + 30 * sysexCount;
+    // The child applies staged params on its audio loop; the FIRST drain runs
+    // an ~0.8-2s warm clock (PluginHost kIdleWarmBlocks) before applying, so a
+    // single snapshot at +800ms can race the application while the transport is
+    // stopped. Poll a few times before declaring "unchanged".
+    constexpr int kCaptureRetries = 6;
     const bool deviceOpen = engine_.getDeviceManager().getCurrentAudioDevice() != nullptr;
     if (deviceOpen)
     {
@@ -410,30 +415,49 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
                 writeFxCaptureReceipt(slotTree, "failed: no plugin instance", 0);
                 return;
             }
+            const bool hadBaseline = slot->hasBootBaseline();
             juce::MemoryBlock mb;
-            inst->getStateInformation(mb);
-            slot->noteStateSample(mb);
-            // Never clobber last-good state with an empty snapshot (dead
-            // child) — same guard as Track::rebuildFXChain / save.
+            bool lastUnchanged = false;
+            for (int attempt = 0; attempt < kCaptureRetries; ++attempt)
+            {
+                mb.reset();
+                inst->getStateInformation(mb);
+                // An empty snapshot means the child is mid-boot/restart (the
+                // C2f stopped-MIDI flush can re-PREPARE it); retry instead of
+                // failing, and only report failure after the budget is spent.
+                if (mb.getSize() == 0)
+                {
+                    if (attempt + 1 < kCaptureRetries)
+                        juce::Thread::sleep(750);
+                    continue;
+                }
+                slot->noteStateSample(mb);
+                // D-lite: nothing changed since the instance was created, so
+                // there is no state worth persisting ... Report only after the
+                // warm-clock budget is exhausted (a staged param may still be
+                // about to land in the child's serialized state).
+                lastUnchanged = hadBaseline && slot->stateLooksUnchangedSinceBoot(mb);
+                if (!lastUnchanged)
+                    break;
+                if (attempt + 1 < kCaptureRetries)
+                    juce::Thread::sleep(750);
+            }
             if (mb.getSize() == 0)
             {
                 writeFxCaptureReceipt(slotTree, "failed: empty state", 0);
                 return;
             }
-            // D-lite: nothing changed since the instance was created, so there
-            // is no state worth persisting. Writing this boot stub would make
-            // every later graph build restore it and play the plugin's default
-            // patch instead of the live one (measured on JE8086). Report it.
-            if (slot->stateLooksUnchangedSinceBoot(mb))
+            if (lastUnchanged)
             {
                 writeFxCaptureReceipt(slotTree, "unchanged", 0);
                 return;
             }
             // C2c shrink guard — a pre-boot stub read must not clobber the
-            // last-good blob; report ok.
+            // last-good blob; report ok. Same decision as the member's
+            // composition (single source of truth in TrackFXSlot.h).
             const juce::String existingStr = slotTree.getProperty(IDs::pluginState, "").toString();
             const long long existingBytes = static_cast<long long>(existingStr.length()) * 3 / 4;
-            if (existingBytes > 0 && static_cast<long long>(mb.getSize()) < existingBytes)
+            if (slot->stateLooksUnchangedOrShrunkSinceBoot(mb, existingBytes))
             {
                 writeFxCaptureReceipt(slotTree, "ok", 0);
                 return;
@@ -464,6 +488,7 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
         juce::MemoryBlock mb;
         if (inst != nullptr)
             inst->getStateInformation(mb);
+        const bool hadBaseline = slot->hasBootBaseline();
         slot->noteStateSample(mb);          // D-lite: baseline = first sample
         auto slotTree = engine_.getProjectModel().getTrackListTree()
                             .getChild(trackIndex)
@@ -477,15 +502,16 @@ AudioEngineCommands::captureFxSlotState(int trackIndex, int slotIndex, int sysex
         else if (slotTree.isValid())
         {
             // C2c: an unchanged (boot echo) or shrunk (pre-boot stub) read
-            // reports ok without persisting.
+            // reports ok without persisting. Shrink decision via the member
+            // composition (single source of truth in TrackFXSlot.h).
             const juce::String existingStr = slotTree.getProperty(IDs::pluginState, "").toString();
             const long long existingBytes = static_cast<long long>(existingStr.length()) * 3 / 4;
-            if (slot->stateLooksUnchangedSinceBoot(mb))
+            if (hadBaseline && slot->stateLooksUnchangedSinceBoot(mb))
             {
                 writeFxCaptureReceipt(slotTree, "unchanged", 0);
                 r.status = "unchanged";
             }
-            else if (existingBytes > 0 && static_cast<long long>(mb.getSize()) < existingBytes)
+            else if (slot->stateLooksUnchangedOrShrunkSinceBoot(mb, existingBytes))
             {
                 writeFxCaptureReceipt(slotTree, "ok", 0);
                 r.status = "ok";
@@ -575,6 +601,52 @@ ProjectCommands::FxMidiResult AudioEngineCommands::sendFxMidi(const ProjectComma
             }
         }
         ++r.queued;
+    }
+
+    // C2f-fx: with the transport stopped, MainAudioProcessor's buzz-guard
+    // early-outs processBlock before this slot, so the MIDI queued above stays
+    // in the slot's pending queue and never reaches the isolated child — the
+    // CC0+PC program change (load_virus_preset) never arrived, which is exactly
+    // why finding F-A's offline render never changed. Drive a few scratch
+    // blocks on this (command) thread to flush them into the shm midiIn ring
+    // (the same delivery the deviceless capture path uses). Safe only while
+    // stopped: the ring is SPSC and the audio thread is idle, so this thread is
+    // the sole producer.
+    if (!engine_.getTransportManager().isPlayingNow())
+    {
+        // Only first-time prepare: re-issuing PREPARE to an already-prepared
+        // isolated child restarts it (state reads go empty until it reboots),
+        // which the capture then fails on or races.
+        if (!slot->isPrepared())
+            slot->prepare(juce::dsp::ProcessSpec{ 44100.0, 512u, 2u });
+        juce::AudioBuffer<float> scratch(2, 512);
+        scratch.clear();
+        juce::MidiBuffer scratchMidi;
+        for (int i = 0; i < 24; ++i)
+            slot->process(scratch, scratchMidi);
+    }
+
+    // Preset-sysex persistence (2026-09-18): plugins whose serialized state
+    // never reflects injected dumps (Xenia/Vavra edit-buffer single -- the
+    // XT single cache is editor-request-driven) cannot round-trip through
+    // IDs::pluginState. Persist the RAW dumps on the slot and replay them
+    // into fresh children at rebuild/restore (Track.cpp), so offline
+    // exports / save-load / routing rebuilds reproduce the patch.
+    if (params.captureToTree)
+    {
+        std::vector<std::vector<uint8_t>> syxDumps;
+        for (const auto& ev : params.events)
+            if (ev.kind == ProjectCommands::FxMidiEvent::Kind::SysEx && !ev.sysex.empty())
+                syxDumps.push_back(ev.sysex);
+        if (!syxDumps.empty())
+        {
+            auto slotTree = engine_.getProjectModel().getTrackListTree()
+                .getChild(params.trackIndex).getChildWithName(IDs::FX_CHAIN)
+                .getChild(params.slotIndex);
+            if (slotTree.isValid())
+                slotTree.setProperty(IDs::presetSysex,
+                    HDAW::encodeFxPresetSysex(syxDumps), nullptr);
+        }
     }
 
     // Capture-to-tree (plan item #3): once the child has processed the queued

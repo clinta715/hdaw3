@@ -96,10 +96,13 @@ void PluginProxySlot::prepareToPlay(double sampleRate, int samplesPerBlock) {
     std::memcpy(msg.data, &data, sizeof(data));
     msg.dataSize = sizeof(data);
 
-    // Use bounded IPC with a 5-second timeout. If the child is dead or hung,
-    // this prevents blocking the message thread (which holds graphLock) and
-    // avoids starving the audio callback.
-    static constexpr DWORD kPrepareTimeoutMs = 5000;
+    // Use bounded IPC. The child may legitimately need well over 5 s here:
+    // the Virus-family DSP56300 OSes finish their post-boot bring-up only
+    // while audio is processed, so the child pumps a bounded silent warmup
+    // before answering (see the PREPARE handler). If the child is dead or
+    // hung, this still prevents blocking the message thread (which holds
+    // graphLock) and avoids starving the audio callback.
+    static constexpr DWORD kPrepareTimeoutMs = 45000;
     pipe->sendMsgBounded(msg, kPrepareTimeoutMs);
     ProxyResponse resp{};
     pipe->receiveRespBounded(resp, kPrepareTimeoutMs);
@@ -185,7 +188,14 @@ void PluginProxySlot::fetchParamMetadata() {
     }
     uint32_t n = 0;
     std::memcpy(&n, countResp.data, sizeof(uint32_t));
-    if (n == 0 || n > 4096) {
+    // 2026-09-19: raised 4096 -> 16384. The gearmulator XT/MQ builds now mark
+    // their sound/FX params public (Vavra exposes 7557 via 96 params x 16
+    // parts); the old 4096 sanity cap silently refused the whole sync
+    // (paramCacheSize_ = 0 -> the host saw no parameters at all). The staged
+    // arrays below are heap-sized to n, and the flush loop scales with the
+    // cache, so a larger count is safe.
+    constexpr uint32_t kMaxProxyParams = 16384;
+    if (n == 0 || n > kMaxProxyParams) {
         PARAM_TRACE("P2 fail count-n");
         return;
     }
@@ -778,6 +788,18 @@ void PluginProxySlot::setStateInformation(const void* data, int sizeInBytes) {
     const auto* bytes = static_cast<const uint8_t*>(data);
     HDAW_LOG("FxStateSend", ("SET_STATE slot=" + juce::String((int) slotId) + " bytes=" + juce::String(sizeInBytes)).toStdString().c_str());
 
+    // Prefer the shm state ring: a pipe SET_STATE blocks while the child's
+    // control thread is not reading (the 12 s Virus-family OS warmup runs on
+    // it, and a CPU-bound offline render starves it), so the bounded pipe send
+    // timed out and the restored state never reached the plugin (finding F-A).
+    if (publishStateToRing(bytes, total)) {
+        HDAW_LOG("FxStateSend", ("SET_STATE published to shm ring bytes=" + juce::String(sizeInBytes)).toStdString().c_str());
+        // The child applies asynchronously, so confirm (and re-publish when the
+        // child was mid-restart) through the existing background worker.
+        startStateRetryWorker(std::vector<uint8_t>(bytes, bytes + total), total);
+        return;
+    }
+
     if (!sendStateInternal(bytes, total)) return;
     if (verifyStateApplied(total)) {
         HDAW_LOG("FxStateSend", "SET_STATE verified (child reports " + juce::String((juce::int64) total) + "B)");
@@ -896,6 +918,36 @@ bool PluginProxySlot::sendStateInternal(const void* data, size_t total) {
     return true;
 }
 
+// Publish plugin state into the shm stateSet ring (lock-free, single writer =
+// message thread). The child applies it from its audio loop, marshaled to its
+// message thread, as soon as the record is complete. Returns false when the
+// ring is unavailable or has no room (caller falls back to the pipe).
+bool PluginProxySlot::publishStateToRing(const void* data, size_t total) {
+    auto shm = shmHandle;
+    if (!shm || !shm->getHeader() || !data || total == 0) return false;
+    auto* hdr = shm->getHeader();
+    auto* ring = shm->getStateSetRing();
+    if (!ring || total + 4u > STATE_RING_SIZE) return false;
+
+    const uint32_t w = hdr->stateSetWritePos.load(std::memory_order_relaxed);
+    const uint32_t rp = hdr->stateSetReadPos.load(std::memory_order_acquire);
+    if (w - rp + 4u + static_cast<uint32_t>(total) > STATE_RING_SIZE) return false;
+
+    auto put = [ring](const uint8_t* src, uint32_t n, uint32_t at) {
+        for (uint32_t i = 0; i < n; ++i)
+            ring[(at + i) & (STATE_RING_SIZE - 1)] = src[i];
+    };
+    const auto sz = static_cast<uint32_t>(total);
+    const uint8_t len[4] = { static_cast<uint8_t>(sz & 0xffu),
+                             static_cast<uint8_t>((sz >> 8) & 0xffu),
+                             static_cast<uint8_t>((sz >> 16) & 0xffu),
+                             static_cast<uint8_t>((sz >> 24) & 0xffu) };
+    put(len, 4, w);
+    put(static_cast<const uint8_t*>(data), sz, w + 4);
+    hdr->stateSetWritePos.store(w + 4 + sz, std::memory_order_release);
+    return true;
+}
+
 bool PluginProxySlot::verifyStateApplied(size_t total) {
     juce::MemoryBlock verify;
     getStateInformation(verify);
@@ -911,7 +963,8 @@ void PluginProxySlot::startStateRetryWorker(std::vector<uint8_t> state, size_t t
             for (int ms = 0; ms < delaysMs[attempt] && !stateRetryThread.get_stop_token().stop_requested(); ms += 100)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             if (stateRetryThread.get_stop_token().stop_requested()) break;
-            if (!sendStateInternal(state.data(), state.size())) break;
+            if (!publishStateToRing(state.data(), state.size())
+                && !sendStateInternal(state.data(), state.size())) break;
             if (verifyStateApplied(state.size())) {
                 HDAW_LOG("FxStateSend", "SET_STATE verified on background retry "
                     + juce::String(attempt + 1) + " (child reports "

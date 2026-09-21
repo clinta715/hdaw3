@@ -142,6 +142,13 @@ std::atomic<uint64_t>* ShmRegion::getParamNotifyRing() const {
     return getParamSetRing() + PARAM_RING_SIZE;
 }
 
+uint8_t* ShmRegion::getStateSetRing() const {
+    if (!basePtr) return nullptr;
+    auto* hdr = getHeader();
+    if (hdr->capacity == 0) return nullptr;
+    return reinterpret_cast<uint8_t*>(getParamNotifyRing() + PARAM_RING_SIZE);
+}
+
 bool ShmRegion::writeInput(const float* data, uint32_t count) {
     auto* hdr = getHeader();
     if (!hdr) return false;

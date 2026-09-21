@@ -70,6 +70,14 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                     auto* instance = slot->getPluginInstance();
                     juce::MemoryBlock state;
                     instance->getStateInformation(state);
+                    // Never let this very sample become its own baseline: the
+                    // D-lite guard would then judge the sample against itself
+                    // and always report "unchanged", discarding the state on
+                    // the FIRST save of a fresh slot (same self-baselining flaw
+                    // the capture paths had). The boot baseline is seeded at
+                    // slot build (Track::rebuildFXChain -> captureBootBaseline);
+                    // without one, persist whatever the live child reports.
+                    const bool hadBaseline = slot->hasBootBaseline();
                     slot->noteStateSample(state);
 
                     // Match by pluginID (same pattern as Track::rebuildFXChain)
@@ -88,7 +96,7 @@ bool ProjectSerializer::save(ProjectModel& model, const juce::File& file, MainAu
                             // a boot stub when the property is still empty (existing = 0), so
                             // also refuse a state identical to the fresh-instance baseline.
                             if (HDAW::shouldReplacePluginState(existingBytes, state.getSize())
-                                && !slot->stateLooksUnchangedOrShrunkSinceBoot(state, existingBytes))
+                                && (!hadBaseline || !slot->stateLooksUnchangedOrShrunkSinceBoot(state, existingBytes)))
                                 slotTree.setProperty(IDs::pluginState, state.toBase64Encoding(), nullptr);
                             else
                                 juce::Logger::writeToLog("HDAW: pluginState size regression kept (track "

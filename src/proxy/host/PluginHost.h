@@ -114,6 +114,14 @@ private:
     uint32_t pendingStateTotal = 0;
     std::vector<uint8_t> pendingState;
 
+    // Parent->child plugin-state ring (shm). Applied from the audio loop when a
+    // complete record is available and no OS warmup is running (the warmup's
+    // processBlocks run on the control thread, so applying state concurrently
+    // would race the plugin).
+    std::vector<uint8_t> pendingStateFromRing;
+    std::atomic<bool> warmupActive{false};
+    void applyPendingRingState();
+
     // Last state successfully handed to the plugin. Re-applied after
     // prepareToPlay: plugins (e.g. Serum 2) accept and cache state that
     // arrives before audio setup but never decode it into their DSP.

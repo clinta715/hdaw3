@@ -37,6 +37,7 @@ namespace mcp {
 enum class PresetRouteKind {
     NordBank,         // Clavia dumps -> NodalRed2x slot (load_nord_bank path)
     Je8086Patch,      // Roland JP-8080 DT1 dump -> JE8086 slot (load_je8086_preset path)
+    WaldorfSysex,     // Waldorf F0 3E dumps -> Xenia/Vavra slots via MIDI SysEx
     VirusRom,         // CC0+PC ROM preset -> gearmulator Virus slot (load_virus_preset path)
     FmSysex,          // F0 43 SysEx -> internal fm_synth slot (fm_synth_import_sysex path)
     SubSynthVirus,    // Virus F0 00 20 33 -> internal sub_synth slot (sub_synth_import_sysex path)
@@ -72,6 +73,21 @@ inline bool isJe8086PluginId(const std::string& pluginId)
     return containsCI(pluginId, "JE8086");
 }
 
+inline bool isWaldorfPluginId(const std::string& pluginId)
+{
+    return containsCI(pluginId, "Xenia") || containsCI(pluginId, "Vavra");
+}
+
+inline uint8_t waldorfMachineForPluginId(const std::string& pluginId)
+{
+    return containsCI(pluginId, "Vavra") ? kWaldorfMachineMicroQ : kWaldorfMachineMw2;
+}
+
+inline const char* waldorfNameForMachine(uint8_t machine)
+{
+    return machine == kWaldorfMachineMicroQ ? "microQ/Vavra" : "Microwave XT/Xenia";
+}
+
 inline bool isSubSynthSlot(const std::string& fxType, const std::string& pluginId)
 {
     return fxType == "sub_synth" || containsCI(pluginId, "sub_synth");
@@ -83,8 +99,10 @@ inline bool isSubSynthSlot(const std::string& fxType, const std::string& pluginI
 //   file given:
 //     1. fm_synth slot            + F0 43            -> FmSysex
 //     2. sub_synth slot           + F0 00 20 33      -> SubSynthVirus
-//     3. NodalRed2x plugin slot   + F0 33 or .mid    -> NordBank
-//     4. any plugin slot          + XferJson/CcnK or .SerumPreset/.fxp/.fxb -> PluginPresetFile
+//     3. JE8086 plugin slot       + F0 41 .. 00 06 12 -> Je8086Patch
+//     4. Xenia/Vavra plugin slot  + F0 3E <machine>  -> WaldorfSysex
+//     5. NodalRed2x plugin slot   + F0 33 or .mid    -> NordBank
+//     6. any plugin slot          + XferJson/CcnK or .SerumPreset/.fxp/.fxb -> PluginPresetFile
 //   no file:
 //     6. Virus gearmulator slot   + program          -> VirusRom (ROM preset, no file)
 //   else: None + "cannot determine preset type ..."
@@ -110,6 +128,10 @@ inline PresetRoute resolvePresetRoute(const std::string& fxType,
             && size >= 6 && bytes[0] == 0xF0 && bytes[1] == 0x41
             && bytes[3] == 0x00 && bytes[4] == 0x06 && bytes[5] == 0x12)
             return { PresetRouteKind::Je8086Patch, {} };
+
+        if (fxType == "plugin" && isWaldorfPluginId(pluginId)
+            && isWaldorfDumpHeader(bytes, size, waldorfMachineForPluginId(pluginId)))
+            return { PresetRouteKind::WaldorfSysex, {} };
 
         if (fxType == "plugin" && isNodalRed2xPluginId(pluginId)
             && ((size >= 2 && bytes[0] == 0xF0 && bytes[1] == kNordIdClavia)
@@ -516,6 +538,86 @@ inline McpToolResult runSubSynthImportSysex(AudioEngine& e, int ti, int si,
     result["unmapped"] = unmapped;
     return McpToolResult::text(QString::fromUtf8(
         QJsonDocument(result).toJson(QJsonDocument::Compact)));
+}
+
+/// Xenia/Vavra: Waldorf .syx -> validated dumps -> sendFxMidi.
+inline McpToolResult runWaldorfSysexFile(AudioEngine& e, int ti, int si,
+                                         const QString& path,
+                                         const std::string& pluginId,
+                                         bool captureToTree)
+{
+    const juce::File f(juce::String::fromUTF8(path.toUtf8()));
+    if (!f.existsAsFile())
+        return McpToolResult::text("file not found: " + path, true);
+    juce::MemoryBlock block;
+    if (!f.loadFileAsData(block))
+        return McpToolResult::text("failed to read file", true);
+
+    const auto* b = static_cast<const uint8_t*>(block.getData());
+    const size_t n = block.getSize();
+    const uint8_t machine = waldorfMachineForPluginId(pluginId);
+    const char* name = waldorfNameForMachine(machine);
+
+    std::vector<std::vector<uint8_t>> dumps;
+    const int split = splitWaldorfSyx(b, n, machine, dumps);
+    if (split == -1)
+        return McpToolResult::text("truncated Waldorf SysEx (missing F7)", true);
+    if (split == -2)
+        return McpToolResult::text("invalid Waldorf dump for " + QString::fromUtf8(name), true);
+    if (dumps.empty())
+        return McpToolResult::text("no Waldorf SysEx dumps found in file", true);
+    if (dumps.size() > 64)
+        return McpToolResult::text("too many Waldorf dumps for one injection (max 64)", true);
+
+    size_t totalBytes = 0;
+    for (const auto& d : dumps)
+    {
+        auto err = validateWaldorfDump(d.data(), d.size(), machine, name);
+        if (!err.isEmpty())
+            return McpToolResult::text("invalid Waldorf dump: " + QString::fromStdString(err.toStdString()), true);
+        totalBytes += d.size();
+    }
+
+    // microQ/Vavra edit-buffer retarget (2026-09-18): real bank dumps carry
+    // their ORIGINAL buffer/location bytes (0x30 multi-edit / 0x40+ bank
+    // slots); injected as-is the OS loads a buffer the current sound does not
+    // read, so renders stayed identical ("NOT APPLYING"). q the editor
+    // (mqController::sendSingle) and retarget to the single-mode edit buffer,
+    // recomputing the Waldorf checksum (sum of [4 .. size-2) & 0x7F;
+    // microq_patch.py documents the emulator checks size only, but keep real-
+    // hardware-valid files).
+    const bool isMicroQ = machine == kWaldorfMachineMicroQ;
+    for (auto& d : dumps)
+        if (isMicroQ && d.size() == 392)
+        {
+            d[5] = 0x20;   // MidiBufferNum::SingleEditBufferSingleMode
+            d[6] = 0x00;   // MidiSoundLocation::EditBufferCurrentSingle
+            uint8_t cs = 0;
+            for (size_t i = 4; i + 2 < d.size(); ++i)
+                cs += d[i];
+            d[d.size() - 2] = cs & 0x7f;
+        }
+
+    ProjectCommands::FxMidiParams p;
+    p.trackIndex = ti;
+    p.slotIndex = si;
+    p.captureToTree = captureToTree;
+    for (const auto& d : dumps)
+    {
+        ProjectCommands::FxMidiEvent ev;
+        ev.kind = ProjectCommands::FxMidiEvent::Kind::SysEx;
+        ev.sysex = d;
+        p.events.push_back(std::move(ev));
+    }
+
+    const auto res = e.getProjectCommands().sendFxMidi(p);
+    if (!res.ok)
+        return McpToolResult::text("sendFxMidi failed: " + QString::fromStdString(res.error), true);
+    return McpToolResult::text(QString("queued %1 Waldorf sysex dump(s) (%2 bytes) for %3 capturedToTree=%4")
+        .arg(static_cast<int>(dumps.size()))
+        .arg(static_cast<int>(totalBytes))
+        .arg(name)
+        .arg(res.capturedToTree ? 1 : 0));
 }
 
 /// load_plugin_preset_file: XferJson/.fxp/.syx -> setStateInformation + tree capture.

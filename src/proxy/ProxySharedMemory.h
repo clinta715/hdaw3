@@ -26,6 +26,7 @@ public:
     uint8_t* getSysexOutBuffer() const;
     std::atomic<uint64_t>* getParamSetRing() const;
     std::atomic<uint64_t>* getParamNotifyRing() const;
+    uint8_t* getStateSetRing() const;
 
     bool writeInput(const float* data, uint32_t count);
     bool readInput(float* data, uint32_t count);

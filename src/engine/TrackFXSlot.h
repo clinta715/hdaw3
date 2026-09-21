@@ -48,10 +48,19 @@ inline bool shouldPersistStateCapture(bool isolated, bool restoredFromTree,
     return !(sample.getSize() == baseline.getSize() && sample == baseline);
 }
 
-// C2c shrink guard: an isolated slot's last-good blob must never be shrunk —
-// pre-boot children answer a tiny stub (measured 233 B vs the 874 B last-good
-// on JE8086) which would otherwise clobber the saved state. Non-isolated slots
-// and an empty existing blob keep the legacy semantics.
+// C2c shrink guard — the production contract of AudioEngineCommands::
+// captureFxSlotState (see the deferred + deviceless paths):
+//   * empty reads NEVER persist (production reports "failed: empty state"
+//     up front, even with no existing blob);
+//   * an ISOLATED read SMALLER than the last-good blob is a pre-boot stub
+//     (measured 233 B vs the 874 B last-good on JE8086) or a resize
+//     regression — it must never clobber the saved state (production reports
+//     "ok", 0 bytes). Applies to restored slots too.
+//   * otherwise the plain D-lite guard decides (boot echo -> skip;
+//     changed -> persist).
+// In-process slots are never skipped when non-empty (their durability
+// semantics stay exactly as they were), and a non-empty read at/above the
+// existing size passes through to the plain guard.
 inline bool shouldPersistStateCaptureWithExisting(bool isolated, bool restoredFromTree,
                                                   bool hasBaseline,
                                                   const juce::MemoryBlock& baseline,
@@ -467,6 +476,17 @@ public:
         noteStateSample(mb);
     }
 
+    /// True when a boot-state baseline was seeded (captureBootBaseline / a prior
+    /// sample). A capture with NO baseline must not skip as "unchanged":
+    /// noteStateSample() would adopt the captured sample as the baseline and the
+    /// comparison would test the sample against itself, silently discarding the
+    /// injected state (the finding-F-A failure mode).
+    bool hasBootBaseline() const { return hasStateBaseline_; }
+
+    /// True once this slot was prepared with a real process spec (i.e. it has a
+    /// live instance / has been through the audio graph's prepare path).
+    bool isPrepared() const { return sampleRate_ != 0.0; }
+
     /// True when a capture echoes the boot baseline or would shrink the
     /// last-good blob (C2c): skip persisting it.
     bool stateLooksUnchangedOrShrunkSinceBoot(const juce::MemoryBlock& s,
@@ -667,6 +687,15 @@ public:
                 proxySlot->setNumChannels(
                     pluginWorkspaceChannels > 0 ? pluginWorkspaceChannels : spec.numChannels);
             rebuildParamCache();
+            // Seed the boot-state baseline (isolated instances only). The D-lite
+            // guard compares capture/save samples against this; without it the
+            // first capture self-baselines from its own (possibly post-write)
+            // sample and discards the state (finding-F-A failure mode). Only
+            // Track::rebuildFXChain seeded it before, so slots booted outside a
+            // rebuild (audition probe, incremental add) had no baseline.
+            // Idempotent: noteStateSample keeps the first non-empty sample;
+            // restored slots skip via markStateRestoredFromTree.
+            captureBootBaseline();
             return;
         }
 

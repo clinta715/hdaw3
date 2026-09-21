@@ -233,6 +233,13 @@ namespace IDs {
     DECLARE_ID(pluginID)
     DECLARE_ID(pluginFormat)
     DECLARE_ID(pluginState)
+    // Injected MIDI SysEx dumps (send_fx_midi / apply_preset), length-prefixed
+    // + base64. Replayed into fresh plugin children at restore (Track.cpp) so
+    // offline exports / rebuilds / save-load hear patches whose serialized
+    // plugin state never changes (Xenia/Vavra edit-buffer dumps; the
+    // pluginState capture route is a dead end for those, same as
+    // appliedParamOverrides for JE8086). Next to pluginState on the slot.
+    DECLARE_ID(presetSysex)
     DECLARE_ID(pluginPath)
     // Offline param-override replay ledger (matrix-preset apply, McpTools_
     // Matrix.cpp): compact JSON {"<liveParamIndex>": <normalized 0..1>} of the

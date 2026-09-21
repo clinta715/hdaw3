@@ -1,7 +1,9 @@
 #include "Track.h"
 #include "../common/DebugLog.h"
 #include "../common/BufferCheck.h"
+#include "../common/ProjectCommands.h"
 #include <cmath>
+#include <cstdio>
 
 namespace HDAW {
 
@@ -210,6 +212,22 @@ void Track::rebuildFXChain(const juce::ValueTree& fxChainTree)
                     if (decOk)
                         slot->getPluginInstance()->setStateInformation(state.getData(),
                             static_cast<int>(state.getSize()));
+                }
+
+                // Preset-sysex replay (2026-09-18): dumps injected via
+                // send_fx_midi / apply_preset are persisted on the slot
+                // (IDs::presetSysex) and replayed into this FRESH child here,
+                // so offline exports / rebuilds / save-load reproduce the
+                // patch even for plugins whose serialized state never reflects
+                // injected dumps (Xenia/Vavra edit-buffer single).
+                const juce::String presetSyx = slotTree.getProperty(IDs::presetSysex).toString();
+                if (presetSyx.isNotEmpty())
+                {
+                    const auto dumps = HDAW::decodeFxPresetSysex(presetSyx);
+                    for (const auto& d : dumps)
+                        if (!d.empty())
+                            slot->queueMidiForNextBlock(
+                                juce::MidiMessage(d.data(), static_cast<int>(d.size())));
                 }
 
                 if (wantIsolated && pluginManager) {

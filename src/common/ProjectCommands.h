@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -11,6 +12,44 @@
 #include "../engine/CorpusArranger.h"
 
 namespace HDAW { struct ArrangementParams; struct ChainPreset; }
+
+namespace HDAW {
+// Length-prefixed base64 encoding of injected SysEx dumps (IDs::presetSysex).
+inline juce::String encodeFxPresetSysex(const std::vector<std::vector<uint8_t>>& dumps)
+{
+    juce::MemoryBlock mb;
+    const uint32_t n = static_cast<uint32_t>(dumps.size());
+    mb.append(&n, 4);
+    for (const auto& d : dumps)
+    {
+        const uint32_t len = static_cast<uint32_t>(d.size());
+        mb.append(&len, 4);
+        mb.append(d.data(), d.size());
+    }
+    return mb.toBase64Encoding();
+}
+
+inline std::vector<std::vector<uint8_t>> decodeFxPresetSysex(const juce::String& b64)
+{
+    std::vector<std::vector<uint8_t>> out;
+    juce::MemoryBlock mb;
+    if (!mb.fromBase64Encoding(b64) || mb.getSize() < 4)
+        return out;
+    const auto* p = static_cast<const uint8_t*>(mb.getData());
+    size_t off = 0;
+    uint32_t n = 0;
+    std::memcpy(&n, p + off, 4); off += 4;
+    for (uint32_t i = 0; i < n && off + 4 <= mb.getSize(); ++i)
+    {
+        uint32_t len = 0;
+        std::memcpy(&len, p + off, 4); off += 4;
+        if (len > mb.getSize() - off) break;
+        out.emplace_back(p + off, p + off + len);
+        off += len;
+    }
+    return out;
+}
+}
 
 class ProjectCommands
 {

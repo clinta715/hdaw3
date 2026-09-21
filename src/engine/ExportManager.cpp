@@ -120,19 +120,50 @@ double ExportManager::calculateProjectDuration(ProjectModel& model)
 uint32_t ExportManager::computeBakeWaitMs(const juce::ValueTree& projectTree)
 {
     uint32_t totalClips = 0;
+    uint32_t virusSlots = 0;
     auto trackList = projectTree.getChildWithName(IDs::TRACK_LIST);
     if (trackList.isValid())
     {
         for (int t = 0; t < trackList.getNumChildren(); ++t)
         {
-            auto clipList = trackList.getChild(t).getChildWithName(IDs::CLIP_LIST);
+            auto track = trackList.getChild(t);
+            auto clipList = track.getChildWithName(IDs::CLIP_LIST);
             if (clipList.isValid())
                 totalClips += static_cast<uint32_t>(clipList.getNumChildren());
+
+            // Virus-family (dsp56300) children pump a real-time-paced OS warmup
+            // before answering PREPARE (PluginHost: "virus warmup: N blocks"),
+            // and the export domain spawns a FRESH child per slot, sequentially.
+            // Without budgeting those warmups the wait expires while the child is
+            // still warming and the export is cancelled ("render timed out" —
+            // measured on OsTIrus, whose 12 s warmup exceeds bake+window+5 s).
+            auto fxChain = track.getChildWithName(IDs::FX_CHAIN);
+            for (int s = 0; fxChain.isValid() && s < fxChain.getNumChildren(); ++s)
+            {
+                const auto pluginId = fxChain.getChild(s).getProperty(IDs::pluginID, "").toString();
+                if (pluginId.containsIgnoreCase("osirus") || pluginId.containsIgnoreCase("ostirus")
+                    || pluginId.containsIgnoreCase("virus"))
+                    ++virusSlots;
+            }
         }
     }
 
     const uint32_t scaled = 10000u + 50u * totalClips;
-    return static_cast<uint32_t>((std::max)(15000u, (std::min)(120000u, scaled)));
+    const uint32_t capped = static_cast<uint32_t>((std::max)(15000u, (std::min)(120000u, scaled)));
+
+    // Warmup allowance, added AFTER the cap so it is never clipped. The child
+    // reads the same env overrides, and HDAW_NO_CHILD_WARMUP disables the warmup
+    // entirely (then no allowance is needed).
+    uint32_t warmupMs = 0;
+    const char* noWarmup = std::getenv("HDAW_NO_CHILD_WARMUP");
+    if (virusSlots > 0 && (noWarmup == nullptr || juce::String(noWarmup) != "1"))
+    {
+        const char* envSecs = std::getenv("HDAW_CHILD_WARMUP_SECONDS");
+        const int warmupSeconds = envSecs != nullptr ? juce::String(envSecs).getIntValue() : 12;
+        if (warmupSeconds > 0)
+            warmupMs = static_cast<uint32_t>(warmupSeconds) * 1000u * virusSlots;
+    }
+    return capped + warmupMs;
 }
 
 std::vector<std::pair<int, float>>

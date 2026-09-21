@@ -176,6 +176,7 @@ public:
     // Phase 4b (plugin-state durability): background re-apply with backoff
     // for slow-booting children that silently reject an early SET_STATE.
     bool sendStateInternal(const void* data, size_t total);
+    bool publishStateToRing(const void* data, size_t total);
     bool verifyStateApplied(size_t total);
     void startStateRetryWorker(std::vector<uint8_t> state, size_t total);
     std::jthread stateRetryThread;

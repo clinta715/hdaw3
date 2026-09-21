@@ -687,6 +687,7 @@ s.registerTool({"sub_synth_import_sysex",
 s.registerTool({"apply_preset",
     "Apply a preset to ONE FX slot, dispatching by slot target + file header — the agentic front door that replaces load_nord_bank / load_virus_preset / fm_synth_import_sysex / sub_synth_import_sysex / load_plugin_preset_file (which all stay registered). Reads the slot's fxType + pluginId, detects the file format from the header bytes, routes to the matching loader, and returns that loader's result:\n"
     "- NodalRed2x slot + Clavia dump (F0 33 .syx / SMF .mid) -> bank load via MIDI SysEx (optional program 0-127 selects a voice afterwards).\n"
+    "- Xenia/Vavra slot + Waldorf dump (F0 3E 0E / F0 3E 10 .syx) -> live MIDI SysEx import with plugin-state capture.\n"
     "- Gearmulator Virus slot (OsTIrus/Osirus/Vavra/Xenia/JE8086) + program (optional bank 0-7, no filePath) -> ROM preset via CC0+PC.\n"
         "- Internal fm_synth slot + F0 43 .syx (single 163B, cartridge 4104B, raw VMEM 4096B) -> patch via setFmPatch (voiceIndex picks the cartridge voice).\n"
     "- Internal sub_synth slot + Virus dump (F0 00 20 33) -> patch via loadVirusPatch (voiceIndex for TI banks).\n"
@@ -762,6 +763,8 @@ s.registerTool({"apply_preset",
                 return runJe8086PatchFile(*e, ti, si, path,
                     unit > 0 ? unit : 1, true, capture);
             }
+            case PresetRouteKind::WaldorfSysex:
+                return runWaldorfSysexFile(*e, ti, si, path, pluginId, capture);
             case PresetRouteKind::VirusRom:
                 return runVirusRomPreset(*e, ti, si,
                     a.value("bank").toInt(0), a.value("program").toInt(0),

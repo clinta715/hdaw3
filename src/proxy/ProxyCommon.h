@@ -4,9 +4,18 @@
 
 namespace proxy {
 
-constexpr uint32_t SHM_MAGIC = 0x4844415C; // bumped 2026-08-16 for output-resync handshake (lastConsumedInputPos/renderMode; was "HDA[" for transport playhead forwarding)
+constexpr uint32_t SHM_MAGIC = 0x4844415D; // bumped 2026-09-20 for the stateSet ring (parent->child plugin state over shm; was 0x4844415C for the output-resync handshake)
 
 constexpr uint32_t PARAM_RING_SIZE = 256;
+
+// Parent->child plugin-state byte ring. State travels as a length-prefixed
+// record ([uint32 size][bytes]) through shared memory instead of the control
+// pipe: a pipe SET_STATE blocks while the child's control thread is not reading
+// (the 12 s Virus-family OS warmup runs there, and a CPU-bound offline render
+// starves it), so the parent's bounded send timed out and the restored state
+// never reached the plugin (finding F-A). 1 MiB covers the largest states
+// measured (OsTIrus ~177 KB arrangement + ~76 KB params).
+constexpr uint32_t STATE_RING_SIZE = 1u << 20;
 
 constexpr uint32_t GRACEFUL_EXIT_CODE = 0xC0DE0001;
 
@@ -108,6 +117,12 @@ struct ShmHeader {
     std::atomic<uint32_t> paramNotifyWritePos{0};
     std::atomic<uint32_t> paramNotifyReadPos{0};
 
+    // Parent->child plugin-state ring positions (parent = single writer, child =
+    // single reader). Monotonic byte counters; the ring body is a
+    // STATE_RING_SIZE byte array laid out after the param rings.
+    std::atomic<uint32_t> stateSetWritePos{0};
+    std::atomic<uint32_t> stateSetReadPos{0};
+
     // ── Transport clock snapshot (playhead forward). ────────────────────────
     // The parent (PluginProxySlot::processBlock, live audio thread AND export)
     // reads its AudioPlayHead each block and packs the transport state below;
@@ -176,7 +191,8 @@ inline uint32_t computeShmSize(uint32_t numChannels, uint32_t blockSize) {
 
     return headerSize + inputRing + outputRing + midiInRing + midiOutRing
          + 2 * SYSEX_BUFFER_SIZE
-         + 2 * PARAM_RING_SIZE * sizeof(std::atomic<uint64_t>);
+         + 2 * PARAM_RING_SIZE * sizeof(std::atomic<uint64_t>)
+         + STATE_RING_SIZE;
 }
 
 // The shared-memory mapping is created ONCE at spawn for the worst-case

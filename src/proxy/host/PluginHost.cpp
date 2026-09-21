@@ -976,6 +976,86 @@ void PluginHost::controlLoop()
                             pluginFailed.store(true);
                         }
                     }
+
+                    // Virus-family (dsp56300) OS warmup (2026-09-19, finding
+                    // F-A): the emulated OS finishes its post-boot bring-up
+                    // (patch init, MIDI consumption readiness) only while
+                    // audio is processed, and a fresh offline child otherwise
+                    // takes its first notes at block 0 into an un-ready OS —
+                    // measured 30 s of exact digital silence. Pump a bounded
+                    // warmup of silence here, BEFORE PREPARE_RESULT: the
+                    // parent does not write input until the prepare round
+                    // trip completes, so nothing is lost. Scoped to the
+                    // Virus-family CLAPs (the Waldorf/MQ OSes boot within
+                    // prepare and need no pump). Escapes:
+                    //   HDAW_NO_CHILD_WARMUP=1      disable entirely
+                    //   HDAW_CHILD_WARMUP_SECONDS=n override duration
+                    if (plugin && !pluginFailed.load()) {
+                        static const bool noWarmup =
+                            juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_WARMUP", "") == "1";
+                        const auto warmupSeconds =
+                            juce::SystemStats::getEnvironmentVariable("HDAW_CHILD_WARMUP_SECONDS", "12").getIntValue();
+                        const juce::String pathLower = juce::String(pluginPath).toLowerCase();
+                        const bool virusFamily = pathLower.contains("osirus")
+                            || pathLower.contains("ostirus")
+                            || pathLower.contains("virus");
+                        if (!noWarmup && warmupSeconds > 0 && virusFamily
+                            && preparedSampleRate > 0 && preparedBlockSize > 0)
+                        {
+                            // Blocks needed for warmupSeconds of audio, hard-
+                            // capped at 60 s worth (the PREPARE round trip has
+                            // a 45 s parent timeout).
+                            const int totalBlocks = static_cast<int>(std::min(
+                                60.0 * preparedSampleRate / static_cast<double>(preparedBlockSize),
+                                warmupSeconds * preparedSampleRate
+                                          / static_cast<double>(preparedBlockSize)));
+                            juce::AudioBuffer<float> warmBuf(preparedNumChannels, preparedBlockSize);
+                            warmBuf.clear();
+                            juce::MidiBuffer warmMidi;
+                            int pumped = 0;
+                            HDAW_LOG("plugin_host", "virus warmup: " + juce::String(totalBlocks)
+                                 + " blocks (" + juce::String(warmupSeconds) + "s audio)");
+                            warmupActive.store(true, std::memory_order_release);
+                            // Pace the warmup at ~real time: the emulated OS's
+                            // bring-up sequencing is wall-clock driven (hardware
+                            // timers), so cycling 12 s of audio in 0.3 s of wall
+                            // time starves it (measured: 1125 blocks in 310 ms
+                            // -> render still exact silence). Real-time pacing
+                            // gives the OS timers the wall time they expect.
+                            const auto warmupStart = std::chrono::steady_clock::now();
+#if JUCE_WINDOWS
+                            static thread_local bool s_noChildSeh =
+                                juce::SystemStats::getEnvironmentVariable("HDAW_NO_CHILD_SEH", "") == "1";
+                            if (!s_noChildSeh) {
+                                auto oldTranslator = _set_se_translator(sehProcessBlockCrashTranslator);
+                                processBlockActive.store(true, std::memory_order_release);
+                                for (; pumped < totalBlocks; ++pumped) {
+                                    try {
+                                        plugin->processBlock(warmBuf, warmMidi);
+                                    } catch (const std::runtime_error&) {
+                                        HDAW_LOG("SIL", "CRASH (warmup) block " + juce::String(pumped));
+                                        break;
+                                    }
+                                    const auto target = warmupStart
+                                        + std::chrono::nanoseconds(static_cast<long long>(
+                                              static_cast<double>(pumped + 1) * preparedBlockSize
+                                              / preparedSampleRate * 1e9));
+                                    std::this_thread::sleep_until(target);
+                                }
+                                processBlockActive.store(false, std::memory_order_release);
+                                _set_se_translator(oldTranslator);
+                            } else {
+                                for (; pumped < totalBlocks; ++pumped)
+                                    plugin->processBlock(warmBuf, warmMidi);
+                            }
+#else
+                            for (; pumped < totalBlocks; ++pumped)
+                                plugin->processBlock(warmBuf, warmMidi);
+#endif
+                            warmupActive.store(false, std::memory_order_release);
+                            HDAW_LOG("plugin_host", "virus warmup done blocks=" + juce::String(pumped));
+                        }
+                    }
                 }
                 proxy::ProxyResponse r{};
                 r.type = proxy::MessageType::PREPARE_RESULT;
@@ -1398,6 +1478,53 @@ void PluginHost::controlLoop()
 // ---------------------------------------------------------------------------
 // audioLoop — runs on a dedicated thread, reads/writes shared-memory rings.
 // ---------------------------------------------------------------------------
+// Applies a plugin-state record published by the parent into the shm stateSet
+// ring. Runs on the audio loop (always live), but the actual
+// setStateInformation call is marshaled to the message thread (lesson 16: CLAP
+// lifecycle calls must run on the host's main thread). Deferred while the OS
+// warmup is running so state application cannot race its processBlocks.
+void PluginHost::applyPendingRingState() {
+    auto* hdr = shm.getHeader();
+    auto* ring = shm.getStateSetRing();
+    if (!hdr || !ring) return;
+    if (warmupActive.load(std::memory_order_acquire)) return;
+
+    const uint32_t w = hdr->stateSetWritePos.load(std::memory_order_acquire);
+    const uint32_t r = hdr->stateSetReadPos.load(std::memory_order_relaxed);
+    if (w == r) return;
+    const uint32_t avail = w - r;
+    if (avail < 4) return;
+
+    uint8_t len[4];
+    for (uint32_t i = 0; i < 4; ++i) len[i] = ring[(r + i) & (proxy::STATE_RING_SIZE - 1)];
+    const uint32_t total = static_cast<uint32_t>(len[0])
+        | (static_cast<uint32_t>(len[1]) << 8)
+        | (static_cast<uint32_t>(len[2]) << 16)
+        | (static_cast<uint32_t>(len[3]) << 24);
+    if (total == 0 || total + 4u > proxy::STATE_RING_SIZE) {
+        // Desynced record (e.g. a parent from an older build) — resync.
+        HDAW_LOG("plugin_host", "state ring: bad length, resyncing");
+        hdr->stateSetReadPos.store(w, std::memory_order_release);
+        return;
+    }
+    if (avail < total + 4u) return;   // wait for the remaining bytes
+
+    pendingStateFromRing.resize(total);
+    for (uint32_t i = 0; i < total; ++i)
+        pendingStateFromRing[i] = ring[(r + 4 + i) & (proxy::STATE_RING_SIZE - 1)];
+    hdr->stateSetReadPos.store(r + 4 + total, std::memory_order_release);
+
+    const auto n = static_cast<int>(pendingStateFromRing.size());
+    if (!runLifecycleOnMessageThread([this, n]() {
+            plugin->setStateInformation(pendingStateFromRing.data(), n);
+        }, 3000)) {
+        HDAW_LOG("plugin_host", "state ring: setStateInformation marshal timed out");
+    } else {
+        lastSetState = pendingStateFromRing;
+        HDAW_LOG("plugin_host", "state ring applied bytes=" + juce::String(n));
+    }
+}
+
 void PluginHost::audioLoop()
 {
     auto* hdr = shm.getHeader();
@@ -1447,6 +1574,12 @@ void PluginHost::audioLoop()
         // playback is paced by the device cadence — sleeping would lag the
         // stream and the parent would drop blocks (stale/misaligned audio).
         const bool isRender = hdr->renderMode.load(std::memory_order_acquire) != 0;
+
+        // Parent->child plugin-state ring: apply a complete record before this
+        // block. The pipe SET_STATE path can block/time out while the control
+        // thread sits in the OS warmup (finding F-A); this loop always runs.
+        if (plugin && !pluginFailed.load(std::memory_order_relaxed))
+            applyPendingRingState();
 
         // Drain parent->child param set ring BEFORE block processing so staged
         // parameter values take effect for this block. Single reader (audio

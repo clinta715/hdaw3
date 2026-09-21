@@ -156,6 +156,76 @@ inline ParsedPresetFile parsePresetFile(const juce::MemoryBlock& raw)
     return parsed;
 }
 
+
+// ---------------------------------------------------------------------------
+// Waldorf Microwave XT / microQ (Xenia / Vavra) dumps
+//
+// gearmulator Xenia and Vavra both consume Waldorf SysEx on their live MIDI
+// input. The machine byte distinguishes the engines:
+//   F0 3E 0E <device> <command> ... F7  -> Microwave II/XT (Xenia)
+//   F0 3E 10 <device> <command> ... F7  -> microQ (Vavra)
+// ---------------------------------------------------------------------------
+
+inline constexpr uint8_t kWaldorfId = 0x3e;
+inline constexpr uint8_t kWaldorfMachineMw2 = 0x0e;
+inline constexpr uint8_t kWaldorfMachineMicroQ = 0x10;
+inline constexpr size_t kWaldorfMaxDumpSize = 32768;
+
+inline bool isWaldorfDumpHeader(const uint8_t* bytes, size_t size,
+                                uint8_t expectedMachine) noexcept
+{
+    return size >= 5 && bytes[0] == 0xF0 && bytes[1] == kWaldorfId
+        && bytes[2] == expectedMachine;
+}
+
+inline juce::String validateWaldorfDump(const uint8_t* bytes, size_t size,
+                                        uint8_t expectedMachine,
+                                        const char* expectedName)
+{
+    if (size < 6)
+        return "dump too small (" + juce::String((int) size) + " bytes)";
+    if (bytes[0] != 0xF0 || bytes[1] != kWaldorfId)
+        return "not a Waldorf SysEx dump (expected F0 3E)";
+    if (bytes[2] != expectedMachine)
+        return "not a " + juce::String(expectedName) + " dump (machine byte "
+             + juce::String::toHexString(static_cast<int>(bytes[2])) + ")";
+    if (bytes[size - 1] != 0xF7)
+        return "dump is not F7-terminated";
+    if (size > kWaldorfMaxDumpSize)
+        return "dump too large (" + juce::String((int) size)
+             + " bytes, max 32768)";
+    return {};
+}
+
+inline int splitWaldorfSyx(const uint8_t* bytes, size_t size,
+                           uint8_t expectedMachine,
+                           std::vector<std::vector<uint8_t>>& outDumps)
+{
+    int count = 0;
+    size_t i = 0;
+    while (i < size)
+    {
+        if (bytes[i] != 0xF0)
+        {
+            ++i;
+            continue;
+        }
+        const size_t start = i;
+        size_t end = i + 1;
+        while (end < size && bytes[end] != 0xF7)
+            ++end;
+        if (end >= size)
+            return -1;
+        const size_t dumpSize = end + 1 - start;
+        if (!isWaldorfDumpHeader(bytes + start, dumpSize, expectedMachine))
+            return -2;
+        outDumps.emplace_back(bytes + start, bytes + end + 1);
+        ++count;
+        i = end + 1;
+    }
+    return count;
+}
+
 // ---------------------------------------------------------------------------
 // Clavia Nord Lead 2x (NodalRed2x) bank dumps (docs/plans/2026-09-12-nodal-preset-loading.md)
 //
