@@ -45,6 +45,49 @@ is only useful for prioritisation. The per-domain semantic pass is the actual wo
 `Router_PsyFm` exposing 2 of 5 tools was the clearest case (a self-contained domain with a
 single router file, and the missing methods are real editing operations, not plumbing).
 
+### Full semantic audit (2026-09-21) — results
+
+Every `src/mcp/McpTools_*.cpp` was joined against `src/frontend/router/Router_*.cpp` on the
+**shared command symbol** (not names), and each candidate was then confirmed by reading the
+tool body and the router handlers.
+
+| Domain | Status | Evidence |
+| --- | --- | --- |
+| `device` | **clean** | slice 0 (`DeviceParamMap`) |
+| `psy_fm` | **clean** | slice 1 |
+| `matrix` | **clean** | slice 2 (`MatrixPresetService`) |
+| `rave` (13 tools) | **clean** | 11 have direct `rave.*` routes; `rave_get_config`/`rave_set_config` are reachable as `settings.getRaveConfig`/`setRaveConfig` (`Router_Project.cpp`, sharing `RaveService::persistedConfigJson`) |
+| `pool` | **clean** | `pool_list` maps to `pool.list`; the router even adds `pool.cleanup` (RPC is a superset) |
+| fx capture | **partly** | `capture_fx_snapshot`/`swap_fx_snapshot` map to `audio.captureFxSnapshot`/`swapFxSnapshot`; `snapshot_project` maps to `read.snapshot`; **`get_fx_capture_status` has no route** |
+| `song plan` / cells (18 tools) | **12 covered, 6 missing** | `Router_Composition` has the singular `setCellRecipe` but **not the batch `setCellRecipes`**, nor `get_clip_provenance`, `set_layer_handoff`, `clear_layer_handoff`, `get_layer_handoffs`, `audit_song_structure` |
+| `tuning` (1 tool) | **missing** | `analyze_tuning` has no RPC route and there is no `tuning` namespace |
+
+**Two corrections to this plan's own assumptions.** (a) The original candidate order named
+`Router_Matrix` and `Router_Tuning` — **neither file exists**; this plan now uses the real
+inventory. (b) The two named candidates `Rave` and `Pool` are **clean**: both were false
+positives of the name screen, exactly the artefact class the audit method was written to
+avoid. The real remaining gaps are **SongPlan (6)**, **`get_fx_capture_status` (1)** and
+**Tuning (1)**.
+
+**Implementation cost differs by gap** (this drives the slice order):
+
+- **SongPlan — thin wiring.** All six missing methods' bodies already call `ProjectCommands`
+directly (`setCellRecipes`, `getClipProvenance`, `setLayerHandoff`, `clearLayerHandoff`, plus
+plan/cell getters), so the router methods need no extraction — only argument parsing +
+payload shaping mirroring the MCP tools. **Highest value:** the missing batch call is
+`set_cells`, the *batch* edit unit the performance rules tell agents to prefer over N
+separate calls — currently unreachable from the browser frontend.
+- **`get_fx_capture_status` — thin wiring**, but it is the *polling companion* of the
+capture/matrix flows ("poll get_fx_capture_status to confirm"), so its absence leaves the
+receipt contract half-exposed over RPC.
+- **Tuning — needs extraction.** `analyze_tuning` is implemented as static helpers inside
+`McpTools_Tuning.cpp` (`analyzeTuningText`/`analyzeTuningObject`, ~140 lines of spectral
+analysis), not in the command layer, so parity-by-construction requires moving them to
+`src/common/` first. It also participates in the async job registry (`McpJobs`, `wait:false`
++ `poll_job`) — and **`poll_job` is itself MCP-only**, so a Tuning slice must decide whether
+to expose a generic `audio.pollJob` or document that each async domain has its own status
+route (`rave.jobStatus`, `rave.trainingJobStatus`).
+
 ## Slice 1 — PsyFm (SHIPPED)
 
 ### Implementation
