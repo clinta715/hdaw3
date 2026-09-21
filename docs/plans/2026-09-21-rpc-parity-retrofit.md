@@ -315,6 +315,62 @@ Evidence: `TuningRpcTest.*` 3/3 (new) and the combined sweep 186/186 across
    1000 Hz, mel bands 1/3 each, with an in-code note that the Python sidecar is exact).
    Worth knowing before trusting a `pass:false` from a run where Python is unavailable.
 
+## Slice 5 — the ratchet (SHIPPED 2026-09-21) — backlog item 3
+
+A gate that fails when an MCP tool has no RPC route, so the contract stops depending on
+discipline.
+
+### What exists
+
+- **`tools/rpc_parity_map.mjs`** (generator) — derives the inventories (MCP tools from the
+  `registerTool` registrations; RPC methods from the routers with **per-dispatch-function
+  namespace attribution**), classifies every tool, and writes
+  **`tests/unit/frontend/rpc_parity_map.inc`** (an `inline constexpr` ledger included by the
+  test, so no runtime path resolution).
+- **`tests/unit/frontend/rpc_parity_ratchet_test.cpp`** — 5 gates over that ledger:
+  1. every LIVE tool (from the server's `tools/list`) has a ledger row — **a new MCP tool
+     cannot be added without being classified** (regeneration is required, and the failure
+     message says so);
+  2. no ledger row outlives its tool;
+  3. **every mapped target must resolve on the live dispatch surface** (probe with empty
+     params: a real method answers with a validation error or a result, a missing one with
+     "unknown method namespace" / "unknown <domain> method");
+  4. every `mcp-only` / `unresolved` row carries a review reason;
+  5. the review queue is REPORTED on every run.
+
+Current state: **290 rows — mapped 180, mcp-only 9, unresolved 101 (the review queue)**; all
+180 mapped targets resolve live.
+
+### What it guarantees — and what it does NOT
+
+It makes drift impossible to introduce **quietly**: unclassified tools, stale rows and
+phantom mappings all fail. It does **not** prove semantic equivalence between a tool and the
+route it names, and it is not a substitute for the per-domain audit. The mapping is
+semantic (`rave_get_config` -> `settings.getRaveConfig`, `pool_list` -> `pool.list`), and
+the 101 `unresolved` rows are exactly that: not resolved by name, awaiting the same
+semantic pass the earlier slices did. They are labelled, counted and committed rather than
+silently assumed fine.
+
+### Two measurements that shaped the design
+
+1. **Token-overlap matching was tried and REJECTED.** It produced 37 rows such as
+   `add_notes` -> `settings.clearNotes`, `open_midi_device` -> `midi.getOpenDevice` and
+   `list_clips` -> `settings.removeClips` — mostly wrong, because dropping generic verbs
+   collapses opposites. Shipping those as "candidates" would have put false claims in the
+   ledger **and passed the gate** (the targets exist). Same false-positive class as the
+   keyword screen this retrofit exists to eliminate.
+2. **The gate immediately caught a generator bug the human eye had not**: attributing
+   methods by file-region named every `Router_Project.cpp` method under BOTH `project.*`
+   and `settings.*` (inventing `settings.addAudioClip`). Namespace attribution now follows
+   the *enclosing dispatch function*, and the live probe is what keeps it honest.
+
+### Maintenance
+
+- Adding an MCP tool: `node tools/rpc_parity_map.mjs`, then classify the new row (map it,
+  or mark it `mcp-only`/`unresolved` with a reason) and review the diff.
+- The ledger's `mapped` rows are name-derived or alias-verified; when a route is renamed,
+  the live probe fails and points at the row.
+
 ## Remaining backlog
 
 1. **Semantic pass over the remaining domains.** For each `Router_*.cpp`, list its
@@ -350,9 +406,11 @@ Evidence: `TuningRpcTest.*` 3/3 (new) and the combined sweep 186/186 across
    something other than `unknown method namespace` for an unknown sub-method (plus sentinel
    checks that the retrofit's namespaces are listed). This is the gate that would have
    caught the missing `matrix` namespace on day one.
-3. **Ratchet the guard.** Once the backlog is cleared, add a CI-style check (like the
-   device-map `--check`) that fails when an MCP tool has no corresponding RPC method, so
-   the contract stops depending on discipline.
+3. ~~**Ratchet the guard.**~~ **DONE (slice 5).** `tools/rpc_parity_map.mjs` generates
+   `tests/unit/frontend/rpc_parity_map.inc`; `RpcParityRatchet` requires every live MCP tool
+   to be classified, every mapped target to resolve on the live dispatch surface, and every
+   unmapped row to carry a reason. It does not prove semantic equivalence — the 101
+   `unresolved` rows are the explicit review queue.
 4. **De-duplicate the nord `.syx` file loader.** Slice 2 re-implemented the
    validate-then-queue sequence inside `MatrixPresetService` (the matrix tool's file route
    needed a structured payload), while `mcp::runNordBankFile` (`PresetRoute.h`) still

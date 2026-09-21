@@ -578,7 +578,13 @@ constants live in `src/frontend/FrontendRpc.h` and are gated by
 `RpcNamespaceCoverage`: every `method::` constant must have a dispatch branch
 (`frontend::allMethodNamespaces()` is the single source), so a namespace can no
 longer go missing silently — which is how the whole matrix domain stayed MCP-only
-until 2026-09-21 (`docs/plans/2026-09-21-rpc-parity-retrofit.md`).
+until 2026-09-21 (`docs/plans/2026-09-21-rpc-parity-retrofit.md`). The tool↔method mapping
+itself is enforced by `RpcParityRatchet` over the generated ledger
+`tests/unit/frontend/rpc_parity_map.inc`: every live MCP tool must be classified
+(**adding a tool requires `node tools/rpc_parity_map.mjs` — the gate fails otherwise**),
+every mapped target must resolve on the live dispatch surface, and every unmapped row must
+carry a review reason. It does not prove semantic equivalence — the ledger's `unresolved`
+rows are an explicit review queue — but a silent gap can no longer be introduced.
 
 Where both surfaces read or shape the same artifact, put the shared logic in
 `src/common/` and call it from both rather than copying it. The worked example is
