@@ -5,6 +5,8 @@ Access Virus, Clavia Nord Lead 2x, Waldorf Microwave XT, Yamaha DX7) and the pre
 pipelines behind them. Everything here is either **verified** (with the evidence
 named) or explicitly marked **unverified**.
 
+**Operational companion:** [`docs/core-synths-agentic-guide.md`](core-synths-agentic-guide.md) - which route applies which capability, what is automatable per device, and how to prove it worked.
+
 **Authoritative parameter vocabulary:** every emulation ships a
 `parameterDescriptions_*.json` next to its plugin wrapper — `je` (JP-8080),
 `mq` (microQ), `TI` and `C` (Virus), `n2x` (Nord Lead 2x), `xt` (Microwave XT) —
