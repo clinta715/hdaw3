@@ -25,6 +25,7 @@
 #include "router/Router_PsyFm.h"
 #include "router/Router_Rave.h"
 #include "router/Router_Device.h"
+#include "router/Router_Matrix.h"
 
 using namespace frontend::router_helpers;
 
@@ -92,6 +93,7 @@ DispatchResult dispatch(AudioEngine& engine, const QString& method, const QJsonV
     else if (ns == method::PsyFm)       return dispatchPsyFm(engine, m, params);
     else if (ns == method::Rave)        return dispatchRave(engine, m, params, server);
     else if (ns == method::Device)      return dispatchDevice(engine, m, params);
+    else if (ns == method::Matrix)      return dispatchMatrix(engine, m, params);
 
     return makeError(-32601, "unknown method namespace: " + ns);
 }

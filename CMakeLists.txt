@@ -217,6 +217,7 @@ src/engine/StretchRenderer.cpp
     src/common/DeviceParamMap.cpp
     src/common/PsyFmModMatrixView.cpp
     src/common/ParamOverrideLedger.cpp
+    src/common/MatrixPresetService.cpp
     src/model/ProjectModel.cpp
     src/mcp/McpJsonRpc.cpp
     src/mcp/McpSchema.cpp
@@ -285,6 +286,7 @@ src/engine/StretchRenderer.cpp
     src/frontend/router/Router_PsyFm.cpp
     src/frontend/router/Router_Rave.cpp
     src/frontend/router/Router_Device.cpp
+    src/frontend/router/Router_Matrix.cpp
     src/frontend/FrontendServer.cpp
     src/frontend/FrontendTreeWatcher.cpp
     src/frontend/TreeDeltaAccumulator.cpp

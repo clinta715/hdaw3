@@ -573,7 +573,12 @@ usually wiring a tool onto an existing command rather than new engine work.
 over the frontend JSON-RPC surface as `namespace.method`, dispatched by
 `frontend::dispatch` (`src/frontend/FrontendRouter.cpp`) into a
 `src/frontend/router/Router_<Domain>.cpp` handler — whether or not any UI control
-consumes it. Add the RPC method in the same change as the MCP tool.
+consumes it. Add the RPC method in the same change as the MCP tool. Namespace
+constants live in `src/frontend/FrontendRpc.h` and are gated by
+`RpcNamespaceCoverage`: every `method::` constant must have a dispatch branch
+(`frontend::allMethodNamespaces()` is the single source), so a namespace can no
+longer go missing silently — which is how the whole matrix domain stayed MCP-only
+until 2026-09-21 (`docs/plans/2026-09-21-rpc-parity-retrofit.md`).
 
 Where both surfaces read or shape the same artifact, put the shared logic in
 `src/common/` and call it from both rather than copying it. The worked example is

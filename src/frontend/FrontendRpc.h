@@ -18,6 +18,8 @@
 #include <QJsonValue>
 #include <QString>
 
+#include <vector>
+
 #include "../common/ReadModel.h"
 
 namespace frontend {
@@ -44,7 +46,22 @@ namespace method {
     inline constexpr const char* PsyFm      = "psy_fm";
     inline constexpr const char* Rave       = "rave";
     inline constexpr const char* Device     = "device";
+    inline constexpr const char* Matrix     = "matrix";
 } // namespace method
+
+// Every namespace prefix above, for the coverage gate that asserts each one has a
+// dispatch branch in FrontendRouter.cpp. Derived from the constants (single source)
+// rather than copied into the test: a hand-maintained list with no gate is exactly
+// how the \`matrix\` namespace stayed missing until 2026-09-21.
+inline std::vector<const char*> allMethodNamespaces()
+{
+    return { method::Project, method::Settings, method::Transport,
+             method::AudioGraph, method::Read, method::Plugin, method::PluginParam,
+             method::Audio, method::Midi, method::Export, method::Preview,
+             method::Composition, method::Session, method::Library, method::Sampler,
+             method::Pool, method::PsyFm, method::Rave, method::Device,
+             method::Matrix };
+}
 
 // Server-initiated push notifications (no client id, no response expected).
 namespace notify {

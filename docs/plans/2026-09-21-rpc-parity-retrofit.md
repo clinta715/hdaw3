@@ -80,20 +80,89 @@ single router file, and the missing methods are real editing operations, not plu
 Evidence: `PsyFmRpcTest.*` 4/4 and `PsyFmModMatrixDebug.*` 7/7 (11/11 in 2 suites),
 plus the 162-test sweep.
 
+## Slice 2 — Matrix (SHIPPED 2026-09-21)
+
+The Matrix domain had **no RPC route at all**: `list_matrix_presets` and
+`apply_matrix_preset` lived entirely in `src/mcp/McpTools_Matrix.cpp` (751 lines of Qt
+domain logic — sheet resolution + caching, morph chains, the four apply routes, the
+override-ledger write, the deferred state capture) and `FrontendRpc.h` had no `matrix`
+namespace. Confirmed by the semantic join (shared command symbols), not by name matching:
+the only router touching matrix-shaped code was `Router_PsyFm`, which serves the psy_fm
+mod matrix — a different domain.
+
+### Implementation
+
+- **`src/common/MatrixPresetService.{h,cpp}`** (new) — the extracted domain logic:
+  presets-dir resolution + env-keyed cache, bounded sheet/morph/index-map parsing,
+  `resolvePluginSlot`, parameter apply (`resolveLiveParamIndex` + 0..127 -> 0..1
+  scaling), the deferred state capture, the `appliedParamOverrides` ledger write, and the
+  loose `.syx`/`.mid` step-file route (validate every dump before queueing, then dumps +
+  optional PC + a trailing CC125). Both surfaces call it, so payloads, routes, error text
+  **and the JSON-RPC error class** are parity by construction.
+- **`src/mcp/McpTools_Matrix.cpp`** — reduced to the two tool registrations (schemas and
+  descriptions preserved) serializing the service payload as compact JSON.
+- **`src/frontend/router/Router_Matrix.{h,cpp}`** (new) — `matrix.listPresets` /
+  `matrix.applyPreset`, mirroring `Router_Device`'s shape.
+- **`src/frontend/FrontendRpc.h`** — `method::Matrix = "matrix"` plus
+  `frontend::allMethodNamespaces()` (the single source for the coverage gate below).
+- `FrontendRouter.cpp` dispatch branch; `CMakeLists.txt` + `tests/CMakeLists.txt`
+  entries; `tests/integration/mcp/matrix_presets_rpc_test.cpp` (new).
+
+**Error-class rule** (documented in the service header, mirrored by both surfaces):
+`-32602` invalid params — invalid engine id, **no sheet for a named engine**
+(`Router_Device` precedent), unknown preset/morph-step id, unknown track/slot, non-plugin
+slot, `appliesVia` with no parameter-level path, malformed preset SysEx, program out of
+range; `-32603` environment — presets dir missing, sheet unreadable / invalid JSON /
+unsupported schema, index-map unreadable, missing or invalid `.syx` step file,
+engine-command failure.
+
+### Success gates
+
+| # | Gate | Status |
+| --- | --- | --- |
+| S1 | MCP behaviour unchanged by the extraction — `MatrixPresetsTest.*` | **PASS** (12/12) |
+| S2 | `matrix.listPresets` payload byte-identical to the MCP payload (`EXPECT_EQ`) | **PASS** |
+| S3 | `matrix.applyPreset` accounting payload byte-identical (applied/skipped/unmapped) | **PASS** |
+| S4 | Failure text **and** JSON-RPC class match the MCP text (`-32602` argument; `-32603` environment incl. the resolved `3-4` pair path) | **PASS** |
+| S5 | Unknown sub-method is a clean `-32601` | **PASS** |
+| S6 | Namespace-coverage gate (backlog item 2) — every `method::` constant has a dispatch branch | **PASS** (2/2) |
+| S7 | Registry/RPC-surface sweep unaffected | **PASS** |
+| S8 | Build graph — the new files appear in `build.ninja` after an explicit reconfigure (suppressed regeneration) | **PASS** |
+| S9 | Blast radius — no `processBlock` / DSP / `RoutingManager` / render / playback / plugin-isolation file touched | **PASS** |
+
+Evidence: `MatrixPresetsTest.*` 12/12, `MatrixRpcParityTest.*` 5/5,
+`RpcNamespaceCoverage.*` 2/2 — 19/19 in 3 suites.
+
+Behavioural note: the `.syx` step-file route's **success** payload changed from the
+`load_nord_bank` loader's prose line to the structured
+`{queued, route:"file", bytes, program, capturedToTree, captureDeferred}` the domain's
+other routes use — required for a surface-neutral payload. The error path is unchanged
+(`MatrixPresetsTest.MorphSysexAndFileDispatch` still pins it). `mcp::runNordBankFile`
+itself is untouched and still serves `load_nord_bank`; de-duplicating it with the
+service's file route is item 4 below.
+
 ## Remaining backlog
 
 1. **Semantic pass over the remaining domains.** For each `Router_*.cpp`, list its
    methods and the command entry points they reach; for each `src/mcp/McpTools_*.cpp`,
    list the tools and their entry points; report tools with no RPC route (excluding
-   plumbing). Suggested order — self-contained, editing-heavy, UI-less domains first
-   (the PsyFm shape): `Router_Matrix`, `Router_Device` (done), `Router_Rave`,
-   `Router_Pool`, `Router_Tuning`.
-2. **A namespace-coverage gate.** `method::` constants in `src/frontend/FrontendRpc.h`
-   are a hand-maintained list with no test that each has a `dispatch` branch. Add a gate
-   that iterates the namespaces and asserts `dispatch(engine, "<ns>.probe", {})` does not
-   answer `unknown method namespace`. To be drift-proof the list must be derived from a
-   single source (add `frontend::allMethodNamespaces()` next to the constants) rather than
-   copied into the test.
+   plumbing). **Order re-baselined 2026-09-21 against the actual router inventory** — the
+   earlier list named `Router_Matrix` and `Router_Tuning`, **neither of which exists**
+   (`src/frontend/router/`: Audio, AudioGraph, Composition, Device, Export, Library,
+   Midi, Plugin, Pool, Preview, Project, PsyFm, Rave, Read, Sampler, Session,
+   Transport). Confirmed status:
+   * **Matrix** — `list_matrix_presets` + `apply_matrix_preset` (`McpTools_Matrix.cpp`,
+     751 lines of Qt domain logic) have **no RPC route** and there is no `matrix`
+     namespace. Slice 2.
+   * **Device** — done (slice 0, `src/common/DeviceParamMap.cpp`).
+   * **PsyFm** — done (slice 1).
+   * Next candidates after Matrix: `Rave`, `Pool` (both have router files).
+2. ~~**A namespace-coverage gate.**~~ **DONE (slice 2).**
+   `frontend::allMethodNamespaces()` (src/frontend/FrontendRpc.h) is the single source and
+   `tests/unit/frontend/rpc_namespace_coverage_test.cpp` asserts every namespace answers
+   something other than `unknown method namespace` for an unknown sub-method (plus sentinel
+   checks that the retrofit's namespaces are listed). This is the gate that would have
+   caught the missing `matrix` namespace on day one.
 3. **Ratchet the guard.** Once the backlog is cleared, add a CI-style check (like the
    device-map `--check`) that fails when an MCP tool has no corresponding RPC method, so
    the contract stops depending on discipline.
