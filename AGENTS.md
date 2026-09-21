@@ -638,6 +638,44 @@ over one-off randomness, so behavior (and its MCP/RPC surface) stays consistent.
 - **Two launch modes:** Default (browser), Headless (Electron).
 - **Frontend build:** `cd frontend; npm run build`, then rebuild the C++ project.
 - See [`docs/architecture.md`](docs/architecture.md) for full build details.
+
+### Build speed: the `.ninja_deps` trap (2026-09-21) — 285 s → 2 s
+
+A **truncated `build/.ninja_deps`** (from a hard-killed Ninja build) makes Ninja
+read every recorded target as `STALE`, which re-runs AUTOMOC → rewrites
+`HDAW_lib_autogen/mocs_compilation.cpp` → dirties the **PCH** → **all ~300
+`HDAW_lib` TUs recompile on every build**. Measured on this repo: a no-op build
+was **285 s** (300 steps) and a one-test-TU edit was **331 s**; after the repair
+the same no-op is **2 s (0 steps)** and the TU edit is **52 s (3 steps)**.
+
+- **Symptom:** `ninja: warning: premature end of file; recovering`, and
+  `ninja -t deps <target>` printing `(STALE)`.
+- **Repair:** delete the deps log — `rm build/.ninja_deps` (harmless; costs at
+  most one rebuild, then it settles).
+- **Prevention:** never hard-kill a `cmake --build` / `ninja` process
+  (`taskkill` on a *test* process is fine; killing the build mid-flight is what
+  truncates the log).
+- Legitimate costs that remain: a widely-included header edit rebuilds its real
+  fan-out (e.g. `src/common/ProjectCommands.h` → 155 TUs, ~260 s);
+  `HDAW_lib` is built with LTO (`INTERPROCEDURAL_OPTIMIZATION`);
+  `windeployqt` runs as a POST_BUILD step on `hdaw_tests`.
+
+### Test speed: shard the suite across processes (2026-09-21)
+
+`scripts/run-tests-parallel.sh [N] [suite-regex]` shards the gtest list across N
+concurrent `hdaw_tests.exe` processes (the engine is a singleton *per process* and
+proxy children get a unique namespace per manager instance, so concurrent runs are
+safe). It shards small suites whole and large ones per test.
+
+- **Forward the env:** the binary is a Windows exe launched from WSL — interop
+  only passes variables listed in `WSLENV`, so without
+  `WSLENV=HDAW_REAL_PLUGIN_TESTS` every real-plugin gate silently **SKIPs** (the
+  script sets this itself).
+- **Measured:** the 20-gate `FxMidiInjection` suite (the heaviest) runs **600 s
+  serial → 307 s with 4 shards** (~2x; the shards contend on the CPU-heavy
+  emulations, so the longest shard dominates).
+- `run_fast_tests.bat` remains the fast iteration tier (excludes the
+  render/recipe/spawn-heavy suites).
 - **Pre-build time sync (WSL/Windows clock drift):** before ANY build/compile
   in this repo (`cmake --build`, `build-fast.bat`, `frontend\build.bat`, bare
   `ninja`, `npm run build`), invoke `skill: "pre-build-time-sync"` — it snaps
